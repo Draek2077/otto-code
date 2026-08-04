@@ -11,7 +11,7 @@ import { useFormRolePersonality } from "./role-model-personality";
 
 // The load-order cases this file exists for all hinge on WHEN each source
 // arrives, so every dependency is a plain mutable mock the test re-points
-// between rerenders — mirroring a daemon snapshot that lands "loading" first
+// between rerenders - mirroring a daemon snapshot that lands "loading" first
 // and "ready" second, a react-query cache that warms before the session store,
 // and preferences that hydrate at their own pace.
 const mocks = vi.hoisted(() => ({
@@ -167,7 +167,7 @@ describe("useFormRolePersonality (load order)", () => {
 
   it("applies the team's holder once the provider snapshot goes ready", async () => {
     // The bug: the one-shot default settled on the FIRST render where entries
-    // existed, and the daemon's first snapshot has every provider "loading" —
+    // existed, and the daemon's first snapshot has every provider "loading" -
     // so the team entry could not possibly resolve and the default never
     // retried. The draft ended with no personality at all.
     mocks.teamsFeature.enabled = true;
@@ -175,7 +175,7 @@ describe("useFormRolePersonality (load order)", () => {
 
     const { result, rerender, onApply } = renderComposerPicker({ entries: LOADING_ENTRIES });
 
-    // Nothing resolves while the provider warms — and, critically, nothing settles.
+    // Nothing resolves while the provider warms - and, critically, nothing settles.
     expect(result.current.selectedPersonalityId).toBeNull();
     expect(onApply).not.toHaveBeenCalled();
 
@@ -193,7 +193,7 @@ describe("useFormRolePersonality (load order)", () => {
   it("falls to tier 2 once the snapshot is ready and no team resolves", async () => {
     // The other half of the same gate: "still loading" must retry, but a
     // settled snapshot resolves the ladder. With no team, a personality
-    // carrying the role still outranks the device's last-used model — seeing a
+    // carrying the role still outranks the device's last-used model - seeing a
     // bare model here would mean you have no Chatter at all.
     mocks.teamsFeature.enabled = true;
     setConfig({ personalities: [CHATTER], activeTeamId: null });
@@ -212,7 +212,7 @@ describe("useFormRolePersonality (load order)", () => {
 
   it("prefers the remembered personality over the first available one", async () => {
     // Tier 2's internal order: device memory picks WHICH personality, but it
-    // never demotes the tier itself — that was the old bug, where a
+    // never demotes the tier itself - that was the old bug, where a
     // non-matching memory dropped the whole surface through to the last-used
     // model.
     mocks.preferences.preferences = { lastPersonalityByRole: { chatter: OTHER_CHATTER.id } };
@@ -243,7 +243,7 @@ describe("useFormRolePersonality (load order)", () => {
     // teamSlotLive's two inputs load from different sources (daemon config via
     // react-query, features.agentTeams via the session store), so the ladder can
     // legitimately settle on tier 2 and only then learn a team was active all
-    // along. Tier 1 must still win — the default only steps aside for a USER
+    // along. Tier 1 must still win - the default only steps aside for a USER
     // pick, never for its own earlier one.
     mocks.preferences.preferences = { lastPersonalityByRole: { chatter: OTHER_CHATTER.id } };
     setConfig({ personalities: [CHATTER, OTHER_CHATTER], activeTeamId: TEAM.id });
@@ -291,7 +291,7 @@ describe("useFormRolePersonality (load order)", () => {
 
   it("selects an off-role personality picked from the grouped browse section", async () => {
     // "All personalities" reaches the WHOLE roster, not just this surface's
-    // role. Picking one there must bind that personality — not silently degrade
+    // role. Picking one there must bind that personality - not silently degrade
     // to "the model it happens to run".
     setConfig({ personalities: [CHATTER, OFF_ROLE_CODER], activeTeamId: null });
 
@@ -340,7 +340,7 @@ describe("useFormRolePersonality (load order)", () => {
     });
     expect(result.current.selectedPersonalityId).toBe(OTHER_CHATTER.id);
     expect(result.current.spawnPersonalityId).toBe(OTHER_CHATTER.id);
-    // Identity only — the fork's provider/model already arrive via initialValues.
+    // Identity only - the fork's provider/model already arrive via initialValues.
     expect(onApply).not.toHaveBeenCalled();
   });
 });

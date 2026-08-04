@@ -2,13 +2,13 @@
  * Route-time model selection for the UNNAMED request path.
  *
  * When a client hits the brain without naming a model, the old default served
- * "whatever is loaded, else catalog[0]" — blind to which local model is actually
+ * "whatever is loaded, else catalog[0]" - blind to which local model is actually
  * the best coder. This picks the best-ranked coding-capable model that fits the
  * VRAM budget instead, wiring together Track A (the bench ranking) and Track B1
  * (the catalog coding metadata carried onto the scanned Model).
  *
  * `selectCodingModel` is PURE: it takes the models, the ranking, an optional
- * VRAM-fit predicate, and a fallback, and returns the chosen model with no IO —
+ * VRAM-fit predicate, and a fallback, and returns the chosen model with no IO -
  * so the decision logic is trivially testable. `makeVramFitPredicate` is the one
  * impure edge (it reads GPU total VRAM and runs a vram.budget), deliberately kept
  * out of the pure path.
@@ -22,7 +22,7 @@ import * as vram from "../vram.js";
 // it is backed by enough repeated runs and its spread across those runs is
 // tight. rankModels reports one entry per model with the MEAN overall score
 // (0..1), the run COUNT, and the sample STD (also 0..1). A single run has std 0
-// — falsely confident — so we require at least two runs, and we reject a mean
+// - falsely confident - so we require at least two runs, and we reject a mean
 // whose runs disagree by more than MAX_TRUSTED_STD. Untrusted models stay
 // eligible but sort below every trusted one.
 export const MIN_TRUSTED_RUNS = 2;
@@ -52,7 +52,7 @@ export interface SelectCodingModelOptions {
   /** Track A's per-model bench ranking (mean score + runs + std). */
   ranking: RankedModel[];
   /**
-   * VRAM-fit predicate. Omit (or pass undefined) to skip the fit filter — the
+   * VRAM-fit predicate. Omit (or pass undefined) to skip the fit filter - the
    * caller does this when GPU info is absent, mirroring serve.ts's "absent →
    * skip" behaviour.
    */
@@ -102,7 +102,7 @@ function compareCandidates(a: Ranked, b: Ranked, preferLoadedId: string | null):
 
 /**
  * Pick the best-ranked coding model that fits the VRAM budget. Pure and
- * deterministic — no IO, no clock, no randomness.
+ * deterministic - no IO, no clock, no randomness.
  */
 export function selectCodingModel({
   models,
@@ -114,12 +114,12 @@ export function selectCodingModel({
   if (models.length === 0) return fallback;
 
   // 1. Candidate set: coding-capable models. If nothing is tagged (a catalog
-  //    with no coding metadata, or hand-placed models), don't fail closed —
+  //    with no coding metadata, or hand-placed models), don't fail closed -
   //    fall back to the whole set.
   const tagged = models.filter(isCodingCapable);
   let candidates = tagged.length > 0 ? tagged : models;
 
-  // 2. VRAM fit filter (skipped when no predicate — i.e. GPU info absent). If
+  // 2. VRAM fit filter (skipped when no predicate - i.e. GPU info absent). If
   //    nothing coding-capable fits, keep the existing default rather than
   //    forcing a model that overflows the budget.
   if (fits) {

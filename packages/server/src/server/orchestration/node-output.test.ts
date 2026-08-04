@@ -55,7 +55,7 @@ describe("buildOutputInstruction", () => {
   test("lists the contract and marks which fields are optional", () => {
     const instruction = buildOutputInstruction(FIELDS);
     expect(instruction).toContain("submit_output");
-    expect(instruction).toContain("- complexity (string) — simple or complex");
+    expect(instruction).toContain("- complexity (string) - simple or complex");
     expect(instruction).toContain("- notes (string, optional)");
   });
 });

@@ -387,7 +387,7 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
   },
   bubble: {
     // 75%-alpha surface3, derived in the theme builders (web CSSVars mode
-    // forbids string math on theme color reads here — it emits var(--...)).
+    // forbids string math on theme color reads here - it emits var(--...)).
     backgroundColor: theme.colors.surfaceUserBubble,
     borderRadius: theme.borderRadius["2xl"],
     borderTopRightRadius: theme.borderRadius.sm,
@@ -615,13 +615,13 @@ interface AssistantTurnFooterProps {
   onFork?: (target: AssistantForkTarget) => Promise<void> | void;
 }
 // Playback deliberately does NOT live here. A turn's footer only knows the turn,
-// and `collectAssistantTurnContent` joins every assistant message in it — so a
+// and `collectAssistantTurnContent` joins every assistant message in it - so a
 // button here read the whole turn aloud. It is now one button per visual bubble,
 // on the bubble itself (AssistantBubblePlayback).
 
 /**
  * Total tokens the turn consumed (fresh input + cache reads + output).
- * Empty when the turn has no usage snapshot — only turns whose completion
+ * Empty when the turn has no usage snapshot - only turns whose completion
  * was observed live carry one; timeline backfill can't recover it.
  */
 function formatTurnTokensLabel(usage: AgentUsage | undefined): string {
@@ -664,8 +664,8 @@ const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
 
 /**
  * Footer rendered next to the copy button at the end of an assistant turn.
- * Shows every detail at once — end time, turn duration, and token usage,
- * bullet-separated — instead of swapping content on hover. Whether the whole footer is hidden
+ * Shows every detail at once - end time, turn duration, and token usage,
+ * bullet-separated - instead of swapping content on hover. Whether the whole footer is hidden
  * until hover is decided by its container (see CompletedTurnFooterRow).
  */
 export const AssistantTurnFooter = memo(function AssistantTurnFooter({
@@ -721,7 +721,7 @@ interface AssistantMessageProps {
   /**
    * How many characters of the message the live-turn typewriter reveal has
    * reached (see agent-stream/turn-reveal.ts). Undefined (or >= length)
-   * renders the full text; 0 renders nothing — the item appears once the
+   * renders the full text; 0 renders nothing - the item appears once the
    * reveal reaches it. Display-only: store text, copy content, and turn
    * timing stay full-fidelity.
    */
@@ -737,7 +737,7 @@ interface AssistantMessageProps {
   /** Agent whose personality voice reads this bubble aloud. */
   agentId?: string;
   /**
-   * This item is the growing end of a running turn — the model may still append
+   * This item is the growing end of a running turn - the model may still append
    * to it. Everything that reads a message as a finished thing (the playback
    * button's visibility, the auto-speech queue) waits for this to go false.
    */
@@ -761,7 +761,7 @@ export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
   // alignSelf flex-start + maxWidth lets a short reply hug its content; long
   // prose hits the chat column width and grows in height from there.
   bubble: {
-    // 75%-alpha surface2 — same derived-token treatment as the user bubble so
+    // 75%-alpha surface2 - same derived-token treatment as the user bubble so
     // both sides sit softly on the chat background (and the black chat scope).
     backgroundColor: theme.colors.surfaceAssistantBubble,
     borderRadius: theme.borderRadius["2xl"],
@@ -829,7 +829,7 @@ const ASSISTANT_IMAGE_MAX_HEIGHT = 400;
 
 // The live content width of the message bubble, measured by AssistantMessage and read by block
 // images. The message view width is variable (window size, split panes, sidebar, phone vs desktop),
-// so images size against this rather than any constant — they must never exceed the message view,
+// so images size against this rather than any constant - they must never exceed the message view,
 // exactly like text. `null` until the first layout; images fall back to the content-width constant.
 const AssistantImageWidthContext = createContext<number | null>(null);
 const ASSISTANT_IMAGE_MEASURE_STYLE: ViewStyle = { alignSelf: "stretch" };
@@ -908,7 +908,7 @@ const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedIm
   const { width: windowWidth } = useWindowDimensions();
   const measuredContentWidth = useContext(AssistantImageWidthContext);
   // A markdown image has no intrinsic width, and `width:"100%"` never resolves through the
-  // content-sized flex ancestors of an image-only message — the whole column collapses to 0 and the
+  // content-sized flex ancestors of an image-only message - the whole column collapses to 0 and the
   // image renders at 0×0 even though it loaded. So we give the frame an explicit pixel size, which
   // both sizes the image and gives the collapsed ancestors an intrinsic width to grow to. Scale the
   // natural size down to fit the box (real message content width × ASSISTANT_IMAGE_MAX_HEIGHT),
@@ -1298,7 +1298,7 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
   },
   // An expanded row renders a visible bordered box (pressableExpanded +
   // detailWrapper below). Collapsed rows are borderless, so they can sit
-  // nearly flush — but an expanded row needs real breathing room, or its
+  // nearly flush - but an expanded row needs real breathing room, or its
   // border touches the next row's border and the two tool calls read as one
   // merged box.
   containerExpandedSpacing: {
@@ -1336,7 +1336,7 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
   },
   label: {
     color: theme.colors.foregroundMuted,
-    // Matches assistant prose (theme.fontSize.sm) — chat is a working
+    // Matches assistant prose (theme.fontSize.sm) - chat is a working
     // surface, not a document. See createMarkdownStyles' `body`/`text`.
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
@@ -1585,7 +1585,7 @@ function AssistantMessageBlockContainer({ block, children }: AssistantMessageBlo
   // message kept one live observer per markdown block, firing through every scroll-driven
   // layout pass to write a height the cache already had. The measurement exists only to
   // feed the virtualizer's size estimate, and that number does not change until either the
-  // text or the column width does — both of which re-arm this below.
+  // text or the column width does - both of which re-arm this below.
   const contentWidth = useContext(AssistantImageWidthContext);
   const columnWidth = contentWidth === null ? null : Math.round(contentWidth);
   const [measured, setMeasured] = useState<{ block: string; columnWidth: number | null } | null>(
@@ -1828,13 +1828,13 @@ export const AssistantMessage = memo(function AssistantMessage({
       // hardbreak/softbreak fall back to react-native-markdown-display's
       // default, a plain RN <Text>. Inside the paragraph UITextView that plain
       // <Text> is not hoisted into a UITextViewChild and is dropped (same root
-      // cause as strong/em/s) — so on iOS a hard line break vanished, and a
+      // cause as strong/em/s) - so on iOS a hard line break vanished, and a
       // softbreak between words jammed them together ("one\ntwo" -> "onetwo").
       // Emit the break through MarkdownTextSpan so it composes on iOS.
       //
       // A hardbreak (two trailing spaces, or a backslash) is an explicit line
       // break and stays "\n". A SOFTbreak is just a newline in the source, which
-      // markdown reflows as a space — the library's "\n" default turned every
+      // markdown reflows as a space - the library's "\n" default turned every
       // hard-wrapped paragraph into a ragged column of short lines.
       hardbreak: (node: ASTNode) => <MarkdownTextSpan key={node.key}>{"\n"}</MarkdownTextSpan>,
       softbreak: (node: ASTNode) => <MarkdownTextSpan key={node.key}> </MarkdownTextSpan>,
@@ -2065,7 +2065,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   // The width available to block images, so they never exceed the message view.
   //
   // Measured on the *outer* container, not inside the bubble. The bubble is content-sized
-  // (`alignSelf: "flex-start"`), so its width is whatever its widest child is — and a block
+  // (`alignSelf: "flex-start"`), so its width is whatever its widest child is - and a block
   // image sets an explicit pixel width from this number. Measuring inside the bubble therefore
   // closed a loop: image width fed the bubble, the bubble fed the measurement, and the
   // measurement fed the image, ratcheting a screenshot down a little on every layout pass until
@@ -2198,7 +2198,7 @@ export const AssistantMessage = memo(function AssistantMessage({
 });
 
 /**
- * Everything the bubble needs to decide whether — and when — to show its
+ * Everything the bubble needs to decide whether - and when - to show its
  * playback button. Extracted from AssistantMessage purely to keep that
  * component under the complexity ceiling; it holds no state the bubble's
  * rendering depends on beyond hover.
@@ -2220,7 +2220,7 @@ function useAssistantBubblePlaybackState(input: {
 } {
   const { serverId, spacing, groupId, blockIndex, message } = input;
   // "Received in full": the model has moved past this item AND the typewriter
-  // has finished laying it out. Both halves matter — a bubble still growing
+  // has finished laying it out. Both halves matter - a bubble still growing
   // across the screen is not a message you can be offered to play, and text the
   // reader has not been shown yet is not text to read aloud.
   const isSettled = input.isTurnTail !== true && input.displayedLength >= message.length;
@@ -2275,7 +2275,7 @@ interface AssistantBubblePlaybackProps {
  * message and nothing else.
  *
  * It used to live in the turn footer, where `collectAssistantTurnContent` walked
- * the whole turn and joined every assistant message in it — so one press read a
+ * the whole turn and joined every assistant message in it - so one press read a
  * turn's entire output aloud, which for a long turn is a lot of speech you did
  * not ask for. A turn that writes, calls a tool, then writes again now offers
  * two buttons, one per bubble.
@@ -2292,7 +2292,7 @@ function AssistantBubblePlayback({
   visible,
 }: AssistantBubblePlaybackProps) {
   const hasText = useAssistantBubbleHasText(groupId);
-  // A speaking bubble keeps its button on screen regardless of hover — the
+  // A speaking bubble keeps its button on screen regardless of hover - the
   // Stop control must never be the thing you have to hunt for.
   const isSpeaking = useIsMessagePlaybackActive(groupId);
   const getContent = useCallback(() => getAssistantBubbleText(groupId), [groupId]);
@@ -2643,7 +2643,7 @@ interface TodoListCardProps {
 }
 
 /**
- * Prominent, always-open task list — the chat-native counterpart to the Claude
+ * Prominent, always-open task list - the chat-native counterpart to the Claude
  * terminal's todo list. It checks itself off in place as the agent works (one
  * evolving card, not a snapshot per update; see appendTodoList), highlights the
  * task in flight, and shows a running done/total with a progress bar. The
@@ -2692,7 +2692,7 @@ const todoListCardStylesheet = StyleSheet.create((theme) => ({
   card: {
     marginVertical: theme.spacing[1],
     // Green (success-tone) ring at the same 1px weight as the usage-alert band,
-    // matching the pinned overlay and the green progress bar — one task-list
+    // matching the pinned overlay and the green progress bar - one task-list
     // identity whether it renders inline or floated.
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.statusSuccess,
@@ -2740,7 +2740,7 @@ interface ExpandableBadgeProps {
   // How loudly the badge reports failure. "error" is a red triangle: the action
   // itself failed, or every action in a group did. "warning" is amber: some but
   // not all of a group's actions failed, which is an alert about a run that
-  // mostly worked — not a failed run. Undefined means nothing failed.
+  // mostly worked - not a failed run. Undefined means nothing failed.
   errorLevel?: ExpandableBadgeErrorLevel;
   isLastInSequence?: boolean;
   /** Drops the attached-border treatment while expanded. */
@@ -2924,7 +2924,7 @@ function ExpandableBadgeLabelRow({
         />
       ) : null}
       {/* Pure decoration over the untouched label: the rain never reads,
-          splits, or replaces the text — it just travels across the measured
+          splits, or replaces the text - it just travels across the measured
           text span, clipped to this single-line row. */}
       {glyphEffect && textSpanWidth > 0 ? (
         <TextEffectRain
@@ -2951,14 +2951,14 @@ function ExpandableBadgeLabelRow({
 }
 
 // HACK: lucide ships every icon inside a 24×24 viewBox where the path
-// doesn't touch the edges — there's per-icon internal padding. The layout
+// doesn't touch the edges - there's per-icon internal padding. The layout
 // already places the SVG element's box on the rail, but the visible glyph
 // inside the SVG sits inset by a few pixels (and the inset amount differs
-// per icon — chevron-right paints only in the right half of its viewBox,
+// per icon - chevron-right paints only in the right half of its viewBox,
 // regular tool icons paint roughly the full viewBox minus ~1 unit margin).
 //
 // Lucide has no viewBox knob, so the only way to nudge the visible glyph
-// flush with the rail is a per-icon negative margin. Cosmetic; not exact —
+// flush with the rail is a per-icon negative margin. Cosmetic; not exact -
 // every lucide icon has slightly different padding and we're not measuring
 // each one. Two buckets is the compromise:
 //   - LUCIDE_TOOL_ICON_NUDGE_LEFT: regular tool icons (path mostly fills
@@ -2966,7 +2966,7 @@ function ExpandableBadgeLabelRow({
 //   - LUCIDE_CHEVRON_NUDGE_LEFT: chevron-right (path in right half of
 //     viewBox, and we scale it 1.3×); needs ~4px left shift.
 // If we ever want this exact, the principled fix is a custom <Svg> wrapper
-// with a tight viewBox per icon — see option (2) in the design discussion.
+// with a tight viewBox per icon - see option (2) in the design discussion.
 const LUCIDE_TOOL_ICON_NUDGE_LEFT: ViewStyle = { marginLeft: -1 };
 const LUCIDE_CHEVRON_NUDGE_LEFT: ViewStyle = { marginLeft: -4 };
 const TRIANGLE_ALERT_ICON_OPACITY: ViewStyle = { opacity: 0.8 };
@@ -3073,7 +3073,7 @@ function computeShimmerMetrics(input: {
   const isNativeShimmer =
     shouldMeasureNativeShimmer && input.labelRowWidth > 0 && input.labelRowHeight > 0;
   // The web sweep needs the text span to place its track; the rain needs it to
-  // know how wide to be — and the rain runs on both platforms, so this
+  // know how wide to be - and the rain runs on both platforms, so this
   // measurement is no longer web-only.
   const shouldMeasureTextSpan = isWebShimmer || input.hasGlyphEffect;
   const textSpanStartX = input.labelOffsetX;
@@ -3137,7 +3137,7 @@ function buildShimmerTextStyle(input: {
 }): object | null {
   if (!input.isWebShimmer || !input.effect) return null;
   // The shared @keyframes animate background-position between the per-element
-  // CSS vars, so every effect theme rides the same registered keyframes — the
+  // CSS vars, so every effect theme rides the same registered keyframes - the
   // theme only varies the gradient, timing function, and direction here.
   const timingFunction = input.effect.easing === "ease-in-out" ? "ease-in-out" : "linear";
   const direction = input.effect.bounce ? "alternate" : "normal";
@@ -3355,7 +3355,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
   const containerSpacingStyle = useMemo(() => {
     // Expanded rows always need breathing room from their neighbors, even in
     // contexts (the main chat stream) that disable outer spacing to keep
-    // collapsed tool-call pills tight — disableOuterSpacing predates the
+    // collapsed tool-call pills tight - disableOuterSpacing predates the
     // bordered expanded state and was never meant to gate it. The exception
     // is grouped contexts, where the parent spaces rows with `gap` and a
     // per-row margin would double it (disableExpandedSpacing).
@@ -3612,7 +3612,7 @@ export const ToolCall = memo(function ToolCall({
       }),
     [toolName, status, error, effectiveDetail, metadata, cwd],
   );
-  // Drives per-activity text-effect themes (Vivid) — see styles/text-effects.ts.
+  // Drives per-activity text-effect themes (Vivid) - see styles/text-effects.ts.
   const effectActivity = useMemo(() => textEffectActivityForToolName(toolName), [toolName]);
   const handleOpenFile = useMemo(() => {
     const openFilePath = presentation.openFilePath;
@@ -3686,7 +3686,7 @@ export const ToolCall = memo(function ToolCall({
     );
   }, [shouldRenderInline, effectiveDetail, presentation.errorText, presentation.isLoadingDetails]);
 
-  // A widget renders as its own content, not as an action row — same treatment
+  // A widget renders as its own content, not as an action row - same treatment
   // as a plan card, and for the same reason: the payload IS what the model is
   // saying, so it must not sit behind a badge the user has to open. The payload
   // rides in `metadata` rather than `detail`; see WIDGET_METADATA_KEY.

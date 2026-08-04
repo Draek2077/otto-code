@@ -38,13 +38,13 @@ export type MarkdownDisplayPart = MarkdownTextPart | MarkdownDetailsPart | Markd
  * - `script`/`style` are the only tags whose *contents* are dropped too.
  * - Image srcs are gated by scheme, and the gate is the only thing standing between a document
  *   and a network fetch. `remoteImages: "altText"` closes it entirely for a given surface.
- *   `localImages: "workspace"` adds workspace-relative paths as an allowed *class* — it does not
+ *   `localImages: "workspace"` adds workspace-relative paths as an allowed *class* - it does not
  *   widen the scheme allowlist, and those paths are contained before anything is read.
  */
 
 const FENCE_LINE_RE = /^ {0,3}([`~]{3,})[^\n\r]*(?:\r?\n|$)/gm;
 const BACKTICK_RUN_RE = /`+/g;
-/** In-document sources only. Remote schemes are added per-surface — see {@link HtmlishOptions}. */
+/** In-document sources only. Remote schemes are added per-surface - see {@link HtmlishOptions}. */
 const LOCAL_IMAGE_SRC_RE = /^data:image\/(?:png|gif|jpe?g);base64,/i;
 const REMOTE_IMAGE_SRC_RE = /^https?:\/\//i;
 const SAFE_LINK_HREF_RE = /^(https?:\/\/|#(?:$|[\w-]))/i;
@@ -89,7 +89,7 @@ export interface HtmlishOptions {
   /**
    * Whether a workspace-relative src (`docs/diagram.png`) survives as an image rather than
    * dropping to its alt text. `"workspace"` only says the surface *has* a workspace to resolve
-   * against — the resolution and its containment happen in `workspace-image-source.ts`, and an
+   * against - the resolution and its containment happen in `workspace-image-source.ts`, and an
    * src that escapes the root lands back on the alt-text path from there.
    */
   localImages?: "workspace" | "off";
@@ -98,7 +98,7 @@ export interface HtmlishOptions {
 /**
  * A src that may be handed straight to an `<Image>`: an in-document data URL, or a remote one on
  * a surface that opted in. This is the scheme allowlist, and relative resolution does not widen
- * it — `file:`, `javascript:` and host-absolute paths named by a document stay rejected here
+ * it - `file:`, `javascript:` and host-absolute paths named by a document stay rejected here
  * however the surface is configured.
  */
 export function isDirectImageSrc(src: string, options: HtmlishOptions): boolean {
@@ -128,7 +128,7 @@ interface MarkdownImageDimensions {
 interface HtmlTextToken {
   kind: "text";
   value: string;
-  /** A fenced/inline code range lifted out verbatim — its whitespace is load-bearing. */
+  /** A fenced/inline code range lifted out verbatim - its whitespace is load-bearing. */
   protected?: true;
 }
 
@@ -271,14 +271,14 @@ function flowsWithFollowingText(
       if (sameLine.trim().length > 0) {
         return true;
       }
-      // Whitespace-only on this line — keep scanning only if no newline was crossed.
+      // Whitespace-only on this line - keep scanning only if no newline was crossed.
       if (token.value.includes("\n") || token.value.includes("\r")) {
         return false;
       }
       cursor += 1;
       continue;
     }
-    // An inline image tag — skip over it (the image itself and its possible wrapping close tag).
+    // An inline image tag - skip over it (the image itself and its possible wrapping close tag).
     if (token.kind === "tag") {
       const imageResult = parseInlineImageAt(tokens, cursor, options);
       if (imageResult) {
@@ -372,7 +372,7 @@ function renderSummaryTokens(tokens: HtmlToken[], options: HtmlishOptions): stri
 }
 
 /**
- * A summary is a plain label, not a document — `<summary><h3>Files</h3></summary>` must not come
+ * A summary is a plain label, not a document - `<summary><h3>Files</h3></summary>` must not come
  * back as `### Files`. Strip the wrapper before rendering, while the tag is still a token.
  */
 function stripSingleHeadingWrapper(tokens: HtmlToken[]): HtmlToken[] {
@@ -389,7 +389,7 @@ function stripSingleHeadingWrapper(tokens: HtmlToken[]): HtmlToken[] {
 /**
  * @param insideHtml Whether these tokens came from inside an HTML tag. Whitespace is insignificant
  *   in HTML but structural in markdown, so pretty-printed indentation must be stripped on the way
- *   out — otherwise a nested `<div>` body reads as an indented code block. Text outside any tag is
+ *   out - otherwise a nested `<div>` body reads as an indented code block. Text outside any tag is
  *   already markdown and is passed through untouched, as are protected code ranges.
  */
 function renderInlineTokens(
@@ -427,7 +427,7 @@ function renderInlineTokens(
 
     const closeIndex = token.selfClosing ? null : findMatchingClose(tokens, index, token.name);
     if (closeIndex === null) {
-      // Unclosed, so there is no child range to keep — drop the markup. Most often the close tag
+      // Unclosed, so there is no child range to keep - drop the markup. Most often the close tag
       // landed in a later part after an inline image split the token run.
       continue;
     }
@@ -441,7 +441,7 @@ function renderInlineTokens(
 
 /**
  * Translate one balanced tag into the markdown that means the same thing. Falling through to the
- * final line — drop the tag, keep its text — is the correct outcome for anything we cannot render,
+ * final line - drop the tag, keep its text - is the correct outcome for anything we cannot render,
  * so a tag missing from this table degrades to legible plain text rather than raw markup.
  */
 function translateTagToMarkdown(
@@ -497,7 +497,7 @@ function collapseToSingleLine(value: string): string {
  *
  * Without this a table unwrapped to a run of unseparated cell text: legible in
  * the loosest sense, but it lost the one thing a table is for. `thead`/`tbody`
- * are ignored as wrappers — the rows are found wherever they sit — and the
+ * are ignored as wrappers - the rows are found wherever they sit - and the
  * first row becomes the header, which is what GFM requires and what an HTML
  * table almost always means.
  *
@@ -879,7 +879,7 @@ function getInlineCodeRanges(
     const afterOpen = BACKTICK_RUN_RE.lastIndex;
     const close = findClosingBacktickRun(source, afterOpen, marker, fencedRanges);
     if (!close) {
-      // Unmatched backtick run — skip past it so the loop doesn't restart from 0.
+      // Unmatched backtick run - skip past it so the loop doesn't restart from 0.
       // findClosingBacktickRun exhausts the global regex, which resets lastIndex
       // to 0 when exec() returns null (ECMAScript §22.2.7.2).
       BACKTICK_RUN_RE.lastIndex = afterOpen;

@@ -25,7 +25,7 @@ import {
  * drained by the daemon's 30 s `ws_runtime_metrics` window. `buildDescriptorMap`
  * runs once per connected session per agent lifecycle event, so calls/window and
  * ms/call are what say whether the scoped fetch and the emit coalescing are
- * actually holding — see findings/performance-efficiency-audit/ (F5).
+ * actually holding - see findings/performance-efficiency-audit/ (F5).
  */
 export interface WorkspaceDescriptorMetricsSnapshot {
   calls: number;
@@ -105,7 +105,7 @@ export interface WorkspaceDirectoryDeps {
     list(): Promise<PersistedWorkspaceRecord[]>;
   };
   /**
-   * All visible, non-archived agents, or — when `scope` is given — only those
+   * All visible, non-archived agents, or - when `scope` is given - only those
    * owned by `scope.workspaceIds` plus those named by `scope.agentIds`. The
    * scoped form exists so a per-workspace descriptor rebuild does not project
    * every live and persisted agent in the home; see `listAgentPayloadsForScope`.
@@ -250,7 +250,7 @@ export class WorkspaceDirectory {
    * an in-scope descriptor: `resolveWorkspaceRootAgent` walks up only while the
    * parent shares the child's workspace, so the resolved root always carries the
    * child's own workspaceId. The parents themselves are still needed as *lookup
-   * targets*, though — the walk distinguishes "parent lives in another
+   * targets*, though - the walk distinguishes "parent lives in another
    * workspace" (child is a root, and contributes) from "parent is gone" (child
    * contributes nothing) purely by whether the id resolves. So fetch the
    * in-scope agents, then backfill only the parent ids that fetch did not
@@ -568,7 +568,7 @@ export class WorkspaceDirectory {
         return derived === winningBucket;
       })
       .map((agent) => {
-        // Prefer attentionTimestamp when the agent has attention set — this is
+        // Prefer attentionTimestamp when the agent has attention set - this is
         // the most accurate "entered current status" signal.
         if (agent.attentionTimestamp) {
           return agent.attentionTimestamp;
@@ -597,7 +597,7 @@ export class WorkspaceDirectory {
     // Hidden workspaces intentionally still count as "occupying" their project
     // here (only `!archivedAt` is checked, not `!hidden`). A project whose only
     // workspace is a hidden schedule run must NOT surface as an empty-project
-    // ghost row — counting the hidden workspace keeps the project out of the
+    // ghost row - counting the hidden workspace keeps the project out of the
     // empty list, so it renders nowhere at all (no workspace rows, no ghost)
     // until the run reveals its workspace.
     const projectIdsWithActiveWorkspaces = new Set(

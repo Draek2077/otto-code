@@ -10,7 +10,7 @@ const flexStyle = { flex: 1 } as const;
 // Native page transition. Reanimated runs on the UI thread here, so fading the
 // routed content's opacity is not starved by JS-thread mount work the way it
 // would be on web (which is why the web variant uses a compositor CSS veil
-// instead — see route-fade-container.web.tsx). On each transition the content
+// instead - see route-fade-container.web.tsx). On each transition the content
 // snaps transparent and fades back up through the themed surface0 backdrop.
 // Gated by the Animations setting; the first mount is skipped so cold start does
 // not fade in.
@@ -30,7 +30,7 @@ export function RouteFadeContainer({ children }: { children: ReactNode }) {
 // by the caller so sub-page surfaces can run the same fade over just one pane
 // (the settings content pane keys this on its view identity, keeping the
 // settings sidebar outside the fade). `fadeOnMount` (initial value only) runs
-// the fade on the first key too — for panes whose host screen remounts on
+// the fade on the first key too - for panes whose host screen remounts on
 // internal navigation and can tell the two cases apart. `ready` (default true)
 // gates the fade-up: while false the content stays hidden behind the surface0
 // backdrop, so a target whose content paints a beat after its shell (a cold
@@ -55,7 +55,7 @@ export function KeyedFadeContainer({
   const [coverToken, setCoverToken] = useState(0);
   const revealedTokenRef = useRef(0);
   // The fade must be driven by *key changes*, not by the effect merely
-  // re-running — `animationsEnabled` is also a dependency, and flipping the
+  // re-running - `animationsEnabled` is also a dependency, and flipping the
   // setting must never play a phantom fade over a screen that didn't navigate.
   // Seeding with the first key makes the initial run a no-change (no cold-start
   // fade); `null` under `fadeOnMount` makes the first key count as a change.

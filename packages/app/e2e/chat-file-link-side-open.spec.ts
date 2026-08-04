@@ -36,7 +36,7 @@ test.describe("Chat file link side open", () => {
       await expectComposerVisible(page);
 
       // Drive an assistant message whose inline code span is a workspace-relative
-      // file path — the chat renders it as an assistant file link.
+      // file path - the chat renders it as an assistant file link.
       await submitMessage(
         page,
         buildAssistantMarkdownScenarioPrompt(`Take a look at \`${LINKED_FILE}\` for the export.`),

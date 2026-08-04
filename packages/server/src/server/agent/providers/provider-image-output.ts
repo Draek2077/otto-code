@@ -26,7 +26,7 @@ export interface MaterializedProviderImage {
 // An image a provider handed back as bytes (a browser screenshot, a Read of a
 // PNG) has to become a file before the timeline can point at it. That file is
 // the *record*: the assistant markdown carries its path, so every later render
-// of that message — days later, after a daemon restart — reads it back.
+// of that message - days later, after a daemon restart - reads it back.
 //
 // It used to live in a per-process `mkdtemp` under the OS temp dir, which was
 // wrong twice over. Nothing ever removed those directories, so they piled up
@@ -130,7 +130,7 @@ export function isProviderImageMarkdown(text: string): boolean {
 }
 
 // The shipped policy. Days and megabytes are the source of truth because those
-// are the units the setting is expressed in — the daemon config carries them
+// are the units the setting is expressed in - the daemon config carries them
 // verbatim, and a user editing them should see the same numbers the code has.
 // 0 on either disables that lever.
 
@@ -149,7 +149,7 @@ const LEGACY_DIR_STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1_000;
 /**
  * Every content-hashed image in the store, with the size and mtime both the
  * retention policy and the Storage readout need. Non-conforming files are
- * skipped, never reported and never deleted — the directory is ours, but a
+ * skipped, never reported and never deleted - the directory is ours, but a
  * stray file in it is not ours to remove.
  */
 export function listMaterializedProviderImages(ottoHome?: string): MaterializedImageCandidate[] {
@@ -306,12 +306,12 @@ export interface ReclaimLegacyImageDirsResult {
 
 /**
  * Removes the `otto-attachments-*` temp directories the retired layout left
- * behind — one per daemon start, forever, because nothing ever cleaned them up.
+ * behind - one per daemon start, forever, because nothing ever cleaned them up.
  *
  * Only *stale* directories go. A directory written to within the last week may
  * belong to a live daemon on an older build (this repo runs installed and dev
  * daemons side by side), and its transcripts still resolve through those paths.
- * Empty directories — the bulk of the mess — are always stale.
+ * Empty directories - the bulk of the mess - are always stale.
  */
 export function reclaimLegacyProviderImageDirs(
   options: { tmpDir?: string; now?: number; staleAfterMs?: number } = {},

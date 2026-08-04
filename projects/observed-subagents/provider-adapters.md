@@ -1,10 +1,10 @@
 # Observed subagents: provider adapters
 
-**Status:** planned, not started. Follows the shipped Claude proof — read [observed-subagents.md](./observed-subagents.md) first for the model, the protocol contract, and the Claude implementation landmarks. This doc plans the generalization to the remaining providers and the closing documentation pass.
+**Status:** planned, not started. Follows the shipped Claude proof - read [observed-subagents.md](./observed-subagents.md) first for the model, the protocol contract, and the Claude implementation landmarks. This doc plans the generalization to the remaining providers and the closing documentation pass.
 
 The core promise of the design was: **generalizing is adapter-only work.** The protocol (`attend`, `features.observedSubagents`, `agent.subagent.stop.*`), the daemon projection (`AgentManager.observedSubagents` registry, `toObservedSubagentPayload`, observed timeline routing, the stop RPC plumbing), and the entire client (track, read-only pane, Stop button) are already provider-neutral. Nothing in them says "claude". A new provider only has to emit two events and (optionally) implement one method.
 
-> **Sub-agent accounting rides on the same events.** Giving a provider's observed sub-agents real per-sub-agent token + cost accounting (their own ledger row, model, priced cost, parent de-inflation) is a companion adapter task on the same `observed_subagent_updated` stream — see [docs/subagent-accounting.md](../../docs/subagent-accounting.md) for the neutral core and the 3-step contract. Do it alongside each provider's track-row port below.
+> **Sub-agent accounting rides on the same events.** Giving a provider's observed sub-agents real per-sub-agent token + cost accounting (their own ledger row, model, priced cost, parent de-inflation) is a companion adapter task on the same `observed_subagent_updated` stream - see [docs/subagent-accounting.md](../../docs/subagent-accounting.md) for the neutral core and the 3-step contract. Do it alongside each provider's track-row port below.
 
 ## The adapter contract
 
@@ -12,7 +12,7 @@ A provider session participates by emitting on its normal `AgentStreamEvent` str
 
 | Surface                      | Shape                                                                                                                        | Notes                                                                                                                                                                                                                                                                                                                                            |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `observed_subagent_updated`  | `{ key, taskId?, sessionId?, subAgentType?, description?, status, requiresAttention?, usage?, toolUseCount?, currentTool? }` | `key` is any provider-local stable id for the subagent (Claude: the Task `tool_use` id). Status machine: `initializing/running → idle \| error \| closed`. `status: "error"` + `requiresAttention: true` is the failure signal — surfacing it is the point of the feature. `toolUseCount`/`currentTool` are the row's liveness pair (see below). |
+| `observed_subagent_updated`  | `{ key, taskId?, sessionId?, subAgentType?, description?, status, requiresAttention?, usage?, toolUseCount?, currentTool? }` | `key` is any provider-local stable id for the subagent (Claude: the Task `tool_use` id). Status machine: `initializing/running → idle \| error \| closed`. `status: "error"` + `requiresAttention: true` is the failure signal - surfacing it is the point of the feature. `toolUseCount`/`currentTool` are the row's liveness pair (see below). |
 | `observed_subagent_timeline` | `{ key, item, turnId?, timestamp? }`                                                                                         | Regular `AgentTimelineItem`s belonging to the subagent. The daemon records them under `${parentAgentId}::sub::${key}` and the pane renders them with zero provider-specific client code.                                                                                                                                                         |
 | `stopTask?(taskId)`          | optional method on `AgentSession`                                                                                            | Wire it if the provider can stop a subagent; the Stop button appears either way and error-toasts if the RPC fails. Omit it and `AgentManager.stopObservedSubagent` throws a clear error.                                                                                                                                                         |
 
@@ -21,15 +21,15 @@ Rules learned from the Claude adapter (apply to every port):
 - **Announce before timeline.** Emit the first `observed_subagent_updated` before (or with) the first timeline event; the manager tolerates timeline-first by materializing a placeholder `running` row, but announce-first gives the row its type/description immediately.
 - **History replay must stay inert.** Guard announcements with a live-only set (Claude: `announcedObservedSubagents`) so persisted-history re-ingestion cannot materialize ghost rows for long-finished subagents.
 - **Settle every path.** Completion, failure, provider-side stop, _and parent interrupt_ must all drive the row out of `running`. A row stuck at `running` is a bug (Claude closes in-flight rows in `flushPendingToolCalls`).
-- **Keep the existing flattened `sub_agent` tool-call detail.** It is the old-client fallback per the feature contract — observed events are additive, not a replacement.
-- **Fill the liveness pair if the provider reports it, otherwise say nothing.** `toolUseCount` (cumulative tool invocations — the daemon keeps it monotonic, so a status-only settle can't drop it) and `currentTool` (the tool it is on; latest wins, sticky across updates that omit it, dropped by the projection on a terminal row). Claude reads both straight off the SDK's task messages — `usage.tool_uses` and `task_progress.last_tool_name` — so the adapter never infers a tool name. A provider with no such report leaves both absent and the row omits the readout; **never substitute the spawning tool's name** (the cached Task/Agent/Workflow tool would render "Task" on every row, which is a wrong value, not a missing one). Where a provider streams a transcript but no task report (a Workflow run's internal agents), derive from the subagent's own `tool_call` timeline items: count distinct call ids, take the latest name. See [docs/chat-lifecycle.md](../../docs/chat-lifecycle.md#the-subagents-track).
+- **Keep the existing flattened `sub_agent` tool-call detail.** It is the old-client fallback per the feature contract - observed events are additive, not a replacement.
+- **Fill the liveness pair if the provider reports it, otherwise say nothing.** `toolUseCount` (cumulative tool invocations - the daemon keeps it monotonic, so a status-only settle can't drop it) and `currentTool` (the tool it is on; latest wins, sticky across updates that omit it, dropped by the projection on a terminal row). Claude reads both straight off the SDK's task messages - `usage.tool_uses` and `task_progress.last_tool_name` - so the adapter never infers a tool name. A provider with no such report leaves both absent and the row omits the readout; **never substitute the spawning tool's name** (the cached Task/Agent/Workflow tool would render "Task" on every row, which is a wrong value, not a missing one). Where a provider streams a transcript but no task report (a Workflow run's internal agents), derive from the subagent's own `tool_call` timeline items: count distinct call ids, take the latest name. See [docs/chat-lifecycle.md](../../docs/chat-lifecycle.md#the-subagents-track).
 - Test stubs of `AgentManager` need `getObservedSubagentPayload()` (see `wire-compat.test.ts`).
 
 ## Per-provider work
 
 Ordered by expected value and current signal quality (recon of the current mappers, 2026-07-08):
 
-### 1. OpenCode — richest candidate
+### 1. OpenCode - richest candidate
 
 Today `deriveOpencodeTaskDetail` (`providers/opencode/tool-call-detail-parser.ts`) flattens the `task` tool into a `sub_agent` log, but it already extracts a **real child session id** (`ses_…`, via `extractOpenCodeTaskSessionId`). OpenCode child sessions are first-class sessions on the OpenCode server, and the daemon already consumes OpenCode's global event stream (see [docs/opencode-global-event-baseline.md](../../docs/opencode-global-event-baseline.md)).
 
@@ -37,46 +37,46 @@ Today `deriveOpencodeTaskDetail` (`providers/opencode/tool-call-detail-parser.ts
 - Stop: investigate OpenCode's session abort API for child sessions (`session.abort` equivalent) → `stopTask`.
 - Open question: whether child-session events arrive on the already-subscribed global stream (likely, per the baseline doc) or need a per-session subscription.
 
-### 2. Codex — lifecycle-first
+### 2. Codex - lifecycle-first
 
-`mapCollabAgentToolCallItem` (`providers/codex/tool-call-mapper.ts`) already models collab sub-agents with id, prompt, and running/failed/completed status — a ready-made lifecycle source, currently flattened into a `sub_agent` row with an empty log.
+`mapCollabAgentToolCallItem` (`providers/codex/tool-call-mapper.ts`) already models collab sub-agents with id, prompt, and running/failed/completed status - a ready-made lifecycle source, currently flattened into a `sub_agent` row with an empty log.
 
 - Adapter phase 1 (cheap): announce/settle from collab item status transitions; `description` = prompt. This alone delivers track rows + failure visibility.
 - Adapter phase 2: investigate the codex app-server protocol for sub-thread/delegated-thread event streams to feed `observed_subagent_timeline`; also whether an interrupt/abort exists for a single collab agent → `stopTask`.
-- If phase 2 comes up empty, ship phase 1 — a row with status/description and an empty transcript is still strictly better than today.
+- If phase 2 comes up empty, ship phase 1 - a row with status/description and an empty transcript is still strictly better than today.
 
-### 3. Copilot / Cursor / Kiro (ACP family) — investigation first
+### 3. Copilot / Cursor / Kiro (ACP family) - investigation first
 
-The ACP agents (`generic-acp-agent.ts` and wrappers) show no subagent surface in the current mappers. Task: check the ACP spec/stream for sidechain or delegated-session notifications. If ACP has nothing, these providers simply don't emit observed events — the feature degrades to nothing cleanly, no fallback path needed.
+The ACP agents (`generic-acp-agent.ts` and wrappers) show no subagent surface in the current mappers. Task: check the ACP spec/stream for sidechain or delegated-session notifications. If ACP has nothing, these providers simply don't emit observed events - the feature degrades to nothing cleanly, no fallback path needed.
 
-### 4. Pi — investigation first
+### 4. Pi - investigation first
 
 Same shape as ACP: survey `providers/pi/` and the Pi wire protocol for any subagent signal; adopt if present, skip cleanly if not.
 
 ### Non-goal: openai-compat
 
-The openai-compat provider delegates via Otto's native `create_agent` MCP tools — its subagents are already real, **attended** Otto agents in the track. No observed work applies.
+The openai-compat provider delegates via Otto's native `create_agent` MCP tools - its subagents are already real, **attended** Otto agents in the track. No observed work applies.
 
 ## Suggested extraction before the second adapter
 
-The Claude adapter keeps its observed bookkeeping inline (announce set, taskId→key map, pending settle queue). When the second provider lands, extract the common pattern into a small provider-neutral helper (e.g. `providers/observed-subagent-emitter.ts`: announce-once, key mapping, settle queue) so the third+ adapters are declarative. Don't pre-build it now — two data points first.
+The Claude adapter keeps its observed bookkeeping inline (announce set, taskId→key map, pending settle queue). When the second provider lands, extract the common pattern into a small provider-neutral helper (e.g. `providers/observed-subagent-emitter.ts`: announce-once, key mapping, settle queue) so the third+ adapters are declarative. Don't pre-build it now - two data points first.
 
 ## Documentation pass (required, ships with this project)
 
-Per the repo convention (CLAUDE.md → Docs), once this ships the durable facts must be folded into **official architectural documentation** in `docs/` — this task is part of the project, not optional cleanup:
+Per the repo convention (CLAUDE.md → Docs), once this ships the durable facts must be folded into **official architectural documentation** in `docs/` - this task is part of the project, not optional cleanup:
 
-1. **[docs/chat-lifecycle.md](../../docs/chat-lifecycle.md)** — add an "Observed subagents" section: the attended/observed split, the `attend` field, membership in the subagents track, why detach is hidden, stop semantics, ephemeral (non-persisted) lifecycle, cascade behavior with the parent.
-2. **[docs/architecture.md](../../docs/architecture.md)** — data-flow addendum: provider observed events → `AgentManager` registry/projection → `observed_agent_state` → `forwardLiveAgentPayload` → client store; observed timeline ids (`${parentAgentId}::sub::${key}`) flowing through the normal timeline store and fetch path.
-3. **[docs/glossary.md](../../docs/glossary.md)** — add **"Observed subagent"** as the authoritative term (UI label wins; no synonyms like "watched"/"read-only subagent" in code or UI).
-4. **[docs/providers.md](../../docs/providers.md)** — extend the "adding a provider" guide with the adapter contract table above (the two events + `stopTask`), including the announce-before-timeline and history-inertness rules.
-5. **[docs/data-model.md](../../docs/data-model.md)** — one paragraph: observed subagents are ephemeral projections, deliberately **not** persisted under `$OTTO_HOME/agents/**`.
+1. **[docs/chat-lifecycle.md](../../docs/chat-lifecycle.md)** - add an "Observed subagents" section: the attended/observed split, the `attend` field, membership in the subagents track, why detach is hidden, stop semantics, ephemeral (non-persisted) lifecycle, cascade behavior with the parent.
+2. **[docs/architecture.md](../../docs/architecture.md)** - data-flow addendum: provider observed events → `AgentManager` registry/projection → `observed_agent_state` → `forwardLiveAgentPayload` → client store; observed timeline ids (`${parentAgentId}::sub::${key}`) flowing through the normal timeline store and fetch path.
+3. **[docs/glossary.md](../../docs/glossary.md)** - add **"Observed subagent"** as the authoritative term (UI label wins; no synonyms like "watched"/"read-only subagent" in code or UI).
+4. **[docs/providers.md](../../docs/providers.md)** - extend the "adding a provider" guide with the adapter contract table above (the two events + `stopTask`), including the announce-before-timeline and history-inertness rules.
+5. **[docs/data-model.md](../../docs/data-model.md)** - one paragraph: observed subagents are ephemeral projections, deliberately **not** persisted under `$OTTO_HOME/agents/**`.
 6. After folding: slim this project folder down to a historical record (or delete it), per the projects convention.
 
 ## Acceptance criteria (per provider)
 
 1. A run that fans out provider-managed subagents shows one track row per subagent with live status and type/description.
 2. Opening a row gives the read-only pane with that subagent's own transcript (where the provider has a transcript stream).
-3. A subagent failure (usage exhaustion or provider error) turns the row `error` + attention — never silently vanishes.
+3. A subagent failure (usage exhaustion or provider error) turns the row `error` + attention - never silently vanishes.
 4. Stop works where the provider supports it; otherwise the Stop action fails with a clear error.
 5. Parent interrupt/close settles all of that parent's observed rows.
 6. Old clients still get the flattened `sub_agent` tool-call row; old daemons make the client fall back to it (capability gate, no fallback paths).

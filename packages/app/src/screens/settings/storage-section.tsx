@@ -26,10 +26,10 @@ import { SettingsSection } from "./settings-section";
  * a user "images: 812 MB" when half of it is a cache they cannot lose and half
  * is a record they can would be a readout that means nothing:
  *
- * - **Images on the host** — the daemon's `$OTTO_HOME/attachments`. The record
+ * - **Images on the host** - the daemon's `$OTTO_HOME/attachments`. The record
  *   a transcript's markdown points at. Clearing it degrades old messages to alt
  *   text, permanently, so it goes through a dry run and a destructive confirm.
- * - **Cached previews** — this device's local copies. Regenerable from the row
+ * - **Cached previews** - this device's local copies. Regenerable from the row
  *   above, so clearing is a plain action with no confirmation theatre.
  *
  * Sent attachments are a third tier and deliberately absent: they are the
@@ -55,7 +55,7 @@ export function StorageSection({ serverId }: { serverId: string }) {
   );
 
   // The device-local half needs no daemon at all, so it renders even when the
-  // host half cannot — a user on an old daemon can still reclaim their own disk.
+  // host half cannot - a user on an old daemon can still reclaim their own disk.
   if (!isConnected) {
     return null;
   }
@@ -257,7 +257,7 @@ function PreviewCacheRow({ withBorder }: { withBorder: boolean }) {
 
 /**
  * The two numbers the daemon's background sweep runs on. Editable because a
- * constant only a developer can find is not a policy the user consented to —
+ * constant only a developer can find is not a policy the user consented to -
  * and because the right answer differs wildly between a laptop and a workstation
  * that browser-verifies all day. Either at 0 turns that lever off.
  */

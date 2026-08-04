@@ -78,7 +78,7 @@ export async function loadPlaybookProjects(): Promise<PlaybookProjectsModule> {
  *
  * Specs get a real git repo with real code and a real history, plus the
  * `break/<slug>` branches for anything that needs a failing build. Nothing is
- * cleaned up here — pass a path under the run's temp dir and let the harness that
+ * cleaned up here - pass a path under the run's temp dir and let the harness that
  * owns it do the removal.
  */
 export async function materializePlaybookProject(input: {

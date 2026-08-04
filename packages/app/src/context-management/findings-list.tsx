@@ -24,12 +24,12 @@ export interface ContextFindingTarget {
 
 interface ContextFindingsListProps {
   report: ContextReport | null;
-  /** First scan, nothing to show yet — "nothing worth fixing" would be a lie. */
+  /** First scan, nothing to show yet - "nothing worth fixing" would be a lie. */
   isLoading: boolean;
   onReveal: (target: ContextFindingTarget) => void;
   /** How many findings a mechanical delete can resolve outright. 0 hides the button. */
   fixableCount: number;
-  /** A fix-all request is in flight — disables the button and swaps its label. */
+  /** A fix-all request is in flight - disables the button and swaps its label. */
   isFixing: boolean;
   onFixAll: () => void;
 }
@@ -40,7 +40,7 @@ interface ContextFindingsListProps {
  * you there: the file opens at the line, the Context tree reveals and selects
  * the same file, and the finding restates itself above the editor.
  *
- * The file comes from the finding's own `nodeId`, not from `relatedNodeIds` —
+ * The file comes from the finding's own `nodeId`, not from `relatedNodeIds` -
  * the related list is the *other* half of a duplicate, which is the one thing
  * the row must not be confused with.
  */
@@ -145,11 +145,11 @@ function FindingRow({ finding, report, onReveal }: FindingRowProps): ReactElemen
 
   const location = owner ? formatLocation(owner, finding.line) : null;
   // Hover is a web-only affordance, so touch and compact keep the arrow on
-  // permanently — there it is the only sign the row goes anywhere (docs/hover.md).
+  // permanently - there it is the only sign the row goes anywhere (docs/hover.md).
   const showArrow = Boolean(owner) && (isHovered || isNative || isCompact);
 
   return (
-    // Hover tracks on a plain View, never on the Pressable — the canonical
+    // Hover tracks on a plain View, never on the Pressable - the canonical
     // shape from docs/hover.md, kept even though this row has no nested
     // Pressable today, because the day one appears is the day it breaks.
     <View
@@ -168,7 +168,7 @@ function FindingRow({ finding, report, onReveal }: FindingRowProps): ReactElemen
         testID={`context-finding-${finding.kind}`}
       >
         {/* Scope, not severity. Every row here is already "worth fixing"; the
-            open question is how far the fix reaches — a global file is every
+            open question is how far the fix reaches - a global file is every
             project on the machine, a project file is only this one. Same icon
             vocabulary as the tree, so a file and a finding about it match. */}
         <View style={styles.scope}>
@@ -198,7 +198,7 @@ function FindingRow({ finding, report, onReveal }: FindingRowProps): ReactElemen
 
 const arrowIconColor = (theme: Theme) => ({ color: theme.colors.mutedForeground });
 
-/** `path/to/file.md:42` — the form every editor and terminal already uses. */
+/** `path/to/file.md:42` - the form every editor and terminal already uses. */
 function formatLocation(node: ContextNode, line: number | undefined): string {
   return line != null ? `${node.relPath}:${line}` : node.relPath;
 }

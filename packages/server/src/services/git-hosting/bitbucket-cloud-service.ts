@@ -198,7 +198,7 @@ const BitbucketPullRequestPageSchema = z.object({
 });
 
 // Repository shapes for the host-level New project operations. Bitbucket returns
-// clone URLs as a `links.clone` array of {name, href} — "https" is the entry we
+// clone URLs as a `links.clone` array of {name, href} - "https" is the entry we
 // want, since that is what the daemon can push to with the stored API token.
 const BitbucketRepositorySchema = z.object({
   name: z.string().catch(""),
@@ -329,7 +329,7 @@ interface BitbucketRepoIdentity {
 
 type BitbucketPullRequest = z.infer<typeof BitbucketPullRequestSchema>;
 
-// Lowercase to match the GitHub service's wire shape — the client compares
+// Lowercase to match the GitHub service's wire shape - the client compares
 // state === "open" exactly, so Bitbucket's uppercase "OPEN" rendered as a red
 // "Closed" badge on open PRs.
 function mapPullRequestState(state: string): { state: string; isMerged: boolean } {
@@ -951,7 +951,7 @@ export function createBitbucketCloudService(
         });
       }
       const identity = await requireIdentity(input.cwd);
-      // Fresh precondition read — a merge is a user-initiated, single-shot
+      // Fresh precondition read - a merge is a user-initiated, single-shot
       // mutation; never retried.
       const pr = await fetchPullRequest({ identity, number: input.prNumber });
       if (pr.state !== "OPEN") {
@@ -1059,7 +1059,7 @@ export function createBitbucketCloudService(
 
     async createRepository(input) {
       // Unlike GitHub, Bitbucket has no "authenticated user's namespace"
-      // endpoint — the workspace is part of the path and cannot be inferred.
+      // endpoint - the workspace is part of the path and cannot be inferred.
       const workspace = input.owner?.trim() ?? "";
       if (!workspace) {
         throw new GitHostingRequestError({

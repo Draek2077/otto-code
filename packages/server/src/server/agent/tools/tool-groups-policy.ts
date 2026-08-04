@@ -8,7 +8,7 @@ import type { DaemonConfigStore, MutableDaemonConfig } from "../../daemon-config
  * rebuilt per request (stateless transport), so reading the store each call
  * makes group toggles take effect without a restart.
  *
- * `undefined` means "all groups enabled" — the same semantics openai-compat's
+ * `undefined` means "all groups enabled" - the same semantics openai-compat's
  * per-provider `ottoToolGroups` uses. An empty array means "no Otto tools".
  */
 export interface OttoToolGroupsPolicy {

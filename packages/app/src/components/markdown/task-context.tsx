@@ -7,8 +7,8 @@ import { useTranslation } from "react-i18next";
  *
  * Read-only is the default and the common case: a task list inside an
  * assistant message is a description of work, not a control, and there is
- * nothing to write a tick back to. A surface that *does* own the document —
- * the markdown preview beside the editor — supplies a handler, and the same
+ * nothing to write a tick back to. A surface that *does* own the document -
+ * the markdown preview beside the editor - supplies a handler, and the same
  * checkbox becomes real.
  */
 

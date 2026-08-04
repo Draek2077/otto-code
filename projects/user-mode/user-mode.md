@@ -1,11 +1,11 @@
-# User Mode — charter
+# User Mode - charter
 
 **Status:** charter, 2026-07-31. Nothing built. Status is tracked in
 [`projects/README.md`](../README.md), which is authoritative; this file describes the shape and the
 phases only.
 
-Otto today assumes its user is a developer and its workspace is a code checkout. The whole surface —
-artifacts, the file viewer, Changes, the system prompt every provider builds — is framed around
+Otto today assumes its user is a developer and its workspace is a code checkout. The whole surface -
+artifacts, the file viewer, Changes, the system prompt every provider builds - is framed around
 producing a diff against a repo. But the fork's mission is to bring frontier-model tooling to
 **every** user equally, and a large class of users never touch code: they produce **reports, decks,
 Word documents, spreadsheets, PDFs, illustrations**. This charter defines **User Mode**: the same
@@ -15,7 +15,7 @@ setting.
 
 ## What this is
 
-The core realization is that **chat / cowork / code are not different models — they are different
+The core realization is that **chat / cowork / code are not different models - they are different
 harnesses** (tool surface + execution environment + loop shape) wrapped around the same brain. User
 Mode is that same insight applied inside Otto: **not a new engine, a new harness pointed at a
 different artifact type.**
@@ -23,21 +23,21 @@ different artifact type.**
 In Dev Mode the working directory is a git checkout and the deliverable is a diff. In User Mode the
 working directory is a _project folder of documents and assets_, and the deliverable is a report, a
 deck, a PDF, or an illustration. Same agent loop, same permission model, same subagents, same
-preview-and-verify instinct — a different tool surface, a different notion of "save," and a system
+preview-and-verify instinct - a different tool surface, a different notion of "save," and a system
 prompt that tells the agent which world it is in.
 
 Five pillars, each independently shippable:
 
-1. **Mode** — a first-class dev/user mode primitive that drives system-prompt construction and
+1. **Mode** - a first-class dev/user mode primitive that drives system-prompt construction and
    tool-group gating, provider-agnostic.
-2. **Deliverables** — the artifacts subsystem grown from single-HTML-only into editable, iterable,
+2. **Deliverables** - the artifacts subsystem grown from single-HTML-only into editable, iterable,
    multi-format deliverables (report / deck / doc / sheet / illustration / PDF) with export.
-3. **Non-code projects & Save** — non-git folders as first-class project workspaces, with a "Save /
+3. **Non-code projects & Save** - non-git folders as first-class project workspaces, with a "Save /
    Version / Restore" vocabulary that abstracts git into the simplest possible backup for people who
    have never heard of a commit.
-4. **Connectors** — a provider-neutral connector layer (packaged MCP + OAuth) that feeds source data
+4. **Connectors** - a provider-neutral connector layer (packaged MCP + OAuth) that feeds source data
    in and publishes deliverables out, managed in one easy "Connectors" system in the daemon.
-5. **View & verify** — extend the preview/browser-verify loop and the file viewer so the agent
+5. **View & verify** - extend the preview/browser-verify loop and the file viewer so the agent
    renders a deliverable, checks it, and shows proof, and the user requests changes in natural
    language.
 
@@ -45,14 +45,14 @@ Dev Mode gets all of this too (a developer can produce a report or wire up a con
 difference is which system prompt and tool framing the agent runs under, not which capabilities
 exist.
 
-## Scope decision (the authoring-model fork — decided)
+## Scope decision (the authoring-model fork - decided)
 
 The central architectural choice is how a deliverable is _physically stored and authored_:
 
-- **Option A — opaque office files.** Generate `.docx`/`.pptx`/`.xlsx` directly via libraries
+- **Option A - opaque office files.** Generate `.docx`/`.pptx`/`.xlsx` directly via libraries
   (python-docx, python-pptx). High template fidelity, but the file is an OOXML zip the user cannot
   hand-edit and the agent cannot cleanly re-read or diff. Iteration means regenerating from scratch.
-- **Option B — structured intermediate + export.** Author in a text-native model (Markdown / HTML /
+- **Option B - structured intermediate + export.** Author in a text-native model (Markdown / HTML /
   a small document model), which both the agent and a human can edit fluently and Otto can _diff_,
   then **export** to docx/pptx/pdf as the final step.
 
@@ -65,8 +65,8 @@ of scope for the first phases.
 
 **Also out of scope for v1:** a WYSIWYG rich-text editor. The codebase grain is strongly
 propose-a-reviewed-diff (the in-place "Refactor with AI" was deliberately removed; Refine returns a
-diff the user accepts). User Mode extends that grain — edit source, watch it render, or ask in
-natural language — rather than fighting it with direct manipulation.
+diff the user accepts). User Mode extends that grain - edit source, watch it render, or ask in
+natural language - rather than fighting it with direct manipulation.
 
 ## Relationship to existing charters
 
@@ -97,12 +97,12 @@ Grounded in a read of the subsystems this charter touches.
   (`packages/server/src/server/artifact/artifact-service.ts`,
   `packages/server/src/server/agent/tools/otto-tools.ts`). Stored **in the project** at
   `{cwd}/.otto/artifacts/` (docs: `docs/data-model.md` §8).
-- **But: single format.** `ArtifactKind = z.enum(["html"])` — every artifact is one self-contained
+- **But: single format.** `ArtifactKind = z.enum(["html"])` - every artifact is one self-contained
   HTML file, network-blocked by CSP, no CDN/fonts/remote data
   (`packages/protocol/src/artifacts/types.ts`, `artifact/html-validator.ts`).
-- **No export/download anywhere** — no PDF, no "save as," no "open in browser." The only output is
+- **No export/download anywhere** - no PDF, no "save as," no "open in browser." The only output is
   the in-app rendered view. This is the single biggest gap.
-- **No content editing** — `update_artifact` touches metadata only; changing content means a full
+- **No content editing** - `update_artifact` touches metadata only; changing content means a full
   regeneration of the whole HTML. No partial edit, no diff.
 
 ### Preview & file viewer (the view/verify seed)
@@ -115,7 +115,7 @@ Grounded in a read of the subsystems this charter touches.
   workflow prompt only reaches the openai-compat provider.
 - The file viewer renders Markdown, AsciiDoc, Mermaid, code (~30 grammars), images, and SVG, with a
   CodeMirror editor + split live-preview (`packages/app/src/components/file-tab-pane.tsx`,
-  `file-pane.tsx`). **docx/xlsx/pptx/pdf are not rendered** — they land on a "can't be previewed"
+  `file-pane.tsx`). **docx/xlsx/pptx/pdf are not rendered** - they land on a "can't be previewed"
   card.
 - **Refine** already is the non-coder "revise this" loop: natural-language instruction → whole-doc
   model pass → **reviewable diff, nothing written until accepted**
@@ -125,22 +125,22 @@ Grounded in a read of the subsystems this charter touches.
 ### Providers, MCP, connectors, auth
 
 - Otto's _own_ tools are a provider-neutral catalog, group-gated (`OTTO_TOOL_GROUPS`), injected per
-  provider by the right mechanism — native tool list for openai-compat, internal `/mcp/agents` MCP
+  provider by the right mechanism - native tool list for openai-compat, internal `/mcp/agents` MCP
   server for the rest (`agent/tools/otto-tools.ts`, `agent/runtime-mcp-config.ts`,
   `agent/agent-manager.ts`). **This is the exact model connectors should imitate.**
 - Third-party **MCP servers today are provider-scoped** and only actually consumed by the
   daemon-owned loop (openai-compat, via `providers/openai-compat-mcp.ts`, transports stdio/http/sse,
   config `McpServerConfigSchema` in `packages/protocol/src/provider-config.ts`). There is no
   workspace-level or global connector registry that fans out across providers.
-- **No OAuth flow exists anywhere** — every token today is read from a provider CLI's own credential
+- **No OAuth flow exists anywhere** - every token today is read from a provider CLI's own credential
   file. Connector OAuth is greenfield. Secrets live in `$OTTO_HOME/config.json`; only a narrow set is
-  wire-masked (`daemon-config-store.ts` `SECRET_WIRE_PATHS`) — provider `env` keys are notably _not_
+  wire-masked (`daemon-config-store.ts` `SECRET_WIRE_PATHS`) - provider `env` keys are notably _not_
   masked, a gap to fix when connector tokens are added.
 
 ### Workspaces, save, system prompt
 
 - **Non-git folders are already first-class**: `deriveWorkspaceKind` maps a plain folder to
-  `"directory"`/`non_git` with all git fields null — not an error path
+  `"directory"`/`non_git` with all git fields null - not an error path
   (`packages/server/src/server/workspace-registry-model.ts`). What degrades is everything gated on
   `isGit` (Changes, branches, commit/rollback).
 - **"Saving" today is git commit/rollback**, with AI-generated commit messages already routed to a
@@ -153,12 +153,12 @@ Grounded in a read of the subsystems this charter touches.
   layer added here reaches every provider at once.** Caveat: Claude can only _append_ to the
   `claude_code` preset, so User Mode can add guidance to Claude but not remove its coding framing;
   full base-prompt control exists only on openai-compat/opencode.
-- **No dev/user "mode" concept exists** — "mode" in the codebase means permission mode only.
+- **No dev/user "mode" concept exists** - "mode" in the codebase means permission mode only.
   Personalities/roles are the nearest precedent for a spawn-time behavioral layer.
 
 ## The design
 
-### Pillar 1 — Mode primitive
+### Pillar 1 - Mode primitive
 
 A workspace (or an agent) carries a `mode: "dev" | "user"`. It is set at project creation (a non-coder
 onboarding path defaults to `user`) and switchable later.
@@ -175,7 +175,7 @@ onboarding path defaults to `user`) and switchable later.
   and drives the UI, but the coding-agent base framing remains. openai-compat/opencode get full
   control. This is a documented limitation, not a fallback path.
 
-### Pillar 2 — Deliverables (artifacts v2)
+### Pillar 2 - Deliverables (artifacts v2)
 
 Grow the artifact model from HTML-only to a typed, editable, exportable deliverable:
 
@@ -183,16 +183,16 @@ Grow the artifact model from HTML-only to a typed, editable, exportable delivera
   as text/HTML per the scope decision): `report`, `slides`, `doc`, `sheet`, `illustration` (SVG). PDF
   is an **export target**, not a kind.
 - **Editing & iteration:** replace "regenerate the whole file" with a **Refine-style diff loop
-  extended past prose** — the agent proposes a bounded, reviewed edit to the deliverable's source.
+  extended past prose** - the agent proposes a bounded, reviewed edit to the deliverable's source.
   This reuses the Refine architecture (`docs/refine.md`) rather than building a new editor.
-- **Export:** add the missing export path — HTML/Markdown source → PDF (print-to-PDF via the existing
+- **Export:** add the missing export path - HTML/Markdown source → PDF (print-to-PDF via the existing
   webview is the cheapest first backend), with docx/pptx/xlsx export as later opt-in backends.
 - **Templates:** a deliverable-template library ("monthly report," "pitch deck," "one-pager"),
   reusing graph-templates plumbing where possible.
 - **Relax the network CSP thoughtfully** for deliverables that legitimately need brand fonts/images
   (a separate, opt-in trust level from the locked-down artifact sandbox).
 
-### Pillar 3 — Non-code projects & Save
+### Pillar 3 - Non-code projects & Save
 
 - **Projects:** lean on the existing `directory`/`non_git` workspace kind. Add a non-coder project
   creation flow (name a folder, pick a template, done) that never surfaces git vocabulary.
@@ -200,11 +200,11 @@ Grow the artifact model from HTML-only to a typed, editable, exportable delivera
   vocabulary layered over the existing `checkout.git.commit` + `rollbackPaths` primitives and
   AI-generated messages, with an **implicit `git init`** on first save for a `non_git` folder (git
   becomes an invisible backup engine, never a concept the user meets). Remote hosting (GitHub/
-  Bitbucket) stays out of scope — this is local backup only.
+  Bitbucket) stays out of scope - this is local backup only.
 - Open sub-decision: implicit-git vs a dedicated snapshot store for folders where git is a poor fit
   (huge binaries). Implicit-git is the v1 default.
 
-### Pillar 4 — Connectors
+### Pillar 4 - Connectors
 
 - **A provider-neutral connector layer**, modeled on the Otto tool catalog: connectors are declared
   once, in one place, and the daemon injects each into every provider by that provider's native
@@ -212,7 +212,7 @@ Grow the artifact model from HTML-only to a typed, editable, exportable delivera
   for the rest). This is the cross-provider generalization of what openai-compat's `mcpServers` does
   today, and the foil to claude-extensions' Claude-only panel.
 - **Connectors ↔ providers:** a connector is **not** owned by a provider. It is owned by the
-  host/workspace and _fanned out_ to whatever provider the user picks — so switching from Claude to a
+  host/workspace and _fanned out_ to whatever provider the user picks - so switching from Claude to a
   local model keeps the same connectors. (Answering the user's core question: connectors are a layer
   _beside_ providers, injected _into_ each, not a property _of_ one.)
 - **Auth:** greenfield OAuth (authorization-code/PKCE) plus API-key connectors. Tokens live in a new
@@ -221,10 +221,10 @@ Grow the artifact model from HTML-only to a typed, editable, exportable delivera
 - **Two directions:** _inbound_ connectors feed source data (analytics, sheets, CRM) into a report;
   _outbound_ connectors publish a finished deliverable (Drive, SharePoint, Notion, email). The
   OAuth-scoped identity is what makes "publish this to my team's Drive" safe.
-- **Which connectors first:** to be decided (open question), but the mechanism is format-agnostic —
+- **Which connectors first:** to be decided (open question), but the mechanism is format-agnostic -
   an outbound connector can be taught to accept a specific deliverable format.
 
-### Pillar 5 — View & verify
+### Pillar 5 - View & verify
 
 - **Web-served deliverables** (report/slides/illustration as HTML/SVG) ride the existing preview loop
   unchanged: the agent renders, screenshots, checks logs, and shows proof.
@@ -243,18 +243,18 @@ Grow the artifact model from HTML-only to a typed, editable, exportable delivera
 1. **Is `mode` a workspace property, an agent property, or both?** Leaning workspace-level (a project
    _is_ a user project or a dev project) with agent inheritance. Decides where it persists and how the
    UI toggles it.
-2. **Deliverable kinds for v1** — is the set `report / slides / doc / sheet / illustration` right, or
+2. **Deliverable kinds for v1** - is the set `report / slides / doc / sheet / illustration` right, or
    does v1 ship narrower (report + slides only) to prove the loop?
-3. **Export backend order** — PDF-via-webview first is cheap; when do docx/pptx (real OOXML) earn
+3. **Export backend order** - PDF-via-webview first is cheap; when do docx/pptx (real OOXML) earn
    their weight, and via which library, given the daemon-side execution constraints?
-4. **Save engine** — implicit `git init` for every non-git folder, or a separate snapshot store for
+4. **Save engine** - implicit `git init` for every non-git folder, or a separate snapshot store for
    binary-heavy projects? What does "Restore" show a user who has never seen a diff?
-5. **Connector registry shape** — where do connector _definitions_ live (a built-in directory + user
+5. **Connector registry shape** - where do connector _definitions_ live (a built-in directory + user
    additions), and how does the provider-neutral injection layer avoid doubling tools the way the
    `otto` MCP strip already guards against?
-6. **First connectors** — which inbound (data) and outbound (publish) connectors ship first, and does
+6. **First connectors** - which inbound (data) and outbound (publish) connectors ship first, and does
    OAuth or API-key come first?
-7. **Claude base-prompt limit** — is append-only steering enough for a convincing User Mode on
+7. **Claude base-prompt limit** - is append-only steering enough for a convincing User Mode on
    Claude, or is full User Mode effectively an openai-compat/opencode capability with Claude in a
    reduced mode?
 
@@ -267,7 +267,7 @@ Each phase is independently shippable and useful on its own.
    a document project and talks like it," with tools re-framed. No new deliverable formats yet.
 2. **Deliverable export (~1–2 sessions).** Add PDF export (print-to-PDF via webview) and a download/
    "save as" affordance to the existing HTML artifacts. Smallest change that lets a non-coder get a
-   file _out_ — closes the single biggest current gap.
+   file _out_ - closes the single biggest current gap.
 3. **Editable deliverables (~2–3 sessions).** Widen `ArtifactKind`, add the report/slides/doc kinds,
    and extend the Refine diff loop to deliverables so iteration is a bounded reviewed edit, not a
    regeneration.
@@ -282,15 +282,15 @@ Each phase is independently shippable and useful on its own.
 ## Protocol
 
 New capabilities are feature-gated per `../../docs/rpc-namespacing.md` and CLAUDE.md's feature
-contract — the client detects the capability and shows "update the host" otherwise; no fallback paths.
+contract - the client detects the capability and shows "update the host" otherwise; no fallback paths.
 
-- `server_info.features.userMode` — mode primitive present. `// COMPAT(userMode)` at the gate.
-- `server_info.features.deliverableExport` — export/download available.
-- `server_info.features.connectors` — the connector layer is present.
+- `server_info.features.userMode` - mode primitive present. `// COMPAT(userMode)` at the gate.
+- `server_info.features.deliverableExport` - export/download available.
+- `server_info.features.connectors` - the connector layer is present.
 - Deliverable RPCs extend the existing `artifact.*` family rather than forking it, preserving the
   backward-compatible artifact schema (new fields optional with defaults).
 - Save RPCs reuse the existing `checkout.git.commit.*` / rollback family under a user-facing vocabulary
-  — no new wire contract, a naming/UX layer.
+  - no new wire contract, a naming/UX layer.
 - Connector RPCs use dotted namespaces: `connector.list.request` / `.response`,
   `connector.authorize.request` / `.response`, `connector.revoke.request` / `.response`.
 

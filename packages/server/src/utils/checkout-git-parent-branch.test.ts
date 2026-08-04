@@ -62,7 +62,7 @@ describe("inferParentBranchRef", () => {
     git(repo, ["checkout", "-b", "feature/parent"]);
     commitFile(repo, "parent.txt", "parent\n", "parent work");
     // `feature/child` descends from `feature/parent`. Standing on the parent, the child is not
-    // a candidate — its merge-base with HEAD is HEAD itself.
+    // a candidate - its merge-base with HEAD is HEAD itself.
     git(repo, ["checkout", "-b", "feature/child"]);
     commitFile(repo, "child.txt", "child\n", "child work");
     git(repo, ["checkout", "feature/parent"]);
@@ -89,7 +89,7 @@ describe("inferParentBranchRef", () => {
     git(repo, ["merge", "--no-ff", "-m", "merge feature", "merged-feature"]);
 
     // A merged branch's tip is an ancestor of HEAD, which is graph-identical to a stacked
-    // parent — and `main` is excluded from its own candidate list, so without an explicit guard
+    // parent - and `main` is excluded from its own candidate list, so without an explicit guard
     // the merged branch wins. Observed for real on this repo before the guard existed.
     await expect(
       inferParentBranchRef(repo, { currentBranch: "main", defaultBranch: "main" }),

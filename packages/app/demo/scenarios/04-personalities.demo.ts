@@ -15,7 +15,7 @@ import { seedDemoCast, waitForProvidersReady, type DemoCast } from "../staging/c
 import { seedDemoWorkspace, type DemoWorkspace } from "../staging/seed";
 
 /**
- * Scenario 04 — Agent personalities (one feature: browsing and shaping a
+ * Scenario 04 - Agent personalities (one feature: browsing and shaping a
  * personality). No agent run: the seeded cast makes the roster, editor, and
  * composer picker photogenic on their own. Steps walk the discovery path a
  * user takes: settings roster → tabbed editor → the payoff in the composer's
@@ -38,7 +38,7 @@ test.beforeAll(async () => {
     originOwner: "pulse-labs",
     title: "Rate limiting",
   });
-  // Personalities only — teams get their own scenario (05).
+  // Personalities only - teams get their own scenario (05).
   cast = await seedDemoCast({ teams: [] });
 });
 
@@ -57,7 +57,7 @@ test("personalities walkthrough", async ({ page }, testInfo) => {
 
   // ── The roster in host settings ───────────────────────────────────────────
   // Personalities/teams/voices live on their own "teams" settings section (split
-  // out of the Agents page — see host-page.tsx's HostTeamsPage), not "agents".
+  // out of the Agents page - see host-page.tsx's HostTeamsPage), not "agents".
   await page.goto(buildSettingsHostSectionRoute(getServerId(), "teams"));
   await expect(page.getByTestId("agent-personalities-section")).toBeVisible({ timeout: 30_000 });
   await waitForProvidersReady(page);
@@ -66,7 +66,7 @@ test("personalities walkthrough", async ({ page }, testInfo) => {
   await recorder.shot(
     "roster",
     "Your agent personalities",
-    "Named agent templates — each with its own model, role, colors, and voice — live in host settings.",
+    "Named agent templates - each with its own model, role, colors, and voice - live in host settings.",
   );
 
   // ── The tabbed editor, one tab per facet ──────────────────────────────────
@@ -83,7 +83,7 @@ test("personalities walkthrough", async ({ page }, testInfo) => {
   await recorder.shot(
     "editor-identity",
     "Identity: name, roles, colors",
-    "A personality declares which roles it can fill — orchestrator, coder, reviewer — and the colors it glows with.",
+    "A personality declares which roles it can fill - orchestrator, coder, reviewer - and the colors it glows with.",
   );
 
   const switchTab = async (label: string) => {
@@ -105,7 +105,7 @@ test("personalities walkthrough", async ({ page }, testInfo) => {
   await recorder.shot(
     "editor-model",
     "Model: provider binding",
-    "Each personality picks its own provider and model — frontier cloud or local, per personality.",
+    "Each personality picks its own provider and model - frontier cloud or local, per personality.",
   );
 
   await switchTab("Voice");
@@ -136,7 +136,7 @@ test("personalities walkthrough", async ({ page }, testInfo) => {
   await recorder.shot(
     "picker-cast",
     "Browse the cast",
-    "Every personality wears its provider, model, and colors — pick one and the chat becomes theirs.",
+    "Every personality wears its provider, model, and colors - pick one and the chat becomes theirs.",
   );
 
   await selectPersonalityInPicker(page, cast.personalities.aria.id);
@@ -147,7 +147,7 @@ test("personalities walkthrough", async ({ page }, testInfo) => {
   await recorder.shot(
     "picker-selected",
     "The chat is now Aria's",
-    "The composer runs with Aria's model, prompt, and voice — one tap to switch back.",
+    "The composer runs with Aria's model, prompt, and voice - one tap to switch back.",
   );
 
   await recorder.finish(testInfo);

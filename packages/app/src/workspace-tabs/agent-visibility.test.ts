@@ -430,8 +430,8 @@ describe("workspace agent visibility", () => {
       });
 
       const first = selector({ sessions: { srv: { agents, agentDetails } } });
-      // A different store state object with the same maps — as produced by
-      // unrelated session-store writes (e.g. stream flushes) — must return the
+      // A different store state object with the same maps - as produced by
+      // unrelated session-store writes (e.g. stream flushes) - must return the
       // exact same result object, not a re-derivation.
       const second = selector({ sessions: { srv: { agents, agentDetails } } });
       expect(second).toBe(first);

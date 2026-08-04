@@ -38,13 +38,13 @@ interface FakePortOptions {
   /**
    * Stand in for what a node's agent submitted through submit_output. Returning
    * undefined means the tool was never called, which sends the engine to its
-   * prose fallback — the local-model path.
+   * prose fallback - the local-model path.
    */
   submittedOutput?: (
     input: GraphEngineSpawnInput,
     agentId: string,
   ) => Record<string, unknown> | undefined;
-  /** Agents that never settle — the shape a per-node time limit exists for. */
+  /** Agents that never settle - the shape a per-node time limit exists for. */
   hangAgentIds?: Set<string>;
 }
 
@@ -71,7 +71,7 @@ function makePort(options?: FakePortOptions) {
     },
     awaitAgent: async ({ agentId, signal }) => {
       if (options?.hangAgentIds?.has(agentId)) {
-        // Hang until the run aborts — mirroring the real port, whose
+        // Hang until the run aborts - mirroring the real port, whose
         // waitForAgentFullySettled honors the signal.
         await new Promise<void>((resolve) => {
           if (signal.aborted) {
@@ -189,7 +189,7 @@ describe("executeGraphRun", () => {
     expect(terminal.phases.find((p) => p.id === "a")?.status).toBe("failed");
     const skipped = terminal.phases.find((p) => p.id === "b");
     expect(skipped?.status).toBe("skipped");
-    // A skip says why — machine-readable for clients, a sentence for humans.
+    // A skip says why - machine-readable for clients, a sentence for humans.
     expect(skipped?.skipReason).toBe("upstream-failed");
     expect(skipped?.notes).toBe("An upstream node failed.");
   });
@@ -237,7 +237,7 @@ describe("executeGraphRun", () => {
       port,
     });
     const wrapUp = notifications.at(-1) ?? "";
-    expect(wrapUp).toContain("- B: skipped — An upstream node failed.");
+    expect(wrapUp).toContain("- B: skipped - An upstream node failed.");
   });
 
   test("until-loop re-dispatches with judge feedback and stops on pass", async () => {
@@ -452,7 +452,7 @@ describe("executeGraphRun", () => {
     });
     expect(terminal.status).toBe("done");
     // The contract travels with the spawn so the agent's own tool catalog can
-    // mint submit_output for it — that is what makes this provider-neutral.
+    // mint submit_output for it - that is what makes this provider-neutral.
     const classifySpawn = spawns.find((s) => s.nodeId === "classify");
     expect(classifySpawn?.outputFields?.map((f) => f.key)).toEqual(["complexity", "score"]);
     expect(classifySpawn?.task).toContain("call the submit_output tool exactly once");
@@ -774,7 +774,7 @@ describe("executeGraphRun", () => {
     });
     expect(terminal.status).toBe("failed");
     expect(terminal.error).toContain("time limit");
-    // The agent was really stopped — otherwise it keeps running and spending.
+    // The agent was really stopped - otherwise it keeps running and spending.
     expect(canceled).toEqual(["agent-1-hang-worker"]);
     const phase = terminal.phases.find((p) => p.id === "hang");
     expect(phase?.timedOut).toBe(true);
@@ -808,7 +808,7 @@ describe("executeGraphRun", () => {
     controller.abort();
     const terminal = await execution;
     expect(terminal.status).toBe("canceled");
-    // The child was really stopped — an abandoned agent keeps running and spending.
+    // The child was really stopped - an abandoned agent keeps running and spending.
     expect(canceled).toEqual(["agent-1-a-worker"]);
   });
 
@@ -838,7 +838,7 @@ describe("executeGraphRun", () => {
     const run = buildRun(graph, { goal: "ship it" });
     const { port, spawns } = makePort();
     // A renders; B's template is gone, so B degrades to its inline prompt
-    // rather than failing — deleting a shared template must not break graphs.
+    // rather than failing - deleting a shared template must not break graphs.
     port.renderPromptTemplate = async ({ ref, graphInputs }) =>
       ref.templateId === "research" ? `Rendered for ${graphInputs.goal}` : null;
     const terminal = await executeGraphRun({

@@ -79,7 +79,7 @@ interface MarkdownParagraphViewProps {
 const MARKDOWN_PARAGRAPH_RESET: ViewStyle = {};
 
 // iOS-only: paragraph wraps in UITextView so the entire paragraph is one
-// native text view. That's what unlocks cross-inline drag selection — handles
+// native text view. That's what unlocks cross-inline drag selection - handles
 // can span every MarkdownTextSpan child inside this paragraph.
 // ViewStyle is structurally compatible with the layout props paragraphs use
 // (margin, padding, alignment); the cast lets the existing paragraphStyle

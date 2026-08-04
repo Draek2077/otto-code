@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 
 // Worktree setup runs through a stable script shell: bash on macOS/Linux, but PowerShell
 // on Windows. POSIX-only command strings (`VAR=1 cmd` env prefixes, `$VAR` expansion, `cp`,
-// `./scripts/*.sh`) cannot express this step portably, so the seeding lives in Node — the
+// `./scripts/*.sh`) cannot express this step portably, so the seeding lives in Node - the
 // one interpreter every Otto checkout already depends on.
 
 const sourceRoot = process.env.OTTO_SOURCE_CHECKOUT_PATH;

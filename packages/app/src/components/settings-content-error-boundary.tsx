@@ -19,7 +19,7 @@ interface SettingsContentErrorBoundaryState {
 // Scoped boundary around the settings *content* pane only. The settings header
 // (BackHeader / ScreenHeader) renders outside it, so a render failure in a
 // section keeps a working way out instead of bubbling to the full-screen root
-// fallback — which is the "gray screen, no controls, no back" symptom users hit.
+// fallback - which is the "gray screen, no controls, no back" symptom users hit.
 export class SettingsContentErrorBoundary extends Component<
   SettingsContentErrorBoundaryProps,
   SettingsContentErrorBoundaryState

@@ -323,7 +323,7 @@ async function startForwardedHeadersFixture(): Promise<ForwardedFixture> {
   upstream.on("upgrade", (req, socket) => {
     upgradeSockets.push(socket);
     // The client resets this connection once it has the echo, so the reset
-    // reaches us as an 'error'. A raw upgrade socket has no default handler —
+    // reaches us as an 'error'. A raw upgrade socket has no default handler -
     // without this the event goes unhandled and takes down the test process.
     socket.on("error", () => socket.destroy());
     const payload = JSON.stringify(req.headers);

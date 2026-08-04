@@ -40,7 +40,7 @@ const OptionalTrimmedStringSchema = z
   .optional()
   .transform((value) => (value && value.length > 0 ? value : undefined));
 
-// Endpoint credentials only — plain trimmed strings, so this never throws on a
+// Endpoint credentials only - plain trimmed strings, so this never throws on a
 // malformed value. The STT/TTS option groups parse separately and only for the
 // endpoint that is actually configured, so a stale env var for an unused endpoint
 // (e.g. a leftover TTS_VOICE in an STT-only setup) can't break the other one.

@@ -666,7 +666,7 @@ test("provider actions delegate to existing provider RPCs and local snapshot upd
 });
 
 // Everything the client fills in from schema defaults when the daemon sends a
-// partial config — the daemon's whole config surface minus the keys each
+// partial config - the daemon's whole config surface minus the keys each
 // assertion below actually receives on the wire. Shared by the get and patch
 // cases: both resolve to the same filled shape, so a new config key with a
 // default is one line here instead of two drifting copies.
@@ -699,7 +699,7 @@ const DAEMON_CONFIG_SCHEMA_DEFAULTS = {
   appendSystemPrompt: "",
   // Both host-scoped code sections default to a well-formed shape so a new
   // client parsing an old daemon's config still renders the Daemon → Code
-  // screen — code intelligence on (nothing spawns until used), solution
+  // screen - code intelligence on (nothing spawns until used), solution
   // management OFF (it spawns a process).
   lsp: {
     enabled: true,

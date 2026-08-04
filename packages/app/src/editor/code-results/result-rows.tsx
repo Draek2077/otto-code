@@ -12,7 +12,7 @@ import { compactFont, compactUp } from "@/styles/theme";
 /**
  * The shared row vocabulary for the code-results tabs (Find references, Rename).
  *
- * Both tabs show the same thing — a file heading with source lines under it — so they share
+ * Both tabs show the same thing - a file heading with source lines under it - so they share
  * one implementation rather than two that drift. The rows are deliberately the *diff
  * viewer's* rows: same `fontSize.code` / `lineHeight.diff` metrics, same compact bumps, same
  * syntax colours. Those two tokens are the user's Code font size setting; the earlier
@@ -22,13 +22,13 @@ import { compactFont, compactUp } from "@/styles/theme";
  * Strings are literal English pending the pre-release i18n sweep.
  */
 
-/** Mirrors the diff viewer's compact bumps — see `revision-diff-body.tsx`. */
+/** Mirrors the diff viewer's compact bumps - see `revision-diff-body.tsx`. */
 const COMPACT_CODE_FONT_BUMP = 2;
 const COMPACT_LINE_HEIGHT_BUMP = 6;
 
 export type CodeResultGutterWidth = "line" | "lineColumn";
 
-/** `dir/parts` and `file.ts` — the tail identifies the file, the head is context. */
+/** `dir/parts` and `file.ts` - the tail identifies the file, the head is context. */
 export function splitPath(path: string): { head: string; tail: string } {
   const normalized = path.replace(/\\/g, "/");
   const cut = normalized.lastIndexOf("/");
@@ -39,7 +39,7 @@ export function splitPath(path: string): { head: string; tail: string } {
 
 /**
  * The heading over one file's rows, and the control that folds them away. UI type, not code
- * type — this is a label, so it sits on the UI ramp at `sm` like the Changes tab's file
+ * type - this is a label, so it sits on the UI ramp at `sm` like the Changes tab's file
  * rows, and only the rows below it are mono.
  */
 export function CodeResultGroupHeader({
@@ -55,7 +55,7 @@ export function CodeResultGroupHeader({
   collapsed: boolean;
   onToggle: (path: string) => void;
   /**
-   * Per-file control parked at the end of the heading — Refine's keep/drop
+   * Per-file control parked at the end of the heading - Refine's keep/drop
    * switch. Inside the heading's own Pressable, so anything rendered here must
    * stop its own press from reaching the fold (`Switch` already does).
    */
@@ -102,11 +102,11 @@ function groupHeaderStyle({
  * Collapsed-by-exception rather than expanded-by-exception: a results list is worthless if
  * it opens closed, and the set stays small because the interesting case is folding away the
  * two noisy files, not the twenty quiet ones. Paths that vanish from the results (a
- * provisional list that re-resolves) simply stop being consulted — no reconciliation needed.
+ * provisional list that re-resolves) simply stop being consulted - no reconciliation needed.
  */
 export function useCollapsedGroups(): {
   isCollapsed: (path: string) => boolean;
-  /** True when none of `paths` is folded — what the toolbar toggle reads. */
+  /** True when none of `paths` is folded - what the toolbar toggle reads. */
   allExpanded: (paths: readonly string[]) => boolean;
   toggle: (path: string) => void;
   /** Fold everything, or unfold everything if anything is already folded. */
@@ -145,7 +145,7 @@ const ThemedListChevronsUpDown = withUnistyles(ListChevronsUpDown);
 
 /**
  * One button, not two. The list is either all open or it isn't, so only one of the two
- * actions is ever the one you want — the same shape the Changes toolbar uses.
+ * actions is ever the one you want - the same shape the Changes toolbar uses.
  *
  * `ToolbarIconButton` rather than a local Pressable, because these tabs sit beside the file
  * editor in a split and their toolbars have to line up with its one pixel-for-pixel. A

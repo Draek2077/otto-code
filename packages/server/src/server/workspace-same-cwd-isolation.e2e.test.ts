@@ -27,7 +27,7 @@ import {
  * Temp-dir teardown that cannot fail the test it is cleaning up after.
  *
  * On Windows a just-closed daemon can still hold handles under the workspace
- * directory for a moment, so a bare `rmSync` throws EPERM from `finally` — which
+ * directory for a moment, so a bare `rmSync` throws EPERM from `finally` - which
  * replaces the real assertion failure (or success) with an unrelated teardown
  * error. Retry briefly, then give up: a leaked temp dir is the OS's problem, a
  * masked test result is ours.
@@ -36,7 +36,7 @@ function removeTempDir(dir: string): void {
   try {
     rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   } catch {
-    // Intentionally ignored — see above.
+    // Intentionally ignored - see above.
   }
 }
 
@@ -166,7 +166,7 @@ function collectProviderSnapshotUpdateBytes(client: DaemonClient): {
 }
 
 // Seed two active workspaces that share one cwd, so we can prove agent
-// ownership and status stay workspaceId-scoped — a sibling that owns nothing
+// ownership and status stay workspaceId-scoped - a sibling that owns nothing
 // active stays done. Both registry files must exist on disk before the daemon starts:
 // bootstrapWorkspaceRegistries skips materialization when both files are
 // present, leaving these seeded records untouched.
@@ -241,7 +241,7 @@ async function seedWorkspaceWithLegacyAgent(): Promise<{ ottoHomeRoot: string; c
   // A pre-guard same-cwd duplicate. These can no longer be created (the daemon
   // refuses a second visible workspace on an occupied directory) but they still
   // exist on disk for anyone who accumulated them before 2026-07-16, so seeding
-  // is now the only honest way to reach this state — and the reason the legacy
+  // is now the only honest way to reach this state - and the reason the legacy
   // backfill still has to attribute by workspaceId rather than by cwd.
   const sibling = createPersistedWorkspaceRecord({
     workspaceId: LEGACY_SIBLING_WORKSPACE,
@@ -323,7 +323,7 @@ test("daemon bootstrap migrates cwd-only legacy agents onto one same-cwd sibling
     await client.connect();
 
     // The backfill attributes the cwd-only agent to the older workspace and only
-    // that one. Its same-cwd sibling owns nothing, so its status is done —
+    // that one. Its same-cwd sibling owns nothing, so its status is done -
     // status is per id, never shared across same-cwd workspaces.
     expect(await legacyAgentWorkspaceId(client)).toBe(LEGACY_OWNER_WORKSPACE);
     expect(await agentIdsOwnedByWorkspace(client, LEGACY_OWNER_WORKSPACE)).toEqual([
@@ -448,7 +448,7 @@ test("create_agent_request with workspaceId does not retitle an existing workspa
   const cwd = mkdtempSync(path.join(tmpdir(), "otto-agent-submit-title-"));
   // isDev, because "mock" only exists in DEV_AGENT_PROVIDER_DEFINITIONS and
   // buildRegistry drops an injected agentClient that has no definition to
-  // attach to — so without this the spawn below fails provider resolution.
+  // attach to - so without this the spawn below fails provider resolution.
   const daemon = await createTestOttoDaemon({
     isDev: true,
     agentClients: { mock: new MockLoadTestAgentClient() },
@@ -495,7 +495,7 @@ test("create_agent_request with workspaceId does not retitle an existing workspa
 // occupied directory is refused, and refusing must not disturb the occupant.
 // (Before 2026-07-16 this test created a second and third same-cwd workspace and
 // expected success; the guard now makes that the wrong spec. Isolation across
-// same-cwd siblings is still covered — by the seeded pre-guard duplicates in the
+// same-cwd siblings is still covered - by the seeded pre-guard duplicates in the
 // tests below, which is the state that legitimately still exists on disk.)
 test("refuses a second same-cwd local workspace without disturbing the occupant", async () => {
   const cwd = mkdtempSync(path.join(tmpdir(), "otto-running-same-cwd-create-"));
@@ -574,7 +574,7 @@ test("two workspaces sharing one cwd compute agent status per workspaceId", asyn
 
     // 1. Agent created in workspace A carries workspaceId A. Ask mode + a
     //    write parks the agent on a pending permission, which drives the
-    //    "needs_input" signal onto workspace A only — its same-cwd sibling B
+    //    "needs_input" signal onto workspace A only - its same-cwd sibling B
     //    owns nothing and stays done.
     const agentA = await client.createAgent({
       ...getAskModeConfig("codex"),
@@ -600,7 +600,7 @@ test("two workspaces sharing one cwd compute agent status per workspaceId", asyn
       ]),
     );
 
-    // 2. Terminal created in A is visible in A's list, but never in B's —
+    // 2. Terminal created in A is visible in A's list, but never in B's -
     //    exercises the workspaceId terminal filter at the daemon boundary.
     const createdTerminal = await client.createTerminal(cwd, "A terminal", undefined, {
       workspaceId: WORKSPACE_A,
@@ -618,7 +618,7 @@ test("two workspaces sharing one cwd compute agent status per workspaceId", asyn
     expect(listForB.terminals.some((terminal) => terminal.id === terminalId)).toBe(false);
 
     // 3. Agent created in workspace B carries workspaceId B and parks too. Now
-    //    each workspace owns its own parked agent, so both read needs_input —
+    //    each workspace owns its own parked agent, so both read needs_input -
     //    by per-id ownership, not by sharing a cwd.
     const agentB = await client.createAgent({
       ...getAskModeConfig("codex"),

@@ -11,11 +11,11 @@ import { RunStore } from "./run-store.js";
 import { RunService, type RunSpawnPort } from "./run-service.js";
 import { summarizeRunOutput } from "./run-engine.js";
 
-// Loop A — the deterministic integration layer. Unlike run-engine/run-service
+// Loop A - the deterministic integration layer. Unlike run-engine/run-service
 // unit tests (which fake the spawn seam entirely), this drives the engine
 // through REAL child agents spawned on a live in-process daemon. The agents are
 // FakeAgentClients (no model, no tokens), scripted via "respond with exactly: X"
-// so the whole run is deterministic — but every hop the production start_run
+// so the whole run is deterministic - but every hop the production start_run
 // path takes is exercised: createAgent → session → agentManager → child turn →
 // waitForAgentUpsert(idle) → getLastAssistantMessage → RunService persist/emit.
 //
@@ -55,7 +55,7 @@ interface SpawnPortHooks {
   composedTasks: Map<string, string>;
   /** Total children spawned (to assert a hard-fail spawns none). */
   spawnCount: { value: number };
-  /** A role the "team" lacks — resolveRole returns null for it. */
+  /** A role the "team" lacks - resolveRole returns null for it. */
   missingRole?: string;
 }
 
@@ -234,7 +234,7 @@ describe("orchestration integration (real fake-backed child agents)", () => {
     });
   }, 90_000);
 
-  test("hard-fails and names the gap when the team lacks a role — spawning no child for it", async () => {
+  test("hard-fails and names the gap when the team lacks a role - spawning no child for it", async () => {
     await withRunService(async (service) => {
       const spawnCount = { value: 0 };
       const spawnPort = makeIntegrationSpawnPort({
@@ -447,7 +447,7 @@ describe("orchestration integration (real fake-backed child agents)", () => {
     await harness.client.waitForAgentUpsert(parent.id, (s) => s.status === "idle", 15_000);
 
     // A child labeled under the now-idle parent, started with a long-running
-    // prompt so it stays busy — nothing re-invokes the parent, so the ONLY reason
+    // prompt so it stays busy - nothing re-invokes the parent, so the ONLY reason
     // settle should wait is the busy descendant in the subtree.
     const child = await harness.client.createAgent({
       provider: "claude",

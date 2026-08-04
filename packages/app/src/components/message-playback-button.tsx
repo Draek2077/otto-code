@@ -1,11 +1,11 @@
-// Per-message playback button — a small speaker icon in the assistant turn
+// Per-message playback button - a small speaker icon in the assistant turn
 // footer (beside copy/fork) that reads that turn's text aloud on demand.
 //
 // It calls the host `speech.tts.speak` RPC, which synthesizes the FULL message
 // and streams it back sentence-by-sentence as `audio_output` chunks the session
 // already plays through the shared audio engine (see session-context). Because
 // the host streams per sentence, playback starts after the first sentence
-// instead of waiting for the whole clip to synthesize — and there is no length
+// instead of waiting for the whole clip to synthesize - and there is no length
 // cap. It reads in the agent's picked personality voice, resolved on the client
 // from the live personality (same source as voice cues). Gated on the host's
 // `ttsSpeak` capability (see useTtsSpeakFeature); needs no live voice session.
@@ -37,7 +37,7 @@ interface PersonalityVoice {
 
 // Resolve the speaking agent's personality voice the same way voice cues do:
 // from the LIVE personality (the agent's current personalityId + the host's
-// personality roster), so it tracks whatever personality is picked — not a
+// personality roster), so it tracks whatever personality is picked - not a
 // possibly-stale server snapshot. Undefined ⇒ the host reads in its default
 // voice.
 function useAgentPersonalityVoice(
@@ -185,7 +185,7 @@ export function MessagePlaybackButton({
       return;
     }
 
-    // A press while auto-speech is reading this very bubble means "stop" too —
+    // A press while auto-speech is reading this very bubble means "stop" too -
     // the mode stays on, so the next message still speaks; only the backlog the
     // user just interrupted is dropped.
     if (isAutoSpeaking) {
@@ -211,7 +211,7 @@ export function MessagePlaybackButton({
     }
 
     // Flush any prior message playback so a new one starts clean, and unlock the
-    // playback AudioContext *inside* this click gesture — browsers only resume a
+    // playback AudioContext *inside* this click gesture - browsers only resume a
     // context on a live user activation, so deferring past the await would leave
     // it suspended and silent.
     audioEngine.stop();

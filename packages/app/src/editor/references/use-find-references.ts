@@ -6,7 +6,7 @@ import { openCodeReferencesTab } from "./open-code-references-tab";
  * "Find references" from the editor: read the identifier under the caret, open a results tab
  * for that position.
  *
- * The symbol name is read here only to NAME the tab. The search itself is by position — the
+ * The symbol name is read here only to NAME the tab. The search itself is by position - the
  * daemon resolves the reference under the caret, which is what makes it answer "what refers
  * to *this* `foo`" instead of "what is spelled `foo`". Sending the word would be the ctags
  * question wearing a language server's clothes.

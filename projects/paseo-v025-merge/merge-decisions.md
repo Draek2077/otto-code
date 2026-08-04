@@ -12,13 +12,13 @@ project is drained; the remaining tail lives in [projects/README.md](../README.m
 > now does. Two more, recorded here because they have no row to fix:
 >
 > - `checkout-session.ts` claimed `listCheckoutCommits` "takes the base ref as a
->   parameter". It does not — it calls `resolveBaseRefForCwd` itself. The
+>   parameter". It does not - it calls `resolveBaseRefForCwd` itself. The
 >   behaviour the comment describes is real; the mechanism is not. Comment fixed.
 > - The verification state below reads "targeted suites green". `models.test.ts`
 >   was not among them and was failing 19 of 40: it was hand-merged with
 >   upstream's version while the manifest kept ours, so it imported three symbols
->   that do not exist. `npm run typecheck` cannot see this — the server typecheck
->   project excludes test files — so a green typecheck says nothing about whether
+>   that do not exist. `npm run typecheck` cannot see this - the server typecheck
+>   project excludes test files - so a green typecheck says nothing about whether
 >   the test suites even compile. Restored and green at 27.
 
 ## The governing rule
@@ -59,7 +59,7 @@ Each of these replaced an Otto construct. The "took over the job" column is the 
 | ------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `ForgeService`, `ForgeAuthState`                              | `githubFeaturesEnabled` boolean                    | The boolean could not distinguish `unauthenticated` from `cli_missing` / `no_remote` / `error`; the enum drives the onboarding callout                                                                                                     |
 | `ForgeSpecificStatusFacts` (tagged open envelope)             | sibling `github` / `hosting` status blocks         | One `forge`-tagged envelope; per-adapter facts modules (`github-facts.ts`, `bitbucket-facts.ts`, …)                                                                                                                                        |
-| `forge_change_request` / `forge_issue` attachments            | `hosting_pr` / `hosting_issue`                     | **Required, not cosmetic** — the merged daemon's `prompt-attachments.ts` handles `forge_*` and legacy `github_*` but **no longer `hosting_*`**. Keeping ours would have dropped PR attachments silently on submit                          |
+| `forge_change_request` / `forge_issue` attachments            | `hosting_pr` / `hosting_issue`                     | **Required, not cosmetic** - the merged daemon's `prompt-attachments.ts` handles `forge_*` and legacy `github_*` but **no longer `hosting_*`**. Keeping ours would have dropped PR attachments silently on submit                          |
 | `MergeCapability` + `deriveMergeCapability`                   | `pullRequestGithub` / `pullRequestHosting` pair    | Provider-neutral merge affordances; synthesizes the github arm from legacy facts for old daemons                                                                                                                                           |
 | `ForgeSearchItem` (`kind: "issue" \| "change_request"`)       | `GitHubSearchItem` (`"issue" \| "pr"`)             | `change_request` is the provider-neutral noun (GitLab calls them merge requests)                                                                                                                                                           |
 | `useForgeSearchQuery`                                         | `useGithubSearchQuery` + `useHostingSearchFeature` | Their `supportsForgeSearch` gate is the capability check, and their hook falls back to the legacy GitHub RPC itself                                                                                                                        |
@@ -88,14 +88,14 @@ not catch them:
 | two-carrier project rename (`applyProjectDescriptor`)                                                                                                    | Rewritten onto their single `projects` map. `upsertProject` alone moves only the project record; the name also rides denormalized on every workspace descriptor                                                                                                                                                                                                                                                                              |
 | active-workspace refresh policy (`workspace-git-service.ts`)                                                                                             | Only the focused workspace polls. Ported onto their restructured timer model, not pasted back. `WorkspaceGitSnapshotMeta.prStatusOnly` came with it: without the tag a post-commit status rebuild ships a stale `aheadOfOrigin` and mutes Push                                                                                                                                                                                               |
 | `confirmClose` on `PanelRegistration`                                                                                                                    | Job tabs (rename, refine, artifact) hold work closing would discard; upstream's registry has no close hook                                                                                                                                                                                                                                                                                                                                   |
-| nine Otto tab kinds                                                                                                                                      | `artifact`, `gitLog`, `visualizer`, `fileHistory`, `codeReferences`, `codeRename`, `refine`, `contextManagement`, `orchestrationGraph` — added to **their** new `workspace-tabs/model.ts` union                                                                                                                                                                                                                                              |
+| nine Otto tab kinds                                                                                                                                      | `artifact`, `gitLog`, `visualizer`, `fileHistory`, `codeReferences`, `codeRename`, `refine`, `contextManagement`, `orchestrationGraph` - added to **their** new `workspace-tabs/model.ts` union                                                                                                                                                                                                                                              |
 | focus mode                                                                                                                                               | Rewired onto their scoped `workspace.focus.toggle` action. They routed `view.toggle.focus` there but registered no handler, so the shortcut would have been silently dead                                                                                                                                                                                                                                                                    |
 | Chatter personality ladder                                                                                                                               | They rebuilt `input-draft.ts` on the draft store and dropped the personality block entirely; grafted back onto their structure                                                                                                                                                                                                                                                                                                               |
 | Bitbucket `/pull-requests/N` URL grammar                                                                                                                 | Their `pr-hint` regex covers `pull                                                                                                                                                                                                                                                                                                                                                                                                           | pulls | merge_requests` but not Bitbucket's spelling |
 | `setTrayAttention`, `signalReady`, `description` on `GitAction`, `PANE_TOOLBAR_HEIGHT`, `navigateToPreparedWorkspaceTab`, `findCheckoutHintPrAttachment` | Otto-only, no upstream equivalent; each restored onto upstream's module layout                                                                                                                                                                                                                                                                                                                                                               |
-| `hostingProvider` / `hostingCapabilities` **alongside** their `forge`                                                                                    | 28 call sites consume the narrowed provider id for icons and capabilities. Deliberate keep-both. **Correction: they cannot collapse.** `bootstrap.ts:1201-1204` registers Bitbucket into the forge registry under the forge id `github`, which "keeps its historical name — it is the provider-routing facade". So `forge` reads `"github"` for a Bitbucket workspace and only `hosting.provider` carries the truth. They disagree by design |
+| `hostingProvider` / `hostingCapabilities` **alongside** their `forge`                                                                                    | 28 call sites consume the narrowed provider id for icons and capabilities. Deliberate keep-both. **Correction: they cannot collapse.** `bootstrap.ts:1201-1204` registers Bitbucket into the forge registry under the forge id `github`, which "keeps its historical name - it is the provider-routing facade". So `forge` reads `"github"` for a Bitbucket workspace and only `hosting.provider` carries the truth. They disagree by design |
 
-## Deleted as superseded — audit these first
+## Deleted as superseded - audit these first
 
 These are the highest-risk calls, because deleting Otto code is irreversible in review terms and the
 "took over the job" claim is the only thing standing behind each one.
@@ -103,14 +103,14 @@ These are the highest-risk calls, because deleting Otto code is irreversible in 
 - **`FileContextAttachment`** was deleted, then **restored**: the usage check excluded the declaring
   file, and `WorkspaceComposerAttachment` still referenced it. It is back. Mentioned because it shows
   the failure mode.
-- **`buildWorkspaceCheckout`, `resolveWorkspaceForImportedAgent`** — Paseo's `runInImportWorkspace`
+- **`buildWorkspaceCheckout`, `resolveWorkspaceForImportedAgent`** - Paseo's `runInImportWorkspace`
   demonstrably took over. Verify no import path lost behaviour.
-- **`skipIfUserMessageExists`** — upstream removed it and replaced the mechanism with
+- **`skipIfUserMessageExists`** - upstream removed it and replaced the mechanism with
   `handoffCreatedAgentUserMessageToStream`. Only a test referenced it.
-- **`backfillUserMessageAttachments`** — see the table above.
-- **Otto's eager browser registration + `clearPartition` on tab close** — browsers now share one
+- **`backfillUserMessageAttachments`** - see the table above.
+- **Otto's eager browser registration + `clearPartition` on tab close** - browsers now share one
   profile partition and clearing it is a deliberate settings action (`clearProfile`).
-- **`foregroundExtraMuted`** — Otto's themes stop at `foregroundMuted` and each tint would need its
+- **`foregroundExtraMuted`** - Otto's themes stop at `foregroundMuted` and each tint would need its
   own value, so two call sites in `file-pane/bar.tsx` were mapped down to `foregroundMuted` with a
   comment. This is a **visual regression against upstream's intent**, consciously taken.
 - **`visibilityCatchUpStatus`** is hard-coded `"ready"` in `agent-panel.tsx`. Upstream gates the
@@ -123,7 +123,7 @@ These are the highest-risk calls, because deleting Otto code is irreversible in 
    `@/git/diff-pane` exporting `SharedDiffView` / `DiffFilesToolbar` / `resolveDiffLayout`. Otto's
    `diff-pane` carries ~1,900 substantive lines theirs lacks (file history, rollback, comments, tree
    guides), so adopting the tab means merging that file properly. The tab kinds stay in the union;
-   nothing registers them. Marker: `DEFERRED(paseoDiffTab)` in `register-panels.ts` — **the marker was missing until remediation; the insertion script's anchor failed silently.** It is there now, and records that `working_diff`/`commit_diff` are live tab kinds with identity builders and menu entries, so opening one yields a dead tab.
+   nothing registers them. Marker: `DEFERRED(paseoDiffTab)` in `register-panels.ts` - **the marker was missing until remediation; the insertion script's anchor failed silently.** It is there now, and records that `working_diff`/`commit_diff` are live tab kinds with identity builders and menu entries, so opening one yields a dead tab.
 2. **~180 files still holding our side of an upstream change.** Resolved wholesale to ours during the
    conflict pass: upstream's edit is gone with **no marker and no error**. This is the single largest
    correctness risk in the merge and the build cannot see it.
@@ -159,7 +159,7 @@ A reviewer re-running any of this will hit the same ones.
 - **Brace-counting extractors trip on type annotations** (`Map<string, { additions: number }>`).
   Match the two-space `  }` for class methods.
 - **NUL bytes make a file binary and unmergeable.** Hit twice in `daemon-client.ts`.
-- **Blanket renames collapse distinct branches** — `status.github` and `status.bitbucket` both became
+- **Blanket renames collapse distinct branches** - `status.github` and `status.bitbucket` both became
   `status.forgeSpecific` once, which is why `isBitbucketPullRequestStatusFacts` gates the legacy block.
 - **Taking upstream's test file is not always right.** It helped for `composer/actions`,
   `strategy-web`, `policy`; it made `checkout-session` worse (14 failures vs 7) because Otto's
@@ -175,5 +175,5 @@ Typecheck 0 across every workspace, lint 0, zero conflict markers, pre-commit ho
 
 **Unverified:** `checkout-status-cache`, `app-visibility` and `bottom-anchor-controller` cannot
 resolve `react` / `react-native` in this worktree. Confirmed to reproduce on the **unmodified HEAD**
-versions, so it is the worktree's module layout rather than merge fallout — but those three want a
+versions, so it is the worktree's module layout rather than merge fallout - but those three want a
 CI run. The full suite has not run locally by policy.

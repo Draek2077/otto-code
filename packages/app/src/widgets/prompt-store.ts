@@ -10,7 +10,7 @@ import {
  *
  * That is a privilege, not a convenience, so it is deliberately narrow. The
  * composer for a chat registers itself here while it is mounted, and a widget
- * can only reach a chat whose composer is registered — which is what makes the
+ * can only reach a chat whose composer is registered - which is what makes the
  * active-chat gate real rather than advisory. A widget sitting in a background
  * tab, an archived chat, or a transcript nobody has open finds no sender and
  * silently does nothing.
@@ -84,7 +84,7 @@ export const useWidgetPromptStore = create<WidgetPromptState>((set, get) => ({
     if (budget.count >= WIDGET_PROMPT_SESSION_LIMIT) {
       return "exhausted";
     }
-    // Only gate on the interval once something has actually been sent — a
+    // Only gate on the interval once something has actually been sent - a
     // widget's first click must never be throttled against a zero timestamp.
     if (budget.count > 0 && now - budget.lastSentAt < WIDGET_PROMPT_MIN_INTERVAL_MS) {
       return "rate-limited";

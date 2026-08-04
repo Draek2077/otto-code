@@ -1,9 +1,9 @@
 import type { ProjectScaffoldGit } from "@otto-code/protocol/messages";
 import { normalizeWorkspacePath } from "@/utils/workspace-identity";
 
-// The New project page's form model, kept out of the component so every rule —
+// The New project page's form model, kept out of the component so every rule -
 // which fields a mode needs, when Create is allowed, what the resulting git
-// request looks like — is testable without rendering.
+// request looks like - is testable without rendering.
 
 // What the user is doing. "open" is the pre-existing behaviour (adopt a folder
 // that is already on the host); the rest are the scaffolding paths.
@@ -67,7 +67,7 @@ export interface NewProjectCapabilities {
   canScaffold: boolean;
   // Providers that reported the createRepository capability and are connected.
   remoteCapableProviders: readonly string[];
-  // Providers that require an explicit owner — Bitbucket has no implicit
+  // Providers that require an explicit owner - Bitbucket has no implicit
   // "authenticated user's namespace" the daemon could fall back to.
   providersRequiringOwner: readonly string[];
 }
@@ -108,8 +108,8 @@ export function getNewProjectBlocker(
   return null;
 }
 
-// The remote repository defaults to the folder name — the overwhelmingly common
-// case — and only diverges when the user edits it.
+// The remote repository defaults to the folder name - the overwhelmingly common
+// case - and only diverges when the user edits it.
 export function resolveRemoteRepositoryName(state: NewProjectFormState): string {
   return state.remoteName.trim() || state.folderName.trim();
 }
@@ -159,7 +159,7 @@ export function buildScaffoldGitRequest(
 }
 
 // Adding a folder that is already a project is a no-op the daemon accepts
-// silently — `findOrCreateProjectForDirectory` just returns the existing record,
+// silently - `findOrCreateProjectForDirectory` just returns the existing record,
 // so the page would close as if it had done something. Catch it here instead and
 // say so, the way New workspace refuses an occupied directory.
 //
@@ -181,7 +181,7 @@ export function findDuplicateProjectPath(input: {
 
 // Which separator to join with. The client cannot know the daemon's platform,
 // but the directory the user typed or browsed already tells us which convention
-// that host writes — so match it rather than picking one. Joining a Windows
+// that host writes - so match it rather than picking one. Joining a Windows
 // directory with "/" produced `C:\Users\me\Projects/thing`, which reads as a
 // bug even though the daemon would accept it.
 export function detectPathSeparator(directory: string): "/" | "\\" {

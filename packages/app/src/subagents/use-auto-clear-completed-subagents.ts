@@ -20,13 +20,13 @@ export interface UseAutoClearCompletedSubagentsInput {
 
 /**
  * Device-local "auto-clear completed sub-agents" behavior for one chat's track.
- * When enabled, completed rows archive themselves once settled — no manual "Clear
- * all completed" needed — with their tokens rolled into the parent tally first so
+ * When enabled, completed rows archive themselves once settled - no manual "Clear
+ * all completed" needed - with their tokens rolled into the parent tally first so
  * the header total stays honest (see cleared-subagent-tokens-store.ts). Renders
  * nothing; mounted alongside the track in the agent panel.
  *
  * Scope is a chat's sub-agents track only (root chats are untouched), and it only
- * runs while the panel is mounted — decluttering matters where the track is
+ * runs while the panel is mounted - decluttering matters where the track is
  * visible. Settled rows that fail to archive are not retried automatically (the
  * manual clear stays available), so a persistent failure can't spin.
  */
@@ -37,7 +37,7 @@ export function useAutoClearCompletedSubagents(input: UseAutoClearCompletedSubag
   const recordCleared = useClearedSubagentTokensStore((state) => state.recordCleared);
   const toast = useToast();
 
-  // Ids we've already issued an auto-archive for — never retried, so a stuck
+  // Ids we've already issued an auto-archive for - never retried, so a stuck
   // archive can't loop the effect. Reset when auto-clear is turned off.
   const attemptedRef = useRef<Set<string>>(new Set());
   // Bumped by the settle timer to re-evaluate rows that weren't settled yet.

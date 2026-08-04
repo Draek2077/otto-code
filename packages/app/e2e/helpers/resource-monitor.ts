@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 
-// Mirrors packages/app/src/diagnostics/resource-report — kept structural rather
+// Mirrors packages/app/src/diagnostics/resource-report - kept structural rather
 // than imported so the spec compiles without pulling the app's module graph
 // (and its `@/` alias + RN deps) into the Playwright process.
 

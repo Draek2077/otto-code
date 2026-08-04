@@ -108,11 +108,11 @@ The base layer. Everything after this depends on it.
   - **Not `file.create`, and the reason must not be rediscovered.** An earlier version of this
     charter named `file.create` under `features.fileMutations`. That RPC cannot carry an image:
     `FileCreateRequestSchema` creates an _empty_ file or directory and has no content field at all.
-    Neither of the neighbours works either — `file.write` takes `content: z.string()`, which the
+    Neither of the neighbours works either - `file.write` takes `content: z.string()`, which the
     daemon LF-normalizes and re-EOLs, so any byte sequence that is not text comes out corrupted;
     and `file.upload` does stream real bytes but lands them in `$OTTO_HOME/uploads/<id>/`, outside
     every workspace, so a document could never link to what it wrote.
-  - The write is **`fs.file.write_binary`**, gated on `features.binaryFileWrite` — bytes to a
+  - The write is **`fs.file.write_binary`**, gated on `features.binaryFileWrite` - bytes to a
     workspace-relative path, workspace-bounded the way create/delete/rename are. It was added for
     the Phase 5 exports and this is its second consumer. Images land in an `assets/` folder beside
     the document; the daemon creates that parent and never clobbers, so an occupied name comes back
@@ -162,7 +162,7 @@ because a live preview that cannot render math is not a live preview.
 - **HTML `<table>` translation to GFM**, following `renderTable` in the AsciiDoc converter.
 - **Interactive checkboxes**, replacing the read-only glyphs task lists render today.
 
-### Phase 5: export — shipped
+### Phase 5: export - shipped
 
 - **HTML export** everywhere, from the rendered document.
 - **PDF** via Electron print-to-PDF on desktop. Named but never built in the
@@ -177,7 +177,7 @@ Both shipped. Three decisions worth keeping:
   and KaTeX math ships as MathML.
 - **It lands beside the source**, `docs/design.md` -> `docs/design.pdf`, matching HTML rather than
   opening a save dialog. A native dialog returns a path on the _host running the app_, and the
-  workspace may be on another machine entirely — the same click would mean two different things for
+  workspace may be on another machine entirely - the same click would mean two different things for
   a local and a remote daemon. Consistency was the smaller argument; that was the deciding one.
 - **The bytes go back through the daemon**, not out of Electron main to disk, for the same reason.
   That needed a new capability: the text write is UTF-8, re-applies a detected EOL, and _refuses a

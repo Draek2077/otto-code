@@ -11,7 +11,7 @@ export type MarkdownPartGroup =
  * stacking the images as their own blocks.
  *
  * Between consecutive flowing images the parser may emit whitespace-only
- * markdown parts — these are consumed and discarded when building the group.
+ * markdown parts - these are consumed and discarded when building the group.
  */
 export function groupMarkdownParts(parts: readonly MarkdownDisplayPart[]): MarkdownPartGroup[] {
   const groups: MarkdownPartGroup[] = [];
@@ -52,7 +52,7 @@ export function groupMarkdownParts(parts: readonly MarkdownDisplayPart[]): Markd
         }
       }
 
-      // No usable lead — emit the images (and any whitespace parts) as plain parts.
+      // No usable lead - emit the images (and any whitespace parts) as plain parts.
       for (let i = index; i < lookahead; i += 1) {
         const p = parts[i];
         if (p !== undefined) {

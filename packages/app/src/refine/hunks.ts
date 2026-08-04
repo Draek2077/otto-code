@@ -1,5 +1,5 @@
 // The pure core of Refine: turn a flat line diff into reviewable groups, and
-// replay that diff with a per-group keep/drop decision. No React, no wire —
+// replay that diff with a per-group keep/drop decision. No React, no wire -
 // everything that decides what gets written lives here, unit-tested in
 // isolation, because this is the module the "nothing is written until Accept"
 // invariant actually rests on.
@@ -13,7 +13,7 @@ import { buildLineDiff, type DiffLine } from "@/utils/tool-call-parsers";
 /** A contiguous run of changes, with its surrounding context, as one decision. */
 export interface RefineHunk {
   /**
-   * Stable within one proposal — the index is enough. Nothing carries across
+   * Stable within one proposal - the index is enough. Nothing carries across
    * regenerations by design (see the charter's §3.2): each round rebuilds the
    * diff from `base`, so there is no hunk identity to match.
    */
@@ -30,7 +30,7 @@ export interface RefineHunk {
 
 /** A proposal, pre-diffed against the pinned base and grouped for review. */
 export interface RefineDiff {
-  /** The full flat diff — the authority for replay; hunks index into it. */
+  /** The full flat diff - the authority for replay; hunks index into it. */
   lines: DiffLine[];
   hunks: RefineHunk[];
 }
@@ -43,8 +43,8 @@ function isChange(line: DiffLine): boolean {
 
 /**
  * `DiffLine.content` carries its own leading `+`/`-`/space; the document text
- * is what is left after it. Getting this wrong is silent and total — every line
- * of the accepted file would gain a stray character — so it lives in one place
+ * is what is left after it. Getting this wrong is silent and total - every line
+ * of the accepted file would gain a stray character - so it lives in one place
  * and the round-trip properties in the tests prove it.
  */
 function lineText(line: DiffLine): string {
@@ -112,7 +112,7 @@ export function groupDiffHunks(
 
 /**
  * Diff a proposal against the pinned base and group it in one step. The diff is
- * always against `base`, never against the previous proposal — the user's
+ * always against `base`, never against the previous proposal - the user's
  * reference point is the file as it was, so total drift stays visible however
  * many rounds have run.
  */
@@ -129,7 +129,7 @@ export function buildRefineDiff(
  * Replay the diff with the given hunks kept: context lines are always taken,
  * a kept hunk contributes its additions, a dropped hunk contributes its
  * removals (i.e. the base text stays). The result is LF-normalized, matching
- * the editor buffer and the daemon's write contract — the daemon re-applies the
+ * the editor buffer and the daemon's write contract - the daemon re-applies the
  * file's detected EOL.
  *
  * Two properties pin this down, and both are tested:
@@ -175,7 +175,7 @@ export function applyRefineDecisions(diff: RefineDiff, keptIds: ReadonlySet<stri
   return out.join("\n");
 }
 
-/** Every hunk id — the default selection after each round (see §3.2). */
+/** Every hunk id - the default selection after each round (see §3.2). */
 export function allHunkIds(diff: RefineDiff): Set<string> {
   return new Set(diff.hunks.map((hunk) => hunk.id));
 }

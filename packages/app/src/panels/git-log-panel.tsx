@@ -126,7 +126,7 @@ function GitLogPanel() {
     [onScrollbarContentSize],
   );
 
-  // Empty setting ("") means "use the platform default mono stack" — fall back to
+  // Empty setting ("") means "use the platform default mono stack" - fall back to
   // it explicitly so log lines render monospace like the terminal, rather than
   // inheriting the sans interface font.
   const monoFontFamily = settings.monoFontFamily.trim() || DEFAULT_MONO_FONT_STACK;

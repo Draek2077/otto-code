@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 // packages/website/public/demos/<scenario>/: step screenshots, an MP4 + WebM
 // of the recording, and a manifest.json with per-step video offsets so the
 // website can render slideshows or chaptered video. The output directory is
-// gitignored — assets are regenerated and uploaded as part of site deploy.
+// gitignored - assets are regenerated and uploaded as part of site deploy.
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const outRoot = path.resolve(scriptDir, "../.out");
@@ -45,7 +45,7 @@ async function processScenario(scenario) {
   }
 
   // Playwright records to a staging path mid-test, then moves the file into
-  // the test's output dir as video.webm after the run — check both.
+  // the test's output dir as video.webm after the run - check both.
   const videoCandidates = [
     raw.videoSourcePath,
     raw.testOutputDir ? path.join(raw.testOutputDir, "video.webm") : null,
@@ -72,7 +72,7 @@ async function processScenario(scenario) {
       await cp(videoSource, path.join(destDir, "video.webm"));
       video = { mp4: "video.mp4", webm: "video.webm" };
     } else {
-      console.warn(`[demo] ffmpeg not found — copying raw webm only for ${scenario}`);
+      console.warn(`[demo] ffmpeg not found - copying raw webm only for ${scenario}`);
       await cp(videoSource, path.join(destDir, "video.webm"));
       video = { mp4: null, webm: "video.webm" };
     }

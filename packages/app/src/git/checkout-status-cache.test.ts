@@ -224,7 +224,7 @@ describe("applyCheckoutStatusUpdateFromEvent", () => {
     });
 
     expect(queryClient.getQueryData(checkoutStatusQueryKey(serverId, cwd))).toEqual(committed);
-    // The PR half of the same push is still applied — that is the only thing it refreshed.
+    // The PR half of the same push is still applied - that is the only thing it refreshed.
     expect(queryClient.getQueryData(checkoutPrStatusQueryKey(serverId, cwd))).toEqual(
       prStatus({ requestId: "pr-poll" }),
     );
@@ -372,7 +372,7 @@ describe("reconcileCheckoutStatusWithUncommittedDiff", () => {
     });
     expect(queryClient.getQueryState(checkoutStatusQueryKey(serverId, cwd))).toBeUndefined();
 
-    // Cached status is a non-git checkout — isDirty is null, nothing to reconcile.
+    // Cached status is a non-git checkout - isDirty is null, nothing to reconcile.
     queryClient.setQueryData(
       checkoutStatusQueryKey(serverId, cwd),
       checkoutStatus({ isGit: false, isDirty: null, repoRoot: null, currentBranch: null }),

@@ -1,7 +1,7 @@
 # Pulse
 
 A lightweight telemetry API: services fire events at it, Pulse keeps a
-ring-buffered history and live gauges in memory. No database, no queue —
+ring-buffered history and live gauges in memory. No database, no queue -
 it is deliberately the simplest thing that answers "what just happened?"
 
 ## Getting started
@@ -34,7 +34,7 @@ curl -X POST http://localhost:4600/events \
   -d '{ "name": "deploy.finished", "tags": { "env": "staging" } }'
 ```
 
-Events with a numeric `value` double as gauge updates — the latest value
+Events with a numeric `value` double as gauge updates - the latest value
 wins and shows up under `/metrics`:
 
 ```bash

@@ -49,7 +49,7 @@ import { TEXT_EFFECT_THEME_IDS, type TextEffectThemeId } from "@/styles/text-eff
 import { AppearancePreview } from "./appearance-preview";
 
 // ---------------------------------------------------------------------------
-// Theme-reactive leaf icons (withUnistyles + uniProps color mapping — no
+// Theme-reactive leaf icons (withUnistyles + uniProps color mapping - no
 // useUnistyles). `size` is folded into the mapping (not a static prop) so it
 // repaints from the live, compact-doubled `theme.iconSize` the same way `color`
 // already does.
@@ -166,7 +166,7 @@ function ModeRow({ value, onChange }: ModeRowProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Theme variant picker — scoped to whichever spectrum is currently effective
+// Theme variant picker - scoped to whichever spectrum is currently effective
 // (see `AppearanceSection`'s `effectiveSpectrum`); never shows both lists.
 // ---------------------------------------------------------------------------
 
@@ -341,7 +341,7 @@ function FontSizeRow({
 }
 
 // ---------------------------------------------------------------------------
-// Font contrast — how hard the reading ink sits against the background.
+// Font contrast - how hard the reading ink sits against the background.
 // Stored as 0..1 but driven as whole percent: the Slider steps in absolute
 // units, and stepping a float by 0.05 accumulates the usual binary drift
 // (0.30000000000000004) straight into persisted settings.
@@ -402,7 +402,7 @@ interface RulerColumnRowProps {
 function RulerColumnRow({ value, disabled, onCommit }: RulerColumnRowProps) {
   const [draft, setDraft] = useState(String(value));
 
-  // Resync from the committed value when it changes elsewhere — including the
+  // Resync from the committed value when it changes elsewhere - including the
   // clamp rewriting what was typed ("999" comes back as "240").
   useEffect(() => {
     setDraft(String(value));
@@ -420,7 +420,7 @@ function RulerColumnRow({ value, disabled, onCommit }: RulerColumnRowProps) {
       max: MAX_RULER_COLUMN,
     });
     if (parsed === null) {
-      setDraft(String(value)); // unparseable (e.g. emptied) — snap back
+      setDraft(String(value)); // unparseable (e.g. emptied) - snap back
       return;
     }
     setDraft(String(parsed));
@@ -560,7 +560,7 @@ function ChatWidthRow({ value, onChange }: ChatWidthRowProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Default tab orientation (Horizontal / Vertical) — same SegmentedControl
+// Default tab orientation (Horizontal / Vertical) - same SegmentedControl
 // shape as ChatWidthRow above, but raw English strings rather than t() calls:
 // this repo does i18n last, matching the "Team switcher in title bar" row
 // precedent below rather than threading a new key through every locale file.
@@ -585,7 +585,7 @@ function TabOrientationRow({ value, onChange }: TabOrientationRowProps) {
         {/* i18n: English-only pending a translation pass (Vertical tabs). */}
         <Text style={settingsStyles.rowTitle}>Default tab orientation</Text>
         <Text style={settingsStyles.rowHint}>
-          Sets the tab-strip layout for new panes — a horizontal row at the top, or a vertical rail
+          Sets the tab-strip layout for new panes - a horizontal row at the top, or a vertical rail
           on the left. Any pane can override this individually.
         </Text>
       </View>
@@ -646,7 +646,7 @@ function MessageTimestampRow({ value, onChange }: MessageTimestampRowProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Text effects picker — theme for the "working" text sweep on activity labels
+// Text effects picker - theme for the "working" text sweep on activity labels
 // (see styles/text-effects.ts). Commits immediately, like SyntaxRow.
 // ---------------------------------------------------------------------------
 
@@ -870,7 +870,7 @@ export function AppearanceSection() {
   }, [settings.fontContrast]);
 
   // When mode is System, the variant list is scoped to whichever spectrum the
-  // OS is CURRENTLY reporting (not a fixed neutral pair) — this re-renders
+  // OS is CURRENTLY reporting (not a fixed neutral pair) - this re-renders
   // live if the OS scheme flips while the settings screen is open.
   const osColorScheme = useColorScheme();
   let effectiveSpectrum: "light" | "dark";
@@ -889,7 +889,7 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
-  // Only ever updates the spectrum currently shown — never colorSchemeMode —
+  // Only ever updates the spectrum currently shown - never colorSchemeMode -
   // so switching modes back and forth never resets a per-spectrum pick.
   const handleThemeVariantChange = useCallback(
     (variant: ThemeVariantName) => {
@@ -1298,7 +1298,7 @@ export function AppearanceSection() {
         </View>
       </SettingsSection>
       {/* Visualizer settings moved to their own top-level section
-          (visualizer-section.tsx) — the rows kept their i18n keys. */}
+          (visualizer-section.tsx) - the rows kept their i18n keys. */}
       <SettingsSection title={t("settings.appearance.fonts.title")}>
         <View style={settingsStyles.card}>
           {showFontFamilyRows ? (
@@ -1452,7 +1452,7 @@ const styles = StyleSheet.create((theme) => ({
   // Same shape as `sizeField`, but it does NOT grow or shrink. `sizeField` sits
   // in a row whose label is a bare title, so letting it flex is harmless; this
   // row carries a wrapping hint, and a growing/shrinking control loses that
-  // negotiation — the label's max-content width wins the free space and the
+  // negotiation - the label's max-content width wins the free space and the
   // slider gets squeezed past its 120px minimum, straight out of the row. A
   // definite width at `sm`+ takes the control out of the competition entirely;
   // when the row stacks it goes full-width and the row centers it.
@@ -1472,7 +1472,7 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 36,
     textAlign: "right",
   },
-  // Same slot, accented while the value is parked on the theme's own tuning —
+  // Same slot, accented while the value is parked on the theme's own tuning -
   // the one position on this slider worth being able to find by eye.
   sizeValueDefault: {
     color: theme.colors.accent,

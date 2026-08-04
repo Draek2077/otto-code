@@ -77,7 +77,7 @@ const GITEA_ACTIONS_RUNS_MAX_PAGES = 5;
 /**
  * Fields requested from `tea pr list -o json`. tea's default field set omits the
  * ones the neutral mapping needs (url, mergeable, base, head, ci, body), so they
- * must be requested explicitly — otherwise tea silently emits the short default
+ * must be requested explicitly - otherwise tea silently emits the short default
  * set and the mapping loses data.
  */
 const PR_LIST_FIELDS =
@@ -647,7 +647,7 @@ function mapGiteaCiStatus(ci: string | undefined): PullRequestChecksStatus {
     case "error":
     // Gitea's "warning" is a terminal, NON-passing state: IsSuccess() is false,
     // it fails required-status checks, and Gitea itself blocks the merge on it.
-    // Our neutral enum has no yellow/neutral bucket, so surface it as failure —
+    // Our neutral enum has no yellow/neutral bucket, so surface it as failure -
     // never success (misleading green) or pending (never-resolving poll).
     case "warning":
       return "failure";
@@ -924,7 +924,7 @@ function toCurrentPullRequestStatus(item: GiteaPrListItem): CurrentPullRequestSt
     checksStatus: mapGiteaCiStatus(item.ci),
     reviewDecision: null,
     // The whole Gitea family (gitea, forgejo, codeberg) tags its facts with the
-    // family id "gitea" — they share one facts shape and one guard. This is the
+    // family id "gitea" - they share one facts shape and one guard. This is the
     // facts-family tag, distinct from the workspace's brand-specific forge id.
     forgeSpecific: { forge: "gitea", ...toGiteaStatusFacts(item) },
   };
@@ -1109,7 +1109,7 @@ function parseHttpStatus(headerDump: string): number | null {
  * `tea api -i` emits. Different tea builds print that line on stdout or stderr,
  * so both streams are parsed. When `-i` is unsupported no status line appears
  * (or the call errors) and the probe is inconclusive (null), leaving the Gitea
- * default in place — the branch is always non-fatal.
+ * default in place - the branch is always non-fatal.
  *
  * Not verified against a live self-hosted Forgejo instance; QA follow-up.
  */
@@ -1170,8 +1170,8 @@ const inFlightFamilyProbes = new Map<string, Promise<GiteaFamilySoftware | null>
 /**
  * Resolve which Gitea-family forge id a host maps to for the open registry:
  * null when there is no usable `tea` login (Otto cannot operate the host),
- * otherwise the detected software. Concurrent calls for the same host — the
- * gitea and forgejo registrations probing in parallel — share one probe so
+ * otherwise the detected software. Concurrent calls for the same host - the
+ * gitea and forgejo registrations probing in parallel - share one probe so
  * detection runs once.
  */
 export function resolveGiteaFamilyForge(host: string): Promise<GiteaFamilySoftware | null> {
@@ -1581,7 +1581,7 @@ export function createGiteaService(options: CreateGiteaServiceOptions = {}): For
 
   // The tasks endpoint pages at a small server default (10 on gitea.com) and a
   // self-hosted cap can sit below our requested 50; it also cannot filter by ref
-  // or sha server-side. A short page therefore does NOT mean the last page —
+  // or sha server-side. A short page therefore does NOT mean the last page -
   // conflating the two drops the current PR's run on a capped instance. Page on
   // until the target sha is found, a page comes back empty, or the bounded
   // max-pages cap is hit.

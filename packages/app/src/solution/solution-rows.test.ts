@@ -90,7 +90,7 @@ describe("the Solution lens's row builder", () => {
 
   it("nests projects inside the solution folder that owns them", () => {
     // The organisational payload of the whole view, and the thing `dotnet sln list` cannot report
-    // — it returns a flat list of project paths.
+    // - it returns a flat list of project paths.
     const rows = buildSolutionRows({
       tree,
       projects: new Map(),
@@ -175,7 +175,7 @@ describe("the Solution lens's row builder", () => {
     const projects = new Map([["src/Core/Core.csproj", loaded]]);
 
     it("shows its evaluated membership, directories expanded by default", () => {
-      // No listing has to be fetched — the whole project arrived in one payload — so collapsing by
+      // No listing has to be fetched - the whole project arrived in one payload - so collapsing by
       // default would hide files for no saving at all.
       const rows = buildSolutionRows({
         tree,
@@ -185,7 +185,7 @@ describe("the Solution lens's row builder", () => {
 
       expect(shape(rows)).toEqual([
         "folder:Src",
-        // Collapsed, so its own project stays hidden — folders before projects at each level.
+        // Collapsed, so its own project stays hidden - folders before projects at each level.
         "  folder:Internal",
         "  solutionProject:Core",
         "    directory:Models",
@@ -208,7 +208,7 @@ describe("the Solution lens's row builder", () => {
     });
 
     it("has no bin or obj node, because no evaluated item lives there", () => {
-      // The one thing a filesystem tree structurally cannot do — and it needs no gitignore rule
+      // The one thing a filesystem tree structurally cannot do - and it needs no gitignore rule
       // and no filter, because build output simply is not in the project.
       const rows = buildSolutionRows({
         tree,

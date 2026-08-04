@@ -12,7 +12,7 @@ interface ScreenTitleProps {
 /**
  * Canonical screen title for use inside `ScreenHeader`. One typography, one
  * color, responsive weight. Leading icons are siblings (HeaderToggleButton,
- * HeaderIconBadge) — never nested inside this component.
+ * HeaderIconBadge) - never nested inside this component.
  */
 export function ScreenTitle({ children, numberOfLines = 1, testID, style }: ScreenTitleProps) {
   const combinedStyle = useMemo(() => [styles.text, style], [style]);

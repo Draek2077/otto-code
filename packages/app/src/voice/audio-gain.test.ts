@@ -48,7 +48,7 @@ describe("applyPcm16Gain", () => {
     expect(out.byteLength).toBe(6);
   });
 
-  // The caller's buffer is often a shared decode result — scaling must not
+  // The caller's buffer is often a shared decode result - scaling must not
   // reach back into it.
   it("does not mutate the caller's buffer", () => {
     const input = pcm16(1000, -2000);

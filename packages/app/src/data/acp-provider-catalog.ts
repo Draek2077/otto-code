@@ -1,5 +1,4 @@
 import { ACP_PROVIDER_ICON_SVGS } from "@/assets/acp-provider-icons";
-import { MATERIAL_SYMBOL_SVGS } from "@/assets/material-symbol-icons";
 
 export interface AcpProviderCatalogModel {
   id: string;
@@ -19,7 +18,7 @@ export interface AcpProviderCatalogEntry {
    * Provider type the installed config entry extends. Most catalog entries
    * are ACP agents ("acp"). "openai-compatible" entries are served natively
    * by the daemon against an OpenAI-compatible HTTP endpoint (LM Studio,
-   * Ollama, vLLM, ...) — no external binary. A built-in provider id (e.g.
+   * Ollama, vLLM, ...) - no external binary. A built-in provider id (e.g.
    * "codex") runs that agent binary against a custom endpoint.
    */
   extends: "acp" | "codex" | "openai-compatible";
@@ -314,21 +313,9 @@ const CATALOG_DATA = [
     installLink: "https://www.compassap.ai/portfolio/nova.html",
     command: ["npx", "-y", "@compass-ai/nova@1.1.31", "acp"],
   },
-  {
-    id: "otto-brain",
-    title: "Otto Brain",
-    description:
-      "Otto's built-in local AI host. Serves your local models over an OpenAI-compatible endpoint, no external server required.",
-    version: "manual",
-    iconId: null,
-    iconSvg: MATERIAL_SYMBOL_SVGS.Neurology,
-    installLink: "https://otto-code.me/docs/brain",
-    extends: "openai-compatible",
-    featured: true,
-    env: {
-      OPENAI_BASE_URL: "http://127.0.0.1:1234/v1",
-    },
-  },
+  // Otto Brain is NOT listed here. It is a built-in provider whose endpoint and
+  // credential come from the brain settings (Settings → Host → Otto Brain), so
+  // there is nothing to add and nothing to configure per-provider.
   {
     id: "openai-compatible",
     title: "OpenAI Compatible",
@@ -415,8 +402,13 @@ const CATALOG_DATA = [
 ] as const;
 
 function resolveCatalogIconSvg(entry: (typeof CATALOG_DATA)[number]): string | null {
-  if ("iconSvg" in entry && entry.iconSvg) {
-    return entry.iconSvg;
+  // An entry may carry its own inline SVG instead of an ACP icon id. No entry
+  // does today, so the literal type of CATALOG_DATA has no such member and the
+  // read needs a widening cast; the branch stays because the field is part of
+  // the catalog shape, not a one-off.
+  const inlineSvg = (entry as { iconSvg?: string }).iconSvg;
+  if (inlineSvg) {
+    return inlineSvg;
   }
   if (entry.iconId) {
     return ACP_PROVIDER_ICON_SVGS[entry.iconId] ?? null;

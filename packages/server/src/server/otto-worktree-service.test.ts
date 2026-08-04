@@ -688,7 +688,7 @@ test.skipIf(isPlatform("win32"))(
     expect(worktreeList).toContain(created.worktreePath);
 
     // Recreating without pruning fails with the stale registration pinning the
-    // branch — this is the case restore must heal.
+    // branch - this is the case restore must heal.
     await expect(
       createWorktree({
         cwd: repoDir,

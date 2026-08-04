@@ -60,7 +60,7 @@ describe("recording", () => {
     const entries = await store.list(PID);
     expect(entries).toHaveLength(1);
     expect(entries[0]?.reinforcedCount).toBe(2);
-    // The newer phrasing wins — it is the one the agent just found useful.
+    // The newer phrasing wins - it is the one the agent just found useful.
     expect(entries[0]?.text).toContain("in this repo");
   });
 
@@ -202,7 +202,7 @@ describe("revising", () => {
 
   it("binds a lesson to the caller's project when it moves from global to project", async () => {
     // Without this, "This project" produces an entry with no root, which the
-    // brief's scope filter then skips in EVERY project — listed, never sent.
+    // brief's scope filter then skips in EVERY project - listed, never sent.
     await store.record({
       personalityId: PID,
       lesson: "a fact that turned out to be repo-specific",

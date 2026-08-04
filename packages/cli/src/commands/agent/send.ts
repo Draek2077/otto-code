@@ -213,7 +213,7 @@ export async function runSendCommand(
       ...(options.queue ? { delivery: "queue" as const } : {}),
     });
 
-    // A queued message has no run to wait for yet — it starts when the current
+    // A queued message has no run to wait for yet - it starts when the current
     // turn ends, so report it and return rather than blocking on --wait.
     if (dispatch.queued) {
       await client.close();

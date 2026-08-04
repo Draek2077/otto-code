@@ -9,17 +9,17 @@ in [outreach.md](outreach.md) §3; this file is the production plan.
 
 Everything below is produced by the existing `site-demos` pipeline (`packages/app/demo/`, Playwright,
 2560×1440, both Twilight and Daylight themes, MP4/WebM + PNG + `manifest.json`, no GIF). The pipeline
-exists and works; **the website consumes none of its output yet** — that gap is Phase 0.3.
+exists and works; **the website consumes none of its output yet** - that gap is Phase 0.3.
 
 | #   | Asset                     | Spec                                                                                                                                          | Used by                                                  |
 | --- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| A1  | **The parity clip**       | 40s. Same task, same repo, same browser-verified preview — Claude first, then a local LM Studio model. Payoff visible in the first 2 seconds. | Everything. Landing page, every post, every pitch        |
+| A1  | **The parity clip**       | 40s. Same task, same repo, same browser-verified preview - Claude first, then a local LM Studio model. Payoff visible in the first 2 seconds. | Everything. Landing page, every post, every pitch        |
 | A2  | Multi-provider split pane | 20s. Two providers, one workspace, side by side.                                                                                              | r/LocalLLaMA, LM Studio, Ollama                          |
 | A3  | Preview verification      | 25s. Agent starts the dev server, changes code, screenshots the result, shows proof.                                                          | HN brief, DEV article, Console.dev                       |
 | A4  | Personalities & teams     | 20s. Named agents with roles and colors; one spawning another.                                                                                | r/ClaudeCode, Anthropic form                             |
 | A5  | Phone continuation        | 15s. Desk → phone, same session. **Supporting, never the lead** (see [outreach.md](outreach.md) §2a).                                         | Store listings, mobile-adjacent subs                     |
 | A6  | Subagent accounting       | 20s. Real per-subagent token/cost rows.                                                                                                       | The benchmark post, r/mcp                                |
-| A7  | Stills                    | Hero, split panes, personalities, changes view — both themes                                                                                  | Directories, press kit, store cards                      |
+| A7  | Stills                    | Hero, split panes, personalities, changes view - both themes                                                                                  | Directories, press kit, store cards                      |
 | A8  | Press kit                 | `/press`: one-line + one-paragraph descriptions, logo pack, A1, stills, honest limitations, contact                                           | Every Phase 1 submission and Phase 6 pitch               |
 | A9  | Docker Compose snippet    | Copy-pasteable, in the README                                                                                                                 | **Effectively required** by r/selfhosted, homelab stores |
 | A10 | Benchmark result page     | Phase 4. Methodology, reproducible harness, raw JSON/CSV, permanent URL.                                                                      | The citable artifact                                     |
@@ -37,10 +37,10 @@ Length, required fields, and the trap for each. The pipeline enforces these
 | Channel                | Shape                                                                                                    | Required                                                    | Trap                                                        |
 | ---------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------- |
 | **Hacker News**        | Title = the claim, not the product. Maker comment in minute 1: what, why, stack, **honest limitations**. | Human-written, top to bottom                                | Any AI-generated _or AI-edited_ text. Soliciting votes.     |
-| **r/selfhosted**       | Screen-recorded clip → what it is → Compose snippet → GitHub link → "I built this"                       | A9, docs, production-ready claim                            | Standalone posts blocked until 2026-10-05 — megathread only |
-| **r/LocalLLaMA**       | Comparison framing: "same harness against LM Studio vs Claude — here's what breaks"                      | Disclose affiliation                                        | Reads as a product ad rather than a finding                 |
+| **r/selfhosted**       | Screen-recorded clip → what it is → Compose snippet → GitHub link → "I built this"                       | A9, docs, production-ready claim                            | Standalone posts blocked until 2026-10-05 - megathread only |
+| **r/LocalLLaMA**       | Comparison framing: "same harness against LM Studio vs Claude - here's what breaks"                      | Disclose affiliation                                        | Reads as a product ad rather than a finding                 |
 | **r/ClaudeCode**       | Showcase with A1 + A4                                                                                    | **Flair: `Showcase` or `Resource`**                         | Posting without flair = auto-removal                        |
-| **r/programming**      | **Technical writeup only** — never a project post                                                        | Substance about a hard problem                              | "Just a link to a github page or a list of features"        |
+| **r/programming**      | **Technical writeup only** - never a project post                                                        | Substance about a hard problem                              | "Just a link to a github page or a list of features"        |
 | **DEV**                | **Full article body on DEV** (linking out violates their terms)                                          | `canonical_url` home, ≤4 tags, **AI-assistance disclosure** | Teaser-plus-link                                            |
 | **Mastodon/Fosstodon** | Real post with context, ≤3 hashtags                                                                      | Never a bare link                                           | Link-only posts and hashtag stuffing trip their ad rule     |
 | **Bluesky**            | Native video first, link in a reply                                                                      | Own content only                                            | Any automated reply causes a notification → prohibited      |
@@ -50,7 +50,7 @@ Length, required fields, and the trap for each. The pipeline enforces these
 
 ### The hook, pre-written
 
-> A solo maker gave a local LM Studio model the same harness Anthropic gives Claude — browser-verified
+> A solo maker gave a local LM Studio model the same harness Anthropic gives Claude - browser-verified
 > previews, subagent visibility, MCP, compaction. Here's what broke and what didn't.
 
 Benchmarkable, filmable, and true. Use it in every pitch.
@@ -82,7 +82,7 @@ Changelog News.
 ## 4. Editorial calendar
 
 Cadence: **one substantial piece every 2–3 weeks.** The Cline lesson is that the argument is the
-marketing and the product is the proof — and that is a strategy a solo maker can actually sustain,
+marketing and the product is the proof - and that is a strategy a solo maker can actually sustain,
 because it is writing rather than spend. It is also the entire supply line for Changelog News,
 Console.dev, Pointer.io, Pragmatic Engineer, and r/programming.
 
@@ -91,7 +91,7 @@ Console.dev, Pointer.io, Pragmatic Engineer, and r/programming.
 | 1    | Giving a local model the frontier harness             | Phase 0 gate, Console.dev, Changelog News        |
 | 2    | Proof, not "should work now"                          | Phase 0 gate, DEV `#showdev`                     |
 | 3    | What happens when your provider changes the rules     | Phase 0 gate; held ready for the next incident   |
-| 4    | Six providers, one agent loop — what actually differs | r/programming (technical-writeup rule), Lobsters |
+| 4    | Six providers, one agent loop - what actually differs | r/programming (technical-writeup rule), Lobsters |
 | 5    | **Benchmark v1** (Phase 4)                            | The citable artifact; GosuCoder; HN              |
 | 6    | Otto runs its own outreach                            | The dogfooding story; DEV; the pipeline as proof |
 | 7    | Show HN companion writeup                             | Phase 6                                          |
@@ -99,7 +99,7 @@ Console.dev, Pointer.io, Pragmatic Engineer, and r/programming.
 **Rule: never publish on a schedule you cannot hold.** Directories drop inactive projects
 (awesome-selfhosted at 6–12 months, daily.dev at 3), and the Aider/Void failure mode is maintainer
 attrition, not bad marketing. If a choice arises between shipping code and shipping a post, ship the
-code — visible shipping is itself a distribution channel.
+code - visible shipping is itself a distribution channel.
 
 ---
 

@@ -8,7 +8,7 @@ import type { StructuredTextGeneration } from "../session/checkout/git-metadata-
 import { isStructuredGenerationFailure } from "./agent-response-loop.js";
 
 /**
- * Short spoken "cue" lines for a personality's Visualizer node — a few
+ * Short spoken "cue" lines for a personality's Visualizer node - a few
  * variations each for the lifecycle moments in CUE_MOMENTS. Authored by the
  * Writer mini-task chain (same routing as commit messages), flavored by the
  * persona's name + prompt. This is an editor-time action: the result is stored on the
@@ -44,10 +44,10 @@ export interface VoiceCueGenerator {
   /**
    * Generate a cue pool for a persona described inline (so it works for an
    * unsaved editor draft). Returns null when generation fails with no usable
-   * lines. Not cached — the caller stores the result on the personality.
+   * lines. Not cached - the caller stores the result on the personality.
    *
    * Pass `moment` to author only that one group (a focused, single-moment
-   * prompt) — the other groups come back empty. This is how the editor drives a
+   * prompt) - the other groups come back empty. This is how the editor drives a
    * per-moment progress bar and keeps each moment's lines distinct. Omit
    * `moment` to author every moment at once (the legacy all-in-one path).
    */
@@ -78,13 +78,13 @@ const VOICE_CUE_SCHEMA = z.object({
   waiting: GROUP,
   done: GROUP,
 });
-// Single-moment response — just the lines for the one moment being authored.
+// Single-moment response - just the lines for the one moment being authored.
 const SINGLE_MOMENT_SCHEMA = z.object({ lines: GROUP });
 
 interface MomentSpec {
   // Human word for the moment, used in the prompt heading.
   label: string;
-  // What is TRUE at this exact instant — the discriminator that keeps the
+  // What is TRUE at this exact instant - the discriminator that keeps the
   // groups from blurring into each other.
   meaning: string;
   // The stock lines everyone reaches for at this moment. Fed to the model as a
@@ -97,30 +97,30 @@ interface MomentSpec {
 // Each moment is defined by what is true at that instant, plus the stock lines
 // to ban. The banned sets deliberately share no phrasing across moments so the
 // model doesn't collapse them together (the old prompt's "All set" read as done
-// but works equally as start/ack — exactly the ambiguity we're avoiding here).
+// but works equally as start/ack - exactly the ambiguity we're avoiding here).
 const MOMENT_SPECS: Record<CueMoment, MomentSpec> = {
   join: {
     label: "STARTING",
     meaning:
-      "the agent has just picked up the task and is about to begin — nothing is done yet, and it hasn't started reasoning. Every line must sound like the very start of the work.",
+      "the agent has just picked up the task and is about to begin - nothing is done yet, and it hasn't started reasoning. Every line must sound like the very start of the work.",
     overused: ["On it", "Starting now", "Here we go", "Let's begin", "Picking this up"],
   },
   thinking: {
     label: "THINKING",
     meaning:
-      "the agent is in the middle of the work, actively reasoning or figuring something out — it has already started but is NOT finished. Every line must sound like effort in progress.",
+      "the agent is in the middle of the work, actively reasoning or figuring something out - it has already started but is NOT finished. Every line must sound like effort in progress.",
     overused: ["Let me think", "Digging in", "Working through this", "Hmm, one sec", "Still going"],
   },
   waiting: {
     label: "WAITING",
     meaning:
-      "the agent has finished ITS OWN part of the turn but helpers it delegated to are still running, so it has nothing to do but wait on them — the work as a whole is NOT complete and it is not reasoning either. Every line must sound like idling on someone else, never like finality.",
+      "the agent has finished ITS OWN part of the turn but helpers it delegated to are still running, so it has nothing to do but wait on them - the work as a whole is NOT complete and it is not reasoning either. Every line must sound like idling on someone else, never like finality.",
     overused: ["Waiting on it", "Hang tight", "Almost there", "Any second now", "Just waiting"],
   },
   done: {
     label: "COMPLETED",
     meaning:
-      "the agent has FINISHED the task and is handing back the result — the work is over. Every line must carry finality; a listener must be able to tell the work is complete, not starting or ongoing.",
+      "the agent has FINISHED the task and is handing back the result - the work is over. Every line must carry finality; a listener must be able to tell the work is complete, not starting or ongoing.",
     overused: ["Done", "Finished", "Wrapped up", "That's shipped", "All yours"],
   },
 };
@@ -129,12 +129,12 @@ function personaBlock(name: string, prompt?: string, roles?: string[]): string[]
   const persona = prompt?.trim();
   const known = normalizePersonalityRoles(roles);
   // A personality holding every role carries no information about what it does
-  // — and the editor hands new personalities the full set by default — so
+  // - and the editor hands new personalities the full set by default - so
   // feeding that back as flavor is pure noise that dilutes the name/persona.
   const rolesAreDistinguishing = known.length > 0 && known.length < PERSONALITY_ROLES.length;
   return [
     `Name: ${name.trim() || "the agent"}`,
-    persona ? `Persona: ${persona}` : `Persona: (no description — infer a tone from the name)`,
+    persona ? `Persona: ${persona}` : `Persona: (no description - infer a tone from the name)`,
     ...(rolesAreDistinguishing
       ? [
           `Roles (what this agent is actually for; let the job color its word choice):`,
@@ -152,14 +152,14 @@ function personaBlock(name: string, prompt?: string, roles?: string[]): string[]
 const LINE_RULES = [
   `Rules for every line:`,
   `- VERY short: 1–5 words, the kind of thing you'd blurt out loud.`,
-  `- Casual and natural spoken English — no robotic phrasing, no emoji, no quotes, minimal punctuation.`,
+  `- Casual and natural spoken English - no robotic phrasing, no emoji, no quotes, minimal punctuation.`,
   `- Each line must clearly belong to ITS moment and would sound wrong at the others. Do not reuse a generic line (like "All set", "Okay", "Ready") that could fit more than one moment.`,
   // The four rules below are the anti-sameness ones. Without them the model
   // returns the same neutral agent-speak for every personality, which is the
   // whole complaint: cues that don't sound like the character they belong to.
-  `- This is THIS character talking, not a generic assistant. A stranger who knows the persona should be able to guess whose lines these are. If a line would fit any other agent unchanged, it is wrong — rewrite it.`,
+  `- This is THIS character talking, not a generic assistant. A stranger who knows the persona should be able to guess whose lines these are. If a line would fit any other agent unchanged, it is wrong - rewrite it.`,
   `- Lean hard into the persona's specific voice: its vocabulary, its attitude, its verbal habits, whatever it would actually care about. A blunt persona is blunt; a theatrical one is theatrical; a nervous one hedges.`,
-  `- Vary the shape across the set — not four rewordings of one idea. Mix lengths, and mix forms (a fragment, an aside, a reaction, a muttered thought).`,
+  `- Vary the shape across the set - not four rewordings of one idea. Mix lengths, and mix forms (a fragment, an aside, a reaction, a muttered thought).`,
   `- Avoid stock agent phrasing. If the line sounds like default chatbot filler, it is too safe.`,
 ];
 
@@ -177,7 +177,7 @@ function buildMomentPrompt(
     "",
     `Write lines ${name.trim() || "the agent"} says OUT LOUD at exactly ONE moment: ${spec.label}.`,
     `At this moment, ${spec.meaning}`,
-    `BANNED — these are the stock lines every agent uses. Do not output them, or near-variants of them: ${spec.overused.join(", ")}.`,
+    `BANNED - these are the stock lines every agent uses. Do not output them, or near-variants of them: ${spec.overused.join(", ")}.`,
     "",
     ...LINE_RULES,
     "",

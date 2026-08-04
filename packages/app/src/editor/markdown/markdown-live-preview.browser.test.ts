@@ -6,7 +6,7 @@ import { createEditorCore, type EditorCore } from "../editor-core";
 // Live preview against a real CM6 in a real browser. None of this survives a
 // mock: the behaviour IS the interaction between the markdown parse tree, the
 // selection, and CodeMirror's decoration/measurement pipeline. What is asserted
-// here is what the user can see — the rendered text of the content DOM — rather
+// here is what the user can see - the rendered text of the content DOM - rather
 // than the decoration set, because a decoration that exists but does not hide
 // anything would pass a structural assertion and fail the user.
 
@@ -106,7 +106,7 @@ describe("markdown live preview", () => {
     expect(lines[0]).toBe("Title");
   });
 
-  it("leaves the document itself alone — decorations never rewrite text", async () => {
+  it("leaves the document itself alone - decorations never rewrite text", async () => {
     const { core } = mount();
     expect(await core.getDoc()).toBe(DOC);
   });

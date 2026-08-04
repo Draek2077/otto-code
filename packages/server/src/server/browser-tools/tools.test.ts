@@ -67,7 +67,7 @@ class BrowserToolHarness {
       previewServers: previewServers
         ? { list: (cwd?: string) => previewServers.filter((s) => !cwd || s.cwd === cwd) }
         : null,
-      // Deterministic resolver for the SSRF screen — tests must never do real DNS.
+      // Deterministic resolver for the SSRF screen - tests must never do real DNS.
       lookupHost: async (host) => {
         const table: Record<string, string> = {
           "example.com": "93.184.216.34",
@@ -507,7 +507,7 @@ const routedToolCases = [
       },
     },
     content: [
-      { type: "text", text: `Focused browser tab ${BROWSER_ID} — it is now visible to the user.` },
+      { type: "text", text: `Focused browser tab ${BROWSER_ID} - it is now visible to the user.` },
     ],
   },
   {
@@ -1020,7 +1020,7 @@ describe("registerBrowserTools", () => {
       ok: false,
       error: {
         message:
-          "browser_screenshot captures either an element (ref) or the page (fullPage) — not both.",
+          "browser_screenshot captures either an element (ref) or the page (fullPage) - not both.",
       },
     });
   });
@@ -1049,7 +1049,7 @@ describe("registerBrowserTools", () => {
     expect(response.content[0]).toEqual({
       type: "text",
       text:
-        "Captured browser screenshot (157x1568). The page was captured at 20% scale to fit — small text may be unreadable. " +
+        "Captured browser screenshot (157x1568). The page was captured at 20% scale to fit - small text may be unreadable. " +
         "For readable detail, take viewport screenshots with browser_scroll between them, or pass ref to zoom into one element.",
     });
   });
@@ -1192,7 +1192,7 @@ describe("registerBrowserTools", () => {
     expect(harness.broker.calls).toEqual([]);
     expect(response.structuredContent).toMatchObject({
       ok: false,
-      error: { message: "browser_resize needs width and height together — or use a preset." },
+      error: { message: "browser_resize needs width and height together - or use a preset." },
     });
   });
 

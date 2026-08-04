@@ -13,15 +13,15 @@ import { seedDemoCast, type DemoCast } from "../staging/cast";
 import { seedDemoWorkspace, type DemoWorkspace } from "../staging/seed";
 
 /**
- * Scenario 06 — The combined model/personality picker (one feature: the same
+ * Scenario 06 - The combined model/personality picker (one feature: the same
  * picker on every surface, role-aware). Chats, schedules, and artifacts all
  * render the identical CombinedModelSelector; the cast's uneven roles make
- * the filtering visible — schedules put Tempo (scheduler) up front, artifacts
+ * the filtering visible - schedules put Tempo (scheduler) up front, artifacts
  * Muse (artificer), chat the chatter subset. No team is active: with one, the
  * picker strictly scopes to team members (that story is scenario 05) and the
  * cross-team role spread here would vanish.
  *
- * Forms are filled completely, top to bottom, before they're photographed —
+ * Forms are filled completely, top to bottom, before they're photographed -
  * a tutorial screenshot shows the software being used properly, never a
  * placeholder state.
  */
@@ -82,7 +82,7 @@ test("model picker across surfaces", async ({ page }, testInfo) => {
   await recorder.shot(
     "chat-picker",
     "One picker for chats",
-    "Providers, models, and personalities in one place — chat surfaces lead with the conversational cast.",
+    "Providers, models, and personalities in one place - chat surfaces lead with the conversational cast.",
   );
   await closePicker();
 
@@ -111,7 +111,7 @@ test("model picker across surfaces", async ({ page }, testInfo) => {
   await recorder.shot(
     "schedule-picker",
     "Role-aware: schedulers only",
-    "Personalities are filtered by role here — the schedulers, Tempo and Dash, step forward.",
+    "Personalities are filtered by role here - the schedulers, Tempo and Dash, step forward.",
   );
 
   await selectPersonalityInPicker(page, cast.personalities.tempo.id);
@@ -119,7 +119,7 @@ test("model picker across surfaces", async ({ page }, testInfo) => {
   await recorder.shot(
     "schedule-form",
     "A schedule run by Tempo",
-    "Name, prompt, project, and the personality that runs it — the same picker chats use.",
+    "Name, prompt, project, and the personality that runs it - the same picker chats use.",
   );
   await page.keyboard.press("Escape"); // close the form sheet without saving
   await beat(page);
@@ -140,7 +140,7 @@ test("model picker across surfaces", async ({ page }, testInfo) => {
     page.getByTestId("artifact-description-input"),
     "A one-page dashboard of storefront conversion metrics with mock data and dark styling.",
   );
-  // The sheet's model catalog resolves from the selected project's host —
+  // The sheet's model catalog resolves from the selected project's host -
   // without a project it renders "No models match your search".
   await humanClick(page, page.getByTestId("artifact-project-trigger"));
   await selectComboOption(workspace.projectDisplayName);
@@ -151,7 +151,7 @@ test("model picker across surfaces", async ({ page }, testInfo) => {
   await recorder.shot(
     "artifact-picker",
     "Role-aware: artificers only",
-    "The artificers — Muse and Pixel — are offered here; same picker, different role filter.",
+    "The artificers - Muse and Pixel - are offered here; same picker, different role filter.",
   );
 
   await selectPersonalityInPicker(page, cast.personalities.muse.id);
@@ -159,7 +159,7 @@ test("model picker across surfaces", async ({ page }, testInfo) => {
   await recorder.shot(
     "artifact-form",
     "An artifact authored by Muse",
-    "Name, prompt, project, and the artificer who'll build it — ready to generate.",
+    "Name, prompt, project, and the artificer who'll build it - ready to generate.",
   );
 
   await recorder.finish(testInfo);

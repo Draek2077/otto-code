@@ -7,7 +7,7 @@ import {
 } from "./export-markdown-pdf";
 
 /**
- * `printToPDF` is Electron's, and there is no headless stand-in for it — the
+ * `printToPDF` is Electron's, and there is no headless stand-in for it - the
  * bytes it produces are proven by hand and by the packaged desktop smoke, not
  * here. What is testable is everything around it: where the file lands, what
  * the printer is handed, and that both failure paths surface as a failed

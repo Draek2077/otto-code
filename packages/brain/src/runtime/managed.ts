@@ -2,11 +2,11 @@
  * The self-contained runtime source: otto-brain downloads a pinned llama.cpp
  * build into `$OTTO_HOME/otto-brain/runtimes/` and runs it directly, so the tool
  * needs no other software installed. Downloaded runtimes keep their DLLs in the
- * same directory as the exe (so `vendorDir` is null — buildEnv already puts the
+ * same directory as the exe (so `vendorDir` is null - buildEnv already puts the
  * runtime dir on PATH, which is what the DLL-stub trap requires).
  *
- * Extraction uses only OS built-ins — PowerShell's Expand-Archive for .zip and
- * the bundled `tar` for tarballs — to keep the "nothing else to install" promise.
+ * Extraction uses only OS built-ins - PowerShell's Expand-Archive for .zip and
+ * the bundled `tar` for tarballs - to keep the "nothing else to install" promise.
  */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -130,7 +130,7 @@ async function extractArchive(archivePath: string, destDir: string): Promise<voi
   if (/\.zip$/i.test(archivePath)) {
     // PowerShell ships with Windows; -Force overwrites an interrupted extract.
     // Paths are rooted at $OTTO_HOME (under the user profile), so a username with
-    // an apostrophe would break — or inject into — a raw single-quoted string.
+    // an apostrophe would break - or inject into - a raw single-quoted string.
     // Escape single quotes for PowerShell (a literal ' is written as '').
     const psQuote = (value: string): string => `'${value.replace(/'/g, "''")}'`;
     await run("powershell", [

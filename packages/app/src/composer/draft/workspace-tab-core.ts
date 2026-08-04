@@ -39,7 +39,7 @@ export function resolveAutoSubmitConfig(
 /**
  * The personality id to send to createAgent. Prefers `spawnPersonalityId`,
  * because `selectedPersonalityId` is the synthetic "Team's <Role>" sentinel
- * whenever that slot is picked — an id no roster entry matches, which made the
+ * whenever that slot is picked - an id no roster entry matches, which made the
  * daemon skip the personality entirely and spawn a bare agent on whatever model
  * the device last remembered.
  */

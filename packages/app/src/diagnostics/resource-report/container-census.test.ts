@@ -27,7 +27,7 @@ describe("censusContainers", () => {
       { prefix: "session" },
     );
 
-    // 2 keyed streams holding 5 items in total — and no agent id in the key space.
+    // 2 keyed streams holding 5 items in total - and no agent id in the key space.
     expect(metrics).toEqual({ "session.streams.size": 2, "session.streams.*.length": 5 });
   });
 

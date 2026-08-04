@@ -1,6 +1,6 @@
 import "./checkout.css";
 
-/** Checkout page — form fields in place, submit wiring lands with the payments API. */
+/** Checkout page - form fields in place, submit wiring lands with the payments API. */
 export default function Checkout({ cartCount }) {
   function handleSubmit(event) {
     event.preventDefault();

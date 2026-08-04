@@ -56,7 +56,7 @@ function findLatestRunAgentId(runs: readonly ScheduleRun[]): string | null {
 
 /**
  * The schedules grid: cards across every connected host, wrapping 1-2 columns
- * wide (Schedules cards read wider/landscape vs. Artifacts' narrower cards —
+ * wide (Schedules cards read wider/landscape vs. Artifacts' narrower cards -
  * see artifact-grid.tsx for the 2-3 column counterpart). Cards own their
  * host-scoped mutations (pause/resume/run/delete via the mutations hook + a
  * destructive confirm) and delegate editing upward.

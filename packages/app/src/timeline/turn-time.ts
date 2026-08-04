@@ -26,7 +26,7 @@ const ESTIMATED_CHARS_PER_TOKEN = 4;
 
 // Tool payload sizes are cached by payload identity. The merge logic reuses
 // the existing detail object when an update doesn't change it, so status-only
-// item replacements (running → completed) don't re-stringify large payloads —
+// item replacements (running → completed) don't re-stringify large payloads -
 // only genuinely new tool output does.
 const toolCallCharsCache = new WeakMap<object, number>();
 
@@ -120,7 +120,7 @@ export function deriveStreamTurnTiming(params: {
     flushCompletedTurn();
   }
 
-  // After the walk, currentStreamedChars holds the last turn's total — which
+  // After the walk, currentStreamedChars holds the last turn's total - which
   // is the in-flight turn exactly when the agent is running. Exact values are
   // fine here: the only per-tick re-render is the small token Text (the
   // spinner is memo-isolated in the footer).

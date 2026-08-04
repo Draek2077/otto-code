@@ -3,7 +3,7 @@
 // reanimated) and text-effect-rain.web.tsx (CSS keyframes); everything that
 // must not drift between them lives here.
 //
-// The rain is pure decoration drawn over the label — it never reads, splits, or
+// The rain is pure decoration drawn over the label - it never reads, splits, or
 // replaces the text. Columns are a fixed pitch across the measured text span,
 // so a 4-character label and a 40-character one cost the same per column.
 //
@@ -21,7 +21,7 @@ export interface TextEffectRainProps {
   width: number;
   /**
    * Varies the rain between badges so two rows running at once don't show the
-   * same glyphs. Only the *characters* depend on it — never the layout.
+   * same glyphs. Only the *characters* depend on it - never the layout.
    */
   seed: string;
 }
@@ -32,7 +32,7 @@ export interface RainColumn {
   index: number;
   /** Shown as the strip arrives. */
   glyphA: string;
-  /** Swaps in behind it, then fades — the trailing half of the cycle. */
+  /** Swaps in behind it, then fades - the trailing half of the cycle. */
   glyphB: string;
 }
 
@@ -45,7 +45,7 @@ export interface RainColumn {
  * 7px Matrix pitch this covers ~900px of text. The old 48 was hit by any label
  * past ~380px, and because the overflow is absorbed by *widening* the pitch
  * (see buildRainColumns), that made long labels visibly less dense than short
- * ones — the same effect reading differently depending on how much text it
+ * ones - the same effect reading differently depending on how much text it
  * happened to be sitting on.
  */
 export const MAX_RAIN_COLUMNS = 128;
@@ -87,7 +87,7 @@ export function buildRainColumns(
 ): RainLayout {
   const count = Math.min(MAX_RAIN_COLUMNS, Math.max(0, Math.ceil(width / cellWidth)));
   // Spread the (capped) columns across the whole width so they always reach the
-  // end. The animation is unchanged — only the per-column pitch adapts.
+  // end. The animation is unchanged - only the per-column pitch adapts.
   const spanCellWidth = count > 0 ? width / count : cellWidth;
   const seedValue = hashSeed(seed);
   const columns = Array.from({ length: count }, (_unused, index) => ({

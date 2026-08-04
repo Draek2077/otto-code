@@ -12,12 +12,12 @@ import { exportSiblingPath, markdownToHtmlDocument } from "./markdown-to-html";
  * alerts, footnotes and MathML formulas, and a change to the export stylesheet
  * lands in both at once.
  *
- * Printing is Electron-only, so this whole path is desktop-only — the caller
+ * Printing is Electron-only, so this whole path is desktop-only - the caller
  * omits the action elsewhere rather than offering one that cannot work.
  *
  * The write goes through the daemon like every other write in this app: the
  * client never touches a workspace file itself, on any platform. That the
- * bytes were produced by the desktop main process changes nothing — main is on
+ * bytes were produced by the desktop main process changes nothing - main is on
  * the same machine as the *app*, which is not necessarily the machine the
  * workspace is on.
  */
@@ -29,7 +29,7 @@ export interface PdfPrinter {
 }
 
 /**
- * The one daemon call this needs, as a port — narrower than `DaemonClient` so a
+ * The one daemon call this needs, as a port - narrower than `DaemonClient` so a
  * test can supply an in-memory adapter. Gated on `features.binaryFileWrite`:
  * the text write refuses binary targets outright, so re-exporting over an
  * existing PDF is not something the older RPC could ever have done.
@@ -72,8 +72,8 @@ export async function exportMarkdownAsPdf(input: {
   try {
     contentBase64 = await input.printer.printHtml({ html });
   } catch (error) {
-    // A failed print is the likely failure here — a window that would not load,
-    // a renderer that died — and it has to read as a failed export rather than
+    // A failed print is the likely failure here - a window that would not load,
+    // a renderer that died - and it has to read as a failed export rather than
     // an unhandled rejection with a toast that never comes.
     return { status: "error", message: errorMessage(error) };
   }

@@ -241,7 +241,7 @@ interface DiffFileSectionProps {
   isExpanded: boolean;
   /** Tree indentation level (0 on the flat/mobile path). */
   depth?: number;
-  /** which indent rails keep running below this row — see tree-rail-mask.ts */
+  /** which indent rails keep running below this row - see tree-rail-mask.ts */
   ancestorMask?: number;
   /** Show the muted directory suffix (flat list); false inside the folder tree. */
   showDir?: boolean;
@@ -1171,7 +1171,7 @@ const DiffFileHeader = memo(function DiffFileHeader({
   );
 });
 
-// A single expanded diff body renders every line as its own view stack — the
+// A single expanded diff body renders every line as its own view stack - the
 // body is NOT internally virtualized (only the outer file list is). One
 // enormous file therefore mounts tens of thousands of views and stalls/crashes
 // the app (e.g. via "expand all"). The server already caps a file's diff at 1MB
@@ -1194,7 +1194,7 @@ function isDiffBodyTooLargeToRender(file: ParsedDiffFile): boolean {
 
 // Expanding thousands of files at once mounts thousands of diff bodies and blows
 // up the list's layout math (getItemLayout is superlinear over the item list).
-// Past this many changed files, "expand all" is disabled — files can still be
+// Past this many changed files, "expand all" is disabled - files can still be
 // expanded individually, and each over-cap file is itself placeholdered above.
 const MAX_EXPAND_ALL_FILE_COUNT = 500;
 
@@ -1451,7 +1451,7 @@ const DIFF_CONTEXT_HISTORY_ICON = (
  * handler live together instead of adding three more branches to GitDiffPane,
  * which is already at the complexity ceiling. Every row in this pane is a
  * tracked path in the repo, so unlike the Files explorer there is no
- * is-this-a-repo test to make — if the host can answer, the question applies.
+ * is-this-a-repo test to make - if the host can answer, the question applies.
  */
 function DiffContextHistoryMenuItem({
   serverId,
@@ -2281,7 +2281,7 @@ const EMPTY_DESELECTED_PATHS: ReadonlySet<string> = new Set<string>();
 // The diff body reads the raw code-size setting directly, so it bypasses the
 // global compact font patch (apply-appearance bumps theme.fontSize.code +2 on
 // compact). Re-apply that +2 on mobile so the diff code matches the rest of the
-// compact UI — the file list and commit UI get a matching bump in the stylesheet.
+// compact UI - the file list and commit UI get a matching bump in the stylesheet.
 function resolveDiffCodeFontSize(baseCodeFontSize: number, isMobile: boolean): number {
   return isMobile ? baseCodeFontSize + 2 : baseCodeFontSize;
 }
@@ -2292,7 +2292,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
   const isMobile = useIsCompactFormFactor();
   // Not gated on form factor: a narrow browser window still draws the platform's
   // dated bar, so compact web needs the themed overlay every bit as much as
-  // desktop does. Native is unaffected — the hook no-ops off web.
+  // desktop does. Native is unaffected - the hook no-ops off web.
   const showWebScrollbar = isWeb;
   const canUseSplitLayout = isWeb && !isMobile;
   const { preferences: changesPreferences, updatePreferences: updateChangesPreferences } =
@@ -2569,7 +2569,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
   // Build the directory tree once per files-change; collapse/expand toggles only
   // re-flatten it (they don't change tree shape).
   const compressedTree = useMemo(() => compressSingleChildChains(buildDiffTree(files)), [files]);
-  // Every directory path currently in the tree — used by "collapse all folders" and to
+  // Every directory path currently in the tree - used by "collapse all folders" and to
   // filter stale collapse state.
   const allFolderPaths = useMemo(() => collectDirPaths(compressedTree), [compressedTree]);
   const allFolderPathSet = useMemo(() => new Set(allFolderPaths), [allFolderPaths]);
@@ -2752,7 +2752,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
 
   // Offset of the first item matching `predicate`, walking the SAME flatItems
   // list getFlatItemLayout uses so folder rows are counted (single source of
-  // truth — Codex item 5 / finding 2).
+  // truth - Codex item 5 / finding 2).
   const computeItemOffset = useCallback(
     (predicate: (item: DiffFlatItem) => boolean): number | null => {
       const index = flatItems.findIndex(predicate);
@@ -2846,7 +2846,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
 
   // Expand/collapse all owns FOLDERS as well as file bodies. In tree mode a
   // collapsed folder hides its files outright, so "everything is open" means
-  // every body expanded AND every folder expanded — and one collapse press has
+  // every body expanded AND every folder expanded - and one collapse press has
   // to close both, or the list still shows every file header afterwards.
   const allDiffsExpanded = useMemo(
     () => allFileDiffsExpanded && (viewMode !== "tree" || collapsedFolders.size === 0),
@@ -2864,7 +2864,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
       }
       return;
     }
-    // Never expand thousands of bodies at once — that's the crash path. Only the
+    // Never expand thousands of bodies at once - that's the crash path. Only the
     // body half is capped: collapsing, and opening folders, always stay available.
     if (files.length <= MAX_EXPAND_ALL_FILE_COUNT) {
       setDiffExpandedPathsForWorkspace(
@@ -2887,7 +2887,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
 
   // "View changes" from the Files tree or a file tab's toolbar. The request is
   // stashed in the panel store before the tab switch, so this pane usually
-  // consumes it on mount — with the diff still loading and nothing measured.
+  // consumes it on mount - with the diff still loading and nothing measured.
   // Hence a small state machine rather than one shot: each step below writes
   // store state and returns, and the effect re-runs on the result until the
   // file's header is reachable and can be scrolled to.
@@ -2961,7 +2961,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
     diffListRef.current?.scrollToOffset({ offset, animated: false });
     // Rows above the target are estimated until they render and measure
     // themselves, so that first landing can be off. Re-assert once they have
-    // settled — the same correction the Files tree makes after a reveal.
+    // settled - the same correction the Files tree makes after a reveal.
     if (revealSettleTimerRef.current !== null) {
       clearTimeout(revealSettleTimerRef.current);
     }
@@ -3140,7 +3140,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
   }, []);
 
   const handleLineContextMenu = useCallback<LineContextMenuHandler>(({ target, x, y }) => {
-    // Prefer the new-side line number — that's what maps onto the file on
+    // Prefer the new-side line number - that's what maps onto the file on
     // disk. Removed lines fall back to the old-side number as a near match.
     setContextMenuRequest({
       path: target.filePath,
@@ -3586,7 +3586,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
-    // Fixed chrome height — content (branch-name casing, platform font
+    // Fixed chrome height - content (branch-name casing, platform font
     // metrics) must never drive the bar height. Desktop matches the
     // diff-status bar below (WORKSPACE_SECONDARY_HEADER_HEIGHT); compact
     // keeps the previous rendered height, fitting the GitActionsSplitButton
@@ -3606,7 +3606,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   diffStatusContainer: {
     // Matches the neighboring pane-chrome toolbars (file editor mode bar,
-    // visualizer bar — all PANE_TOOLBAR_HEIGHT) so the divider lines up across a
+    // visualizer bar - all PANE_TOOLBAR_HEIGHT) so the divider lines up across a
     // split rather than sitting a few px high. diffStatusInner centers content.
     height: PANE_TOOLBAR_HEIGHT,
     borderBottomWidth: 1,

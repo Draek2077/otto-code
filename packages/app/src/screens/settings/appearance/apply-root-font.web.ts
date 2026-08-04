@@ -1,10 +1,10 @@
 // Apply the interface (UI) font app-wide on web.
 //
 // react-native-web stamps a hardcoded default font onto every text element, so a
-// plain `body { font-family }` never cascades in — the element already has its own
+// plain `body { font-family }` never cascades in - the element already has its own
 // font. Instead we inject ONE rule that points all text at a CSS variable and set
 // that variable live. The selector is high-specificity (1,2,0) so it deterministically
-// beats both RN-web's base font and Unistyles' generated classes (0,1,0) — no reliance
+// beats both RN-web's base font and Unistyles' generated classes (0,1,0) - no reliance
 // on stylesheet order. Code/diff/terminal surfaces carry `data-pmono` (and have their
 // subtree excluded via `:not([data-pmono] *)`) so they keep their monospace font.
 const STYLE_ID = "otto-ui-font";

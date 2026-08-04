@@ -8,7 +8,7 @@ import { beat, humanClick, resetPacingSeed } from "../helpers/pacing";
 import { seedDemoWorkspace, type DemoWorkspace } from "../staging/seed";
 
 /**
- * Scenario 07 — Sub-agent tracking (one feature: provider subagents promoted
+ * Scenario 07 - Sub-agent tracking (one feature: provider subagents promoted
  * to observed track rows). A real Claude run fans work out to two parallel
  * Task subagents; the track renders them as read-only rows while they work.
  *
@@ -58,14 +58,14 @@ test("subagent tracking walkthrough", async ({ page }, testInfo) => {
     workspaceId: workspace.workspaceId,
     model: "opus",
     title: "API audit",
-    // No client is watching to answer permission prompts — the default "Always
+    // No client is watching to answer permission prompts - the default "Always
     // Ask" mode would stall on the first Task-tool subagent spawn forever.
     // dontAsk is the Agent SDK's headless posture (docs/safe-unattended.md):
     // runs without prompting, anything not pre-approved is denied rather than
     // stalling.
     modeId: "dontAsk",
     initialPrompt:
-      "Use two subagents in parallel: one audits the API routes in src/routes for validation gaps, the other reviews the test coverage in test/. Wait for both, then summarize the two reports as one short prioritized list. Read-only — make no code changes.",
+      "Use two subagents in parallel: one audits the API routes in src/routes for validation gaps, the other reviews the test coverage in test/. Wait for both, then summarize the two reports as one short prioritized list. Read-only - make no code changes.",
   });
 
   const agentRoute = buildHostAgentDetailRoute(serverId, agent.id, workspace.workspaceId);
@@ -90,7 +90,7 @@ test("subagent tracking walkthrough", async ({ page }, testInfo) => {
   await recorder.shot(
     "track-rows",
     "Subagents, tracked live",
-    "Each subagent gets its own read-only row — what it's doing, right now, without leaving the parent chat.",
+    "Each subagent gets its own read-only row - what it's doing, right now, without leaving the parent chat.",
   );
 
   // Open one subagent's read-only view.
@@ -99,7 +99,7 @@ test("subagent tracking walkthrough", async ({ page }, testInfo) => {
   await recorder.shot(
     "subagent-view",
     "Look inside any subagent",
-    "The full transcript of a subagent's work, read-only — the parent stays in control.",
+    "The full transcript of a subagent's work, read-only - the parent stays in control.",
   );
 
   // Back to the orchestrator for the synthesis payoff.

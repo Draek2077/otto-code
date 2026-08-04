@@ -31,7 +31,7 @@ export type MermaidDiagramState =
  * node keys on every parse, so a fence streaming into a chat message remounts
  * this component per flush. Debouncing unconditionally is what stops that from
  * becoming one full mermaid render (or, on native, one WebView) per flush. The
- * cost — a beat of source before a diagram appears — is paid once per document,
+ * cost - a beat of source before a diagram appears - is paid once per document,
  * because `peekMermaidOutcome` answers every later remount instantly.
  */
 export const MERMAID_RENDER_DEBOUNCE_MS = 250;

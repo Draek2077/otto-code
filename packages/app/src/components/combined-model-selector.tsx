@@ -78,7 +78,7 @@ const DESKTOP_PROVIDER_VIEW_MIN_HEIGHT = 220;
 const DESKTOP_PROVIDER_VIEW_MAX_HEIGHT = 400;
 const DESKTOP_PROVIDER_VIEW_BASE_HEIGHT = 80;
 // Dense rows (single-line, reduced padding) so more of the list fits on
-// screen — mirror the `dense` ComboboxItem / personalityRow desktop heights.
+// screen - mirror the `dense` ComboboxItem / personalityRow desktop heights.
 const DESKTOP_MODEL_ROW_HEIGHT = 30;
 const DESKTOP_PERSONALITY_ROW_HEIGHT = 30;
 const DESKTOP_PERSONALITY_HEADING_HEIGHT = 28;
@@ -98,13 +98,13 @@ const foregroundMapping = (theme: Theme) => ({ color: theme.colors.foreground })
 
 /**
  * Presentation view-model for a personality row in the picker. The selector is
- * pure presentation — callers (via usePersonalitySelection) build these,
+ * pure presentation - callers (via usePersonalitySelection) build these,
  * including availability, so the component never touches daemon config.
  */
 export interface SelectorPersonality {
   id: string;
   name: string;
-  /** Provider id — picks the glyph filled with the personality's gradient. */
+  /** Provider id - picks the glyph filled with the personality's gradient. */
   provider: string;
   subtitle: string;
   glowA?: string;
@@ -112,7 +112,7 @@ export interface SelectorPersonality {
   available: boolean;
   unavailableReason?: string;
   /**
-   * A neutral leading glyph that REPLACES the colored provider icon — used by
+   * A neutral leading glyph that REPLACES the colored provider icon - used by
    * the synthetic "Team's <Role>" entry, whose concrete holder changes with the
    * active team, so wearing any one personality's provider glyph would mislead.
    * A plain role icon makes clear you're picking a role, not that personality.
@@ -122,7 +122,7 @@ export interface SelectorPersonality {
 
 /** One role's personalities inside a grouped browse section. */
 export interface SelectorPersonalityRoleGroup {
-  /** Role id (or "none" for roleless personalities) — stable list key. */
+  /** Role id (or "none" for roleless personalities) - stable list key. */
   key: string;
   /** Human role label, e.g. "Coder". */
   label: string;
@@ -138,7 +138,7 @@ export interface SelectorPersonalityRoleGroup {
  * presentation); a multi-role personality appears under each role it carries.
  */
 export interface SelectorPersonalityGroupSection {
-  /** Section key ("team" | "others" | "all") — stable list key. */
+  /** Section key ("team" | "others" | "all") - stable list key. */
   key: string;
   /** Section header label, e.g. the team name or "All personalities". */
   label: string;
@@ -153,7 +153,7 @@ const headerSettingsMapping = (disabled: boolean) => (theme: Theme) => ({
   color: disabled ? theme.colors.border : theme.colors.foregroundMuted,
 });
 
-// Material Symbols have no `fill` prop — the filled state swaps to the
+// Material Symbols have no `fill` prop - the filled state swaps to the
 // StarFilled glyph instead.
 const favoriteStarMapping =
   (isFavorite: boolean, hovered: boolean) =>
@@ -268,7 +268,7 @@ interface CombinedModelSelectorProps {
    */
   personalities?: SelectorPersonality[];
   /**
-   * Optional grouped roster — every personality organized by team and role,
+   * Optional grouped roster - every personality organized by team and role,
    * rendered as collapsible groups below the up-front section so any
    * personality (not just this surface's role) is reachable in a couple of
    * taps. Selection flows through the same onSelectPersonality handler.
@@ -280,7 +280,7 @@ interface CombinedModelSelectorProps {
   onClearPersonality?: () => void;
   /**
    * Picking a raw model while a personality is selected. When provided, the
-   * picker routes the model pick here INSTEAD of onSelect+onClearPersonality —
+   * picker routes the model pick here INSTEAD of onSelect+onClearPersonality -
    * the owner confirms once and applies "clear personality + set model" as a
    * single flow (running agents, RPC-backed). Absent ⇒ legacy behavior:
    * onSelect fires and onClearPersonality (if any) clears client-side (draft
@@ -297,7 +297,7 @@ interface CombinedModelSelectorProps {
    */
   triggerFill?: boolean;
   /**
-   * Replace the default trigger's leading glyph with a spinner — a live
+   * Replace the default trigger's leading glyph with a spinner - a live
    * personality switch is applying on the daemon. The compact icon-only custom
    * trigger renders its own spinner (renderTrigger bypasses this).
    */
@@ -677,7 +677,7 @@ function PersonalityRow({
   onSelect: (id: string) => void;
   /**
    * Press-the-selected-row-to-detach. Only the up-front Personalities section
-   * passes it — there the row IS the current binding, so toggling it off is the
+   * passes it - there the row IS the current binding, so toggling it off is the
    * explicit "clear personality" affordance (the running-agent picker's only
    * one). The grouped browse panel deliberately omits it: that panel is a
    * roster directory, and pressing a name there means "run as this personality",
@@ -813,7 +813,7 @@ function filterPersonalityRoleGroups(
  * One drill-down row for a personality group section (the active team, or "All
  * personalities"). Mirrors GroupProviderButton: a leading glyph, the section
  * label, the distinct-personality count, and a chevron opening the second
- * panel — where the section's roles and personalities are browsed/searched.
+ * panel - where the section's roles and personalities are browsed/searched.
  */
 function PersonalityGroupButton({
   section,
@@ -849,7 +849,7 @@ function PersonalityGroupButton({
 
 /**
  * The "browse everyone" section, now a set of drill-down rows (one per group:
- * active team first, then the rest of the roster — or a single "All
+ * active team first, then the rest of the roster - or a single "All
  * personalities" row). Each opens a second panel (like a provider family) with
  * its own search over roles and personalities, so ANY personality is reachable
  * without the picker ballooning inline.
@@ -1060,7 +1060,7 @@ function SelectorContent({
       );
     }
 
-    // Only fall back to "no matches" when nothing — models or personalities —
+    // Only fall back to "no matches" when nothing - models or personalities -
     // survived the filter, so a personality-only match doesn't read as empty.
     const hasFamilyPersonalityMatch =
       Boolean(onSelectPersonality) && (familyPersonalities?.length ?? 0) > 0;
@@ -1217,7 +1217,7 @@ export function CombinedModelSelector({
 }: CombinedModelSelectorProps) {
   const { t } = useTranslation();
   const anchorRef = useRef<View>(null);
-  // Live icon size — the static ICON_SIZE import never sees the compact
+  // Live icon size - the static ICON_SIZE import never sees the compact
   // doubling, which would leave this trigger's glyph half the size of the
   // neighboring mode/effort chip icons on compact breakpoints.
   const iconSize = useIconSize();
@@ -1228,9 +1228,9 @@ export function CombinedModelSelector({
   const [searchResetKey, bumpSearchResetKey] = useReducer((key: number) => key + 1, 0);
 
   // Only a *selectable* roster (one that renders the personalities section)
-  // changes the view layout. A read-only identity roster — passed with a
+  // changes the view layout. A read-only identity roster - passed with a
   // selected id but no onSelectPersonality, as the running-agent controls do to
-  // label the trigger — must not suppress the single-provider bypass.
+  // label the trigger - must not suppress the single-provider bypass.
   const hasPersonalities =
     ((personalities?.length ?? 0) > 0 || (personalityGroups?.length ?? 0) > 0) &&
     Boolean(onSelectPersonality);
@@ -1251,7 +1251,7 @@ export function CombinedModelSelector({
   // Single-provider mode: only one provider → skip Level 1 entirely and open
   // straight into that family. The family view carries its own personalities
   // section (see SelectorContent), so a locked-in roster no longer forces the
-  // "all" view — a running chat agent lands directly on its family's models +
+  // "all" view - a running chat agent lands directly on its family's models +
   // same-family personalities.
   const singleProviderView = useMemo<SelectorView | null>(() => {
     if (displayProviders.length !== 1) return null;
@@ -1264,8 +1264,8 @@ export function CombinedModelSelector({
     if (singleProviderView) return singleProviderView;
 
     // A selectable personality roster (individual personalities and/or team
-    // groups) lives in the "all" view. Always open there when one exists — even
-    // with nothing selected yet — so the Personalities and Team groups are
+    // groups) lives in the "all" view. Always open there when one exists - even
+    // with nothing selected yet - so the Personalities and Team groups are
     // visible up front, rather than drilling into the selected model's provider
     // family (which only surfaces that family's personalities and hides the
     // group headers until a personality happens to be selected).
@@ -1305,7 +1305,7 @@ export function CombinedModelSelector({
 
   const handleSelect = useCallback(
     (provider: string, modelId: string) => {
-      // Explicitly picking a model switches away from a bound personality — the
+      // Explicitly picking a model switches away from a bound personality - the
       // raw model becomes the identity. (Deviating effort/mode elsewhere keeps
       // the personality; only a direct model pick here clears it.) Running
       // agents pass onSelectModelOverPersonality so both halves ride one
@@ -1329,7 +1329,7 @@ export function CombinedModelSelector({
 
   // Undefined when the caller passed no handler (read-only identity roster) so
   // PersonalitiesSection's !onSelectPersonality guard actually fires and the
-  // roster rows stay hidden — the entries then only label the trigger.
+  // roster rows stay hidden - the entries then only label the trigger.
   const handlePersonalitySelect = useMemo(
     () =>
       onSelectPersonality
@@ -1358,11 +1358,11 @@ export function CombinedModelSelector({
 
   const hasSelectedProvider = selectedProvider.trim().length > 0;
 
-  // A selected personality owns the trigger's identity — its name and spinner
+  // A selected personality owns the trigger's identity - its name and spinner
   // glow stand in for the raw model label/provider glyph, so the composer chip
   // reads "Atlas" (with its blob) instead of "Fable 5". Deviating the model by
   // hand keeps the personality selected, so this stays sticky through overrides.
-  // The lookup falls through to the grouped roster — a personality picked from
+  // The lookup falls through to the grouped roster - a personality picked from
   // a role group may not be in the up-front (surface-role) section.
   const selectedPersonality = useMemo(() => {
     if (!selectedPersonalityId) return null;
@@ -1682,7 +1682,7 @@ export function CombinedModelSelector({
 
 const styles = StyleSheet.create((theme) => ({
   // Geometry mirrors the composer's mode/effort chips (mode-control `chip`,
-  // agent-controls `modeBadge`) — all three sit in the same toolbar row and
+  // agent-controls `modeBadge`) - all three sit in the same toolbar row and
   // must scale together on compact breakpoints.
   trigger: {
     height: compactUp(28),

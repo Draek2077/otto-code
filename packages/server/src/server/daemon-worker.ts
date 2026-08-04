@@ -337,12 +337,12 @@ async function main() {
   process.on("SIGINT", () => beginShutdown("SIGINT"));
 
   process.on("uncaughtException", (err) => {
-    logger.fatal({ err }, "Uncaught exception — daemon crashing");
+    logger.fatal({ err }, "Uncaught exception - daemon crashing");
     exitAfterPinoFlush();
   });
 
   process.on("unhandledRejection", (reason) => {
-    logger.fatal({ err: reason }, "Unhandled promise rejection — daemon crashing");
+    logger.fatal({ err: reason }, "Unhandled promise rejection - daemon crashing");
     exitAfterPinoFlush();
   });
 }

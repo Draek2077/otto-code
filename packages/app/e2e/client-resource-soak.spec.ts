@@ -22,8 +22,8 @@ import { selectWorkspaceInSidebar } from "./helpers/sidebar";
 
 // The instrument for "app-wide FPS degrades the longer Otto stays open".
 //
-// A real session degrades over hours; this compresses the *shape* of it — switch
-// workspace, mount a chat, drive a turn, repeat — and reads the resource
+// A real session degrades over hours; this compresses the *shape* of it - switch
+// workspace, mount a chat, drive a turn, repeat - and reads the resource
 // monitor's growth ranking out of the page. What it is good at is retention:
 // anything that climbs monotonically across identical cycles is being kept when
 // it should have been released. It is deliberately NOT a frame-rate benchmark: a
@@ -32,10 +32,10 @@ import { selectWorkspaceInSidebar } from "./helpers/sidebar";
 //
 // The one rule the harness must obey: **navigate in-app, never `page.goto`**. A
 // reload rebuilds every store and empties the query cache, which resets exactly
-// the state the soak exists to measure — the first version of this spec did that
+// the state the soak exists to measure - the first version of this spec did that
 // and reported a perfectly healthy app.
 //
-// Opt-in, like the terminal perf specs — it is slow by construction.
+// Opt-in, like the terminal perf specs - it is slow by construction.
 //   OTTO_RESOURCE_SOAK_E2E=1 npx playwright test client-resource-soak
 //   OTTO_RESOURCE_SOAK_CYCLES=24       (default 12)
 //   OTTO_RESOURCE_SOAK_WORKSPACES=6    (default 4)
@@ -43,7 +43,7 @@ import { selectWorkspaceInSidebar } from "./helpers/sidebar";
 // The workspace count is a parameter because the deck has a retention cap
 // (`WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES`, 3). Seeding at or below the cap
 // measures a deck that never evicts, and "retained because nothing reclaims it"
-// then looks identical to "retained because the cap was never reached" — which
+// then looks identical to "retained because the cap was never reached" - which
 // is exactly the mistake the 2026-07-25 finding made with three workspaces.
 // Default above the cap so the eviction path is exercised by default.
 const RUN_SOAK = process.env.OTTO_RESOURCE_SOAK_E2E === "1";
@@ -53,7 +53,7 @@ const CYCLES = Number(process.env.OTTO_RESOURCE_SOAK_CYCLES ?? "12");
 const WORKSPACE_COUNT = Number(process.env.OTTO_RESOURCE_SOAK_WORKSPACES ?? "4");
 
 // How many workspace trees the deck is holding right now. This is the direct
-// read of whether retention is bounded — `query.observers` is the consequence,
+// read of whether retention is bounded - `query.observers` is the consequence,
 // this is the cause, and having both is what separates "eviction never ran"
 // from "eviction ran but released nothing".
 async function readMountedWorkspaceTreeCount(page: Page): Promise<number> {
@@ -115,7 +115,7 @@ soakDescribe("Client resource soak", () => {
     await takeResourceSample(page);
 
     for (let cycle = 0; cycle < CYCLES; cycle += 1) {
-      // Every cycle is identical by construction — same workspace, same chat,
+      // Every cycle is identical by construction - same workspace, same chat,
       // one more turn. Nothing here legitimately allocates a new workspace, tab
       // or agent, so anything other than the chat transcript that keeps climbing
       // is being retained rather than used.
@@ -152,7 +152,7 @@ soakDescribe("Client resource soak", () => {
     console.log(`\n${report}`);
 
     // The soak's only hard assertion is that the instrument produced a usable
-    // series across the whole run — if the page reloaded, the sample count drops
+    // series across the whole run - if the page reloaded, the sample count drops
     // and the growth ranking is meaningless. Thresholds on individual metrics
     // belong in targeted regression tests, not here: a growth budget guessed in
     // advance would just encode today's leak as acceptable.
@@ -160,7 +160,7 @@ soakDescribe("Client resource soak", () => {
     expect(trend.all.length).toBeGreaterThan(0);
   });
 
-  // The control for the test above. Same mount/unmount churn, but no turns —
+  // The control for the test above. Same mount/unmount churn, but no turns -
   // so the chat transcript, the timeline stores and the DOM the transcript
   // renders all stay the same size. Anything that still climbs here cannot be
   // explained by "the conversation got longer": it is retention on the

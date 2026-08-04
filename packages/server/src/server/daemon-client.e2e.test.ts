@@ -689,7 +689,7 @@ test("handles session actions", async () => {
 // setVoiceMode needs the realtime turn-detection service, which only comes up
 // on a host with speech models or an OpenAI key. This used to ride along inside
 // "handles session actions", so a host without them failed a test that is
-// otherwise about plain session RPCs — while every dedicated voice test in this
+// otherwise about plain session RPCs - while every dedicated voice test in this
 // file correctly skipped. Same gate as those.
 speechTest(
   "toggles voice mode on and off for an agent",

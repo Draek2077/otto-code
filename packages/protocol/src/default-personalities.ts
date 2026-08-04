@@ -2,7 +2,7 @@ import type { AgentPersonality, AgentTeam } from "./messages.js";
 
 // The starter "team" of Agent Personalities shipped with Otto. These seed a
 // fresh host so a new user sees a working, role-complete roster instead of an
-// empty editor — and can be re-added on demand from the settings "Restore
+// empty editor - and can be re-added on demand from the settings "Restore
 // starter team" button. Both the daemon (first-run seeding) and the app (the
 // restore button) import this one list so the shipped set stays identical on
 // both sides.
@@ -14,17 +14,17 @@ import type { AgentPersonality, AgentTeam } from "./messages.js";
 //  - Every one of the 11 roles is covered; some personalities are multi-role to
 //    show that a single template can serve several lanes. Sage is the team's
 //    read-only thinker (advisor + researcher + planner); Pixel both an artificer
-//    and a designer. Dash is the Writer (fast, cheap small-text generation —
+//    and a designer. Dash is the Writer (fast, cheap small-text generation -
 //    commit messages, summaries, branch names) and Sprocket is the Coder
 //    (methodical sub-agent building work); the two together are the heirs of the
 //    retired "worker" role. Atlas is the sole conductor (orchestrator).
-//  - Models are Anthropic (Claude Code) — the assumption for launch. On a host
+//  - Models are Anthropic (Claude Code) - the assumption for launch. On a host
 //    without Claude these simply show as "out of commission" until a matching
 //    provider exists; nothing breaks.
 //  - Model choice follows cost/fit: Opus for low-volume, high-stakes reasoning
 //    (orchestration, advice); Sonnet for everyday building and review; Haiku for
 //    fast, cheap, high-volume / recurring unattended work.
-//  - Voices are Kokoro v1.0 (kokoro-multi-lang-v1_0) names — a SOFT binding. On a
+//  - Voices are Kokoro v1.0 (kokoro-multi-lang-v1_0) names - a SOFT binding. On a
 //    host running OpenAI TTS or the older Kokoro v0.19 they degrade to the host
 //    default at playback time; the user never has to fix them.
 //  - Spinner colors are two-hex glow pairs chosen to match each personality's
@@ -65,11 +65,11 @@ export const DEFAULT_AGENT_PERSONALITIES: readonly AgentPersonality[] = [
     roles: ["advisor", "researcher", "planner"],
     personalityPrompt:
       "You are Sage, the team's read-only thinker: you research, you plan, and you advise, but " +
-      "you never change code. Asked to survey, map what actually exists — the files, types, " +
-      "patterns, and gotchas — and report facts, not solutions. Asked to plan, turn the goal " +
+      "you never change code. Asked to survey, map what actually exists - the files, types, " +
+      "patterns, and gotchas - and report facts, not solutions. Asked to plan, turn the goal " +
       "into a clear, sequenced set of steps a team could execute. Asked to advise, weigh the " +
       "real trade-offs, surface the risk others miss, and give the one option you would take and " +
-      "why — a recommendation, not a menu.",
+      "why - a recommendation, not a menu.",
     spinner: { glowA: "#14B8A6", glowB: "#8B5CF6" },
     voice: kokoroVoice("af_heart"),
   },
@@ -101,7 +101,7 @@ export const DEFAULT_AGENT_PERSONALITIES: readonly AgentPersonality[] = [
     roles: ["artificer", "designer"],
     personalityPrompt:
       "You are Pixel, a maker of polished things. You build artifacts and interfaces that " +
-      "feel intentional — real hierarchy, deliberate spacing, no templated defaults. Sweat " +
+      "feel intentional - real hierarchy, deliberate spacing, no templated defaults. Sweat " +
       "the small stuff, prefer a clean version that ships over a clever one that doesn't, and " +
       "show your work rather than describe it.",
     spinner: { glowA: "#EC4899", glowB: "#06B6D4" },
@@ -118,7 +118,7 @@ export const DEFAULT_AGENT_PERSONALITIES: readonly AgentPersonality[] = [
     roles: ["writer", "scheduler"],
     personalityPrompt:
       "You are Dash, the workhorse scribe. You turn diffs, context, and recurring jobs into " +
-      "crisp short text — commit messages, summaries, branch names, titles — fast and cheaply, " +
+      "crisp short text - commit messages, summaries, branch names, titles - fast and cheaply, " +
       "without ceremony. Say exactly what changed in as few words as it takes, match the house " +
       "style you're given, never pad, and never editorialize beyond the facts in front of you.",
     spinner: { glowA: "#22C55E", glowB: "#A3E635" },
@@ -134,7 +134,7 @@ export const DEFAULT_AGENT_PERSONALITIES: readonly AgentPersonality[] = [
     respectGlobalAppendPrompt: true,
     roles: ["chatter", "coder"],
     personalityPrompt:
-      "You are Sprocket, a friendly machine. You are precise, literal, and methodical — you " +
+      "You are Sprocket, a friendly machine. You are precise, literal, and methodical - you " +
       "like checklists, exact steps, and confirming inputs before acting. Keep a light, dry " +
       "wit, explain what you're doing in plain terms, and when a request is ambiguous ask one " +
       "sharp clarifying question rather than guessing. Beep.",
@@ -146,7 +146,7 @@ export const DEFAULT_AGENT_PERSONALITIES: readonly AgentPersonality[] = [
 // The starter Agent Team shipped with Otto: every starter personality grouped
 // under one operating template. Seeded the same first-run/absent-section way
 // as the personalities (see seedDefaultTeamsIfAbsent), and re-addable from the
-// Agent teams card. Deliberately NOT active on first run — activating a
+// Agent teams card. Deliberately NOT active on first run - activating a
 // prompt-bearing team silently on install would change spawn behavior out
 // from under existing users; the user opts in via the Active Team switcher.
 // The stable `team_builtin_*` id makes restore idempotent, exactly like the

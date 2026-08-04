@@ -240,7 +240,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
     });
 
     const labels = entries.filter((entry) => entry.kind === "item").map((entry) => entry.label);
-    // Copying the terminal id leads, then rename — a terminal tab's identity is
+    // Copying the terminal id leads, then rename - a terminal tab's identity is
     // the thing you most often want off it.
     expect(labels[0]).toBe("Copy terminal id");
     expect(labels[1]).toBe("Rename");

@@ -16,7 +16,7 @@ import { waitForSidebarHydration } from "./helpers/workspace-ui";
 
 // Model B entry points into the New Workspace screen. The surviving entries are
 // the global button (universal) and each project's per-row New workspace icon
-// (preselects that project) — shown for git projects and for non-git projects on
+// (preselects that project) - shown for git projects and for non-git projects on
 // a multiplicity-capable host. These specs prove the global entry opens the
 // screen, the project icon preselects the right project across the reused 'new'
 // screen, and non-git projects never offer the worktree Isolation control.
@@ -201,7 +201,7 @@ test.describe("New workspace entry points", () => {
       await optionC.click();
       await expectNewWorkspaceProjectSelected(page, projectC.projectDisplayName);
 
-      // Navigate via B's row icon. B must be preselected — the route project wins
+      // Navigate via B's row icon. B must be preselected - the route project wins
       // because the stale manual choice (C) was reset on the route change. If the
       // reset were missing, the trigger would still read C.
       await openNewWorkspaceComposer(page, {

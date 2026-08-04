@@ -7,7 +7,7 @@
  * first-class citizens.
  *
  * Only **fixed** weight drives severity. Conditional and referenced totals are
- * reported separately — folding them into the percentage would claim a cost the
+ * reported separately - folding them into the percentage would claim a cost the
  * user is not actually paying on every request.
  */
 
@@ -81,14 +81,14 @@ export interface EvaluateContextInput {
   scannedAt: string;
   thresholds?: ContextThresholds;
   /**
-   * Weight Otto knows exactly because it composes it — MCP tool schemas,
+   * Weight Otto knows exactly because it composes it - MCP tool schemas,
    * personality/team prompts, injected tools. Merged into the category totals
    * without needing a file on disk.
    */
   runtimeTokensByCategory?: Partial<Record<ContextCategory, number>>;
   /**
    * What Otto can honestly claim to see per category for this provider. A
-   * category marked `not_visible` is reported even at zero tokens — that row is
+   * category marked `not_visible` is reported even at zero tokens - that row is
    * the disclosure, and suppressing it is how an unmeasurable cost reads as an
    * absent one.
    */
@@ -142,10 +142,10 @@ export function evaluateContext(input: EvaluateContextInput): ContextReport {
   });
 
   // `not_visible` rows carry zero tokens by construction, so they cannot inflate
-  // the headline — the total stays a sum of what was actually measured.
+  // the headline - the total stays a sum of what was actually measured.
   const fixedTotal = categoryTotals.reduce((sum, total) => sum + total.estTokens, 0);
   const aggregateShare = toShare(fixedTotal, windowTokens);
-  // Overflowing the window is not "very expensive", it is broken — requests
+  // Overflowing the window is not "very expensive", it is broken - requests
   // will fail or silently truncate. That is the one true red.
   const aggregateSeverity =
     fixedTotal >= windowTokens

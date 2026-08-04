@@ -3,7 +3,7 @@ import type { StreamItem } from "@/types/stream";
 export type TodoListStreamItem = Extract<StreamItem, { kind: "todo_list" }>;
 
 /**
- * The checklist to pin is always the most recent one in the transcript — older
+ * The checklist to pin is always the most recent one in the transcript - older
  * lists are settled history. Scans from the end and stops at the first hit.
  */
 export function selectLatestTodoList(items: StreamItem[]): TodoListStreamItem | null {

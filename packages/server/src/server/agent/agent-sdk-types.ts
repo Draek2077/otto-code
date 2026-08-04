@@ -7,7 +7,7 @@ import type {
 } from "@otto-code/protocol/messages";
 import type { ProviderCompactionConfig } from "@otto-code/protocol/provider-config";
 import type { OttoToolCatalog } from "./tools/types.js";
-// Type-only import — erased at compile time, so the resolver ⇄ config-types
+// Type-only import - erased at compile time, so the resolver ⇄ config-types
 // cycle never exists at runtime.
 import type { ResolvedPersonalitySnapshot } from "./agent-personalities.js";
 import type { ResolvedTeamSnapshot } from "./agent-teams.js";
@@ -215,14 +215,14 @@ export interface AgentCapabilityFlags {
   supportsNativeOttoTools?: boolean;
   /**
    * The adapter honours `AgentSessionConfig.workspaceAccess` by actually
-   * narrowing the tools it offers. Absent/false means it does not — and a graph
+   * narrowing the tools it offers. Absent/false means it does not - and a graph
    * node asking for restricted access on such a seat is refused at compile
    * time rather than silently running with full access. Never set this true
    * without the enforcement to back it.
    */
   supportsWorkspaceAccess?: boolean;
   /**
-   * The adapter can also enforce the `none` level — no workspace at all.
+   * The adapter can also enforce the `none` level - no workspace at all.
    * Separate from `supportsWorkspaceAccess` because a provider can bound
    * writes natively and still have no way to express "no filesystem" (Codex's
    * sandbox floor is read-only, and its shell reads inside every tier). Same
@@ -262,7 +262,7 @@ export interface AgentRunOptions {
 
 /**
  * How the tokens occupying an agent's context window break down by origin.
- * Mirrors the protocol `ContextComposition` (packages/protocol/agent-types) —
+ * Mirrors the protocol `ContextComposition` (packages/protocol/agent-types) -
  * this file keeps the server's own copy of the provider-facing types. Every
  * field is an optional best-effort token count; a provider fills what it can
  * attribute and omits the rest. Powers the visualizer context ring/bar.
@@ -279,7 +279,7 @@ export interface ContextComposition {
  * One provider-reported context-window category, with the provider's OWN
  * display label (open-ended, never an enum). Mirrors the protocol
  * `AgentContextCategory`, and is structurally the same as
- * {@link AgentContextUsageCategory} on the pull path — the two carry one
+ * {@link AgentContextUsageCategory} on the pull path - the two carry one
  * accounting, pushed and pulled.
  */
 export interface AgentContextCategory {
@@ -292,11 +292,11 @@ export interface AgentUsage {
   inputTokens?: number;
   cachedInputTokens?: number;
   /**
-   * Prompt tokens spent writing (not reading) the prompt cache this turn —
+   * Prompt tokens spent writing (not reading) the prompt cache this turn -
    * Anthropic's `cache_creation_input_tokens`, billed at a premium over normal
    * input. Disjoint from `inputTokens`/`cachedInputTokens` (the three input
    * categories sum to total input). Claude-specific today; other providers omit
-   * it. Additive/optional — a consumer that ignores it loses only cache-write
+   * it. Additive/optional - a consumer that ignores it loses only cache-write
    * visibility. Powers WP-G's cost ledger.
    */
   cacheCreationInputTokens?: number;
@@ -319,7 +319,7 @@ export interface AgentUsage {
    * WP-D folds the summarizer's spend into the turn's billed total; these two
    * fields report that folded-in slice so the manager can attribute it to
    * `compaction` and the remainder to `mainChat`/`subagent`. Deliberately NOT
-   * projected to the wire (`sanitizeUsage` drops it) — the client reads
+   * projected to the wire (`sanitizeUsage` drops it) - the client reads
    * compaction from the daemon-computed counters, not from live usage.
    */
   compactionInputTokens?: number;
@@ -518,7 +518,7 @@ export type AgentStreamEvent =
       turnId?: string;
       // Provider-reported spend up to the point of failure, when known. Fed into
       // the same token accounting as turn_completed so retry storms aren't
-      // invisible. Optional — providers that can't attribute partial-turn usage
+      // invisible. Optional - providers that can't attribute partial-turn usage
       // omit it. (WP-D)
       usage?: AgentUsage;
     }
@@ -592,7 +592,7 @@ export type AgentStreamEvent =
       timestamp?: string;
     }
   // A background shell task launched by the provider's own Bash tool (Claude:
-  // run_in_background) changed lifecycle state. Not an AI subagent — a plain
+  // run_in_background) changed lifecycle state. Not an AI subagent - a plain
   // shell process the daemon tracks for the Background Tasks track.
   | {
       type: "background_shell_task_updated";
@@ -633,7 +633,7 @@ export interface ObservedSubagentUpdate {
   usage?: AgentUsage;
   // The model this subagent actually ran on (e.g. "claude-haiku-4-5-…"). A
   // subagent can run a DIFFERENT, cheaper model than its parent, so this is
-  // required to price its usage correctly — never assume the parent's model. A
+  // required to price its usage correctly - never assume the parent's model. A
   // neutral field any provider sets; the owning provider prices it (Claude reads
   // it from the subagent's frames). Optional/additive.
   model?: string;
@@ -649,14 +649,14 @@ export interface ObservedSubagentUpdate {
   // Tool invocations this subagent has made so far (cumulative). A neutral field
   // any provider can set; the daemon keeps it monotonic like cumulativeTokens so
   // a status-only final update can't drop the readout. Claude reads it from the
-  // SDK's per-task `usage.tool_uses`. Optional/additive — absent ⇒ no count on
+  // SDK's per-task `usage.tool_uses`. Optional/additive - absent ⇒ no count on
   // the row. See docs/chat-lifecycle.md (the subagents track).
   toolUseCount?: number;
   // The tool this subagent is running (or ran last). A neutral field any
   // provider can set; unlike the counters it is NOT monotonic (latest wins) and
-  // the daemon drops it once the row is terminal — a finished subagent isn't
+  // the daemon drops it once the row is terminal - a finished subagent isn't
   // "running Bash". Claude reads it from `task_progress.last_tool_name`.
-  // Optional/additive — absent ⇒ the row omits it, never a guessed value.
+  // Optional/additive - absent ⇒ the row omits it, never a guessed value.
   currentTool?: string;
   // True once this run is known to outlive an interrupt of the parent's turn:
   // the provider backgrounded it, so the parent's teardown leaves it alone. A
@@ -673,7 +673,7 @@ export interface ObservedSubagentUpdate {
  * A background shell task reported by a provider's own Bash tool (Claude:
  * `run_in_background`). `key` is a provider-local stable identifier (Claude:
  * the Bash tool_use id); the daemon namespaces it under the owning agent.
- * Unlike {@link ObservedSubagentUpdate} this has no transcript/pane — it's a
+ * Unlike {@link ObservedSubagentUpdate} this has no transcript/pane - it's a
  * plain status row (command, status, elapsed) in the Background Tasks track.
  */
 export interface BackgroundShellTaskUpdate {
@@ -851,14 +851,14 @@ export interface AgentSessionConfig {
    * Frozen active-team resolution captured at spawn when the spawning
    * personality was a member of the host's active Agent Team. Same lifecycle
    * as personalitySnapshot: switching or editing teams never mutates a running
-   * agent — the born team is frozen identity, and a live personality switch
+   * agent - the born team is frozen identity, and a live personality switch
    * recomposes the prompt against THIS snapshot's teamPrompt, not the current
    * active team. Absent on raw spawns and non-member personality spawns.
    */
   teamSnapshot?: ResolvedTeamSnapshot;
   /**
    * Marks a run created for unattended execution (schedules, loops, artifact
-   * refreshes, unattended-parent spawns — anyone passing `createAgent(...,
+   * refreshes, unattended-parent spawns - anyone passing `createAgent(...,
    * unattended: true)`). This is a creation-time signal, NOT derived from the
    * permission mode: an attended user chatting in Claude auto mode still wants
    * the prompt. The daemon's guardrail deny-responder keys off this flag to
@@ -873,7 +873,7 @@ export interface AgentSessionConfig {
   internal?: boolean;
   /**
    * Observable agents still forward their live `agent_stream` events to
-   * clients even when `internal` — used for internal work a user may want to
+   * clients even when `internal` - used for internal work a user may want to
    * watch live (e.g. artifact generation). Unlike a non-internal agent, an
    * observable-internal agent stays out of listings/sidebar (its `agent_state`
    * is still filtered); only its message/tool stream is forwarded, and only to
@@ -886,7 +886,7 @@ export interface AgentSessionConfig {
 /**
  * The prompt-side half of a live personality switch, computed by the manager
  * (which owns the daemon-global append text) and applied wholesale by the
- * provider session. All three fields are absolute new values, not patches —
+ * provider session. All three fields are absolute new values, not patches -
  * `undefined` means "clear". Clearing the personality passes all-undefined
  * except a restored `daemonAppendSystemPrompt`.
  */
@@ -898,7 +898,7 @@ export interface AgentPersonalityUpdate {
 
 /**
  * Fully-resolved daemon-wide agent behavior toggles (Claude is the reference
- * tier). Every field is a concrete boolean — the daemon config carries these
+ * tier). Every field is a concrete boolean - the daemon config carries these
  * as optional-with-default, and the manager resolves "absent/undefined = on"
  * before handing them to a session. Providers that cannot honor a given
  * behavior simply ignore it (no-op, no error) per the provider-parity rule.
@@ -987,7 +987,7 @@ export interface AgentSession {
   /**
    * Live-switch the session's personality prompt fields (see
    * AgentPersonalityUpdate). Present only on providers that can apply a new
-   * system prompt to a running conversation — Claude recreates its query on the
+   * system prompt to a running conversation - Claude recreates its query on the
    * next turn, openai-compat rebuilds its leading system message. Brain fields
    * (model/mode/effort) are applied separately via the existing setters; the
    * manager sequences both halves. Absence ⇒ the manager rejects
@@ -1025,9 +1025,9 @@ export interface AgentSession {
 /**
  * Input for a one-shot, tool-less text completion used by the internal
  * metadata-generation path (chat titles, branch/workspace names, commit/PR
- * text, voice cues, run summaries). The prompt is fully self-contained — it
+ * text, voice cues, run summaries). The prompt is fully self-contained - it
  * carries its own contract and JSON-schema instructions and explicitly forbids
- * tool use — so this deliberately bypasses the full agent session: no Otto tool
+ * tool use - so this deliberately bypasses the full agent session: no Otto tool
  * catalog, no MCP mount, and (on Claude) no `claude_code` preset or
  * CLAUDE.md/settingSources. That is the whole point: a title costs a few
  * hundred tokens instead of the 15–25K a full spawn carries.
@@ -1045,7 +1045,7 @@ export interface AgentBareCompletionOptions {
  * Result of a tool-less metadata generation (WP-G). `text` is the completion the
  * callers consume; `usage` is the spend the provider reported for the call, so
  * the manager can record it into the activity ledger under the "generations"
- * cost category — these bare completions bypass the turn path entirely (WP-B),
+ * cost category - these bare completions bypass the turn path entirely (WP-B),
  * so without capturing usage here their spend is invisible to accounting.
  * Providers that cannot report usage omit it (tokens simply go uncounted, never
  * erroring).
@@ -1108,7 +1108,7 @@ export interface AgentClient {
   resolveDefaultModeId?(input: ResolveAgentDefaultModeInput): Promise<string | undefined>;
   /**
    * One-shot, tool-less structured-text completion for internal metadata
-   * generation. Bypasses `createSession` entirely — no agent lifecycle, no tool
+   * generation. Bypasses `createSession` entirely - no agent lifecycle, no tool
    * catalog, no MCP, no `claude_code` preset/CLAUDE.md. Providers that cannot do
    * a tool-less completion omit this; the generation fallback ladder then skips
    * them without erroring (parity is preserved by falling through, not by

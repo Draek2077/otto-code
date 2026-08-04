@@ -34,7 +34,7 @@ function createService(): TurndownService {
   turndown.remove(DROPPED_TAGS as unknown as TurndownService.Filter);
 
   // GFM tables. Turndown ships no table rule, and a table is the single most
-  // common thing worth pasting that markdown can actually represent — without
+  // common thing worth pasting that markdown can actually represent - without
   // this it collapses into a run of unseparated cell text.
   turndown.addRule("gfmTable", {
     filter: "table",

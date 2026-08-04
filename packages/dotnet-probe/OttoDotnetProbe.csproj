@@ -11,7 +11,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <!--
       Load-bearing. A framework-dependent app pins its major version: without this, a payload
-      built for net8.0 refuses to start on a machine that has only .NET 9 or 10 installed —
+      built for net8.0 refuses to start on a machine that has only .NET 9 or 10 installed -
       verified during the Phase 0 spike on a host with runtimes 7/9/10 and no 8. "One portable
       payload runs everywhere" is only true with a roll-forward policy set.
     -->
@@ -38,7 +38,7 @@
 
   <ItemGroup>
     <!--
-      `fixtures/` holds real, buildable projects on purpose — they are what the CI smoke test and
+      `fixtures/` holds real, buildable projects on purpose - they are what the CI smoke test and
       the daemon's tests drive the protocol against. The SDK's default globs would otherwise
       compile them into this assembly, which fails on the second `Main`.
     -->

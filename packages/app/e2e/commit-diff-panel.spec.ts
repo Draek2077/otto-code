@@ -8,7 +8,7 @@ const COMMIT_SUBJECT = "Show commit timestamps";
 // DEFERRED(paseoDiffTab): both specs arrived with the Paseo v0.2.5 merge and
 // exercise a commits explorer Otto does not mount. `src/git/commits-section/`
 // has zero importers, `commits-section-no-workspace-commits` exists only there,
-// and there is no registered commit-diff panel — see the DEFERRED note in
+// and there is no registered commit-diff panel - see the DEFERRED note in
 // panels/register-panels.ts for the @/git/diff-pane restructure that gates it.
 // Left active these fail deterministically and burn three attempts each under
 // the CI retry policy. Un-skip in the same change that registers the panel.

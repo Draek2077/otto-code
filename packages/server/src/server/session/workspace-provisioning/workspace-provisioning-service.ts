@@ -365,7 +365,7 @@ export function createWorkspaceProvisioningService(deps: {
       if (project && !project.archivedAt) return ensureWorkspaceRecordUnarchived(archived);
       // An archived workspace under an ARCHIVED project means the whole project
       // was put away. Explicit opening then allocates a fresh identity and
-      // leaves the archived pair alone — restoring ownership is the agent-restore
+      // leaves the archived pair alone - restoring ownership is the agent-restore
       // path's job, not this one. See the S6/S11 invariants in
       // session.workspace-resolution-invariants.test.ts.
       if (!project) {
@@ -452,7 +452,7 @@ export function createWorkspaceProvisioningService(deps: {
     }
     // Re-read after the checkout await. `workspace` was captured before a git
     // read that takes long enough for an archive to land, and merging onto that
-    // stale copy writes its `archivedAt` back — reviving a workspace the user
+    // stale copy writes its `archivedAt` back - reviving a workspace the user
     // just archived. Refreshing git metadata must never resurrect a record.
     // Unlike ensureWorkspaceRecordUnarchived, un-archiving is not this
     // function's job.

@@ -44,7 +44,7 @@ function keyExtractor(item: { id: string }): string {
 
 /**
  * The live turn renders in the inverted list's header, so before this store it
- * was a fresh element on every ~48ms stream flush — which changed a FlatList
+ * was a fresh element on every ~48ms stream flush - which changed a FlatList
  * prop, re-rendered VirtualizedList, and walked every mounted cell in the
  * window. On a phone that is the whole per-chunk cost of a long chat, and it is
  * what makes typing stutter while the model streams (one JS thread, shared).

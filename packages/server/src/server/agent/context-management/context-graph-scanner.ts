@@ -87,7 +87,7 @@ export async function scanContextGraph(
 
   const builder = new GraphBuilder(input);
 
-  // 1. Explicit load points, in load order — this order is what "first visit
+  // 1. Explicit load points, in load order - this order is what "first visit
   //    wins" means, so it must not be reordered.
   const queue: PendingImport[] = [];
   for (const point of convention.resolveLoadPoints(input)) {
@@ -107,7 +107,7 @@ export async function scanContextGraph(
     });
   }
 
-  // 2. Subdirectory context files — conditional weight, discovered but never
+  // 2. Subdirectory context files - conditional weight, discovered but never
   //    counted as fixed.
   const subdirectoryRoot = convention.resolveSubdirectoryScanRoot(input);
   if (subdirectoryRoot && convention.subdirectoryFileName) {
@@ -147,7 +147,7 @@ export async function scanContextGraph(
     }
   }
 
-  // 4. Skills and subagents — only the frontmatter rides every request; the
+  // 4. Skills and subagents - only the frontmatter rides every request; the
   //    body loads on invocation, so sizing the whole file would overstate it
   //    badly. Plugin-contributed rosters count the same as hand-written ones:
   //    the model is told about them identically, and the user's lever (disable
@@ -173,7 +173,7 @@ export async function scanContextGraph(
     }
   }
 
-  // 5. Content checks run last, once every file has been read — they compare
+  // 5. Content checks run last, once every file has been read - they compare
   //    files against each other, so they cannot be folded into the walk.
   collectContentFindings(builder.fileContents());
 
@@ -258,7 +258,7 @@ async function processRef(params: {
       range,
     });
     // Already on the graph: record the extra parent, do not re-add or re-count,
-    // and do not re-walk — that is also the cycle guard.
+    // and do not re-walk - that is also the cycle guard.
     builder.addAdditionalParent(existing.id, current.fromNodeId);
     if (builder.isAncestor(existing.id, current.fromNodeId)) {
       builder.addFinding(current.fromNodeId, {
@@ -406,7 +406,7 @@ class GraphBuilder {
     const exists = targetPath ? await isReadableFile(targetPath) : false;
 
     if (!exists) {
-      // Only paths that name a file can be meaningfully "dead" — anchors and
+      // Only paths that name a file can be meaningfully "dead" - anchors and
       // directory links would be noise.
       if (hasFileExtension(rawTarget)) {
         this.addFinding(fromNodeId, {
@@ -474,8 +474,8 @@ class GraphBuilder {
   addFinding(nodeId: string, finding: ContextFinding): void {
     const node = this.nodesByKey.get(nodeId);
     if (!node) return;
-    // Every scanner finding indexes the *parent's* bytes — the file that wrote
-    // the reference — which is exactly the node it is being attached to.
+    // Every scanner finding indexes the *parent's* bytes - the file that wrote
+    // the reference - which is exactly the node it is being attached to.
     node.findings.push(locateFinding({ finding, nodeId, text: this.textByNodeId.get(nodeId) }));
   }
 
@@ -515,7 +515,7 @@ async function isReadableFile(absolutePath: string): Promise<boolean> {
 /**
  * Adds one roster entry (a skill or a subagent) sized by its frontmatter.
  * Entries whose frontmatter cannot be read contribute nothing rather than their
- * whole body — an unparseable file is not evidence of a large advertisement.
+ * whole body - an unparseable file is not evidence of a large advertisement.
  */
 async function addRosterEntry(
   builder: GraphBuilder,
@@ -528,7 +528,7 @@ async function addRosterEntry(
   await builder.addSyntheticNode({
     absolutePath: filePath,
     // Plugin roots live under the home config dir, so they land on `global`
-    // here — which is true: enabling a plugin costs every project on the machine.
+    // here - which is true: enabling a plugin costs every project on the machine.
     scope: rootDir.startsWith(input.homeDir) ? "global" : "project",
     category: "skills_roster",
     costClass: "fixed",
@@ -554,7 +554,7 @@ async function listSkillFiles(skillRoot: string): Promise<string[]> {
 
 /**
  * Subagents are flat `*.md` files in the directory, not `<name>/SKILL.md`
- * bundles — the one structural difference between the two rosters.
+ * bundles - the one structural difference between the two rosters.
  */
 async function listAgentFiles(agentRoot: string): Promise<string[]> {
   let entries;
@@ -584,7 +584,7 @@ async function readFrontmatter(filePath: string): Promise<string | null> {
 
 /**
  * Exported so the prompt preview shows a roster entry the way the model gets it
- * — frontmatter only. Two copies of this rule would drift, and the preview would
+ * - frontmatter only. Two copies of this rule would drift, and the preview would
  * quietly start showing skill bodies that are not in the request.
  */
 export function extractFrontmatter(text: string): string | null {

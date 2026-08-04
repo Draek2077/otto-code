@@ -40,7 +40,7 @@ describe("requestStopSubagent", () => {
   });
 
   it("reports when the daemon had nothing to stop", async () => {
-    // The run had already finished (or hadn't started) — the daemon says no
+    // The run had already finished (or hadn't started) - the daemon says no
     // in-flight run was interrupted, so the user gets feedback, not a dead click.
     const deps = buildDeps({ cancelAgent: vi.fn(async () => ({ cancelled: false })) });
 

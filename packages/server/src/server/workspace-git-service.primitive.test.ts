@@ -193,7 +193,7 @@ function createSnapshot(
 
   return {
     cwd,
-    // A measurement timestamp rather than state — the service itself strips it before
+    // A measurement timestamp rather than state - the service itself strips it before
     // fingerprinting a snapshot, precisely so a refresh that changed nothing does not look like
     // a change. Matched on type here for the same reason: pinning the value would tie every
     // assertion in this file to the harness clock without testing anything.
@@ -394,8 +394,8 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
 
     checkoutStatusDeferred.resolve(createCheckoutStatus(REPO_CWD));
 
-    // The initial (register-triggered) refresh is git-only — GitHub PR status is
-    // delivered by the poll, which this stub does not implement — so the warmed
+    // The initial (register-triggered) refresh is git-only - GitHub PR status is
+    // delivered by the poll, which this stub does not implement - so the warmed
     // snapshot reports GitHub as unavailable until a poll fills it in.
     const gitOnlySnapshot = createSnapshot(REPO_CWD, { forge: UNPOLLED_FORGE });
     await expect(service.getSnapshot(REPO_CWD)).resolves.toEqual(gitOnlySnapshot);
@@ -911,8 +911,8 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
       tickMs: 20_000,
     });
     expect(getCheckoutStatus).toHaveBeenCalledTimes(gitReadsAfterInitialSnapshot);
-    // The self-heal read emits as PR-status-only — it refreshed the pull request, not the git
-    // state — which is the second argument subscribers now receive alongside the snapshot.
+    // The self-heal read emits as PR-status-only - it refreshed the pull request, not the git
+    // state - which is the second argument subscribers now receive alongside the snapshot.
     expect(listener).toHaveBeenCalledWith(
       expect.objectContaining({
         forge: expect.objectContaining({
@@ -1834,7 +1834,7 @@ describe("WorkspaceGitServiceImpl D2 read methods", () => {
     }
   });
 
-  // The active workspace is sticky on purpose — focus goes null whenever the user moves to a
+  // The active workspace is sticky on purpose - focus goes null whenever the user moves to a
   // non-chat tab, and treating that as "nobody is here" would stop observing the workspace they
   // are sitting in. But nothing used to clear it either, so after the last client disconnected
   // the self-heal and the background fetch kept running against a daemon with zero attached
@@ -1873,8 +1873,8 @@ describe("WorkspaceGitServiceImpl D2 read methods", () => {
     }
   });
 
-  // Regression: `.git/HEAD` used to be watched as a file. Git never edits HEAD in place —
-  // `git checkout` writes `HEAD.lock` and renames it over HEAD — and a file watch binds to
+  // Regression: `.git/HEAD` used to be watched as a file. Git never edits HEAD in place -
+  // `git checkout` writes `HEAD.lock` and renames it over HEAD - and a file watch binds to
   // the inode, so after the first checkout the watcher held an unlinked file and went deaf.
   // Switching branches in a terminal then never reached the Changes sidebar.
   test("watches the git directory for HEAD changes, not the HEAD file", async () => {

@@ -6,7 +6,7 @@ import path from "node:path";
 // creates, and Windows resolves the sender through that shortcut.
 export const RELEASE_APP_USER_MODEL_ID = "ai.ottocode.desktop";
 
-// A dev build gets its own identity so its toasts are attributable — otherwise
+// A dev build gets its own identity so its toasts are attributable - otherwise
 // dev and the installed app, which are expected to run side by side (see
 // docs/development.md → "Lanes"), post notifications Windows cannot tell
 // apart, and a toast click can activate the wrong window.
@@ -17,7 +17,7 @@ export const DEV_SHORTCUT_FILE_NAME = "Otto (Dev).lnk";
 // A distinct AUMID is only usable if Windows can resolve it, which means a Start
 // Menu shortcut carrying it must exist. The installed app gets one from NSIS; a
 // dev build runs straight out of the checkout and has none, which is why dev has
-// historically borrowed the release AUMID. So we write one — see
+// historically borrowed the release AUMID. So we write one - see
 // ensureDevAppUserModelId.
 export function resolveDevShortcutPath(appDataDir: string): string {
   return path.join(

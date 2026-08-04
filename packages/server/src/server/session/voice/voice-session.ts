@@ -1039,7 +1039,7 @@ export class VoiceSession {
   }
 
   // The personality's spoken identity: if the voice-mode agent was spawned from
-  // a personality with a voice, use it for TTS. Soft binding — any failure or a
+  // a personality with a voice, use it for TTS. Soft binding - any failure or a
   // voice that doesn't resolve on the active provider degrades to the host
   // default (handled downstream), never breaking playback.
   private async resolvePersonalityVoiceOverride(
@@ -1153,7 +1153,7 @@ export class VoiceSession {
 
   /**
    * Read a full message aloud on demand (per-message playback button). Streams
-   * the whole text — no length cap — sentence by sentence via the session
+   * the whole text - no length cap - sentence by sentence via the session
    * TTSManager, in the given personality `voice` (resolved on the client from the
    * live personality, so it tracks the picked personality). Only one message
    * playback runs at a time: a new call aborts the previous. Resolves once

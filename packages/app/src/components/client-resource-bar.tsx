@@ -9,13 +9,13 @@ import { compactUp, SPACING } from "@/styles/theme";
 
 // A dense readout of everything the resource monitor currently knows, pinned to
 // the bottom of the Metrics screen. Grouped left-to-right by what it answers:
-// how smooth is it, how much is retained, how loud is the daemon connection —
+// how smooth is it, how much is retained, how loud is the daemon connection -
 // and finally what is growing fastest, which is the one field that turns the
 // strip from a gauge into a lead.
 //
 // It scrolls horizontally in its own container rather than wrapping: the value
 // order is the diagnosis order, and reflowing it into ragged rows at narrow
-// widths would scramble that. Scrolling is the floor, not the plan — the strip
+// widths would scramble that. Scrolling is the floor, not the plan - the strip
 // first shortens its labels and then sheds its least diagnostic groups so that a
 // narrow window still shows a readable gauge rather than a scrollable one. See
 // `client-resource-bar.layout.ts` for the rules and the drop order.
@@ -127,9 +127,9 @@ export function ClientResourceBar(): ReactElement | null {
 }
 
 // What a reading that this platform cannot supply renders as. Compared against
-// (not just printed) so those cells render muted — a dash in the same weight as a
+// (not just printed) so those cells render muted - a dash in the same weight as a
 // real number reads as a value.
-const MISSING_VALUE = "—";
+const MISSING_VALUE = "-";
 
 function formatNumber(value: number | undefined, digits: number): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return MISSING_VALUE;
@@ -195,7 +195,7 @@ function shortKey(key: string): string {
 // The strip is the bottom-most band of the app chrome, so it reads as a peer of
 // the sidebar's icon row rather than a taller slab under it: same height, to the
 // pixel. That row is a `spacing[8]` button box (1.5x on compact) inside
-// `spacing[3]` vertical padding, over a 1px rule — see `left-sidebar`'s
+// `spacing[3]` vertical padding, over a 1px rule - see `left-sidebar`'s
 // `sidebarFooter` and `sidebar-footer-nav`'s `footerIconButton`.
 //
 // Applied as a floor, not a fixed height: the readout is three text lines deep

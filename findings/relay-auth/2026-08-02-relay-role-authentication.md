@@ -82,7 +82,7 @@ always wins.**
 
 ### The eviction is deliberate, and the daemon depends on it
 
-This is not an oversight — it is how the daemon reconnects. When the daemon's control socket
+This is not an oversight - it is how the daemon reconnects. When the daemon's control socket
 half-opens, the daemon terminates it and dials a fresh one (`relay-transport.ts:214-260`,
 `333-343`), and that fresh socket must be allowed to _replace_ the stale one. `getWebSockets` under
 Cloudflare hibernation cannot tell a live socket from a zombie, so the DO takes the simple route:
@@ -93,7 +93,7 @@ the newest server socket always wins. That correctness requirement is exactly wh
 
 - Attacker connects `role=server` → DO closes the real daemon's control socket with `1008`.
 - Daemon observes `close` and calls `scheduleReconnect()` with backoff
-  `delayMs = Math.min(30000, 1000 * reconnectAttempt)` (`relay-transport.ts:333-343`) — 1s, 2s, 3s…
+  `delayMs = Math.min(30000, 1000 * reconnectAttempt)` (`relay-transport.ts:333-343`) - 1s, 2s, 3s…
   capped at 30s.
 - Each time the daemon reconnects it re-evicts the attacker, and the attacker re-evicts it with no
   backoff at all.
@@ -106,11 +106,11 @@ denial of remote access for anyone holding the `serverId`.**
 
 ---
 
-## Why this is denial-of-service, not takeover — establishing the boundary precisely
+## Why this is denial-of-service, not takeover - establishing the boundary precisely
 
 The task asked for this boundary to be pinned down, because it decides the severity.
 
-The control channel the attacker seizes carries only relay bookkeeping — `sync`, `connected`,
+The control channel the attacker seizes carries only relay bookkeeping - `sync`, `connected`,
 `disconnected`, `ping`, `pong` (`relay-transport.ts:49-54`). Seizing it grants no application
 authority. Suppose the attacker goes further and also opens the per-connection data socket
 (`role=server&connectionId=X`) to intercept a client's frames. Trace the handshake
@@ -120,7 +120,7 @@ authority. Suppose the attacker goes further and also opens the per-connection d
    and its own ephemeral secret: `deriveSharedKey(clientSecret, daemonPublic)`
    (`createClientChannel`, `encrypted-channel.ts:154-161`). It then sends a plaintext `e2ee_hello`
    carrying only its ephemeral public key.
-2. The attacker can reply `e2ee_ready` — it is plaintext and needs no key — so the client's channel
+2. The attacker can reply `e2ee_ready` - it is plaintext and needs no key - so the client's channel
    flips to `open` and starts sending application traffic **encrypted under a key the attacker cannot
    derive** (it would need the daemon's secret key, `deriveSharedKey(daemonSecret, clientPublic)`,
    `createDaemonChannel`, `encrypted-channel.ts:274-275`).
@@ -134,7 +134,7 @@ cannot swap a live channel onto an attacker-chosen key.
 
 **Conclusion:** the attacker gets availability denial plus the metadata the relay already sees
 (IP, timing, sizes, connectionIds, the plaintext handshake). Confidentiality and integrity are
-intact. This matches `SECURITY.md`'s "Relay threat model" exactly — the relay is untrusted by design
+intact. This matches `SECURITY.md`'s "Relay threat model" exactly - the relay is untrusted by design
 and the E2EE holds even if it is fully compromised.
 
 ### `serverId` is not a secret, and knowing it is the whole prerequisite
@@ -143,7 +143,7 @@ and the E2EE holds even if it is fully compromised.
 travels in the pairing offer fragment **alongside** the daemon public key
 (`connection-offer.ts:34-41`, `pairing-offer.ts:41-46`) and is registered with the hub together with
 the public key (`bootstrap.ts:1615-1616`). Anyone who has ever received a pairing link has both the
-`serverId` and the public key. The audit's premise — that a `serverId` is enough to grief the relay —
+`serverId` and the public key. The audit's premise - that a `serverId` is enough to grief the relay -
 is correct. The public key travelling with it does **not** help an attacker forge anything (it is
 public by design), but it _does_ matter for the fix, because a signature scheme needs a way to know
 which key to check against (see Option B).
@@ -152,7 +152,7 @@ which key to check against (see Option B).
 
 ## Does `SECURITY.md` over-claim?
 
-No — and this is worth stating precisely, because "the doc claims a protection the code lacks" would
+No - and this is worth stating precisely, because "the doc claims a protection the code lacks" would
 be a finding in its own right. It does not. `SECURITY.md` is careful to scope its guarantees to
 **confidentiality and integrity** ("cannot read your messages, see your code, or modify traffic
 without detection"), and it never claims the relay resists denial of service or that `serverId`
@@ -166,7 +166,7 @@ documentation improvement, not a correction of a wrong claim. Recommended wordin
 
 ## Why the cheap fix does not close it
 
-The tempting minimal fix is "refuse to evict a live incumbent" — flip the worst case from "attacker
+The tempting minimal fix is "refuse to evict a live incumbent" - flip the worst case from "attacker
 displaces the daemon" to "attacker cannot connect." It is not that simple, for two compounding
 reasons:
 
@@ -193,7 +193,7 @@ only real fix binds the control socket to possession of the daemon's secret key.
 
 ## Options
 
-### Option A — Report upstream, patch nothing here (recommended default)
+### Option A - Report upstream, patch nothing here (recommended default)
 
 `packages/relay/` is pristine upstream Paseo. Per `CLAUDE.md`, it is the single most merge-expensive
 place in this repo to touch, and a relay protocol change must be deployed in lockstep with clients.
@@ -211,7 +211,7 @@ does not force a local hotfix.
   identity-binding fix (Option B), and add a `projects/README.md` row tracking it as
   "reported upstream, awaiting fix."
 
-### Option B — Bind the control socket to the daemon key (the real fix; upstream-shaped)
+### Option B - Bind the control socket to the daemon key (the real fix; upstream-shaped)
 
 Require `role=server` upgrades to prove possession of the daemon's secret key, and reject the upgrade
 in the Worker/DO otherwise. The audit's one-line sketch ("detached signature over
@@ -227,13 +227,13 @@ shape but under-specified in two ways that dominate the design:
    getting it into the offer/hub/storage.
 
 2. **`serverId` is not derived from any key, so the Worker does not know which key to trust.** A
-   signature verified against a _presented_ key proves nothing — the attacker presents their own key
+   signature verified against a _presented_ key proves nothing - the attacker presents their own key
    and signs with it. The Worker needs the _expected_ key for that `serverId`. Two ways to supply it:
    - **TOFU in DO storage:** the first `role=server` connection for a `serverId` binds its public key
      in the Durable Object's durable storage; every later `role=server` upgrade must carry a signature
      verifiable against the bound key. The legit daemon (holding the secret key) always passes; an
      impostor (no secret key) always fails; reconnect works because it is the same key. Residual: an
-     attacker who binds _first_, before the daemon ever connects for that `serverId`, wins — a much
+     attacker who binds _first_, before the daemon ever connects for that `serverId`, wins - a much
      narrower window than today, and closable by seeding the binding from the hub registration.
    - **Self-certifying `serverId`:** make `serverId` an encoding of (a hash of) the signing public
      key, so the Worker verifies against the key embedded in the id with **no stored state and no TOFU
@@ -243,7 +243,7 @@ shape but under-specified in two ways that dominate the design:
 
    Replay/skew: sign a monotonic timestamp and have the DO reject non-increasing timestamps per
    `serverId` (it already has durable storage), bounding replay to nothing. Skew tolerance of ±60s is
-   ample; daemon and edge both run NTP. Note replay is a weak threat regardless — the upgrade rides
+   ample; daemon and edge both run NTP. Note replay is a weak threat regardless - the upgrade rides
    TLS to the relay, so an off-path attacker cannot capture a signature to replay; the real threat is
    an attacker who has `serverId` + public key but not the secret key, and they cannot sign at all.
 
@@ -252,15 +252,15 @@ shape but under-specified in two ways that dominate the design:
    during the transition. This is inherent to a lockstep protocol change and is another reason it
    belongs upstream where the client/daemon/relay floor is managed together.
 
-- **Merge cost (if landed in this fork):** high and permanent — it touches the pristine relay plus the
+- **Merge cost (if landed in this fork):** high and permanent - it touches the pristine relay plus the
   daemon key storage, the connection offer, and the client, and every one of those relay hunks
   re-conflicts on each Paseo merge.
 - **Deploy cost:** must deploy the relay Worker and ship matching daemon/client in step.
 
-### Option C — Narrow the window locally without protocol change (interim, partial)
+### Option C - Narrow the window locally without protocol change (interim, partial)
 
 If there is product urgency to reduce the blast radius before upstream fixes it, the _only_ honest
-local change is to make eviction cheaper for the daemon to win and harder to sustain — e.g. rate-limit
+local change is to make eviction cheaper for the daemon to win and harder to sustain - e.g. rate-limit
 how often a given `serverId`'s control socket may be replaced, or add a short "settling" grace so a
 just-connected control cannot be evicted for N seconds. This raises the attacker's cost (they must
 reconnect continuously and still only get intermittent denial) without claiming to close the hole.
@@ -286,7 +286,7 @@ reconnect continuously and still only get intermittent denial) without claiming 
 4. **Make the one-sentence `SECURITY.md` addition** noting that a leaked `serverId` allows relay-access
    denial without breaching E2EE (appendix). This is a doc-only change, no protocol impact, safe to
    land here.
-5. **Track it as a row in `projects/README.md`** ("relay role auth — reported upstream") rather than
+5. **Track it as a row in `projects/README.md`** ("relay role auth - reported upstream") rather than
    as status in this findings file.
 
 No implementation code was written, per the instruction to get agreement on any protocol change first.
@@ -307,12 +307,12 @@ nothing was deployed.
 
 ---
 
-## Appendix — proposed `SECURITY.md` sentence
+## Appendix - proposed `SECURITY.md` sentence
 
 To add at the end of the "Relay threat model" → "Why the relay can't attack you" list (framed as a
 scope note, since the surrounding guarantees are about confidentiality and integrity):
 
-> - **Deny you access** — a party who obtains your `serverId` (it travels in the pairing link) can
+> - **Deny you access** - a party who obtains your `serverId` (it travels in the pairing link) can
 >   disrupt the relay path and prevent your phone from reaching the daemon. This is a denial of
 >   availability only: it cannot read, forge, or inject application traffic, which remains end-to-end
 >   encrypted. Rotate the pairing link, or use a direct connection with a password, if you suspect a

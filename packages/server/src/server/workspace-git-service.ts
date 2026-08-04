@@ -105,7 +105,7 @@ export interface WorkspaceGitRuntimeSnapshot {
     featuresEnabled: boolean;
     authState: ForgeAuthState;
     /**
-     * Forge resolved for this workspace from its remote — including the per-host
+     * Forge resolved for this workspace from its remote - including the per-host
      * probe, so self-managed GitLab hosts (no "gitlab" in the name) are labeled
      * correctly. The wire projection prefers this over the bare name heuristic.
      */
@@ -148,7 +148,7 @@ export interface WorkspaceGitService {
   peekSnapshot(cwd: string): WorkspaceGitRuntimeSnapshot | null;
   getCheckout(cwd: string): Promise<ProjectCheckoutLitePayload>;
   /**
-   * `getCheckout` without the drift half of the read — same payload, but the
+   * `getCheckout` without the drift half of the read - same payload, but the
    * dirty check, the ahead/behind counts and the base-ref ladder never run.
    * For callers that keep only the identity fields; see `getCheckoutIdentity`.
    */
@@ -290,8 +290,8 @@ interface WorkspaceGitRefreshRequest {
   reason: string;
   notify: boolean;
   /**
-   * True when this request carries a one-shot "the checkout changed" signal — a
-   * watcher event, a self-heal tick, a finished fetch — rather than a caller
+   * True when this request carries a one-shot "the checkout changed" signal - a
+   * watcher event, a self-heal tick, a finished fetch - rather than a caller
    * merely wanting to read the snapshot.
    *
    * The distinction decides what happens when a refresh is already in flight. A
@@ -341,7 +341,7 @@ interface WorkspaceGitServiceDependencies {
   listOttoWorktrees: typeof listOttoWorktrees;
   /**
    * Adapter instances to bind by forge id instead of building from the registry
-   * — the injection seam for the daemon's shared GitHub adapter and for test
+   * - the injection seam for the daemon's shared GitHub adapter and for test
    * fakes. Any forge not listed here is built (and cached once) by the registry.
    */
   forgeOverrides?: Record<string, ForgeService>;
@@ -942,7 +942,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
 
   /**
    * Drop the resolved forge adapter's cached state for a cwd. Goes through the
-   * resolver so it targets the same adapter instance the poller reads — used by
+   * resolver so it targets the same adapter instance the poller reads - used by
    * git mutations to force a fresh forge status on the next refresh.
    */
   invalidateForge(cwd: string): void {
@@ -1136,8 +1136,8 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       void this.refreshWorkspaceTarget(target, {
         force: false,
         // Git only. Forge facts arrive on their own poll cadence
-        // (retainCurrentPullRequestStatusPoll), so registering a workspace —
-        // which the sidebar does for every row it lists — never blocks on a
+        // (retainCurrentPullRequestStatusPoll), so registering a workspace -
+        // which the sidebar does for every row it lists - never blocks on a
         // forge CLI round-trip.
         includeForge: false,
         reason: "initial",
@@ -1192,8 +1192,8 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     target.repoGitRoot = repoGitRoot;
     this.startWorkspaceWatchers(target, gitDir, repoGitRoot);
     // Any snapshot taken before the watchers existed describes a checkout the
-    // watchers never saw. Re-measure it, or a branch that moved during setup —
-    // registration is asynchronous and lands well after the first status read —
+    // watchers never saw. Re-measure it, or a branch that moved during setup -
+    // registration is asynchronous and lands well after the first status read -
     // stays cached forever, since from here on the entry is authoritative.
     // Scheduled rather than awaited, so registering a workspace still returns
     // without blocking on git.
@@ -1386,7 +1386,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     //
     // Git does not edit HEAD in place: `git checkout` writes `HEAD.lock` and renames it
     // over HEAD. A watch on the file path binds to the inode, so after the first
-    // checkout the watcher was holding an unlinked file and went permanently deaf —
+    // checkout the watcher was holding an unlinked file and went permanently deaf -
     // which is why switching branches in a terminal never reached the Changes sidebar.
     // A directory watch sees the rename, because the rename is an event *in* the
     // directory. `filename` is filtered so the rest of `.git`'s churn (index.lock,
@@ -1470,8 +1470,8 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       fetchInFlight: false,
     };
     this.repoTargets.set(repoGitRoot, repoTarget);
-    // A background `git fetch` is the most expensive periodic thing here — it is network
-    // I/O, not just process spawning — so it is the last thing that should run for a repo
+    // A background `git fetch` is the most expensive periodic thing here - it is network
+    // I/O, not just process spawning - so it is the last thing that should run for a repo
     // the user is not in. Both the timer and the immediate first fetch are gated.
     if (this.isActiveWorkspaceTarget(workspaceTarget)) {
       this.startRepoFetchTimer(repoTarget);
@@ -1986,7 +1986,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   }
 
   // Also feeds the recursive (Windows/macOS) watcher's event filter, which needs the same
-  // answer synchronously — hence the relative-path twin and the in-flight dedupe below.
+  // answer synchronously - hence the relative-path twin and the in-flight dedupe below.
   private async loadLinuxIgnoredDirs(rootPath: string): Promise<Set<string>> {
     const cached = this.linuxIgnoredDirsCache.get(rootPath);
     if (cached && Date.now() - cached.ts < LINUX_WATCH_IGNORE_TTL_MS) {
@@ -2050,7 +2050,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
 
   /**
    * Decide whether a recursive `fs.watch` event can be dropped without missing a working
-   * tree change. Everything the repo ignores is churn the diff will never show — an
+   * tree change. Everything the repo ignores is churn the diff will never show - an
    * `npm install` or a build writing thousands of `node_modules`/`dist` entries used to
    * force a full snapshot refresh plus a re-highlighted diff per 150 ms quiet gap.
    *
@@ -2115,7 +2115,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
         request.force && request.includeForge && !target.refreshState.includeForge;
       // A change signal queues when the running pass has already taken its git
       // measurement. Each pass reads git first and the forge second, and a forge
-      // round-trip is a `gh` process plus a network call — seconds. A branch
+      // round-trip is a `gh` process plus a network call - seconds. A branch
       // that moves during that tail was already missed by this pass's read, so
       // joining its promise reports the old branch and discards the only signal
       // that would have corrected it. While the read is still pending there is
@@ -2130,8 +2130,8 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
 
     if (!request.force && this.shouldThrottleNonForcedRefresh(target)) {
       // Defer the throttled request, never drop it. Most non-forced refreshes
-      // carry a one-shot signal — a watcher saw `.git/HEAD` or `refs/heads`
-      // move — and handing back the cached snapshot without re-arming loses
+      // carry a one-shot signal - a watcher saw `.git/HEAD` or `refs/heads`
+      // move - and handing back the cached snapshot without re-arming loses
       // that signal permanently: the watcher does not fire twice, and an
       // observed target's cache is trusted indefinitely on read. Because the
       // watch debounce (1s) is shorter than this gap (2s), a branch switch
@@ -2205,7 +2205,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
    * read, and a single timer is kept so repeated turn-aways cannot pile up.
    *
    * Only change signals are re-armed. A throttled poll (self-heal, a read) is
-   * redundant by construction — it asked for a measurement that was just taken —
+   * redundant by construction - it asked for a measurement that was just taken -
    * so re-firing it would only resurrect periodic work the caller has since
    * paused.
    */
@@ -2696,7 +2696,7 @@ async function loadForgeSnapshot(options: {
     return buildForgeSnapshot(result.authState, result.status, null);
   } catch (error) {
     // The auth probe succeeded, so a failure here is a command error, not an
-    // auth problem — surface it as an error while keeping features enabled.
+    // auth problem - surface it as an error while keeping features enabled.
     return buildForgeSnapshot("authenticated", null, {
       message: error instanceof Error ? error.message : String(error),
     });
@@ -2783,7 +2783,7 @@ function buildForgeUnavailableSnapshot(): WorkspaceGitRuntimeSnapshot["forge"] {
  * CLI-authenticated host. Deliberate choice: expose the hostname as the open
  * `forge` id with `authState: "unauthenticated"`, because a self-hosted
  * GitLab/Gitea becomes resolvable the moment its CLI is authenticated for
- * that host — so "authenticate" is the actionable next step. The trade-off:
+ * that host - so "authenticate" is the actionable next step. The trade-off:
  * a genuinely unsupported host (e.g. Bitbucket) also reads as a login
  * problem; clients that want to distinguish can check the id against the
  * forge registry.

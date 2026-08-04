@@ -75,7 +75,7 @@ import {
   type ProviderDiscoveredModelsCache,
 } from "./provider-diagnostic-models";
 
-// Themed leaf per docs/unistyles.md "Static Theme Imports" — only the icon
+// Themed leaf per docs/unistyles.md "Static Theme Imports" - only the icon
 // re-renders on theme changes, not the row that hosts it.
 const ThemedRemoveIcon = withUnistyles(Trash2, (theme) => ({
   size: theme.iconSize.sm,
@@ -181,7 +181,7 @@ function rankModels<T>(items: T[], query: string, fields: (item: T) => string[])
 }
 
 // A model's tier as shown in the dropdown. "unknown" is the sentinel for "no
-// tier" — picking it clears any user override (reverting to the catalog value if
+// tier" - picking it clears any user override (reverting to the catalog value if
 // we know one, else genuinely Unknown). See model-tiers.ts.
 // TODO(i18n): inline English, translated in a later pass.
 const MODEL_TIER_OPTIONS: SelectFieldOption<ModelTier | "unknown">[] = [
@@ -389,10 +389,42 @@ function readProviderEnv(entry: Record<string, unknown> | null): Record<string, 
   );
 }
 
+/**
+ * The built-in local AI host. Its endpoint and credential are derived from the
+ * brain settings (Settings → Host → Otto Brain), so it never gets a Connection
+ * tab - even when an older install left an `extends: openai-compatible` entry
+ * behind from the days it was added from the provider catalog.
+ */
+const OTTO_BRAIN_PROVIDER_ID = "otto-brain";
+
+/**
+ * Whether the provider is user-defined (removable, endpoint-editable). An older
+ * install can still carry an `extends: openai-compatible` entry for otto-brain
+ * from when it was added from the provider catalog; it is built in regardless.
+ */
+function resolveIsCustomProvider(provider: string, extendsProvider: string | null): boolean {
+  return extendsProvider !== null && provider !== OTTO_BRAIN_PROVIDER_ID;
+}
+
+/**
+ * Whether this provider behaves like an openai-compatible client for the
+ * Tools/Agents tabs (ottoToolGroups, compaction, maxToolRounds). Otto Brain
+ * qualifies even though its config entry never carries `extends` - the
+ * endpoint comes from brain settings, not the provider catalog - because it is
+ * an OpenAICompatAgentClient under the hood (see provider-registry.ts).
+ */
+function resolveIsOpenAiCompatFamily(provider: string, extendsProvider: string | null): boolean {
+  return extendsProvider === "openai-compatible" || provider === OTTO_BRAIN_PROVIDER_ID;
+}
+
 function resolveProviderConnection(
+  provider: string,
   entry: Record<string, unknown> | null,
   extendsProvider: string | null,
 ): ProviderConnectionDescriptor | null {
+  if (provider === OTTO_BRAIN_PROVIDER_ID) {
+    return null;
+  }
   const env = readProviderEnv(entry);
   if (extendsProvider === "codex" || extendsProvider === "openai-compatible") {
     return {
@@ -458,7 +490,7 @@ function useProviderSheetFeature(serverId: string, feature: ProviderSheetFeature
 }
 
 // Merge the host's remembered endpoints in front of the shipped presets. Saved
-// entries win on duplicate URLs — a preset the user has actually connected to
+// entries win on duplicate URLs - a preset the user has actually connected to
 // carries their credential, so offering it twice would be a coin flip over
 // which one fills the key field.
 function buildBaseUrlOptions(params: {
@@ -527,7 +559,7 @@ function ProviderConnectionSection({
     [baseUrl, connection.baseUrlKey, familyEndpoints],
   );
 
-  // Picking a remembered endpoint swaps the credential with it — that pairing
+  // Picking a remembered endpoint swaps the credential with it - that pairing
   // is the whole point of remembering them. A URL with no saved entry (a preset
   // or something freeform) leaves whatever key is already typed alone.
   const handleBaseUrlChange = useCallback(
@@ -556,7 +588,7 @@ function ProviderConnectionSection({
           },
         },
       },
-      // Saving is also what remembers the endpoint — a separate button is one
+      // Saving is also what remembers the endpoint - a separate button is one
       // more thing to forget, and forgetting it loses the key.
       ...(supportsSavedEndpoints
         ? {
@@ -1117,7 +1149,7 @@ function ProviderRemoveSection({
 const EMPTY_COMBOBOX_OPTIONS: ComboboxOption[] = [];
 
 // Known model IDs for providers extending "claude" with a third-party
-// Anthropic-compatible endpoint (Z.AI, Alibaba/Qwen — see
+// Anthropic-compatible endpoint (Z.AI, Alibaba/Qwen - see
 // docs/custom-providers.md). Still fully freeform via allowCustomValue.
 const CLAUDE_COMPATIBLE_MODEL_ID_PRESETS: ComboboxOption[] = [
   { id: "glm-5.1", label: "GLM 5.1" },
@@ -1609,10 +1641,10 @@ export function ProviderDiagnosticSheet({
   );
   const providerConfigEntry = readProviderConfigEntry(config, provider);
   const providerExtends = readProviderExtends(providerConfigEntry);
-  const isCustomProvider = providerExtends !== null;
+  const isCustomProvider = resolveIsCustomProvider(provider, providerExtends);
   const connection = useMemo(
-    () => resolveProviderConnection(providerConfigEntry, providerExtends),
-    [providerConfigEntry, providerExtends],
+    () => resolveProviderConnection(provider, providerConfigEntry, providerExtends),
+    [provider, providerConfigEntry, providerExtends],
   );
   const supportsProviderRemove = useProviderSheetFeature(serverId, "providerRemove");
   const supportsArtifactsToolGroup = useProviderSheetFeature(serverId, "artifactsToolGroup");
@@ -1669,8 +1701,9 @@ export function ProviderDiagnosticSheet({
   }, [visible]);
 
   const hasConnectionTab = connection !== null;
-  const hasToolsTab = providerExtends === "openai-compatible";
-  const hasAgentsTab = providerExtends === "openai-compatible";
+  const isOpenAiCompatFamily = resolveIsOpenAiCompatFamily(provider, providerExtends);
+  const hasToolsTab = isOpenAiCompatFamily;
+  const hasAgentsTab = isOpenAiCompatFamily;
   const tabOptions = useMemo(
     () => buildProviderTabOptions(t, hasConnectionTab, hasToolsTab, hasAgentsTab),
     [hasAgentsTab, hasConnectionTab, hasToolsTab, t],
@@ -1933,7 +1966,7 @@ const sheetStyles = StyleSheet.create((theme) => ({
     paddingTop: theme.spacing[4],
   },
   // Fills the sheet's static content area: fixed rows (search, actions)
-  // sandwich the scrolling list. Only the vertical inset lives here — the
+  // sandwich the scrolling list. Only the vertical inset lives here - the
   // scrolling middle supplies its own horizontal indent (see TabScrollView),
   // so the fixed rows carry theirs individually.
   tabPane: {
@@ -2088,7 +2121,7 @@ const sheetStyles = StyleSheet.create((theme) => ({
     justifyContent: "flex-end",
     gap: theme.spacing[2],
   },
-  // Row handed to AdaptiveModalSheet's `footer` — the sheet's own wrapper
+  // Row handed to AdaptiveModalSheet's `footer` - the sheet's own wrapper
   // already supplies padding, the top border, and the row alignment.
   sheetFooter: {
     flex: 1,
@@ -2113,10 +2146,10 @@ const MODELS_SEARCH_INPUT_STYLE = [sheetStyles.searchInput, isWeb && { outlineSt
 const COMPACT_FOOTER_META_STYLE = [sheetStyles.footerMeta, sheetStyles.compactFooterMeta];
 
 // Single detent on purpose: this sheet has a sticky footer, and gorhom sizes
-// the content column for the highest detent — at a lower resting detent the
+// the content column for the highest detent - at a lower resting detent the
 // footer would sit below the fold, unreachable by scrolling.
 const MAIN_SNAP_POINTS = ["92%"];
-// One size for every provider's settings dialog — tab content scrolls inside.
+// One size for every provider's settings dialog - tab content scrolls inside.
 const DESKTOP_SHEET_HEIGHT = 640;
 const ADD_SNAP_POINTS = ["40%"];
 const DIAGNOSTIC_SNAP_POINTS = ["50%", "85%"];

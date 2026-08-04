@@ -5,7 +5,7 @@ import { chromium } from "@playwright/test";
 
 // Renders demo/assets/og-image.html to the website's og:image / twitter:image
 // (exactly 1200×630 PNG, the standard Open Graph card size). No daemon
-// needed — this is a static page render, same pattern as feature-graphic.mjs.
+// needed - this is a static page render, same pattern as feature-graphic.mjs.
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const templatePath = path.join(scriptDir, "../assets/og-image.html");

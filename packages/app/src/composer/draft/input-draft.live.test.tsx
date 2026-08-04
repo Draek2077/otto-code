@@ -4,7 +4,7 @@
  * This file mounts real React roots with `react-dom/client`, so it needs actual DOM globals.
  * It previously ran in the project's default `node` environment and hand-installed `window`,
  * `document` and `navigator` one property at a time. That worked only for as long as nobody
- * added an import — each new transitive module reached for one more global (`matchMedia`,
+ * added an import - each new transitive module reached for one more global (`matchMedia`,
  * `addEventListener`, `ShadowRoot`) and failed this file with an error naming code it does not
  * use. Declaring the environment gets all of them at once, and keeps getting them.
  */

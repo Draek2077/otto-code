@@ -704,7 +704,7 @@ export interface WorktreeScriptResult {
 
 export interface SpawnWorkspaceScriptOptions {
   /**
-   * The workspace's own base folder — the worktree path for a worktree
+   * The workspace's own base folder - the worktree path for a worktree
    * workspace, the checkout/folder otherwise. Scripts run here, and their
    * otto.json is read from here. This is never the daemon's own directory.
    */
@@ -717,7 +717,7 @@ export interface SpawnWorkspaceScriptOptions {
   branchName: string | null;
   scriptName: string;
   /**
-   * The command for a Script that otto.json does not declare — a **discovered**
+   * The command for a Script that otto.json does not declare - a **discovered**
    * one, read from the project's own files (`package.json` scripts and, later,
    * Makefile targets or .NET launch profiles). Absent ⇒ the name must resolve
    * in otto.json, which is the pre-discovery behavior.
@@ -857,7 +857,7 @@ async function setupServiceScriptRoute(params: {
  * Location env for a workspace script terminal.
  *
  * A script terminal inherits the daemon's environment, and the daemon is very
- * often started from *some other* checkout — in this repo, by the `daemon`
+ * often started from *some other* checkout - in this repo, by the `daemon`
  * script of another workspace, which exports OTTO_WORKTREE_PATH. Without an
  * explicit overlay those stale values win over the workspace the user actually
  * pressed Run in, and `${OTTO_WORKTREE_PATH:-$PWD}`-style commands quietly
@@ -866,7 +866,7 @@ async function setupServiceScriptRoute(params: {
  */
 async function buildWorkspaceScriptLocationEnv(params: {
   workspaceDirectory: string;
-  /** Where the terminal is actually spawned — equals the workspace directory
+  /** Where the terminal is actually spawned - equals the workspace directory
    * unless a discovered script declared a subdirectory. */
   scriptDirectory: string;
   branchName: string | null;
@@ -875,7 +875,7 @@ async function buildWorkspaceScriptLocationEnv(params: {
   const sourceCheckoutPath = await inferRepoRootPathFromWorktreePath(workspaceDirectory);
   return {
     // For a non-worktree workspace this equals the checkout itself, which is
-    // also what `$PWD` resolves to — so the usual `:-$PWD` fallback is preserved.
+    // also what `$PWD` resolves to - so the usual `:-$PWD` fallback is preserved.
     OTTO_WORKTREE_PATH: workspaceDirectory,
     OTTO_SOURCE_CHECKOUT_PATH: sourceCheckoutPath,
     // Backward-compatible alias, same as the worktree bootstrap env.
@@ -892,7 +892,7 @@ async function acquireWorkspaceScriptTerminal(params: {
   serviceScript: boolean;
   existingRuntimeEntry: ReturnType<WorkspaceScriptRuntimeStore["get"]>;
   terminalManager: TerminalManager;
-  /** Where the script runs — the workspace root, or a subdirectory a
+  /** Where the script runs - the workspace root, or a subdirectory a
    * discovered script declared. */
   scriptDirectory: string;
   workspaceId: string;
@@ -1015,7 +1015,7 @@ export async function spawnWorkspaceScript(
     }
 
     const existingRuntimeEntry = runtimeStore.get({ workspaceId, scriptName });
-    // Every script — service or plain — is pinned to its own workspace, so the
+    // Every script - service or plain - is pinned to its own workspace, so the
     // daemon's inherited location env can never decide where a script runs.
     let env: Record<string, string> = await buildWorkspaceScriptLocationEnv({
       workspaceDirectory,

@@ -77,7 +77,7 @@ export function applyCheckoutStatusUpdateFromEvent({
  * ahead/behind/dirty, and the hosting PR-status poll, which refreshes only PR and
  * check state but has to re-send a whole status payload because
  * `checkout_status_update` has no PR-only shape. Applying the poll's git block
- * unconditionally is what mutes Push right after a commit — the poll re-broadcasts
+ * unconditionally is what mutes Push right after a commit - the poll re-broadcasts
  * a pre-commit `aheadOfOrigin: 0` over the freshly fetched `aheadOfOrigin: 1`.
  *
  * Two independent gates:
@@ -88,7 +88,7 @@ export function applyCheckoutStatusUpdateFromEvent({
  *    one unit written by one producer, so a single comparison is total and also
  *    covers out-of-order delivery in general; a per-field rule would instead have to
  *    guess which of aheadOfOrigin/behindOfOrigin/isDirty may legitimately regress
- *    (all of them can — push, fetch, discard).
+ *    (all of them can - push, fetch, discard).
  *
  * Either signal missing means an older daemon, where the pre-existing
  * apply-everything behavior is the only correct reading of the payload.
@@ -117,10 +117,10 @@ function carriesFreshGitState(
  *
  * The uncommitted diff is a per-pane live subscription (checkout_diff_update), while
  * checkout status is a passive, push-only cache (staleTime: Infinity, no refetch on
- * mount/focus/reconnect — see use-status-query.ts). If a checkout_status_update
+ * mount/focus/reconnect - see use-status-query.ts). If a checkout_status_update
  * broadcast is missed after the tree goes dirty again (e.g. edits right after a
  * commit/push), isDirty freezes at `false` and never self-heals. The git-actions CTA
- * derives its only commit affordance from isDirty, so the whole split button vanishes —
+ * derives its only commit affordance from isDirty, so the whole split button vanishes -
  * even though the manual commit box, which reads the diff, is still shown.
  *
  * We reconcile only the dirty-proving direction: a non-empty uncommitted diff means the

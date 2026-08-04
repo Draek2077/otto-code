@@ -6,7 +6,7 @@ import { killProcessTree, MSBUILD_ENV } from "./process-tree.js";
  * The one door every .NET child process goes through.
  *
  * Nothing in Otto may call `spawn` for a `dotnet`-backed process directly. Two subsystems
- * start them — the C# language server and the solution sidecar — and each used to own its
+ * start them - the C# language server and the solution sidecar - and each used to own its
  * own pool with its own cap, which meant the machine's actual .NET process count was the
  * sum of two numbers neither pool could see. Add MSBuild worker nodes, which are children
  * of those processes rather than of ours, and the honest answer to "how many dotnet

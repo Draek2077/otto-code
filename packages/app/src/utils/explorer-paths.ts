@@ -35,7 +35,7 @@ export function buildAbsoluteExplorerPath({
 
 /**
  * Explorer paths on the wire are always workspace-relative and always
- * forward-slashed, with "." for the root — so the three helpers below are plain
+ * forward-slashed, with "." for the root - so the three helpers below are plain
  * string surgery rather than anything platform-aware. Do not reach for
  * `path.posix` here: the app bundle has no node:path on native.
  */

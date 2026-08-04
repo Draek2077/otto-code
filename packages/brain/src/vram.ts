@@ -179,13 +179,20 @@ export interface FitResult {
   adjusted: boolean;
   reason: string | null;
   budget: Budget;
+  /**
+   * The context the caller asked for, before any adjustment. `profile` is the
+   * one that will actually run, so once a fit has been applied the original is
+   * unrecoverable from it - and a benchmark that does not record what it asked
+   * for cannot later explain why it scored the way it did.
+   */
+  requestedContextSize: number;
 }
 
 /**
  * Adapt a profile to the hardware it is about to run on.
  *
  * Refusing to load because a saved profile asks for more context than this
- * machine has is unhelpful when a slightly smaller context would work — and it
+ * machine has is unhelpful when a slightly smaller context would work - and it
  * is the difference between a model being usable on a 32GB desktop and a 24GB
  * laptop. Clamp the context instead, and report what changed.
  */
@@ -196,9 +203,10 @@ export function fitToBudget({
   totalVramBytes,
   reserveBytes = 1.5 * GIB,
 }: BudgetOptions): FitResult {
+  const requestedContextSize = profile.contextSize;
   const initial = budget({ model, profile, calibration, totalVramBytes, reserveBytes });
   if (initial.fits) {
-    return { profile, adjusted: false, reason: null, budget: initial };
+    return { profile, adjusted: false, reason: null, budget: initial, requestedContextSize };
   }
 
   const max = maxContextThatFits({ model, profile, calibration, totalVramBytes, reserveBytes });
@@ -210,6 +218,7 @@ export function fitToBudget({
         `does not fit at any usable context (needs ${formatGiB(initial.totalBytes)}, ` +
         `${formatGiB(initial.usableBytes)} usable)`,
       budget: initial,
+      requestedContextSize,
     };
   }
 
@@ -217,8 +226,9 @@ export function fitToBudget({
   return {
     profile: fitted,
     adjusted: true,
-    reason: `context reduced ${profile.contextSize.toLocaleString()} -> ${max.toLocaleString()} to fit ${formatGiB(totalVramBytes)} of VRAM`,
+    reason: `context reduced ${requestedContextSize.toLocaleString()} -> ${max.toLocaleString()} to fit ${formatGiB(totalVramBytes)} of VRAM`,
     budget: budget({ model, profile: fitted, calibration, totalVramBytes, reserveBytes }),
+    requestedContextSize,
   };
 }
 

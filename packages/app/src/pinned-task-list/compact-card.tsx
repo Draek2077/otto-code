@@ -29,12 +29,12 @@ export interface CompactPinnedTaskListCardProps {
 
 /**
  * The phone form of the pinned checklist: one row deep until the user asks for
- * more. Collapsed, it spends its whole width on the two things worth a glance —
+ * more. Collapsed, it spends its whole width on the two things worth a glance -
  * how far along the agent is (done/total) and a single glyph for the phase:
  * hollow for nothing started, pulsing while working, a filled check when every
  * task is done (see TodoSummaryMarker). Tapping the row expands the same
  * checkable body the desktop card shows, so starting collapsed costs nothing.
- * The desktop card is unusable here — it eats a third of a phone screen to show
+ * The desktop card is unusable here - it eats a third of a phone screen to show
  * rows the user is not reading yet.
  */
 export function CompactPinnedTaskListCard({

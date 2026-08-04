@@ -49,7 +49,7 @@ async function closeBottomSheetWithBackdrop(page: Page) {
   const handle = bottomSheetHandle(page);
   // Tapping the backdrop is the close path under test, but on a loaded CI runner
   // the model-selector sheet re-renders as its model list settles and Gorhom
-  // drops backdrop presses during that churn — so a tap (even retried) can fail
+  // drops backdrop presses during that churn - so a tap (even retried) can fail
   // to dismiss. Tap the backdrop first; if it survives, drag the handle down,
   // which drives Gorhom's pan-to-close directly and is unaffected by the churn.
   // The post-close guard below still protects the regression this test exists

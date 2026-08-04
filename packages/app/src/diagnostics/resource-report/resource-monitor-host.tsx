@@ -10,7 +10,7 @@ const selectResourceMonitorEnabled = (settings: AppSettings) => settings.resourc
  * Binds the resource monitor to the `resourceMonitorEnabled` setting.
  *
  * The monitor is started at module scope in `app/_layout.tsx` so startup is
- * measured at all — settings live behind async storage and are not readable that
+ * measured at all - settings live behind async storage and are not readable that
  * early. This host is what lets the user turn it back off: once settings
  * hydrate, it stops the frame loop and the census interval, and restarts them if
  * the setting is flipped back on. Headless; renders nothing.

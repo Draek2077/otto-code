@@ -15,7 +15,7 @@ import type {
  * retrofitting it around a hardcoded .NET tree would cost a rewrite.
  *
  * Everything here speaks **absolute** paths. Turning those into the workspace-relative form the
- * wire carries is `paths.ts`'s job, done once at the service boundary — a provider that had to
+ * wire carries is `paths.ts`'s job, done once at the service boundary - a provider that had to
  * know about workspaces would be a provider that has to re-implement containment.
  */
 
@@ -64,7 +64,7 @@ export interface SolutionProvider {
 
   /**
    * Solutions in this workspace. **Must stay cheap**: it runs for every workspace, and the
-   * overwhelmingly common answer is `[]` — an empty result means no switcher, no probe cost, and
+   * overwhelmingly common answer is `[]` - an empty result means no switcher, no probe cost, and
    * a Files tab that behaves exactly as it does today. Spawning anything here would make every
    * .NET-free workspace pay for a feature it will never show.
    */
@@ -72,7 +72,7 @@ export interface SolutionProvider {
 
   /**
    * `root` is the workspace, and it rides on every call rather than being derived from the
-   * solution's own directory. Those two differ — a solution can sit in a subdirectory — and the
+   * solution's own directory. Those two differ - a solution can sit in a subdirectory - and the
    * workspace is what `stopWorkspace` has to be able to match, so deriving it would leave a
    * closed workspace holding a live process.
    */

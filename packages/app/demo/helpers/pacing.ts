@@ -2,7 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 
 /**
  * Human-cadence input helpers for demo recordings. E2E specs optimize for
- * speed; demo captures optimize for watchability — visible pointer travel,
+ * speed; demo captures optimize for watchability - visible pointer travel,
  * keystroke rhythm, and beats between actions. Jitter is seeded so repeated
  * takes of a scenario have near-identical pacing.
  */
@@ -31,7 +31,7 @@ export async function beat(page: Page): Promise<void> {
   await pause(page, 650 + Math.round(nextJitter() * 350));
 }
 
-/** Hover first, settle, then click — so the viewer can follow the pointer. */
+/** Hover first, settle, then click - so the viewer can follow the pointer. */
 export async function humanClick(page: Page, target: Locator): Promise<void> {
   await target.hover();
   await pause(page, 180 + Math.round(nextJitter() * 140));

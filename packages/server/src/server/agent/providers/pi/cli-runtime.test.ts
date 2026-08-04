@@ -441,7 +441,7 @@ describe("PiCliRuntime", () => {
 
     const stats = await session.getSessionStats();
 
-    // Neither RPC returned usable data — should resolve with empty object
+    // Neither RPC returned usable data - should resolve with empty object
     expect(stats).toEqual({});
   });
 });

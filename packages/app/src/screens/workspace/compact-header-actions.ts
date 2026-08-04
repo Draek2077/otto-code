@@ -4,7 +4,7 @@
  * The strip is `[menu toggle] [title / subtitle] [...] [Voice cues] [Visualizer]
  * [Play]` in the header's `left` container plus `[Explorer]` in `right`. The
  * "..." menu is the one non-negotiable control, and the project name / workspace
- * subtitle must always keep at least `MIN_TITLE_WIDTH` — so when the row can't
+ * subtitle must always keep at least `MIN_TITLE_WIDTH` - so when the row can't
  * hold everything the optional buttons drop in the order Voice cues,
  * Visualizer, Explorer, Play.
  *
@@ -31,7 +31,7 @@ export const MIN_TITLE_WIDTH = 96;
 
 // Compact chrome widths, derived from the styles the buttons actually use:
 // every one is `headerIconSlotStyle.slot` (spacing[3] = 12px padding per side)
-// wrapping a compact-scaled glyph. Approximations are fine — this decides
+// wrapping a compact-scaled glyph. Approximations are fine - this decides
 // whether a ~54px box fits, not where it lands.
 const SLOT_PADDING = 12 * 2;
 /** `MobileMenuIcon` is a fixed 16px rule doubled in compact. */
@@ -85,7 +85,7 @@ export interface CompactHeaderActionsFit {
 
 /**
  * Resolves which optional header buttons render. Returns one flag per mount
- * site so each JSX gate stays a single boolean — the callers straddle two
+ * site so each JSX gate stays a single boolean - the callers straddle two
  * containers and must spend the same width budget.
  *
  * A `rowWidth` of 0 means "not measured yet": everything renders, so the first

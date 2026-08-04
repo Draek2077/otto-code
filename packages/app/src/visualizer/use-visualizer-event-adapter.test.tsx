@@ -4,7 +4,7 @@
 // Integration test for the STATEFUL adapter side (node registry, backfill,
 // live-stream dedup, reconcile-driven lifecycle). Drives the hook through the
 // real session store with a fake daemon client and asserts on the exact
-// bridge messages the page would receive — this is the layer where "a running
+// bridge messages the page would receive - this is the layer where "a running
 // observed subagent must stay alive until it actually finishes" lives.
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -171,7 +171,7 @@ describe("useVisualizerEventAdapter (stateful)", () => {
   });
 
   afterEach(() => {
-    // Explicit — RTL's automatic cleanup needs a global afterEach, which this
+    // Explicit - RTL's automatic cleanup needs a global afterEach, which this
     // suite doesn't register; without it every test's adapter stays mounted
     // and keeps reconciling later tests' store changes.
     cleanup();
@@ -254,7 +254,7 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     expect(completes.map((e) => e.payload.name)).toEqual(["Explore"]);
 
     // Resurrection: a settled row that revives (background Task handoff keeps
-    // emitting task events) re-spawns the node the page already faded out —
+    // emitting task events) re-spawns the node the page already faded out -
     // and completes again when it truly finishes.
     upsertAgent(
       makeAgent({
@@ -296,7 +296,7 @@ describe("useVisualizerEventAdapter (stateful)", () => {
   });
 
   it("prunes a node whose agent has left the authoritative set", async () => {
-    // A child fades and a vanished root closes only AFTER hydration settles —
+    // A child fades and a vanished root closes only AFTER hydration settles -
     // during the attach window the set is a partial pre-refresh view.
     setAgents([
       makeAgent({ id: "root-1", title: "My chat" }),
@@ -321,7 +321,7 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     messages.length = 0;
 
     // The subagent disappears from the store (closed + swept). Its node must
-    // fade via agent_complete — not linger as a phantom "still working" node.
+    // fade via agent_complete - not linger as a phantom "still working" node.
     setAgents([
       makeAgent({ id: "root-1", title: "My chat" }),
       makeAgent({
@@ -350,7 +350,7 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     // The whole point of Part 2: a reopened chat's Execution Timeline + scrubber
     // must show the REAL shape of what happened while away, not a zero-width
     // sliver. Times are anchored at the root's createdAt, so a tool call 6s
-    // after the chat started lands at ~6, one 30s after at ~30 — not both at 0.
+    // after the chat started lands at ~6, one 30s after at ~30 - not both at 0.
     const rootCreatedAt = new Date(BASE_TIME.getTime());
     client.fetchAgentTimeline.mockImplementation(async (agentId: string) => {
       if (agentId !== "root-1") {
@@ -400,7 +400,7 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     // The root spawn anchors the session at t=0.
     const spawn = events.find((e) => e.type === "agent_spawn" && e.payload.name === "My chat");
     expect(spawn?.time).toBe(0);
-    // Each backfilled tool call keeps its real offset from the session start —
+    // Each backfilled tool call keeps its real offset from the session start -
     // proof the history is spread, not clamped to 0.
     const early = events.find((e) => e.type === "tool_call_end" && e.payload.tool === "Read");
     const times = events
@@ -436,7 +436,7 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     const updated = messages.find((m) => m.type === "session-updated");
     expect(updated).toMatchObject({ sessionId: "root-1", label: "Visualizer Title Fix" });
 
-    // …and the graph node relabels in place — agent_rename keys on the STABLE
+    // …and the graph node relabels in place - agent_rename keys on the STABLE
     // spawn name, carrying the new full title as the display label.
     const rename = collectEvents(messages).find((e) => e.type === "agent_rename");
     expect(rename?.payload).toEqual({
@@ -592,7 +592,7 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     await settle();
     expect(collectEvents(messages).filter((e) => e.type === "subagent_dispatch")).toEqual([]);
 
-    // Later running repeat reveals the sub_agent detail — dispatch fires once.
+    // Later running repeat reveals the sub_agent detail - dispatch fires once.
     const subAgentDetail = { type: "sub_agent", description: "Scan repo files", log: "" };
     emitTaskUpdate(subAgentDetail, 6);
     emitTaskUpdate(subAgentDetail, 7);
@@ -605,7 +605,7 @@ describe("useVisualizerEventAdapter (stateful)", () => {
       child: "Scan repo files",
     });
 
-    // The tool input streams progressively — when subagent_type parses later
+    // The tool input streams progressively - when subagent_type parses later
     // and changes the derived child label, the dispatch re-emits with the
     // label the observed node will actually be named by.
     emitTaskUpdate(
@@ -793,13 +793,13 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     const liveBatches = messages.slice(beforeLive).filter((m) => m.type === "agent-event-batch");
     const liveEvents = collectEvents(messages.slice(beforeLive));
     expect(liveEvents.some((e) => e.type === "tool_call_start")).toBe(true);
-    // Live batches must animate — never hydrate.
+    // Live batches must animate - never hydrate.
     expect(liveBatches.every((m) => m.type === "agent-event-batch" && !m.hydrate)).toBe(true);
   });
 
   it("hydrates an agent that only appears via the directory refresh", async () => {
     // The store holds one root at attach; the authoritative directory refresh
-    // surfaces a second. Its backfill lands AFTER the initial reconcile — the
+    // surfaces a second. Its backfill lands AFTER the initial reconcile - the
     // exact case that used to flip `hydrating` false too early and animate the
     // second chat's whole history on first open. Both must stay hydrate.
     setAgents([makeAgent({ id: "root-1", title: "First chat" })]);
@@ -819,7 +819,7 @@ describe("useVisualizerEventAdapter (stateful)", () => {
         .filter((e) => e.type === "agent_spawn")
         .map((e) => (e.payload as { name?: string }).name),
     );
-    // Both roots spawned — including the refresh-surfaced one.
+    // Both roots spawned - including the refresh-surfaced one.
     expect(spawnNames.size).toBeGreaterThanOrEqual(2);
     // Every batch flushed during hydration is tagged hydrate; nothing animates.
     expect(batches.length).toBeGreaterThan(0);
@@ -828,7 +828,7 @@ describe("useVisualizerEventAdapter (stateful)", () => {
 
   it("re-asserts completion after backfill replays an already-finished agent's history", async () => {
     // Refresh/reattach: the agent is already terminal when first registered,
-    // so the reconcile emits agent_complete immediately — but the backfill
+    // so the reconcile emits agent_complete immediately - but the backfill
     // then appends the whole historical timeline into the same batch, AFTER
     // that complete. The page's tool/message handlers have no completed-guard
     // (only agent_idle/permission do), so without a trailing complete the
@@ -891,7 +891,7 @@ describe("useVisualizerEventAdapter (stateful)", () => {
 
   it("settles a reopened idle chat at resting idle after backfill", async () => {
     // The exact "stuck Thinking" regression: a root/attended chat is idle at
-    // attach (non-terminal — roots never complete on idle), and its replayed
+    // attach (non-terminal - roots never complete on idle), and its replayed
     // timeline ends on a tool/assistant item because `turn_completed` is a
     // live-only stream event that never lands in the persisted timeline.
     // Without the backfill-tail resting-idle re-assertion, the replay leaves
@@ -947,10 +947,10 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     );
     // The replayed history is present…
     expect(lastToolEventIdx).toBeGreaterThanOrEqual(0);
-    // …and the page's LAST word on the resting chat is a resting idle — after
+    // …and the page's LAST word on the resting chat is a resting idle - after
     // the replayed tool activity that would otherwise leave it 'thinking'.
     expect(lastRestingIdleIdx).toBeGreaterThan(lastToolEventIdx);
-    // Roots never complete on idle — settling must be an idle, not a completion.
+    // Roots never complete on idle - settling must be an idle, not a completion.
     expect(
       events.filter((e) => e.type === "agent_complete" && e.payload.name === "My chat"),
     ).toEqual([]);
@@ -960,7 +960,7 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     // A live persona-color change re-emits the spawn (re-tint), but a node
     // that already completed must keep its old colors: spawn of an existing
     // name is a reactivate on the page, and the terminal branch can never
-    // re-complete it (terminalEmitted stays true) — the node would sit
+    // re-complete it (terminalEmitted stays true) - the node would sit
     // "alive" forever.
     setAgents([
       makeAgent({ id: "root-1", title: "My chat" }),
@@ -1108,7 +1108,7 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     );
     expect(updates).toHaveLength(1);
     expect(updates[0]?.payload).toMatchObject({ cumulativeTokens: 19_000 });
-    // No context reading — must not carry a tokens field the page would
+    // No context reading - must not carry a tokens field the page would
     // treat as a 0 occupancy.
     expect(updates[0]?.payload).not.toHaveProperty("tokens");
 
@@ -1170,7 +1170,7 @@ describe("useVisualizerEventAdapter (stateful)", () => {
 
     const draft = startedSession("draft:d1");
     expect(draft).toBeDefined();
-    // Empty session — a "New chat" label, active, and no events (the page shows
+    // Empty session - a "New chat" label, active, and no events (the page shows
     // "Waiting for chat activity" when this session is selected).
     expect(draft?.session.label).toBe("New chat");
     expect(draft?.session.status).toBe("active");
@@ -1206,7 +1206,7 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     messages.length = 0;
 
     // Deactivate then reactivate. The main effect re-runs and posts `reset`,
-    // which clears the page's whole session list — the draft must be re-emitted
+    // which clears the page's whole session list - the draft must be re-emitted
     // against the fresh page (else a hidden-then-shown pane loses its drafts).
     view.rerender({ active: false, draftSessions: [{ draftId: "d1", label: "New chat" }] });
     await settle();

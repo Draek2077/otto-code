@@ -408,12 +408,12 @@ describe("Codex app-server provider", () => {
     expect(startCall?.params).toMatchObject({ sandbox: "read-only" });
   });
 
-  test('capabilities admit "read" but not "none" — Codex has no tier below read-only', () => {
+  test('capabilities admit "read" but not "none" - Codex has no tier below read-only', () => {
     const provider = new CodexAppServerAgentClient(createTestLogger());
     expect(provider.capabilities.supportsWorkspaceAccess).toBe(true);
     // Never set without the enforcement behind it: the app-server protocol has
     // no tool-deny list and the shell reads inside every sandbox tier, so
-    // "none" cannot be enforced here — the spawn gate refuses such nodes
+    // "none" cannot be enforced here - the spawn gate refuses such nodes
     // (capabilitiesEnforceAccess in agent/workspace-access.ts).
     expect(provider.capabilities.supportsWorkspaceAccessNone).toBeUndefined();
   });

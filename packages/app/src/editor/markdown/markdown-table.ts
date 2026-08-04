@@ -45,7 +45,7 @@ function lineEndAt(doc: string, pos: number): number {
  * Split a row into cells on unescaped pipes.
  *
  * GFM makes the outer pipes optional, so a leading and trailing empty cell are
- * dropped — but only when the row actually started or ended with one, or a
+ * dropped - but only when the row actually started or ended with one, or a
  * genuinely empty first cell would disappear.
  */
 export function splitRow(line: string): string[] {
@@ -236,7 +236,7 @@ export const insertRowBelow = withTable((table) => {
 });
 
 export const deleteRow = withTable((table) => {
-  // The header is structural — a table without one is not a table — and the
+  // The header is structural - a table without one is not a table - and the
   // last body row leaves a header with nothing under it, which is still valid.
   if (table.cursorRow === 0 || table.rows.length <= 1) {
     return null;

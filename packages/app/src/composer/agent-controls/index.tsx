@@ -22,8 +22,8 @@ import {
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useShallow } from "zustand/shallow";
 import {
-  Brain,
   ListTodo,
+  Psychology,
   Settings2,
   ShieldCheck,
   Summarize,
@@ -109,7 +109,7 @@ const EMPTY_PERSONALITY_ROSTER: readonly AgentPersonality[] = [];
 
 // A personality switch restarts the provider query, so the controls lock while
 // it's in flight. If the daemon doesn't answer within this window the controls
-// re-enable so the user can retry or carry on (the switch may still land late —
+// re-enable so the user can retry or carry on (the switch may still land late -
 // agent_state then updates the identity on its own).
 const PERSONALITY_SWITCH_TIMEOUT_MS = 30_000;
 
@@ -129,7 +129,7 @@ function buildRunningChatPersonalities(input: {
   return roster.map((personality) => {
     const resolution = resolvePersonalityForForm(personality, entries);
     // Show the human-readable provider/model names from the live snapshot rather
-    // than the raw ids — matches usePersonalitySelection / buildTeamRoleEntry so
+    // than the raw ids - matches usePersonalitySelection / buildTeamRoleEntry so
     // the running-agent picker reads the same as the schedule/artifact/draft
     // pickers. Fall back to the id when the snapshot has no matching entry.
     const entry = entries.find((candidate) => candidate.provider === personality.provider);
@@ -152,7 +152,7 @@ function buildRunningChatPersonalities(input: {
 
 /**
  * Copy for the personality-switch warning dialog. The switch (or clear) applies
- * a new system prompt, which restarts the provider query — the conversation
+ * a new system prompt, which restarts the provider query - the conversation
  * resumes, but the change lands on the next turn. Suppressible per device.
  * i18n: English-only pending the agent-personalities translation pass.
  */
@@ -162,7 +162,7 @@ function buildPersonalitySwitchDialog(target: { name: string } | null): ConfirmD
       title: "Clear personality?",
       message:
         "Clearing the personality removes its system prompt from this agent. " +
-        "The provider session restarts to apply the change — the conversation " +
+        "The provider session restarts to apply the change - the conversation " +
         "continues, and the model, effort, and mode stay as they are.",
       confirmLabel: "Clear",
       checkboxLabel: "Don't show this again",
@@ -173,7 +173,7 @@ function buildPersonalitySwitchDialog(target: { name: string } | null): ConfirmD
     message:
       `Switching applies ${target.name}'s model, effort, mode, and system prompt ` +
       "to this running agent. The provider session restarts to pick up the new " +
-      "prompt — the conversation continues, and the change takes effect on the " +
+      "prompt - the conversation continues, and the change takes effect on the " +
       "next turn.",
     confirmLabel: "Switch",
     checkboxLabel: "Don't show this again",
@@ -193,7 +193,7 @@ function buildModelOverPersonalityDialog(input: {
   return {
     title: `Switch to ${input.modelLabel}?`,
     message:
-      `Picking a plain model releases ${input.personalityName} — its system prompt ` +
+      `Picking a plain model releases ${input.personalityName} - its system prompt ` +
       `is removed and the agent switches to ${input.modelLabel}. The provider ` +
       "session restarts to apply the change; the conversation continues, and it " +
       "takes effect on the next turn.",
@@ -208,7 +208,7 @@ function buildModelOverPersonalityDialog(input: {
  * provider, and seeds the selection from the agent's live personality name. A pick
  * (after a suppressible warning dialog) goes through one agent.personality.set RPC:
  * the daemon applies prompt + identity + model/mode/effort atomically and restarts
- * the provider query, then the updated agent_state flows the new identity back —
+ * the provider query, then the updated agent_state flows the new identity back -
  * there is no client-side selection state to drift.
  */
 function useRunningChatPersonality(input: {
@@ -230,7 +230,7 @@ function useRunningChatPersonality(input: {
 } {
   const { agentId, serverId, agent, client, toast } = input;
   const { config } = useDaemonConfig(serverId);
-  // COMPAT(setAgentPersonality): added in v0.5.0 — an older daemon cannot apply
+  // COMPAT(setAgentPersonality): added in v0.5.0 - an older daemon cannot apply
   // a personality to a running agent, so the switcher's handlers hide there
   // (the bound identity still displays read-only via the fallback entry).
   const canSetPersonality = useSessionStore(
@@ -276,7 +276,7 @@ function useRunningChatPersonality(input: {
     [familyRoster, boundPersonalityId, personalityName],
   );
   // The agent can be bound to a personality the selectable roster can't
-  // account for — deleted, renamed (old daemons match by name), chatter role
+  // account for - deleted, renamed (old daemons match by name), chatter role
   // removed, or a daemon that predates the live switch. Synthesize a
   // display-only entry from agent_state so the trigger keeps the truthful
   // identity (name + spinner) instead of half-reverting to the raw model.
@@ -338,7 +338,7 @@ function useRunningChatPersonality(input: {
         setIsSwitching(false);
         // i18n: English-only pending the agent-personalities translation pass.
         toast.error(
-          "Personality switch timed out — controls re-enabled. It may still apply in the background.",
+          "Personality switch timed out - controls re-enabled. It may still apply in the background.",
         );
       }, PERSONALITY_SWITCH_TIMEOUT_MS);
       try {
@@ -383,7 +383,7 @@ function useRunningChatPersonality(input: {
     applyPersonality(null, null);
   }, [applyPersonality]);
   // Picking a raw model with a personality bound: one confirm, then clear the
-  // personality and apply the model as a single locked flow. Nothing persists —
+  // personality and apply the model as a single locked flow. Nothing persists -
   // a started agent's picker is no-save (see handleSelectModel).
   const boundPersonalityLabel =
     familyRoster.find((entry) => entry.id === selectedPersonalityId)?.name ?? personalityName;
@@ -417,7 +417,7 @@ function useRunningChatPersonality(input: {
     ],
   );
 
-  // COMPAT(setAgentPersonality): old daemon — read-only identity, no handlers,
+  // COMPAT(setAgentPersonality): old daemon - read-only identity, no handlers,
   // so the model picker can't emit the unsupported RPC.
   if (!canSetPersonality) {
     return buildReadOnlyChatPersonalityResult(fallbackEntry);
@@ -614,7 +614,7 @@ interface AgentControlsProps {
   /**
    * Mirrors the personality-switch in-flight state up to the composer so it
    * can lock send/dictation/voice-mode while the RPC runs. Typing and
-   * attachments stay enabled — the composer must not route this through its
+   * attachments stay enabled - the composer must not route this through its
    * `disabled` prop.
    */
   onPersonalitySwitchingChange?: (switching: boolean) => void;
@@ -636,7 +636,7 @@ const FEATURE_ICONS: Record<string, typeof Zap> = {
   "list-todo": ListTodo,
   "shield-check": ShieldCheck,
   zap: Zap,
-  brain: Brain,
+  brain: Psychology,
   summarize: Summarize,
 };
 
@@ -925,7 +925,7 @@ function buildAgentProviderModels(
 
 /**
  * Hover-card facts for a running agent's model trigger. Effort only reads as a
- * fact when the model actually has levels — a bound personality hides the effort
+ * fact when the model actually has levels - a bound personality hides the effort
  * chip, but the level it fixed at spawn is still what the agent runs at, so the
  * card keeps stating it.
  */
@@ -1479,7 +1479,7 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
                 })}
                 testID="agent-thinking-selector"
               >
-                <Brain size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+                <Psychology size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
                 <Text style={styles.modeBadgeText} numberOfLines={1} ellipsizeMode="tail">
                   {displayThinking}
                 </Text>
@@ -1598,7 +1598,7 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
 
   const hasThinking = comboboxThinkingOptions.length > 0;
   // Features is the first control to go when the compact toolbar runs out of
-  // room. It is the only one that shows no state — every other badge tells you
+  // room. It is the only one that shows no state - every other badge tells you
   // something at a glance (which model, which mode, is it thinking), while this
   // one is purely a door to a sheet. Dropped rather than shrunk: the whole row
   // is already scaling down by then, and one more 28pt icon squeezed smaller
@@ -1614,7 +1614,7 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
 
   const handleOpenThinking = useCallback(() => handleOpenSheet("thinking"), [handleOpenSheet]);
   const handleOpenFeatures = useCallback(() => handleOpenSheet("features"), [handleOpenSheet]);
-  // The pane can be narrowed while the sheet is open — dismiss it rather than
+  // The pane can be narrowed while the sheet is open - dismiss it rather than
   // leaving a sheet on screen whose trigger has just vanished behind it.
   useEffect(() => {
     if (!showFeatures && activeSheet === "features") {
@@ -1639,7 +1639,7 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
     [personality?.personalities, personality?.selectedPersonalityId],
   );
 
-  // Icon-only on mobile — the label rarely fits next to the mode chip and the
+  // Icon-only on mobile - the label rarely fits next to the mode chip and the
   // other toolbar controls, so it's dropped instead of wrapping or truncating.
   // A bound personality still tints the glyph with its colors (see desktop).
   // While a personality switch is in flight the glyph becomes a spinner.
@@ -1716,7 +1716,7 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
           accessibilityLabel={t("agentControls.thinking.select")}
           testID="agent-controls-thinking"
         >
-          <Brain size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+          <Psychology size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
         </Pressable>
       ) : null}
 
@@ -2059,7 +2059,7 @@ function ThinkingComboboxOption({
   onPress: () => void;
   iconColor: string;
 }) {
-  const leadingSlot = useMemo(() => <Brain size={16} color={iconColor} />, [iconColor]);
+  const leadingSlot = useMemo(() => <Psychology size={16} color={iconColor} />, [iconColor]);
   return (
     <ComboboxItem
       label={option.label}
@@ -2149,7 +2149,7 @@ export const AgentControls = memo(function AgentControls({
 
   // A started agent's picker is no-save: switching its model retargets THIS
   // agent and nothing else. It must not write the device's last-used-model
-  // preference, because that preference exists to seed the create surfaces —
+  // preference, because that preference exists to seed the create surfaces -
   // letting a mid-chat switch feed back into it is what made the New Chat
   // picker open on a model nobody had chosen for it.
   const handleSelectModel = useCallback(
@@ -2187,7 +2187,7 @@ export const AgentControls = memo(function AgentControls({
       if (!client || !agentProvider) {
         return;
       }
-      // No-save, same as handleSelectModel — effort rides with the model.
+      // No-save, same as handleSelectModel - effort rides with the model.
       void client
         .setAgentThinkingOption(agentId, thinkingOptionId)
         .then((notice) => showProviderNoticeToast(toast, notice))
@@ -2237,8 +2237,8 @@ export const AgentControls = memo(function AgentControls({
   );
 
   // Selectable same-family personalities for the model picker. Picking one goes
-  // through the agent.personality.set RPC — the daemon applies prompt + identity
-  // + model/mode/effort atomically and restarts the provider query — behind a
+  // through the agent.personality.set RPC - the daemon applies prompt + identity
+  // + model/mode/effort atomically and restarts the provider query - behind a
   // suppressible warning dialog. While the RPC is in flight the whole controls
   // row locks and the model trigger spins (30s cap, then it unlocks for retry).
   const chatPersonality = toRolePersonality(
@@ -2374,7 +2374,7 @@ export function DraftAgentControls({
     selectedThinkingOptionId || mappedThinkingOptions[0]?.id || undefined;
 
   // A selected personality fixes its own effort at spawn, so hide the effort
-  // chip while one is chosen — mirrors the artifact/schedule sheets, where the
+  // chip while one is chosen - mirrors the artifact/schedule sheets, where the
   // whole point is not having to pick effort by hand.
   const thinkingOptionsForControls =
     personality?.selectedPersonalityId || mappedThinkingOptions.length === 0

@@ -194,7 +194,7 @@ describe("getStructuredAgentResponse (e2e)", () => {
     // WP-B replaced the full-spawn generation path with a direct, tool-less
     // provider completion (generateBareCompletion). Codex is a CLI provider that
     // does not implement it, so the single-provider entry throws rather than
-    // spawning a full agent — the fallback ladder is what skips such providers.
+    // spawning a full agent - the fallback ladder is what skips such providers.
     await expect(
       generateStructuredAgentResponse({
         manager,

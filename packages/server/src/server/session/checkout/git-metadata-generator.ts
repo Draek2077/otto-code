@@ -35,7 +35,7 @@ export interface GitMetadataGenerator {
   /**
    * Describe the agent that generateCommitMessage would use, so the client can
    * name it in a confirmation before the AI-authored commit. "none" when nothing
-   * is configured to run the task — the client then refuses rather than
+   * is configured to run the task - the client then refuses rather than
    * committing placeholder text.
    */
   resolveCommitMessageAgent(cwd: string): Promise<CommitMessageAgent>;
@@ -158,7 +158,7 @@ export function createGitMetadataGenerator(deps: {
     },
 
     async resolveCommitMessageAgent(cwd) {
-      // Commit messages route through the "writer" role — the same role the
+      // Commit messages route through the "writer" role - the same role the
       // production generation uses (see createAgentStructuredTextGeneration).
       const agent = await generation.resolveAgent({ cwd, role: "writer" });
       return agent ?? { kind: "none" };
@@ -220,7 +220,7 @@ export function createAgentStructuredTextGeneration(deps: {
         cwd,
         providerSnapshotManager: deps.providerSnapshotManager,
         daemonConfig: deps.readDaemonConfig(),
-        // Commit messages and PR text are fast small-text generation — prefer an
+        // Commit messages and PR text are fast small-text generation - prefer an
         // available Writer personality before the legacy substring fallback.
         role: "writer",
         currentSelection: deps.getFocusedSelection(cwd),

@@ -234,16 +234,16 @@ export const zhCN: TranslationResources = {
         disabled: "该人格的记忆已关闭，因此这些内容都不会发送。经验仍然保留。",
         empty: "在此项目中，没有任何内容被加入该人格的上下文。",
         emptyButStored_one:
-          "下面这条经验不适用于此项目，因此这里没有加入任何内容——行上的标签说明了原因。",
+          "下面这条经验不适用于此项目，因此这里没有加入任何内容-行上的标签说明了原因。",
         emptyButStored_other:
-          "下面 {{count}} 条经验都不适用于此项目，因此这里没有加入任何内容——每行的标签说明了原因。",
+          "下面 {{count}} 条经验都不适用于此项目，因此这里没有加入任何内容-每行的标签说明了原因。",
         omitted: "下面有 {{count}} 条经验超出注入预算，未被发送。",
       },
       scope: {
         global: "所有地方",
         project: "此项目",
         elsewhere: "其他项目",
-        unattached: "未绑定项目——永不发送",
+        unattached: "未绑定项目-永不发送",
         change: "范围：{{scope}}。点按可更改。",
       },
       row: {
@@ -342,7 +342,7 @@ export const zhCN: TranslationResources = {
     },
     emptyState: {
       title: "还没有项目上下文",
-      body: "该项目没有加载任何内容。这是干净的起点，不是问题——想给智能体长期指令时，在项目根目录添加 CLAUDE.md 或 AGENTS.md 即可。",
+      body: "该项目没有加载任何内容。这是干净的起点，不是问题-想给智能体长期指令时，在项目根目录添加 CLAUDE.md 或 AGENTS.md 即可。",
     },
   },
   agentControls: {
@@ -468,7 +468,7 @@ export const zhCN: TranslationResources = {
       deleteAgent: {
         title: "删除此对话？",
         subjectFallback: "此对话",
-        recordLine: "Otto 中关于{{subject}}的记录将被永久删除——包括该条目、标题和元数据。",
+        recordLine: "Otto 中关于{{subject}}的记录将被永久删除-包括该条目、标题和元数据。",
         transcriptLine:
           "{{provider}} 在主机上自己的记录会原样保留，因此对话本身仍在磁盘上，在 Otto 之外依然可以阅读或继续。",
         undoLine: "Otto 这一侧的操作无法撤销。",
@@ -480,7 +480,7 @@ export const zhCN: TranslationResources = {
         recordLineOne: "将永久删除 Otto 中 1 个已归档对话的记录。你未归档的对话不受影响。",
         recordLineMany: "将永久删除 Otto 中 {{count}} 个已归档对话的记录。你未归档的对话不受影响。",
         transcriptLine:
-          "各 Agent 提供方在主机上自己的记录会原样保留——这清空的是 Otto 的历史，而不是磁盘上的对话。",
+          "各 Agent 提供方在主机上自己的记录会原样保留-这清空的是 Otto 的历史，而不是磁盘上的对话。",
         undoLine: "Otto 这一侧的操作无法撤销。",
         confirm: "清空",
       },
@@ -726,7 +726,7 @@ export const zhCN: TranslationResources = {
           titleFolder: "删除文件夹？",
           subjectFile: "“{{name}}”将从磁盘中删除。",
           subjectFolder: "“{{name}}”将从磁盘中删除。",
-          permanentLine: "此操作不可撤销——该项目会从磁盘中移除，不会进入回收站，Otto 无法还原。",
+          permanentLine: "此操作不可撤销-该项目会从磁盘中移除，不会进入回收站，Otto 无法还原。",
           confirm: "删除",
         },
         deleteContents: {
@@ -854,7 +854,7 @@ export const zhCN: TranslationResources = {
       closeAction: "关闭可视化视图",
       loadFailedTitle: "可视化视图启动失败",
       loadFailedBody:
-        "图视图在这台机器上始终没有加载完成。当应用在没有 GPU 加速的情况下运行时可能出现这种情况——桌面日志中记录了详细信息。关闭并重新打开标签页可重试。",
+        "图视图在这台机器上始终没有加载完成。当应用在没有 GPU 加速的情况下运行时可能出现这种情况-桌面日志中记录了详细信息。关闭并重新打开标签页可重试。",
     },
     contextManagement: {
       tabLabel: "上下文",
@@ -1187,12 +1187,12 @@ export const zhCN: TranslationResources = {
           // Branch cleanup section (worktreeArchiveBranchCleanup)
           branchIntro: "此 worktree 位于分支 {{branchName}} 上。",
           deleteBranchCheckbox: "同时删除分支 {{branchName}}",
-          branchMerged: "已完全合并到 {{baseBranch}} — 可安全删除。",
-          branchMergedNoBase: "已完全合并 — 可安全删除。",
-          branchUnmergedCommit: "未合并到 {{baseBranch}} — 删除将丢弃 {{count}} 个 commit。",
-          branchUnmergedCommits: "未合并到 {{baseBranch}} — 删除将丢弃 {{count}} 个 commit。",
-          branchUnmergedCommitNoBase: "未合并 — 删除将丢弃 {{count}} 个 commit。",
-          branchUnmergedCommitsNoBase: "未合并 — 删除将丢弃 {{count}} 个 commit。",
+          branchMerged: "已完全合并到 {{baseBranch}} - 可安全删除。",
+          branchMergedNoBase: "已完全合并 - 可安全删除。",
+          branchUnmergedCommit: "未合并到 {{baseBranch}} - 删除将丢弃 {{count}} 个 commit。",
+          branchUnmergedCommits: "未合并到 {{baseBranch}} - 删除将丢弃 {{count}} 个 commit。",
+          branchUnmergedCommitNoBase: "未合并 - 删除将丢弃 {{count}} 个 commit。",
+          branchUnmergedCommitsNoBase: "未合并 - 删除将丢弃 {{count}} 个 commit。",
           branchMergeUnknown: "无法确定合并状态。",
           branchRemoteKept: "保留 origin 上的副本。",
           branchDeleted: "已删除分支 {{branchName}}。",
@@ -1237,7 +1237,7 @@ export const zhCN: TranslationResources = {
         deletedFile: "已删除",
         baseChip: "对比 {{baseRef}}",
         baseChipReadOnly: "正在与 {{baseRef}} 对比",
-        baseChipEditable: "正在与 {{baseRef}} 对比 — 点击更改",
+        baseChipEditable: "正在与 {{baseRef}} 对比 - 点击更改",
         baseChipInferred: "正在与 {{baseRef}} 对比，它被识别为当前分支的父分支",
         baseChipWorktree: "正在与 {{baseRef}} 对比，即创建此工作树时所基于的分支",
         baseChipPinned: "正在与 {{baseRef}} 对比，这是你选择的分支",
@@ -1884,7 +1884,7 @@ export const zhCN: TranslationResources = {
         attribution: "- The Doctor, Doctor Who",
       },
       {
-        text: "我超级捖明！捖—明！",
+        text: "我超级捖明！捖-明！",
         attribution: "- Homer Simpson, The Simpsons",
       },
       {
@@ -2147,10 +2147,10 @@ export const zhCN: TranslationResources = {
     team: {
       title: "你想要什么样的团队？",
       subtitle:
-        "选一个团队，Otto 就为你组建一支完整、均衡的班底——每位成员都有名字和自己的性格。不合适？重新洗牌。也可以用你自己的 Agent 组建。",
+        "选一个团队，Otto 就为你组建一支完整、均衡的班底-每位成员都有名字和自己的性格。不合适？重新洗牌。也可以用你自己的 Agent 组建。",
       unsupportedTitle: "组建你的团队",
       unsupportedBody:
-        "此 Host 尚不支持 Agent 团队。升级 Host 后 Otto 就能为你组建团队——现在可以先跳过。",
+        "此 Host 尚不支持 Agent 团队。升级 Host 后 Otto 就能为你组建团队-现在可以先跳过。",
       blueprints: {
         application: {
           name: "应用团队",
@@ -2158,7 +2158,7 @@ export const zhCN: TranslationResources = {
         },
         game: {
           name: "游戏团队",
-          tagline: "一支做游戏的工作室小组——玩法、手感和那点讲究。",
+          tagline: "一支做游戏的工作室小组-玩法、手感和那点讲究。",
         },
         web: {
           name: "Web 团队",
@@ -2166,7 +2166,7 @@ export const zhCN: TranslationResources = {
         },
         creative: {
           name: "创意工作室",
-          tagline: "一间用于写作、美术和创意的工作室——无需写代码。",
+          tagline: "一间用于写作、美术和创意的工作室-无需写代码。",
         },
         management: {
           name: "管理团队",
@@ -2181,7 +2181,7 @@ export const zhCN: TranslationResources = {
         name: "自己组建",
         tagline: "用你自己的 Agent，按你的方式组建团队。",
       },
-      providerNoModels: "该提供方还没有模型——请在设置中刷新，然后再回来。",
+      providerNoModels: "该提供方还没有模型-请在设置中刷新，然后再回来。",
       providerMissing: "请先（在上一步）选择一个提供方，好让 Otto 知道该用哪些模型。",
       memberCountOne: "1 名成员",
       memberCountMany: "{{count}} 名成员",
@@ -2479,9 +2479,9 @@ export const zhCN: TranslationResources = {
     wordWrap: "自动换行",
     outOfProject: {
       badge:
-        "正在项目 ({{project}}) 之外编辑 — 不属于 Agent 的上下文，也不在此 Workspace 的 Git 变更中。",
+        "正在项目 ({{project}}) 之外编辑 - 不属于 Agent 的上下文，也不在此 Workspace 的 Git 变更中。",
       badgeNoProject:
-        "正在项目之外编辑 — 不属于 Agent 的上下文，也不在此 Workspace 的 Git 变更中。",
+        "正在项目之外编辑 - 不属于 Agent 的上下文，也不在此 Workspace 的 Git 变更中。",
     },
     contextMenu: {
       cut: "剪切",
@@ -2540,12 +2540,12 @@ export const zhCN: TranslationResources = {
     loading: "正在加载文件...",
     noResults: "无文件",
   },
-  // Refine — the reviewed AI rewrite (docs/refine.md). Only the two
+  // Refine - the reviewed AI rewrite (docs/refine.md). Only the two
   // entry-point strings are translated here; the Refine tab itself is literal
   // English pending the pre-release i18n sweep, like the rename/references tabs.
   refine: {
     open: "用 AI 润色",
-    saveFirst: "请先保存或还原你的更改——润色基于磁盘上的文件进行。",
+    saveFirst: "请先保存或还原你的更改-润色基于磁盘上的文件进行。",
     compactOpen: "用 AI 压缩",
     unsupported: "升级 Host 后即可使用润色。",
     job: {
@@ -2561,8 +2561,8 @@ export const zhCN: TranslationResources = {
     toolbar: {
       discard: "丢弃此方案并重新读取所有文件",
       writing: "正在写入…",
-      acceptOne: "接受 — 写入保留的更改",
-      acceptMany: "接受 — 写入 {{count}} 个文件",
+      acceptOne: "接受 - 写入保留的更改",
+      acceptMany: "接受 - 写入 {{count}} 个文件",
       dropAll: "丢弃全部更改",
       keepAll: "保留全部更改",
     },
@@ -2575,7 +2575,7 @@ export const zhCN: TranslationResources = {
       allOnHint: "所有文件都可被重写。点按可退回到只有第一个，其余作为只读上下文。",
       allOffHint: "让重写作用于此集合中的所有文件，而不只是第一个。",
       writableHint: "可被重写。点按可改为只读上下文。",
-      referenceHint: "只读上下文——模型能读取，但永远无法更改。点按可允许重写。",
+      referenceHint: "只读上下文-模型能读取，但永远无法更改。点按可允许重写。",
     },
     instruction: {
       placeholder: "要改什么？例如：保留每一条规则，删掉重复的部分",
@@ -2619,22 +2619,22 @@ export const zhCN: TranslationResources = {
       failed: "无法写入",
     },
     summary: {
-      pinning: "正在按当前状态固定这些文件——每个方案都会以此为基准衡量。",
+      pinning: "正在按当前状态固定这些文件-每个方案都会以此为基准衡量。",
       unreadable: "无法读取此工作集合。",
       idle: "尚未提出任何方案。没有任何文件被改动。",
-      generating: "第 {{round}} 轮 — 正在重写。",
+      generating: "第 {{round}} 轮 - 正在重写。",
       accepting: "正在写入保留的更改。",
-      acceptedOne: "完成 — 已写入 1 个文件。",
-      acceptedMany: "完成 — 已写入 {{count}} 个文件。",
+      acceptedOne: "完成 - 已写入 1 个文件。",
+      acceptedMany: "完成 - 已写入 {{count}} 个文件。",
       partiallyAccepted: "已写入 {{written}} 个，{{skipped}} 个保持原样。没有覆盖任何内容。",
       reviewOne:
-        "第 {{round}} 轮 — {{total}} 处更改中保留了 {{kept}} 处，+{{additions}} −{{removals}} 行。尚未写入任何内容。",
+        "第 {{round}} 轮 - {{total}} 处更改中保留了 {{kept}} 处，+{{additions}} −{{removals}} 行。尚未写入任何内容。",
       reviewMany:
-        "第 {{round}} 轮 — {{total}} 处更改中保留了 {{kept}} 处，+{{additions}} −{{removals}} 行。尚未写入任何内容。",
+        "第 {{round}} 轮 - {{total}} 处更改中保留了 {{kept}} 处，+{{additions}} −{{removals}} 行。尚未写入任何内容。",
       reviewOneScoped:
-        "第 {{round}} 轮 — 在 {{proposedFiles}} 个文件中的 {{changedFiles}} 个里，{{total}} 处更改中保留了 {{kept}} 处，+{{additions}} −{{removals}} 行。尚未写入任何内容。",
+        "第 {{round}} 轮 - 在 {{proposedFiles}} 个文件中的 {{changedFiles}} 个里，{{total}} 处更改中保留了 {{kept}} 处，+{{additions}} −{{removals}} 行。尚未写入任何内容。",
       reviewManyScoped:
-        "第 {{round}} 轮 — 在 {{proposedFiles}} 个文件中的 {{changedFiles}} 个里，{{total}} 处更改中保留了 {{kept}} 处，+{{additions}} −{{removals}} 行。尚未写入任何内容。",
+        "第 {{round}} 轮 - 在 {{proposedFiles}} 个文件中的 {{changedFiles}} 个里，{{total}} 处更改中保留了 {{kept}} 处，+{{additions}} −{{removals}} 行。尚未写入任何内容。",
     },
   },
   refactor: {
@@ -2987,7 +2987,7 @@ export const zhCN: TranslationResources = {
       mountedWorkspaceLimit: {
         label: "保持加载的 Workspace 数量",
         description:
-          "有多少个 Workspace 保持加载状态，以便切回时立即可用。超过这个数量后，最久未使用的那个会被卸载，下次打开时重新加载。请至少设为你实际来回切换的数量——低于这个数，每次切换都会卸载你正要返回的那个 Workspace。设得越高，占用内存越多。",
+          "有多少个 Workspace 保持加载状态，以便切回时立即可用。超过这个数量后，最久未使用的那个会被卸载，下次打开时重新加载。请至少设为你实际来回切换的数量-低于这个数，每次切换都会卸载你正要返回的那个 Workspace。设得越高，占用内存越多。",
         accessibilityLabel: "保持加载的 Workspace 数量",
       },
       mountedTabLimit: {
@@ -3161,7 +3161,7 @@ export const zhCN: TranslationResources = {
         },
         chatMetricsBar: {
           title: "显示对话指标",
-          hint: "位于对话记录上方的一行窄条，显示此对话的总 token 数、费用和子智能体活动——包含它派生的一切。仅当提供方报告费用时才会显示费用",
+          hint: "位于对话记录上方的一行窄条，显示此对话的总 token 数、费用和子智能体活动-包含它派生的一切。仅当提供方报告费用时才会显示费用",
           accessibilityLabel: "显示对话指标",
         },
         autoExpandReasoning: {
@@ -3552,12 +3552,12 @@ export const zhCN: TranslationResources = {
         hostImagesSummary: "{{count}} 张图片，共 {{size}}",
         hostImagesEmpty: "还没有存储任何内容",
         hostImagesHint:
-          "Agent 生成的截图和其他图片，保留下来是为了让过往消息仍能显示它们。清除无法撤销——那些消息会退回到只显示文字描述。",
+          "Agent 生成的截图和其他图片，保留下来是为了让过往消息仍能显示它们。清除无法撤销-那些消息会退回到只显示文字描述。",
         previewCache: "这台设备上的缓存副本",
         previewCacheSummary: "{{count}} 张图片，共 {{size}}",
         previewCacheEmpty: "没有缓存",
         previewCacheHint:
-          "本地副本，让图片立即加载。可以放心清除——需要时会重新下载。你附加到消息里的文件（{{size}}）单独保存，绝不会在这里被清除。",
+          "本地副本，让图片立即加载。可以放心清除-需要时会重新下载。你附加到消息里的文件（{{size}}）单独保存，绝不会在这里被清除。",
         clear: "清除",
         clearConfirm: "清除图片",
         clearImagesTitle: "清除这台 Host 上的图片？",
@@ -3712,7 +3712,7 @@ export const zhCN: TranslationResources = {
         showSelectorDescription: "关闭后，聊天将隐藏自动压缩选择器并始终使用上面的默认值。",
         maxToolRoundsLabel: "每轮对话的最大工具调用轮数",
         maxToolRoundsHint:
-          "在达到该轮数仍未给出最终答案时，本轮会以错误终止——这是防止失控循环的安全阀。",
+          "在达到该轮数仍未给出最终答案时，本轮会以错误终止-这是防止失控循环的安全阀。",
         maxToolRoundsValue: "{{rounds}} 轮",
         maxToolRoundsRequiresUpdate: "更新主机后即可配置最大工具调用轮数。",
         saveFailed: "保存代理设置失败",

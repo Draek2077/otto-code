@@ -55,7 +55,7 @@ export function ConfirmDialogHost() {
     [checkboxChecked],
   );
 
-  // An alert has nothing to decline, so it shows a single acknowledge button —
+  // An alert has nothing to decline, so it shows a single acknowledge button -
   // the backdrop/escape close still resolves it (as declined, which no alert
   // caller reads).
   const isAlert = active?.kind === "alert";

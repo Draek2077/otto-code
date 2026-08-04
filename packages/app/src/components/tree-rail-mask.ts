@@ -2,7 +2,7 @@
 //
 // A tree row renders one rail column per ancestor level. Whether a given column
 // draws a full-height rail, a half-height "last child" rail (└), or nothing at all
-// depends on sibling position — which a FLATTENED row list has otherwise thrown away.
+// depends on sibling position - which a FLATTENED row list has otherwise thrown away.
 //
 // Callers thread this mask down while they build their rows. It is deliberately a
 // number rather than a boolean[]: the row lists are virtualized and their row
@@ -11,9 +11,9 @@
 //
 // Bit `k` set = the node at depth `k` on this row's path (the row itself when
 // `k === depth`) has a sibling after it, so its rail keeps running below this row.
-// Bit 0 is unused — depth-0 rows draw no rails.
+// Bit 0 is unused - depth-0 rows draw no rails.
 
-/** Every rail runs full height — the look before last-child detection existed. */
+/** Every rail runs full height - the look before last-child detection existed. */
 export const TREE_RAILS_ALL_CONTINUE = -1;
 
 // Past this the bit would fall off a 32-bit int; such rows just keep full rails.

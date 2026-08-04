@@ -55,7 +55,7 @@ export function parseGitRemoteLocation(remoteUrl: string): GitRemoteLocation | n
   if (!trimmed) return null;
 
   // scp form has no scheme. Testing it first would match `ssh://git@host:22/x`
-  // — `[^@]+` happily eats `ssh://git` — and swallow the port into the path.
+  // - `[^@]+` happily eats `ssh://git` - and swallow the port into the path.
   const scpLike = trimmed.includes("://") ? null : trimmed.match(/^[^@]+@([^:]+):(.+)$/u);
   if (scpLike) {
     const host = normalizeHost(scpLike[1] ?? "");

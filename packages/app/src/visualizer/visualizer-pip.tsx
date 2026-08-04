@@ -1,4 +1,4 @@
-// Picture-in-picture Visualizer — a small live viewport floating over the
+// Picture-in-picture Visualizer - a small live viewport floating over the
 // workspace content, so the graph stays glanceable while you work in the chat
 // underneath. Desktop/web only (see visualizer-pip-host.tsx for the gate).
 //
@@ -8,7 +8,7 @@
 //
 // Reparenting is not available. The guest is an Electron `<webview>` (a
 // cross-process surface), and moving that element in the DOM detaches and
-// reattaches it, which makes Electron RELOAD the guest — see the
+// reattaches it, which makes Electron RELOAD the guest - see the
 // `did-start-loading` re-hide in visualizer-view.electron.tsx, which exists
 // precisely because a layout change already does this today. A reparent would
 // therefore destroy the simulation it was supposed to preserve. On web the
@@ -19,7 +19,7 @@
 //
 // So PIP and the tab are MUTUALLY EXCLUSIVE. Opening PIP closes the tab;
 // expanding PIP closes PIP and opens the tab. There is exactly one guest alive
-// at any moment — one sim, one star field — and no reparent is needed because
+// at any moment - one sim, one star field - and no reparent is needed because
 // we never move a guest, we retire one and start the other. The scene survives
 // the handover for free: the adapter's reset+replay rehydrates from the session
 // buffers and the vendor page SETTLES that history to its end state instead of
@@ -74,7 +74,7 @@ export interface VisualizerPipProps {
   onOpenFile: (request: WorkspaceFileOpenRequest) => void;
 }
 
-/** The real PIP body. Loaded lazily by visualizer-pip-host.tsx — this module
+/** The real PIP body. Loaded lazily by visualizer-pip-host.tsx - this module
  * transitively pulls the vendored render layer, so it must never sit in the
  * startup graph (docs/feature-flags.md: Metro does not tree-shake). */
 export function VisualizerPip({
@@ -93,7 +93,7 @@ export function VisualizerPip({
   // rather than two that disagree. Pinned = frozen on the chat it was showing.
   const [followActive, setFollowActive] = useState(true);
   // Measured from the anchor, which fills the workspace content area. Seeded at
-  // 0, which resolves EVERY stored fraction to the top-left corner — so the frame
+  // 0, which resolves EVERY stored fraction to the top-left corner - so the frame
   // stays unmounted until this is real (`measured` below). Rendering it against
   // the seed is what used to make the PIP appear in the corner and then jump to
   // its saved position on the next frame.
@@ -181,7 +181,7 @@ export function VisualizerPip({
   );
   // Web-only style cast, same escape hatch ResizeHandle uses: RN's `cursor`
   // type only admits auto/pointer, and `touchAction: "none"` has no RN
-  // equivalent at all. touchAction is NOT optional — without it the browser
+  // equivalent at all. touchAction is NOT optional - without it the browser
   // claims the gesture as a scroll/pan and the pointermove stream dies.
   const dragStyle = useMemo(
     () => [
@@ -200,10 +200,10 @@ export function VisualizerPip({
 
   return (
     <View style={styles.anchor} pointerEvents="box-none" onLayout={handleLayout}>
-      {/* Nothing at all until the anchor has been measured — see `measured`. */}
+      {/* Nothing at all until the anchor has been measured - see `measured`. */}
       {!measured ? null : (
         /* Plain (non-Pressable) view owns hover; the Pressables inside are
-           separate — the canonical pattern in docs/hover.md. */
+           separate - the canonical pattern in docs/hover.md. */
         <Animated.View
           style={frameStyle}
           onPointerEnter={handlePointerEnter}
@@ -220,7 +220,7 @@ export function VisualizerPip({
               onFollowActiveChange={setFollowActive}
             />
           </View>
-          {/* Transparent, and stacked above the guest — the only place a
+          {/* Transparent, and stacked above the guest - the only place a
             pointerdown over the graph can be observed at all. */}
           <View style={dragStyle} {...drag.handlers} />
           {/* Sibling of the fade layer, so it stays fully opaque and clickable
@@ -308,13 +308,13 @@ const PIP_ICONS = {
 // Static because the strip sits on its own dark scrim in every theme.
 const pipIconColor = "rgba(255,255,255,0.92)";
 
-// The frame itself carries no theming, so it lives outside the Unistyles sheet —
+// The frame itself carries no theming, so it lives outside the Unistyles sheet -
 // it is applied to a Reanimated view, and theme styles crash those on theme
 // change (docs/unistyles.md).
 const FRAME_STYLE = { position: "absolute" } as const;
 
 // The frame's outline. Shared, because the control strip insets itself by
-// exactly this much to avoid painting over it — the two must not drift apart.
+// exactly this much to avoid painting over it - the two must not drift apart.
 const PIP_BORDER_WIDTH = 1;
 
 const styles = StyleSheet.create((theme) => ({
@@ -328,13 +328,13 @@ const styles = StyleSheet.create((theme) => ({
     right: theme.spacing[2],
     bottom: theme.spacing[2],
     // Slot in the shared chat-overlay stack (constants/layout.ts). Note this
-    // only orders the PIP against siblings in ITS container — the suggested-task
+    // only orders the PIP against siblings in ITS container - the suggested-task
     // card lives inside a pane, i.e. below this whole subtree, so it can never
     // out-paint the PIP by z-index. That collision is solved by geometry: the
     // card insets itself by useVisualizerPipInset() so the two never overlap.
     zIndex: CHAT_PANE_OVERLAY_Z.visualizerPip,
   },
-  // Everything you should be able to see THROUGH on hover lives in here — the
+  // Everything you should be able to see THROUGH on hover lives in here - the
   // background and border included, or the fade reads as pale grey rather than
   // transparent (see PIP_HOVER_OPACITY).
   fadeLayer: {
@@ -358,7 +358,7 @@ const styles = StyleSheet.create((theme) => ({
   controls: {
     position: "absolute",
     // Inset by the frame's border width so the strip sits INSIDE the border
-    // rather than painting over it — the PIP keeps one unbroken outline all the
+    // rather than painting over it - the PIP keeps one unbroken outline all the
     // way around, instead of the outline dying wherever the controls overlap it.
     // Must track `fadeLayer.borderWidth`.
     top: PIP_BORDER_WIDTH,

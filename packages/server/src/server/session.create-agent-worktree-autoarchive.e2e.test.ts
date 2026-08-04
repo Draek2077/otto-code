@@ -338,7 +338,7 @@ test("archiving a created worktree removes the directory on last reference", asy
 test("auto-archiving a created worktree keeps the directory when a sibling workspace references it", async () => {
   // The sibling reference is established FIRST, and that order is the whole
   // test. An auto-archiving agent tears down after its first turn, and against
-  // the fake provider that turn lands in milliseconds — so minting the
+  // the fake provider that turn lands in milliseconds - so minting the
   // auto-archiving agent first raced its own teardown against this create, and
   // the second request would intermittently land on a half-deleted directory
   // ("not a git repository", "working directory does not exist"). Creating the

@@ -112,7 +112,7 @@ describe("applyPersistedHardwareAccelerationFallback", () => {
    * The recovery differs by platform: Linux relaunches with
    * `--ozone-platform=x11 --use-gl=disabled`, and only everything else calls Electron's
    * `disableHardwareAcceleration()`. Tests that assert one branch have to pin the platform, or
-   * they assert whatever the machine happens to be — which is how this suite passed on Windows
+   * they assert whatever the machine happens to be - which is how this suite passed on Windows
    * developer machines and failed on the Linux CI runner.
    */
   function withPlatform(platform: NodeJS.Platform, run: () => void): void {
@@ -150,7 +150,7 @@ describe("applyPersistedHardwareAccelerationFallback", () => {
 
   it("retries hardware on a lone stale startup sentinel instead of latching software", () => {
     // A single surviving sentinel is usually a launch killed/restarted before
-    // first paint (routine in dev), not a GPU hang — retry hardware once more.
+    // first paint (routine in dev), not a GPU hang - retry hardware once more.
     writeStartupSentinel(tempDir);
     applyPersistedHardwareAccelerationFallback();
     expect(isSoftwareRenderingMarked(tempDir)).toBe(false);
@@ -289,7 +289,7 @@ describe("registerGpuFallbackRecovery", () => {
   });
 
   it("backs off and relaunches into software when a hardware re-probe crashes", () => {
-    // Marker present but a re-probe is running hardware this launch — a crash
+    // Marker present but a re-probe is running hardware this launch - a crash
     // means the GPU is still bad, so relaunch back into software (unlike a
     // steady-state software launch, which must not relaunch).
     writeSoftwareRenderingMarker(tempDir, "crashed");

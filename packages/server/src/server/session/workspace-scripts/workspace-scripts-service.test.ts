@@ -66,7 +66,7 @@ function fakeGitService() {
 }
 
 // The service only truthiness-checks terminalManager in its availability guard and then forwards it
-// opaquely to the injected spawnWorkspaceScript fake, which ignores it — an empty stand-in is enough.
+// opaquely to the injected spawnWorkspaceScript fake, which ignores it - an empty stand-in is enough.
 const availableTerminalManager = {} as unknown as TerminalManager;
 
 interface BuildOptions {
@@ -557,7 +557,7 @@ describe("discovered scripts", () => {
 
   // Discovery re-runs at launch, so a script deleted from package.json since the
   // menu opened resolves to nothing. The launcher then finds no otto.json entry
-  // either and refuses — the daemon never invents a command from a stale name.
+  // either and refuses - the daemon never invents a command from a stale name.
   test("launching a name no source still declares resolves to no command", async () => {
     const workspace = workspaceWithFiles({
       "package.json": JSON.stringify({ scripts: { dev: "vite" } }),

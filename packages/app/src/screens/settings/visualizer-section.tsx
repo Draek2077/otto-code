@@ -19,7 +19,7 @@ import {
 } from "@/hooks/use-settings";
 import { settingsStyles } from "@/styles/settings";
 
-// i18n: raw English pending a translation pass (Visualizer settings) — same
+// i18n: raw English pending a translation pass (Visualizer settings) - same
 // precedent as the "Default tab orientation" row in appearance-section.tsx.
 // The panel-toggle rows keep their existing settings.appearance.visualizer.*
 // keys (already in every locale) even though the section moved here.
@@ -90,7 +90,7 @@ interface VolumeRowProps {
 }
 
 // Drag updates a local draft (live feedback + percent readout) and only
-// commits to device-local settings on release — same shape as
+// commits to device-local settings on release - same shape as
 // appearance-section.tsx's FontSizeRow, so the config re-send fires once per
 // gesture, not on every tick.
 function VolumeRow({ title, hint, accessibilityLabel, value, onCommit }: VolumeRowProps) {
@@ -127,7 +127,7 @@ export function VisualizerSection() {
   const { settings, updateSettings } = useAppSettings();
   // Master switch for the whole Visualizer feature. Off removes the entry points
   // and keeps the render bundle out of memory (see features/feature-catalog.ts).
-  // When off, the rest of this section is hidden — nothing here applies.
+  // When off, the rest of this section is hidden - nothing here applies.
   const visualizerEnabled = useFeatureEnabled("visualizer");
   const handleEnabledChange = useCallback(
     (value: boolean) => {
@@ -138,13 +138,13 @@ export function VisualizerSection() {
     [settings.featureEnabled, updateSettings],
   );
   // Bloom is forced off while the desktop shell runs without GPU acceleration
-  // (three full-canvas blur passes per frame — a CPU rasterizer can't afford
+  // (three full-canvas blur passes per frame - a CPU rasterizer can't afford
   // it; visualizer-panel.tsx applies the same force to the guest config). The
   // stored preference is left untouched so it comes back if the machine
   // regains hardware acceleration.
   const isSoftwareRendering = useIsSoftwareRendering();
   // The re-enable action quits and relaunches the app, so the invoke promise
-  // usually never resolves — the pending state exists only to disable the
+  // usually never resolves - the pending state exists only to disable the
   // button and show progress during the brief window before the relaunch (or
   // to recover if the command rejects, e.g. off-desktop).
   const [reenablingGpu, setReenablingGpu] = useState(false);
@@ -226,7 +226,7 @@ export function VisualizerSection() {
         <View style={settingsStyles.card}>
           <ToggleRow
             title="Enable Visualizer"
-            hint="The live agent-orchestration graph. Turn it off to remove the header button and Runs “Visualize” action — and to keep its render bundle from ever loading into memory. Open Visualizer tabs close when disabled."
+            hint="The live agent-orchestration graph. Turn it off to remove the header button and Runs “Visualize” action - and to keep its render bundle from ever loading into memory. Open Visualizer tabs close when disabled."
             accessibilityLabel="Enable Visualizer"
             value={visualizerEnabled}
             withBorder={false}
@@ -246,7 +246,7 @@ export function VisualizerSection() {
                     <Text style={settingsStyles.rowHint}>
                       Otto turned off hardware acceleration after the GPU crashed and fell back to
                       software rendering, so bloom and other heavy effects are disabled to keep the
-                      frame rate usable. If your GPU is working again, turn acceleration back on —
+                      frame rate usable. If your GPU is working again, turn acceleration back on -
                       Otto will restart.
                     </Text>
                   </View>
@@ -276,7 +276,7 @@ export function VisualizerSection() {
                   <Text style={settingsStyles.rowTitle}>Sharpness</Text>
                   <Text style={settingsStyles.rowHint}>
                     Canvas resolution vs. frame rate. Fast renders at 1x, Native at the
-                    display&apos;s full pixel ratio — on a large 2x pane, Native can cost most of
+                    display&apos;s full pixel ratio - on a large 2x pane, Native can cost most of
                     the frame rate. Applies the next time a Visualizer tab loads (open tabs reload).
                   </Text>
                 </View>
@@ -309,7 +309,7 @@ export function VisualizerSection() {
                   <Text style={settingsStyles.rowTitle}>Context readout</Text>
                   <Text style={settingsStyles.rowHint}>
                     How the main agent node reports context occupancy. The ring hugs the node; the
-                    bar sits under it. They show the same number, so you pick one — with the ring,
+                    bar sits under it. They show the same number, so you pick one - with the ring,
                     the token count moves up into the bar&apos;s place. Sub-agent nodes always use
                     the bar. Applies live to open Visualizer tabs.
                   </Text>
@@ -335,7 +335,7 @@ export function VisualizerSection() {
                 title="Bloom"
                 hint={
                   isSoftwareRendering
-                    ? "Off while GPU acceleration is disabled — bloom needs the GPU and is the single most expensive visual effect. Re-enable acceleration above to turn it back on."
+                    ? "Off while GPU acceleration is disabled - bloom needs the GPU and is the single most expensive visual effect. Re-enable acceleration above to turn it back on."
                     : "A whole-viewport blurred echo of the scene, composited over everything for a holographic haze. The single most expensive visual effect. (The per-node halo is the separate 'Node glow' toggle above.)"
                 }
                 accessibilityLabel="Bloom"
@@ -407,7 +407,7 @@ export function VisualizerSection() {
                   slider and the in-page mute have no say over them. */}
               <VolumeRow
                 title="Volume"
-                hint="Sound effect loudness — mute with the speaker button in the Visualizer. Agent voice cues have their own volume in Agents settings."
+                hint="Sound effect loudness - mute with the speaker button in the Visualizer. Agent voice cues have their own volume in Agents settings."
                 accessibilityLabel="Visualizer sound volume"
                 value={settings.visualizerSoundVolume}
                 onCommit={handleVolumeCommit}

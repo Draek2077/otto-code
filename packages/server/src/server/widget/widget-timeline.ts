@@ -20,14 +20,14 @@ import {
 /**
  * Turn a `show_widget` tool call into a renderable widget, provider-neutrally.
  *
- * This runs at `AgentManager.recordAndDispatchTimelineItem` — the one place
+ * This runs at `AgentManager.recordAndDispatchTimelineItem` - the one place
  * every timeline item passes through, on every provider, on both the direct
  * stream path and the coalescer's flush. Putting it there rather than in each
  * provider's tool-call mapper is what makes widgets a capability of Otto rather
  * than a capability of Claude: any provider that surfaces a tool call with its
  * input gets widgets with no per-provider code.
  *
- * The widget rides in `metadata`, never in `detail` — see the note on
+ * The widget rides in `metadata`, never in `detail` - see the note on
  * WIDGET_METADATA_KEY for why a new detail variant would break old clients.
  * `detail` is downgraded to `plain_text` so a client that predates widgets
  * still shows a sensible row.
@@ -54,7 +54,7 @@ function isWidgetToolCall(name: string): boolean {
   // natively into its own tool loop and exposes each tool under its BARE name
   // (see buildOttoToolPayload in openai-compat-agent.ts). Matching only the
   // namespaced form would have quietly given widgets to Claude and not to the
-  // local-model provider — the exact single-provider gap this fork exists to
+  // local-model provider - the exact single-provider gap this fork exists to
   // close.
   return (
     getOttoToolLeafName(name) === WIDGET_TOOL_NAME || normalizeToolName(name) === WIDGET_TOOL_NAME
@@ -70,8 +70,8 @@ function toStringArray(value: unknown): string[] | undefined {
 /**
  * Build the widget payload, or a human-readable reason it could not be built.
  *
- * A fragment that fails sanitizing must NOT render as a blank frame — silent
- * failure is how a broken widget gets mistaken for a working one — so the
+ * A fragment that fails sanitizing must NOT render as a blank frame - silent
+ * failure is how a broken widget gets mistaken for a working one - so the
  * failure path returns text that the ordinary tool-call row will show.
  */
 function buildPayload(
@@ -84,7 +84,7 @@ function buildPayload(
   // While a tool call streams, the provider withholds string arguments until
   // they close (Claude's partial-JSON parser does this deliberately, so an
   // `old_string` is never half-matched). So `widget_code` legitimately arrives
-  // late while `title` and `loading_messages` are already here — that is the
+  // late while `title` and `loading_messages` are already here - that is the
   // pending state, and it is what the loading messages exist for.
   if (typeof input.widget_code !== "string" || input.widget_code.trim().length === 0) {
     return {

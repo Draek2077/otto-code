@@ -8,7 +8,7 @@ import type { AgentPromptInput, AgentTimelineItem } from "./agent-sdk-types.js";
  * to a boolean per row (`completed`), so "stale" here means: a list exists and at
  * least one row is still `completed: false`. When an agent goes idle in that
  * state it has left a half-checked list the user would otherwise have to dismiss
- * themselves — see docs and the `agentBehaviors.{todoNudge,todoReconcileOnIdle}`
+ * themselves - see docs and the `agentBehaviors.{todoNudge,todoReconcileOnIdle}`
  * toggles. These helpers are pure so both the turn-end reconcile pass and the
  * next-turn nudge read the same notion of "stale".
  */
@@ -79,7 +79,7 @@ export function buildTodoNudgeReminder(todo: TodoTimelineItem): string {
 }
 
 // The trailing todo-nudge block, with any whitespace that precedes it. Matched by
-// the nudge's own opening sentence — NOT any `<system-reminder>` — so a user
+// the nudge's own opening sentence - NOT any `<system-reminder>` - so a user
 // message that legitimately ends with (or merely contains) reminder-shaped markup
 // isn't truncated in the timeline. Anchored to the end because the nudge is always
 // appended last; keep this wording in sync with buildTodoNudgeReminder.
@@ -88,8 +88,8 @@ const TRAILING_TODO_NUDGE_PATTERN =
 
 /**
  * Append the passive nudge to an outgoing prompt (string or content blocks).
- * Kept structural — a trailing text block for the block form, a joined string
- * otherwise — so every provider's `startTurn` receives it identically.
+ * Kept structural - a trailing text block for the block form, a joined string
+ * otherwise - so every provider's `startTurn` receives it identically.
  */
 export function appendTodoNudgeToPrompt(
   prompt: AgentPromptInput,

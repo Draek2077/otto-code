@@ -7,7 +7,7 @@ import type { Logger } from "pino";
  * See projects/script-discovery/script-discovery.md. Three contract rules make
  * this survivable as sources are added:
  *
- * 1. **Detection is discovery.** There is no separate `detect()` step — a
+ * 1. **Detection is discovery.** There is no separate `detect()` step - a
  *    provider whose marker file is absent returns `[]`, cheaply. One code path
  *    means detection and discovery can never disagree.
  * 2. **A provider never throws for a project it does not apply to.** A malformed
@@ -24,7 +24,7 @@ export interface ScriptProvider {
 }
 
 export interface ScriptDiscoveryContext {
-  /** The workspace's own base folder — a worktree path or a checkout. */
+  /** The workspace's own base folder - a worktree path or a checkout. */
   workspaceDirectory: string;
   logger: Logger;
 }
@@ -44,8 +44,8 @@ export interface DiscoveredScript {
   sourceFile: string;
   /**
    * Overrides the provider's own label for this entry's group header. Lets one
-   * provider name what it actually found — the npm provider says "pnpm" when a
-   * `pnpm-lock.yaml` decided the command — without splitting `sourceId`, which
+   * provider name what it actually found - the npm provider says "pnpm" when a
+   * `pnpm-lock.yaml` decided the command - without splitting `sourceId`, which
    * has to stay stable because qualified names are built from it.
    */
   sourceLabel?: string;
@@ -62,8 +62,8 @@ export interface DiscoveredScriptEntry extends DiscoveredScript {
 const QUALIFIED_NAME_SEPARATOR = ":";
 
 /**
- * Everything downstream of the dropdown — the runtime store, the service-proxy
- * hostname, the `workspace.script.*` RPCs — is keyed by `scriptName`, and two
+ * Everything downstream of the dropdown - the runtime store, the service-proxy
+ * hostname, the `workspace.script.*` RPCs - is keyed by `scriptName`, and two
  * sources can both offer "build". Qualifying the wire name keeps discovered
  * scripts in the existing key space instead of inventing a second one.
  *

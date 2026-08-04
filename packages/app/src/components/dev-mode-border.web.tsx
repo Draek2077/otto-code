@@ -23,12 +23,12 @@ const BORDER_STYLE: React.CSSProperties = {
 //    nearest positioned ancestor and scrolls with content, so it only lines up
 //    with the viewport while that ancestor happens to be exactly viewport-sized.
 //    In fullscreen it was not, and the top and right edges landed outside the
-//    visible area — leaving a border on two sides, which looks like a bug rather
+//    visible area - leaving a border on two sides, which looks like a bug rather
 //    than a signal.
 //
 // 2. Portalled to `document.body`. `fixed` is only viewport-relative while no
 //    ancestor establishes a containing block, and `transform` / `filter` /
-//    `will-change` all do — which Reanimated and the panel/sheet layers apply
+//    `will-change` all do - which Reanimated and the panel/sheet layers apply
 //    freely. Rendering outside the app tree entirely means no ancestor can
 //    reposition or clip this, whatever the layout does.
 //

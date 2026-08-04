@@ -103,7 +103,7 @@ const MODELS: AgentModelDefinition[] = [
     id: "synthetic-history",
     label: "Synthetic history (count-bounded)",
     description:
-      "Emits a deterministic corpus of synthetic conversation items in one turn then finishes. Used to seed performance-test corpora — all content flows through generateSyntheticConversation so blocks are combinatorially unique.",
+      "Emits a deterministic corpus of synthetic conversation items in one turn then finishes. Used to seed performance-test corpora - all content flows through generateSyntheticConversation so blocks are combinatorially unique.",
     metadata: {
       itemCount: 300,
       intervalMs: 0,
@@ -318,7 +318,7 @@ function parseAgentStreamStressPrompt(prompt: AgentPromptInput): AgentStreamStre
 
 // Allow the caller to override itemCount per-turn via a prompt directive like
 // "synthetic-history: 30". This lets the seeder drive many small turns rather
-// than one giant one — important because findMountedWindowStart walks back from
+// than one giant one - important because findMountedWindowStart walks back from
 // the tail until it hits a user message, and a single huge turn with no user
 // messages in its timeline mounts the entire history.
 function parseSyntheticHistoryCountPrompt(prompt: AgentPromptInput): number | null {
@@ -337,7 +337,7 @@ function parseSyntheticHistoryCountPrompt(prompt: AgentPromptInput): number | nu
 // Pin the generator seed for this turn via a directive like "synthetic-seed: 41".
 //
 // Without this the seed is hashString(turnId), and turnId is a fresh randomUUID
-// per turn — so the generator is deterministic but a *corpus* is not. Two seeding
+// per turn - so the generator is deterministic but a *corpus* is not. Two seeding
 // runs would produce statistically similar, byte-different conversations, and any
 // before/after measurement taken across them would be comparing two different
 // corpora while reporting the difference as a code change. A seeder that pins the
@@ -537,7 +537,7 @@ function buildMidParagraph(): string {
     "- The threshold for 'near the bottom' is hardcoded at 80px, which feels too tight on dense content where headers and tool calls take up a lot of vertical space.",
     "- We rely on `onContentSizeChange` to detect new content, but that fires after layout, not as the streaming delta arrives, so we end up scrolling one frame late on fast streams.",
     "- The gesture handler does not pause scroll-to-bottom while the user is actively dragging, which means a drag in progress can be visually overridden mid-frame.",
-    "- Coalescing happens upstream, so the FlatList sees fewer updates than the wire — but each batch can still cause a relayout.",
+    "- Coalescing happens upstream, so the FlatList sees fewer updates than the wire - but each batch can still cause a relayout.",
     "",
     "Let me make a small adjustment to the threshold and add a flag for active gestures, then run a quick command to confirm the order of events when streaming is fast.",
   ].join("\n");
@@ -655,7 +655,7 @@ function buildCycleQueue(turnId: string, cycle: number): CycleEvent[] {
 }
 
 // Build a single-shot queue from the deterministic synthetic conversation
-// generator. Unlike buildCycleQueue this is never refilled — the turn finishes
+// generator. Unlike buildCycleQueue this is never refilled - the turn finishes
 // when the queue drains, so it exercises rendering paths with combinatorially
 // unique markdown blocks (avoiding the app's height cache).
 function buildSyntheticHistoryQueue(
@@ -695,7 +695,7 @@ function buildSyntheticHistoryQueue(
         });
         break;
       case "user_message":
-        // Skip — the user prompt is the turn itself, not a timeline event.
+        // Skip - the user prompt is the turn itself, not a timeline event.
         break;
       default:
         // We don't emit todo/error/compaction from synthetic history (the corpus generator doesn't produce them).
@@ -791,7 +791,7 @@ export class MockLoadTestAgentClient implements AgentClient {
    * Tool-less metadata generation (chat titles, branch names). The mock already
    * answers these contracts deterministically through a normal turn, but the
    * structured-generation ladder calls generateBareCompletion first and skips
-   * any provider that lacks it — so pinning metadataGeneration at the mock
+   * any provider that lacks it - so pinning metadataGeneration at the mock
    * provider silently fell through to a real CLI, which is exactly what the
    * pin exists to avoid. Same parsers as the turn path, answered directly.
    */
@@ -1122,7 +1122,7 @@ export class MockLoadTestAgentSession implements AgentSession {
   }
 
   // The mock provider has no real system prompt, so accepting the update is a
-  // no-op — but implementing it lets the daemon's live personality switch
+  // no-op - but implementing it lets the daemon's live personality switch
   // (agent.personality.set) run end-to-end against mock agents in dev and E2E.
   // Brain fields (model/mode) still arrive through setModel/setMode as usual.
   async applyPersonality(_update: AgentPersonalityUpdate): Promise<void> {}
@@ -1347,7 +1347,7 @@ export class MockLoadTestAgentSession implements AgentSession {
     });
   }
 
-  // "Emit synthetic tool permission." — a scripted tool approval prompt: the
+  // "Emit synthetic tool permission." - a scripted tool approval prompt: the
   // turn starts, requests permission for a shell command, and stays pending
   // until respondToPermission (a user's answer, or the daemon deny-responder
   // for unattended runs) finishes the turn with a distinct allow/deny surface.
@@ -1604,7 +1604,7 @@ export class MockLoadTestAgentSession implements AgentSession {
     }
 
     // Time-bounded turns: stop when the duration expires. Count-bounded turns
-    // (synthetic-history) skip this check entirely — they finish on queue drain.
+    // (synthetic-history) skip this check entirely - they finish on queue drain.
     if (turn.itemCount == null) {
       const elapsedMs = Date.now() - turn.startedAt;
       if (elapsedMs >= turn.durationMs) {
@@ -1616,7 +1616,7 @@ export class MockLoadTestAgentSession implements AgentSession {
     // Empty queue: refill for time-bounded turns, finish for count-bounded ones.
     if (turn.queue.length === 0) {
       if (turn.itemCount != null) {
-        // Count-bounded turn has drained its pre-built queue — wrap up.
+        // Count-bounded turn has drained its pre-built queue - wrap up.
         this.finishTurn(turn);
         return;
       }

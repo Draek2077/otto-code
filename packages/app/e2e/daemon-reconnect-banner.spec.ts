@@ -26,8 +26,8 @@ async function cleanupReconnectDaemonState(agentId: string, projectId: string): 
 // whenever the host connection leaves "online", and dismisses it on reconnect.
 // helpers/daemon-restart.ts preserves the global-setup environment (same
 // OTTO_HOME, same port, speech/local-model settings disabled), so the restart
-// does not change the tested surface. The restart promise is always awaited —
-// even when the outage assertion fails — so later specs get a live daemon.
+// does not change the tested surface. The restart promise is always awaited -
+// even when the outage assertion fails - so later specs get a live daemon.
 test.describe("Daemon reconnect", () => {
   test.describe.configure({ retries: 0, timeout: 240_000 });
 
@@ -69,14 +69,14 @@ test.describe("Daemon reconnect", () => {
     await workspace.client.close().catch(() => undefined);
 
     // Bounce the daemon. restartTestDaemon() SIGTERMs the supervisor, waits for
-    // the port to free, and respawns — the outage window is where the app must
+    // the port to free, and respawns - the outage window is where the app must
     // show its disconnected state.
     const reconnectingToast = page.getByTestId("agent-reconnecting-toast");
     const restartPromise = restartTestDaemon();
     try {
       await expect(reconnectingToast).toBeVisible({ timeout: 30_000 });
     } finally {
-      // Always restore the daemon, even if the outage assertion failed —
+      // Always restore the daemon, even if the outage assertion failed -
       // otherwise every later spec inherits a dead daemon.
       await restartPromise;
     }

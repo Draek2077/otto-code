@@ -242,7 +242,7 @@ test.describe("New workspace Codex mode preferences", () => {
       await openGlobalNewWorkspaceComposer(page);
       await selectNewWorkspaceProject(page, {
         // The picker's option testID is the cross-host grouping key, not the
-        // host-local project id — see SeededWorkspace's two fields.
+        // host-local project id - see SeededWorkspace's two fields.
         projectKey: seeded.projectKey,
         projectDisplayName: seeded.projectDisplayName,
       });

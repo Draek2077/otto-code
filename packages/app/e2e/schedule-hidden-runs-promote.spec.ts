@@ -21,7 +21,7 @@ import { waitForSidebarHydration, waitForWorkspaceInSidebar } from "./helpers/wo
 //   - success + keep, or failure WITH content → REVEAL (live workspace_update)
 // A missing-personality failure is the canonical content-less failure, so it
 // proves the archive branch, not the reveal branch. The reveal path is proven
-// with a kept success (archiveOnFinish: false) — same reveal call, same live
+// with a kept success (archiveOnFinish: false) - same reveal call, same live
 // sidebar row, and deterministic under the mock provider.
 //
 // The runs get their OWN directory, separate from the visible seeded workspace:
@@ -50,7 +50,7 @@ test.describe("Schedule hidden runs and reveal", () => {
     const runRepo = await createTempGitRepo("schedule-run-cwd-");
     cleanupTasks.push(async () => {
       // A revealed run workspace is deliberately left live, so the daemon still
-      // holds the directory (git watcher) — drop the project first, and never
+      // holds the directory (git watcher) - drop the project first, and never
       // let a Windows EBUSY on the temp dir fail an otherwise-green test.
       await workspace.client.removeProject(runRepo.path).catch(() => undefined);
       await runRepo.cleanup().catch(() => undefined);
@@ -118,7 +118,7 @@ test.describe("Schedule hidden runs and reveal", () => {
     expect(latestRun(healthyResult.schedule).status).toBe("succeeded");
 
     // After success + archiveOnFinish the workspace was archived without ever
-    // being revealed — still no sidebar row.
+    // being revealed - still no sidebar row.
     await page.waitForTimeout(1_000);
     await expect(healthyRunRow).toHaveCount(0);
     // The user's own workspace row is untouched throughout.
@@ -139,7 +139,7 @@ test.describe("Schedule hidden runs and reveal", () => {
           model: "ten-second-stream",
           modeId: "load-test",
           // Personality resolution runs after the hidden workspace is created
-          // and hard-fails the run when the name is unknown — a failure that
+          // and hard-fails the run when the name is unknown - a failure that
           // never produced content, so the workspace is archived, not revealed.
           personality: "E2E Missing Personality",
           archiveOnFinish: true,
@@ -162,7 +162,7 @@ test.describe("Schedule hidden runs and reveal", () => {
     expect(failingRunWorkspaceId.length).toBeGreaterThan(0);
 
     // The run died before producing anything, so its hidden workspace is
-    // archived rather than promoted — no sidebar row ever appears.
+    // archived rather than promoted - no sidebar row ever appears.
     await page.waitForTimeout(2_000);
     await expect(
       page.getByTestId(`sidebar-workspace-row-${serverId}:${failingRunWorkspaceId}`),

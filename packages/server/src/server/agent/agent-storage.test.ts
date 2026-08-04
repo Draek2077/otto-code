@@ -401,7 +401,7 @@ describe("AgentStorage", () => {
     // The auto-title writer's setTitle and a streaming background persist (a
     // title-less applySnapshot, which is meant to PRESERVE the stored title)
     // fire around the same tick. The persist must not read the stale provisional
-    // title and write it back over the freshly generated one — the lost-update
+    // title and write it back over the freshly generated one - the lost-update
     // race that made the visualizer/chat title snap back to the first prompt.
     await Promise.all([
       storage.setTitle(agentId, "AI Title"),

@@ -19,7 +19,7 @@ export interface OpenCodeRenameTabInput {
  * only decision left is whether to run it.
  *
  * One tab per (path, line, column): renaming the same symbol again reuses its job tab, since
- * the second request supersedes the first rather than sitting beside it — the opposite of
+ * the second request supersedes the first rather than sitting beside it - the opposite of
  * references, where two searches are two questions.
  */
 export function openCodeRenameTab(input: OpenCodeRenameTabInput): boolean {

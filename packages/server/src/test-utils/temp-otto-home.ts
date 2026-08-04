@@ -8,8 +8,8 @@ import { removeTempDir } from "./remove-temp-dir.js";
 /**
  * Points `$OTTO_HOME` at a throwaway directory for the calling suite.
  *
- * Anything resolving through `resolveOttoHome()` — most visibly the materialized
- * provider images under `$OTTO_HOME/attachments` — otherwise reads and writes
+ * Anything resolving through `resolveOttoHome()` - most visibly the materialized
+ * provider images under `$OTTO_HOME/attachments` - otherwise reads and writes
  * the developer's real `~/.otto`, and a suite that cleans up after itself would
  * be deleting from it.
  *

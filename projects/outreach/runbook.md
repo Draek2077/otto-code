@@ -12,21 +12,21 @@ Operational playbook. Read [outreach.md](outreach.md) for why; this is what to d
 > does not proxy, reuse, or spoof OAuth tokens from Claude Free, Pro, or Max accounts.
 
 **Why this matters:** Anthropic clarified in February 2026 that using Claude subscription OAuth
-tokens in third-party products is not permitted, and enforced it against OpenCode — whose removal PR
+tokens in third-party products is not permitted, and enforced it against OpenCode - whose removal PR
 was literally titled ["anthropic legal requests"](https://github.com/anomalyco/opencode/pull/18186)
 and drew 544 downvote reactions and a 1,274-point HN thread. This audience watched it happen and will
 check. Sloppy wording here turns a good thread into a hostile one.
 
 ### The fork
 
-> Otto is a fork of [Paseo](https://github.com/getpaseo/paseo) — everything Paseo does, plus a mission
+> Otto is a fork of [Paseo](https://github.com/getpaseo/paseo) - everything Paseo does, plus a mission
 > on top: bring frontier-model tooling to every provider equally, cloud and local alike.
 
 Say it first, unprompted, every time. Never a comparison that disparages upstream.
 
 ### The gaps
 
-> macOS builds are unsigned — no Apple Developer account — so you have to get past Gatekeeper on
+> macOS builds are unsigned - no Apple Developer account - so you have to get past Gatekeeper on
 > first launch and they don't auto-update. No iOS build for the same reason. Windows, Linux,
 > Android APK, and the web app all ship normally. If you can help with Apple signing, get in touch.
 
@@ -36,7 +36,7 @@ Say it first, unprompted, every time. Never a comparison that disparages upstrea
   tag AI-assisted content.
 - **DEV** (Code of Conduct): disclose AI assistance.
 - **Any post mentioning Otto anywhere:** "disclosure: I built this."
-- **Hacker News and Lobsters:** no AI text at all, so nothing to disclose — just don't.
+- **Hacker News and Lobsters:** no AI text at all, so nothing to disclose - just don't.
 
 ---
 
@@ -66,12 +66,12 @@ in every community in this plan.
 
 - **One account. Yours. Never a second, never an alt, never a "project account" posting alongside it.**
   Multiple accounts touching one domain is the strongest astroturf signal on every platform.
-- **Never solicit** upvotes, comments, stars, or shares — including in the Discord, including from
+- **Never solicit** upvotes, comments, stars, or shares - including in the Discord, including from
   friends. HN's voting-ring detector fires automatically and the penalty ladder is
   submission → account → **domain**.
 - **Spread sends.** Never fire an approved batch at once. Reddit's human-verification keys explicitly
   on how quickly an account attempts to write.
-- **Never delete and repost** on HN — it forfeits the [second-chance pool](https://news.ycombinator.com/pool).
+- **Never delete and repost** on HN - it forfeits the [second-chance pool](https://news.ycombinator.com/pool).
   Reposting later, without deleting, is fine and often works (Void: 13 points → 347 points, five days
   apart, same author).
 - **Give before you take.** File the upstream bug, answer the unrelated question, review the PR. The
@@ -98,9 +98,9 @@ shadowbanned deepens the pattern and wastes weeks.
 
 | Situation                         | Action                                                                                                                                                                                                                      |
 | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **HN domain ban suspected**       | Email `hn@ycombinator.com`. Plain, honest, no arguing. dang lifts domain bans routinely — tylervigen.com was banned purely for over-submission and later unbanned. **The ban is recoverable; not knowing about it is not.** |
+| **HN domain ban suspected**       | Email `hn@ycombinator.com`. Plain, honest, no arguing. dang lifts domain bans routinely - tylervigen.com was banned purely for over-submission and later unbanned. **The ban is recoverable; not knowing about it is not.** |
 | **HN post killed / flagged**      | Do not delete. Do not repost immediately. Email hn@ if it looks like a mistake; otherwise let it go and try again later with better framing.                                                                                |
-| **Reddit shadowban**              | Stop all Reddit activity. Check r/ShadowBan. Appeal via support. Do not create another account — ban evasion escalates it to sitewide.                                                                                      |
+| **Reddit shadowban**              | Stop all Reddit activity. Check r/ShadowBan. Appeal via support. Do not create another account - ban evasion escalates it to sitewide.                                                                                      |
 | **Subreddit removal / mod DM**    | Apologize once, briefly, ask what the right channel is, comply. Do not argue. Mods talk to each other.                                                                                                                      |
 | **Accused of astroturfing**       | Respond once, plainly, with the facts: one account, no vote solicitation, disclosure in every post. Do not litigate. Then leave the thread.                                                                                 |
 | **Someone notices the fork late** | This should be impossible if §1 is followed. If it happens: acknowledge immediately, link Paseo, state what Otto adds. Never defensive.                                                                                     |
@@ -113,16 +113,16 @@ shadowbanned deepens the pattern and wastes weeks.
 
 Fifteen minutes, once a week:
 
-1. Review the queue — approve, edit, or reject. Rejecting is normal.
+1. Review the queue - approve, edit, or reject. Rejecting is normal.
 2. Read what the watchtower surfaced. Most items are `give` opportunities, not `take` ones.
 3. Check the signal CSV: stars, unique views, top referrer, download delta.
-4. Check tripwires — has anything unblocked?
+4. Check tripwires - has anything unblocked?
 5. Confirm the dossier has no channel gone stale past 90 days.
 
 ## 7. Quarterly
 
 - Re-verify every channel's rules from primary sources. This space changed four times in H1 2026.
-- Re-check the competitive table in [channels.md](channels.md) §9 — projects archive fast.
+- Re-check the competitive table in [channels.md](channels.md) §9 - projects archive fast.
 - Re-read the positioning in [outreach.md](outreach.md) §3 against what shipped. It has already been
   overtaken once (mobile, February 2026); assume it will happen again.
 

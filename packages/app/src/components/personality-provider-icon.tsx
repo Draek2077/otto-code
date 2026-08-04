@@ -7,7 +7,7 @@ import { getProviderIcon } from "@/components/provider-icons";
 export interface PersonalityProviderIconProps {
   provider: string;
   size: number;
-  /** Personality spinner colors — the gradient's two stops. Default to the
+  /** Personality spinner colors - the gradient's two stops. Default to the
    * shared glow pair when a personality has no custom colors. */
   glowA?: string;
   glowB?: string;
@@ -15,7 +15,7 @@ export interface PersonalityProviderIconProps {
 
 /**
  * A provider icon filled with the personality's two colors as a **static** 45°
- * diagonal gradient — the identity reads on the familiar provider glyph without
+ * diagonal gradient - the identity reads on the familiar provider glyph without
  * the animated spinner (which looked like "processing"). Native path: the icon
  * shape masks a gradient rect via MaskedView. See the `.web.tsx` sibling for the
  * browser path (MaskedView is a no-op on web).

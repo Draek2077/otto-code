@@ -179,7 +179,7 @@ The original finding follows, kept for the record.
 
 **Hub landed, against a documented permanent exclusion. Do not touch it.**
 
-`docs/upstream-merges.md:226` reads: _"Hub (`a414f8ea8`) — permanent exclusion. Never incorporate."_
+`docs/upstream-merges.md:226` reads: _"Hub (`a414f8ea8`) - permanent exclusion. Never incorporate."_
 The doc prescribes an audit grep whose expected output is "nothing"; it now returns 23 files.
 
 Verified: `packages/server/src/server/hub/` has **12 files** now and **0** at pre-merge
@@ -199,7 +199,7 @@ resolution above. Every Hub file is still byte-identical to upstream.
 
 Ordered by user impact. Items 1–4 were re-verified directly against the tree, not taken on trust.
 
-### 1. The draft workspace tab crashes on render — VERIFIED
+### 1. The draft workspace tab crashes on render - VERIFIED
 
 `packages/app/src/composer/draft/workspace-tab.tsx:553` calls `useCommandCenterActions`
 unconditionally. That calls `useCommandCenterRegistry`
@@ -210,13 +210,13 @@ unconditionally. That calls `useCommandCenterRegistry`
 mounts Otto's separate `@/components/command-center` (677 lines).
 
 Upstream's `packages/app/src/command-center/` (10 files, 1,590 lines) landed with exactly **three**
-importers, all in `workspace-tab.tsx` — which is what turns dead code into a crash. (One audit
+importers, all in `workspace-tab.tsx` - which is what turns dead code into a crash. (One audit
 reported zero importers; that was wrong, and the correction makes it worse, not better.)
 
 **Decide:** mount `CommandCenterProvider` and migrate `_layout.tsx` onto upstream's command center, or
 revert `workspace-tab.tsx`'s three imports to Otto's. Do not ship both stacks.
 
-### 2. Project rename reaches the UI through neither carrier — VERIFIED
+### 2. Project rename reaches the UI through neither carrier - VERIFIED
 
 `applyProjectDescriptor` has exactly two references tree-wide: its type declaration
 (`session-store.ts:657`) and its implementation (`:1791`). **Zero callers.**
@@ -230,13 +230,13 @@ so nothing took over. Renaming a project updates neither the project record nor 
 Fix: restore the subscription. The reducer itself is correct and was already ported onto upstream's
 single `projects` map.
 
-### 3. `hosting_*` prompt attachments throw in the daemon — VERIFIED
+### 3. `hosting_*` prompt attachments throw in the daemon - VERIFIED
 
 `packages/server/src/server/agent/prompt-attachments.ts:123` ends its switch with
 `throw new Error("unreachable")`. Pre-merge the same file had `case "hosting_pr"` and
 `case "hosting_issue"` (confirmed: 2 hits at `f4ea7c6f7`, 0 now).
 
-The protocol **still accepts** them — `HostingPrAttachmentSchema` / `HostingIssueAttachmentSchema`
+The protocol **still accepts** them - `HostingPrAttachmentSchema` / `HostingIssueAttachmentSchema`
 remain in `AgentAttachmentSchema` (`messages.ts:2496-2497`). So an older client's PR attachment
 validates and then hits an uncaught throw on the prompt-build path for **every provider**.
 
@@ -248,13 +248,13 @@ instead of throwing. Prefer handling them; a silently dropped attachment is its 
 `packages/app/src/git/forges/` contains github, gitlab, gitea, forgejo, codeberg and **no bitbucket**.
 Only gitea/github/gitlab register a `deriveMergeCapability`, so it returns `null` for Bitbucket facts.
 `canMergePr` (`packages/app/src/git/policy.ts:562-572`) then falls into the `capability === null`
-branch, which requires `pullRequestMergeable === "MERGEABLE"` — a GitHub-only value Bitbucket never
+branch, which requires `pullRequestMergeable === "MERGEABLE"` - a GitHub-only value Bitbucket never
 produces.
 
 Pre-merge `policy.ts` had explicit Bitbucket branches (gating on branch-in-sync, and
 `bitbucket.mergeStrategiesAllowed.includes(method)` per method). `bitbucket` now appears **zero**
 times in `policy.ts`. The daemon adapter (`packages/server/src/services/git-hosting/bitbucket-*.ts`)
-is intact — this is purely the client half.
+is intact - this is purely the client half.
 
 Fix: add a bitbucket forge module exporting `deriveMergeCapability` from
 `isBitbucketPullRequestStatusFacts`. Extending upstream's registry is the right shape; do not
@@ -305,7 +305,7 @@ These are false statements currently sitting where the next merger will read the
    38 import `@/stores/workspace-tabs-store`. Correct the claim in `merge-decisions.md`.
 3. **"`hostingProvider` is a narrowing of `forge` and should collapse later" is wrong.**
    `bootstrap.ts:1201-1204` registers Bitbucket into the forge registry **under the forge id
-   `github`**, stating outright that "`github` keeps its historical name — it is the provider-routing
+   `github`**, stating outright that "`github` keeps its historical name - it is the provider-routing
    facade." So `forge` reads `"github"` for a Bitbucket workspace and the client must read
    `hosting.provider` for the truth. **They disagree by design and cannot collapse.** Retract the
    claim and record why.
@@ -445,7 +445,7 @@ reverse** if Philippe disagrees: delete the row and fold.
 
 ## Lower-priority, verified
 
-- **Mojibake introduced in 10 tracked files** — 169 lines in `protocol/src/messages.ts` alone have
+- **Mojibake introduced in 10 tracked files** - 169 lines in `protocol/src/messages.ts` alone have
   em-dashes/ellipses/arrows re-encoded as Latin-1 (`â€"`, `â€¦`, `â†'`); ours had zero. Three sites
   are **outside comments**: `provider-manifest.ts:220` (user-visible OMP mode description) and
   `session.ts:7415,7429` (agent-facing truncation suffix).
@@ -462,7 +462,7 @@ reverse** if Philippe disagrees: delete the row and fold.
   2026-08-02), `SidebarResizeHandle` /
   `SidebarHelpMenu` / `resolveDesktopSidebarWidth` in `left-sidebar.tsx`,
   `agent-stream/history-start-pagination.ts`, `settings/daemon-reconnect.ts`.
-- **`markdown/html-ish.ts` kept ours** — `<b>/<strong>/<em>/<code>/<table>` now render raw in model
+- **`markdown/html-ish.ts` kept ours** - `<b>/<strong>/<em>/<code>/<table>` now render raw in model
   output.
 - **`desktop-settings.ts`**: the `daemonStopOnQuitDefaultApplied` migration was dropped **but its test
   was taken**, so that merged test fails.
@@ -481,14 +481,14 @@ Worth keeping, so remediation does not churn it:
 - **Browser/preview: clean, no parallel stack.** Upstream's host-window `(hostWebContentsId,
 browserId)` rework was taken in full; Otto's `server/preview/` is a layer on top, present in neither
   base nor theirs. Zero extra hand-merge cost.
-- **agent-stream module set** is a clean superset (upstream's files plus six Otto-only modules) —
+- **agent-stream module set** is a clean superset (upstream's files plus six Otto-only modules) -
   though `strategy-native.tsx` and `strategy-web.tsx` kept ours against 412 combined lines of churn.
 - `prStatusOnly` is genuinely threaded (`workspace-git-service.ts:2080` → `checkout-session.ts:422` →
   `checkout-status-cache.ts:101`).
 - Otto's base-ref resolution does run under `listCheckoutCommits` (`checkout-git.ts:3966` calls
   `resolveBaseRefForCwd`). **But** the comment at `checkout-session.ts:590` claiming it "takes the
-  base ref as a parameter" is factually wrong — it resolves internally. Fix the comment.
+  base ref as a parameter" is factually wrong - it resolves internally. Fix the comment.
 - `confirmClose` live on 9 registrations, consumed at `workspace-screen.tsx:3544`. Focus mode wired
   end to end. All nine Otto tab kinds registered. Chatter ladder intact.
 - `visibilityCatchUpStatus: "ready"` suppresses exactly two states (`sync_error` on catch-up failure,
-  the `catching_up` indicator after backgrounding) — correctly self-identified as a stub.
+  the `catching_up` indicator after backgrounding) - correctly self-identified as a stub.

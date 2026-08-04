@@ -6,8 +6,8 @@ import { isSameOrDescendantPath } from "../path-utils.js";
 
 // Per-node query tools (projects/orchestration-graphs, Stage 3).
 //
-// A graph author can hand one node a specific read-only lookup — "list the open
-// issues", "read the changelog", "count the failing tests" — without granting
+// A graph author can hand one node a specific read-only lookup - "list the open
+// issues", "read the changelog", "count the failing tests" - without granting
 // it the workspace. Every kind here is read-only by construction, and the
 // safety properties are structural rather than validated:
 //
@@ -26,7 +26,7 @@ export const QUERY_TOOL_PREFIX = "query_";
  * The shape this module needs, structurally.
  *
  * Both the wire type (GraphQueryTool, a passthrough Zod object) and the label
- * form the tool catalog reads back satisfy it, so neither side has to convert —
+ * form the tool catalog reads back satisfy it, so neither side has to convert -
  * and this module stays independent of which one it was handed.
  */
 export interface QueryToolSpec {
@@ -118,7 +118,7 @@ function awaitCommand(input: {
   signal?: AbortSignal;
 }): Promise<QueryToolResult> {
   return new Promise<QueryToolResult>((resolve) => {
-    // shell:false is the whole security model — never make this configurable.
+    // shell:false is the whole security model - never make this configurable.
     const child = spawn(input.executable, input.args, {
       cwd: input.cwd,
       shell: false,
@@ -129,7 +129,7 @@ function awaitCommand(input: {
     let stderr = "";
     let spawnError: Error | null = null;
     // The timeout kills the child rather than resolving, so "close" stays the
-    // single settle path — including for a spawn that never started, which
+    // single settle path - including for a spawn that never started, which
     // emits "error" and then "close".
     const timer = setTimeout(() => child.kill(), COMMAND_TIMEOUT_MS);
     child.stdout?.on("data", (chunk: Buffer) => {

@@ -8,7 +8,7 @@
  *
  * The fence is opened with enough backticks to beat the longest run in the
  * source, so a diagram that happens to contain ``` in a label cannot close it
- * early. Content is passed through verbatim — mermaid parses its own YAML
+ * early. Content is passed through verbatim - mermaid parses its own YAML
  * frontmatter, so nothing may be stripped on the way in.
  */
 export function toMermaidFenceDocument(source: string): string {

@@ -1,15 +1,15 @@
-// Text effect themes — the registry behind the "working" text sweep that plays
+// Text effect themes - the registry behind the "working" text sweep that plays
 // across tool-call / activity labels while an agent is running (the shimmer in
 // components/message.tsx). See projects/text-effects/text-effects.md.
 //
 // Everything here is static data: specs are module-level constants, so
 // component memos keyed on a spec reference never churn, and neither platform
 // pays any per-frame JS for a theme (web = CSS keyframes, native = reanimated
-// UI-thread worklet — the theme only swaps gradient data and animation params).
+// UI-thread worklet - the theme only swaps gradient data and animation params).
 //
 // Colors are literal mid-saturation hues (like the original literal white)
 // clipped onto the text glyphs, chosen to read over light, dark, and black
-// backgrounds — no theme-token subscription needed. If a palette ever needs
+// backgrounds - no theme-token subscription needed. If a palette ever needs
 // per-scheme variants, extend the spec with a light/dark stop pair; do not add
 // a useUnistyles() call (banned, docs/unistyles.md).
 
@@ -62,7 +62,7 @@ export interface TextEffectGradientStop {
 /**
  * The original (and default) animated primitive: one gradient peak sliding
  * horizontally across the label, masked onto the static text. A theme on this
- * branch only swaps gradient data and animation parameters — there is no
+ * branch only swaps gradient data and animation parameters - there is no
  * per-glyph state, and both platforms stay fully declarative.
  */
 export interface SweepTextEffectSpec {
@@ -82,14 +82,14 @@ export interface SweepTextEffectSpec {
 
 /**
  * The second primitive: a horizontal strip of random glyphs travelling across
- * the label — decoration drawn *over* the text, never a change to it. The label
+ * the label - decoration drawn *over* the text, never a change to it. The label
  * stays one untouched `<Text numberOfLines={1}>`: it keeps its color, its
  * ellipsis, its selection, and its layout. The rain is a fixed-pitch row of
  * columns sized to the measured text span, so it costs the same whatever the
  * label says.
  *
  * Every column runs the *same* one-cycle animation, offset by its index. That
- * single shared timeline is what keeps both platforms declarative — web gives
+ * single shared timeline is what keeps both platforms declarative - web gives
  * every column a negative `animation-delay` on one registered keyframe, native
  * gives every column a derived style off one shared value. No per-frame JS.
  *
@@ -97,7 +97,7 @@ export interface SweepTextEffectSpec {
  */
 export interface GlyphTextEffectSpec {
   kind: "glyph";
-  /** A glyph that has just arrived — the leading edge of the strip. */
+  /** A glyph that has just arrived - the leading edge of the strip. */
   headColor: string;
   /** The one behind it, fading out; this is what reads as a trail. */
   tailColor: string;
@@ -105,7 +105,7 @@ export interface GlyphTextEffectSpec {
   cellWidth: number;
   /** Seconds for one full pass of the strip over a single column. */
   cycleSeconds: number;
-  /** Seconds of lag between adjacent columns — this is what makes it travel. */
+  /** Seconds of lag between adjacent columns - this is what makes it travel. */
   staggerSeconds: number;
   /** Characters the rain is drawn from. */
   scrambleAlphabet: string;
@@ -190,7 +190,7 @@ function makeSweepSpec(
 }
 
 // ---------------------------------------------------------------------------
-// Professional — the default; byte-identical to the pre-themes behavior.
+// Professional - the default; byte-identical to the pre-themes behavior.
 // The web gradient string and native stops are today's exact per-platform
 // values (they historically differed in shape; keep both verbatim).
 // ---------------------------------------------------------------------------
@@ -211,7 +211,7 @@ const PROFESSIONAL: SweepTextEffectSpec = {
 };
 
 // ---------------------------------------------------------------------------
-// Active — the original look with more punch: harder edges, a wider solid
+// Active - the original look with more punch: harder edges, a wider solid
 // core, a wider peak, and a noticeably faster sweep.
 // ---------------------------------------------------------------------------
 
@@ -238,7 +238,7 @@ const ACTIVE: SweepTextEffectSpec = {
 };
 
 // ---------------------------------------------------------------------------
-// Spectrum — a wide rainbow band sweeping through the text. Slightly slower
+// Spectrum - a wide rainbow band sweeping through the text. Slightly slower
 // than the default so the hues actually read as they pass.
 // ---------------------------------------------------------------------------
 
@@ -264,11 +264,11 @@ const SPECTRUM: SweepTextEffectSpec = {
 };
 
 // ---------------------------------------------------------------------------
-// Vivid — the original sweep, but a distinct saturated hue per activity.
+// Vivid - the original sweep, but a distinct saturated hue per activity.
 // ---------------------------------------------------------------------------
 
 const VIVID_ACTIVITY_COLORS: Record<TextEffectActivity, string> = {
-  thinking: "#b184f5", // violet — reasoning
+  thinking: "#b184f5", // violet - reasoning
   read: "#4fa8f0", // blue
   edit: "#4ccf6e", // green
   write: "#2ec4b6", // teal
@@ -289,7 +289,7 @@ function buildVividByActivity(): Partial<Record<TextEffectActivity, SweepTextEff
 }
 
 // ---------------------------------------------------------------------------
-// Night Rider — a red glow scanning back and forth, K.I.T.T.-style.
+// Night Rider - a red glow scanning back and forth, K.I.T.T.-style.
 // ---------------------------------------------------------------------------
 
 const NIGHT_RIDER_RED = "#ff4438";
@@ -317,7 +317,7 @@ const NIGHT_RIDER: SweepTextEffectSpec = {
 };
 
 // ---------------------------------------------------------------------------
-// Wave — a blue swell that alternates light/dark/light/dark as it travels, so
+// Wave - a blue swell that alternates light/dark/light/dark as it travels, so
 // the peak reads as a repeating wave rather than a single sliding highlight.
 // Widened so several crests sit on the label at once.
 // ---------------------------------------------------------------------------
@@ -347,7 +347,7 @@ const WAVE: SweepTextEffectSpec = {
 };
 
 // ---------------------------------------------------------------------------
-// Flames — a fire front sweeping across the label. The gradient is
+// Flames - a fire front sweeping across the label. The gradient is
 // deliberately asymmetric: a white-hot/yellow leading edge falls off through
 // orange and red into a dim charred ember that fades out, so glyphs read as
 // "burned" for a moment behind the front and then recover as it passes.
@@ -377,7 +377,7 @@ const FLAMES: SweepTextEffectSpec = {
 };
 
 // ---------------------------------------------------------------------------
-// Matrix — the only kind: "glyph" theme. A horizontal strip of green rain
+// Matrix - the only kind: "glyph" theme. A horizontal strip of green rain
 // travels across the label: each column flashes one glyph at the head color,
 // swaps to a second at the tail color, and fades. Adjacent columns are
 // staggered, so the strip reads as a band moving left to right rather than
@@ -393,7 +393,7 @@ const FLAMES: SweepTextEffectSpec = {
 // Within ASCII it is weighted to read like prose rather than like a licence
 // key: mostly lowercase, a fifth of the letters uppercase, with digits and
 // symbols salted through. `pickGlyph` samples the string uniformly, so the
-// weighting *is* the repetition below — 4 copies of a–z against 1 of A–Z gives
+// weighting *is* the repetition below - 4 copies of a–z against 1 of A–Z gives
 // the 80/20 letter split.
 // ---------------------------------------------------------------------------
 
@@ -411,7 +411,7 @@ const MATRIX: GlyphTextEffectSpec = {
   headColor: "#c9ffc2",
   tailColor: "#35d94f",
   // One character advance at fontSize.sm. Tighter than the glyph's natural
-  // advance on purpose — the columns should crowd, not sit in a dotted line.
+  // advance on purpose - the columns should crowd, not sit in a dotted line.
   cellWidth: 7,
   cycleSeconds: 2.4,
   // ~(0.2 - 0.02) * 2.4 / 0.027 ≈ 16 columns lit at once, so the strip reads as
@@ -421,7 +421,7 @@ const MATRIX: GlyphTextEffectSpec = {
 };
 
 // ---------------------------------------------------------------------------
-// Registry — adding a theme is: add the id above, add an entry here, and
+// Registry - adding a theme is: add the id above, add an entry here, and
 // add a settings label (appearance-section.tsx + i18n).
 // ---------------------------------------------------------------------------
 

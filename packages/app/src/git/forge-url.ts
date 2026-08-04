@@ -1,7 +1,7 @@
 /**
  * Forge-neutral web URL builders for "Open on <forge>" actions (a file blob or a
- * branch tree). The host comes from the workspace remote — not a hardcoded
- * cloud host — so self-hosted and Enterprise instances link correctly. Each
+ * branch tree). The host comes from the workspace remote - not a hardcoded
+ * cloud host - so self-hosted and Enterprise instances link correctly. Each
  * forge contributes a small URL grammar (the path infixes and line-anchor
  * format); an unknown forge has no grammar and yields null, so the action is
  * simply absent rather than wrong.

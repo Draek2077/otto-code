@@ -18,9 +18,9 @@ export function isDelegatedAgent(agent: AgentLabelSource): boolean {
 // ── Orchestration node labels (projects/orchestration-graphs) ───────────────
 // Stamped by the daemon on agents it spawns as orchestration participants. The
 // otto-tool catalog reads the policy label to enforce the tool binary:
-// "deterministic" — the daemon does all linking; the node gets NO orchestration
+// "deterministic" - the daemon does all linking; the node gets NO orchestration
 // tools (spawning/steering agents, runs), NO preview/dev-server tools, and NO
-// browser tools. "autonomous" — full otto toolset EXCEPT start_run
+// browser tools. "autonomous" - full otto toolset EXCEPT start_run
 // (orchestrations never nest orchestrations).
 export const ORCHESTRATION_POLICY_LABEL = "otto.orchestration-policy";
 
@@ -40,10 +40,10 @@ export const ORCHESTRATION_RUN_ID_LABEL = "otto.orchestration-run-id";
 
 // The node's declared output fields, JSON-encoded, stamped on the spawned
 // agent. The otto-tool catalog reads it to register that agent's submit_output
-// tool — which is why this rides a label rather than a spawn option: the
+// tool - which is why this rides a label rather than a spawn option: the
 // catalog is built per agent from the agent's own record, so every provider
 // (MCP-served and native-loop alike) inherits the tool with no per-provider
-// plumbing. Malformed JSON reads as "no declared fields" — a node that can't
+// plumbing. Malformed JSON reads as "no declared fields" - a node that can't
 // parse its own contract falls back to prose rather than failing to spawn.
 export const ORCHESTRATION_OUTPUT_FIELDS_LABEL = "otto.orchestration-output-fields";
 

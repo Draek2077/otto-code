@@ -218,7 +218,7 @@
 
 ### Changed
 
-- Moving between workspaces is faster — the app stops re-asking the host for state it already has
+- Moving between workspaces is faster - the app stops re-asking the host for state it already has
 - The Changes view resolves its base at the fork point, so a busy base branch no longer inflates the diff
 - Speech reads notation as words and rests at the marks a voice does not say
 - Cost is reported by the provider or shown as blank, never estimated from a rate table
@@ -320,7 +320,7 @@
 
 ### Added
 
-- A new Context tab accounts for everything sent to the agent before you type — context files, memory, skills, MCP tools, and Otto's own prompt — read as a share of the model window rather than a bare token count
+- A new Context tab accounts for everything sent to the agent before you type - context files, memory, skills, MCP tools, and Otto's own prompt - read as a share of the model window rather than a bare token count
 - The Context tab's "worth fixing" list takes you straight to the lines a finding is about
 - A warning above the message box when fixed context takes a large share of the window, with its own Settings toggle
 - Usage & cost gains a Log tab: an itemized ledger of every agent's tokens and cost, grouped under the chat turn that spawned it
@@ -343,11 +343,11 @@
 - New artifacts and schedules default to your team's Artificer and Scheduler
 - Otto's own scrollbar now appears on mobile web and the open-project screen instead of the platform's
 - Screens hold their fade until the panes actually mount, rather than revealing a half-built view
-- Otto now credits both projects it builds on — Paseo and Agent Flow — and sends support to both
+- Otto now credits both projects it builds on - Paseo and Agent Flow - and sends support to both
 
 ### Fixed
 
-- The warning bands above the message box were never actually tinted — they painted a plain background in every theme
+- The warning bands above the message box were never actually tinted - they painted a plain background in every theme
 - Replayed Visualizer history no longer collapses into a single instant
 - Clearing a chat no longer leaves the Visualizer stuck on the archived one
 - A new chat appears in the Visualizer before you send the first message
@@ -361,13 +361,13 @@
 ### Added
 
 - Chats now get a short AI-generated title from your first message, replacing the placeholder first-line title
-- After a turn, the agent's predicted next prompt appears as ghost text in the message box — press Tab to accept (Claude agents), with a new Settings toggle
+- After a turn, the agent's predicted next prompt appears as ghost text in the message box - press Tab to accept (Claude agents), with a new Settings toggle
 - A warning strip above the message box when your Claude plan usage nears or hits a rate limit, with a new Settings toggle
 - Press Up and Down in an empty message box to recall messages you've already sent
 - The personality editor is now organized into Identity, Personality, Model, and Voice tabs
-- Voice cues let a personality speak a short line when its agent joins, first starts thinking, and finishes — write them yourself or generate with AI, off by default
-- Choose how a suggested task starts by default — New chat, Sub-agent, Worktree, or In session
-- Pick the shape of Visualizer agent nodes — hexagon, square, octagon, or circle
+- Voice cues let a personality speak a short line when its agent joins, first starts thinking, and finishes - write them yourself or generate with AI, off by default
+- Choose how a suggested task starts by default - New chat, Sub-agent, Worktree, or In session
+- Pick the shape of Visualizer agent nodes - hexagon, square, octagon, or circle
 - A new Visualizer toolbar collects its controls at the top of the tab
 - An FPS meter toggle for the Visualizer, and a Gradient toggle for chat message bubbles in Appearance settings
 
@@ -419,7 +419,7 @@
 - Subagent nodes in the Visualizer no longer flicker or spark repeatedly
 - The Visualizer's bloom glow no longer flickers or looks washed out on light themes
 - The Visualizer's top-bar count is labeled agents again, since it counts graph nodes
-- Sub-agents no longer show up as "general-purpose" — rows are titled by the task they were given
+- Sub-agents no longer show up as "general-purpose" - rows are titled by the task they were given
 - Cancelling the interrupt confirmation no longer collapses the message box over your unsent text
 - Bitbucket pull requests report their state correctly again
 - Launching the desktop app with graphics troubleshooting flags no longer drops it into command-line mode
@@ -428,7 +428,7 @@
 
 ### Added
 
-- The Visualizer now plays sound effects for agent activity — spawns, tool calls, completions, and errors — at half volume by default
+- The Visualizer now plays sound effects for agent activity - spawns, tool calls, completions, and errors - at half volume by default
 - Set the Visualizer sound level with a new volume slider in Settings
 - The speaker button in the Visualizer now remembers your mute choice across restarts
 - A new button in the Visualizer hides the whole overlay, leaving just the animated graph
@@ -455,7 +455,7 @@
 
 ### Added
 
-- Visualizer: a live, interactive map of what your agents are doing — agents, subagents, tool calls, messages, and a file-attention heatmap — that works for every provider and opens from any chat or scoped to a single run
+- Visualizer: a live, interactive map of what your agents are doing - agents, subagents, tool calls, messages, and a file-attention heatmap - that works for every provider and opens from any chat or scoped to a single run
 - Text Effect themes: choose the animated style that sweeps across activity labels while an agent is working, in Appearance settings
 
 ### Improved
@@ -547,8 +547,8 @@
 ### Added
 
 - Guided first-time setup that detects your providers, picks an interface style, and sets up a starter set of agent personalities and teams
-- Agent teams — group personalities into switchable operating templates and flip between them from the sidebar
-- User mode — a simplified interface that hides developer panels, with a Files-only explorer you can switch out of anytime
+- Agent teams - group personalities into switchable operating templates and flip between them from the sidebar
+- User mode - a simplified interface that hides developer panels, with a Files-only explorer you can switch out of anytime
 
 ### Improved
 
@@ -583,13 +583,13 @@
 
 ### Added
 
-- Agent personalities — reusable per-host templates (provider, model, effort, mode, prompt, roles, colors, voice)
+- Agent personalities - reusable per-host templates (provider, model, effort, mode, prompt, roles, colors, voice)
 - A starter team of six personalities on every new host, restorable anytime
 - Running agents show their personality's name, icon, and colored spinner
 - Switch a running agent's personality from its model picker
 - Bitbucket Cloud support for PRs and issues, alongside GitHub
 - Voice & dictation settings in Host settings, with new Kokoro v1.0 voices
-- Live turn stats — elapsed timer and token count per turn
+- Live turn stats - elapsed timer and token count per turn
 - Switchable exact/relative chat timestamps
 - Pinnable Changes toolbar controls
 - Right-click menus on sidebar rows (desktop)
@@ -717,7 +717,7 @@
 - Composer buttons shrink together on narrow screens
 - Font size uses a slider
 - Brain icon for reasoning effort in the composer
-- New working indicator — two orbiting lights, themed
+- New working indicator - two orbiting lights, themed
 - Live context usage during a turn for OpenAI Compatible providers
 - fast-agent updated to 0.9.2
 

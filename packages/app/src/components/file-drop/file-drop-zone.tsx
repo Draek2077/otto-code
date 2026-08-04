@@ -22,7 +22,7 @@ interface FileDropZoneProps {
 
 /**
  * Defines a drag-and-drop area and renders its dim backdrop. Files are consumed by any
- * descendant calling `useFileDrop` — the drop area, the backdrop, and the consumer are
+ * descendant calling `useFileDrop` - the drop area, the backdrop, and the consumer are
  * decoupled, so a consumer's layout can never collapse the backdrop.
  */
 export function FileDropZone({ children, disabled = false, style, onLayout }: FileDropZoneProps) {
@@ -56,7 +56,7 @@ export function FileDropZone({ children, disabled = false, style, onLayout }: Fi
 
   const targetStyle = useMemo(() => [styles.target, style], [style]);
 
-  // On native there is no web drag-and-drop, so skip the listeners and the backdrop — but still
+  // On native there is no web drag-and-drop, so skip the listeners and the backdrop - but still
   // render the styled layout View (callers use FileDropZone as their container) and provide
   // context so useFileDrop no-ops safely.
   if (!isWeb) {

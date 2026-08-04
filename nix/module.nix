@@ -101,7 +101,7 @@ in
             `OTTO_RELAY_USE_TLS` for the daemon.
 
           A `"local"` mode (running a relay on the same host as a systemd
-          unit) is not yet implemented — the relay package currently only
+          unit) is not yet implemented - the relay package currently only
           ships a Cloudflare Workers adapter. Tracked separately.
         '';
       };
@@ -186,7 +186,7 @@ in
         Runtime mutations to `config.json` (e.g. via `otto daemon set-password`
         or the mobile app toggling MCP injection / provider overrides) are
         overwritten on the next restart. Pick one: manage via this option, or
-        manage via the CLI — not both.
+        manage via the CLI - not both.
 
         The full schema is defined by `PersistedConfigSchema` in
         `packages/server/src/server/persisted-config.ts`.

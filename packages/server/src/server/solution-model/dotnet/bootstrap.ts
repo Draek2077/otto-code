@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
  * would spawn a process to answer a question whose answer never changes.
  *
  * **Absence is silent by design.** No SDK, or no payload, means the workspace reports no
- * solutions, which means no switcher — the same outcome as a workspace with no `.sln`. That is
+ * solutions, which means no switcher - the same outcome as a workspace with no `.sln`. That is
  * the feature contract: no degraded mode, no half-tree, and nothing to explain to a user who has
  * never opened a .NET project in their life.
  */

@@ -546,7 +546,7 @@ describe("agent personalities compatibility", () => {
   test("a single-field brain patch does not inject defaults for the other fields", () => {
     // Regression: MutableBrainConfigSchema.partial() kept every field's default,
     // so a one-field brain patch expanded to a full defaulted block and the
-    // daemon's deep-merge reset the rest — turning sharing off, wiping the token,
+    // daemon's deep-merge reset the rest - turning sharing off, wiping the token,
     // and disabling the server. The patch must carry only what was sent.
     const parsed = MutableDaemonConfigPatchSchema.parse({ brain: { allowRemoteConfig: true } });
     expect(parsed.brain).toEqual({ allowRemoteConfig: true });
@@ -594,7 +594,7 @@ describe("agent personalities compatibility", () => {
     // COMPAT(binaryWriteBase64): the payload moved onto file-transfer frames,
     // which means `size` and no `contentBase64`. A client from before that
     // sends the opposite pair, and a field we stopped sending is not a field we
-    // stopped accepting — this is the "does a 6-month-old client still parse?"
+    // stopped accepting - this is the "does a 6-month-old client still parse?"
     // half of the contract.
     const legacy = SessionInboundMessageSchema.parse({
       type: "fs.file.write_binary.request",

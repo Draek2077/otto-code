@@ -225,7 +225,7 @@ export interface AttachmentStore {
   /** Sizes the store for the Storage settings section. */
   usage(): Promise<AttachmentStoreUsage>;
   /**
-   * Drops every preview attachment. Safe by construction — each one is a copy of
+   * Drops every preview attachment. Safe by construction - each one is a copy of
    * an image the daemon or the workspace still holds, so the next render refetches.
    */
   clearPreviews(): Promise<ClearPreviewAttachmentsResult>;

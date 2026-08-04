@@ -54,7 +54,7 @@ export const BITBUCKET_CLOUD_CAPABILITIES: GitHostingCapabilities = {
 };
 
 // Provider credentials are absent (not an auth failure): features off, no
-// error surfaced — mirrors GitHubCliMissingError semantics.
+// error surfaced - mirrors GitHubCliMissingError semantics.
 export class GitHostingCredentialsMissingError extends Error {
   readonly kind = "missing-credentials";
 
@@ -64,7 +64,7 @@ export class GitHostingCredentialsMissingError extends Error {
   }
 }
 
-// Credentials exist but the provider rejected them — mirrors
+// Credentials exist but the provider rejected them - mirrors
 // GitHubAuthenticationError semantics.
 export class GitHostingAuthenticationError extends Error {
   readonly kind = "auth-failure";

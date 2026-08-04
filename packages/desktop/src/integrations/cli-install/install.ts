@@ -37,13 +37,13 @@ export async function installCli(): Promise<InstallStatus> {
       await fs.unlink(targetPath);
     }
     // Generate a thin .cmd trampoline that delegates to the bundled shim.
-    // Only the app install path is baked in — internal details (asar layout,
+    // Only the app install path is baked in - internal details (asar layout,
     // entrypoint scripts) live in the bundled shim and update with the app.
     const cmdContent = [
       "@echo off",
       `set "BUNDLED_CLI=${shimPath}"`,
       `if not exist "%BUNDLED_CLI%" (`,
-      `  echo Otto CLI not found at %BUNDLED_CLI% — is Otto installed? 1>&2`,
+      `  echo Otto CLI not found at %BUNDLED_CLI% - is Otto installed? 1>&2`,
       `  exit /b 1`,
       `)`,
       `call "%BUNDLED_CLI%" %*`,

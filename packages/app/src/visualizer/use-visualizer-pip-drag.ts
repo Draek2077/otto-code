@@ -4,13 +4,13 @@
 // The one real obstacle to dragging the PIP is that most of its area is a
 // GUEST: an Electron `<webview>` (or a sandboxed `<iframe>` on web) rendering in
 // its own process. Pointer events over that region belong to the guest document,
-// not to us — the host never sees a `pointerdown` there, so a drag started over
+// not to us - the host never sees a `pointerdown` there, so a drag started over
 // the graph would simply not fire. Nothing else stands in the way.
 //
 // The fix is the same one the panel's load cover already uses: a host-side
 // element stacked ABOVE the guest. `visualizer-pip.tsx` puts a transparent
 // full-frame layer over the canvas and hands its pointer events here. That layer
-// also swallows clicks the guest would otherwise eat, which is what we want —
+// also swallows clicks the guest would otherwise eat, which is what we want -
 // PIP is a glanceable viewport with no interactive canvas.
 //
 // ── Follow components/resize-handle.tsx, not the DOM ────────────────────────
@@ -19,7 +19,7 @@
 // `stopPropagation` on the SYNTHETIC event, `setPointerCapture`, and
 // `touchAction: "none"` on the hit area. The first cut of this hook treated
 // `event.nativeEvent` as a DOM PointerEvent and gated on `nativeEvent.button`,
-// which is not reliably populated — the handler returned before doing anything
+// which is not reliably populated - the handler returned before doing anything
 // and the PIP simply would not drag. Don't reintroduce a `button` check here.
 //
 // ── Why position is stored as a 0..1 fraction ──────────────────────────────
@@ -70,7 +70,7 @@ export interface UseVisualizerPipDragInput {
   pip: PipRect;
   /** Persisted position. */
   fraction: PipFraction;
-  /** Called once, on release — one settings write per drag, not per frame. */
+  /** Called once, on release - one settings write per drag, not per frame. */
   onCommit: (fraction: PipFraction) => void;
 }
 

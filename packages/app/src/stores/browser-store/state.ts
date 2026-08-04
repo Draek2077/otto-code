@@ -11,7 +11,7 @@ export interface BrowserRecord {
   faviconUrl: string | null;
   lastError: string | null;
   createdAt: number;
-  /** True for tabs opened by the Preview button / preview_start's tab binding — rendered with a distinct icon so they read as "the preview", not a user-opened browser tab. */
+  /** True for tabs opened by the Preview button / preview_start's tab binding - rendered with a distinct icon so they read as "the preview", not a user-opened browser tab. */
   isPreview: boolean;
   /** The dev server this tab previews, when isPreview is true. Lets closing/stopping target the exact server instead of every browser tab. */
   previewServerId: string | null;
@@ -84,7 +84,7 @@ export function createBrowserRecord(input: {
 
 /**
  * Normalizes a rehydrated (persisted) record, including ones written before
- * previewServerName/previewCwd/previewStatus existed — those come back as
+ * previewServerName/previewCwd/previewStatus existed - those come back as
  * `undefined`, which matches none of PreviewStatus's variants, so without this
  * an old preview tab would render a permanently blank overlay (the bootstrap
  * and ready-navigate effects only match "idle"/"ready" respectively).
@@ -178,7 +178,7 @@ export function sanitizeBrowsersForPersist(state: BrowserIndexState): {
           ...browser,
           isLoading: false,
           lastError: null,
-          // Never trust a persisted "ready"/"error"/etc — the process behind it
+          // Never trust a persisted "ready"/"error"/etc - the process behind it
           // may be gone by the time this is rehydrated. Re-verify from scratch.
           previewStatus: browser.isPreview ? "idle" : browser.previewStatus,
         },

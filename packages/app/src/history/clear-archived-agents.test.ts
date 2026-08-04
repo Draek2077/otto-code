@@ -91,7 +91,7 @@ describe("requestClearArchivedAgents", () => {
 
     expect(outcome).toBeNull();
     expect(d.confirm).not.toHaveBeenCalled();
-    // Dry run only — no destructive call was ever made.
+    // Dry run only - no destructive call was ever made.
     expect(calls).toEqual([{ dryRun: true, olderThanDays: undefined }]);
   });
 
@@ -193,7 +193,7 @@ describe("requestClearArchivedAgents", () => {
     expect(alert.mock.calls[0]![0].message).toContain("Deleted 3.");
   });
 
-  it("stays quiet on a clean sweep — no dialog after the confirm", async () => {
+  it("stays quiet on a clean sweep - no dialog after the confirm", async () => {
     const { host } = fakeHost({ serverId: "a", matched: 2, agentIds: ["a1", "a2"] });
     const alert = alertFn();
 

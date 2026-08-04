@@ -3,8 +3,8 @@ namespace Otto.DotnetProbe;
 /// <summary>
 /// Every path that leaves this process goes through here.
 ///
-/// The solution libraries return platform separators — <c>src\App\App.csproj</c> on Windows even
-/// when the <c>.slnx</c> on disk stores forward slashes — so without one boundary the wire shape
+/// The solution libraries return platform separators - <c>src\App\App.csproj</c> on Windows even
+/// when the <c>.slnx</c> on disk stores forward slashes - so without one boundary the wire shape
 /// would differ by OS and every consumer would have to know it. Normalising once here is what
 /// lets the daemon and the client treat a path as a plain string.
 /// </summary>

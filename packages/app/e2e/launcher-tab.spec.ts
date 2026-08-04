@@ -100,7 +100,7 @@ test.describe("Tab creation", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 test.describe("Terminal title propagation", () => {
-  // OSC title escape sequence propagation is inherently flaky — the terminal
+  // OSC title escape sequence propagation is inherently flaky - the terminal
   // must process the sequence, emit a title change event, and the tab bar
   // must re-render before the assertion deadline. Allow retries.
   test.describe.configure({ retries: 2 });
@@ -165,7 +165,7 @@ test.describe("Terminal title propagation", () => {
 
       await setupDeterministicPrompt(page);
 
-      // Fire many rapid title changes — only the last should stick
+      // Fire many rapid title changes - only the last should stick
       const finalTitle = `Final-${Date.now()}`;
       for (let i = 0; i < 5; i++) {
         await terminalSurfaceLocator(page).pressSequentially(`printf '\\033]0;Rapid-${i}\\007'\n`, {
@@ -196,7 +196,7 @@ test.describe("Tab transitions (no flash)", () => {
     // Sample tabs at high frequency across the transition
     const snapshots = await sampleTabsDuringTransition(page, () => clickNewChat(page), 2_000, 30);
 
-    // Every snapshot should have at least one tab — no blank/zero-tab frames
+    // Every snapshot should have at least one tab - no blank/zero-tab frames
     for (const snapshot of snapshots) {
       expect(snapshot.length).toBeGreaterThanOrEqual(1);
     }
@@ -238,7 +238,7 @@ test.describe("Tab transitions (no flash)", () => {
       10_000,
     );
 
-    // Draft creation is fully in-memory — should be fast
+    // Draft creation is fully in-memory - should be fast
     // We use a generous budget here because CI can be slow, but the key assertion
     // is that no blank/flash frame appears (tested above).
     expect(elapsed).toBeLessThan(3_000);

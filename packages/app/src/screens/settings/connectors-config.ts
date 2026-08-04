@@ -1,4 +1,4 @@
-// Connectors settings helpers — pure config readers and whole-array patch
+// Connectors settings helpers - pure config readers and whole-array patch
 // builders over daemon config's `connectors`. A connector is an MCP server
 // surfaced as a named, toggle-able integration; edits (add / remove / enable /
 // disable / per-tool disable) are all read-modify-write of the full array,
@@ -8,6 +8,7 @@
 // (build-first, translate-last). Do not add locale keys here yet.
 import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@otto-code/protocol/messages";
 import type { ConnectorConfig, McpServerConfig } from "@otto-code/protocol/provider-config";
+import type { ConnectorSetup } from "./connectors-catalog";
 
 export type ConnectorTransport = McpServerConfig["type"];
 
@@ -15,7 +16,7 @@ export function getConnectors(config: MutableDaemonConfig | null): ConnectorConf
   return config?.connectors ?? [];
 }
 
-// Absent `enabled` reads as enabled — the same default the daemon applies.
+// Absent `enabled` reads as enabled - the same default the daemon applies.
 export function isConnectorEnabled(connector: ConnectorConfig): boolean {
   return connector.enabled !== false;
 }
@@ -88,6 +89,34 @@ export function createSetConnectorToolDisabledPatch(
 export interface ConnectorCredentialInput {
   token: string;
   envVar?: string;
+}
+
+/**
+ * Build the transport for a catalog entry the user picked. Unlike the manual
+ * form below, nothing here is typed by the user: the endpoint comes from the
+ * catalog, already verified. An OAuth entry gets no credential at all - the
+ * daemon attaches the token at connect time, and baking one into the config
+ * would be the thing this whole change exists to remove.
+ */
+export function buildCatalogConnectorServer(
+  setup: ConnectorSetup,
+  token?: string,
+): McpServerConfig {
+  if (setup.kind === "oauth") {
+    return { type: setup.transport, url: setup.url };
+  }
+  if (setup.kind === "none") {
+    return setup.transport === "http"
+      ? { type: "http", url: setup.url }
+      : { type: "stdio", command: setup.command, args: setup.args };
+  }
+  const trimmed = token?.trim() ?? "";
+  return {
+    type: "stdio",
+    command: setup.command,
+    args: setup.args,
+    ...(trimmed.length > 0 ? { env: { [setup.credential.envVar]: trimmed } } : {}),
+  };
 }
 
 // Build the transport descriptor for the add form. stdio splits the command

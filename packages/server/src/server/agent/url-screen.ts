@@ -17,12 +17,12 @@ import * as net from "node:net";
 //   servers nobody declared in launch.json are a documented flow
 //   (docs/preview.md), and the preview-server list is an optional dependency
 //   of the browser tools that may be absent entirely. Private LAN (RFC 1918,
-//   IPv6 ULA) and CGNAT stay reachable too — browsing another device's dev
+//   IPv6 ULA) and CGNAT stay reachable too - browsing another device's dev
 //   build or a Tailscale node (Tailscale assigns from 100.64.0.0/10 and
 //   fd7a::/48) is legitimate on a visible surface, and navigation prompts in
 //   default permission mode. What must never be reachable is anything that
 //   yields credentials silently or has no browsing use at all: link-local
-//   (cloud instance metadata at 169.254.169.254 — the credential-exfiltration
+//   (cloud instance metadata at 169.254.169.254 - the credential-exfiltration
 //   chain this screen exists to break), the Alibaba/OpenStack metadata IP
 //   inside CGNAT, and the unroutable special-use ranges.
 // ---------------------------------------------------------------------------
@@ -62,16 +62,16 @@ export const BLOCKED_IP_RANGES: Array<[string, string]> = [
 
 /**
  * IP ranges blocked for browser_navigate / browser_new_tab. Deliberately
- * narrower than BLOCKED_IP_RANGES — see the module comment for which local
+ * narrower than BLOCKED_IP_RANGES - see the module comment for which local
  * ranges stay reachable and why.
  */
 export const BROWSER_BLOCKED_IP_RANGES: Array<[string, string]> = [
   // "This network": 0.0.0.0/8
   ["0.0.0.0", "0.255.255.255"],
   // Alibaba/OpenStack cloud metadata. A single IP, not the whole CGNAT
-  // block — Tailscale legitimately occupies the rest of 100.64.0.0/10.
+  // block - Tailscale legitimately occupies the rest of 100.64.0.0/10.
   ["100.100.100.200", "100.100.100.200"],
-  // Link-local: 169.254.0.0/16 — AWS/GCP/Azure instance metadata lives here.
+  // Link-local: 169.254.0.0/16 - AWS/GCP/Azure instance metadata lives here.
   ["169.254.0.0", "169.254.255.255"],
   // Documentation: 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24
   ["192.0.2.0", "192.0.2.255"],
@@ -108,7 +108,7 @@ function ipv4ToNumber(ip: string): number {
 /**
  * Extract the IPv4 address embedded in an IPv4-mapped IPv6 address
  * (::ffff:a.b.c.d, including the hex form ::ffff:aabb:ccdd). Returns null for
- * anything else. Mapped addresses must be screened with the IPv4 rules — a
+ * anything else. Mapped addresses must be screened with the IPv4 rules - a
  * socket to ::ffff:127.0.0.1 reaches loopback.
  */
 function extractMappedIpv4(lowerIp: string): string | null {
@@ -134,7 +134,7 @@ function isBlockedIpv4(ip: string, ranges: Array<[string, string]>): boolean {
       }
     }
   } catch {
-    // Unparseable IP — block it defensively
+    // Unparseable IP - block it defensively
     return true;
   }
   return false;
@@ -207,7 +207,7 @@ async function defaultLookup(host: string, options: { all: true }): Promise<Reso
  * navigation may proceed.
  *
  * Hostnames are resolved with getaddrinfo and every resolved address is
- * screened — the same approach web_fetch's validateHostname takes — so a DNS
+ * screened - the same approach web_fetch's validateHostname takes - so a DNS
  * name pointing at 169.254.169.254 is caught, not just the literal IP. Unlike
  * web_fetch the daemon cannot pin the webview's sockets to the validated
  * addresses (Chromium resolves independently), so a low-TTL DNS rebind between
@@ -216,7 +216,7 @@ async function defaultLookup(host: string, options: { all: true }): Promise<Reso
  * anyway, and a resolver that answers the browser but not the daemon is
  * itself suspect.
  *
- * localhost / *.localhost skip DNS and are always allowed — Chromium maps them
+ * localhost / *.localhost skip DNS and are always allowed - Chromium maps them
  * to loopback without consulting the resolver, and loopback is exactly what
  * the preview pane exists to show.
  */

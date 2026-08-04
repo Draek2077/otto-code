@@ -186,7 +186,7 @@ function SetupPanel() {
         return;
       })
       .catch(() => {
-        // Server may not support this yet — ignore
+        // Server may not support this yet - ignore
       });
   }, [client, snapshot, serverId, target.workspaceId, upsertProgress]);
 
@@ -239,7 +239,7 @@ function SetupPanel() {
       contentContainerStyle={styles.contentContainer}
       testID="workspace-setup-panel"
     >
-      {/* Hidden element for status — preserves testID for E2E */}
+      {/* Hidden element for status - preserves testID for E2E */}
       <Text style={styles.hiddenStatus} testID="workspace-setup-status">
         {statusLabel}
       </Text>

@@ -178,7 +178,7 @@ interface UseGitActionsInput {
     push: ReactElement;
     pullAndPush: ReactElement;
     // PR-hosting actions carry the provider mark (GitHub/Bitbucket), so they
-    // render per-provider — the hook resolves them with the workspace's
+    // render per-provider - the hook resolves them with the workspace's
     // detected git hosting provider.
     viewPr: (provider: GitHostingProviderId) => ReactElement;
     createPr: (provider: GitHostingProviderId) => ReactElement;

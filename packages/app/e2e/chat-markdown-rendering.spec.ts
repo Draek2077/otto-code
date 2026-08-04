@@ -5,12 +5,12 @@ import { startRunningMockAgent } from "./helpers/composer";
 // Agent chat output renders markdown correctly. The mock provider's default
 // cycle stream (packages/server/src/server/agent/providers/mock-load-test-agent.ts)
 // deterministically contains a "## Cycle 1" heading, a four-item bullet list,
-// inline code (`onContentSizeChange`), and a closing italic marker — assert
+// inline code (`onContentSizeChange`), and a closing italic marker - assert
 // those render as real markdown structures, plus the spacing-rhythm rule from
 // docs: containers add no margin, the markdown paragraph owns the 12px gap
 // (styles/markdown-styles.ts paragraph.marginBottom = theme.spacing[3] = 12).
 //
-// Descoped: fenced code blocks — the mock provider's fixed script emits no
+// Descoped: fenced code blocks - the mock provider's fixed script emits no
 // markdown fence (its diffs travel as tool_call payloads, not markdown), and
 // the provider has no free-text echo mode, so a fence cannot be produced
 // deterministically without modifying server source.
@@ -81,7 +81,7 @@ test.describe("Chat markdown rendering", () => {
       ).toBeVisible();
 
       // Spacing rhythm: walking up from a paragraph's text to the message
-      // root, exactly one ancestor carries vertical margin — the markdown
+      // root, exactly one ancestor carries vertical margin - the markdown
       // paragraph itself, at 12px. Containers add none.
       const midParagraphText = page
         .getByText("Now I have a clearer picture", { exact: false })

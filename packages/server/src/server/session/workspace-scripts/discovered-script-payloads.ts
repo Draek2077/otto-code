@@ -7,8 +7,8 @@ import type { DiscoveredScriptEntry } from "./script-provider.js";
  *
  * Always `type: "script"`, never `"service"`: a service payload carries a
  * proxy route, and a proxy route needs a declared port plus the *intent* that
- * the thing serves HTTP. `package.json` cannot tell us either — `npm run dev`
- * might be a server, a watcher or a one-shot — and a dead proxy URL is worse
+ * the thing serves HTTP. `package.json` cannot tell us either - `npm run dev`
+ * might be a server, a watcher or a one-shot - and a dead proxy URL is worse
  * than none. A user who wants a routed URL declares the Script in otto.json.
  */
 export function buildDiscoveredScriptPayloads(input: {

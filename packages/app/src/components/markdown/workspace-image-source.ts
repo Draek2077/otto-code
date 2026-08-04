@@ -1,8 +1,8 @@
 import { containRelativePath, isAbsolutePath } from "@/utils/path";
 
 /**
- * Resolving a document's own images — `![](docs/diagram.png)`,
- * `<img src="packages/website/public/logo.svg">` — against the workspace it
+ * Resolving a document's own images - `![](docs/diagram.png)`,
+ * `<img src="packages/website/public/logo.svg">` - against the workspace it
  * lives in, the way GitHub resolves them against the repo.
  *
  * **This module is the security boundary, and it runs before any RPC.** The
@@ -33,7 +33,7 @@ export interface WorkspaceImageBase {
 /**
  * Formats we will fetch. Two jobs: it keeps a badge-heavy document from reading
  * files that could never be drawn, and it means `![](.env)` never becomes a
- * read — the containment check alone would have allowed it.
+ * read - the containment check alone would have allowed it.
  */
 const WORKSPACE_IMAGE_EXTENSIONS = new Set([
   "png",
@@ -49,7 +49,7 @@ const WORKSPACE_IMAGE_EXTENSIONS = new Set([
   "heif",
 ]);
 
-/** Any `scheme:` prefix — `https:`, `data:`, `javascript:`, and `C:` too. */
+/** Any `scheme:` prefix - `https:`, `data:`, `javascript:`, and `C:` too. */
 const HAS_SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*:/;
 
 function safeDecodeURI(value: string): string {
@@ -64,7 +64,7 @@ function safeDecodeURI(value: string): string {
  * Whether a src is the *shape* this module can resolve: a workspace-relative
  * path rather than a URL. Used by the HTML translation pass, which has to decide
  * whether an `<img>` survives as an image long before a base path is in scope.
- * Passing this is not permission to read anything — {@link resolveWorkspaceImagePath}
+ * Passing this is not permission to read anything - {@link resolveWorkspaceImagePath}
  * still has to contain it.
  */
 export function isWorkspaceRelativeImageSrc(src: string): boolean {

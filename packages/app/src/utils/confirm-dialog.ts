@@ -12,11 +12,11 @@ export interface ConfirmDialogInput {
   // Initial checked state for the checkbox (defaults to false). Lets a caller
   // pre-select the recommended choice, e.g. "delete the merged branch".
   checkboxDefaultChecked?: boolean;
-  // "alert" drops the cancel action — one acknowledge button, nothing to
+  // "alert" drops the cancel action - one acknowledge button, nothing to
   // decide. Used by `alertDialog` for messages that only need to be seen.
   kind?: "confirm" | "alert";
   // Optional third action, rendered between cancel and confirm. For dialogs that
-  // refuse something and offer a way forward instead of a dead end — the caller
+  // refuse something and offer a way forward instead of a dead end - the caller
   // reads `choice === "alternate"`. Ignored for `kind: "alert"`.
   alternateLabel?: string;
 }

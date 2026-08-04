@@ -23,7 +23,7 @@ name: Android Play Release
 # Deliberately NOT triggered by `v*` (removed 2026-07-27). EAS's free tier allows
 # 15 Android builds a month, and firing this on every release tag spent half of
 # that budget on a path that has never gone green end-to-end: 20 runs, 20
-# failures, and 0.5.1 — the only build to reach Play — was uploaded by hand. The
+# failures, and 0.5.1 - the only build to reach Play - was uploaded by hand. The
 # APK workflow was starved as a direct result and shipped no Android artifact at
 # all for 0.5.2 through 0.7.1.
 #
@@ -87,7 +87,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${GOOGLE_SERVICE_ACCOUNT_KEY:-}" ]; then
-            echo "GOOGLE_SERVICE_ACCOUNT_KEY secret is not set — cannot submit to Play." >&2
+            echo "GOOGLE_SERVICE_ACCOUNT_KEY secret is not set - cannot submit to Play." >&2
             exit 1
           fi
           # eas.json's submit.internal profile reads ./google-service-account.json

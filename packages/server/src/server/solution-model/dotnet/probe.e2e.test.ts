@@ -10,7 +10,7 @@ import { toPosixAbsolute } from "../paths.js";
 
 /**
  * The whole stack against the real sidecar: discovery in Node, a solution read through Microsoft's
- * serializer, and MSBuild evaluation through a warm `ProjectCollection` — for both `.sln` and
+ * serializer, and MSBuild evaluation through a warm `ProjectCollection` - for both `.sln` and
  * `.slnx`.
  *
  * The unit tests stub the provider, which proves the translation and the switch but not that the
@@ -19,7 +19,7 @@ import { toPosixAbsolute } from "../paths.js";
  * one code path.
  *
  * Skipped unless the payload has been built (`npm run build:dotnet-probe`), which needs a .NET
- * SDK — the same shape as `csharp-server.e2e.test.ts` skipping without `csharp-ls`.
+ * SDK - the same shape as `csharp-server.e2e.test.ts` skipping without `csharp-ls`.
  */
 
 const logger = pino({ level: "silent" });
@@ -56,7 +56,7 @@ describe.skipIf(!hasPayload)("the .NET solution sidecar, end to end", () => {
   it("offers one entry for the fixture, against real files on disk", async () => {
     // The fixture ships both formats of the same solution so the two parse paths can be compared,
     // which is exactly the shape `dotnet sln migrate` leaves behind. Discovery must offer one
-    // picker entry, not two — and it must be the `.slnx`.
+    // picker entry, not two - and it must be the `.slnx`.
     const service = await enabledService();
 
     const solutions = await service.listSolutions(root);
@@ -72,7 +72,7 @@ describe.skipIf(!hasPayload)("the .NET solution sidecar, end to end", () => {
       const tree = await service.getTree({ root, solutionPath: `Sample.${format}` });
 
       expect(tree.format).toBe(format);
-      // Solution folders with their nesting — the organisational payload of the whole view, and
+      // Solution folders with their nesting - the organisational payload of the whole view, and
       // the thing no CLI surface can report.
       expect(tree.folders.map((folder) => folder.path).sort()).toEqual(["/Src/", "/Tests/"]);
       expect(tree.projects.map((project) => project.name).sort()).toEqual([
@@ -150,7 +150,7 @@ describe.skipIf(!hasPayload)("the .NET solution sidecar, end to end", () => {
     expect(core.status).toBe("ok");
     expect(app.status).toBe("ok");
     expect(app.projectReferences).toEqual(["src/Core/Core.csproj"]);
-    // Generously bounded — this is a smoke check that the collection stayed warm, not a
+    // Generously bounded - this is a smoke check that the collection stayed warm, not a
     // benchmark. A cold process would spend seconds here re-resolving the SDK.
     expect(Date.now() - started).toBeLessThan(10_000);
   }, 120_000);

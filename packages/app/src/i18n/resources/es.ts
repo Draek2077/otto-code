@@ -2635,7 +2635,7 @@ export const es: TranslationResources = {
     loading: "Cargando archivos...",
     noResults: "Sin archivos",
   },
-  // Refine — the reviewed AI rewrite (docs/refine.md). Only the two
+  // Refine - the reviewed AI rewrite (docs/refine.md). Only the two
   // entry-point strings are translated here; the Refine tab itself is literal
   // English pending the pre-release i18n sweep, like the rename/references tabs.
   refine: {

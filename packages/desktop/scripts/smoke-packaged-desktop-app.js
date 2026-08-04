@@ -179,7 +179,7 @@ function createIsolatedDesktopEnv({ home, listen, userData, cdpPort }) {
     // with the daemon saturating the runner fetching local speech models. Left
     // armed, the watchdog reads a slow paint as a hung GPU and relaunches into
     // software rendering, and the relaunch takes down the window this smoke is
-    // waiting on — which is why no otto://app/ page ever appeared.
+    // waiting on - which is why no otto://app/ page ever appeared.
     OTTO_FORCE_GPU: "1",
     OTTO_ELECTRON_FLAGS: `--remote-debugging-address=127.0.0.1 --remote-debugging-port=${cdpPort}`,
   };
@@ -502,7 +502,7 @@ async function waitForPackagedAppPage(browser, deadline) {
   }
   throw new Error(
     `Timed out waiting for the packaged otto://app/ renderer. Pages seen: ${
-      observedUrls.length > 0 ? observedUrls.join(", ") : "(none — no renderer ever opened)"
+      observedUrls.length > 0 ? observedUrls.join(", ") : "(none - no renderer ever opened)"
     }`,
   );
 }
@@ -537,7 +537,7 @@ async function assertPackagedRendererLoaded(page, deadline) {
  *
  * `webContents.printToPDF` has no headless stand-in, so the markdown PDF export
  * has nothing below this that can prove it produces a file. This is the real
- * production handler on the real packaged app — the smoke adds no branch to
+ * production handler on the real packaged app - the smoke adds no branch to
  * main, it just calls what the export calls.
  */
 async function verifyPrintToPdf(page) {
@@ -951,7 +951,7 @@ async function smokePackagedDesktopApp({ appPath }) {
         });
         opened.on("requestfailed", (request) => {
           console.log(
-            `Packaged desktop smoke: renderer request failed ${request.url()} — ${
+            `Packaged desktop smoke: renderer request failed ${request.url()} - ${
               request.failure()?.errorText ?? "unknown"
             }`,
           );

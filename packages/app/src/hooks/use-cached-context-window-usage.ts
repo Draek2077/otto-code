@@ -12,8 +12,8 @@ export interface ContextWindowUsageValues {
 
 /**
  * Falls back to the last cached context usage for this agent when live data
- * isn't available yet — e.g. right after an app restart, before the daemon
- * has resent fresh usage — and keeps the cache updated whenever live usage
+ * isn't available yet - e.g. right after an app restart, before the daemon
+ * has resent fresh usage - and keeps the cache updated whenever live usage
  * arrives. Draft composers pass a stable tab id as `agentId` rather than a
  * real agent id, but since live data there is always null, nothing is ever
  * written under that key, so drafts never inherit a previous chat's usage.

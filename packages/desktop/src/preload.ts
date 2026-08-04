@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { BrowserKeyboardPolicy } from "./features/browser-keyboard/index.js";
 
 // This preload runs in Electron's sandbox and is tsc-compiled (not bundled), so it MUST
-// NOT emit any runtime module load other than "electron" — a require() of a local or
+// NOT emit any runtime module load other than "electron" - a require() of a local or
 // third-party module throws and aborts the preload before exposeInMainWorld runs, leaving
 // window.ottoDesktop undefined (the 0.1.108 regression, #2103). Keep this literal in sync
 // with OTTO_BROWSER_PROFILE_PARTITION in features/browser-profile.ts; preload-sandbox.test.ts

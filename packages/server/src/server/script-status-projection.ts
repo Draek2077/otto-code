@@ -197,7 +197,7 @@ function buildOrphanRuntimePayload(
       publicBaseUrl: ctx.serviceProxyPublicBaseUrl,
     });
 
-  // A running discovered script reaches the descriptor only through this path —
+  // A running discovered script reaches the descriptor only through this path -
   // discovery itself is on-demand and never rides in the descriptor. Recovering
   // its source from the qualified name keeps "npm:dev" from leaking into the
   // sidebar as a script name.

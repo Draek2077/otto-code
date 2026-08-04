@@ -1,4 +1,4 @@
-// One honest spend number per chat — the daemon-side half.
+// One honest spend number per chat - the daemon-side half.
 //
 // Two problems live here, both provider-agnostic on purpose:
 //
@@ -21,7 +21,7 @@
 //    first observed.
 //
 // Cost honesty: `costUsd` is only ever the provider's OWN reported cost. This
-// module never prices tokens from a rate table — a rate keyed off a model id
+// module never prices tokens from a rate table - a rate keyed off a model id
 // would misprice a gateway serving that model at its own prices (see the
 // pricing invariant in docs/subagent-accounting.md). Providers that cannot
 // report cost (local models, most openai-compatible endpoints) leave it unset
@@ -33,15 +33,15 @@ import type { AgentProvider, AgentUsage } from "./agent-sdk-types.js";
  * Which of a provider's usage leaves are a running total rather than this
  * turn's spend.
  *
- * - `none` — every leaf is per-turn; the reported usage IS the turn's spend.
- * - `cost` — token leaves are per-turn, `totalCostUsd` is a session total.
- * - `all` — every leaf is a session total.
+ * - `none` - every leaf is per-turn; the reported usage IS the turn's spend.
+ * - `cost` - token leaves are per-turn, `totalCostUsd` is a session total.
+ * - `all` - every leaf is a session total.
  */
 export type CumulativeUsageScope = "none" | "cost" | "all";
 
 /**
  * Per-provider reporting shape. `none` is the default because it is the common
- * case, but it is an ASSUMPTION — and assuming it for Pi and OpenCode is what
+ * case, but it is an ASSUMPTION - and assuming it for Pi and OpenCode is what
  * produced the over-counting this module exists to fix. Answer this question
  * for any new provider (docs/subagent-accounting.md, per-provider checklist)
  * rather than letting it inherit the default silently.
@@ -53,7 +53,7 @@ export type CumulativeUsageScope = "none" | "cost" | "all";
  */
 export function cumulativeUsageScopeFor(provider: AgentProvider): CumulativeUsageScope {
   switch (provider) {
-    // Pi's session stats ARE the lifetime figures — tokens and cost alike.
+    // Pi's session stats ARE the lifetime figures - tokens and cost alike.
     case "pi":
       return "all";
     // OpenCode resets its per-turn usage accumulator at each turn boundary, but
@@ -93,7 +93,7 @@ function finite(value: number | undefined): number | undefined {
 }
 
 export interface TurnSpend {
-  /** This turn's spend — safe to add to any running total. */
+  /** This turn's spend - safe to add to any running total. */
   usage: AgentUsage | undefined;
   /** The watermark to carry into the next turn (unchanged for `none`). */
   watermark: TurnUsageWatermark | undefined;
@@ -107,7 +107,7 @@ export interface TurnSpend {
  * advances to the running maximum.
  *
  * Leaves outside the cumulative scope, and the absolute context-window leaves,
- * pass through untouched — `usage` keeps its full shape so callers that read
+ * pass through untouched - `usage` keeps its full shape so callers that read
  * occupancy off the same object are unaffected.
  *
  * First observation caveat: a watermark starts empty, so the first report after
@@ -160,7 +160,7 @@ export function toTurnSpend(
  * An agent's lifetime spend, kept as the real split rather than one scalar so
  * the cache-read share stays visible and the cost stays the provider's own.
  *
- * `costUsd` is the sum of the cost ACTUALLY BOOKED for this agent — which for a
+ * `costUsd` is the sum of the cost ACTUALLY BOOKED for this agent - which for a
  * parent chat is the de-inflated residual, not the raw whole-tree figure. That
  * is what makes `parent + Σ descendants` exact by construction rather than a
  * number that double-counts every sub-agent (see docs/subagent-accounting.md,
@@ -179,7 +179,7 @@ export interface AgentLifetimeUsage {
   costedTurns: number;
 }
 
-/** Every input class plus output — the same grand total `grandTotalTokens`
+/** Every input class plus output - the same grand total `grandTotalTokens`
  * produces for an observed sub-agent, so a native row reads identically. */
 export function lifetimeUsageTotalTokens(usage: AgentLifetimeUsage): number {
   return (
@@ -193,10 +193,10 @@ export function lifetimeUsageTotalTokens(usage: AgentLifetimeUsage): number {
 /**
  * How much of this agent's token spend carries a real, provider-reported cost.
  *
- * - `complete` — every token-bearing turn was priced; the $ figure is the total.
- * - `partial` — some turns were not priced; the $ figure is a FLOOR and must be
+ * - `complete` - every token-bearing turn was priced; the $ figure is the total.
+ * - `partial` - some turns were not priced; the $ figure is a FLOOR and must be
  *   presented as one ("at least $X"), never as the total.
- * - `none` — nothing was priceable. Show tokens and an honest blank; do NOT
+ * - `none` - nothing was priceable. Show tokens and an honest blank; do NOT
  *   estimate from a rate table.
  */
 export type CostCoverage = "complete" | "partial" | "none";
@@ -278,7 +278,7 @@ export function accumulateLifetimeUsage(
  * `usage` is already its own running total (the accumulator sums across its
  * messages). No differencing: this is a projection, not an accumulation.
  *
- * Coverage is binary here — an observed row reports one settled usage object,
+ * Coverage is binary here - an observed row reports one settled usage object,
  * so it is either priced or it is not.
  */
 export function observedLifetimeUsage(

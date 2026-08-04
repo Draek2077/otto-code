@@ -8,11 +8,11 @@ import {
 
 import { writeJsonFileAtomic } from "../atomic-file.js";
 
-// File-backed persistence for orchestration Graphs — the reusable templates a
+// File-backed persistence for orchestration Graphs - the reusable templates a
 // User orchestration executes (projects/orchestration-graphs). One JSON file
 // per graph under `$OTTO_HOME/orchestration-graphs/{graphId}.json`, mirroring
 // RunStore: atomic writes (temp + rename), per-id serialized mutation so
-// concurrent saves can't interleave, no migrations — forward-compat is via
+// concurrent saves can't interleave, no migrations - forward-compat is via
 // optional schema fields (see docs/data-model.md). Host-level by design:
 // graphs are generic and reusable across workspaces; an orchestration binds a
 // graph to a workspace only at start time.

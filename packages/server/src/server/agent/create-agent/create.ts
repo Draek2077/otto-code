@@ -53,7 +53,7 @@ export interface CreateAgentCommandDependencies {
   ensureWorkspaceForCreate?: EnsureWorkspaceForCreate;
   // Schedules an AI-written short chat title from the first message, off the
   // create hot path. Absent in contexts that don't wire structured generation
-  // (e.g. tests) — the chat then keeps its provisional first-line title.
+  // (e.g. tests) - the chat then keeps its provisional first-line title.
   scheduleAutoTitle?: (request: AgentAutoTitleRequest) => void;
 }
 
@@ -266,11 +266,11 @@ async function resolveSessionCreateAgent(
   );
   // Validate the requested mode against the provider's modes for the resolved
   // cwd. The app remembers mode preferences globally, so a saved mode can be
-  // stale for a workspace whose provider config no longer defines it — reject
+  // stale for a workspace whose provider config no longer defines it - reject
   // it here instead of letting the provider fail mid-turn.
   //
   // This runs after buildSessionConfig, which may already have created a
-  // worktree and/or workspace record — cwd (required to resolve modes) is
+  // worktree and/or workspace record - cwd (required to resolve modes) is
   // only known once that step completes. If validation throws, any
   // worktree/workspace buildSessionConfig created is the caller's
   // responsibility to clean up (session.ts's handleCreateAgentRequest does
@@ -449,7 +449,7 @@ async function resolveMcpCreateAgent(
  * Last-resort entry in the auto-title provider chain: the chat's OWN provider and model.
  *
  * The chain is the cheap ladder (haiku, gpt-5.4-mini, minimax-m3, …) plus any role-matched Writer
- * personality, and `resolveStructuredGenerationProviders` appends this selection at the end — so
+ * personality, and `resolveStructuredGenerationProviders` appends this selection at the end - so
  * preference order is unchanged and this only decides what happens when none of the preferred
  * models are reachable. Without it a host that has only one provider configured (LM Studio, Codex,
  * the deterministic e2e mock) silently gets no titles at all: every laddered candidate is either
@@ -535,7 +535,7 @@ function buildMcpSessionConfig(params: {
     // guardrail deny-responder can auto-deny permission escalations for runs
     // nobody is watching. Uses the resolver's effective value (input OR an
     // unattended parent), falling back to an explicit passthrough flag, so a
-    // child spawned by an unattended parent is guarded too — matching the mode
+    // child spawned by an unattended parent is guarded too - matching the mode
     // coercion. See docs/safe-unattended.md.
     unattended: params.resolvedUnattended || passthroughConfig?.unattended === true,
   };

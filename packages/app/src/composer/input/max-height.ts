@@ -1,4 +1,4 @@
-/** One line of text — the input never collapses below this. */
+/** One line of text - the input never collapses below this. */
 export const MIN_INPUT_HEIGHT = 32;
 
 /**
@@ -16,19 +16,19 @@ const MAX_COMPOSER_VIEWPORT_RATIO = 0.5;
 const MAX_COMPOSER_VIEWPORT_RATIO_COMPACT = 0.4;
 
 /**
- * The composer's non-input chrome, taken out of that share so the toolbar row —
- * and with it the send button — always lands inside the measured viewport: the
+ * The composer's non-input chrome, taken out of that share so the toolbar row -
+ * and with it the send button - always lands inside the measured viewport: the
  * wrapper's vertical padding (2 x spacing[4] = 32), the gap above the toolbar
  * (spacing[3] = 12), its 1px border top and bottom, and one toolbar button's
  * height (28) less the row's -6 bleed. Literals rather than theme reads so this
- * stays a pure module — layout math, not style values (see docs/unistyles.md,
+ * stays a pure module - layout math, not style values (see docs/unistyles.md,
  * "Hard-coded constants for genuinely static values").
  */
 const COMPOSER_CHROME_HEIGHT = 32 + 12 + 2 + 22;
 
 interface MaxInputHeightInput {
   /**
-   * Height of the box the composer has to fit inside — the chat pane where the
+   * Height of the box the composer has to fit inside - the chat pane where the
    * host measures one, the window otherwise. Never a content height: this must
    * not grow with the input, or the cap would chase the text it is capping.
    */
@@ -38,7 +38,7 @@ interface MaxInputHeightInput {
 
 /**
  * Caps how tall the text input may grow. Past this the input scrolls internally
- * instead of pushing the toolbar out of the pane — which is what a few hundred
+ * instead of pushing the toolbar out of the pane - which is what a few hundred
  * pasted lines used to do.
  */
 export function resolveMaxInputHeight(input: MaxInputHeightInput): number {

@@ -15,7 +15,7 @@ import { useSessionStore } from "@/stores/session-store";
 
 /**
  * The daemon must be able to store lessons at all. There is no client-side
- * substitute — storage is daemon-side by definition — so an old daemon simply
+ * substitute - storage is daemon-side by definition - so an old daemon simply
  * hides the feature rather than showing an empty version of it.
  */
 export function usePersonalityMemoryEnabled(serverId: string): boolean {
@@ -44,7 +44,7 @@ export interface PersonalityMemoryView {
   briefOmittedCount: number;
   /**
    * The project root the brief was composed for. Lets the list mark a
-   * project-scoped lesson that belongs somewhere else — otherwise an empty brief
+   * project-scoped lesson that belongs somewhere else - otherwise an empty brief
    * sitting above a list of lessons has no explanation. null when the daemon
    * resolved no project (or predates the field).
    */

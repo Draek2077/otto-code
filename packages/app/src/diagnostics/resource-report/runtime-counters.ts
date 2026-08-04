@@ -22,7 +22,7 @@ export interface RuntimeCounters {
   pendingTimeouts: number;
   intervalsCreated: number;
   timeoutsCreated: number;
-  /** False when the globals could not be patched — counts are all zero. */
+  /** False when the globals could not be patched - counts are all zero. */
   installed: number;
 }
 

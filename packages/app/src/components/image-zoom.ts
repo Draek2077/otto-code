@@ -7,7 +7,7 @@ import type { ImageDimensions } from "@/components/image-dimensions";
 
 /**
  * The zoom ladder the +/- buttons walk. Chosen so a step is always a visible
- * change and 100% is always reachable — a multiplicative step (×1.2) drifts
+ * change and 100% is always reachable - a multiplicative step (×1.2) drifts
  * past 100% and leaves the user unable to land on it.
  */
 export const ZOOM_STEPS: readonly number[] = [
@@ -35,7 +35,7 @@ export function clampZoom(scale: number): number {
  *
  * Capped at 1: fitting *shrinks* an image too big for the pane and leaves a
  * small one alone. Blowing a 16×16 favicon up to fill a desktop pane is not
- * "fit", it is a decision the user did not ask for — and the zoom controls are
+ * "fit", it is a decision the user did not ask for - and the zoom controls are
  * right there when they do want it.
  */
 export function fitScale(
@@ -53,7 +53,7 @@ export function fitScale(
 
 /**
  * The next rung up (`direction: 1`) or down (`-1`) from wherever the current
- * scale sits — which is usually *between* rungs, because it started as a fit
+ * scale sits - which is usually *between* rungs, because it started as a fit
  * ratio. Stepping from 0.67-ish must reach 1 rather than snapping back to 0.67,
  * so the comparison is strict and epsilon-guarded on both sides.
  */
@@ -75,7 +75,7 @@ export function isAtZoomLimit(scale: number, direction: 1 | -1): boolean {
 
 /**
  * The readout on the zoom control. Rounded to whole percent, floored at 1% so a
- * deeply zoomed-out image never reads "0%" — which looks like a failure rather
+ * deeply zoomed-out image never reads "0%" - which looks like a failure rather
  * than a scale.
  */
 export function formatZoomPercent(scale: number): string {

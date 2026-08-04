@@ -1,5 +1,5 @@
 // Shared naming rule for provider-managed (observed) subagents. This is the
-// single source of truth for how an observed subagent is titled — the daemon
+// single source of truth for how an observed subagent is titled - the daemon
 // uses it to freeze the track-row label (agent-projections.ts), and the app's
 // visualizer uses it so page-side child labels (subagent_dispatch/return
 // particles ride an edge keyed by child NAME) resolve to exactly the same
@@ -11,7 +11,7 @@
 export const OBSERVED_SUBAGENT_TITLE_MAX = 60;
 
 /**
- * Catch-all subagent types that make lousy row labels — Claude's default Task
+ * Catch-all subagent types that make lousy row labels - Claude's default Task
  * runs as "general-purpose". These never become the title; the task
  * description names the row instead (user-locked).
  */
@@ -41,7 +41,7 @@ export function normalizeObservedSubagentType(value: string | undefined | null):
 
 /**
  * Derive the frozen row name for an observed subagent. Prefer the stable
- * `subAgentType` (e.g. "code-explorer") over the description — a
+ * `subAgentType` (e.g. "code-explorer") over the description - a
  * `task_progress` description is the ever-changing AI summary, which must
  * never become the label. Generic catch-all types ("general-purpose") are
  * skipped in favor of the description. Callers freeze the result at the first
@@ -63,7 +63,7 @@ export function deriveObservedSubagentTitle(update: {
 
 /**
  * True when this update carries a real name source we can freeze the title on.
- * A generic catch-all type alone doesn't count — freezing "general-purpose"
+ * A generic catch-all type alone doesn't count - freezing "general-purpose"
  * would lock out the description a later update may carry.
  */
 export function observedUpdateHasTitleSource(update: {

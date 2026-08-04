@@ -1,7 +1,7 @@
 /**
  * Structure recovery for hover content.
  *
- * Language servers do send structure — `textDocument/hover` returns markdown whose
+ * Language servers do send structure - `textDocument/hover` returns markdown whose
  * fenced blocks are the signature and whose loose text is the documentation. The first
  * version of this feature flattened all of it into one `textContent`, which is why a
  * hover read as an undifferentiated blob of more code. This module gets the structure
@@ -31,7 +31,7 @@ const FENCE = /^\s*```(\S*)\s*$/;
  * Split hover markdown into fenced code and prose runs, in order. Blank-only runs are
  * dropped so a fence surrounded by whitespace does not produce empty sections.
  *
- * An unterminated fence — servers do emit them — is treated as running to the end
+ * An unterminated fence - servers do emit them - is treated as running to the end
  * rather than discarded, because the signature is usually the thing inside it.
  */
 export function parseHoverMarkdown(markdown: string): HoverSegment[] {
@@ -82,7 +82,7 @@ export function plainProse(text: string): string {
 
 /**
  * A filename the highlighter can pick a parser from. `highlightCode` keys off the
- * extension, so a fence's language tag has to become one — servers tag with language
+ * extension, so a fence's language tag has to become one - servers tag with language
  * names (`typescript`), not extensions.
  */
 export function filenameForHoverLanguage(language: string): string | null {

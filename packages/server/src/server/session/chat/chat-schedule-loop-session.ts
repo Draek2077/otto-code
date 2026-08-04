@@ -41,7 +41,7 @@ export interface ChatScheduleLoopSessionOptions {
  * least-coupled in the session: each is a stateless request/response over its own
  * service (chat rooms, cron routines, autonomous loops), with no shared observer,
  * git, or voice state and no subscriptions to tear down. They live in one subsystem
- * because they are dispatched together — schedule/* was historically reached through
+ * because they are dispatched together - schedule/* was historically reached through
  * the chat dispatcher's fall-through arm. The three rpc-error emitters stay separate:
  * they differ by default code, and only the chat one reads ChatServiceError.code.
  */

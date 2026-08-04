@@ -184,7 +184,7 @@ function padTo(body: string, budgetChars: number, seed: number): string {
 /** Build one spec part covering `stages`, padded to `budgetChars`. */
 function specPart(partIndex: number, stages: StageSpec[], budgetChars: number): string {
   const heading =
-    `# Pipeline specification — part ${String(partIndex).padStart(2, "0")}\n\n` +
+    `# Pipeline specification - part ${String(partIndex).padStart(2, "0")}\n\n` +
     `This part defines the rule for stages ${stages[0].index}–${stages[stages.length - 1].index}. ` +
     `Each stage's module in the working copy is a passthrough placeholder; implement its \`apply(x)\` ` +
     `exactly as written here. All arithmetic is bounded modulo 1000 and returns an integer.\n`;
@@ -235,8 +235,8 @@ export function generateContextCorpus({ targetTokens }: { targetTokens: number }
     "`python -m unittest test_pipeline`.\n";
   files["docs/OVERVIEW.md"] =
     "# Specification overview\n\nThe pipeline applies each stage's `apply(x)` in order, starting " +
-    `from ${PIPELINE_START}. There are ${stageCount} stages. The rule for each stage — its ` +
-    "operation and operand — is defined in the numbered parts under `docs/spec/`. The code carries " +
+    `from ${PIPELINE_START}. There are ${stageCount} stages. The rule for each stage - its ` +
+    "operation and operand - is defined in the numbered parts under `docs/spec/`. The code carries " +
     "no hint of the operands; you must read the spec.\n";
 
   for (let p = 0; p < partCount; p += 1) {

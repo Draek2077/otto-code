@@ -28,7 +28,7 @@ import { useCodeRenameJob, type RenameJobPhase } from "@/editor/rename/use-code-
  * A rename as an auditable job.
  *
  * The whole design is the inverse of an inline rename box: the request is taken from the
- * file, set up as a job in its own tab, and the full dry run — every file and every edit —
+ * file, set up as a job in its own tab, and the full dry run - every file and every edit -
  * is shown before anything happens. An inline box hides a project-wide blast radius behind
  * one keystroke; this makes the blast radius the thing you are looking at when you decide.
  *
@@ -126,12 +126,12 @@ function CodeRenamePanel() {
 }
 
 /**
- * Impact first, action second — and the Apply button is only ever enabled against a plan
+ * Impact first, action second - and the Apply button is only ever enabled against a plan
  * the panel is actually showing. Every other phase disables it, because "apply" with
  * nothing on screen to apply is the exact failure the tab exists to prevent.
  *
  * One row, at the file editor's exact toolbar height. This tab is opened beside the editor
- * in a split, so its chrome is read against the editor's — the impact line used to sit on a
+ * in a split, so its chrome is read against the editor's - the impact line used to sit on a
  * second row, which made the bar visibly taller than the one next to it.
  *
  * The action is a `ToolbarIconButton` like every other button here, accent-tinted rather
@@ -141,8 +141,8 @@ function CodeRenamePanel() {
  *
  * After an undo the tab is finished: `onReplan` is withdrawn and the action slot becomes
  * Close. Re-planning at that point asks a language server whose in-memory copy of the file
- * still holds the applied rename — the daemon writes and restores those files itself and
- * never tells the server — so it answers about a symbol that is no longer there. Offering a
+ * still holds the applied rename - the daemon writes and restores those files itself and
+ * never tells the server - so it answers about a symbol that is no longer there. Offering a
  * button that cannot work is worse than not offering one.
  */
 function RenameHeader({
@@ -186,7 +186,7 @@ function RenameHeader({
         {summarizePhase(phase, fileCount, editCount)}
       </Text>
       <View style={styles.spacer} />
-      {/* Only while the plan itself is on screen — the run and undo reports are flat
+      {/* Only while the plan itself is on screen - the run and undo reports are flat
           lists of files with nothing to fold. */}
       {phase.kind === "ready" ? (
         <CodeResultExpandToggle
@@ -244,7 +244,7 @@ function RenameAction({
     );
   }
   if (isRun) {
-    // Undo is the only action left once the rename has run, so it keeps the accent —
+    // Undo is the only action left once the rename has run, so it keeps the accent -
     // there is nothing else in the bar for the tint to compete with.
     return (
       <ToolbarIconButton
@@ -276,7 +276,7 @@ function PlanBody({ phase, children }: { phase: RenameJobPhase; children: React.
       <View style={styles.centered}>
         <Text style={styles.mutedText}>
           {phase.waitingForProject
-            ? "Waiting for the project to finish loading — a plan made now would under-report what this rename touches."
+            ? "Waiting for the project to finish loading - a plan made now would under-report what this rename touches."
             : "Working out what this rename would change…"}
         </Text>
       </View>
@@ -301,7 +301,7 @@ function PlanBody({ phase, children }: { phase: RenameJobPhase; children: React.
 /**
  * What the run actually did, file by file.
  *
- * Every file is listed, including the ones that came out clean — a report that showed only
+ * Every file is listed, including the ones that came out clean - a report that showed only
  * problems would leave the user unable to tell "nothing went wrong" from "nothing ran".
  */
 function RunReport({ outcome }: { outcome: CodeRenameApplyOutcome }) {
@@ -425,13 +425,13 @@ function summarizePhase(phase: RenameJobPhase, fileCount: number, editCount: num
   if (phase.kind === "ran" || phase.kind === "undoing") {
     const { appliedEdits, skippedEdits, appliedFiles, complete } = phase.outcome;
     if (complete) {
-      return `Done — ${appliedEdits} ${appliedEdits === 1 ? "edit" : "edits"} written across ${appliedFiles} ${appliedFiles === 1 ? "file" : "files"}.`;
+      return `Done - ${appliedEdits} ${appliedEdits === 1 ? "edit" : "edits"} written across ${appliedFiles} ${appliedFiles === 1 ? "file" : "files"}.`;
     }
     return `${appliedEdits} written, ${skippedEdits} skipped because the files had changed. Undo puts back only what this run wrote.`;
   }
   if (phase.kind === "undone") {
     return phase.undo.complete
-      ? `Undone — ${phase.undo.restoredFiles} ${phase.undo.restoredFiles === 1 ? "file" : "files"} put back.`
+      ? `Undone - ${phase.undo.restoredFiles} ${phase.undo.restoredFiles === 1 ? "file" : "files"} put back.`
       : `${phase.undo.restoredFiles} put back. The rest were edited after the rename and were left alone.`;
   }
   return "";
@@ -593,7 +593,7 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: "600",
     flexShrink: 1,
   },
-  // Shrinks before the names do — the symbol being renamed is what identifies
+  // Shrinks before the names do - the symbol being renamed is what identifies
   // the tab, so it is the last thing that should be truncated.
   impactText: {
     color: theme.colors.foregroundMuted,

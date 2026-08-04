@@ -4,8 +4,8 @@ import type { OrchestrationGraph } from "@otto-code/protocol/orchestration";
 //
 // The designer tab unmounts whenever you switch workspaces or close the pane,
 // and a graph is a document: leaving the room is not the same as discarding
-// your work. Nothing here is written to the host — the graph on the host still
-// only changes when the user saves — but the working copy survives navigation
+// your work. Nothing here is written to the host - the graph on the host still
+// only changes when the user saves - but the working copy survives navigation
 // so coming back finds the canvas exactly as it was left, still marked unsaved.
 //
 // Keyed per host + graph so two hosts' graphs of the same id can't collide.

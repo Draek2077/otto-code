@@ -2,7 +2,7 @@
  * The CSS custom properties a widget fragment is written against, and the
  * mapping from Otto's semantic theme tokens onto them.
  *
- * The HOST assembles the guest document, not the daemon — because only the
+ * The HOST assembles the guest document, not the daemon - because only the
  * client knows which theme is live, and a theme switch has to re-skin an
  * already-rendered widget without a daemon round trip. The variable NAMES are
  * frozen here so the contract document, the fixtures, and every renderer agree.
@@ -22,7 +22,7 @@ export interface WidgetThemeInput {
   accent: string;
   danger: string;
   success: string;
-  /** Optional — themes without a warning token fall back to a fixed amber. */
+  /** Optional - themes without a warning token fall back to a fixed amber. */
   warning?: string;
   fontSans: string;
   fontMono: string;
@@ -104,7 +104,7 @@ function roleTint(color: string, input: WidgetThemeInput): string {
   return mix(color, input.surface0, input.isDark ? 0.22 : 0.12);
 }
 
-/** SVG palette. Fixed hues rather than theme tokens — a chart needs categorical
+/** SVG palette. Fixed hues rather than theme tokens - a chart needs categorical
  * separation that survives every theme, and the two dark/light rows keep each
  * hue legible on whichever surface it lands on. */
 const SVG_PALETTE_LIGHT: Record<string, string> = {

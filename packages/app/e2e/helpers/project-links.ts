@@ -22,7 +22,7 @@ export async function connectProjectLinksClient(): Promise<ProjectLinksClient> {
   return connectDaemonClient<ProjectLinksClient>({ clientIdPrefix: "project-links" });
 }
 
-/** Links are undirected — a pair matches in either stored order. */
+/** Links are undirected - a pair matches in either stored order. */
 export function linksContainPair(
   entries: ProjectLinkEntry[],
   projectId: string,

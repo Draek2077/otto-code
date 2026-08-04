@@ -2,8 +2,8 @@
 
 > **Partly superseded by
 > [2026-07-25-workspace-tree-retention.md](2026-07-25-workspace-tree-retention.md).** Finding 1
-> below — "mounted workspace trees are never released", and the ~35% frame-rate cost attributed to
-> it — is **wrong**, for two independent reasons this report could not see:
+> below - "mounted workspace trees are never released", and the ~35% frame-rate cost attributed to
+> it - is **wrong**, for two independent reasons this report could not see:
 >
 > - **The soak seeded three workspaces and an LRU cap of 3 already existed**, so the eviction path
 >   never ran. Re-measured with six workspaces, the deck evicts correctly and unmounting fully
@@ -27,14 +27,14 @@ Instrument built for this investigation:
 
 ## Method
 
-The instrument did not exist — the daemon had runtime metrics, the client had none — so it was built
+The instrument did not exist - the daemon had runtime metrics, the client had none - so it was built
 first: frame timing, a retained-state census over every client store, react-query cache and DOM
 counts, live timer counts, and daemon-traffic accounting including main-thread handler time.
 
 Measurement is a **paired soak** (`packages/app/e2e/client-resource-soak.spec.ts`):
 
-1. **Chat cycles** — same workspace, same chat, one more turn per cycle.
-2. **Navigation only** (the control) — identical navigation churn, **no turns**, so the transcript
+1. **Chat cycles** - same workspace, same chat, one more turn per cycle.
+2. **Navigation only** (the control) - identical navigation churn, **no turns**, so the transcript
    never grows. Anything still climbing here cannot be explained by "the conversation got longer".
 
 ```bash
@@ -43,12 +43,12 @@ OTTO_RESOURCE_SOAK_E2E=1 OTTO_RESOURCE_SOAK_CYCLES=12 npx playwright test client
 
 **Environment:** dev build (unminified bundle, React dev build), msedge via Playwright, mock
 provider, 12 cycles per test, 3 seeded workspaces. Absolute numbers are dev-mode and not
-production-representative — **the comparisons are the finding, not the magnitudes.**
+production-representative - **the comparisons are the finding, not the magnitudes.**
 
 **Two harness errors worth recording**, because both produced a confidently healthy report:
 
 - The first version called `page.goto` per cycle. A reload rebuilds every store and empties the query
-  cache — it resets exactly the state under measurement. The harness must navigate in-app.
+  cache - it resets exactly the state under measurement. The harness must navigate in-app.
 - The traffic numbers were empty on the first instrumented run. `DaemonClientRuntimeMetrics` was only
   constructed when an embedder passed `runtimeMetricsIntervalMs`, and nothing in `packages/app` ever
   did, so client-side wire accounting had never run. Fixed as part of this work.
@@ -76,13 +76,13 @@ new content at all.**
 | ---------------------------- | ---------------------------------------------------------------------- |
 | Timer leak                   | `runtime.liveIntervals` flat at 3 in every run; pending timeouts 8 → 9 |
 | Unbounded query-cache growth | `query.queries` 43 → 80 and stops; `query.unobserved` 4 → 6            |
-| Observer leak                | Plateaus once each workspace has been visited — the series below       |
+| Observer leak                | Plateaus once each workspace has been visited - the series below       |
 | Message decode cost          | 0.25% of wall clock across 2160 messages, mean 0.163ms each            |
 
 ## The measurement that changed the diagnosis
 
 Observer counts read as a textbook leak: 187 → 421, monotonicity 1.00, `min == first`,
-`max == last`, never once decreasing across 12 identical cycles — and per-family attribution showed
+`max == last`, never once decreasing across 12 identical cycles - and per-family attribution showed
 **all 22 query families growing in proportion**, which reads as "React trees are accumulating":
 
 ```
@@ -109,7 +109,7 @@ an invariant in the instrument's documentation: read the series before calling s
 
 ## What is actually true
 
-### 1. Mounted workspace trees are never released — WITHDRAWN
+### 1. Mounted workspace trees are never released - WITHDRAWN
 
 > **This section is wrong.** See
 > [2026-07-25-workspace-tree-retention.md](2026-07-25-workspace-tree-retention.md). The deck is an
@@ -118,19 +118,19 @@ an invariant in the instrument's documentation: read the series before calling s
 > verbatim because knowing what we believed, and why, is the point of this tree.
 
 Visiting a workspace mounts its tree; it stays mounted for the life of the session. That is
-deliberate — instant switch-back — and it is bounded by workspaces-visited rather than by time. But
+deliberate - instant switch-back - and it is bounded by workspaces-visited rather than by time. But
 nothing reclaims one, and each retained tree keeps its full set of live `useQuery` observers and
 re-renders on every store write for the rest of the session.
 
 **1 → 3 workspaces = 187 → 421 observers and roughly −35% frame rate.** Across a working day and many
 workspaces, that is the reported symptom. The Visualizer is unaffected because it is a separate
-Electron `<webview>` process — which is exactly why its smoothness was the useful clue.
+Electron `<webview>` process - which is exactly why its smoothness was the useful clue.
 
 ### 2. Navigation re-fetches state the client already holds
 
 Twelve workspace round-trips that changed nothing produced:
 
-- **48 × `fetch_agent_timeline_response`** — 175 KiB, 4 per cycle
+- **48 × `fetch_agent_timeline_response`** - 175 KiB, 4 per cycle
 - **69 × `terminals_changed`**
 - **47 × `workspace_setup_status_response`**
 
@@ -151,7 +151,7 @@ factors grow over a session. Measuring render cost per inbound message is the mi
 
 ### 4. `agentStreamTail` / `agentStreamHead` have no per-agent eviction
 
-Found by reading, not by the soak — two minutes cannot show it. Both maps are keyed by agent id and
+Found by reading, not by the soak - two minutes cannot show it. Both maps are keyed by agent id and
 are only ever cleared wholesale by `clearSession`: no cap, no release on chat close or archive. Every
 timeline item for every agent opened this session stays in memory. The soak gives the rate
 (`agentStreamTail.*.length` 0 → 168 over 12 turns, ~14 items/turn); the unbounded part is the absence
@@ -163,7 +163,7 @@ No behaviour was changed on the strength of this report beyond enabling the clie
 accounting. In particular, **whether to evict cold workspace trees** (LRU + remount on switch-back)
 trades instant switch-back for bounded cost, and is a product decision rather than a code one.
 
-> **Withdrawn with finding 1.** That eviction already exists —
-> `WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES = 3`, LRU, remount on switch-back — and it works. There was
+> **Withdrawn with finding 1.** That eviction already exists -
+> `WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES = 3`, LRU, remount on switch-back - and it works. There was
 > no decision to take. The lesson: before framing something as a product choice, check whether the
 > mechanism is already in the tree.

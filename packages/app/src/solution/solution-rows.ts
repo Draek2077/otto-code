@@ -9,8 +9,8 @@ import { TREE_RAILS_ALL_CONTINUE, withTreeRail } from "@/components/tree-rail-ma
  * The Solution lens's single pure funnel from data + expanded ids to rows, mirroring
  * `resolveTreeRows` in the Files lens.
  *
- * Pure and exported on its own so the interesting behaviour — solution-folder nesting, a project
- * that failed to evaluate, `bin`/`obj` being absent because no evaluated item lives there — is
+ * Pure and exported on its own so the interesting behaviour - solution-folder nesting, a project
+ * that failed to evaluate, `bin`/`obj` being absent because no evaluated item lives there - is
  * testable without mounting a tree.
  */
 
@@ -51,7 +51,7 @@ export type SolutionViewNode =
 export interface SolutionRow {
   node: SolutionViewNode;
   depth: number;
-  /** Which indent rails keep running below this row — see tree-rail-mask.ts. */
+  /** Which indent rails keep running below this row - see tree-rail-mask.ts. */
   ancestorMask: number;
 }
 
@@ -109,7 +109,7 @@ function appendFolderChildren(context: {
     left.name.localeCompare(right.name),
   );
 
-  // Solution folders before projects, each group alphabetical — the arrangement a .NET developer
+  // Solution folders before projects, each group alphabetical - the arrangement a .NET developer
   // sees in Visual Studio, and the reason this lens is worth having.
   const total = folders.length + projects.length;
   let index = 0;
@@ -199,7 +199,7 @@ function appendProjectContents(context: {
           ancestorMask: mask,
         });
         // Directories under a project default to EXPANDED. Unlike the filesystem lens there is no
-        // listing to fetch — the whole project arrived in one payload — so collapsing by default
+        // listing to fetch - the whole project arrived in one payload - so collapsing by default
         // would hide files for no saving at all.
         if (!context.expandedIds.has(collapsedKey(node.id))) {
           walk(node.id, depth + 1, mask);

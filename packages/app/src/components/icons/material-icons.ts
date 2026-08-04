@@ -43,7 +43,24 @@ export const Blocks = createMaterialSymbolIcon("Blocks");
 export const BookOpen = createMaterialSymbolIcon("BookOpen");
 export const Bot = createMaterialSymbolIcon("Bot");
 export const Boxes = createMaterialSymbolIcon("Boxes");
+// Material's `network_intelligence` - the circuit brain. NOT `psychology`, which
+// is a head with a gear in it and is not a brain at all.
+//
+// The whole rail state machine draws from this one family, which is why it was
+// chosen over the plain `neurology` brain: the family ships four ready-made
+// variants of the same silhouette, so the states that need their own glyph get
+// one that is unmistakably the same object, and every other state is a colour.
 export const Brain = createMaterialSymbolIcon("Brain");
+export const BrainBenchmark = createMaterialSymbolIcon("BrainBenchmark");
+export const BrainDownload = createMaterialSymbolIcon("BrainDownload");
+export const BrainError = createMaterialSymbolIcon("BrainError");
+export const BrainScan = createMaterialSymbolIcon("BrainScan");
+// Marks for the two ops the family ships no variant for. These are NOT whole
+// icons: each sits in a round gap bitten out of the base brain, the same way the
+// family's own clock and arrow do. Both are the filled weight and round in
+// outline, which is what lets them fill that gap without a seam.
+export const BrainCalibrate = createMaterialSymbolIcon("BrainCalibrate");
+export const BrainSweep = createMaterialSymbolIcon("BrainSweep");
 export const CalendarClock = createMaterialSymbolIcon("CalendarClock");
 export const CalendarMonth = createMaterialSymbolIcon("CalendarMonth");
 export const CalendarPlus = createMaterialSymbolIcon("CalendarPlus");
@@ -146,6 +163,11 @@ export const ListTodo = createMaterialSymbolIcon("ListTodo");
 export const LocalPolice = createMaterialSymbolIcon("LocalPolice");
 export const MailReceived = createMaterialSymbolIcon("MailReceived");
 export const Maximize = createMaterialSymbolIcon("Maximize");
+// Material's `workspace_premium`, filled. The outline weight and `military_tech`
+// (the literal ribbon medal) both collapse into an unreadable smudge at the
+// 14-16px a table cell gives them; the filled seal keeps its silhouette, and it
+// is the fill that lets a gold/silver/bronze tint actually read as a tier.
+export const Medal = createMaterialSymbolIcon("Medal");
 export const MessageSquare = createMaterialSymbolIcon("MessageSquare");
 export const MessageSquareCode = createMaterialSymbolIcon("MessageSquareCode");
 export const MessageSquarePlus = createMaterialSymbolIcon("MessageSquarePlus");
@@ -179,6 +201,10 @@ export const PlayFilled = createMaterialSymbolIcon("PlayFilled");
 export const Plug = createMaterialSymbolIcon("Plug");
 export const Plus = createMaterialSymbolIcon("Plus");
 export const PrivacyTip = createMaterialSymbolIcon("PrivacyTip");
+// Material's `psychology` - a head with a gear in it, for the effort/reasoning/
+// thinking controls. NOT `Brain` (`network_intelligence`), which is reserved for
+// the Otto Brain feature.
+export const Psychology = createMaterialSymbolIcon("Psychology");
 export const Puzzle = createMaterialSymbolIcon("Puzzle");
 export const QrCode = createMaterialSymbolIcon("QrCode");
 export const RecordVoiceOver = createMaterialSymbolIcon("RecordVoiceOver");

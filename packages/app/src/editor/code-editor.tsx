@@ -38,7 +38,7 @@ export function CodeEditor(props: CodeEditorProps) {
   // touch scrolling passes straight through everywhere except the thin handle.
   //
   // Horizontal only. The vertical lane belongs to the overview ruler, which
-  // draws its own always-visible viewport thumb over the problem marks — an
+  // draws its own always-visible viewport thumb over the problem marks - an
   // auto-hiding bar beside it would be a second answer to "where am I", 12px
   // further right.
   const scrollerRef = useRef<HTMLElement | null>(null);
@@ -56,7 +56,7 @@ export function CodeEditor(props: CodeEditorProps) {
   //
   // Layout effect, not a passive one: switching view mode remounts this
   // component, and a passive effect builds the CM6 DOM *after* the browser has
-  // already painted the new pane — one frame of empty editor, then one of
+  // already painted the new pane - one frame of empty editor, then one of
   // unstyled scrollbar as `scrollerReady` flips. Mounting before paint means
   // the first frame the user sees is the finished editor.
   useLayoutEffect(() => {
@@ -74,7 +74,7 @@ export function CodeEditor(props: CodeEditorProps) {
       wordWrap: callbacksRef.current.wordWrap,
       markdownLivePreview: callbacksRef.current.markdownLivePreview,
       // This host draws the overlay bar below, so the platform's own must never
-      // paint — not even for the frame before the overlay takes over.
+      // paint - not even for the frame before the overlay takes over.
       hideNativeScrollbar: true,
       onDirtyChanged: (dirty) => callbacksRef.current.onDirtyChanged?.(dirty),
       onMatchInfo: (info) => callbacksRef.current.onMatchInfo?.(info),
@@ -213,7 +213,7 @@ export function CodeEditor(props: CodeEditorProps) {
   // source of truth for what clean means, so a save landing or the disk version
   // being adopted reaches the editor as a new value here rather than as an
   // imperative "you are clean now" the editor would have to take on faith.
-  // Skipped on mount — the core was constructed with this exact value.
+  // Skipped on mount - the core was constructed with this exact value.
   const mountedCleanDocRef = useRef(props.cleanDoc);
   useEffect(() => {
     if (props.cleanDoc === mountedCleanDocRef.current) {
@@ -225,7 +225,7 @@ export function CodeEditor(props: CodeEditorProps) {
 
   return (
     // data-pmono excludes the CM6 subtree from the app-wide interface-font rule
-    // (see styles/code-surface.ts) — that rule's specificity beats the CM6 theme's
+    // (see styles/code-surface.ts) - that rule's specificity beats the CM6 theme's
     // `.cm-scroller` font-family, which would silently un-mono the whole editor.
     // data-testid marks the keyboard focus scope (see keyboard/focus-scope.ts):
     // it is what tells the shortcut registry that focus is in the file editor
@@ -235,7 +235,7 @@ export function CodeEditor(props: CodeEditorProps) {
     // focus-scope.ts resolves to the narrower `markdown-editor` scope. It is a
     // separate attribute rather than a different testid for two reasons: an
     // element gets only one testid, and the surface genuinely is still a code
-    // editor — everything the File Editor section binds has to keep working
+    // editor - everything the File Editor section binds has to keep working
     // here, with the few markdown combos added on top.
     <div
       style={WRAPPER_STYLE}

@@ -17,7 +17,7 @@ import {
  * durable `compaction` timeline item (loading → completed), rendered in the
  * chat as the compaction marker. The spec drives two short turns, compacts,
  * then proves the session still accepts and completes a follow-up turn.
- * Asserts on daemon-emitted timeline structure — never on model prose.
+ * Asserts on daemon-emitted timeline structure - never on model prose.
  */
 
 const FIRST_PROMPT = "Reply with exactly the word ready and nothing else. Do not use any tools.";

@@ -183,7 +183,7 @@ class TestCheckouts {
   /**
    * Reads that went through the full checkout chain instead. Reconciliation keeps
    * only the identity fields, so every one of these would be paying for a dirty
-   * check and three `rev-list --count` walks it then throws away — around 17 git
+   * check and three `rev-list --count` walks it then throws away - around 17 git
    * spawns per cwd, on every root and every workspace, every tick.
    */
   readonly fullReads: string[] = [];

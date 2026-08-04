@@ -281,7 +281,7 @@ export type PersistedModelTierOverride = z.infer<typeof ModelTierOverrideConfigS
 
 // Persisted remembered provider endpoints. Mirrors SavedProviderEndpointSchema
 // on the wire. The credential is stored in the clear, exactly like the live
-// `agents.providers.<id>.env.OPENAI_API_KEY` it was copied from — this is a
+// `agents.providers.<id>.env.OPENAI_API_KEY` it was copied from - this is a
 // convenience list over values config.json already holds, not a new secret
 // store.
 const SavedProviderEndpointConfigSchema = z
@@ -396,7 +396,7 @@ export const PersistedConfigSchema = z
         // docs/attachment-lifecycle.md. Absent reads as the shipped defaults.
         attachmentImageMaxAgeDays: z.number().int().min(0).optional(),
         attachmentImageMaxTotalMb: z.number().int().min(0).optional(),
-        // "Microsoft .NET Solution Management" — the Solution view's switch. Persisted so the
+        // "Microsoft .NET Solution Management" - the Solution view's switch. Persisted so the
         // opt-in survives a daemon restart; absent reads as off, which is the default.
         dotnetSolutionManagement: z
           .object({
@@ -511,7 +511,7 @@ export const PersistedConfigSchema = z
       .optional(),
 
     // Host-level git hosting credentials, one set per provider. This is the
-    // ONLY place hosting tokens persist — never in a repo's otto.json.
+    // ONLY place hosting tokens persist - never in a repo's otto.json.
     gitHosting: z
       .object({
         providers: z
@@ -544,7 +544,7 @@ export type PersistedConfig = Omit<PersistedConfigSchemaOutput, "agents"> & {
 
 const CONFIG_FILENAME = "config.json";
 // `daemon.listen` is deliberately left unset here so a fresh install's
-// config.json doesn't freeze in a value — config.ts computes the effective
+// config.json doesn't freeze in a value - config.ts computes the effective
 // default at runtime (127.0.0.1, or 0.0.0.0 when it detects WSL) every start.
 const DEFAULT_PERSISTED_CONFIG = PersistedConfigSchema.parse({
   version: 1,
@@ -576,7 +576,7 @@ function getLogger(logger: LoggerLike | undefined): LoggerLike | undefined {
 
 // Removed config fields are stripped before parsing so the strict schema does not
 // reject a config written by an older release. The stripped values are discarded,
-// not migrated — there is no back-compat for the removed `providers.openai.voice`
+// not migrated - there is no back-compat for the removed `providers.openai.voice`
 // block (use `providers.openai.stt` / `providers.openai.tts`).
 function stripRemovedConfigFields(parsed: unknown): unknown {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -603,7 +603,7 @@ function stripRemovedConfigFields(parsed: unknown): unknown {
     const openaiRecord = { ...(openai as Record<string, unknown>) };
     // COMPAT(openaiVoiceConfig): added 2026-06-30, remove after 2026-12-30.
     // Drop a `providers.openai.voice` block left by an older release so the strict
-    // schema doesn't reject it. The value is discarded, not migrated — there is no
+    // schema doesn't reject it. The value is discarded, not migrated - there is no
     // back-compat; configure `providers.openai.stt` / `providers.openai.tts` instead.
     delete openaiRecord.voice;
     providersRecord.openai = openaiRecord;

@@ -7,7 +7,7 @@ import type { PinnedTabTarget } from "../src/workspace-pins/target";
 
 // "draft" pins are legacy (no longer offered in the catalog) and browser tabs
 // are Electron-only, so the pin round-trip is exercised with the terminal
-// target — pinned by default, unpinned and re-pinned through the catalog.
+// target - pinned by default, unpinned and re-pinned through the catalog.
 const TERMINAL_TARGET: PinnedTabTarget = { kind: "terminal" };
 
 let workspace: SeededWorkspace;

@@ -1,5 +1,5 @@
 /**
- * base64 to bytes, for payloads that reach the app already encoded — the
+ * base64 to bytes, for payloads that reach the app already encoded - the
  * desktop print bridge and the editor webview both hand back strings, because
  * both cross a JSON boundary that cannot carry a `Uint8Array`.
  *

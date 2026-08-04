@@ -4,7 +4,7 @@
  * These tests verify the behavioral guarantees of the new provider contract
  * (`startTurn` + `subscribe`) as specified in docs/design/agent-event-stream-redesign.md.
  *
- * All tests use REAL Claude SDK sessions — no mocks.
+ * All tests use REAL Claude SDK sessions - no mocks.
  *
  * These tests run when the shared Claude provider availability gate passes.
  */
@@ -142,7 +142,7 @@ async function startTurnAndCollectEvents(
 }
 
 // ---------------------------------------------------------------------------
-// Invariant assertions — run after every test
+// Invariant assertions - run after every test
 // ---------------------------------------------------------------------------
 
 function assertInvariants(events: AgentStreamEvent[], foregroundTurnIds: string[]): void {
@@ -236,7 +236,7 @@ test("Test 1: Basic foreground turn", async () => {
   }
 }, 60_000);
 
-test("Test 2: No duplicate user_messages — THE BUG", async () => {
+test("Test 2: No duplicate user_messages - THE BUG", async () => {
   const handle = await createSession({ cwdPrefix: "event-stream-dedup-" });
 
   try {

@@ -144,7 +144,7 @@ export interface MarkdownRendererProps {
    */
   remoteImages?: HtmlishOptions["remoteImages"];
   /**
-   * The workspace a document's own relative image srcs — `![](docs/x.png)` — resolve against, read
+   * The workspace a document's own relative image srcs - `![](docs/x.png)` - resolve against, read
    * through the daemon. Unset (chat, the pull-request panel) keeps the previous behavior: a
    * relative src has nothing to resolve against and renders as its alt text.
    */
@@ -422,7 +422,7 @@ function MarkdownUriImage({
 }
 
 /**
- * The standing rule for anything that cannot be drawn — a blocked scheme, an
+ * The standing rule for anything that cannot be drawn - a blocked scheme, an
  * escaping path, a file that isn't there: show what the image was meant to
  * convey, and show nothing at all when it conveys nothing.
  */
@@ -466,7 +466,7 @@ function MarkdownInlineImage({
   );
   const imageStyle = useMemo(() => [detailsStyles.inlineImage, imageSize], [imageSize]);
 
-  // A read that hasn't landed yet is not a failure — drawing the alt text and
+  // A read that hasn't landed yet is not a failure - drawing the alt text and
   // then replacing it would flash on every document open.
   if (pending) {
     return null;
@@ -552,7 +552,7 @@ const BLOCK_IMAGE_FALLBACK_SIZE: InlineImageDimensions = { width: 240, height: 2
  *
  * There was no rule for this before, so `react-native-markdown-display`'s default
  * ran: it matched the src against `allowedImageHandlers` and, failing that,
- * prefixed `defaultImageHandler` — which turned `![](docs/x.png)` into a fetch of
+ * prefixed `defaultImageHandler` - which turned `![](docs/x.png)` into a fetch of
  * `https://docs/x.png` and made `remoteImages: "altText"` true only of the HTML
  * path. Owning the rule is what puts both image forms behind one gate.
  */
@@ -560,7 +560,7 @@ function MarkdownBlockImage({ src, alt }: { src: string; alt: string }) {
   const { source, pending } = useMarkdownImageSource(src);
   const { natural, failed, setFailed } = useNaturalImageDimensions(source, EMPTY_IMAGE_DIMENSIONS);
   const handleError = useCallback(() => setFailed(true), [setFailed]);
-  // Fill the pane but never upscale, and keep the aspect ratio while shrinking —
+  // Fill the pane but never upscale, and keep the aspect ratio while shrinking -
   // a README screenshot is wider than a phone and a logo is not.
   const frameStyle = useMemo(() => {
     const size = natural ?? BLOCK_IMAGE_FALLBACK_SIZE;
@@ -745,7 +745,7 @@ function getMarkdownLinkHref(node: ASTNode): string {
  *
  * react-native-markdown-display builds each node's `inheritedStyles` from its
  * ancestor node types, so the `text` inside a `link` *does* receive the link
- * style — but our `text` rule then applies `styles.text`, which sets an explicit
+ * style - but our `text` rule then applies `styles.text`, which sets an explicit
  * `color`, and in RN the innermost explicit color wins. The net effect was that
  * link labels rendered in plain foreground: colored wrapper, uncolored text.
  *
@@ -879,7 +879,7 @@ export function createSharedMarkdownRules(): RenderRules {
     ),
     // A hardbreak (two trailing spaces, or a backslash) is an explicit line
     // break and stays one. A SOFTbreak is just a newline in the source, which
-    // markdown reflows as a space — rendering it as "\n" (which is both
+    // markdown reflows as a space - rendering it as "\n" (which is both
     // react-native-markdown-display's default and what we inherited) turned
     // every hard-wrapped paragraph into a ragged column of short lines.
     hardbreak: (node: ASTNode) => <MarkdownTextSpan key={node.key}>{"\n"}</MarkdownTextSpan>,

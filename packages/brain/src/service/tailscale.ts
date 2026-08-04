@@ -1,5 +1,5 @@
 /**
- * A thin promisified wrapper over the `tailscale` CLI — the OS boundary for the
+ * A thin promisified wrapper over the `tailscale` CLI - the OS boundary for the
  * `tailscale` TLS mode and the `listen.host: "tailscale"` bind. All Tailscale
  * interaction goes through here. Ported from otto-brain-relay's `tailscale.js`.
  *

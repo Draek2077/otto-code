@@ -5,13 +5,13 @@
 // it guess. sherpa-onnx can run rule-based text normalization (`ruleFsts` on
 // the OfflineTts config) but we do not configure any, so the only thing
 // standing between "2026-07-25" and the speaker is espeak-ng's fallback
-// guessing — which reads it as arithmetic. Everything this module rewrites is
+// guessing - which reads it as arithmetic. Everything this module rewrites is
 // therefore turned into plain words before synthesis, and the result no longer
 // depends on what the engine would have done.
 //
 // The scope rule: a number is spelled out only when it is part of a construct
 // being rewritten anyway (a date, a time, a price, a measurement), because the
-// words around it have to agree with it. A bare integer is LEFT ALONE — every
+// words around it have to agree with it. A bare integer is LEFT ALONE - every
 // engine reads "42" correctly, and spelling out every loose number would also
 // wreck ports, versions and identifiers.
 //
@@ -162,7 +162,7 @@ export function ordinalWords(value: number): string {
 }
 
 /** Years are read as their own thing: "twenty twenty-six", "nineteen oh five",
- * "two thousand" — never "two thousand and twenty-six". */
+ * "two thousand" - never "two thousand and twenty-six". */
 export function yearWords(year: number): string {
   if (year < 1000 || year > 9999 || year % 1000 === 0) {
     return integerWords(year);
@@ -266,7 +266,7 @@ function unitPhrase(amountText: string, unitKey: string): string {
 export function normalizeSpokenForms(text: string): string {
   let out = text;
 
-  // ISO date — the case that reads as arithmetic if left alone.
+  // ISO date - the case that reads as arithmetic if left alone.
   out = out.replace(
     /\b(\d{4})-(\d{2})-(\d{2})\b/g,
     (whole, y, m, d) => dateWords(Number(y), Number(m), Number(d)) ?? whole,
@@ -278,7 +278,7 @@ export function normalizeSpokenForms(text: string): string {
     (whole, m, d, y) => dateWords(Number(y), Number(m), Number(d)) ?? whole,
   );
 
-  // "July 25, 2026" / "Jul 25 2026" — the day becomes an ordinal, which is how
+  // "July 25, 2026" / "Jul 25 2026" - the day becomes an ordinal, which is how
   // it is read even though it is written as a cardinal.
   out = out.replace(
     new RegExp(
@@ -377,7 +377,7 @@ export function normalizeSpokenForms(text: string): string {
   });
 
   // A dash between bare numbers is a range: "2–4" is "2 to 4". The digits stay
-  // digits — the engine reads those correctly, and this rule only has to fix
+  // digits - the engine reads those correctly, and this rule only has to fix
   // the separator. The hyphen form is guarded so dates, phone numbers and
   // version strings never match.
   out = out.replace(/(?<=\d)\s*–\s*(?=\d)/g, " to ");

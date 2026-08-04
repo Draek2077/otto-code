@@ -1,4 +1,4 @@
-import { Bot, Neurology, PackagePlus } from "@/components/icons/material-icons";
+import { Bot, Brain, PackagePlus } from "@/components/icons/material-icons";
 import { createElement, type ComponentType } from "react";
 import { SvgXml } from "react-native-svg";
 import { ClaudeIcon } from "@/components/icons/claude-icon";
@@ -21,7 +21,7 @@ export type ProviderIconComponent = ComponentType<ProviderIconProps>;
 // App-only provider ids that are not part of the protocol icon-name registry
 // but still need a specific icon (e.g. the built-in local brain host).
 const APP_PROVIDER_ICONS: Record<string, ProviderIconComponent> = {
-  "otto-brain": Neurology,
+  "otto-brain": Brain,
 };
 
 const BUILTIN_PROVIDER_ICONS: Record<string, ProviderIconComponent> = {

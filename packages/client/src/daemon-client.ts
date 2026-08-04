@@ -191,16 +191,26 @@ import type {
 import type { OrchestrationGraph, PromptTemplate, Run } from "@otto-code/protocol/orchestration";
 import type {
   BrainCatalogModel,
+  BrainDiskUsage,
   BrainEvals,
   BrainHfSearchResult,
   BrainHostStatus,
   BrainInstalledModel,
+  BrainInventoryModel,
   BrainJob,
+  BrainLogsTailResponse,
+  BrainModelBudgetGetResponse,
+  BrainModelDeleteResponse,
+  BrainModelLoadResponse,
+  BrainModelProfileGetResponse,
+  BrainModelProfileSetResponse,
   BrainNetworkInfo,
   BrainRemoteConfig,
   BrainRepoQuant,
   BrainRuntime,
   ConnectorsListToolsResponse,
+  ConnectorsOauthAuthorizeResponse,
+  ConnectorsOauthDisconnectResponse,
   CueMoment,
   MutableDaemonConfig,
   MutableDaemonConfigPatch,
@@ -531,7 +541,7 @@ export interface FileReadResult {
   modifiedAt: string;
   /**
    * Detected line endings. Optional because only the inline JSON read path
-   * reports them — the chunked binary transfer never does, and neither do
+   * reports them - the chunked binary transfer never does, and neither do
    * daemons older than v0.4.4. Absent means "not reported", not "LF".
    */
   eol?: FileEol;
@@ -560,7 +570,7 @@ export interface FileWriteOptions {
 /**
  * Bytes to a workspace path. Gated on `features.binaryFileWrite`. Unlike
  * {@link FileWriteOptions} this carries no precondition: `overwrite` is the
- * whole policy — see `FsFileWriteBinaryRequestSchema` for why a generated
+ * whole policy - see `FsFileWriteBinaryRequestSchema` for why a generated
  * artifact has nothing to reconcile against.
  */
 export interface FileWriteBinaryOptions {
@@ -575,7 +585,7 @@ export interface FileWriteBinaryOptions {
   chunkSize?: number;
 }
 /**
- * The general file-mutation surface — what exists in a directory, rather than
+ * The general file-mutation surface - what exists in a directory, rather than
  * what is inside a file. Gated on `features.fileMutations`; there is no
  * client-side substitute, so callers check the flag before offering the action.
  */
@@ -601,14 +611,14 @@ export interface FileRenameOptions {
   requestId?: string;
 }
 /**
- * Refine — ask the daemon for proposed rewrites of a pinned set of documents.
+ * Refine - ask the daemon for proposed rewrites of a pinned set of documents.
  * This call never writes: accepted proposals go back through {@link
  * DaemonClient.writeFile}, one per file, like any other save.
  */
 export interface FileRefineOptions {
   /** Provider resolution only; the documents themselves travel inline. */
   cwd: string;
-  /** What the model may rewrite — this list is the request's blast radius. */
+  /** What the model may rewrite - this list is the request's blast radius. */
   documents: FileRefineDocument[];
   /** What it may read for context but must never rewrite. */
   references?: FileRefineReference[];
@@ -1609,7 +1619,7 @@ export class DaemonClient {
       typeof config.runtimeMetricsIntervalMs === "number" && config.runtimeMetricsIntervalMs > 0
         ? config.runtimeMetricsIntervalMs
         : 0;
-    // The metrics object is always constructed — it is a handful of Maps keyed
+    // The metrics object is always constructed - it is a handful of Maps keyed
     // by message type, and its per-message cost is dwarfed by the JSON.parse it
     // is measuring. What `runtimeMetricsIntervalMs` gates is the *periodic log*,
     // which is the part that is actually noisy. Keeping the counters on
@@ -2922,7 +2932,7 @@ export class DaemonClient {
    * the whole archived set. Pass `dryRun: true` first to get the count the
    * confirm dialog quotes, then the same call with `dryRun: false` to delete.
    *
-   * Removes Otto's records only — provider transcripts are left on disk. Gated
+   * Removes Otto's records only - provider transcripts are left on disk. Gated
    * by `server_info.features.historyDelete`; there is no fallback path, so check
    * the flag before offering the action.
    */
@@ -2961,7 +2971,7 @@ export class DaemonClient {
    * `dryRun: false` to delete.
    *
    * Cleared images do not come back: a message that referenced one renders its
-   * alt text from then on. Scope is the whole host — filenames are a content
+   * alt text from then on. Scope is the whole host - filenames are a content
    * hash, so per-chat or per-workspace scope does not exist. Gated by
    * `server_info.features.attachmentStorage`.
    */
@@ -3036,7 +3046,7 @@ export class DaemonClient {
 
   /**
    * Stop a running background shell task (Claude Bash tool run_in_background).
-   * Not an AI subagent — the daemon resolves it to its owning provider task and
+   * Not an AI subagent - the daemon resolves it to its owning provider task and
    * calls the provider's stopTask, same mechanism as stopObservedSubagent.
    */
   async stopBackgroundShellTask(parentAgentId: string, taskId: string): Promise<void> {
@@ -3076,7 +3086,7 @@ export class DaemonClient {
 
   /**
    * Start one or more suggested tasks (from `spawn_task` chips), applying the
-   * same mode to each — a new worktree workspace per task, a new local session
+   * same mode to each - a new worktree workspace per task, a new local session
    * per task, or steering the parent's current session. Individual actions pass
    * a single-element array; the "Start all" collective action passes the whole
    * pending queue. Resolves to the count started; throws only if all failed.
@@ -3165,7 +3175,7 @@ export class DaemonClient {
 
   /**
    * Orchestration: delete one finished (or draft) run. Throws with the
-   * daemon's reason when it refuses — an active run has to be canceled first.
+   * daemon's reason when it refuses - an active run has to be canceled first.
    */
   async deleteRun(runId: string): Promise<string> {
     const payload = await this.sendNamespacedCorrelatedSessionRequest<"runs.delete.response">({
@@ -4045,7 +4055,7 @@ export class DaemonClient {
 
   /**
    * Move one queued message to a new position. Resolves false when the entry
-   * was already drained or was already there — the authoritative order arrives
+   * was already drained or was already there - the authoritative order arrives
    * on the agent snapshot either way. Requires
    * `server_info.features.steerQueueReorder`.
    */
@@ -4166,7 +4176,7 @@ export class DaemonClient {
     });
     // A refused cancellation comes back as an error payload, not a rejected
     // frame. Dropping it reported Stop as successful while the provider was
-    // still running and still spending tokens — the exact outcome the daemon
+    // still running and still spending tokens - the exact outcome the daemon
     // refuses the cancel to avoid.
     if (payload.error) {
       throw new Error(payload.error);
@@ -4296,7 +4306,7 @@ export class DaemonClient {
   /**
    * Live-switch a running agent's personality (null clears it). The daemon
    * re-resolves the roster id against the agent's cwd and applies the full
-   * personality — system prompt, identity, model/mode/effort — restarting the
+   * personality - system prompt, identity, model/mode/effort - restarting the
    * provider query so the prompt takes effect on the next turn. Gate on
    * server_info.features.setAgentPersonality.
    */
@@ -4394,7 +4404,7 @@ export class DaemonClient {
     return this.sendRequest({
       requestId: resolvedRequestId,
       message,
-      timeout: 300_000, // 5 minutes — npm update can be slow on remote machines
+      timeout: 300_000, // 5 minutes - npm update can be slow on remote machines
       options: { skipQueue: true },
       select: (msg) => {
         const parsed = DaemonUpdateResponseSchema.safeParse(msg);
@@ -4897,7 +4907,7 @@ export class DaemonClient {
   }
 
   // ── Git file investigation ────────────────────────────────────────────────
-  // Local git only: no remote, no forge, and no per-provider variant — the same
+  // Local git only: no remote, no forge, and no per-provider variant - the same
   // four calls answer for every agent provider. Gated by
   // server_info.features.checkoutGitFileHistory.
 
@@ -5557,7 +5567,7 @@ export class DaemonClient {
       content: file.content,
       size: file.size,
       modifiedAt: file.modifiedAt,
-      // COMPAT(textEditor): added in v0.4.4 — the editor is gated on
+      // COMPAT(textEditor): added in v0.4.4 - the editor is gated on
       // features.textEditor, so a gated daemon always sends both fields.
       eol: file.eol ?? "lf",
       hash: file.hash ?? null,
@@ -5583,7 +5593,7 @@ export class DaemonClient {
     return payload.result;
   }
 
-  /** Conditional save — see FileWriteRequestSchema for the no-clobber contract. */
+  /** Conditional save - see FileWriteRequestSchema for the no-clobber contract. */
   async writeFile(options: FileWriteOptions): Promise<FileWriteResult> {
     const payload = await this.sendCorrelatedSessionRequest({
       requestId: options.requestId,
@@ -5603,7 +5613,7 @@ export class DaemonClient {
   }
 
   /**
-   * Write bytes to a workspace file — the path for generated artifacts the
+   * Write bytes to a workspace file - the path for generated artifacts the
    * text write cannot carry (it refuses binary targets outright). Gated on
    * `features.binaryFileWrite`; there is no client-side substitute, because
    * the client never touches a workspace file on any platform.
@@ -5633,8 +5643,8 @@ export class DaemonClient {
     this.sendFileTransfer({
       requestId: resolvedRequestId,
       bytes,
-      // Nothing downstream reads the mime for a workspace write — the path
-      // decides what the file is — but the frame metadata requires one.
+      // Nothing downstream reads the mime for a workspace write - the path
+      // decides what the file is - but the frame metadata requires one.
       mime: "application/octet-stream",
       chunkSize: options.chunkSize,
     });
@@ -5691,7 +5701,7 @@ export class DaemonClient {
     );
   }
 
-  /** Create an empty file or a directory. Never overwrites — see FileCreateResultSchema. */
+  /** Create an empty file or a directory. Never overwrites - see FileCreateResultSchema. */
   async createFileEntry(options: FileCreateOptions): Promise<FileCreateResult> {
     const payload = await this.sendCorrelatedSessionRequest({
       requestId: options.requestId,
@@ -5706,7 +5716,7 @@ export class DaemonClient {
     return payload.result;
   }
 
-  /** Permanent delete — an unlink, not a move to any trash. */
+  /** Permanent delete - an unlink, not a move to any trash. */
   async deleteFileEntry(options: FileDeleteOptions): Promise<FileDeleteResult> {
     const payload = await this.sendCorrelatedSessionRequest({
       requestId: options.requestId,
@@ -5841,7 +5851,7 @@ export class DaemonClient {
 
   /**
    * Mirror the editor's current buffer to the daemon so definitions resolve against
-   * unsaved edits. Debounced by the caller — this is not a per-keystroke RPC.
+   * unsaved edits. Debounced by the caller - this is not a per-keystroke RPC.
    */
   async syncCodeDocument(
     cwd: string,
@@ -5917,7 +5927,7 @@ export class DaemonClient {
   }
 
   /**
-   * A rename **dry run** — every edit it would make, and nothing written. The client
+   * A rename **dry run** - every edit it would make, and nothing written. The client
    * puts this in front of the user as a job to audit before applying.
    */
   async previewCodeRename(
@@ -6043,7 +6053,7 @@ export class DaemonClient {
    *
    * Never throws and never carries an error the caller has to render. A workspace with no
    * solution, a host with no .NET SDK, and a host with the feature switched off all answer with an
-   * empty list, so the caller has one silent case — "no switcher" — rather than four states.
+   * empty list, so the caller has one silent case - "no switcher" - rather than four states.
    */
   async listSolutions(cwd: string, requestId?: string): Promise<SolutionRef[]> {
     const payload = await this.sendCorrelatedSessionRequest({
@@ -6132,7 +6142,7 @@ export class DaemonClient {
     return payload.symbols;
   }
 
-  /** Preview-first project replace — see FileReplaceRequestSchema. */
+  /** Preview-first project replace - see FileReplaceRequestSchema. */
   async replaceFiles(options: {
     cwd: string;
     replacement: string;
@@ -6353,7 +6363,7 @@ export class DaemonClient {
    *
    * Pass `workspaceId` whenever the write may be project-scoped: the daemon
    * binds the entry to the repo root that workspace resolves to, and an entry
-   * scoped to "project" with no root is filtered out of every brief — stored,
+   * scoped to "project" with no root is filtered out of every brief - stored,
    * listed, and never sent.
    */
   async updatePersonalityMemory(
@@ -6616,11 +6626,57 @@ export class DaemonClient {
     });
   }
 
-  async brainHostStatus(requestId?: string): Promise<BrainHostStatus> {
+  /**
+   * Start a connector's OAuth login. Resolves with the URL to open, or with
+   * status "authorized" when the daemon already held a usable token. The login
+   * itself settles later on the `connectors.oauth.status` push, because the user
+   * is in a browser by then.
+   */
+  async connectorsOauthAuthorize(
+    connectorId: string,
+    scope?: string,
+    requestId?: string,
+  ): Promise<ConnectorsOauthAuthorizeResponse["payload"]> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "connectors.oauth.authorize.request",
+        connectorId,
+        ...(scope ? { scope } : {}),
+      },
+      responseType: "connectors.oauth.authorize.response",
+    });
+  }
+
+  /** Drop a connector's stored authorization. */
+  async connectorsOauthDisconnect(
+    connectorId: string,
+    requestId?: string,
+  ): Promise<ConnectorsOauthDisconnectResponse["payload"]> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "connectors.oauth.disconnect.request",
+        connectorId,
+      },
+      responseType: "connectors.oauth.disconnect.response",
+    });
+  }
+
+  /**
+   * The brain's status. Pass `resources` only from a surface that renders the
+   * live CPU/RAM/GPU/slot numbers: it costs an `nvidia-smi` spawn plus a /slots
+   * round trip on the brain, and this call is also the liveness poll.
+   */
+  async brainHostStatus(
+    options?: { resources?: boolean },
+    requestId?: string,
+  ): Promise<BrainHostStatus> {
     const payload = await this.sendCorrelatedSessionRequest({
       requestId,
       message: {
         type: "brain.host.status.request",
+        resources: options?.resources ?? false,
       },
       responseType: "brain.host.status.response",
     });
@@ -6875,6 +6931,154 @@ export class DaemonClient {
     return payload.jobs;
   }
 
+  // --- Brain Console --------------------------------------------------------
+  // These proxy the brain's own /__host/* management API and work against a
+  // local or a remote brain identically. Gated by features.brainConsole on the
+  // daemon, and by `capabilities` on brain.host.status for the brain itself.
+  // Each throws the brain's own message on failure, because "could not delete
+  // the model" with no reason is not a usable error.
+
+  /**
+   * The joined model inventory: scan row, GGUF metadata, saved profile,
+   * calibration state, VRAM budget and benchmark score per model, plus disk
+   * usage. One call feeds the whole Models tab.
+   */
+  async brainModelsInventory(
+    requestId?: string,
+  ): Promise<{ models: BrainInventoryModel[]; disk: BrainDiskUsage | null }> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.models.inventory.request" },
+      responseType: "brain.models.inventory.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return { models: payload.models, disk: payload.disk };
+  }
+
+  /** One model's saved profile, the field descriptors, and its warnings. */
+  async brainModelProfileGet(
+    modelId: string,
+    requestId?: string,
+  ): Promise<BrainModelProfileGetResponse["payload"]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.model.profile.get.request", modelId },
+      responseType: "brain.model.profile.get.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload;
+  }
+
+  /**
+   * Write the editable profile fields. The reply carries the recomputed budget,
+   * so an edit costs one round trip rather than a write the UI has to follow
+   * with a read.
+   */
+  async brainModelProfileSet(
+    modelId: string,
+    patch: Record<string, unknown>,
+    requestId?: string,
+  ): Promise<BrainModelProfileSetResponse["payload"]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.model.profile.set.request", modelId, patch },
+      responseType: "brain.model.profile.set.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload;
+  }
+
+  /**
+   * The VRAM budget for a hypothetical profile. `overrides` are string-encoded
+   * field values, so the UI can preview the budget while a control is mid-drag
+   * without persisting a value the user is scrubbing past.
+   */
+  async brainModelBudget(
+    modelId: string,
+    overrides?: Record<string, string>,
+    requestId?: string,
+  ): Promise<BrainModelBudgetGetResponse["payload"]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.model.budget.get.request", modelId, overrides: overrides ?? {} },
+      responseType: "brain.model.budget.get.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload;
+  }
+
+  /**
+   * Load a model into the running brain. This is not `brainHostStart`, which
+   * restarts the daemon's child process and has no remote equivalent.
+   */
+  async brainModelLoad(
+    modelId: string,
+    requestId?: string,
+  ): Promise<BrainModelLoadResponse["payload"]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.model.load.request", modelId },
+      responseType: "brain.model.load.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload;
+  }
+
+  /** Unload the resident model, leaving the brain up and serving nothing. */
+  async brainModelUnload(requestId?: string): Promise<BrainHostStatus | null> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.model.unload.request" },
+      responseType: "brain.model.unload.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload.status;
+  }
+
+  /** Delete a model's files. The brain refuses while that model is loaded. */
+  async brainModelDelete(
+    modelId: string,
+    requestId?: string,
+  ): Promise<BrainModelDeleteResponse["payload"]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.model.delete.request", modelId },
+      responseType: "brain.model.delete.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload;
+  }
+
+  /** Tail the brain's llama-server log. */
+  async brainLogsTail(
+    limit?: number | null,
+    requestId?: string,
+  ): Promise<BrainLogsTailResponse["payload"]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.logs.tail.request", limit: limit ?? null },
+      responseType: "brain.logs.tail.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload;
+  }
+
   async getSpeechSettingsOptions(
     requestId?: string,
   ): Promise<{ requestId: string; options: SpeechSettingsOptions }> {
@@ -7071,7 +7275,7 @@ export class DaemonClient {
     });
   }
 
-  /** Daemon-wide "fun stats" — see docs/data-model.md ActivityStatsStore. */
+  /** Daemon-wide "fun stats" - see docs/data-model.md ActivityStatsStore. */
   async getActivityStats(options?: {
     requestId?: string;
   }): Promise<StatsActivityGetResponseMessage["payload"]> {
@@ -7095,7 +7299,7 @@ export class DaemonClient {
     });
   }
 
-  /** Itemized usage ledger — the scrollable rows behind the stats tiles (usage-ledger). */
+  /** Itemized usage ledger - the scrollable rows behind the stats tiles (usage-ledger). */
   async getUsageLog(options?: {
     limit?: number;
     before?: number;
@@ -7981,7 +8185,7 @@ export class DaemonClient {
   /**
    * Session totals for inbound daemon traffic, including the main-thread time
    * spent handling it. Null when runtime metrics are disabled for this client.
-   * Read by the app's resource monitor — the wire is a first-class suspect when
+   * Read by the app's resource monitor - the wire is a first-class suspect when
    * the UI thread degrades, so it has to be measurable rather than inferred.
    */
   getTrafficTotals(): DaemonClientTrafficTotals | null {
@@ -8636,7 +8840,7 @@ export class DaemonClient {
   /**
    * `includeDiscovered` also returns the Scripts the workspace's own project
    * files declare (package.json scripts today), each tagged with its `source`.
-   * Gate it on `server_info.features.workspaceScriptDiscovery` — an older
+   * Gate it on `server_info.features.workspaceScriptDiscovery` - an older
    * daemon ignores the flag and answers with the otto.json list only.
    */
   async listWorkspaceScripts(

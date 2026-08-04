@@ -5,7 +5,7 @@ import { normalizeWorkspaceOpaqueId, normalizeWorkspacePath } from "@/utils/work
  * host-tagged `AggregatedArtifact` shape flows through unchanged.
  *
  * Deliberately not `updatedAt`: the store bumps `updatedAt` on every field
- * change, including starring/unstarring itself — sorting by recency made
+ * change, including starring/unstarring itself - sorting by recency made
  * unstarring an artifact look like a no-op, since it was still the most
  * recently touched item and stayed pinned at the top of the unstarred group. */
 export function sortArtifacts<T extends ArtifactMetadata>(artifacts: T[]): T[] {
@@ -20,7 +20,7 @@ export function sortArtifacts<T extends ArtifactMetadata>(artifacts: T[]): T[] {
 /**
  * Whether an artifact's stored project (repo root) corresponds to a workspace
  * directory. Compares normalized paths in both directions so a workspace whose
- * cwd is a worktree under the repo root — or the repo root itself — still
+ * cwd is a worktree under the repo root - or the repo root itself - still
  * matches, regardless of OS-native separators. An empty/unknown projectId or
  * cwd never matches.
  */
@@ -38,7 +38,7 @@ export function artifactBelongsToWorkspace(
 
 /**
  * Whether an artifact's stored project matches a workspace's project
- * grouping key (`WorkspaceDescriptor.projectId`) — a repo-remote key like
+ * grouping key (`WorkspaceDescriptor.projectId`) - a repo-remote key like
  * `remote:host/owner/repo` when the repo has a git remote, otherwise a
  * filesystem path. This is a plain opaque-id equality check, unlike
  * `artifactBelongsToWorkspace`'s path comparison: worktrees of the same repo
@@ -60,8 +60,8 @@ export function artifactBelongsToProject(
 /**
  * Whether an artifact belongs to a workspace, given both the workspace's cwd
  * and its project grouping key. Artifacts canonically store the project's
- * root *path* as projectId (what the create sheet and — since the
- * create_artifact fix — the agent tool both write), so the path comparison
+ * root *path* as projectId (what the create sheet and - since the
+ * create_artifact fix - the agent tool both write), so the path comparison
  * is the primary match.
  */
 export function artifactMatchesWorkspace(input: {

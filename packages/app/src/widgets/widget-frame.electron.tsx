@@ -15,7 +15,7 @@ interface WebviewIpcMessageEvent extends Event {
 /**
  * Must match WIDGET_WEBVIEW_PARTITION in
  * packages/desktop/src/features/widget-webview.ts. The main process keys off
- * this partition to recognize a widget attach — and, crucially, to install the
+ * this partition to recognize a widget attach - and, crucially, to install the
  * widget preload itself. The renderer never names a preload path: main.ts
  * deletes whatever the renderer asked for and substitutes its own known-good
  * file, so a compromised renderer cannot point the guest at arbitrary code.
@@ -34,7 +34,7 @@ const HOST_STYLE: CSSProperties = { display: "block", width: "100%" };
  * artifact-html-view.electron.tsx: the app shell's `script-src 'self'` CSP is
  * injected onto defaultSession and is INHERITED by same-document iframes, so a
  * plain `srcDoc` iframe has its inline scripts blocked here. A guest on its own
- * session escapes that — and a widget without scripts has no bridge and no
+ * session escapes that - and a widget without scripts has no bridge and no
  * height reporting, so this is not optional on desktop.
  */
 export function WidgetFrame({

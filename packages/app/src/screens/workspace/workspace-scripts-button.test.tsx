@@ -225,7 +225,7 @@ vi.mock("@/components/ui/tooltip", () => ({
 
 // Mocks the module the component actually imports. It moved off
 // lucide-react-native onto the material symbol map, and the stale lucide mock
-// left the real SVG icons rendering — which carry no `data-icon`, so every row
+// left the real SVG icons rendering - which carry no `data-icon`, so every row
 // lookup in here came back empty. Derived from the real export list rather than
 // a hand-written set, so an icon added to the component cannot silently blank
 // these assertions again.

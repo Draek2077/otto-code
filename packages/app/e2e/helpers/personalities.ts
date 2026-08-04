@@ -3,7 +3,7 @@ import path from "node:path";
 import { expect, type Page } from "@playwright/test";
 import { connectDaemonClient } from "./daemon-client-loader";
 
-// The daemon's built-in dev provider every personality spec binds to — fully
+// The daemon's built-in dev provider every personality spec binds to - fully
 // deterministic, no network, always available on the E2E daemon (NODE_ENV=development).
 export const MOCK_PROVIDER_ID = "mock";
 export const MOCK_PROVIDER_LABEL = "Mock Load Test";
@@ -12,7 +12,7 @@ export const MOCK_MODEL_LABEL = "Ten second stream";
 export const MOCK_MODE_ID = "load-test";
 
 // ---------------------------------------------------------------------------
-// Wire shapes (structural — the daemon client is untyped JS loaded from dist).
+// Wire shapes (structural - the daemon client is untyped JS loaded from dist).
 // ---------------------------------------------------------------------------
 
 export interface E2EAgentPersonality {
@@ -104,7 +104,7 @@ let uniqueSeq = 0;
 
 /**
  * Personality names are single-word handles (letters/digits/-/_ only, max 20
- * chars — see sanitizePersonalityName in agent-personalities-section.tsx), so
+ * chars - see sanitizePersonalityName in agent-personalities-section.tsx), so
  * the suffix stays alphanumeric and the prefix must stay short.
  */
 export function uniquePersonalityName(prefix: string): string {
@@ -182,7 +182,7 @@ export function buildTeam(input: {
 }
 
 // ---------------------------------------------------------------------------
-// Daemon config seeding / cleanup (read-modify-write — a patch replaces the
+// Daemon config seeding / cleanup (read-modify-write - a patch replaces the
 // whole personalities / teams array, mirroring the app's save path).
 // ---------------------------------------------------------------------------
 
@@ -356,7 +356,7 @@ export async function waitForAgentSnapshot(
 // Persisted agent record (daemon-side truth for prompt composition). The
 // daemon persists each agent to $OTTO_HOME/agents/<cwd-dir>/<agent-id>.json
 // with the full serializable config, including the composed systemPrompt and
-// the frozen personality/team snapshots — the only surface where team-prompt
+// the frozen personality/team snapshots - the only surface where team-prompt
 // stacking is observable end-to-end.
 // ---------------------------------------------------------------------------
 
@@ -426,7 +426,7 @@ async function findAgentRecordFile(agentsDir: string, fileName: string): Promise
 }
 
 // ---------------------------------------------------------------------------
-// UI actions — the composer's combined model/personality picker
+// UI actions - the composer's combined model/personality picker
 // ---------------------------------------------------------------------------
 
 /** The composer's combined model + personality picker trigger (desktop web). */
@@ -460,7 +460,7 @@ export async function selectPersonalityInPicker(page: Page, personalityId: strin
  * Pick a personality and make sure it stuck, reopening the picker to try again
  * if it did not. A row is clickable a moment before the picker's own resolution
  * settles, and a press in that window closes the popup without selecting
- * anything — which read as "selecting a personality silently does nothing"
+ * anything - which read as "selecting a personality silently does nothing"
  * only on slower CI machines.
  */
 export async function selectPersonalityUntilBound(

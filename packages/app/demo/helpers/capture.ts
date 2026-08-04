@@ -35,7 +35,7 @@ interface DemoManifest {
   videoSourcePath: string | null;
   /**
    * Playwright's per-test output dir. After the run, the video is MOVED here
-   * as video.webm — postprocess must fall back to this when videoSourcePath
+   * as video.webm - postprocess must fall back to this when videoSourcePath
    * (the mid-test staging path) no longer exists.
    */
   testOutputDir: string;
@@ -56,7 +56,7 @@ export class DemoRecorder {
      * Electron window (it isn't a Playwright-managed browser context), and
      * the raw screenshot reflects the capturing machine's real display scale
      * factor rather than a fixed logical size. When set, every shot() is
-     * resized down to this exact resolution — see e2e/helpers/image.ts.
+     * resized down to this exact resolution - see e2e/helpers/image.ts.
      */
     private readonly targetSize?: ImageSize,
   ) {}

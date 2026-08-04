@@ -39,21 +39,21 @@
 
 ## Why I'm building this
 
-I'm Philippe. Otto isn't a startup and I'm not trying to sell you anything — it's the
+I'm Philippe. Otto isn't a startup and I'm not trying to sell you anything - it's the
 environment I want to work in, and the way I'm getting better at agentic coding. Most of
 Otto is written by the agents Otto runs, which is either the point or the joke, depending
 on the day.
 
 The problem I keep hitting: agents can now do an enormous amount of work on their own, and
 it's genuinely hard to see what they did, what it cost, and where it went sideways. So the
-work here leans toward **observability and accounting** — real per-subagent token and cost
+work here leans toward **observability and accounting** - real per-subagent token and cost
 numbers, a live visualizer of the orchestration graph, browser-verified previews so an agent
-proves a change instead of just claiming it — and toward **pulling good open-source pieces
+proves a change instead of just claiming it - and toward **pulling good open-source pieces
 into one setup that actually works end to end**, instead of five tools that half-talk to
 each other.
 
 That's the whole thesis: let AI do the autonomous work, but make the operation legible while
-it happens. If that matches how you work, I'd like the help — issues, comments, and PRs all
+it happens. If that matches how you work, I'd like the help - issues, comments, and PRs all
 welcome.
 
 ---
@@ -145,10 +145,10 @@ npx skills add Draek2077/otto-code
 
 Then use them in any agent conversation:
 
-- `/otto-handoff` — hand off work between agents. I use this to plan with Claude and then handoff to Codex to implement.
-- `/otto-loop` — loop an agent against clear acceptance criteria (aka Ralph loops), optionally with a verifier.
-- `/otto-advisor` — spin up a single agent as an advisor for a second opinion, without delegating the work itself.
-- `/otto-committee` — form a committee of two contrasting agents to step back, do root cause analysis, and produce a plan.
+- `/otto-handoff` - hand off work between agents. I use this to plan with Claude and then handoff to Codex to implement.
+- `/otto-loop` - loop an agent against clear acceptance criteria (aka Ralph loops), optionally with a verifier.
+- `/otto-advisor` - spin up a single agent as an advisor for a second opinion, without delegating the work itself.
+- `/otto-committee` - form a committee of two contrasting agents to step back, do root cause analysis, and produce a plan.
 
 ## Development
 
@@ -186,11 +186,11 @@ Five trees, five audiences. This section is the entry point to all of them.
 
 | Tree                                  | Audience               | What it is                                                                                                                                                     |
 | ------------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **[`docs/`](docs/README.md)**         | Anyone building Otto   | **The official software documentation.** How Otto works — system design, subsystem behaviour, conventions, gotchas. This is the specification we build against |
-| **[`projects/`](projects/README.md)** | Anyone planning Otto   | Charters for work not yet done, plus **the single open-work ledger** — the one place that says what is done and what is not                                    |
-| **[`findings/`](findings/README.md)** | Anyone diagnosing Otto | Dated, reproducible investigation reports — what was measured, how, and what it ruled in or out. Evidence, not specification                                   |
+| **[`docs/`](docs/README.md)**         | Anyone building Otto   | **The official software documentation.** How Otto works - system design, subsystem behaviour, conventions, gotchas. This is the specification we build against |
+| **[`projects/`](projects/README.md)** | Anyone planning Otto   | Charters for work not yet done, plus **the single open-work ledger** - the one place that says what is done and what is not                                    |
+| **[`findings/`](findings/README.md)** | Anyone diagnosing Otto | Dated, reproducible investigation reports - what was measured, how, and what it ruled in or out. Evidence, not specification                                   |
 | **[`archdocs/`](archdocs/README.md)** | Architects             | The system-level architecture record: AsciiDoc pages with Mermaid diagrams, one level above `docs/`. `npm run archdocs:serve`                                  |
-| **[`CLAUDE.md`](CLAUDE.md)**          | AI coding agents       | Working rules and constraints for agents in this repo. Deliberately **not** a documentation index — that is [`docs/README.md`](docs/README.md)                 |
+| **[`CLAUDE.md`](CLAUDE.md)**          | AI coding agents       | Working rules and constraints for agents in this repo. Deliberately **not** a documentation index - that is [`docs/README.md`](docs/README.md)                 |
 
 The three writing trees differ by **tense**: `docs/` is present (_this is how it behaves_),
 `projects/` is future (_this is what we will build_), `findings/` is past (_this is what we
@@ -203,13 +203,13 @@ does; `docs/` documents how it is built.
 
 ### Quick links into `docs/`
 
-**Start here** — [Product](docs/product.md) ·
+**Start here** - [Product](docs/product.md) ·
 [Architecture](docs/architecture.md) ·
 [Glossary](docs/glossary.md) ·
 [Coding standards](docs/coding-standards.md) ·
 [Development](docs/development.md)
 
-**Chat, agents and orchestration** — [Chat lifecycle](docs/chat-lifecycle.md) ·
+**Chat, agents and orchestration** - [Chat lifecycle](docs/chat-lifecycle.md) ·
 [Agent personalities](docs/agent-personalities.md) ·
 [Agent teams](docs/agent-teams.md) ·
 [Subagent accounting](docs/subagent-accounting.md) ·
@@ -221,23 +221,23 @@ does; `docs/` documents how it is built.
 [Activity stats](docs/activity-stats.md) ·
 [Terminal activity](docs/terminal-activity.md)
 
-**Workspaces, files and git** — [Workspace lifecycle](docs/workspace-lifecycle.md) ·
+**Workspaces, files and git** - [Workspace lifecycle](docs/workspace-lifecycle.md) ·
 [New project](docs/new-project.md) ·
 [Changes view](docs/changes-view.md) ·
 [Git providers](docs/git-providers.md) ·
 [Git file history](docs/git-file-history.md)
 
-**Editor and code intelligence** — [Text editor](docs/text-editor.md) ·
+**Editor and code intelligence** - [Text editor](docs/text-editor.md) ·
 [Code intelligence (LSP)](docs/code-intelligence.md) ·
 [Markdown rendering](docs/markdown-rendering.md) ·
 [File icons](docs/file-icons.md)
 
-**Providers and integration** — [Providers](docs/providers.md) ·
+**Providers and integration** - [Providers](docs/providers.md) ·
 [Custom providers](docs/custom-providers.md) ·
 [Preview](docs/preview.md) ·
 [Service proxy](docs/service-proxy.md)
 
-**Client and UI** — [Design tokens](docs/design.md) ·
+**Client and UI** - [Design tokens](docs/design.md) ·
 [Unistyles](docs/unistyles.md) ·
 [Hover](docs/hover.md) ·
 [Floating panels](docs/floating-panels.md) ·
@@ -250,25 +250,25 @@ does; `docs/` documents how it is built.
 [i18n](docs/i18n.md) ·
 [Feature flags](docs/feature-flags.md)
 
-**Protocol, data and performance** — [RPC namespacing](docs/rpc-namespacing.md) ·
+**Protocol, data and performance** - [RPC namespacing](docs/rpc-namespacing.md) ·
 [Protocol validation](docs/protocol-validation.md) ·
 [Data model](docs/data-model.md) ·
 [Token economy](docs/token-economy.md) ·
 [Terminal performance](docs/terminal-performance.md)
 
-**Testing** — [Testing](docs/testing.md) ·
+**Testing** - [Testing](docs/testing.md) ·
 [Mobile testing](docs/mobile-testing.md) ·
 [Ad-hoc daemon testing](docs/ad-hoc-daemon-testing.md) ·
 [Browser capture harness](docs/browser-capture-harness.md)
 
-**Build, release and operations** — [Release](docs/release.md) ·
+**Build, release and operations** - [Release](docs/release.md) ·
 [Fork release guide](docs/fork-release-guide.md) ·
 [Upstream merges](docs/upstream-merges.md) ·
 [Android](docs/android.md) ·
 [Desktop Linux](docs/desktop-linux.md) ·
 [Docker](docs/docker.md)
 
-**Reference** — [References and sources](docs/references.md) ·
+**Reference** - [References and sources](docs/references.md) ·
 [OpenCode event baseline](docs/opencode-global-event-baseline.md)
 
 ### Repository documents
@@ -278,8 +278,8 @@ does; `docs/` documents how it is built.
 
 ## Community
 
-- [paseo-relay](https://github.com/zenghongtu/paseo-relay) — self-hosted relay in Go (built for the upstream Paseo project)
-- [paseo-vscode](https://marketplace.visualstudio.com/items?itemName=hinnes.paseo-vscode) — VS Code extension (built for the upstream Paseo project)
+- [paseo-relay](https://github.com/zenghongtu/paseo-relay) - self-hosted relay in Go (built for the upstream Paseo project)
+- [paseo-vscode](https://marketplace.visualstudio.com/items?itemName=hinnes.paseo-vscode) - VS Code extension (built for the upstream Paseo project)
 
 ---
 
@@ -303,7 +303,7 @@ based on. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 Otto is mostly other people's good work, assembled. Two projects carry it, and I'd rather
 name them properly than bury them in a footer.
 
-### Paseo — by Mohamed Boudra
+### Paseo - by Mohamed Boudra
 
 Otto is a modified fork of **[Paseo](https://github.com/getpaseo)**, created by
 **Mohamed Boudra** and contributors, © 2025–present. Paseo is licensed under
@@ -315,20 +315,20 @@ That's why the work here can be features instead of plumbing. Otto keeps the ful
 foundation intact with upstream history preserved.
 → [Sponsor Mo](https://github.com/sponsors/boudra)
 
-### Agent Flow — by Simon Patole
+### Agent Flow - by Simon Patole
 
-Otto's **Visualizer** — the live node-graph of agents, subagents, tool calls, and timeline
-that makes an autonomous run something you can watch instead of guess at — is the render
+Otto's **Visualizer** - the live node-graph of agents, subagents, tool calls, and timeline
+that makes an autonomous run something you can watch instead of guess at - is the render
 layer of **[Agent Flow](https://github.com/patoles/agent-flow)** (Apache-2.0) by
 **[Simon Patole](https://github.com/patoles)**, vendored as a git subtree.
 
 It's beautiful work, and it fit because Simon kept rendering separate from event collection
 behind a small documented bridge protocol. That one decision let Otto drive the same graph
 from its own provider-neutral event stream, so it lights up for Claude, Codex, OpenCode, or
-a local model alike — not just the runtime the original ingests. Adapting it has been the
+a local model alike - not just the runtime the original ingests. Adapting it has been the
 most enjoyable part of building Otto. Carried patches and the Apache-2.0 state-changes
 notice live in `vendor/agent-flow/OTTO-PATCHES.md`; upstream PRs are preferred over carrying
-them. Agent Flow's name and logos are its own and Otto never ships them as its branding —
+them. Agent Flow's name and logos are its own and Otto never ships them as its branding -
 the feature is called "Visualizer" for exactly that reason.
 → [Star Agent Flow](https://github.com/patoles/agent-flow)
 
@@ -338,4 +338,4 @@ The original copyright notice is preserved verbatim in [LICENSE](LICENSE). A sum
 of what Otto changes relative to Paseo, along with full attribution, lives in
 [NOTICE](NOTICE). Otto is an independent project and is not endorsed by or affiliated
 with the Paseo project, the Agent Flow project, or their authors. Otto takes no
-sponsorships of its own — support goes upstream.
+sponsorships of its own - support goes upstream.

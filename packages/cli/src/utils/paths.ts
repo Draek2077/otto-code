@@ -14,7 +14,7 @@ export function isSameOrDescendantPath(basePath: string, candidatePath: string):
   let normalizedBase = basePath.replace(/\\/g, "/").replace(/\/$/, "");
   let normalizedCandidate = candidatePath.replace(/\\/g, "/").replace(/\/$/, "");
 
-  // Windows paths are case-insensitive — detect by drive letter prefix (e.g. "C:/")
+  // Windows paths are case-insensitive - detect by drive letter prefix (e.g. "C:/")
   if (/^[a-zA-Z]:\//.test(normalizedBase) || /^[a-zA-Z]:\//.test(normalizedCandidate)) {
     normalizedBase = normalizedBase.toLowerCase();
     normalizedCandidate = normalizedCandidate.toLowerCase();

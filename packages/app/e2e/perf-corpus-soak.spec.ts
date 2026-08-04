@@ -23,9 +23,9 @@ import { buildHostAgentDetailRoute } from "../src/utils/host-routes";
 // different question. It drives *empty* workspaces with *idle* agents and adds
 // one turn per cycle, which makes it a good retention detector and a poor model
 // of the reported symptom: nobody complains about Otto with four empty chats
-// open. This one starts from a corpus that already looks like a heavy install —
+// open. This one starts from a corpus that already looks like a heavy install -
 // several projects, worktree workspaces under each, a dozen chats per workspace,
-// hundreds of messages per chat — and measures what it costs to move around
+// hundreds of messages per chat - and measures what it costs to move around
 // inside it.
 //
 // Three things here are load-bearing and easy to lose in a refactor:
@@ -42,7 +42,7 @@ import { buildHostAgentDetailRoute } from "../src/utils/host-routes";
 //      timings below are sized for that, and the seed cost is reported rather
 //      than hidden so a slow run can be attributed to the right half.
 //
-// Opt-in, like the other performance instruments — it is slow by construction.
+// Opt-in, like the other performance instruments - it is slow by construction.
 //   OTTO_CORPUS_SOAK_E2E=1 npx playwright test perf-corpus-soak
 //   OTTO_CORPUS_PROJECTS / _WORKSPACES / _CHATS / _TURNS / _ITEMS  (scale knobs)
 //   OTTO_CORPUS_CONCURRENCY=24    (seeding parallelism, default 24 here)
@@ -81,7 +81,7 @@ function summarize(label: string, values: number[]): string {
  * Switches to a chat and returns the milliseconds until it is the active one.
  *
  * Chats in a workspace are **tabs**, not sidebar rows. Past a handful the tab
- * strip overflows, and the rest are reachable only through the overflow menu —
+ * strip overflows, and the rest are reachable only through the overflow menu -
  * which at corpus scale is most of them, so handling only the visible strip
  * would silently measure the same four chats over and over.
  *
@@ -126,7 +126,7 @@ soakDescribe("Loaded-corpus soak", () => {
 
   test.beforeAll(async () => {
     // `describe.configure({ timeout })` sets the timeout for TESTS, not for
-    // hooks — a hook keeps Playwright's 60s default regardless. Seeding the
+    // hooks - a hook keeps Playwright's 60s default regardless. Seeding the
     // corpus happens here and takes minutes, so without this line the run dies
     // mid-seed with a bare "beforeAll hook timeout" that reads like a hang.
     test.setTimeout(30 * 60_000);
@@ -186,7 +186,7 @@ soakDescribe("Loaded-corpus soak", () => {
     await takeResourceSample(page);
 
     // Open each chat in turn. The agent-stream buffers cap at 12 agents, so a
-    // workspace of 13 crosses that boundary exactly once — the first chat should
+    // workspace of 13 crosses that boundary exactly once - the first chat should
     // have been released by the time the walk ends, which is what the revisit
     // below is for.
     //
@@ -206,7 +206,7 @@ soakDescribe("Loaded-corpus soak", () => {
     // Back to the first chat, which the cap should have evicted. A revisit that
     // costs the same as a first open means the buffers bought nothing; one that
     // costs much more means eviction is throwing away work the user is about to
-    // ask for again. Reported, not asserted — the right value is a trade-off,
+    // ask for again. Reported, not asserted - the right value is a trade-off,
     // and pinning it here would just freeze today's behavior as correct.
     const revisitMs = await openChatAndTime(page, workspace.agentIds[0]);
     await takeResourceSample(page);
@@ -244,7 +244,7 @@ soakDescribe("Loaded-corpus soak", () => {
   });
 
   // THE headline case. Clicking between workspaces in the sidebar, with both
-  // side panels open, is where the slowdown is actually reported — not chat
+  // side panels open, is where the slowdown is actually reported - not chat
   // volume on its own. The explorer is open on the Changes tab throughout,
   // because a switch with it open loads a git status and a diff for the incoming
   // workspace, and the corpus dirties every working tree so that is real work
@@ -256,7 +256,7 @@ soakDescribe("Loaded-corpus soak", () => {
     const workspaces = seeded!.projects.flatMap((project) => project.workspaces);
     expect(workspaces.length).toBeGreaterThan(1);
 
-    // Wide enough that the sidebar is pinned rather than an overlay — a compact
+    // Wide enough that the sidebar is pinned rather than an overlay - a compact
     // form factor turns the left panel into a sheet and measures a different UI.
     await page.setViewportSize({ width: 1600, height: 1000 });
 

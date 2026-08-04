@@ -6,7 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import type { Theme } from "@/styles/theme";
 
 // Inputs for the New project page. Deliberately not the settings form kit: this
-// page reads like New workspace — a centred column with one prominent input —
+// page reads like New workspace - a centred column with one prominent input -
 // so the fields wear the composer's surface, not a settings row's.
 
 const ThemedInput = withUnistyles(TextInput, (theme) => ({

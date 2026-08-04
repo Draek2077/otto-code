@@ -95,7 +95,7 @@ async function updateSchedule(
  *
  * Schedule-run agents are created `internal: true`, exactly like the artifact
  * generator, and every listing path in the session drops internal records
- * unconditionally — `fetchAgent` throws and `fetchAgents` omits them even with
+ * unconditionally - `fetchAgent` throws and `fetchAgents` omits them even with
  * `includeArchived`. There is no opt-in filter, by design: a clean scheduled
  * run is meant to be silent. So the run's own `workspaceId` is what identifies
  * what the run produced, and the workspace it opens is what the user actually
@@ -279,7 +279,7 @@ test("worktree isolation creates a run worktree and archiveOnFinish removes it",
 
   // The run's workspace is disposed of while still hidden, so there is no
   // record and no event to read its directory back from. The removal is
-  // asserted where it is actually observable — on disk and in git. The
+  // asserted where it is actually observable - on disk and in git. The
   // creation half of this property is covered by the update_schedule test,
   // which runs isolation "worktree" with archiveOnFinish=false and asserts the
   // directory exists under this same root.
@@ -351,6 +351,6 @@ test("update_schedule patches thinking, archive behavior, and isolation for the 
   // isolation: "worktree" took effect for the next run.
   expect(runDir.startsWith(`${expectedRoot}${sep}`)).toBe(true);
   expect(runDir).not.toBe(repoDir);
-  // archiveOnFinish: false took effect — the workspace and its directory survive.
+  // archiveOnFinish: false took effect - the workspace and its directory survive.
   expect(existsSync(runDir)).toBe(true);
 });

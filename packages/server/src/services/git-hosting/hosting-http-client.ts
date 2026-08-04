@@ -33,7 +33,7 @@ export interface HostingHttpClient {
 // HTTPS JSON client with the abuse guardrails all hosting providers share:
 // - hard request timeout;
 // - at most ONE retry, only for GET, only on 429/5xx, honoring Retry-After
-//   with a cap — mutations are never retried;
+//   with a cap - mutations are never retried;
 // - a cooldown window after a rate-limit response during which requests fail
 //   fast instead of hammering the API;
 // - credentials appear only in the outgoing header; errors carry method,

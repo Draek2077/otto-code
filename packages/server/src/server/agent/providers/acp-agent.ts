@@ -1394,7 +1394,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   /**
    * IMPORTANT: Some ACP providers (e.g., Devin CLI) require all three params
    * (sessionId, cwd, mcpServers) to be present in session/load or
-   * unstable_resumeSession — even when mcpServers is an empty array — and
+   * unstable_resumeSession - even when mcpServers is an empty array - and
    * return "Invalid params" if any are omitted. Never drop cwd or mcpServers
    * from these calls regardless of capabilities.
    */
@@ -2180,7 +2180,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   // listCommands() call that is waiting on the initial batch. Used when a
   // provider supplies an extensionCommandsParser whose result arrives after
   // session/new (e.g. via a vendor extension notification). The ready gate is
-  // always settled — even for an empty batch — so a provider that legitimately
+  // always settled - even for an empty batch - so a provider that legitimately
   // reports no commands does not leave listCommands() blocked for the full
   // initial-commands timeout. An optional sessionId scopes the batch to this
   // session; notifications addressed to a different session are ignored.

@@ -11,7 +11,7 @@ export function markAppQuitting(): void {
 
 // Called when a "warn before quitting" confirmation is cancelled, so a declined
 // quit doesn't permanently wedge isAppQuitting() true for the rest of the
-// process's life — which would otherwise disable close-to-tray and the
+// process's life - which would otherwise disable close-to-tray and the
 // close-handler's own quit confirmation for every later window close.
 export function unmarkAppQuitting(): void {
   appIsQuitting = false;
@@ -116,13 +116,13 @@ export function createQuitLifecycle({
   onUpdateError: (error: unknown) => void;
 }): QuitLifecycle {
   // We always preventDefault on first quit so we can run the async stop
-  // decision, then call app.exit(0) — which bypasses Electron's
+  // decision, then call app.exit(0) - which bypasses Electron's
   // close → window-all-closed → will-quit chain. The window-all-closed
   // listener is a darwin no-op (macOS convention) and would otherwise
   // veto a re-fired app.quit().
   //
   // The exception is a pending update. `autoInstallOnAppQuit` is off (see
-  // features/auto-updater.ts — Otto revalidates the manifest rather than
+  // features/auto-updater.ts - Otto revalidates the manifest rather than
   // installing a download a newer release has superseded), so the install only
   // happens if this runs it. Exiting hard before the installer has taken over
   // is what left downloaded updates permanently uninstalled.

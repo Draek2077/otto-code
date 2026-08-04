@@ -99,7 +99,7 @@ describe("codeReferences tab identity", () => {
     symbol: "foo",
   } as const;
 
-  // Two symbols can share a name and be entirely unrelated — which is the confusion a
+  // Two symbols can share a name and be entirely unrelated - which is the confusion a
   // language server exists to remove, so the tab identity must not reintroduce it.
   it("keys on position, not on the symbol name", () => {
     const sameSpotDifferentName = { ...base, symbol: "renamedInTheTitleOnly" } as const;

@@ -69,7 +69,7 @@ export const en = {
     },
   },
   // The chat metrics toolbar. "Total tokens" is lifetime SPEND and never
-  // context-window occupancy — see docs/glossary.md; the two must not be
+  // context-window occupancy - see docs/glossary.md; the two must not be
   // described with each other's words anywhere in this block.
   chatMetrics: {
     tokensIn: "Tokens in, including cache reads",
@@ -98,7 +98,7 @@ export const en = {
     },
     contextHealth: {
       summary:
-        "Project context is {{tokens}} tokens — {{percent}} of this model's window, every request. {{room}} left to work with.",
+        "Project context is {{tokens}} tokens - {{percent}} of this model's window, every request. {{room}} left to work with.",
       manage: "Manage",
       dismiss: "Dismiss for now",
     },
@@ -239,9 +239,9 @@ export const en = {
           "Memory is switched off for this personality, so none of this is sent. The lessons are kept.",
         empty: "Nothing is added to this personality's context in this project.",
         emptyButStored_one:
-          "The lesson below does not apply to this project, so nothing is added here — the label on the row says why.",
+          "The lesson below does not apply to this project, so nothing is added here - the label on the row says why.",
         emptyButStored_other:
-          "None of the {{count}} lessons below apply to this project, so nothing is added here — the label on each row says why.",
+          "None of the {{count}} lessons below apply to this project, so nothing is added here - the label on each row says why.",
         omitted:
           "{{count}} of the lessons below did not fit the injection budget and are not being sent.",
       },
@@ -250,10 +250,10 @@ export const en = {
         project: "This project",
         // A project-scoped lesson recorded somewhere else, and one bound to no
         // project at all. Both are stored and listed but reach nothing here, so
-        // the row has to say so — otherwise an empty brief above a list of
+        // the row has to say so - otherwise an empty brief above a list of
         // lessons looks broken.
         elsewhere: "Another project",
-        unattached: "No project — never sent",
+        unattached: "No project - never sent",
         change: "Scope: {{scope}}. Tap to change.",
       },
       row: {
@@ -357,7 +357,7 @@ export const en = {
     },
     emptyState: {
       title: "No project context yet",
-      body: "Nothing is being loaded for this project. That's a clean slate, not a problem — add a CLAUDE.md or AGENTS.md at the project root when you want to give your agents standing instructions.",
+      body: "Nothing is being loaded for this project. That's a clean slate, not a problem - add a CLAUDE.md or AGENTS.md at the project root when you want to give your agents standing instructions.",
     },
   },
   agentControls: {
@@ -483,14 +483,14 @@ export const en = {
     // to: deleting in Otto removes *Otto's record*, never the agent provider's own
     // transcript on the host. Consent to an irreversible action you were told the
     // wrong shape of is not consent, so this is translated like any other
-    // confirmation text — see history/delete-dialogs.ts.
+    // confirmation text - see history/delete-dialogs.ts.
     dialogs: {
       genericProvider: "The agent provider",
       deleteAgent: {
         title: "Delete this chat?",
         subjectFallback: "this chat",
         recordLine:
-          "Otto's record of {{subject}} is deleted permanently — the row, its title, and its metadata.",
+          "Otto's record of {{subject}} is deleted permanently - the row, its title, and its metadata.",
         transcriptLine:
           "{{provider}}'s own transcript on the host is left in place, so the conversation itself stays on disk and can still be read or resumed outside Otto.",
         undoLine: "Otto's side of this can't be undone.",
@@ -504,7 +504,7 @@ export const en = {
         recordLineMany:
           "Permanently deletes Otto's records for {{count}} archived chats. Chats you haven't archived are untouched.",
         transcriptLine:
-          "The agent providers' own transcripts on the host are left in place — this clears Otto's history, not the conversations on disk.",
+          "The agent providers' own transcripts on the host are left in place - this clears Otto's history, not the conversations on disk.",
         undoLine: "Otto's side of this can't be undone.",
         confirm: "Clear",
       },
@@ -692,7 +692,7 @@ export const en = {
       copyBranchName: "Copy branch name",
       copied: "Copied",
     },
-    // The Solution view. "Solution", never "Project" — Project is already an Otto noun, and both
+    // The Solution view. "Solution", never "Project" - Project is already an Otto noun, and both
     // appear on screen at once. See docs/glossary.md.
     solution: {
       lens: {
@@ -755,7 +755,7 @@ export const en = {
           subjectFile: '"{{name}}" will be deleted from disk.',
           subjectFolder: '"{{name}}" will be deleted from disk.',
           permanentLine:
-            "This is permanent — it is removed from disk, not moved to the trash, and Otto cannot undo it.",
+            "This is permanent - it is removed from disk, not moved to the trash, and Otto cannot undo it.",
           confirm: "Delete",
         },
         deleteContents: {
@@ -883,7 +883,7 @@ export const en = {
       closeAction: "Close Visualizer",
       loadFailedTitle: "The Visualizer couldn't start",
       loadFailedBody:
-        "The graph view never finished loading on this machine. This can happen when the app is running without GPU acceleration — the desktop log records the details. Close and reopen the tab to retry.",
+        "The graph view never finished loading on this machine. This can happen when the app is running without GPU acceleration - the desktop log records the details. Close and reopen the tab to retry.",
     },
     contextManagement: {
       tabLabel: "Manage context",
@@ -1239,14 +1239,14 @@ export const en = {
           // Branch cleanup section (worktreeArchiveBranchCleanup)
           branchIntro: "This worktree is on branch {{branchName}}.",
           deleteBranchCheckbox: "Also delete branch {{branchName}}",
-          branchMerged: "Fully merged into {{baseBranch}} — safe to delete.",
-          branchMergedNoBase: "Fully merged — safe to delete.",
+          branchMerged: "Fully merged into {{baseBranch}} - safe to delete.",
+          branchMergedNoBase: "Fully merged - safe to delete.",
           branchUnmergedCommit:
-            "Not merged into {{baseBranch}} — deleting discards {{count}} commit.",
+            "Not merged into {{baseBranch}} - deleting discards {{count}} commit.",
           branchUnmergedCommits:
-            "Not merged into {{baseBranch}} — deleting discards {{count}} commits.",
-          branchUnmergedCommitNoBase: "Not merged — deleting discards {{count}} commit.",
-          branchUnmergedCommitsNoBase: "Not merged — deleting discards {{count}} commits.",
+            "Not merged into {{baseBranch}} - deleting discards {{count}} commits.",
+          branchUnmergedCommitNoBase: "Not merged - deleting discards {{count}} commit.",
+          branchUnmergedCommitsNoBase: "Not merged - deleting discards {{count}} commits.",
           branchMergeUnknown: "Merge status could not be determined.",
           branchRemoteKept: "The copy on origin is kept.",
           branchDeleted: "Deleted branch {{branchName}}.",
@@ -1291,7 +1291,7 @@ export const en = {
         deletedFile: "Deleted",
         baseChip: "vs {{baseRef}}",
         baseChipReadOnly: "Comparing against {{baseRef}}",
-        baseChipEditable: "Comparing against {{baseRef}} — tap to change",
+        baseChipEditable: "Comparing against {{baseRef}} - tap to change",
         baseChipInferred: "Comparing against {{baseRef}}, detected as this branch's parent",
         baseChipWorktree: "Comparing against {{baseRef}}, the branch this worktree was cut from",
         baseChipPinned: "Comparing against {{baseRef}}, which you chose",
@@ -2222,10 +2222,10 @@ export const en = {
     team: {
       title: "What kind of team do you want?",
       subtitle:
-        "Pick a team and Otto builds you a complete, balanced crew — named characters with their own personalities. Not a fit? Reshuffle. Or build your own from your agents.",
+        "Pick a team and Otto builds you a complete, balanced crew - named characters with their own personalities. Not a fit? Reshuffle. Or build your own from your agents.",
       unsupportedTitle: "Build your team",
       unsupportedBody:
-        "This host doesn't support agent teams yet. Update the host to have Otto build you a team — you can skip this for now.",
+        "This host doesn't support agent teams yet. Update the host to have Otto build you a team - you can skip this for now.",
       blueprints: {
         application: {
           name: "Application Team",
@@ -2233,7 +2233,7 @@ export const en = {
         },
         game: {
           name: "Game Team",
-          tagline: "A studio pod for building games — mechanics, feel, and juice.",
+          tagline: "A studio pod for building games - mechanics, feel, and juice.",
         },
         web: {
           name: "Web Team",
@@ -2241,7 +2241,7 @@ export const en = {
         },
         creative: {
           name: "Creative Studio",
-          tagline: "A studio for writing, art, and ideas — no code required.",
+          tagline: "A studio for writing, art, and ideas - no code required.",
         },
         management: {
           name: "Management Team",
@@ -2256,7 +2256,7 @@ export const en = {
         name: "Build your own",
         tagline: "Assemble a team from your agents, your way.",
       },
-      providerNoModels: "This provider has no models yet — refresh it in Settings, then come back.",
+      providerNoModels: "This provider has no models yet - refresh it in Settings, then come back.",
       providerMissing: "Pick a provider first (previous step) so Otto knows which models to use.",
       memberCountOne: "1 member",
       memberCountMany: "{{count}} members",
@@ -2270,7 +2270,7 @@ export const en = {
         members: "Members",
         membersWithCount: "Members ({{count}})",
         empty:
-          "No agents to pick from yet. Generate a team above (that adds agents you can mix in here), or add your own in Settings → Agents — then come back.",
+          "No agents to pick from yet. Generate a team above (that adds agents you can mix in here), or add your own in Settings → Agents - then come back.",
         covers: "Covers: {{roles}}",
         orchestratorTip: "  ·  Tip: add an Orchestrator to give the team a lead.",
         addedNamed: "Added “{{name}}” ✓",
@@ -2597,9 +2597,9 @@ export const en = {
     wordWrap: "Word wrap",
     outOfProject: {
       badge:
-        "Editing outside the project ({{project}}) — not part of the agent's context or this workspace's Git changes.",
+        "Editing outside the project ({{project}}) - not part of the agent's context or this workspace's Git changes.",
       badgeNoProject:
-        "Editing outside the project — not part of the agent's context or this workspace's Git changes.",
+        "Editing outside the project - not part of the agent's context or this workspace's Git changes.",
     },
     contextMenu: {
       cut: "Cut",
@@ -2658,12 +2658,12 @@ export const en = {
     loading: "Loading files...",
     noResults: "No files",
   },
-  // Refine — the reviewed AI rewrite (docs/refine.md). Only the two
+  // Refine - the reviewed AI rewrite (docs/refine.md). Only the two
   // entry-point strings are translated here; the Refine tab itself is literal
   // English pending the pre-release i18n sweep, like the rename/references tabs.
   refine: {
     open: "Refine with AI",
-    saveFirst: "Save or revert your changes first — Refine works from the file on disk.",
+    saveFirst: "Save or revert your changes first - Refine works from the file on disk.",
     compactOpen: "Compact with AI",
     unsupported: "Update the host to use Refine.",
     // The job the tab presents itself as: a tab opened from "Compact with AI"
@@ -2683,8 +2683,8 @@ export const en = {
     toolbar: {
       discard: "Discard this proposal and re-read every file",
       writing: "Writing…",
-      acceptOne: "Accept — write the kept changes",
-      acceptMany: "Accept — write {{count}} files",
+      acceptOne: "Accept - write the kept changes",
+      acceptMany: "Accept - write {{count}} files",
       dropAll: "Drop every change",
       keepAll: "Keep every change",
     },
@@ -2700,7 +2700,7 @@ export const en = {
       allOffHint: "Let the rewrite change every file in this set, not only the first.",
       writableHint: "May be rewritten. Tap to make it read-only context instead.",
       referenceHint:
-        "Read-only context — the model reads it but can never change it. Tap to allow rewriting.",
+        "Read-only context - the model reads it but can never change it. Tap to allow rewriting.",
     },
     instruction: {
       placeholder: "What should change? e.g. keep every rule, cut the repetition",
@@ -2745,22 +2745,22 @@ export const en = {
     },
     summary: {
       pinning:
-        "Pinning the files as they are now — that is what every proposal will be measured against.",
+        "Pinning the files as they are now - that is what every proposal will be measured against.",
       unreadable: "This working set could not be read.",
       idle: "Nothing proposed yet. No file has been touched.",
-      generating: "Round {{round}} — rewriting.",
+      generating: "Round {{round}} - rewriting.",
       accepting: "Writing the kept changes.",
-      acceptedOne: "Done — 1 file written.",
-      acceptedMany: "Done — {{count}} files written.",
+      acceptedOne: "Done - 1 file written.",
+      acceptedMany: "Done - {{count}} files written.",
       partiallyAccepted: "{{written}} written, {{skipped}} left alone. Nothing was overwritten.",
       reviewOne:
-        "Round {{round}} — {{kept}} of {{total}} change kept, +{{additions}} −{{removals}} lines. Nothing has been written yet.",
+        "Round {{round}} - {{kept}} of {{total}} change kept, +{{additions}} −{{removals}} lines. Nothing has been written yet.",
       reviewMany:
-        "Round {{round}} — {{kept}} of {{total}} changes kept, +{{additions}} −{{removals}} lines. Nothing has been written yet.",
+        "Round {{round}} - {{kept}} of {{total}} changes kept, +{{additions}} −{{removals}} lines. Nothing has been written yet.",
       reviewOneScoped:
-        "Round {{round}} — {{kept}} of {{total}} change kept across {{changedFiles}}/{{proposedFiles}} files, +{{additions}} −{{removals}} lines. Nothing has been written yet.",
+        "Round {{round}} - {{kept}} of {{total}} change kept across {{changedFiles}}/{{proposedFiles}} files, +{{additions}} −{{removals}} lines. Nothing has been written yet.",
       reviewManyScoped:
-        "Round {{round}} — {{kept}} of {{total}} changes kept across {{changedFiles}}/{{proposedFiles}} files, +{{additions}} −{{removals}} lines. Nothing has been written yet.",
+        "Round {{round}} - {{kept}} of {{total}} changes kept across {{changedFiles}}/{{proposedFiles}} files, +{{additions}} −{{removals}} lines. Nothing has been written yet.",
     },
   },
   refactor: {
@@ -3083,7 +3083,7 @@ export const en = {
       mountedWorkspaceLimit: {
         label: "Workspaces kept loaded",
         description:
-          "How many workspaces stay loaded so switching back to them is instant. Past this many, the one you used least recently is unloaded and reloads next time you open it. Set it to at least the number you actually switch between — below that, every switch unloads the workspace you are about to return to. Higher uses more memory.",
+          "How many workspaces stay loaded so switching back to them is instant. Past this many, the one you used least recently is unloaded and reloads next time you open it. Set it to at least the number you actually switch between - below that, every switch unloads the workspace you are about to return to. Higher uses more memory.",
         accessibilityLabel: "Workspaces kept loaded",
       },
       mountedTabLimit: {
@@ -3248,7 +3248,7 @@ export const en = {
         },
         chatMetricsBar: {
           title: "Show chat metrics",
-          hint: "A slim row above the transcript with this chat's total tokens, cost and sub-agent activity — including everything it spawned. Cost appears only where the provider reports one",
+          hint: "A slim row above the transcript with this chat's total tokens, cost and sub-agent activity - including everything it spawned. Cost appears only where the provider reports one",
           accessibilityLabel: "Show chat metrics",
         },
         autoExpandReasoning: {
@@ -3640,12 +3640,12 @@ export const en = {
         hostImagesSummary: "{{size}} across {{count}} images",
         hostImagesEmpty: "Nothing stored yet",
         hostImagesHint:
-          "Screenshots and other images your agents produced, kept so past messages can still show them. Clearing them cannot be undone — those messages fall back to their description.",
+          "Screenshots and other images your agents produced, kept so past messages can still show them. Clearing them cannot be undone - those messages fall back to their description.",
         previewCache: "Cached copies on this device",
         previewCacheSummary: "{{size}} across {{count}} images",
         previewCacheEmpty: "Nothing cached",
         previewCacheHint:
-          "Local copies so images load instantly. Safe to clear — they download again when needed. Files you attached to messages ({{size}}) are kept separately and are never cleared here.",
+          "Local copies so images load instantly. Safe to clear - they download again when needed. Files you attached to messages ({{size}}) are kept separately and are never cleared here.",
         clear: "Clear",
         clearConfirm: "Clear images",
         clearImagesTitle: "Clear images on this host?",
@@ -3793,7 +3793,7 @@ export const en = {
           "When off, chats hide the Auto-compact selector and always use the default above.",
         maxToolRoundsLabel: "Max tool rounds per turn",
         maxToolRoundsHint:
-          "The turn stops with an error after this many tool rounds without a final answer — a safety valve against runaway loops.",
+          "The turn stops with an error after this many tool rounds without a final answer - a safety valve against runaway loops.",
         maxToolRoundsValue: "{{rounds}} rounds",
         maxToolRoundsRequiresUpdate: "Update the host to configure max tool rounds.",
         saveFailed: "Failed to save agent settings",

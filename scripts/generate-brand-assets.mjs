@@ -16,10 +16,10 @@ const websitePublic = path.join(root, "packages/website/public");
 const TILE_RADIUS = 114; // 512-scale equivalent of the previous 156/700 favicon tile
 const BADGE = { cx: 417, cy: 417, r: 95 };
 const BADGE_COLORS = { running: "#3b82f6", attention: "#22c55e" };
-// Tray "needs your attention" accent — amber-500, matching theme.colors.palette.amber[500]
+// Tray "needs your attention" accent - amber-500, matching theme.colors.palette.amber[500]
 // (packages/app/src/styles/theme.ts) so the tray accent reuses the app's existing warning color.
 const TRAY_ATTENTION_COLOR = "#f59e0b";
-// Dev-build tile — blue-900, matching theme.colors.palette.blue[900]. The whole point of
+// Dev-build tile - blue-900, matching theme.colors.palette.blue[900]. The whole point of
 // running the installed Otto and a dev Otto side by side is being able to tell the two
 // taskbar/tray entries apart at a glance, and a navy tile reads as clearly not-black even
 // at 16px. Dev icons live in assets/dev/ and are loaded only when !app.isPackaged; nothing
@@ -195,7 +195,7 @@ console.log("wrote packages/desktop/assets/icon.icns");
 // (electron-builder.yml) and the notification icon fallback chain (notifications.ts) both
 // expect loose NxN.png files alongside icon.png/ico/icns.
 //
-// Only these NxN.png files reach the Linux hicolor icon theme — icon.png is not
+// Only these NxN.png files reach the Linux hicolor icon theme - icon.png is not
 // picked up by the directory target. The set used to stop at 256 (as
 // "128x128@2x.png"), so GNOME/KDE had nothing to serve large icon contexts and
 // upscaled 256 to fill them, which reads as a blurry icon on HiDPI and on
@@ -241,7 +241,7 @@ await png(
   32,
   path.join(desktopAssets, "tray-icon-attention.png"),
 );
-// macOS idle: template image — a bare black glyph on transparent, no tile. Electron
+// macOS idle: template image - a bare black glyph on transparent, no tile. Electron
 // re-tints template images for the current menu-bar theme (setTemplateImage(true)).
 await png(bareSvg(faceSmall, "black", 0.82), 22, path.join(desktopAssets, "tray-icon-mac.png"));
 await png(bareSvg(faceSmall, "black", 0.82), 44, path.join(desktopAssets, "tray-icon-mac@2x.png"));
@@ -259,7 +259,7 @@ await png(
 );
 
 // ---------------------------------------------------------------------------
-// Dev-build icons (navy tile) — packages/desktop/assets/dev/
+// Dev-build icons (navy tile) - packages/desktop/assets/dev/
 // ---------------------------------------------------------------------------
 // Same art as above with DEV_TILE_COLOR instead of black, so a dev window,
 // taskbar button, dock tile and tray entry are instantly distinguishable from

@@ -139,7 +139,7 @@ export function GitActionsSplitButton({
       // `surfaceToggleHover` matches `headerIconSlotStyle.slotHovered`, so every
       // hoverable thing in the workspace header row lands on one backdrop. The
       // sidebar-tools and mobile diff-toolbar copies of this button inherit it
-      // too — same control, same chrome.
+      // too - same control, same chrome.
       (Boolean(hovered) || pressed) &&
         inlineUnistylesStyle({ backgroundColor: theme.colors.surfaceToggleHover }),
       primaryDisabled && styles.splitButtonPrimaryDisabled,
@@ -304,7 +304,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     gap: theme.spacing[2],
-    // Icon-only content (16px) is shorter than the label's line height — pin
+    // Icon-only content (16px) is shorter than the label's line height - pin
     // the same minimum so all three workspace-tools split buttons match.
     minHeight: {
       xs: (theme.fontSize.sm + 2) * 1.5,

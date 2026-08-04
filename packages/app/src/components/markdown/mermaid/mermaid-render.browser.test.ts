@@ -6,7 +6,7 @@ import { peekMermaidOutcome, renderMermaid, resolveMermaidOutcome } from "./merm
 // text through the DOM, so there is no honest way to test it in node.
 //
 // The theme configs are literals rather than `buildMermaidThemeConfig(darkTheme)`
-// — importing `@/styles/theme` would drag react-native and unistyles into this
+// - importing `@/styles/theme` would drag react-native and unistyles into this
 // browser bundle for two colors. That the real themes produce a valid config is
 // mermaid-theme.test.ts's job; this file's is what the renderer does with one.
 

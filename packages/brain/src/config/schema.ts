@@ -103,10 +103,10 @@ export type Auth = z.infer<typeof AuthSchema>;
 /**
  * TLS termination, built into the brain so it can be exposed over HTTPS with no
  * relay in front. Four modes:
- *  - `off`      — plain HTTP (the default; loopback-only is the safe posture).
- *  - `files`    — bring your own cert/key (a real cert, or one you manage).
- *  - `self-signed` — generate a local keypair on first run, cached under `certDir`.
- *  - `tailscale` — issue and auto-renew a real Let's Encrypt cert for this
+ *  - `off`      - plain HTTP (the default; loopback-only is the safe posture).
+ *  - `files`    - bring your own cert/key (a real cert, or one you manage).
+ *  - `self-signed` - generate a local keypair on first run, cached under `certDir`.
+ *  - `tailscale` - issue and auto-renew a real Let's Encrypt cert for this
  *                  machine's MagicDNS name via `tailscaled` (no cert warnings on
  *                  the tailnet). `hostname` is auto-detected when null.
  * The service layer enforces that a non-loopback bind still carries auth.
@@ -170,11 +170,11 @@ export const BrainConfigSchema = z
     // refuse completion requests that name a different one, instead of queuing a
     // switch. For hosts that load one model and must not thrash between clients.
     lockModel: z.boolean().default(false),
-    // Sharing/control gates (off by default — a brain is not remotely
+    // Sharing/control gates (off by default - a brain is not remotely
     // controllable until its owner opts in). `allowRemoteConfig`: a client with
     // the token may CHANGE config over the network (POST /__host/config), not
     // just use/read. `allowInsecureBind`: permit a non-loopback bind with no
-    // token (an "open, trusted network" share) — otherwise the service refuses.
+    // token (an "open, trusted network" share) - otherwise the service refuses.
     allowRemoteConfig: z.boolean().default(false),
     allowInsecureBind: z.boolean().default(false),
     defaults: ProfileDefaultsSchema.default({}),

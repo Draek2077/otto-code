@@ -19,7 +19,7 @@ import { asLocalAiFlowClient, waitForTimelineItem } from "./helpers/local-ai-flo
  * value of 25 afterwards. With a 1-round cap, ANY response containing a tool
  * call exhausts the loop after executing that round, and the daemon emits the
  * timeline error item "Stopped after 1 tool rounds without a final answer."
- * (openai-compat-agent.ts runToolLoop) — a daemon-authored marker, not model
+ * (openai-compat-agent.ts runToolLoop) - a daemon-authored marker, not model
  * prose.
  */
 

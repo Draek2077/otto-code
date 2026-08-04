@@ -8,7 +8,7 @@ import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 
 // Shared presentation primitives for the app's directory trees. Both the Files
 // explorer (server-loaded listings) and the Changes view (client-built from diff
-// paths) render different data, but their ROWS should look identical — same
+// paths) render different data, but their ROWS should look identical - same
 // indentation, guide lines, and chevron. Keep those here so the two trees can't
 // drift apart.
 export const TREE_INDENT_PER_LEVEL = 16;
@@ -35,8 +35,8 @@ function indentGuideLeft(index: number): number {
 }
 
 /**
- * Vertical guide lines connecting nested rows to their ancestors — one line per
- * ancestor depth level, positioned absolutely within the (relative) row — plus a
+ * Vertical guide lines connecting nested rows to their ancestors - one line per
+ * ancestor depth level, positioned absolutely within the (relative) row - plus a
  * horizontal tick branching off the deepest rail into this row. Renders nothing
  * at depth 0.
  *
@@ -44,7 +44,7 @@ function indentGuideLeft(index: number): number {
  * height while that branch has more rows below, half height meeting the tick when
  * this row is the last of its group (└), and absent entirely once an ancestor's
  * branch has already closed. Callers that don't track sibling position get the
- * old look — every rail full height — by leaving it unset.
+ * old look - every rail full height - by leaving it unset.
  */
 export function TreeIndentGuides({
   depth,
@@ -137,5 +137,5 @@ const styles = StyleSheet.create((theme: Theme) => ({
 }));
 
 // Stable module-level style ref so TreeChevron passes a constant array, not one created
-// per render — satisfies react-perf (no inline-array prop) without a per-render useMemo.
+// per render - satisfies react-perf (no inline-array prop) without a per-render useMemo.
 const CHEVRON_EXPANDED_STYLE = [styles.chevron, styles.chevronExpanded];

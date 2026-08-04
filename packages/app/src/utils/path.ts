@@ -10,7 +10,7 @@ export function isAbsolutePath(value: string): boolean {
  * caller treats that as a refusal rather than as something to clamp. `""` means
  * the path resolved to the root itself, which callers interpret for themselves.
  *
- * The input must already be relative — an absolute path has a root of its own and
+ * The input must already be relative - an absolute path has a root of its own and
  * this function would silently treat it as relative to the caller's.
  */
 export function containRelativePath(pathValue: string): string | null {

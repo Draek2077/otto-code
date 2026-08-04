@@ -24,14 +24,14 @@ export const ArtifactCreateRequestSchema = z.object({
   systemPrompt: z.string().optional(),
   // Snapshotted spinner colors of the chosen Agent Personality (optional).
   spinner: ArtifactSpinnerSchema.optional(),
-  // Snapshotted human name of the chosen Agent Personality (optional) — shown
+  // Snapshotted human name of the chosen Agent Personality (optional) - shown
   // on the artifact card's identity line as the "who generated it".
   personalityName: z.string().optional(),
   requestId: z.string(),
 });
 
 // Update edits an artifact's metadata (name/description/project/provider/
-// model/thinking) WITHOUT re-running generation — editing never regenerates;
+// model/thinking) WITHOUT re-running generation - editing never regenerates;
 // the user triggers that separately. Every field except artifactId is
 // optional; only provided fields overwrite.
 export const ArtifactUpdateRequestSchema = z.object({
@@ -47,7 +47,7 @@ export const ArtifactUpdateRequestSchema = z.object({
 });
 
 // Regenerate re-runs generation for an existing artifact using its stored
-// config. It carries no field updates — edit those first via update.request.
+// config. It carries no field updates - edit those first via update.request.
 export const ArtifactRegenerateRequestSchema = z.object({
   type: z.literal("artifact.regenerate.request"),
   artifactId: z.string(),
@@ -241,7 +241,7 @@ export type ArtifactNotification =
   | ArtifactUpdatedNotification
   | ArtifactDeletedNotification;
 
-// Input validation helper — extracts CreateArtifactInput from a create request
+// Input validation helper - extracts CreateArtifactInput from a create request
 export function validateArtifactCreateRequest(
   data: unknown,
 ): { ok: true; input: CreateArtifactInput; requestId: string } | { ok: false; error: string } {

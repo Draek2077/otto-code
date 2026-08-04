@@ -367,7 +367,7 @@ describe("installSkills / updateSkills", () => {
     expect(await pathExists(path.join(sandbox.targets.codexDir, "otto"))).toBe(false);
   });
 
-  it("is idempotent — running install twice keeps state at up-to-date", async () => {
+  it("is idempotent - running install twice keeps state at up-to-date", async () => {
     await writeCurrentBundle(sandbox.targets.sourceDir);
 
     const first = await installSkills(sandbox.targets);

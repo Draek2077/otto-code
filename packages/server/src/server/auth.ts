@@ -135,8 +135,8 @@ const BEARER_AUTH_BYPASS_PATHS = new Set([
   "/api/files/download",
   // The daemon injects its own agents' Otto MCP connections at this endpoint
   // (and connects its own per-client MCP client here). Those connections cannot
-  // carry the daemon password — it is only known in plaintext when set via env,
-  // never when set via the app — so the route authenticates them with a
+  // carry the daemon password - it is only known in plaintext when set via env,
+  // never when set via the app - so the route authenticates them with a
   // per-daemon-run capability token instead (see isAgentMcpRequestAuthorized).
   // The token is injected only into local agent configs/sessions and never sent
   // to remote clients, and the route still rejects callers presenting neither

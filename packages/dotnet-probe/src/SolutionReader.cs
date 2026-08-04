@@ -10,7 +10,7 @@ namespace Otto.DotnetProbe;
 ///
 /// One code path serves both formats: <c>GetSerializerByMoniker</c> picks the <c>.sln</c> or
 /// <c>.slnx</c> reader from the file name. Solution filters (<c>.slnf</c>) are deliberately not
-/// handled — out of scope for Phase 1, and answering for one would be worse than refusing.
+/// handled - out of scope for Phase 1, and answering for one would be worse than refusing.
 /// </summary>
 internal static class SolutionReader
 {

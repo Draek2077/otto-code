@@ -176,8 +176,8 @@ export function defineForgeFacts<TFacts extends ForgeSpecificEnvelope>(
 /**
  * Pure logic half of a forge: URL grammar and runtime-facts derivations. Kept
  * free of any React/React-Native imports so logic consumers (URL builders,
- * merge-capability, native-check fallbacks) — and the Node-based e2e harness
- * that transitively imports them — never pull the client's rendering stack.
+ * merge-capability, native-check fallbacks) - and the Node-based e2e harness
+ * that transitively imports them - never pull the client's rendering stack.
  */
 export interface ClientForgeLogicModule<
   TFacts extends ForgeSpecificEnvelope = ForgeSpecificEnvelope,

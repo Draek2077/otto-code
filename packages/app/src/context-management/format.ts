@@ -24,7 +24,7 @@ export function reportSharePercent(report: ContextReport): number {
   return (report.fixedTotal / report.windowTokens) * 100;
 }
 
-/** i18n key suffix per category — the tree and the summary use the same labels. */
+/** i18n key suffix per category - the tree and the summary use the same labels. */
 export const CATEGORY_LABEL_KEYS: Record<ContextCategory, string> = {
   context_files: "contextManagement.category.contextFiles",
   memory_index: "contextManagement.category.memoryIndex",
@@ -38,7 +38,7 @@ export const CATEGORY_LABEL_KEYS: Record<ContextCategory, string> = {
  * How the daemon's per-category disclosure reads on screen. Only the two states
  * a user can act on get copy: `not_visible` explains a row that will never have
  * a number, and `unverified` warns that one should not be trusted as fact.
- * `exact` and `convention` are the unremarkable cases and stay silent — a badge
+ * `exact` and `convention` are the unremarkable cases and stay silent - a badge
  * on every row is a badge nobody reads.
  */
 export const VISIBILITY_NOTE_KEYS: Partial<Record<ContextCategoryVisibility, string>> = {
@@ -47,7 +47,7 @@ export const VISIBILITY_NOTE_KEYS: Partial<Record<ContextCategoryVisibility, str
 };
 
 /**
- * True when a category is disclosure rather than measurement — the row exists to
+ * True when a category is disclosure rather than measurement - the row exists to
  * say "this cost is real and Otto cannot size it here". Callers render the note
  * instead of a token figure, because "0" would be a claim the daemon never made.
  */
@@ -57,7 +57,7 @@ export function isUnmeasuredCategory(total: ContextCategoryTotal): boolean {
 
 /**
  * Only `warn` and `critical` interrupt. `notice` is real but not worth a
- * flyout — it shows in the tab, where the user came to look anyway.
+ * flyout - it shows in the tab, where the user came to look anyway.
  */
 export function shouldRaiseContextWarning(report: ContextReport | null): report is ContextReport {
   if (!report) return false;

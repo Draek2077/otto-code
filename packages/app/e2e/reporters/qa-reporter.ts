@@ -85,7 +85,7 @@ function statusIcon(entry: CapturedTest): string {
 /**
  * Maps `<spec>.spec.ts` -> matrix section title. Sections are `## <n>. <Title>`;
  * spec references inside them are backtick-quoted. Mirrors the parsing in
- * scripts/e2e-coverage-check.mjs — keep the two in step.
+ * scripts/e2e-coverage-check.mjs - keep the two in step.
  */
 async function loadModuleIndex(matrixPath: string): Promise<Map<string, string>> {
   const index = new Map<string, string>();
@@ -184,7 +184,7 @@ class QaReporter implements Reporter {
       entry.module = this.moduleIndex.get(entry.specFile) ?? UNCLASSIFIED;
     }
 
-    // A fresh tree every run — a stale money shot is worse than none, because it
+    // A fresh tree every run - a stale money shot is worse than none, because it
     // reads as proof of something this run never exercised.
     await rm(this.outputDir, { recursive: true, force: true });
     await mkdir(this.outputDir, { recursive: true });
@@ -245,7 +245,7 @@ class QaReporter implements Reporter {
       if (!copied) continue;
 
       evidenceLines.push(
-        `- ${evidenceLabel} — ${label} → [\`${fileName}\`](${encodeURI(fileName)})`,
+        `- ${evidenceLabel} - ${label} → [\`${fileName}\`](${encodeURI(fileName)})`,
       );
 
       if (isMoney) {
@@ -267,7 +267,7 @@ class QaReporter implements Reporter {
       "",
       `- **Module:** ${entry.module}`,
       `- **Spec:** \`${entry.specFile}\``,
-      `- **Project:** ${entry.projectName || "—"}`,
+      `- **Project:** ${entry.projectName || "-"}`,
       `- **Status:** ${statusIcon(entry)} ${entry.status}${entry.retries > 0 ? ` (after ${entry.retries} ${entry.retries === 1 ? "retry" : "retries"})` : ""}`,
       `- **Duration:** ${formatDuration(entry.durationMs)}`,
       "",
@@ -323,7 +323,7 @@ class QaReporter implements Reporter {
       "",
       `✅ ${passed} passed · ❌ ${failed} failed · ⊘ ${skipped} skipped · ${entries.length} total · ${formatDuration(totalMs)} of test time`,
       "",
-      "- [Money-shot digest](money-shots/index.md) — one confirming frame per test, in one place",
+      "- [Money-shot digest](money-shots/index.md) - one confirming frame per test, in one place",
       "- [Failure report](failures.md)",
       "- [Full run log](run.log)",
       "",
@@ -362,7 +362,7 @@ class QaReporter implements Reporter {
             "result.md",
           );
           lines.push(
-            `- ${statusIcon(entry)} [${entry.title}](${encodeURI(rel)}) — ${formatDuration(entry.durationMs)}`,
+            `- ${statusIcon(entry)} [${entry.title}](${encodeURI(rel)}) - ${formatDuration(entry.durationMs)}`,
           );
         }
         lines.push("");
@@ -379,7 +379,7 @@ class QaReporter implements Reporter {
     const lines: string[] = [
       "# Money-shot digest",
       "",
-      "One confirming frame per test — the visual proof that the behavior under test",
+      "One confirming frame per test - the visual proof that the behavior under test",
       "actually happened. Scroll this page to validate the whole suite by eye.",
       "",
       `${digest.length} shot${digest.length === 1 ? "" : "s"} from this run.`,
@@ -401,7 +401,7 @@ class QaReporter implements Reporter {
         lines.push(
           `### ${statusIcon(item.entry)} ${item.entry.title}`,
           "",
-          `\`${item.entry.specFile}\` — _${item.claim}_`,
+          `\`${item.entry.specFile}\` - _${item.claim}_`,
           "",
           `![${item.claim}](${href})`,
           "",

@@ -5,11 +5,11 @@ type ClaudeEffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
 /**
  * Which auth paths support the Auto permission mode (model-classifier
  * approvals) for a model, per the Claude Code support matrix:
- * - "all" — supported on the Anthropic API, Bedrock/Vertex, and claude.ai
+ * - "all" - supported on the Anthropic API, Bedrock/Vertex, and claude.ai
  *   sign-in (Sonnet 5, Opus 4.7+).
- * - "anthropic-api" — Anthropic API only (Opus 4.6 / Sonnet 4.6); not
+ * - "anthropic-api" - Anthropic API only (Opus 4.6 / Sonnet 4.6); not
  *   available via Bedrock/Vertex or claude.ai subscription sign-in.
- * - "none" — the classifier cannot run on this model anywhere (Haiku,
+ * - "none" - the classifier cannot run on this model anywhere (Haiku,
  *   Sonnet <=4.5, Opus <=4.5, claude-3). The CLI errors if Auto is set.
  */
 export type ClaudeAutoModeSupport = "all" | "anthropic-api" | "none";
@@ -53,7 +53,7 @@ export const CLAUDE_THINKING_OFF_OPTION_ID = "off";
  *
  * - A `[1m]` entry exists ONLY for models the CLI reports as `window:200000`
  *   AND `supports_1m_beta`. Opus 4.7 / 4.8 / 5, Sonnet 5 and Fable 5 are
- *   `native_1m` — the plain id already resolves to a 1M window, so a second
+ *   `native_1m` - the plain id already resolves to a 1M window, so a second
  *   "1M" row would be a duplicate of the same model. Opus 4.5 is 200K with no
  *   `supports_1m_beta`, so it gets no 1M row either. Ignore `supports_1m_suffix`
  *   as a signal: nearly every model carries it, including Haiku 3.5.
@@ -400,7 +400,7 @@ function normalizeMajorMinorClaudeModelId(
   // Fall back to the undecorated id when the manifest has no `[1m]` row, the
   // same way normalizeSingleSegmentClaudeModelId does. Natively-1M models (Opus
   // 4.7/4.8/5) ship one entry, but the CLI still accepts the decorated id and a
-  // persisted agent, personality, or team binding may carry it — without this
+  // persisted agent, personality, or team binding may carry it - without this
   // fallback those resolve to null and silently lose their feature gates.
   const candidates = [
     `claude-${family}-${major}-${minor}${suffix}`,

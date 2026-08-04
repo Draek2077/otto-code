@@ -20,7 +20,7 @@ import { applyRootUiFont } from "./apply-root-font";
 export const COMPACT_UI_FONT_SIZE_BUMP = 2;
 const COMPACT_ICON_SIZE_FACTOR = 2;
 
-// All registered Unistyles keys — pinned literal (greppable, type-checked).
+// All registered Unistyles keys - pinned literal (greppable, type-checked).
 // The `as const` element types are exactly `keyof UnistylesThemes`, so each key
 // is assignable to `UnistylesRuntime.updateTheme`'s first argument with no cast.
 // Only these keys are ever registered (see `styles/unistyles.ts`); every named
@@ -39,17 +39,17 @@ export interface AppearanceInput {
   codeFontSize: number; // already clamped
   syntaxTheme: SyntaxThemeId;
   chatWidth: ChatWidth;
-  // True on compact form factors (phones, narrow windows) — see `useIsCompactFormFactor`.
+  // True on compact form factors (phones, narrow windows) - see `useIsCompactFormFactor`.
   isCompact: boolean;
 }
 
 /**
  * Build the font-size ramp from the canonical `FONT_SIZE` ramp, scaled
  * proportionally by `uiSize / 16` so the type hierarchy is preserved at non-default
- * sizes. Deriving from the authored ramp — NOT the live (possibly already-scaled)
- * theme — makes `applyAppearance` idempotent: repeated applies never compound, and a
+ * sizes. Deriving from the authored ramp - NOT the live (possibly already-scaled)
+ * theme - makes `applyAppearance` idempotent: repeated applies never compound, and a
  * code-size change (uiSize unchanged) leaves the UI ramp at its authored values.
- * `code` is set absolutely to `codeSize`, never scaled by the UI factor — a separate
+ * `code` is set absolutely to `codeSize`, never scaled by the UI factor - a separate
  * control on a separate semantic axis (mono/diff text).
  */
 function scaleFontSize(uiSize: number, codeSize: number): Theme["fontSize"] {
@@ -81,7 +81,7 @@ function scaleIconSize(isCompact: boolean): Theme["iconSize"] {
 /**
  * Patch every registered Unistyles theme with the user's appearance choices.
  * All keys are patched because the active theme can change and adaptive mode
- * can flip light/dark — patching all keys keeps the active key always current and
+ * can flip light/dark - patching all keys keeps the active key always current and
  * makes ordering vs `setTheme`/`setAdaptiveThemes` irrelevant.
  */
 export function applyAppearance(input: AppearanceInput): void {
@@ -98,7 +98,7 @@ export function applyAppearance(input: AppearanceInput): void {
   const iconSize = scaleIconSize(input.isCompact);
 
   for (const key of ALL_THEME_KEYS) {
-    // Spread `...t` first — `updateTheme` replaces the stored theme, it does not
+    // Spread `...t` first - `updateTheme` replaces the stored theme, it does not
     // merge; an omitted key would be dropped. `syntax` follows the theme's own
     // scheme for `auto`; named palettes ignore it. `colors.base`/plain text stays
     // `theme.colors.foreground` (owned by `syntaxTokenStyles.base`, not patched).

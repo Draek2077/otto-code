@@ -1,6 +1,6 @@
 # Attachment lifecycle
 
-Agents produce image bytes — browser screenshots, `Read` of a PNG, a chart a tool rendered — and
+Agents produce image bytes - browser screenshots, `Read` of a PNG, a chart a tool rendered - and
 those bytes have to become a file before anything can show them. Three different stores end up
 holding them, with three different owners and three different rules. Getting the tier wrong is how
 you either leak disk forever or delete something the user was still looking at; both have happened.
@@ -11,17 +11,17 @@ you either leak disk forever or delete something the user was still looking at; 
 | **Preview attachment** | app attachment store, id `preview_*`    | app    | A cache of the tier above. Pinned while live, collected when it is not.    |
 | **Sent attachment**    | app attachment store, id `att_*`        | app    | The user's own content. Referenced by drafts and messages. Never aged out. |
 
-## Tier 1 — materialized images are the record, not a cache
+## Tier 1 - materialized images are the record, not a cache
 
 `materializeProviderImage` (`packages/server/src/server/agent/providers/provider-image-output.ts`)
 writes the bytes and returns a path, and the provider emits `![alt](file:///…)` into the timeline.
-That markdown is persisted. Every later render of that message — tomorrow, after a daemon restart —
+That markdown is persisted. Every later render of that message - tomorrow, after a daemon restart -
 reads the file back. **Nothing regenerates it.** The tool call that produced it is long finished.
 
 So it is not a cache, and the two properties it needs are the two the old implementation broke:
 
 - **It must outlive the process.** It used to live in a per-daemon-start `mkdtemp` under the OS temp
-  directory. Nothing ever removed those directories, so they accumulated one per daemon start — and
+  directory. Nothing ever removed those directories, so they accumulated one per daemon start - and
   the OS removed their _contents_ on its own schedule, so screenshots disappeared from transcripts
   that were still open. Unbounded growth and silent data loss, from one choice.
 - **It must be bounded by something we control.** `$OTTO_HOME/attachments` is one directory, ours to
@@ -34,7 +34,7 @@ genuinely cold bytes age out.
 
 ### The policy
 
-`startMaterializedImageHousekeeping` runs at daemon start and daily after that (`unref`'d — never a
+`startMaterializedImageHousekeeping` runs at daemon start and daily after that (`unref`'d - never a
 reason for the process to stay alive). Two levers, in `provider-image-output.ts`:
 
 | Lever                                | Default | What it is for                                                           |
@@ -44,7 +44,7 @@ reason for the process to stay alive). Two levers, in `provider-image-output.ts`
 
 `selectStaleMaterializedImages` (`provider-image-retention.ts`) is pure and separately tested, for
 the reason `selectArchivedForDeletion` is: every name it returns is unlinked with no undo, and the
-failure is silent — the transcript keeps its markdown and quietly renders alt text instead.
+failure is silent - the transcript keeps its markdown and quietly renders alt text instead.
 
 **This is a deliberate exception to "nothing deletes on a timer"** ([chat-lifecycle](chat-lifecycle.md)
 holds that line for chat records). A chat record is the user's writing and is irreplaceable; a
@@ -53,15 +53,15 @@ alternative is a directory that grows forever. The numbers are set so a normal u
 either bound.
 
 The startup pass also removes the retired `otto-attachments-*` temp directories, but only ones with
-no file written in the last week — this repo runs installed and dev daemons side by side, and a
+no file written in the last week - this repo runs installed and dev daemons side by side, and a
 directory a live older daemon is still writing to is left alone.
 
-## Tier 2 — preview attachments are a cache, and must be pinned
+## Tier 2 - preview attachments are a cache, and must be pinned
 
 The app cannot render a daemon-side path directly, so it reads the file over the file RPC and
 persists a local copy: `client.readFile` → `persistAttachmentFromBytes` → `useAttachmentPreviewUrl`.
 That copy is a **preview attachment**, ided by `createPreviewAttachmentId`, and it is the thing three
-surfaces render from — `AssistantMarkdownImage` in chat, the workspace-image path in the markdown
+surfaces render from - `AssistantMarkdownImage` in chat, the workspace-image path in the markdown
 viewer, and the file-tab image preview.
 
 The draft store's GC (`runAttachmentGc`) owns the whole app attachment store and deletes anything it
@@ -70,24 +70,24 @@ workspace attachment store. **A preview attachment hangs off none of them.** It 
 save, so a keystroke deleted every screenshot in the transcript and the chat rendered "Unable to load
 image preview" from then on.
 
-`attachments/preview-pins.ts` is the fix. Minting a preview id pins it — inside
-`createPreviewAttachmentId`, before the bytes are written, so no file ever exists unpinned — and the
+`attachments/preview-pins.ts` is the fix. Minting a preview id pins it - inside
+`createPreviewAttachmentId`, before the bytes are written, so no file ever exists unpinned - and the
 GC counts pinned ids as referenced. The pin set is capped at 512 with the least recently minted
 falling out first, so a long desktop session cannot grow the store without bound; React Query has
 dropped the matching metadata by then, so an image that far back in the scrollback refetches and
 re-pins when it is next rendered.
 
-Deleting a preview attachment is always safe in principle — tier 1 can regenerate it — which is
+Deleting a preview attachment is always safe in principle - tier 1 can regenerate it - which is
 exactly why the pin is a cap and not a permanent reference.
 
 **The rule for the next feature that persists an attachment nobody sends:** if it does not hang off a
 draft, a queued message or the workspace attachment store, it needs a reference in `runAttachmentGc`
 or it will be deleted, quickly and silently.
 
-## Tier 3 — sent attachments
+## Tier 3 - sent attachments
 
 `att_*` ids: images and files the user attached to a message. Referenced by the draft that holds
-them and by the stream item once sent. Never swept by age or size — this is user content, and the
+them and by the stream item once sent. Never swept by age or size - this is user content, and the
 rule that governs it is the chat's, not this page's.
 
 ## The Storage section
@@ -101,7 +101,7 @@ record you can:
 | Images on this host          | `attachments.images.*` RPCs                   | Dry run, then a destructive confirm quoting the real count and size. Not undoable.     |
 | Cached copies on this device | the app store's `usage()` / `clearPreviews()` | A plain action. Every byte is a copy of the row above, so the worst case is a refetch. |
 
-Sent attachments are shown only as context inside the preview row's hint — their size, and the fact
+Sent attachments are shown only as context inside the preview row's hint - their size, and the fact
 that clearing never touches them. Offering to sweep the user's own content from a disk-space screen
 would be the wrong default even with a confirm.
 
@@ -124,6 +124,6 @@ device-local row still renders, because it needs no daemon at all.
 
 **Per-chat and per-workspace reclaim.** Filenames are a content hash, so the same bytes may be
 referenced from three transcripts; "this workspace's images" is an ownership that does not exist and
-would have to be invented — an index maintained at materialize time, kept honest across chat delete
+would have to be invented - an index maintained at materialize time, kept honest across chat delete
 and workspace archive. Age plus a global clear carries the feature. Revisit only if someone asks for
 scope, and see `projects/README.md` before starting.

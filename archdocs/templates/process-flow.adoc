@@ -1,8 +1,8 @@
-= [Flow name] — Process Flow
+= [Flow name] - Process Flow
 :description: One sentence: what this flow accomplishes.
-// TEMPLATE — copy into archdocs/pages/, keep every section, delete the comments.
+// TEMPLATE - copy into archdocs/pages/, keep every section, delete the comments.
 // Budget: ≤ 6 participants, ≤ 20 messages per sequence diagram. Model the happy path
-// plus the failure branches that change behavior — not every conceivable error.
+// plus the failure branches that change behavior - not every conceivable error.
 
 == Purpose & trigger
 

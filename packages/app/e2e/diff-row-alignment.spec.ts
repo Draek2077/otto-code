@@ -227,7 +227,7 @@ test("changes diff keeps code rows aligned with the gutter", async ({ page }) =>
 // DEFERRED(paseoDiffTab): the Paseo v0.2.5 merge appended three tests to this
 // file. Otto's own three (gutter alignment, flat/tree lists, code-size changes)
 // are untouched and still run; these three drive upstream's working-diff panel,
-// which Otto does not register — `working-diff-panel`, `changes-open-tab`,
+// which Otto does not register - `working-diff-panel`, `changes-open-tab`,
 // `diff-file-N-toggle`, `diff-file-N-actions` and `files-sort-label` all exist
 // nowhere in src. Otto's Changes view builds `diff-file-N` and
 // `diff-file-N-body` only. Un-skip alongside the diff-tab adoption described in
@@ -640,7 +640,7 @@ async function changeCodeFontSizeFromSettings(page: Page, codeFontSize: number):
 }
 
 // The code font size control is a custom drag slider (no native <input>, no
-// keyboard support — see components/ui/slider.tsx), so setting a value means
+// keyboard support - see components/ui/slider.tsx), so setting a value means
 // moving the pointer to the track position for that value and releasing it.
 async function dragCodeFontSizeSlider(page: Page, codeFontSize: number): Promise<void> {
   const slider = page.getByLabel("Code font size");

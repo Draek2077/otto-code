@@ -1,7 +1,7 @@
 // The always-on resource monitor.
 //
 // Runs from app start so that by the time an FPS complaint happens the history
-// already exists — a leak you have to reproduce on demand is a leak you never
+// already exists - a leak you have to reproduce on demand is a leak you never
 // find. Two loops, deliberately different:
 //
 //  - a `requestAnimationFrame` chain that only times frames (the symptom), and
@@ -114,7 +114,7 @@ class ResourceMonitor {
     };
   }
 
-  /** Take a census now, outside the interval — used by the report UI's refresh. */
+  /** Take a census now, outside the interval - used by the report UI's refresh. */
   takeSample(): ResourceSample | null {
     let frames: FrameWindowStats | null = null;
     try {

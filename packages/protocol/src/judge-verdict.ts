@@ -11,7 +11,7 @@ import { z } from "zod";
 // Wire-forward-compat: kept a pure structural schema with plain leaves (no
 // transforms), so it can later ride a protocol message without breaking older
 // peers. The outcome rides as a plain string (like personality roles and effort
-// levels) rather than a z.enum, so the vocabulary can grow — consumers normalize
+// levels) rather than a z.enum, so the vocabulary can grow - consumers normalize
 // through `isJudgeOutcome` / `normalizeJudgeOutcome` instead of trusting the raw
 // value.
 
@@ -29,7 +29,7 @@ export function isJudgeOutcome(value: string): value is JudgeOutcome {
 
 /**
  * Coerce a raw verdict string to a known outcome. Anything that isn't an exact
- * known outcome is treated as `"fail"` — an unparseable verdict must not be read
+ * known outcome is treated as `"fail"` - an unparseable verdict must not be read
  * as a pass, so a gate never advances on a value it doesn't understand.
  */
 export function normalizeJudgeOutcome(value: string | undefined): JudgeOutcome {

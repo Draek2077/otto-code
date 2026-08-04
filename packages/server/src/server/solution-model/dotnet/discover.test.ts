@@ -6,7 +6,7 @@ import { discoverSolutions } from "./discover.js";
 
 /**
  * Discovery is the one part of this subsystem that runs for **every** workspace, so its cost and
- * its silence are the properties under test — not its cleverness.
+ * its silence are the properties under test - not its cleverness.
  */
 describe("solution discovery", () => {
   let root: string;

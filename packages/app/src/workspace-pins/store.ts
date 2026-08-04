@@ -51,7 +51,7 @@ export const usePinnedTargetsStore = create<PinnedTargetsState>()(
           pinned = applyDefaultPinnedTargets(pinned);
         }
         // v2 moved "New agent" from a dedicated inline button into a pinnable
-        // launcher alongside Terminal/Browser — back-fill it for anyone
+        // launcher alongside Terminal/Browser - back-fill it for anyone
         // upgrading so the button doesn't silently disappear.
         if (version < 2 && !isTargetPinned(pinned, { kind: "draft" })) {
           pinned = [{ kind: "draft" }, ...pinned];

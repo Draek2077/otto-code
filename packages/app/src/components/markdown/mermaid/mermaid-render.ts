@@ -3,11 +3,11 @@ import { buildMermaidThemeVariables } from "./mermaid-theme";
 
 // The one place that knows about the mermaid library. Requires a DOM (mermaid
 // measures label text by laying it out), so it only ever runs on web/Electron
-// or inside the native webview payload — never in the React Native runtime.
+// or inside the native webview payload - never in the React Native runtime.
 //
 // The `import("mermaid")` is deliberately dynamic: mermaid is ~3.4 MB minified
 // and must stay out of the startup graph (see docs/feature-flags.md on Metro's
-// no-tree-shake constraint — a dynamic boundary is the only lever that works).
+// no-tree-shake constraint - a dynamic boundary is the only lever that works).
 
 const MAX_DIAGRAM_SOURCE_LENGTH = 50_000;
 
@@ -60,7 +60,7 @@ function stripSvgMaxWidth(openingTag: string): string {
  * Mermaid's `useMaxWidth` emits `width="100%"` plus an inline
  * `max-width: <natural>px` on the `<svg>`. That inline cap fights any container
  * that wants to scale the diagram, so it is stripped and the natural size is
- * returned instead — the host applies it as a container `maxWidth` and lets the
+ * returned instead - the host applies it as a container `maxWidth` and lets the
  * viewBox drive the height.
  */
 function normalizeSvgSizing(svg: string): string {
@@ -93,7 +93,7 @@ function toErrorMessage(error: unknown): string {
  * Render mermaid source to an SVG string.
  *
  * Throws with a human-readable message on anything malformed; callers show the
- * source instead. Never resolves with an empty or zero-sized diagram — a
+ * source instead. Never resolves with an empty or zero-sized diagram - a
  * missing viewBox is treated as a failure so no caller can end up drawing an
  * empty box.
  */
@@ -162,7 +162,7 @@ function outcomeKey(code: string, theme: MermaidThemeConfig): string {
  * react-native-markdown-display mints fresh node keys on every parse, so a
  * markdown surface that re-parses (a streaming chat message, a re-read file)
  * unmounts and remounts every block. Without this, each remount would pay for a
- * full mermaid render — and would flash the source while doing it.
+ * full mermaid render - and would flash the source while doing it.
  */
 export function peekMermaidOutcome(
   code: string,
@@ -171,7 +171,7 @@ export function peekMermaidOutcome(
   return outcomes.get(outcomeKey(code, theme));
 }
 
-/** Render (or recall) an outcome. Never throws — failure is a return value. */
+/** Render (or recall) an outcome. Never throws - failure is a return value. */
 export async function resolveMermaidOutcome(
   code: string,
   theme: MermaidThemeConfig,

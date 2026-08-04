@@ -32,7 +32,7 @@ import { switchWorkspaceViaSidebar, waitForSidebarHydration } from "./helpers/wo
 // Regression: a draft submitted from the NEW-WORKSPACE composer auto-submits
 // inside the freshly created workspace's own draft tab. The personality picked
 // in the originating composer rides the pending submission (autoSubmitConfig),
-// not the destination tab's picker state — resolveDraftPersonality
+// not the destination tab's picker state - resolveDraftPersonality
 // (workspace-tab-core.ts) once read the destination picker and dropped it.
 test.describe("Personality survives new-workspace auto-submit", () => {
   test.describe.configure({ timeout: 240_000 });
@@ -50,12 +50,12 @@ test.describe("Personality survives new-workspace auto-submit", () => {
     const repo = await createTempGitRepo("personality-autosubmit-");
     // A SECOND repo, registered as a project but never backed by a workspace.
     // The composer refuses to create a workspace on a directory that already
-    // backs one, and opening `repo` backs it with "main" — so the create must
+    // backs one, and opening `repo` backs it with "main" - so the create must
     // target this workspace-free project instead.
     const targetRepo = await createTempGitRepo("personality-autosubmit-target-");
     let openedProjectWorkspaceId: string | null = null;
     // Removal takes the host-local project id, never the cross-host grouping
-    // key the picker renders — passing the key made both removals no-ops that
+    // key the picker renders - passing the key made both removals no-ops that
     // the .catch() swallowed, leaving projects on deleted directories.
     let openedProjectId: string | null = null;
     let targetProjectId: string | null = null;

@@ -9,7 +9,7 @@ import type {
 // Update runtime for builds that cannot replace themselves in place.
 //
 // macOS is the only such platform today. This fork has no Apple Developer
-// identity, so mac builds ship unsigned — arm64 gets an ad-hoc signature
+// identity, so mac builds ship unsigned - arm64 gets an ad-hoc signature
 // (arm64 refuses to execute without one) and x64 gets nothing at all. An ad-hoc
 // signature's designated requirement is derived from the cdhash, which changes
 // on every build, so Squirrel.Mac can never satisfy the running app's
@@ -180,7 +180,7 @@ export class ManualDownloadUpdateRuntime implements AppUpdateRuntime {
 
     // Staged rollout still applies. Releases carry no rolloutHours here (that
     // lives in the manifests we don't publish for mac), so shouldAdmitUpdate
-    // admits immediately — the call is kept so a future manifest source works
+    // admits immediately - the call is kept so a future manifest source works
     // without touching this runtime.
     const admitted = await configuration.shouldAdmitUpdate(info);
     return { isUpdateAvailable: admitted, updateInfo: info };

@@ -15,8 +15,8 @@ import path from "node:path";
  *
  * **The plan is executed, not re-derived.** The plan lives here, keyed by id; a caller applies
  * by id and never by supplying edits. That keeps the client from being able to post arbitrary
- * text at arbitrary paths — which is what the earlier "recompute and compare" version was
- * really protecting — while giving the user the thing they actually asked for: the edits they
+ * text at arbitrary paths - which is what the earlier "recompute and compare" version was
+ * really protecting - while giving the user the thing they actually asked for: the edits they
  * audited are the edits that run. Recomputing instead would refuse the whole job whenever
  * anything moved, and in a product whose agents write files continuously, that refusal is the
  * common case rather than the exceptional one.
@@ -27,7 +27,7 @@ import path from "node:path";
  *
  * **Undo is verified the same way.** The before-image is restored only if the file still holds
  * exactly what this job wrote. Anything else means someone edited it since, and a blind
- * restore would destroy their work — so that file is reported as changed-since instead.
+ * restore would destroy their work - so that file is reported as changed-since instead.
  */
 
 /** One replacement, 1-based and end-exclusive, carrying the text it expects to find. */
@@ -39,7 +39,7 @@ export interface PlannedEdit {
   newText: string;
   /**
    * What must currently be at that range for the edit to be safe to apply. Captured when the
-   * plan is made — it is the entire basis for detecting that a file moved under us.
+   * plan is made - it is the entire basis for detecting that a file moved under us.
    */
   oldText: string;
 }
@@ -59,7 +59,7 @@ export interface EditJobPlan {
 export type FileOutcomeKind =
   /** Every edit in this file applied. */
   | "applied"
-  /** Some applied, some did not — `skippedEdits` says how many. */
+  /** Some applied, some did not - `skippedEdits` says how many. */
   | "partial"
   /** Nothing applied here. */
   | "failed";
@@ -121,7 +121,7 @@ export interface EditJobStoreOptions {
   /**
    * How many plans and runs to keep. Small on purpose: these hold whole file contents, and a
    * job the user walked away from an hour ago is not one they are coming back to. Eviction
-   * makes an apply fail with "the plan expired", which is a clear, recoverable message —
+   * makes an apply fail with "the plan expired", which is a clear, recoverable message -
    * unlike an unbounded map, which is a leak nobody sees until the daemon is fat.
    */
   maxEntries?: number;
@@ -309,7 +309,7 @@ async function applyFile(
 }
 
 /**
- * Restore one file — but only if it still holds exactly what the run wrote.
+ * Restore one file - but only if it still holds exactly what the run wrote.
  *
  * The check is the point. An undo that writes the before-image unconditionally would silently
  * destroy anything saved since the run, which is a far worse outcome than not undoing.

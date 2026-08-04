@@ -12,7 +12,7 @@ import { formatCompactTokenCount } from "./track-presentation";
 import { useSubagentsForParent } from "./select";
 
 // Icon colors must come through a theme-reactive prop, and `useUnistyles()` is
-// banned — wrapping the leaf icons is the sanctioned route (docs/unistyles.md).
+// banned - wrapping the leaf icons is the sanctioned route (docs/unistyles.md).
 const ThemedUpload = withUnistyles(Upload);
 const ThemedDownload = withUnistyles(Download);
 const ThemedDollarSign = withUnistyles(DollarSign);
@@ -26,7 +26,7 @@ interface ChatMetricsBarProps {
 
 /**
  * The chat's own metrics, in one centered icon+number row at the top of the
- * pane — scoped to THIS chat and everything spawned under it, which is the
+ * pane - scoped to THIS chat and everything spawned under it, which is the
  * number no surface used to show.
  *
  * Two vocabulary rules it exists to enforce (docs/glossary.md):
@@ -35,7 +35,7 @@ interface ChatMetricsBarProps {
  *   which lives on the composer's context indicator and in Context Management.
  *   The two share no units and never appear in the same readout.
  * - **Cost is reported, never estimated.** A provider that cannot price its own
- *   work gets no cost segment at all — not a rate-table guess. When only some of
+ *   work gets no cost segment at all - not a rate-table guess. When only some of
  *   the tree was priced, the figure is prefixed as a floor, because presenting a
  *   floor as a total is the same lie in a smaller font.
  *
@@ -50,7 +50,7 @@ export function ChatMetricsBar({ serverId, agentId }: ChatMetricsBarProps): Reac
 
 /**
  * Split from the exported component so the store subscriptions below only ever
- * mount when the bar is switched on — a chat with a busy fan-out would otherwise
+ * mount when the bar is switched on - a chat with a busy fan-out would otherwise
  * re-select totals on every agent update for people who never asked for them.
  */
 function ChatMetricsBarContent({ serverId, agentId }: ChatMetricsBarProps): ReactElement | null {
@@ -58,7 +58,7 @@ function ChatMetricsBarContent({ serverId, agentId }: ChatMetricsBarProps): Reac
   const totals = useChatTotals({ serverId, agentId });
   const rows = useSubagentsForParent({ serverId, parentAgentId: agentId });
   // COMPAT(cumulativeUsage): an older daemon sends no split and no cost, so the
-  // bar shows tokens only. Not a fallback path — cost is simply the capability
+  // bar shows tokens only. Not a fallback path - cost is simply the capability
   // the host doesn't have yet.
   const hasCostCapability = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.cumulativeUsage === true,
@@ -78,7 +78,7 @@ function ChatMetricsBarContent({ serverId, agentId }: ChatMetricsBarProps): Reac
   }
 
   const cost = hasCostCapability ? formatChatCost(totals) : null;
-  // Input is shown as one figure — fresh, cache-read and cache-write together.
+  // Input is shown as one figure - fresh, cache-read and cache-write together.
   // The cache split matters for PRICING, which the daemon already did; showing
   // three input numbers in a toolbar would be noise.
   const inputTokens =
@@ -144,7 +144,7 @@ interface ChatCostDisplay {
  * The cost segment, or null when there is nothing honest to show.
  *
  * A `partial` total is rendered with a leading `≥` because some of the tree was
- * unpriced — the number is a floor, and the tooltip says so outright. `none`
+ * unpriced - the number is a floor, and the tooltip says so outright. `none`
  * renders nothing at all: an absent cost is the correct answer for a local
  * model, and inventing one from a rate table is exactly the behavior this
  * feature removes.
@@ -163,7 +163,7 @@ export function formatChatCost(totals: ChatTotals): ChatCostDisplay | null {
 // The icon arrives as a COMPONENT, not an element: passing JSX through a prop
 // hands the parent a fresh object every render (react-perf/jsx-no-jsx-as-prop).
 // The Themed* wrappers are module-scope constants, so this reference is stable.
-// Typed off one of them rather than hand-written — withUnistyles adds `uniProps`
+// Typed off one of them rather than hand-written - withUnistyles adds `uniProps`
 // and forwards refs, and a hand-rolled signature would drift from that.
 type MetricIcon = typeof ThemedUpload;
 

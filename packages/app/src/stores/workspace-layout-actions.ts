@@ -734,7 +734,7 @@ function detachTabFromTree(
   // the adjacent tab (prefer the one before it, else the one after) rather than
   // letting normalizePaneAfterTabChange fall back to the last tab in the set.
   // This keeps splits/moves from yanking the source pane's selection to the end
-  // — e.g. opening the Visualizer inserts its tab after the focused one and then
+  // - e.g. opening the Visualizer inserts its tab after the focused one and then
   // splits it out; focus should return to the tab that was focused before.
   const remainingTabs = paneNode.pane.tabs.filter((entry) => entry.tabId !== input.tabId);
   let nextFocusedTabId = paneNode.pane.focusedTabId;
@@ -1062,7 +1062,7 @@ function stripEphemeralTabsFromNode(node: SplitNodeInternal): SplitNodeInternal 
 /**
  * Returns a copy of `layout` with every ephemeral tab (commit diff tabs) removed
  * from each pane. Applied in the layout store's `partialize` so commit diff tabs
- * are never written to storage — they're dropped on the next reload rather than
+ * are never written to storage - they're dropped on the next reload rather than
  * restored pointing at a possibly-rebased SHA. Working diff tabs and all other
  * tab kinds are left intact. Panes (and their ids/structure) are preserved even
  * when emptied; the parent-tab map is renormalized against the surviving tabs.

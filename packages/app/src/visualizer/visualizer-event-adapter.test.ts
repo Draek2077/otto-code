@@ -116,7 +116,7 @@ describe("isVisualizerAgentTerminal", () => {
     ).toBe(false);
   });
 
-  test("an idle attended (native/root) agent is NOT terminal — it idles between turns", () => {
+  test("an idle attended (native/root) agent is NOT terminal - it idles between turns", () => {
     expect(isVisualizerAgentTerminal({ ...base, status: "idle", attend: "attended" })).toBe(false);
     expect(isVisualizerAgentTerminal({ ...base, status: "idle", attend: undefined })).toBe(false);
   });
@@ -231,7 +231,7 @@ describe("spawn/lifecycle event builders", () => {
     expect(
       buildRootAgentSpawnEvent({ ctx: CTX, model: null, provider: "my-custom", time: 0 }).payload,
     ).toEqual({ name: "Main Agent", isMain: true });
-    // A partial pair is dropped — the page needs both to tint.
+    // A partial pair is dropped - the page needs both to tint.
     expect(
       buildRootAgentSpawnEvent({
         ctx: CTX,
@@ -273,7 +273,7 @@ describe("buildContextUpdateEvent", () => {
     expect(event?.payload).toEqual({ agent: "Main Agent", tokens: 1000, tokensMax: 200000 });
   });
 
-  test("a lifetime total alone is worth emitting — without a tokens field", () => {
+  test("a lifetime total alone is worth emitting - without a tokens field", () => {
     const event = buildContextUpdateEvent({ ctx: CTX, cumulativeTokens: 19000, time: 1 });
     expect(event?.payload).toEqual({ agent: "Main Agent", cumulativeTokens: 19000 });
   });
@@ -309,12 +309,12 @@ describe("buildContextUpdateEvent", () => {
 
   test("omits costUsd entirely for a provider that cannot price its own work", () => {
     // A local model: real tokens, no knowable cost. The page must show a blank,
-    // not a rate-table estimate — that is the whole point of the field.
+    // not a rate-table estimate - that is the whole point of the field.
     const event = buildContextUpdateEvent({ ctx: CTX, cumulativeTokens: 40000, time: 1 });
     expect(event?.payload).not.toHaveProperty("costUsd");
   });
 
-  test("a cost alone is worth emitting — a settled sub-agent may report only that", () => {
+  test("a cost alone is worth emitting - a settled sub-agent may report only that", () => {
     const event = buildContextUpdateEvent({ ctx: CTX, costUsd: 0.01, time: 1 });
     expect(event?.payload).toEqual({ agent: "Main Agent", costUsd: 0.01 });
   });
@@ -638,7 +638,7 @@ describe("timelineItemToSimulationEvents", () => {
       item,
       time: 10,
     });
-    // Windows path stays Windows — separators are NOT converted to `/`. The root
+    // Windows path stays Windows - separators are NOT converted to `/`. The root
     // and its trailing separator are dropped, so the child path leads with `packages`.
     expect(events[0]?.payload).toMatchObject({
       args: "packages\\app\\src\\foo.ts",
@@ -706,7 +706,7 @@ describe("timelineItemToSimulationEvents", () => {
   });
 
   test("replaces a bare/quoted workspace root (no trailing separator) with '.'", () => {
-    // The screenshot case: `cd "<root>"` — the root itself, quoted, forward-
+    // The screenshot case: `cd "<root>"` - the root itself, quoted, forward-
     // slashed, with nothing after it. Must still collapse to `cd "."`.
     const item: AgentTimelineItem = {
       type: "tool_call",
@@ -857,7 +857,7 @@ describe("timelineItemToSimulationEvents", () => {
 
   test("sub_agent dispatch/return child label matches the observed node title rule", () => {
     // The page keys dispatch/return particles on the parent→child edge by
-    // child NAME — which is the daemon-frozen observed row title. A named
+    // child NAME - which is the daemon-frozen observed row title. A named
     // subAgentType must win over the description (title rule), else the
     // particle targets an edge that doesn't exist and silently never renders.
     const item: AgentTimelineItem = {

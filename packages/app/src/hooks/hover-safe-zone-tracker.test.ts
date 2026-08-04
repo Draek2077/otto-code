@@ -52,11 +52,11 @@ describe("hover safe-zone tracker", () => {
     expect(handle.enters).toBe(1);
     expect(handle.leaves).toBe(0);
 
-    // Outside everything — fires leave once.
+    // Outside everything - fires leave once.
     handle.pointerMoved(300, 40);
     expect(handle.leaves).toBe(1);
 
-    // Back into the bridge — fires enter again.
+    // Back into the bridge - fires enter again.
     handle.pointerMoved(130, 40);
     expect(handle.enters).toBe(2);
   });
@@ -77,7 +77,7 @@ describe("hover safe-zone tracker", () => {
     handle.pointerLeftWindow();
     expect(handle.leaves).toBe(1);
 
-    // Already outside — blur does not fire a second leave.
+    // Already outside - blur does not fire a second leave.
     handle.windowBlurred();
     expect(handle.leaves).toBe(1);
   });
@@ -89,7 +89,7 @@ describe("hover safe-zone tracker", () => {
     handle.pointerMoved(50, 40);
     expect(handle.enters).toBe(1);
 
-    // Inside the (now-missing) bridge — counts as outside.
+    // Inside the (now-missing) bridge - counts as outside.
     handle.pointerMoved(110, 40);
     expect(handle.leaves).toBe(1);
   });
@@ -100,7 +100,7 @@ describe("hover safe-zone tracker", () => {
       content: { left: 100, right: 300, top: 60, bottom: 100 },
     });
 
-    // Outside both rects, in what would be a bridge — should be outside.
+    // Outside both rects, in what would be a bridge - should be outside.
     handle.pointerMoved(150, 55);
     expect(handle.enters).toBe(0);
     expect(handle.leaves).toBe(1);

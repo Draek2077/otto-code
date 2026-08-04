@@ -21,7 +21,7 @@ import {
 } from "./workspace-provisioning-service.js";
 
 // Real file-backed registries + a fake git-service port (the only dependency that
-// shells out to git in production). No module mocks — the service is exercised
+// shells out to git in production). No module mocks - the service is exercised
 // through the same interface its callers in session.ts use.
 
 const logger = createTestLogger();

@@ -121,7 +121,7 @@ test.describe("Text editor", () => {
     await expect(page.getByTestId("file-split-editor")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("file-split-preview")).toBeVisible();
 
-    // Back to the full editor, type — the buffer is dirty.
+    // Back to the full editor, type - the buffer is dirty.
     await page.getByTestId("file-view-mode-editor").click();
     await editorContent.click();
     await page.keyboard.type("sigma ");
@@ -190,7 +190,7 @@ test.describe("Text editor", () => {
       .toContain("mine");
   });
 
-  // Skipped, not deleted: the wand button was removed from the editor toolbar —
+  // Skipped, not deleted: the wand button was removed from the editor toolbar -
   // a plain document editor does not carry an AI action, and this one was not
   // scoped to the file it appeared in. See docs/refine.md ("Prose only").
   // Delete this spec once Refine's own review flow has a spec of its own.

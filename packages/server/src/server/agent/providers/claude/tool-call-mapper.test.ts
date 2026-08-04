@@ -445,7 +445,7 @@ describe("claude tool-call mapper", () => {
   });
 
   // The subagent fan-out tool must carry a sub_agent detail from its FIRST
-  // running item — per-callId consumers (visualizer dispatch/return, chat
+  // running item - per-callId consumers (visualizer dispatch/return, chat
   // sub-agent card) never see the sidechain tracker's later enriched updates.
   it.each(["Task", "Agent"])("maps a running %s call to a sub_agent detail", (name) => {
     const item = expectMapped(

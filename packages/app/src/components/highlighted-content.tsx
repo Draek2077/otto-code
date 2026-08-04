@@ -18,7 +18,7 @@ interface HighlightedLinesProps {
   // rendered (used by Read, which carries a server-normalized offset).
   startLine?: number;
   // "Wrap long lines" appearance setting: soft-wrap long lines instead of
-  // relying on a surrounding horizontal scroller. Visual only — selection/copy
+  // relying on a surrounding horizontal scroller. Visual only - selection/copy
   // still yields the original unwrapped text. Tokenization is untouched, so
   // syntax highlighting is unaffected.
   wrap?: boolean;
@@ -95,7 +95,7 @@ export function HighlightedLines({ lines, startLine, wrap = false }: Highlighted
  * `HighlightedLines` renders one `<View>` per line, so it can't be mixed with
  * plain text inside a single `<Text>`. This is for the case where it has to be:
  * the shell command that shares a Text with its `$` prompt and its (unhighlighted)
- * output. Style comes from the parent — these spans only carry token colors.
+ * output. Style comes from the parent - these spans only carry token colors.
  */
 export function highlightedSpans(lines: KeyedLine[]): React.ReactNode[] {
   const spans: React.ReactNode[] = [];

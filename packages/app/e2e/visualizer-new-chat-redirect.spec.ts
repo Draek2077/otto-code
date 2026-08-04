@@ -9,7 +9,7 @@ import {
 
 // Regression (resolveWorkspaceNewChatPlacement, workspace-pane-state.ts): a
 // "New chat" fired from the Visualizer's own pane must never land as a second
-// tab inside that pane — the Visualizer is a companion view that owns its pane.
+// tab inside that pane - the Visualizer is a companion view that owns its pane.
 // The draft is redirected to a sibling pane (reusing the chat pane already on
 // screen), and the Visualizer stays where it is.
 
@@ -39,7 +39,7 @@ test.describe("Visualizer new-chat redirect", () => {
       const visualizerRow = visualizerPaneTabsRow(page);
       await expect(visualizerRow).toBeVisible({ timeout: 30_000 });
 
-      // Sanity: the Visualizer owns its pane — the chat tab lives in another
+      // Sanity: the Visualizer owns its pane - the chat tab lives in another
       // pane's tab row.
       await expect(
         visualizerRow.locator(`[data-testid="workspace-tab-agent_${mock.agentId}"]`),
@@ -54,7 +54,7 @@ test.describe("Visualizer new-chat redirect", () => {
       await expect(newAgentItem).toBeVisible({ timeout: 10_000 });
       await newAgentItem.click();
 
-      // The draft tab appears — but never inside the Visualizer's pane.
+      // The draft tab appears - but never inside the Visualizer's pane.
       const draftTab = page.locator(`${DRAFT_TAB_SELECTOR}:visible`).first();
       await expect(draftTab).toBeVisible({ timeout: 30_000 });
       await expect(visualizerRow.locator(DRAFT_TAB_SELECTOR)).toHaveCount(0);

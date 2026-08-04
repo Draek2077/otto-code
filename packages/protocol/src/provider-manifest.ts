@@ -97,7 +97,7 @@ const CLAUDE_MODES: AgentProviderModeDefinition[] = [
     colorTier: "moderate",
     isUnattended: true,
     // System-assigned only: the coercion target for unattended runs and for Auto
-    // on models that can't run it (Haiku). Users never pick it — it's hidden from
+    // on models that can't run it (Haiku). Users never pick it - it's hidden from
     // mode dropdowns and locks the control when it's an agent's active mode.
     userSelectable: false,
   },
@@ -237,6 +237,15 @@ export const OMP_MODES: AgentProviderModeDefinition[] = [
   },
 ];
 
+/**
+ * The daemon's built-in local AI host (see the definition below). Exported so
+ * other protocol/server/client code can recognize this id without repeating
+ * the string literal - notably ProviderOverridesSchema's builtin-provider
+ * check in provider-config.ts, which otherwise requires `extends`/`label` on
+ * any `providers.otto-brain` config entry.
+ */
+export const OTTO_BRAIN_PROVIDER_ID = "otto-brain";
+
 export const AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [
   {
     id: "claude",
@@ -294,6 +303,19 @@ export const AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [
     enabledByDefault: false,
     defaultModeId: "ask",
     modes: OMP_MODES,
+  },
+  {
+    // The daemon's own local AI host. Built in rather than a catalog-installed
+    // OpenAI-compatible profile: its endpoint and credential come from the
+    // brain settings (Settings -> Host -> Otto Brain), never from per-provider
+    // URL/API-key fields. Modes are empty here for the same reason every
+    // openai-compat provider's are: the client reports them at catalog time.
+    id: OTTO_BRAIN_PROVIDER_ID,
+    label: "Otto Brain",
+    description:
+      "Otto's built-in local AI host. Serves your local models over an OpenAI-compatible endpoint, no external server required.",
+    defaultModeId: "default",
+    modes: [],
   },
 ];
 
@@ -354,7 +376,7 @@ export function getUnattendedModeId(
 
 /**
  * Whether a user may pick this mode themselves. False only for modes explicitly
- * flagged `userSelectable: false` in the static manifest (Claude "dontAsk") — a
+ * flagged `userSelectable: false` in the static manifest (Claude "dontAsk") - a
  * system-assigned mode that agents can run in but no one selects by hand. Unknown
  * modes (dynamic/ACP, custom providers) default to selectable. The flag is a
  * static property of the mode, so this always consults the built-in manifest

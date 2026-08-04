@@ -50,7 +50,7 @@ if (typeof globalThis.cancelAnimationFrame !== "function") {
 }
 
 // jsdom does not implement matchMedia, and react-native-reanimated calls it at module load
-// (`ReducedMotion.ts`) — so any jsdom test whose graph reaches reanimated throws before its
+// (`ReducedMotion.ts`) - so any jsdom test whose graph reaches reanimated throws before its
 // first assertion. Reporting "no match" is right for a headless run: no reduced-motion
 // preference, no media query satisfied.
 if (
@@ -82,7 +82,7 @@ vi.mock("react-native-unistyles", () => ({
     setTheme: vi.fn(),
     themeName: "light",
   },
-  // Wraps a leaf component so it can read theme values (see docs/unistyles.md — it wraps
+  // Wraps a leaf component so it can read theme values (see docs/unistyles.md - it wraps
   // leaves, never composites). The real one returns an equivalent component; passing the
   // component straight through is enough for tests, which assert behaviour rather than theming.
   withUnistyles: <T>(Component: T) => Component,

@@ -1,5 +1,5 @@
 /**
- * ProvidersStep — wizard step 2. Read-only list of the providers Otto detected
+ * ProvidersStep - wizard step 2. Read-only list of the providers Otto detected
  * on the wizard's host (detection is the daemon's job and already automatic),
  * plus one choice: the primary provider the rest of setup binds to. No auth
  * flows, no enable toggles.

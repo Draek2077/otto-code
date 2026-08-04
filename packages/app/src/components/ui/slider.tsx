@@ -38,7 +38,7 @@ export interface SliderProps {
 
 // Cross-platform drag slider (no third-party slider dependency in this repo).
 // Value is always derived from the pointer's position relative to the
-// bound element itself — never from a DOM event's target-relative
+// bound element itself - never from a DOM event's target-relative
 // `offsetX`, which resolves against whichever overlapping child (track,
 // fill, or thumb) happened to receive the click and silently produced
 // wrong values. Web measures `event.currentTarget` directly (same fix as

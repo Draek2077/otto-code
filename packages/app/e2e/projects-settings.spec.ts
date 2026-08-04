@@ -209,7 +209,7 @@ test.describe("Projects settings", () => {
   });
 });
 
-test.describe("Projects settings — error UX", () => {
+test.describe("Projects settings - error UX", () => {
   test("stale-write callout appears on save, disables save, and reload clears it", async ({
     page,
     editableProject,

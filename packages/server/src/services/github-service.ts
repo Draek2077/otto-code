@@ -3028,7 +3028,7 @@ async function resolveGitHubEnterpriseHost(cwd: string): Promise<string | null> 
     // before probing/routing, or gh would be pointed at the alias name.
     host = (await resolveSshHostname(host)) ?? host;
   }
-  // github.com (including via ssh alias) needs no GH_HOST — gh defaults there.
+  // github.com (including via ssh alias) needs no GH_HOST - gh defaults there.
   // Only a self-hosted/Enterprise host must be passed explicitly.
   if (isGitHubHost(host)) {
     return null;

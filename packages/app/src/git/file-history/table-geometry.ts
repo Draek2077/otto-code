@@ -7,7 +7,7 @@
  * widths they drift and the table stops being a table. One import, one source
  * of truth, alignment guaranteed.
  *
- * Widths are fixed rather than flexed for the same reason — a fixed column
+ * Widths are fixed rather than flexed for the same reason - a fixed column
  * holds its edge as content changes, so the eye can run straight down it. Only
  * the message/summary column flexes, because it is the one that should absorb
  * the remaining space.
@@ -15,7 +15,7 @@
 
 /** Abbreviated object name, monospace. Fits git's 7–8 char short sha plus air. */
 export const COLUMN_WIDTH_SHA = 84;
-/** Relative date ("3d ago") — tabular numerals, so it never twitches. */
+/** Relative date ("3d ago") - tabular numerals, so it never twitches. */
 export const COLUMN_WIDTH_DATE = 108;
 /** Author name, ellipsized. Wide enough for "Firstname Lastname". */
 export const COLUMN_WIDTH_AUTHOR = 148;

@@ -64,7 +64,7 @@ export function NewProjectScreen({ serverId: serverIdProp }: NewProjectScreenPro
   );
   const [form, setForm] = useState<NewProjectFormState>(createNewProjectFormState);
   // Only the step currently running, for the status line. The full step list is
-  // build detail — it belongs in a failure message, not on screen during a
+  // build detail - it belongs in a failure message, not on screen during a
   // successful run.
   const [runningStep, setRunningStep] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -181,7 +181,7 @@ export function NewProjectScreen({ serverId: serverIdProp }: NewProjectScreenPro
     setHasHydratedWorkspaces(selectedServerId, true);
     // A freshly scaffolded project has no workspace yet, so routing to one lands
     // on "Workspace not found". Hand off to New workspace with the project
-    // preselected instead — creating a workspace is what you came here to do next.
+    // preselected instead - creating a workspace is what you came here to do next.
     router.replace(
       buildNewWorkspaceRoute({
         serverId: selectedServerId,
@@ -351,7 +351,7 @@ const styles = StyleSheet.create((theme) => ({
   contentCentered: {
     justifyContent: "center",
     // The header sits above this centring region, so reserve the same height at
-    // the bottom — otherwise the block centres in the below-header space and
+    // the bottom - otherwise the block centres in the below-header space and
     // reads as sitting too low.
     paddingBottom: HEADER_INNER_HEIGHT + theme.spacing[6],
   },
@@ -378,7 +378,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[3],
   },
   // The action is a normal-sized button pinned to the trailing edge, not a
-  // full-width bar — the column is a form, not a dialog footer.
+  // full-width bar - the column is a form, not a dialog footer.
   actionRow: {
     flexDirection: "row",
     justifyContent: "flex-end",

@@ -90,7 +90,7 @@ interface WorkspaceDesktopTabsRailProps {
 const RAIL_HEADER_FIXED_CHROME_WIDTH = 68;
 
 // Scales the rail's content-driven width formula up from the horizontal
-// row's per-char metrics — see railMetrics below.
+// row's per-char metrics - see railMetrics below.
 const RAIL_WIDTH_SCALE = 1.5;
 
 // Grab band for the resize splitter, pinned inside the rail's right edge. It is
@@ -118,13 +118,13 @@ function noopStripLayout() {}
 // rendering, context-menu wiring, or drag-and-drop plumbing. Unlike the row,
 // there is no viewport-driven shrink-to-fit algorithm: overflow is handled by
 // plain vertical scroll, and the rail's width is content-driven instead
-// (computeWorkspaceTabRailWidth) — every tab shares one width, sized to the
+// (computeWorkspaceTabRailWidth) - every tab shares one width, sized to the
 // widest current label and clamped to [WORKSPACE_TABS_RAIL_MIN_WIDTH,
 // WORKSPACE_TABS_RAIL_MAX_WIDTH]. Every row always shows icon + a single-line
 // truncated label (no icon-only sub-mode in v1).
 //
 // Dragging the splitter on the rail's right edge replaces that content-driven
-// width with a saved one (AppSettings `verticalTabRailWidth`) — an outright
+// width with a saved one (AppSettings `verticalTabRailWidth`) - an outright
 // override, not a second cap the content could still shrink under, so the
 // splitter always moves. The saved width is one number for every rail on the
 // device rather than per-pane: how much of a tab label you want to read is a
@@ -168,7 +168,7 @@ export function WorkspaceDesktopTabsRail({
   const { t } = useTranslation();
   const router = useRouter();
   // Reveals the hide-until-hover tools strip (see WorkspaceTabRowExtras'
-  // rowHovered) while the pointer is anywhere over the rail — chips included —
+  // rowHovered) while the pointer is anywhere over the rail - chips included -
   // mirroring the row, whose reveal region is the whole tab bar.
   const [railHovered, setRailHovered] = useState(false);
   const handleRailPointerEnter = useCallback(() => setRailHovered(true), []);
@@ -203,7 +203,7 @@ export function WorkspaceDesktopTabsRail({
   );
   // Content-driven, not viewport-driven: every tab in the rail shares this one
   // width, sized to the widest current label (short labels shrink the rail,
-  // long ones truncate past RAIL_TAB_MAX_WIDTH — see computeWorkspaceTabRailWidth).
+  // long ones truncate past RAIL_TAB_MAX_WIDTH - see computeWorkspaceTabRailWidth).
   // Used only until the user drags the splitter; after that the saved width wins.
   const contentDrivenWidth = useMemo(
     () => computeWorkspaceTabRailWidth({ tabLabelLengths, metrics: railMetrics }),
@@ -218,7 +218,7 @@ export function WorkspaceDesktopTabsRail({
   // one node's width changes during a resize drag. They still run flush to the
   // rail's right edge (the content's left padding is the only inset), so the
   // active chip's open right side fuses with the pane content, covering the
-  // right hairline — the vertical counterpart of the row's active tab.
+  // right hairline - the vertical counterpart of the row's active tab.
   //
   // maxWidth is a fraction of the pane rather than the rail's own width so one
   // device-wide saved width degrades gracefully across panes of different sizes:
@@ -457,7 +457,7 @@ interface RailResizeInput {
 }
 
 interface RailResizeState {
-  /** The committed width. Does not change during a drag — see useRailResize. */
+  /** The committed width. Does not change during a drag - see useRailResize. */
   railWidth: number;
   /** Live width for the rail shell, driven on the UI thread. */
   railAnimatedStyle: ReturnType<typeof useAnimatedStyle<ViewStyle>>;
@@ -471,7 +471,7 @@ interface RailResizeState {
 // The drag drives a Reanimated shared value on the UI thread and re-renders
 // nothing, matching the app's other splitters (explorer sidebar, context panel,
 // settings sidebar). This used to hold the live width in React state, which
-// re-rendered the header and every chip on every frame of the drag — the chips
+// re-rendered the header and every chip on every frame of the drag - the chips
 // took a hard pixel width (`resolvedTabWidth`), so they had to re-render or they
 // would keep their old size while the rail grew around them. They now pass
 // "stretch" and inherit the rail's width, which leaves this node's width as the
@@ -489,7 +489,7 @@ function useRailResize({ contentDrivenWidth, savedRailWidth }: RailResizeInput):
   const dragStartWidth = useSharedValue(railWidth);
   const isDragging = useSharedValue(false);
 
-  // Mirror the committed width into the shared value, but never mid-drag —
+  // Mirror the committed width into the shared value, but never mid-drag -
   // that would yank the rail out from under the pointer.
   useEffect(() => {
     if (isDragging.value) {
@@ -585,7 +585,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   // Sits above the chips (which run flush to the rail's right edge) so the grab
   // band is reachable over a tab row, not just in the empty space below the last
-  // tab. It overlays chip padding only — see RAIL_SPLITTER_WIDTH.
+  // tab. It overlays chip padding only - see RAIL_SPLITTER_WIDTH.
   splitter: {
     position: "absolute",
     top: 0,
@@ -596,7 +596,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   // The rail/pane separator is a positioned child rather than a borderRight so
   // the active chip (which runs flush to the rail's right edge) can paint over
-  // it and fuse with the pane content — the vertical counterpart of the row's
+  // it and fuse with the pane content - the vertical counterpart of the row's
   // tabsBottomHairline.
   railRightHairline: {
     position: "absolute",
@@ -607,7 +607,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.border,
   },
   // Orientation toggle left, tools strip (New agent/terminal/browser +
-  // catalog chevron) right. No right padding of its own — the strip carries
+  // catalog chevron) right. No right padding of its own - the strip carries
   // an 8px internal horizontal padding (styles.tabsActions in the row file),
   // which RAIL_HEADER_FIXED_CHROME_WIDTH accounts for.
   header: {
@@ -626,7 +626,7 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
   },
   content: {
-    // Left inset only — chips run flush to the rail's right edge so the active
+    // Left inset only - chips run flush to the rail's right edge so the active
     // chip's open side meets the pane content (see railChipWidth above).
     // Gutter and chip spacing match the horizontal row: 4px inset
     // (tabsContent's paddingHorizontal), adjacent chips with no gap.

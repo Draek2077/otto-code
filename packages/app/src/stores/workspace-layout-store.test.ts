@@ -678,7 +678,7 @@ describe("workspace-layout-store actions", () => {
     store.openTabFocused(workspaceKey, { kind: "file", path: "/repo/worktree/c.ts" });
 
     // Focus a mid-list tab, then open a companion tab right after it and split
-    // that companion out — mirroring openVisualizerTab.
+    // that companion out - mirroring openVisualizerTab.
     store.focusTab(workspaceKey, tabA!);
     const companionTabId = store.openTabFocused(
       workspaceKey,
@@ -1639,7 +1639,7 @@ describe("workspace-layout-store actions", () => {
   it("reconcileTabs materializes a default layout on first call for an empty workspace", () => {
     const workspaceKey = createWorkspaceKey();
 
-    // No persisted layout yet, and nothing to open — this mirrors a cold
+    // No persisted layout yet, and nothing to open - this mirrors a cold
     // deep-link to a freshly-seeded workspace. The entry must still be created
     // so the desktop pane-splits render gate (keyed off a non-null layout) can
     // mount the tabs row without waiting on the draft-seed effect.

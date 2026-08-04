@@ -6,7 +6,7 @@ import {
 } from "./demo/helpers/resolution";
 
 // Demo capture config: reuses the e2e global-setup stack (isolated daemon +
-// temp OTTO_HOME + Metro web on dynamic ports) but records every run — video
+// temp OTTO_HOME + Metro web on dynamic ports) but records every run - video
 // always on at the capture viewport, no retries (a bad take should fail
 // loudly, not silently re-record), generous timeout for real provider runs.
 const baseURL =
@@ -16,18 +16,18 @@ const baseURL =
 // current 2.5× scale) and capture at DESKTOP_CAPTURE_SCALE device pixels, so
 // the app renders at a comfortable size while the PNGs/video still come out at
 // full 16:9 QHD (2560×1440). Setting the viewport straight to the QHD output
-// would make the app lay out as if on a giant screen — every control tiny. The
+// would make the app lay out as if on a giant screen - every control tiny. The
 // zoom knob and its ceiling live in demo/helpers/resolution.ts.
 const CAPTURE_VIEWPORT = DESKTOP_LAYOUT_VIEWPORT;
 const CAPTURE_SCALE = DESKTOP_CAPTURE_SCALE;
 const CAPTURE_VIDEO_SIZE = DESKTOP_CAPTURE_RESOLUTION;
-// Phone viewport at 3× — portrait PNGs come out 1080×1920, exactly the 9:16
+// Phone viewport at 3× - portrait PNGs come out 1080×1920, exactly the 9:16
 // aspect the Play Console requires (each side 320–3840px).
 const MOBILE_VIEWPORT = { width: 360, height: 640 };
-// Tablet landscape at 2× — 2560×1440, exactly 16:9 for Play tablet listings.
+// Tablet landscape at 2× - 2560×1440, exactly 16:9 for Play tablet listings.
 // (The desktop capture viewport is 16:10, which the Play Console rejects.)
 const TABLET_VIEWPORT = { width: 1280, height: 720 };
-// iPhone 6.7" at 3× — 1290×2796, the App Store's required portrait size.
+// iPhone 6.7" at 3× - 1290×2796, the App Store's required portrait size.
 const IOS_VIEWPORT = { width: 430, height: 932 };
 
 export default defineConfig({
@@ -47,7 +47,7 @@ export default defineConfig({
     screenshot: "off",
   },
   projects: [
-    // Every step-by-step demo captures both site-default themes — scenarios
+    // Every step-by-step demo captures both site-default themes - scenarios
     // read their theme from the project name (see demo/helpers/theme.ts) and
     // suffix their own .out dir, so this needs no other config plumbing.
     {
@@ -72,7 +72,7 @@ export default defineConfig({
         video: { mode: "on", size: CAPTURE_VIDEO_SIZE },
       },
     },
-    // Feature spreads are stills-only sweeps — no video, faster runs. Desktop
+    // Feature spreads are stills-only sweeps - no video, faster runs. Desktop
     // spreads (the website's feature sections) get both themes too;
     // mobile/tablet/ios keep their store-listing-convention themes untouched.
     {

@@ -4,14 +4,14 @@ import { useStoreWithEqualityFn } from "zustand/traditional";
 
 /**
  * Per-parent tally of `cumulativeTokens` from sub-agent rows that have been
- * cleared (archived) out of a chat's sub-agents track — by the manual "Clear all
+ * cleared (archived) out of a chat's sub-agents track - by the manual "Clear all
  * completed" gesture or the auto-clear driver. Archiving drops a row from the
  * track, which would silently drop its tokens from the header's honest fan-out
  * total (`formatHeaderLabel` sums only in-track rows). We roll each cleared row's
  * tokens in here first so the header total survives the clear.
  *
  * In-memory only, matching the daemon's `cumulativeTokens` accumulator, which is
- * itself ephemeral (resets on daemon restart — see docs/agent-lifecycle.md). This
+ * itself ephemeral (resets on daemon restart - see docs/agent-lifecycle.md). This
  * tally resets on app reload; that is consistent with the metric it preserves.
  * The planned per-chat total (projects/total-token-accounting) can read the same
  * tally so cleared descendants keep counting toward the chat total.
@@ -24,7 +24,7 @@ interface ClearedParentEntry {
   /**
    * Provider-reported cost from the same cleared rows, so the chat total (see
    * chat-totals.ts) does not silently get cheaper when rows are tidied away.
-   * Only ever a real reported figure — a row the provider could not price adds
+   * Only ever a real reported figure - a row the provider could not price adds
    * tokens here and nothing to the cost.
    */
   costUsd: number;
@@ -117,7 +117,7 @@ const NO_CLEARED_TOTALS: ClearedSubagentTotals = { tokens: 0, costUsd: 0 };
 
 /**
  * Reactive tokens AND cost from cleared rows, for the chat total. Selects a
- * fresh object, so it needs a value-equality comparator — the default reference
+ * fresh object, so it needs a value-equality comparator - the default reference
  * check would re-render on every unrelated store write.
  */
 export function useClearedSubagentTotals(

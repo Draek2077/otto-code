@@ -20,7 +20,7 @@ import { buildBlameRunFlags } from "./blame-runs";
  * and post-image line numbers, then the code.
  *
  * Blame lives here rather than in a view of its own. Blame answered as a
- * separate table is a list of shas next to a list of authors — the code it
+ * separate table is a list of shas next to a list of authors - the code it
  * describes is somewhere else entirely. Beside the line it annotates, it answers
  * the question people actually ask ("who wrote *this*"), which is why every IDE
  * puts it in the gutter.
@@ -72,7 +72,7 @@ function toDiffRow(numbered: NumberedDiffLine): DiffRow {
 
 /**
  * Width for a line-number column, sized to the widest number it will actually
- * hold — and zero when it holds none, so the column disappears entirely.
+ * hold - and zero when it holds none, so the column disappears entirely.
  *
  * Sized per column rather than from the diff's overall maximum: a hunk near the
  * top of a long file numbers its pre-image in the tens and its post-image in the
@@ -92,7 +92,7 @@ function numberColumnWidth(highest: number, fontSize: number): number {
  * Width for the blame column, sized to the longest author name it will actually
  * print. The text is monospaced like the rest of the row, so character count is
  * an exact measure. Capped, because one contributor with a very long name should
- * not push the code off screen for every row — that name ellipsizes and keeps
+ * not push the code off screen for every row - that name ellipsizes and keeps
  * its full form on the cell's accessibility label.
  */
 function blameColumnWidth(annotations: (GitBlameCommit | null)[], fontSize: number): number {
@@ -139,7 +139,7 @@ export function RevisionDiffBody({
 
   const rows = useMemo(() => buildRows(file), [file]);
   // Gutter columns are sized in pixels from the code font, which grows on compact
-  // — measuring with the desktop size there would clip the widest line number.
+  // - measuring with the desktop size there would clip the widest line number.
   const codeFontSize = isCompact ? CODE_FONT_SIZE + COMPACT_CODE_FONT_BUMP : CODE_FONT_SIZE;
   const oldNumberWidth = useMemo(
     () => numberColumnWidth(highestOldLineNumber(rows), codeFontSize),
@@ -333,7 +333,7 @@ function BlameCell({
       style={pressableStyle}
       onPress={handlePress}
       accessibilityRole="button"
-      accessibilityLabel={`${blame.authorName} — ${blame.shortSha}`}
+      accessibilityLabel={`${blame.authorName} - ${blame.shortSha}`}
     >
       <Text numberOfLines={1} style={BLAME_TEXT_STYLE}>
         {blame.authorName}
@@ -344,7 +344,7 @@ function BlameCell({
 
 function CodeRow({ row }: { row: DiffRow }) {
   const tokens = hasVisibleDiffTokens(row.line.tokens) ? row.line.tokens : null;
-  // Tokens have no identity of their own — position is the only stable key, so
+  // Tokens have no identity of their own - position is the only stable key, so
   // it is baked in here rather than derived inside the JSX.
   const keyedTokens = useMemo(
     () => (tokens ?? []).map((token, index) => ({ key: `${index}-${token.text}`, token })),
@@ -391,7 +391,7 @@ function lineBackgroundStyle(type: DiffLine["type"]) {
 // The gutter width math runs before styles resolve, so these cannot come from
 // the theme object here. CODE_FONT_SIZE mirrors theme.fontSize.code.
 const CODE_FONT_SIZE = 12;
-/** Compact bump for the code font — mirrors `compactFont`'s default. */
+/** Compact bump for the code font - mirrors `compactFont`'s default. */
 const COMPACT_CODE_FONT_BUMP = 2;
 /**
  * Compact bump for the line box. Larger than the font bump: the row heights are
@@ -403,7 +403,7 @@ const COMPACT_LINE_HEIGHT_BUMP = 6;
  * Padding on **each side** of a gutter column's text, added twice when sizing
  * the column. It has to be symmetric: the numbers are right-aligned, so padding
  * applied only on the right leaves the widest number touching the column's left
- * edge — hard against the divider or the blame cell beside it.
+ * edge - hard against the divider or the blame cell beside it.
  */
 const GUTTER_PADDING_X = 6;
 /** Ceiling on the blame column, so one long name cannot crowd out the code. */
@@ -432,7 +432,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   // Line metrics are shared by the gutter and the code so the two columns stay
   // locked together, and match the text editor's density rather than adding
-  // per-line padding — padded diff lines drift out of step with the editor and
+  // per-line padding - padded diff lines drift out of step with the editor and
   // read as double-spaced.
   codeMetrics: {
     fontSize: compactFont(theme.fontSize.code, COMPACT_CODE_FONT_BUMP),

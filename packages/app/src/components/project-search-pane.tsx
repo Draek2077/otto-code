@@ -177,7 +177,7 @@ export function ProjectSearchPane({
   // "Add to chat" mirrors the file explorer's: the file (or a specific
   // matched line) lands in the workspace-scoped attachment store and shows as
   // a composer pill. Offered only while an agent tab is the focused pane, so
-  // the attachment has a visible destination — the menu item is hidden
+  // the attachment has a visible destination - the menu item is hidden
   // entirely (rather than disabled) when there is none, matching the file
   // explorer convention.
   const focusedAgentId = useSessionStore(
@@ -914,7 +914,7 @@ function MatchRow({
 }
 
 /**
- * Pane-level right-click menu (web only) — one shared instance serving every
+ * Pane-level right-click menu (web only) - one shared instance serving every
  * file/match row, offering the same "add to context" action as its target.
  */
 function SearchEntryContextMenu({
@@ -991,8 +991,8 @@ const styles = StyleSheet.create((theme) => ({
     borderBottomColor: theme.colors.border,
   },
   searchHeaderReplaceOpen: {
-    // The replace band (styles.replaceRow) owns its own vertical rhythm — a full
-    // pane-toolbar-height row with the input centered — so the header drops its
+    // The replace band (styles.replaceRow) owns its own vertical rhythm - a full
+    // pane-toolbar-height row with the input centered - so the header drops its
     // own bottom padding when open and lets the band govern the lower edge.
     paddingBottom: 0,
   },
@@ -1015,7 +1015,7 @@ const styles = StyleSheet.create((theme) => ({
   // The replace band mirrors the search row's horizontal geometry but forms its
   // own full pane-toolbar-height row with the input vertically centered (no
   // paddingTop, unlike queryRow). This adds a proper second band below the
-  // search row — leaving the search row untouched — so the expanded toolbar
+  // search row - leaving the search row untouched - so the expanded toolbar
   // lines up with the neighboring pane's toolbar divider and the replace input
   // sits centered in the added space.
   replaceRow: {
@@ -1030,7 +1030,7 @@ const styles = StyleSheet.create((theme) => ({
     // A touch taller than a bare pane-toolbar row, with the input centered in
     // the band (alignItems: "center"). This height alone governs how far the
     // expanded header's lower divider sits below the collapsed one, because
-    // searchHeader drops its paddingBottom while open — so tune the open band
+    // searchHeader drops its paddingBottom while open - so tune the open band
     // here, and leave queryRow's paddingTop to the collapsed bar.
     height: PANE_TOOLBAR_HEIGHT + 3.75,
   },
@@ -1137,7 +1137,7 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
   },
   // Breathing room above the first row lives inside the scroll content, not on
-  // the wrapper — wrapper padding sits outside the viewport and shows as a dead
+  // the wrapper - wrapper padding sits outside the viewport and shows as a dead
   // band that clips scrolled rows below the summary separator.
   resultsListContent: {
     paddingTop: theme.spacing[1],

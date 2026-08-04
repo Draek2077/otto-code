@@ -1,6 +1,6 @@
 // The Changes toolbar catalog: every option lives in the ▾ menu and can be
 // pinned into the toolbar strip. Mirrors the workspace tab bar's pin model
-// (see @/workspace-pins) — pins are global (device-local), not per-workspace.
+// (see @/workspace-pins) - pins are global (device-local), not per-workspace.
 
 export type ChangesToolbarItemId =
   | "split"
@@ -11,7 +11,7 @@ export type ChangesToolbarItemId =
   | "removeComments"
   | "refresh";
 
-// Fixed catalog order — both the ▾ menu and the pinned toolbar strip render in
+// Fixed catalog order - both the ▾ menu and the pinned toolbar strip render in
 // this order regardless of the order items were pinned, so the layout is stable.
 // removeComments is only offered while the current diff has draft review comments.
 export const CHANGES_TOOLBAR_ITEM_IDS = [

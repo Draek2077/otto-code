@@ -1,4 +1,4 @@
-= Orchestration — Rollout, Testing & Invariants
+= Orchestration - Rollout, Testing & Invariants
 :description: Build order, feature gating, golden graphs, test tiers, and the consolidated audit checklist for the whole orchestration system.
 
 == Build order
@@ -6,7 +6,7 @@
 The design-era staging below is retained for its rationale, with what has since shipped marked.
 **The live, agreed order is the dependency list in
 `projects/graph-templates/graph-templates.md`:** durability boot path → per-node accounting →
-gate + ports → check → run values → turn limit → map → isolation — then the golden-graph
+gate + ports → check → run values → turn limit → map → isolation - then the golden-graph
 harness. Of the correctness holes the 2026-07-25 full-set review found, the cancel cascade and
 the seat/template snapshots are **fixed** (same day, engine-tested); the
 deterministic-node-needs-preview widening is settled with the gate step.
@@ -15,23 +15,23 @@ deterministic-node-needs-preview widening is settled with the gate step.
 |===
 |Stage |Work |Status
 
-|*0 — Structural*
+|*0 - Structural*
 |Named ports on edges; the third node result state
-|Third state ✅ shipped as `skipped` + `skipReason`. Ports reserved in the schema, unused —
+|Third state ✅ shipped as `skipped` + `skipReason`. Ports reserved in the schema, unused -
 land with the gate.
 
-|*1 — Make it real*
+|*1 - Make it real*
 |Structured node output; Check node; Gate node with durable pause; Brief node; per-node tool
 groups; worktree isolation
 |Structured output ✅ (fields + `submit_output` + prose recovery); tool groups, query tools,
 workspace access ✅. Check, gate, brief, isolation ◻.
 
-|*2 — Make it powerful*
+|*2 - Make it powerful*
 |Conditional edges + Router; Map fan-out; Merge with a policy; Subgraph
 |Conditional edges ✅ (JSONata on the edge; router-as-node not needed for two-way branches).
 Map, merge policy, subgraph ◻.
 
-|*3 — Make it trustworthy*
+|*3 - Make it trustworthy*
 |Run budget with a hard stop; per-node failure policy; checkpoint restore + agent adoption;
 the per-node record
 |All ◻. Per-node record is promoted to a *precondition* of the template initiative, not a
@@ -47,8 +47,8 @@ Temporal; problems we do not have at this scale
 
 Two gates, one check each.
 
-* *Dev-only, for now.* While the designer is under construction, every door in — the New
-  Orchestration button, the designer tab, running a graph orchestration — additionally
+* *Dev-only, for now.* While the designer is under construction, every door in - the New
+  Orchestration button, the designer tab, running a graph orchestration - additionally
   requires a dev build (`isDev`, Metro's `__DEV__`, dead-code-stripped from production
   bundles). Release builds keep the Orchestrations page exactly as it was.
 * *Capability-gated, after.* `server_info.features.orchestrationGraphs`, detected in
@@ -56,7 +56,7 @@ Two gates, one check each.
   version and the cleanup condition. No fallback paths: a client either has a capable host
   or tells the user to update it.
 
-Daemon ships before client, always — the capability flag exists so a new client can detect
+Daemon ships before client, always - the capability flag exists so a new client can detect
 an old host, not the reverse.
 
 == Golden graphs
@@ -97,7 +97,7 @@ verify
 |*Engine unit* (vitest, fake port)
 |The whole of link:14-orchestration-graphs.html[Engine] with no daemon: barriers, excluded
 propagation, loop bounds, failure cascade, cancellation, budget trips. Deterministic
-schedules — no timing, no randomness.
+schedules - no timing, no randomness.
 
 |*Protocol*
 |Schema round-trips, old-client parse of a graph run, unknown-vocabulary tolerance.
@@ -116,7 +116,7 @@ approval UI.
 (the honest end-to-end). Per `projects/e2e-qa-coverage`.
 |===
 
-The house rule stands: never run a full suite locally — run the file you changed, push to
+The house rule stands: never run a full suite locally - run the file you changed, push to
 CI for breadth.
 
 == Migration
@@ -140,7 +140,7 @@ The per-page invariants, gathered for audit. Each is checkable against the code.
 *Structure*
 
 . Exactly one orchestrator root per graph; undeletable, restored immediately if removed.
-. The root has no input port — it receives the orchestration's prompt automatically.
+. The root has no input port - it receives the orchestration's prompt automatically.
 . A graph with validation problems can always be saved and never be executed.
 . Edges with no ports mean `output` → `input`; existing graphs never need rewriting.
 
@@ -155,7 +155,7 @@ The per-page invariants, gathered for audit. Each is checkable against the code.
 . Concurrency is bounded and total agents are capped, always.
 . Every loop and fan-out has a hard maximum and a declared at-maximum action.
 . Cancel and failure are distinct terminal states, each with a stated reason.
-. A join that can never be satisfied resolves excluded with a reason — never a hang, never
+. A join that can never be satisfied resolves excluded with a reason - never a hang, never
   a silent skip.
 
 *Agents*
@@ -164,7 +164,7 @@ The per-page invariants, gathered for audit. Each is checkable against the code.
 . A node names a role; the person is resolved once and frozen.
 . A role nothing fills is a loud compile error, never a silent default.
 . Authority is applied at spawn, never requested in prose.
-. `start_run` is stripped from every participant — orchestrations never nest.
+. `start_run` is stripped from every participant - orchestrations never nest.
 . Whole-subtree settle, never first-idle.
 . No node feature may require a specific provider without declaring it at compile time.
 
@@ -173,7 +173,7 @@ The per-page invariants, gathered for audit. Each is checkable against the code.
 [start=18]
 . Every added field is optional and its absence reproduces prior behaviour.
 . Vocabularies are plain strings on the wire with known-value arrays in code.
-. Node outputs are references plus a bounded summary — never inlined file contents.
+. Node outputs are references plus a bounded summary - never inlined file contents.
 . A graph run is always also a valid `Run` for a client that has never heard of graphs.
 
 *Durability*
@@ -199,12 +199,12 @@ The per-page invariants, gathered for audit. Each is checkable against the code.
 
 Run this against the implementation, not the documentation:
 
-* [ ] Grep the scheduler for a hardcoded list of node kinds. There should be none —
+* [ ] Grep the scheduler for a hardcoded list of node kinds. There should be none -
   behaviour is declared on the kind.
 * [ ] Kill the daemon mid-run. Does the run resume, avoid re-spawning completed nodes, and
   adopt an agent that is still alive?
 * [ ] Draw a conditional branch into a join. Does the join resolve with a reason when one
-  branch is pruned — rather than hanging or silently reporting success?
+  branch is pruned - rather than hanging or silently reporting success?
 * [ ] Put a gate inside a loop. Are two iterations' questions distinguishable?
 * [ ] Give a node a role no team fills. Is the error loud and specific?
 * [ ] Set a budget below the graph's estimate. Does the run refuse to start, or stop
@@ -217,8 +217,8 @@ Run this against the implementation, not the documentation:
 
 Two of the original five are now decided
 (link:12-orchestration-data-model.html[Data Model] §"Decided, not built"): the AI flavour
-**does** eventually emit graphs — phase runs become a preset graph once the gate node and
-candidate fan-out land, and MCP graph-authoring tools are the convergence path — and
+**does** eventually emit graphs - phase runs become a preset graph once the gate node and
+candidate fan-out land, and MCP graph-authoring tools are the convergence path - and
 structured output shipped as *enforced with in-session self-correction plus prose recovery*,
 which resolves the enforce-vs-best-effort tension in both directions at once.
 

@@ -1,5 +1,5 @@
-= Orchestration — Agent Binding & Provider Coverage
-:description: How a node becomes a running agent — seat resolution, the three authority narrowings, lifecycle, and what each provider actually enforces.
+= Orchestration - Agent Binding & Provider Coverage
+:description: How a node becomes a running agent - seat resolution, the three authority narrowings, lifecycle, and what each provider actually enforces.
 
 This is the layer no orchestration framework has, and where Otto's advantage lives. Rivet,
 LangGraph and every visual builder surveyed treat a node as a function or a model call. Here a
@@ -14,12 +14,12 @@ between a declaration and a live process.
 
 A node names a *role*, not a person. At spawn, `resolveTeamRoleMember` finds the active team
 member carrying that role; a node with no role uses its explicit `model`. **A role nothing
-fills fails loudly and names the gap** — never a silent fallback to a default model the user
+fills fails loudly and names the gap** - never a silent fallback to a default model the user
 did not choose. Roles are what keep graphs portable: the same graph runs on an all-local-model
 team and an all-Claude team, because the graph names the job, not the brain.
 
 **Resolution is snapshotted at run start** (fixed 2026-07-25): the graph path freezes the team
-view, the personality roster and the prompt-template store once, at start — every node seat,
+view, the personality roster and the prompt-template store once, at start - every node seat,
 every composed team prompt and every template render resolves against that frozen view, so a
 mid-run team or template edit cannot shear a running orchestration. The phase-run path gets
 the same guarantee from its per-run role cache. This is also what makes a run reproducible,
@@ -41,27 +41,27 @@ withholds; none asks.
 toolset minus `start_run`. Orchestrations never nest.
 
 |*Otto tool groups*
-|`GraphNode.tools` — allowlist over the eight groups
-|**Intersected** with the policy and the daemon-wide allowlist — a node narrows its own
+|`GraphNode.tools` - allowlist over the eight groups
+|**Intersected** with the policy and the daemon-wide allowlist - a node narrows its own
 authority, never widens it. An empty array is meaningful: "no Otto tools at all". Also a cost
 lever: the catalog is paid in input tokens per request, and a smaller catalog measurably helps
 small models stay on task.
 
 |*Workspace access*
-|`GraphNode.access` — `none` / `read` / `write` (absent ⇒ `write`)
+|`GraphNode.access` - `none` / `read` / `write` (absent ⇒ `write`)
 |Rides on `AgentSessionConfig.workspaceAccess`; each provider adapter withholds its own tools
-(table below). A boundary, not an instruction — a prompt injection cannot reach a tool that
+(table below). A boundary, not an instruction - a prompt injection cannot reach a tool that
 does not exist.
 |===
 
-Plus *query tools* — author-defined read-only lookups scoped to one node's session, read-only
+Plus *query tools* - author-defined read-only lookups scoped to one node's session, read-only
 by construction (argv with `shell: false`, GET-only with no author headers, path-checked
 reads).
 
 Two consequences worth stating plainly:
 
 * **Narrowing-only has a real casualty: the browser-verified verifier.** A deterministic node
-  can never gain `preview`/`browser` — the intersection can only shrink the policy baseline —
+  can never gain `preview`/`browser` - the intersection can only shrink the policy baseline -
   and the only way to grant them is full `autonomous`, which grants far more. Given Preview is
   a founding capability of this fork, "a verify node with exactly preview + terminals" is a
   hole, not a corner case.
@@ -74,7 +74,7 @@ Two consequences worth stating plainly:
 Everything a node declares reaches its agent as **labels** (the table is on
 link:12-orchestration-data-model.html[Data Model]); the per-agent Otto tool catalog reads them
 back and mints `submit_output`, registers query tools, and applies the group allowlist. No
-provider adapter parses a graph, and no engine code branches on a provider — this indirection
+provider adapter parses a graph, and no engine code branches on a provider - this indirection
 is the entire provider-neutrality story.
 
 == Lifecycle
@@ -88,12 +88,12 @@ is the entire provider-neutrality story.
 agent, bound to the run's workspace.
 
 |Settle
-|`waitForAgentFullySettled` — *whole subtree*. An autonomous node that spawned helpers is
+|`waitForAgentFullySettled` - *whole subtree*. An autonomous node that spawned helpers is
 re-invoked when they finish and writes its real answer afterwards; settling on first-idle
 would capture a premature one.
 
 |Extract
-|The `submit_output` store is *taken*, not read — one submission belongs to one settle, so a
+|The `submit_output` store is *taken*, not read - one submission belongs to one settle, so a
 later iteration can never inherit an earlier answer. No submission → balanced-JSON recovery
 from the final message → failure naming the contract.
 
@@ -110,7 +110,7 @@ the compounding benefit of not inventing a parallel execution universe.
 
 Most of this page is provider-neutral by construction. The one axis that differs per provider
 is **workspace access enforcement**, and a provider that cannot enforce it **refuses the node
-at spawn** — running a `read` node with full access is precisely the failure the feature
+at spawn** - running a `read` node with full access is precisely the failure the feature
 exists to prevent.
 
 [cols="1,3"]
@@ -126,7 +126,7 @@ told they exist.
 `allowedTools`, applied after the dontAsk allowlist so a deny always wins.
 
 |*Codex*
-|Mapped onto its native sandbox tiers as a **ceiling** — the seat's tier can be narrowed, never
+|Mapped onto its native sandbox tiers as a **ceiling** - the seat's tier can be narrowed, never
 widened.
 
 |*Everything else*
@@ -139,7 +139,7 @@ widened.
 *Local AI is a design constraint, not a nice-to-have.* A graph is worth more to a small local
 model than to a frontier one, because it supplies exactly what a smaller model is worst at
 holding: decomposition, sequencing and a definition of done. The engine already leans this
-way — permissive tool schemas with handler-side validation, prose recovery for models that
+way - permissive tool schemas with handler-side validation, prose recovery for models that
 write JSON instead of calling the tool, narrow catalogs. Any node feature that silently
 requires a frontier model must degrade, or be declared as needing a capable seat at spawn
 rather than failing mid-run.
@@ -150,7 +150,7 @@ rather than failing mid-run.
 . A node names a role; a role nothing fills fails loudly, naming the gap.
 . Authority is enforced by withholding at spawn, never by prompt. All three narrowings only
   narrow.
-. `start_run` is withheld from every orchestration participant — orchestrations never nest.
+. `start_run` is withheld from every orchestration participant - orchestrations never nest.
 . Declarations travel as labels; no provider parses a graph, no engine code branches on a
   provider.
 . Whole-subtree settle, never first-idle.
@@ -158,7 +158,7 @@ rather than failing mid-run.
 . A provider that cannot enforce `access` refuses the node; it never silently runs it wide.
 . The cast and the templates are frozen at run start; nothing mid-run can re-cast or reword a
   running orchestration.
-. A canceled run cancels its in-flight children — the cascade, on both engines.
+. A canceled run cancels its in-flight children - the cascade, on both engines.
 . ◻ _Designed:_ per-node worktree isolation; native sub-agent suppression per node.
 
 == Change checklist
@@ -167,4 +167,4 @@ rather than failing mid-run.
 * Does the new capability change what a node may touch? Then it belongs in a narrowing, not in
   the prompt.
 * Adding an enforcement path? Confirm the refuse-at-spawn rule holds for providers that lack it.
-* Adding a narrowing? Confirm it intersects — a node must never be able to widen.
+* Adding a narrowing? Confirm it intersects - a node must never be able to widen.

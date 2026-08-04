@@ -36,7 +36,7 @@ export function useRenameSymbol(input: {
   const { serverId, workspaceId, path, controllerRef, cursor, enabled } = input;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [symbol, setSymbol] = useState("");
-  // Frozen at request time — see the note above on why this is not read at submit.
+  // Frozen at request time - see the note above on why this is not read at submit.
   const positionRef = useRef<{ line: number; column: number } | null>(null);
 
   const request = useCallback(() => {

@@ -17,11 +17,11 @@ import {
  * In acceptEdits the edit that authors it is auto-approved too, so without
  * this gate a session (or a prompt injection in anything the model reads)
  * could write `{"runtimeExecutable": "sh", "runtimeArgs": ["-c", ...]}` into
- * `.claude/launch.json` and preview_start it — shell execution with no prompt
+ * `.claude/launch.json` and preview_start it - shell execution with no prompt
  * anywhere, since DevServerManager spawns the entry with shell:true and no
  * allowlist.
  *
- * The blunt alternative — classifying preview_start as "execute" — prompts on
+ * The blunt alternative - classifying preview_start as "execute" - prompts on
  * every server start in acceptEdits. Starting a preview is one of the most
  * common agent actions, and prompting every time pushes users toward
  * bypassPermissions, a net loss. The trade taken instead: auto-approval holds
@@ -31,7 +31,7 @@ import {
  * re-baselines it so the approved command stops prompting.
  *
  * Accepted residual: the snapshot is per session object, so a daemon restart
- * between the write and the preview_start re-baselines a changed config — a
+ * between the write and the preview_start re-baselines a changed config - a
  * restart is a user action, not something this tool chain can trigger.
  */
 export interface PreviewStartCheck {
@@ -96,7 +96,7 @@ function snapshotCommands(cwd: string): Map<string, string> {
     return baseline;
   }
   for (const entry of result.data.configurations) {
-    // First entry wins on a duplicate name, matching findLaunchConfiguration —
+    // First entry wins on a duplicate name, matching findLaunchConfiguration -
     // the duplicate that would actually run is the one that gets vouched for.
     if (!baseline.has(entry.name)) {
       baseline.set(entry.name, fingerprint(entry));

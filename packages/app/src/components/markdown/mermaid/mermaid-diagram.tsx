@@ -10,7 +10,7 @@ import { peekMermaidOutcome, resolveMermaidOutcome } from "./mermaid-render";
 //
 // The app-shell CSP (`script-src 'self'`, `style-src 'self' 'unsafe-inline'`)
 // is satisfied: mermaid is our own bundle, and the only thing injected is
-// markup — `<script>` elements assigned through innerHTML never execute, and
+// markup - `<script>` elements assigned through innerHTML never execute, and
 // mermaid's `securityLevel: "strict"` has already sanitized every label.
 
 const WRAPPER_STYLE: CSSProperties = { width: "100%" };
@@ -53,7 +53,7 @@ export function MermaidDiagram({ code, theme, renderFallback }: MermaidDiagramPr
   }, [code, themeKey]);
 
   const rendered = state.status === "rendered" ? state : null;
-  // maxWidth pins the diagram to its natural size — mermaid's own useMaxWidth
+  // maxWidth pins the diagram to its natural size - mermaid's own useMaxWidth
   // behaviour, reapplied here after the inline cap is stripped in
   // mermaid-render. Narrow panes scale it down instead.
   const diagramStyle = useMemo<CSSProperties>(

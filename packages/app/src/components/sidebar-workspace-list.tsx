@@ -418,7 +418,7 @@ function ProjectRowTrailingActions({
   isMobileBreakpoint: boolean;
   isProjectActive: boolean;
   diffStat: { additions: number; deletions: number } | null;
-  /** See `useFloatingRowActions` — hover platforms float, the rest reserve. */
+  /** See `useFloatingRowActions` - hover platforms float, the rest reserve. */
   floatActions: boolean;
   onBeginWorkspaceSetup: () => void;
   onRemoveProject?: () => void;
@@ -434,7 +434,7 @@ function ProjectRowTrailingActions({
     // the kebab mount only while hovered and paint over the row's right edge, so
     // the project name gets the whole row at rest and never reflows on hover.
     // The diff stat is real content, so it stays in flow and the overlay covers
-    // it — the same swap the reserved branch below does with opacity.
+    // it - the same swap the reserved branch below does with opacity.
     return (
       <>
         {diffStat ? (
@@ -532,7 +532,7 @@ interface ProjectMenuItemsProps {
 }
 
 /** Shared item list for the project kebab dropdown and the right-click context
- * menu — one source so the two menus can't drift apart. */
+ * menu - one source so the two menus can't drift apart. */
 function ProjectMenuItems({
   ItemComponent: Item,
   projectKey,
@@ -544,7 +544,7 @@ function ProjectMenuItems({
   const { t } = useTranslation();
   const toast = useToast();
   // "Manage context" deliberately does NOT live here. A project can hold several
-  // workspaces, so this menu had to *guess* one — and the tab edits files, so it
+  // workspaces, so this menu had to *guess* one - and the tab edits files, so it
   // needs a definite checkout to diff and commit against. On a worktree that
   // checkout is also the directory the CLI actually reads project context from,
   // which the originating project row cannot name. It lives on the workspace
@@ -562,7 +562,7 @@ function ProjectMenuItems({
   }, [settingsHost]);
   const canOpenProjectSettings = settingsHost !== null;
   // Desktop-only: open a second window that lands on this project via the same
-  // open-project flow as a CLI launch. The project stays visible here too — no
+  // open-project flow as a CLI launch. The project stays visible here too - no
   // ownership, no move.
   const canOpenInNewWindow = getIsElectron() && projectPath.trim().length > 0;
   const handleOpenInNewWindow = useCallback(() => {
@@ -733,7 +733,7 @@ function buildWorkspaceRowTrailing({
 
   if (floatActions) {
     // The kebab is the only trailing control here, and it is hover-only, so the
-    // row reserves nothing for it — the workspace name gets the full width.
+    // row reserves nothing for it - the workspace name gets the full width.
     return { flow: creating, floating: showKebabInSlot ? kebab : null };
   }
 
@@ -1245,7 +1245,7 @@ function ProjectHeaderRow({
     [projectActivatorRef, projectAnchorRef],
   );
   const projectDiffStat = useSidebarProjectDiffStat(project.workspaces);
-  // Diff counts are a developer/git surface — hidden in User interface mode.
+  // Diff counts are a developer/git surface - hidden in User interface mode.
   const diffStat = isDeveloperMode ? projectDiffStat : null;
   const handleBeginWorkspaceSetup = useCallback(() => {
     if (!worktreeTarget) {
@@ -2024,7 +2024,7 @@ function ProjectBlock({
     enabled: selectionEnabled,
   });
 
-  // "Copy branch name" is a git affordance — offered only in Developer mode.
+  // "Copy branch name" is a git affordance - offered only in Developer mode.
   const isDeveloperMode = useIsDeveloperMode();
 
   const renderWorkspaceRow = useCallback(
@@ -2768,7 +2768,10 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface2,
   },
   projectRowDragging: {
-    backgroundColor: theme.colors.surface2,
+    // surface1, not surface2: `border` is nearly identical to surface2 on this
+    // theme, which swallowed the lifted card's own outline (the shadow still
+    // sells the lift against the sidebar background either way).
+    backgroundColor: theme.colors.surface1,
     borderWidth: 1,
     borderColor: theme.colors.border,
     transform: [{ scale: 1.02 }],
@@ -2810,7 +2813,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
   },
   projectIconFallbackText: {
-    // Raw literal (no matching `theme.fontSize` token this small) — scaled explicitly
+    // Raw literal (no matching `theme.fontSize` token this small) - scaled explicitly
     // alongside `projectLeadingVisualSlot`'s `theme.iconSize.lg` box doubling.
     fontSize: compactUp(11),
   },
@@ -2859,7 +2862,7 @@ const styles = StyleSheet.create((theme) => ({
   projectTrailingActions: {
     flexDirection: "row",
     alignItems: "center",
-    // 2px of clear space between the + and kebab button chrome — the kebab
+    // 2px of clear space between the + and kebab button chrome - the kebab
     // slot below reserves the button's real footprint so this gap is honest.
     gap: 2,
     flexShrink: 0,
@@ -2869,7 +2872,7 @@ const styles = StyleSheet.create((theme) => ({
   // projectShortcutBadgeOverlay: absolute offsets are measured from the row's
   // border box, so it has to add the row's own horizontal padding back to land
   // on the content edge. Opaque in the row's hovered background for the same
-  // reason as floatingTrailingOverlay — it covers the label tail and diff stat.
+  // reason as floatingTrailingOverlay - it covers the label tail and diff stat.
   projectFloatingTrailingActions: {
     position: "absolute",
     top: 0,
@@ -2883,7 +2886,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surfaceSidebarHover,
   },
   // The shared trailing slot only reserves 18px, but the right-anchored kebab
-  // overlay is compactUp(24) wide — without this the kebab chrome bleeds left
+  // overlay is compactUp(24) wide - without this the kebab chrome bleeds left
   // over the + button.
   projectKebabActionSlot: {
     minWidth: compactUp(24),
@@ -2962,7 +2965,8 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface2,
   },
   workspaceRowDragging: {
-    backgroundColor: theme.colors.surface2,
+    // surface1, not surface2: see the note on `projectRowDragging` above.
+    backgroundColor: theme.colors.surface1,
     borderWidth: 1,
     borderColor: theme.colors.border,
     transform: [{ scale: 1.02 }],

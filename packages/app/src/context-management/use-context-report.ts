@@ -8,22 +8,22 @@ import { contextQueryKey, contextWorkspaceKey, useContextManagementStore } from 
 /**
  * Two ways to read the report, deliberately kept apart:
  *
- * - `useWorkspaceContextReport` — the pushed baseline for this workspace's real
+ * - `useWorkspaceContextReport` - the pushed baseline for this workspace's real
  *   provider and model. The composer warning uses this and nothing else.
- * - `useContextReportQuery` — a what-if fetch with explicit provider/window
+ * - `useContextReportQuery` - a what-if fetch with explicit provider/window
  *   overrides, owned by the Context Management tab. Its answers are cached
  *   under their own keys and never overwrite the baseline, so playing with the
  *   window picker cannot change what the warning says.
  *
  * Both cache into the store rather than component state. A scan costs a
  * filesystem walk of every context file, so an answer that has already been
- * paid for must survive the tab closing — the alternative is what this used to
+ * paid for must survive the tab closing - the alternative is what this used to
  * do: blank the tab on every open and re-scan from scratch.
  */
 
 /**
  * Both gates must pass: the daemon has to be able to resolve the graph at all
- * (no client-side fallback exists — only the daemon can see the files), and the
+ * (no client-side fallback exists - only the daemon can see the files), and the
  * user has to have left the feature on.
  */
 export function useContextManagementEnabled(serverId: string): boolean {
@@ -72,7 +72,7 @@ export interface ContextReportQueryOptions {
   provider?: string | undefined;
   windowTokens?: number | undefined;
   /**
-   * Evaluate as if this personality were running here — its injected memory
+   * Evaluate as if this personality were running here - its injected memory
    * brief joins the fixed weight. Omitted = the personality-agnostic report.
    */
   personalityId?: string | undefined;
@@ -80,7 +80,7 @@ export interface ContextReportQueryOptions {
 
 export interface ContextReportQueryResult {
   report: ContextReport | null;
-  /** No report to show at all and a scan is running — the only blank state. */
+  /** No report to show at all and a scan is running - the only blank state. */
   isLoading: boolean;
   /** A scan is running over a report already on screen. Never blanks the tab. */
   isRefreshing: boolean;

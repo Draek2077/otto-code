@@ -2,15 +2,15 @@ import type { AgentTimelineItem, ContextComposition } from "./agent-sdk-types.js
 
 // ~4 chars per token, the same coarse heuristic the rest of the visualizer path
 // uses (estimateToolCallTokenCost, turn-time.ts). Otto's protocol carries no
-// per-category token usage — providers report only totals at request
-// boundaries — so the daemon estimates the composition from the content it
+// per-category token usage - providers report only totals at request
+// boundaries - so the daemon estimates the composition from the content it
 // already tracks in the agent timeline. The consumer scales the result to the
 // authoritative context-window occupancy, so only the *proportions* matter.
 const CHARS_PER_TOKEN = 4;
 
 /**
  * Shared by the context-management scanner so both paths report the same
- * coarse heuristic — a divergence here would make the two surfaces disagree
+ * coarse heuristic - a divergence here would make the two surfaces disagree
  * about the same file.
  */
 export function estimateTokens(chars: number): number {
@@ -27,7 +27,7 @@ function detailChars(item: Extract<AgentTimelineItem, { type: "tool_call" }>): n
 
 /**
  * Estimate how the tokens currently in an agent's context window break down by
- * origin, from the daemon's own per-agent timeline — real daemon-side accounting
+ * origin, from the daemon's own per-agent timeline - real daemon-side accounting
  * (the daemon categorizes the content it actually tracked), not a client guess.
  * Provider-neutral by construction: every provider populates the timeline, so
  * richness grades with timeline richness (Claude, with reasoning blocks and
@@ -75,7 +75,7 @@ export function estimateContextComposition(
         }
         break;
       default:
-        // todo / error / compaction — skipped.
+        // todo / error / compaction - skipped.
         break;
     }
   }

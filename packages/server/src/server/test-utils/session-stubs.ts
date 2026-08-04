@@ -19,7 +19,7 @@ import type { SessionOutboundMessage } from "@otto-code/protocol/messages";
 import { asInternals, createStub } from "./class-mocks.js";
 
 // ---------------------------------------------------------------------------
-// Typed stub wrappers — unsafe cast is in createStub (class-mocks.ts), never
+// Typed stub wrappers - unsafe cast is in createStub (class-mocks.ts), never
 // directly in test files. Wrapper signatures narrow the accepted key set so
 // callers get compile-time feedback on typos in method names.
 // ---------------------------------------------------------------------------
@@ -93,7 +93,7 @@ export function createDaemonConfigStoreStub(): {
         idleMinutes: 10,
         backgroundIdleMinutes: 2,
       },
-      // Off, matching the shipped default — a harness must not accidentally exercise a feature
+      // Off, matching the shipped default - a harness must not accidentally exercise a feature
       // that spawns a .NET process.
       dotnetSolutionManagement: { enabled: false, maxRunningProbes: 2, idleMinutes: 10 },
     })),
@@ -134,13 +134,13 @@ export function asWorkspaceScriptRuntimeStore(stub: {
 }
 
 // ---------------------------------------------------------------------------
-// Private session access — delegates to asInternals so test files need no cast
+// Private session access - delegates to asInternals so test files need no cast
 // ---------------------------------------------------------------------------
 
 export { asInternals as asSessionInternals };
 
 // ---------------------------------------------------------------------------
-// Type guard for SessionOutboundMessage — avoids casting unknown in test emit overrides
+// Type guard for SessionOutboundMessage - avoids casting unknown in test emit overrides
 // ---------------------------------------------------------------------------
 
 export function isSessionOutboundMessage(m: unknown): m is SessionOutboundMessage {
@@ -148,7 +148,7 @@ export function isSessionOutboundMessage(m: unknown): m is SessionOutboundMessag
 }
 
 // ---------------------------------------------------------------------------
-// Message helpers — type-safe filtering without casts in test files
+// Message helpers - type-safe filtering without casts in test files
 // ---------------------------------------------------------------------------
 
 export function filterByType<T extends SessionOutboundMessage["type"]>(
@@ -166,7 +166,7 @@ export function findByType<T extends SessionOutboundMessage["type"]>(
 }
 
 // ---------------------------------------------------------------------------
-// ProviderSnapshotManager stub — returns spies separately to avoid
+// ProviderSnapshotManager stub - returns spies separately to avoid
 // unbound-method lint errors when using expect(spy).toHaveBeenCalled()
 // ---------------------------------------------------------------------------
 

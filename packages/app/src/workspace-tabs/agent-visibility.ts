@@ -85,8 +85,8 @@ interface WorkspaceAgentVisibilitySessionSlice {
 
 /**
  * Selector factory that memoizes by input identity. Zustand runs selectors on
- * every store write — during agent activity the session store flushes stream
- * items every ~48ms — but the agents/agentDetails maps are only replaced on
+ * every store write - during agent activity the session store flushes stream
+ * items every ~48ms - but the agents/agentDetails maps are only replaced on
  * agent lifecycle changes. Caching by map identity turns the per-write cost
  * from an O(agents) re-derivation into two identity checks per mounted
  * workspace screen.

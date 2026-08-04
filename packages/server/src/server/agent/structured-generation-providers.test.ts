@@ -402,7 +402,7 @@ describe("resolveStructuredGenerationProviders", () => {
       role: "writer",
       daemonConfig: {
         agentPersonalities: { personalities: [first, second] },
-        // Active id points at a deleted team — reads as no team, never an error.
+        // Active id points at a deleted team - reads as no team, never an error.
         agentTeams: {
           teams: [{ id: "team-crew", name: "Crew", memberIds: [second.id] }],
           activeTeamId: "team-gone",

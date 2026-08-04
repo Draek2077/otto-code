@@ -4,7 +4,7 @@ import { useShallow } from "zustand/react/shallow";
 /**
  * Which workspaces currently have a language server starting up or indexing, keyed by
  * host. The daemon pushes the whole busy set on every change, so this store replaces
- * rather than merges — a snapshot cannot drift the way accumulated transitions would.
+ * rather than merges - a snapshot cannot drift the way accumulated transitions would.
  *
  * It exists so a cold start is *visible*. On a large project the first lookup pays for
  * the server's project model, and silence there reads as the feature being broken; the

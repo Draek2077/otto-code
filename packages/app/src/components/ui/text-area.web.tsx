@@ -9,7 +9,7 @@ export type TextAreaProps = TextInputProps;
 
 const styles = StyleSheet.create((theme) => ({
   // Hugs the field so the overlay can be positioned against its box. No
-  // overflow clipping here — the field paints its focus ring outside its own
+  // overflow clipping here - the field paints its focus ring outside its own
   // bounds and that ring must stay whole.
   wrapper: {
     position: "relative",
@@ -30,14 +30,14 @@ const styles = StyleSheet.create((theme) => ({
  * Wraps a multi-line field so it scrolls with the app's own overlay scrollbar.
  *
  * A `<textarea>` that overflows paints the browser's chrome scrollbar inside
- * the field — permanently visible, unthemed, and square against the field's
+ * the field - permanently visible, unthemed, and square against the field's
  * rounded border. This swaps it for the same hover-widening, self-hiding bar
  * the panes and dialogs use, so an overflowing text box looks like every other
  * scroll region in the app.
  *
  * The `<textarea>` is found by querying the wrapper rather than by threading a
- * ref through, so this works with any multi-line input component —
- * `AdaptiveTextInput`, `FormTextInput`, a plain `TextInput` — without each one
+ * ref through, so this works with any multi-line input component -
+ * `AdaptiveTextInput`, `FormTextInput`, a plain `TextInput` - without each one
  * having to forward a host-element ref.
  */
 export function TextAreaScrollFrame({ children }: { children: ReactNode }) {

@@ -1143,7 +1143,7 @@ async function resolveBaseRefForCwd(
 
 /**
  * Where the Changes view's base branch comes from. Surfaced to the client so the chip can say
- * *why* it is comparing against this branch — an inferred parent is a heuristic and has to look
+ * *why* it is comparing against this branch - an inferred parent is a heuristic and has to look
  * like one, or a wrong guess reads as a bug in the diff.
  */
 export type CheckoutBaseSource = "user" | "inferred" | "worktree" | "default";
@@ -1158,18 +1158,18 @@ interface BaseRefLadderInput {
 /**
  * The single answer to "what is this diffed against?".
  *
- * Every consumer — the diff, ahead/behind, the shortstat badge, merge-into-base and PR creation —
+ * Every consumer - the diff, ahead/behind, the shortstat badge, merge-into-base and PR creation -
  * funnels through here. Keep it that way: the previous shape computed the base in two places and
  * the doc already warns that copies of this logic mean different answers to the same question.
  *
  * The ladder, in order:
  *
  * 1. **The branch's remembered base.** A user pick, or a parent detected earlier. Sticky by
- *    design — a heuristic that silently re-decides itself every read is worse than no heuristic.
+ *    design - a heuristic that silently re-decides itself every read is worse than no heuristic.
  * 2. **An Otto worktree's creation-time base**, which already records the branch it was cut from.
  * 3. **The inferred parent branch**, then remembered so step 1 answers from here on.
  * 4. **The repository default branch**, when nothing forks.
- * 5. If that lands on the branch you are standing on, **`origin/<branch>`** — on the default
+ * 5. If that lands on the branch you are standing on, **`origin/<branch>`** - on the default
  *    branch `merge-base(main, HEAD)` is HEAD, so "vs main" would always be empty. Comparing
  *    against the remote-tracking ref shows unpushed local commits, which is the useful answer.
  */
@@ -1221,7 +1221,7 @@ async function resolveBaseRefLadder(
 
   // Remembered even when it came from the fallback rather than the graph. Without this the
   // candidate scan would re-run on every snapshot refresh for every branch that has no
-  // detectable parent — the default branch, most notably, which is where most sessions sit.
+  // detectable parent - the default branch, most notably, which is where most sessions sit.
   if (currentBranch) {
     persistDetectedBaseRef(worktreeRoot, currentBranch, detected.ref, context);
   }
@@ -1302,7 +1302,7 @@ function persistDetectedBaseRef(
  * Re-points a remembered base whose branch has gone away.
  *
  * The case is ordinary: you stack on a parent branch, the parent merges, someone deletes it, and
- * now the stored base names a ref that resolves to nothing — every diff against it would fail.
+ * now the stored base names a ref that resolves to nothing - every diff against it would fail.
  * Re-resolve to the repository default *once* and write that down, so this costs one extra
  * resolution rather than repeating forever.
  *
@@ -1379,7 +1379,7 @@ function isRemoteQualifiedBaseRef(baseRef: string): boolean {
  * The point of rejecting a mismatch is that an explicit base is a contract: a client holding a
  * stale snapshot should fail loudly rather than quietly diff against something else. That only
  * applies to a base someone actually chose. A detected parent or the repository default is this
- * daemon's own guess, and a one-shot `baseRef` on the request is allowed to override a guess —
+ * daemon's own guess, and a one-shot `baseRef` on the request is allowed to override a guess -
  * otherwise every ad-hoc comparison would break the moment detection started remembering answers.
  */
 function isExplicitBaseRefMismatch(input: {
@@ -1735,7 +1735,7 @@ async function resolveBestComparisonBaseRef(
 /**
  * Choose between `<name>` and `origin/<name>` by asking which one HEAD actually forked from:
  * the candidate whose merge-base with HEAD is the *later* commit. That merge-base is the real
- * branch point, so nothing the branch didn't author can leak into the diff — which is the whole
+ * branch point, so nothing the branch didn't author can leak into the diff - which is the whole
  * failure mode of diffing against a base ref that has drifted from where the work started.
  *
  * When both fork at the same commit the choice cannot change the diff, so fall through to the
@@ -1787,7 +1787,7 @@ async function pickMoreAdvancedBaseRef(
 }
 
 /**
- * Merge/pull targets want the freshest base ref, not the fork point — merging into a stale ref
+ * Merge/pull targets want the freshest base ref, not the fork point - merging into a stale ref
  * would silently drop the other side's commits. Keep this separate from the comparison resolver.
  */
 async function resolveMostAheadBaseRef(cwd: string, normalizedBaseRef: string): Promise<string> {
@@ -2337,7 +2337,7 @@ export interface SetCheckoutBaseRefOptions {
  * Repoints an Otto worktree's stored base branch. `baseRef: null` resets to the repository
  * default.
  *
- * "Diff against the default branch" is the wrong question for a stacked branch — the parent
+ * "Diff against the default branch" is the wrong question for a stacked branch - the parent
  * branch's commits are not the child's work, but they sit between the default branch and HEAD,
  * so they show up in the child's Changes view. Pointing the base at the parent is what a forge
  * PR does implicitly by carrying an explicit base, and it is what this makes local.
@@ -2379,7 +2379,7 @@ export async function setCheckoutBaseRef(
 
   if (facts.ottoWorktree.isOttoOwnedWorktree) {
     // The worktree's own record stays authoritative for merge-into-base and PR creation, so it
-    // has to carry the local branch name — there is no opening a PR against a remote-tracking ref.
+    // has to carry the local branch name - there is no opening a PR against a remote-tracking ref.
     setOttoWorktreeBaseRefName(
       facts.ottoWorktree.worktreeRoot,
       normalizeAndValidateBaseRefName(normalized),
@@ -2522,8 +2522,8 @@ export type CheckoutIdentityResult =
  * Identity-only checkout read: repo root, branch, remote and worktree ownership.
  *
  * `getCheckoutStatus` answers the same questions but pays for the whole drift
- * picture on the way — the base-ref ladder, `status --porcelain`, and three
- * `rev-list --count` walks — around 17 git spawns. Callers that keep only the
+ * picture on the way - the base-ref ladder, `status --porcelain`, and three
+ * `rev-list --count` walks - around 17 git spawns. Callers that keep only the
  * identity fields (periodic reconciliation is the big one) can use this instead
  * and pay for `inspectCheckoutContext` plus the common-dir resolve, roughly a
  * third of that. On Windows, where every spawn costs ~30-80 ms plus Defender
@@ -3359,7 +3359,7 @@ function classifyFailedCommit(input: {
 }
 
 /**
- * Stage the given repo-relative paths and commit exactly those paths — changes
+ * Stage the given repo-relative paths and commit exactly those paths - changes
  * already staged for other files stay staged and out of the commit. Never
  * prompts: terminal prompts are disabled, stdin is closed, and a hung signing
  * or hook process is killed at the timeout and reported as a structured
@@ -3408,7 +3408,7 @@ export async function commitPaths(
     if (timedOut && signingEnabled) {
       return {
         kind: "signing_failed",
-        detail: `Commit signing did not complete within ${COMMIT_WRITE_TIMEOUT_MS / 1000}s — a signing prompt cannot be answered here. Commit from a terminal, or disable signing for this repository (git config commit.gpgsign false).`,
+        detail: `Commit signing did not complete within ${COMMIT_WRITE_TIMEOUT_MS / 1000}s - a signing prompt cannot be answered here. Commit from a terminal, or disable signing for this repository (git config commit.gpgsign false).`,
       };
     }
     if (timedOut && hooksPresent) {
@@ -3460,7 +3460,7 @@ async function isUnbornHead(cwd: string): Promise<boolean> {
 
 /**
  * Repo-relative paths that exist in HEAD (tracked at the last commit). Paths not
- * in the returned set are "new" — added to the index and/or untracked — and are
+ * in the returned set are "new" - added to the index and/or untracked - and are
  * discarded by removal rather than by restoring a HEAD version.
  */
 async function listPathsInHead(cwd: string, paths: string[]): Promise<Set<string>> {
@@ -3965,7 +3965,7 @@ export interface PullRequestStatus {
 
 export interface PullRequestStatusResult {
   status: PullRequestStatus | null;
-  /** Why forge features are (un)available — drives the onboarding callout. */
+  /** Why forge features are (un)available - drives the onboarding callout. */
   authState: ForgeAuthState;
   /** Kept in sync with {@link authState} for back-compat; true iff authenticated. */
   githubFeaturesEnabled: boolean;
@@ -4028,7 +4028,7 @@ export async function createPullRequest(
   // repository: slug resolution is adapter-internal (e.g. `gh repo view`, which
   // handles GHES and renamed repos), and the RPC path only reaches here after
   // the forge resolver has already matched the origin remote to a forge. If the
-  // adapter still fails after the push, retrying is safe — the non-force push
+  // adapter still fails after the push, retrying is safe - the non-force push
   // of the head branch is idempotent.
   await runGitCommand(["push", "-u", "origin", head], { cwd, timeout: 120_000 });
 
@@ -4218,7 +4218,7 @@ export async function listCheckoutCommits({
  *
  * Compares merge commits to their first parent, matching the linear history shown
  * in the explorer. The text is parsed and highlighted by
- * {@link parseAndHighlightDiff} — the exact parser the diff subscription uses.
+ * {@link parseAndHighlightDiff} - the exact parser the diff subscription uses.
  * Returns `null` when the file is absent from the commit or the change is
  * binary-only (no textual hunks). Throws on git failure (e.g. an unknown sha),
  * which the caller maps to a typed checkout error.
@@ -4346,7 +4346,7 @@ interface CheckoutCommitLogInput {
 
 // Record-separated, NUL-field-separated so arbitrary subject text stays parseable.
 // `%x1e`/`%x00` are git placeholders (literal text in the arg, real bytes in the
-// output) — passing actual NUL bytes as a process arg is rejected by Node.
+// output) - passing actual NUL bytes as a process arg is rejected by Node.
 const COMMIT_LOG_FORMAT = "%x1e%H%x00%h%x00%an%x00%aI%x00%s";
 
 // Parses the single combined `git log ... --raw --numstat -M` stream. Each record

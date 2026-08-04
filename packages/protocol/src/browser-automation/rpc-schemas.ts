@@ -475,7 +475,7 @@ export const BrowserAutomationScreenshotElementResultSchema = z.object({
   dataBase64: z.string().min(1),
   width: z.number().int().nonnegative(),
   height: z.number().int().nonnegative(),
-  /** Render scale used for the clip — above 1 means the element was re-rendered zoomed in. */
+  /** Render scale used for the clip - above 1 means the element was re-rendered zoomed in. */
   scale: z.number().positive().optional(),
 });
 

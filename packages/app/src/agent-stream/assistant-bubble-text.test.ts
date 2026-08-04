@@ -50,7 +50,7 @@ describe("assistant bubble text registry", () => {
     reportAssistantBubbleText({ groupId: "g", blockIndex: 0, text: "one" });
     expect(listener).toHaveBeenCalledTimes(1);
 
-    // Same value again — no work for subscribers. This matters: every segment
+    // Same value again - no work for subscribers. This matters: every segment
     // re-reports on each render pass while a reply streams.
     reportAssistantBubbleText({ groupId: "g", blockIndex: 0, text: "one" });
     expect(listener).toHaveBeenCalledTimes(1);
@@ -89,7 +89,7 @@ describe("assistant bubble text registry", () => {
     reportAssistantBubbleText({ groupId: "g", blockIndex: 1, text: "words" });
     expect(getAssistantBubbleHasText("g")).toBe(true);
 
-    // A block emptied back out again — the count has to come back down, or the
+    // A block emptied back out again - the count has to come back down, or the
     // playback button offers to read nothing.
     reportAssistantBubbleText({ groupId: "g", blockIndex: 1, text: "" });
     expect(getAssistantBubbleHasText("g")).toBe(false);

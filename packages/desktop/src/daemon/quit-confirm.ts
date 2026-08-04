@@ -38,7 +38,7 @@ export function respondToQuitConfirm(args: Record<string, unknown>): void {
   const resolve = pendingConfirmations.get(requestId);
   if (!resolve) {
     // Either already resolved (e.g. by the timeout) or a stale/duplicate
-    // renderer response — surfaced so it's visible in logs if it recurs.
+    // renderer response - surfaced so it's visible in logs if it recurs.
     console.warn("[quit-confirm] respond_quit_confirm for unknown/already-settled requestId", {
       requestId,
     });

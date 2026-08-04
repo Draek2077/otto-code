@@ -53,7 +53,7 @@ export function PinnableMenuItem({
     [target, toggle],
   );
 
-  // Pinned rows always show their pin — a gold "favorited" marker at rest,
+  // Pinned rows always show their pin - a gold "favorited" marker at rest,
   // swapping to the unpin glyph while the row is hovered. Unpinned rows keep
   // the hover-only muted pin.
   const showToggle = isHovered || isNative || isCompact || isPinned;
@@ -65,7 +65,7 @@ export function PinnableMenuItem({
 
   // A non-interactive spacer reserves the trailing slot's width inside
   // DropdownMenuItem's own button so the label truncates correctly. The real
-  // pin toggle renders as a sibling overlay below — nesting an interactive
+  // pin toggle renders as a sibling overlay below - nesting an interactive
   // control inside DropdownMenuItem's <button> would produce invalid,
   // hydration-breaking HTML (a <button> inside a <button>) on web.
   const trailingSpacer = useMemo(() => <View style={slotStyle} />, [slotStyle]);

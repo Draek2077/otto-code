@@ -102,8 +102,8 @@ export function resolveAndValidateCreateAgentMode(
     }
     // Unattended runs (schedules, loops, artifacts, unattended-parent spawns)
     // have no client watching to answer approval prompts. An attended mode can
-    // still leak in as an explicit request — a personality's default mode, a
-    // schedule's stored mode, a last-used chat preference — and honoring it
+    // still leak in as an explicit request - a personality's default mode, a
+    // schedule's stored mode, a last-used chat preference - and honoring it
     // would stall the run forever on the first prompt. Coerce it to the
     // provider's unattended mode; an already-unattended request is kept as-is.
     if (input.unattended && effectiveTarget !== undefined) {

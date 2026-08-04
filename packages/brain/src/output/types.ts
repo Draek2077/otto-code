@@ -1,6 +1,6 @@
 /**
  * The output contract, mirroring @otto-code/cli's output layer: command handlers
- * do not print — they return a typed result plus a schema, and a wrapper renders
+ * do not print - they return a typed result plus a schema, and a wrapper renders
  * it in the user-selected format (table / json / yaml / quiet). This is what lets
  * every `otto brain` command support `--format`, `--json`, and `--quiet` uniformly.
  */

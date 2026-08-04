@@ -50,21 +50,21 @@ export function parseListenString(listen: string): ListenTarget {
   if (listen.startsWith("unix://")) {
     return { type: "socket", path: listen.slice(7) };
   }
-  // 3. Reject Windows absolute drive paths — they are not Unix sockets
+  // 3. Reject Windows absolute drive paths - they are not Unix sockets
   if (WINDOWS_DRIVE_RE.test(listen)) {
     throw new Error(`Invalid listen string (Windows path is not a valid listen target): ${listen}`);
   }
-  // 4. POSIX absolute path (/ or ~) — Unix socket
+  // 4. POSIX absolute path (/ or ~) - Unix socket
   if (listen.startsWith("/") || listen.startsWith("~")) {
     return { type: "socket", path: listen };
   }
-  // 5. Pure numeric — TCP port on 127.0.0.1
+  // 5. Pure numeric - TCP port on 127.0.0.1
   const trimmed = listen.trim();
   if (/^\d+$/.test(trimmed)) {
     const port = parseInt(trimmed, 10);
     return { type: "tcp", host: "127.0.0.1", port };
   }
-  // 6. host:port — TCP
+  // 6. host:port - TCP
   if (listen.includes(":")) {
     const lastColonIdx = listen.lastIndexOf(":");
     const host = listen.slice(0, lastColonIdx);
@@ -154,6 +154,7 @@ import { BrainManager } from "./brain/brain-manager.js";
 import { BrainOpsManager } from "./brain/brain-ops-manager.js";
 import type { OttoToolRuntimeContext } from "./agent/tools/types.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
+import { OTTO_BRAIN_PROVIDER_ID } from "./agent/provider-registry.js";
 import { bootstrapWorkspaceRegistries } from "./workspace-registry-bootstrap.js";
 import { WorkspaceReconciliationService } from "./workspace-reconciliation-service.js";
 import { FileBackedProjectRegistry, FileBackedWorkspaceRegistry } from "./workspace-registry.js";
@@ -172,6 +173,8 @@ import { PromptTemplateStore } from "./orchestration/prompt-template-store.js";
 import { seedStarterPromptTemplates } from "./orchestration/starter-prompt-templates.js";
 import { createAgentStructuredTextGeneration } from "./session/checkout/git-metadata-generator.js";
 import { DaemonConfigStore, type MutableDaemonConfig } from "./daemon-config-store.js";
+import { ConnectorOAuthBroker, type ConnectorAuthStore } from "./connectors/connector-oauth.js";
+import { setConnectorAuthStore } from "./connectors/connector-auth-store.js";
 import { BrowserToolsBroker } from "./browser-tools/broker.js";
 import { DaemonConfigBrowserToolsPolicy } from "./browser-tools/policy.js";
 import { DaemonConfigOttoToolGroupsPolicy } from "./agent/tools/tool-groups-policy.js";
@@ -452,7 +455,7 @@ export interface OttoDaemonConfig {
    * behavior injection. undefined fields = default (on).
    *
    * Deliberately not named after a provider. The agent-hook tests assert that this file mentions
-   * no provider id at all, so that bootstrap stays generic and specifics live in the adapters —
+   * no provider id at all, so that bootstrap stays generic and specifics live in the adapters -
    * which means even a comment naming one fails the build.
    */
   agentBehaviors?: {
@@ -694,7 +697,7 @@ function createInitialMutableSpeechConfig(
   config: OttoDaemonConfig,
 ): NonNullable<MutableDaemonConfig["speech"]> {
   const inputs = collectInitialMutableSpeechInputs(config);
-  // Only the key stored in config.json is echoed to clients — an env-only key
+  // Only the key stored in config.json is echoed to clients - an env-only key
   // (OPENAI_API_KEY) stays out of the mutable config so unrelated speech
   // patches can never copy it onto disk.
   const persistedOpenAiApiKey = loadPersistedConfig(config.ottoHome).providers?.openai?.apiKey;
@@ -753,7 +756,7 @@ function buildInitialMetadataGeneration(
 }
 
 /**
- * "Microsoft .NET Solution Management" — off by default, and a **separate row** from `lsp` rather
+ * "Microsoft .NET Solution Management" - off by default, and a **separate row** from `lsp` rather
  * than a member of it. The Solution view spawns a process and evaluates MSBuild, so it is opted
  * into; and turning C# code intelligence off does not turn this off, because the Language Server
  * Protocol has no project-structure request for it to have been built on.
@@ -851,7 +854,7 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
     },
     agentTeams: {
       // A host that has never carried a teams section is seeded with the
-      // starter team (NOT active — activating a prompt-bearing team on install
+      // starter team (NOT active - activating a prompt-bearing team on install
       // would change spawn behavior out from under existing users). Recorded
       // on disk right after the store is built (seedDefaultTeamsIfAbsent) so
       // deleting it sticks.
@@ -903,6 +906,18 @@ export async function createOttoDaemon(
   // restart AND a subsequent "delete every personality" stays deleted.
   daemonConfigStore.seedDefaultPersonalitiesIfAbsent(DEFAULT_AGENT_PERSONALITIES);
   daemonConfigStore.seedDefaultTeamsIfAbsent(DEFAULT_AGENT_TEAMS);
+  // Publish the connector credential store before anything can spawn an agent:
+  // the openai-compat provider reads it when it builds MCP transports, and a
+  // signed-in connector with no store attaches no token and 401s.
+  const connectorAuthStore: ConnectorAuthStore = {
+    read: (connectorId) =>
+      (daemonConfigStore.get().connectors ?? []).find((entry) => entry.id === connectorId)?.auth,
+    write: (connectorId, auth) => {
+      daemonConfigStore.setConnectorAuth(connectorId, auth);
+    },
+  };
+  setConnectorAuthStore(connectorAuthStore);
+  const connectorOAuthBroker = new ConnectorOAuthBroker({ store: connectorAuthStore, logger });
   const browserToolsPolicy = new DaemonConfigBrowserToolsPolicy(daemonConfigStore);
   const ottoToolGroupsPolicy = new DaemonConfigOttoToolGroupsPolicy(daemonConfigStore);
   const browserToolsBroker = new BrowserToolsBroker({});
@@ -915,10 +930,21 @@ export async function createOttoDaemon(
   // managed children; it spawns the brain's `serve` command as a foreground
   // child, holds the process so it dies with the daemon, and talks to it over
   // HTTP. Settings are applied by the websocket server at startup and on change.
+  // Forward-declared so the brain can tell the snapshot manager to re-probe the
+  // otto-brain provider; the snapshot manager is built further down (it needs
+  // the workspace git service) but reads the brain endpoint the same way.
+  let providerSnapshotManagerRef: ProviderSnapshotManager | null = null;
   const brainManager = new BrainManager({
     logger,
     managedProcesses,
     ottoHome: config.ottoHome,
+    onReachabilityChanged: () => {
+      void providerSnapshotManagerRef
+        ?.refreshProviderEverywhere(OTTO_BRAIN_PROVIDER_ID)
+        .catch((error: unknown) => {
+          logger.warn({ err: error }, "Failed to refresh the Otto Brain provider snapshot");
+        });
+    },
   });
   // Model/runtime management + long jobs, driven by shelling out to the
   // otto-brain CLI. Separate from BrainManager (which owns the serve lifecycle).
@@ -954,8 +980,8 @@ export async function createOttoDaemon(
 
   // Capability token authenticating the daemon's own agents to the loopback
   // Agent MCP endpoint (/mcp/agents). Random per daemon run, injected only into
-  // local agent configs and the daemon's own MCP client — never sent to remote
-  // clients — so it cannot be replayed off-box. This lets the injected MCP
+  // local agent configs and the daemon's own MCP client - never sent to remote
+  // clients - so it cannot be replayed off-box. This lets the injected MCP
   // authenticate even when the daemon password is set via the app (hash only,
   // no plaintext available). Mirrors the /api/files/download capability-token
   // pattern.
@@ -1152,7 +1178,7 @@ export async function createOttoDaemon(
 
   const httpServer = createHTTPServer(app);
 
-  // Script proxy WebSocket upgrade handler — must be registered before the
+  // Script proxy WebSocket upgrade handler - must be registered before the
   // VoiceAssistantWebSocketServer attaches its own "upgrade" listener so that
   // script-bound upgrades are forwarded first. The handler is a no-op for
   // requests that don't match a registered script route.
@@ -1180,7 +1206,7 @@ export async function createOttoDaemon(
   const recordActivity: ActivityIncrementFn = (field, by) => {
     void activityStatsStore.increment(field, by);
   };
-  // Itemized usage ledger — the scrollable rows behind the aggregate tiles.
+  // Itemized usage ledger - the scrollable rows behind the aggregate tiles.
   // Fed from the same chokepoint that moves the counters (usage-ledger project).
   const usageLogStore = new UsageLogStore(path.join(config.ottoHome, "usage-log.json"), logger);
   const projectRegistry = new FileBackedProjectRegistry(
@@ -1201,7 +1227,7 @@ export async function createOttoDaemon(
   });
   // All PR/issue functionality routes through the git hosting layer: each
   // call resolves the target project's configured provider (GitHub via gh
-  // CLI, Bitbucket Cloud via REST). `github` keeps its historical name — it
+  // CLI, Bitbucket Cloud via REST). `github` keeps its historical name - it
   // is the provider-routing facade, not the gh CLI.
   const gitHostingResolver = createGitHostingResolver({
     github: createGitHubHostingService(),
@@ -1260,7 +1286,9 @@ export async function createOttoDaemon(
     extraClients: config.agentClients,
     modelTierOverrides: daemonConfigStore.get().modelTierOverrides,
     connectors: daemonConfigStore.get().connectors,
+    brainEndpoint: () => brainManager.getProviderEndpoint(),
   });
+  providerSnapshotManagerRef = providerSnapshotManager;
   const initialAgentManagerState = providerSnapshotManager.getAgentManagerProviderState();
   const retainedTranscriptStore = new RetainedTranscriptStore({
     ottoHome: config.ottoHome,
@@ -1281,8 +1309,8 @@ export async function createOttoDaemon(
     onPersonalitySpawn: (personalityId) => {
       void personalityStatsStore.increment(personalityId);
     },
-    // Injected at the same choke point, so every spawn path — composer, MCP
-    // create_agent, schedule runs, orchestration, resume — carries the
+    // Injected at the same choke point, so every spawn path - composer, MCP
+    // create_agent, schedule runs, orchestration, resume - carries the
     // personality's accrued lessons without threading anything per-caller.
     resolvePersonalityMemoryBrief: (params) => personalityMemory.resolveBriefForSpawn(params),
     onActivity: recordActivity,
@@ -1358,7 +1386,7 @@ export async function createOttoDaemon(
   ): Promise<string> => {
     // One directory = one live workspace: reuse the visible workspace already
     // backing the cwd (MCP create_agent, loops, and agent-spawned terminals
-    // attach to it) instead of minting a duplicate — which
+    // attach to it) instead of minting a duplicate - which
     // createLocalCheckoutWorkspace now rejects. Auto-naming only runs for a
     // freshly minted workspace; an existing one keeps its name.
     const existingWorkspace = findOccupyingWorkspaceForCwd(await workspaceRegistry.list(), cwd);
@@ -1688,7 +1716,7 @@ export async function createOttoDaemon(
   // registry, then emit so every session upserts it into the sidebar (the
   // descriptor now resolves). No-op if the workspace is already visible or gone.
   // When the directory is already backed by a visible workspace, this reattaches
-  // the finished run to that occupant instead of revealing a duplicate — see
+  // the finished run to that occupant instead of revealing a duplicate - see
   // revealScheduleRunWorkspace for why.
   const revealScheduleWorkspaceExternal = async (workspaceId: string) => {
     const outcome = await revealScheduleRunWorkspace(workspaceId, {
@@ -1773,7 +1801,7 @@ export async function createOttoDaemon(
   });
   logger.info({ elapsed: elapsed() }, "Schedule service initialized");
 
-  // Orchestration runtime — owns multi-agent Runs and drives the engine. Run
+  // Orchestration runtime - owns multi-agent Runs and drives the engine. Run
   // updates broadcast to every connected client so the UI can watch live.
   // A terminal run is summarized by a Writer (same one-shot, internal-agent path
   // as commit messages) so the Runs display shows a plain-language recap.
@@ -1814,7 +1842,7 @@ export async function createOttoDaemon(
     emitExternalSessionMessage({ type: "runs.cleared.notification", payload: { runIds } });
   });
   logger.info({ elapsed: elapsed() }, "Run service initialized");
-  // Orchestration graph templates (projects/orchestration-graphs) — host-level,
+  // Orchestration graph templates (projects/orchestration-graphs) - host-level,
   // like personalities/teams. Starter graphs seed once; user edits win forever.
   const graphStore = new GraphStore(path.join(config.ottoHome, "orchestration-graphs"));
   // Where a graph node's submit_output call lands on its way to the engine.
@@ -1881,7 +1909,7 @@ export async function createOttoDaemon(
     scheduleAutoTitle: createAgentCommandDependencies.scheduleAutoTitle,
     browserToolsEnabled: browserToolsPolicy.isEnabled(),
     // Live-read the group allowlist so category toggles take effect without a
-    // restart — the deps are rebuilt per MCP request (stateless transport).
+    // restart - the deps are rebuilt per MCP request (stateless transport).
     enabledOttoToolGroups: ottoToolGroupsPolicy.getEnabledGroups(),
     browserToolsBroker,
     previewDevServers,
@@ -2229,22 +2257,23 @@ export async function createOttoDaemon(
               projectLinkStore,
               agentAutoTitle,
               (query) => usageLogStore.getPage(query),
-              // "Reset" on the Metrics screen: wipe both usage sinks together —
+              // "Reset" on the Metrics screen: wipe both usage sinks together -
               // the day-bucketed counters behind the tiles and the itemized
-              // ledger behind the Log tab — so the screen starts fresh. The
+              // ledger behind the Log tab - so the screen starts fresh. The
               // stats store fires its coalesced change ping on reset, so every
               // connected client re-fetches both.
               async () => {
                 await Promise.all([activityStatsStore.reset(), usageLogStore.reset()]);
               },
               graphStore,
-              // Last positional argument, and the one the v0.2.5 merge dropped:
-              // two branches each appended a final parameter to this
+              // Trailing positional arguments, and the place the v0.2.5 merge
+              // went wrong: two branches each appended a final parameter to this
               // constructor, and only graphStore made it to the call site. The
               // session then saw no relationship manager and answered every
               // `otto hub connect` with "Hub relationship management is
-              // unavailable".
+              // unavailable". Anything appended below must be added here too.
               hubRelationships,
+              connectorOAuthBroker,
             );
             await hubRelationships.start();
 
@@ -2259,7 +2288,7 @@ export async function createOttoDaemon(
             wsServer.setBrainOpsManager(brainOpsManager);
 
             // Sanity guard: never let preview "stop external server" tree-kill
-            // Otto's own runtime — the daemon's listen port or a loopback dev
+            // Otto's own runtime - the daemon's listen port or a loopback dev
             // server hosting a connected client (e.g. Metro serving this app).
             const wsServerForProtectedPorts = wsServer;
             previewDevServers.setProtectedPortsProvider(() => {
@@ -2343,7 +2372,7 @@ export async function createOttoDaemon(
     // Dev servers next: they are children of this daemon and hold ports the
     // next daemon instance may want.
     await previewDevServers.shutdown().catch(() => undefined);
-    // The local AI host is a managed child too — kill it so it never outlives
+    // The local AI host is a managed child too - kill it so it never outlives
     // the daemon that spawned it.
     await brainManager.shutdown().catch(() => undefined);
     await brainOpsManager.shutdown().catch(() => undefined);

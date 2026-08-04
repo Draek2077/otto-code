@@ -782,7 +782,7 @@ it("clears finished attention on a real terminal", async () => {
   // A working -> idle transition is how the real tracker records a "finished"
   // attention: { state: "idle", attentionReason: "finished" }. The state is
   // never literally "attention", so a clear that checks state === "attention"
-  // would never fire — the bug this reproduces.
+  // would never fire - the bug this reproduces.
   await manager.setTerminalActivity(session.id, "working");
   await manager.setTerminalActivity(session.id, "idle");
   await waitForCondition(

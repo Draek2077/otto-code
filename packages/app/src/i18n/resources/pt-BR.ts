@@ -98,7 +98,7 @@ export const ptBR: TranslationResources = {
     },
     contextHealth: {
       summary:
-        "O contexto do projeto ocupa {{tokens}} tokens — {{percent}} da janela deste modelo, em toda requisição. Restam {{room}} para trabalhar.",
+        "O contexto do projeto ocupa {{tokens}} tokens - {{percent}} da janela deste modelo, em toda requisição. Restam {{room}} para trabalhar.",
       manage: "Gerenciar",
       dismiss: "Ocultar por enquanto",
     },
@@ -237,9 +237,9 @@ export const ptBR: TranslationResources = {
           "A memória está desligada para esta personalidade, então nada disso é enviado. As lições ficam guardadas.",
         empty: "Nada é acrescentado ao contexto desta personalidade neste projeto.",
         emptyButStored_one:
-          "A lição abaixo não se aplica a este projeto, então nada é acrescentado aqui — o rótulo na linha diz por quê.",
+          "A lição abaixo não se aplica a este projeto, então nada é acrescentado aqui - o rótulo na linha diz por quê.",
         emptyButStored_other:
-          "Nenhuma das {{count}} lições abaixo se aplica a este projeto, então nada é acrescentado aqui — o rótulo em cada linha diz por quê.",
+          "Nenhuma das {{count}} lições abaixo se aplica a este projeto, então nada é acrescentado aqui - o rótulo em cada linha diz por quê.",
         omitted:
           "{{count}} das lições abaixo não couberam no orçamento de injeção e não estão sendo enviadas.",
       },
@@ -247,7 +247,7 @@ export const ptBR: TranslationResources = {
         global: "Em todo lugar",
         project: "Este projeto",
         elsewhere: "Outro projeto",
-        unattached: "Sem projeto — nunca enviada",
+        unattached: "Sem projeto - nunca enviada",
         change: "Escopo: {{scope}}. Toque para mudar.",
       },
       row: {
@@ -349,7 +349,7 @@ export const ptBR: TranslationResources = {
     },
     emptyState: {
       title: "Ainda sem contexto de projeto",
-      body: "Nada está sendo carregado para este projeto. Isso é um começo limpo, não um problema — adicione um CLAUDE.md ou AGENTS.md na raiz do projeto quando quiser dar instruções permanentes aos seus agentes.",
+      body: "Nada está sendo carregado para este projeto. Isso é um começo limpo, não um problema - adicione um CLAUDE.md ou AGENTS.md na raiz do projeto quando quiser dar instruções permanentes aos seus agentes.",
     },
   },
   agentControls: {
@@ -479,7 +479,7 @@ export const ptBR: TranslationResources = {
         title: "Excluir este chat?",
         subjectFallback: "este chat",
         recordLine:
-          "O registro que o Otto tem de {{subject}} é excluído permanentemente — a linha, o título e os metadados.",
+          "O registro que o Otto tem de {{subject}} é excluído permanentemente - a linha, o título e os metadados.",
         transcriptLine:
           "A transcrição do próprio {{provider}} no host é mantida, então a conversa continua em disco e ainda pode ser lida ou retomada fora do Otto.",
         undoLine: "O lado do Otto não pode ser desfeito.",
@@ -493,7 +493,7 @@ export const ptBR: TranslationResources = {
         recordLineMany:
           "Exclui permanentemente os registros do Otto de {{count}} chats arquivados. Os chats que você não arquivou ficam intactos.",
         transcriptLine:
-          "As transcrições dos próprios provedores no host são mantidas — isto limpa o histórico do Otto, não as conversas em disco.",
+          "As transcrições dos próprios provedores no host são mantidas - isto limpa o histórico do Otto, não as conversas em disco.",
         undoLine: "O lado do Otto não pode ser desfeito.",
         confirm: "Limpar",
       },
@@ -743,7 +743,7 @@ export const ptBR: TranslationResources = {
           subjectFile: "“{{name}}” será excluído do disco.",
           subjectFolder: "“{{name}}” será excluída do disco.",
           permanentLine:
-            "Isso é permanente — o item é removido do disco, não vai para a lixeira, e o Otto não pode desfazer.",
+            "Isso é permanente - o item é removido do disco, não vai para a lixeira, e o Otto não pode desfazer.",
           confirm: "Excluir",
         },
         deleteContents: {
@@ -871,7 +871,7 @@ export const ptBR: TranslationResources = {
       closeAction: "Fechar Visualizador",
       loadFailedTitle: "O Visualizador não conseguiu iniciar",
       loadFailedBody:
-        "A visualização de grafo nunca terminou de carregar nesta máquina. Isso pode acontecer quando o app roda sem aceleração de GPU — o log do desktop registra os detalhes. Feche e reabra a aba para tentar de novo.",
+        "A visualização de grafo nunca terminou de carregar nesta máquina. Isso pode acontecer quando o app roda sem aceleração de GPU - o log do desktop registra os detalhes. Feche e reabra a aba para tentar de novo.",
     },
     contextManagement: {
       tabLabel: "Contexto",
@@ -1236,14 +1236,14 @@ export const ptBR: TranslationResources = {
           // Branch cleanup section (worktreeArchiveBranchCleanup)
           branchIntro: "Este worktree está na branch {{branchName}}.",
           deleteBranchCheckbox: "Excluir também a branch {{branchName}}",
-          branchMerged: "Totalmente mesclada em {{baseBranch}} — seguro excluir.",
-          branchMergedNoBase: "Totalmente mesclada — seguro excluir.",
+          branchMerged: "Totalmente mesclada em {{baseBranch}} - seguro excluir.",
+          branchMergedNoBase: "Totalmente mesclada - seguro excluir.",
           branchUnmergedCommit:
-            "Não mesclada em {{baseBranch}} — excluir descarta {{count}} commit.",
+            "Não mesclada em {{baseBranch}} - excluir descarta {{count}} commit.",
           branchUnmergedCommits:
-            "Não mesclada em {{baseBranch}} — excluir descarta {{count}} commits.",
-          branchUnmergedCommitNoBase: "Não mesclada — excluir descarta {{count}} commit.",
-          branchUnmergedCommitsNoBase: "Não mesclada — excluir descarta {{count}} commits.",
+            "Não mesclada em {{baseBranch}} - excluir descarta {{count}} commits.",
+          branchUnmergedCommitNoBase: "Não mesclada - excluir descarta {{count}} commit.",
+          branchUnmergedCommitsNoBase: "Não mesclada - excluir descarta {{count}} commits.",
           branchMergeUnknown: "Não foi possível determinar o status de merge.",
           branchRemoteKept: "A cópia no origin é mantida.",
           branchDeleted: "Branch {{branchName}} excluída.",
@@ -1288,7 +1288,7 @@ export const ptBR: TranslationResources = {
         deletedFile: "Excluído",
         baseChip: "vs {{baseRef}}",
         baseChipReadOnly: "Comparando com {{baseRef}}",
-        baseChipEditable: "Comparando com {{baseRef}} — toque para alterar",
+        baseChipEditable: "Comparando com {{baseRef}} - toque para alterar",
         baseChipInferred: "Comparando com {{baseRef}}, detectado como o branch de origem deste",
         baseChipWorktree: "Comparando com {{baseRef}}, o branch de onde esta worktree foi criada",
         baseChipPinned: "Comparando com {{baseRef}}, que você escolheu",
@@ -2220,10 +2220,10 @@ export const ptBR: TranslationResources = {
     team: {
       title: "Que tipo de time você quer?",
       subtitle:
-        "Escolha um time e o Otto monta um grupo completo e equilibrado — personagens com nome e personalidade própria. Não combinou? Embaralhe de novo. Ou monte o seu com os seus agentes.",
+        "Escolha um time e o Otto monta um grupo completo e equilibrado - personagens com nome e personalidade própria. Não combinou? Embaralhe de novo. Ou monte o seu com os seus agentes.",
       unsupportedTitle: "Monte seu time",
       unsupportedBody:
-        "Este host ainda não suporta times de agentes. Atualize o host para que o Otto monte um para você — por enquanto, você pode pular esta etapa.",
+        "Este host ainda não suporta times de agentes. Atualize o host para que o Otto monte um para você - por enquanto, você pode pular esta etapa.",
       blueprints: {
         application: {
           name: "Time de aplicações",
@@ -2231,7 +2231,7 @@ export const ptBR: TranslationResources = {
         },
         game: {
           name: "Time de jogos",
-          tagline: "Um estúdio para criar jogos — mecânicas, sensação e brilho.",
+          tagline: "Um estúdio para criar jogos - mecânicas, sensação e brilho.",
         },
         web: {
           name: "Time web",
@@ -2239,7 +2239,7 @@ export const ptBR: TranslationResources = {
         },
         creative: {
           name: "Estúdio criativo",
-          tagline: "Um estúdio para escrever, criar e ter ideias — sem precisar de código.",
+          tagline: "Um estúdio para escrever, criar e ter ideias - sem precisar de código.",
         },
         management: {
           name: "Time de gestão",
@@ -2255,7 +2255,7 @@ export const ptBR: TranslationResources = {
         tagline: "Junte um time com os seus agentes, do seu jeito.",
       },
       providerNoModels:
-        "Este provedor ainda não tem modelos — atualize-o nas Configurações e volte aqui.",
+        "Este provedor ainda não tem modelos - atualize-o nas Configurações e volte aqui.",
       providerMissing:
         "Escolha primeiro um provedor (etapa anterior) para o Otto saber quais modelos usar.",
       memberCountOne: "1 membro",
@@ -2559,9 +2559,9 @@ export const ptBR: TranslationResources = {
     wordWrap: "Quebra de linha",
     outOfProject: {
       badge:
-        "Editando fora do projeto ({{project}}) — não faz parte do contexto do agente nem das alterações do Git deste Workspace.",
+        "Editando fora do projeto ({{project}}) - não faz parte do contexto do agente nem das alterações do Git deste Workspace.",
       badgeNoProject:
-        "Editando fora do projeto — não faz parte do contexto do agente nem das alterações do Git deste Workspace.",
+        "Editando fora do projeto - não faz parte do contexto do agente nem das alterações do Git deste Workspace.",
     },
     contextMenu: {
       cut: "Recortar",
@@ -2620,13 +2620,13 @@ export const ptBR: TranslationResources = {
     loading: "Carregando arquivos...",
     noResults: "Nenhum arquivo",
   },
-  // Refine — the reviewed AI rewrite (docs/refine.md). Only the two
+  // Refine - the reviewed AI rewrite (docs/refine.md). Only the two
   // entry-point strings are translated here; the Refine tab itself is literal
   // English pending the pre-release i18n sweep, like the rename/references tabs.
   refine: {
     open: "Refinar com IA",
     saveFirst:
-      "Salve ou reverta suas alterações primeiro — o Refinar trabalha a partir do arquivo em disco.",
+      "Salve ou reverta suas alterações primeiro - o Refinar trabalha a partir do arquivo em disco.",
     compactOpen: "Compactar com IA",
     unsupported: "Atualize o host para usar o Refinar.",
     job: {
@@ -2642,8 +2642,8 @@ export const ptBR: TranslationResources = {
     toolbar: {
       discard: "Descartar esta proposta e reler todos os arquivos",
       writing: "Gravando…",
-      acceptOne: "Aceitar — gravar as alterações mantidas",
-      acceptMany: "Aceitar — gravar {{count}} arquivos",
+      acceptOne: "Aceitar - gravar as alterações mantidas",
+      acceptMany: "Aceitar - gravar {{count}} arquivos",
       dropAll: "Descartar todas as alterações",
       keepAll: "Manter todas as alterações",
     },
@@ -2661,7 +2661,7 @@ export const ptBR: TranslationResources = {
         "Deixe a reescrita alterar todos os arquivos deste conjunto, não apenas o primeiro.",
       writableHint: "Pode ser reescrito. Toque para deixá-lo como contexto somente leitura.",
       referenceHint:
-        "Contexto somente leitura — o modelo lê, mas nunca pode alterar. Toque para permitir a reescrita.",
+        "Contexto somente leitura - o modelo lê, mas nunca pode alterar. Toque para permitir a reescrita.",
     },
     instruction: {
       placeholder: "O que deve mudar? Ex.: mantenha cada regra, corte a repetição",
@@ -2706,23 +2706,23 @@ export const ptBR: TranslationResources = {
     },
     summary: {
       pinning:
-        "Fixando os arquivos como estão agora — é contra isso que cada proposta será medida.",
+        "Fixando os arquivos como estão agora - é contra isso que cada proposta será medida.",
       unreadable: "Não foi possível ler este conjunto de trabalho.",
       idle: "Nada proposto ainda. Nenhum arquivo foi tocado.",
-      generating: "Rodada {{round}} — reescrevendo.",
+      generating: "Rodada {{round}} - reescrevendo.",
       accepting: "Gravando as alterações mantidas.",
-      acceptedOne: "Pronto — 1 arquivo gravado.",
-      acceptedMany: "Pronto — {{count}} arquivos gravados.",
+      acceptedOne: "Pronto - 1 arquivo gravado.",
+      acceptedMany: "Pronto - {{count}} arquivos gravados.",
       partiallyAccepted:
         "{{written}} gravados, {{skipped}} deixados de lado. Nada foi sobrescrito.",
       reviewOne:
-        "Rodada {{round}} — {{kept}} de {{total}} alteração mantida, +{{additions}} −{{removals}} linhas. Nada foi gravado ainda.",
+        "Rodada {{round}} - {{kept}} de {{total}} alteração mantida, +{{additions}} −{{removals}} linhas. Nada foi gravado ainda.",
       reviewMany:
-        "Rodada {{round}} — {{kept}} de {{total}} alterações mantidas, +{{additions}} −{{removals}} linhas. Nada foi gravado ainda.",
+        "Rodada {{round}} - {{kept}} de {{total}} alterações mantidas, +{{additions}} −{{removals}} linhas. Nada foi gravado ainda.",
       reviewOneScoped:
-        "Rodada {{round}} — {{kept}} de {{total}} alteração mantida em {{changedFiles}}/{{proposedFiles}} arquivos, +{{additions}} −{{removals}} linhas. Nada foi gravado ainda.",
+        "Rodada {{round}} - {{kept}} de {{total}} alteração mantida em {{changedFiles}}/{{proposedFiles}} arquivos, +{{additions}} −{{removals}} linhas. Nada foi gravado ainda.",
       reviewManyScoped:
-        "Rodada {{round}} — {{kept}} de {{total}} alterações mantidas em {{changedFiles}}/{{proposedFiles}} arquivos, +{{additions}} −{{removals}} linhas. Nada foi gravado ainda.",
+        "Rodada {{round}} - {{kept}} de {{total}} alterações mantidas em {{changedFiles}}/{{proposedFiles}} arquivos, +{{additions}} −{{removals}} linhas. Nada foi gravado ainda.",
     },
   },
   refactor: {
@@ -3082,7 +3082,7 @@ export const ptBR: TranslationResources = {
       mountedWorkspaceLimit: {
         label: "Workspaces mantidos carregados",
         description:
-          "Quantos Workspaces continuam carregados para que voltar a eles seja instantâneo. Passando disso, o usado há mais tempo é descarregado e recarrega na próxima vez que você o abrir. Defina pelo menos a quantidade entre a qual você realmente alterna — abaixo disso, cada troca descarrega justamente o Workspace ao qual você está prestes a voltar. Quanto maior, mais memória usa.",
+          "Quantos Workspaces continuam carregados para que voltar a eles seja instantâneo. Passando disso, o usado há mais tempo é descarregado e recarrega na próxima vez que você o abrir. Defina pelo menos a quantidade entre a qual você realmente alterna - abaixo disso, cada troca descarrega justamente o Workspace ao qual você está prestes a voltar. Quanto maior, mais memória usa.",
         accessibilityLabel: "Workspaces mantidos carregados",
       },
       mountedTabLimit: {
@@ -3259,7 +3259,7 @@ export const ptBR: TranslationResources = {
         },
         chatMetricsBar: {
           title: "Mostrar métricas do chat",
-          hint: "Uma linha fina acima da transcrição com o total de tokens, o custo e a atividade de subagentes deste chat — incluindo tudo que ele iniciou. O custo aparece só quando o provedor informa um",
+          hint: "Uma linha fina acima da transcrição com o total de tokens, o custo e a atividade de subagentes deste chat - incluindo tudo que ele iniciou. O custo aparece só quando o provedor informa um",
           accessibilityLabel: "Mostrar métricas do chat",
         },
         autoExpandReasoning: {
@@ -3654,12 +3654,12 @@ export const ptBR: TranslationResources = {
         hostImagesSummary: "{{size}} em {{count}} imagens",
         hostImagesEmpty: "Nada armazenado ainda",
         hostImagesHint:
-          "Capturas de tela e outras imagens que seus agentes produziram, guardadas para que mensagens antigas ainda consigam exibi-las. Limpar não pode ser desfeito — essas mensagens passam a mostrar a descrição.",
+          "Capturas de tela e outras imagens que seus agentes produziram, guardadas para que mensagens antigas ainda consigam exibi-las. Limpar não pode ser desfeito - essas mensagens passam a mostrar a descrição.",
         previewCache: "Cópias em cache neste dispositivo",
         previewCacheSummary: "{{size}} em {{count}} imagens",
         previewCacheEmpty: "Nada em cache",
         previewCacheHint:
-          "Cópias locais para as imagens carregarem na hora. Pode limpar sem risco — elas são baixadas de novo quando preciso. Os arquivos que você anexou a mensagens ({{size}}) ficam guardados à parte e nunca são limpos aqui.",
+          "Cópias locais para as imagens carregarem na hora. Pode limpar sem risco - elas são baixadas de novo quando preciso. Os arquivos que você anexou a mensagens ({{size}}) ficam guardados à parte e nunca são limpos aqui.",
         clear: "Limpar",
         clearConfirm: "Limpar imagens",
         clearImagesTitle: "Limpar as imagens deste host?",
@@ -3828,7 +3828,7 @@ export const ptBR: TranslationResources = {
           "Quando desativado, os chats ocultam o seletor de autocompactação e sempre usam o padrão acima.",
         maxToolRoundsLabel: "Máximo de rodadas de ferramentas por turno",
         maxToolRoundsHint:
-          "O turno para com erro após esse número de rodadas de ferramentas sem uma resposta final — uma válvula de segurança contra loops descontrolados.",
+          "O turno para com erro após esse número de rodadas de ferramentas sem uma resposta final - uma válvula de segurança contra loops descontrolados.",
         maxToolRoundsValue: "{{rounds}} rodadas",
         maxToolRoundsRequiresUpdate:
           "Atualize o host para configurar o máximo de rodadas de ferramentas.",

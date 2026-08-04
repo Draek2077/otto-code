@@ -1,7 +1,7 @@
 /**
  * Per-provider resolution of *where* context lives (charter §2.4).
  *
- * A registry from day one, with Claude as its single populated entry — per the
+ * A registry from day one, with Claude as its single populated entry - per the
  * fork's provider-agnostic-first rule, the shape must not have to change when
  * Codex and OpenCode arrive.
  *
@@ -38,7 +38,7 @@ export interface ContextLoadPoint {
 export interface ProviderConvention {
   provider: string;
   confidence: ContextConfidence;
-  /** Whether `@path` inlining exists at all — gates the "Always load" action. */
+  /** Whether `@path` inlining exists at all - gates the "Always load" action. */
   supportsImports: boolean;
   /** Recursion limit for imports; also guards against pathological graphs. */
   importDepthCap: number;
@@ -47,8 +47,8 @@ export interface ProviderConvention {
   /** Directories whose per-skill `SKILL.md` children contribute roster weight. */
   resolveSkillRoots(input: ContextResolutionInput): string[];
   /**
-   * Directories whose `*.md` children define subagents. Their frontmatter —
-   * name, description, tool grant — is advertised on every request exactly like
+   * Directories whose `*.md` children define subagents. Their frontmatter -
+   * name, description, tool grant - is advertised on every request exactly like
    * a skill's, so it is roster weight by the same argument.
    */
   resolveAgentRoots(input: ContextResolutionInput): string[];
@@ -59,7 +59,7 @@ export interface ProviderConvention {
    */
   resolvePluginRoots?(input: ContextResolutionInput): Promise<string[]>;
   /**
-   * Root under which subdirectory context files load *conditionally* — only
+   * Root under which subdirectory context files load *conditionally* - only
    * once the agent touches that subtree. Null when the provider has no such
    * behavior.
    */
@@ -82,7 +82,7 @@ const CLAUDE_CONVENTION: ProviderConvention = {
   supportsImports: true,
   // Claude Code caps recursive @imports; the exact depth is pending empirical
   // confirmation (charter §11.2). 5 is the documented figure and a safe guard
-  // regardless — exceeding it produces a `depth_capped` finding, not silence.
+  // regardless - exceeding it produces a `depth_capped` finding, not silence.
   importDepthCap: 5,
 
   resolveLoadPoints({ cwd, projectRoot, homeDir }): ContextLoadPoint[] {
@@ -155,7 +155,7 @@ const CLAUDE_CONVENTION: ProviderConvention = {
 };
 
 /**
- * Directories from `from` up to — but not including — `to`. Returns nothing
+ * Directories from `from` up to - but not including - `to`. Returns nothing
  * when `from` is not inside `to`, or when they are the same directory.
  */
 export function ancestorsBetween(from: string, to: string): string[] {
@@ -164,7 +164,7 @@ export function ancestorsBetween(from: string, to: string): string[] {
   const result: string[] = [];
   while (current !== normalizedTo) {
     const parent = path.dirname(current);
-    // Escaped past the root without meeting `to` — not a descendant.
+    // Escaped past the root without meeting `to` - not a descendant.
     if (parent === current) return [];
     result.push(current);
     current = parent;
@@ -178,7 +178,7 @@ export function ancestorsBetween(from: string, to: string): string[] {
  * disabled here rather than writing syntax the agent would render as text.
  *
  * Confidence is `unverified` until the fixture repo (charter §11.2) confirms
- * the real behavior — the UI says so rather than presenting it as fact.
+ * the real behavior - the UI says so rather than presenting it as fact.
  */
 const CODEX_CONVENTION: ProviderConvention = {
   provider: "codex",
@@ -235,7 +235,7 @@ const CODEX_CONVENTION: ProviderConvention = {
 /**
  * OpenCode reads `AGENTS.md` plus an `instructions` array in its config that
  * accepts globs. Those globs are exactly the case a user cannot reason about
- * unaided, which makes this the provider the graph view helps most — but
+ * unaided, which makes this the provider the graph view helps most - but
  * resolving them needs the config parser, so v1 covers the AGENTS.md spine and
  * reports `unverified`.
  */

@@ -3,7 +3,7 @@
  * order it reaches it, as readable text.
  *
  * The graph answers *what* is loaded and *what it costs*. It cannot answer the
- * question users actually ask first — "so what is the model reading?" — because
+ * question users actually ask first - "so what is the model reading?" - because
  * a tree of filenames and token counts never shows the thing itself. This module
  * concatenates the real content, once, for reading only.
  *
@@ -15,7 +15,7 @@
  *    in a way that lands on disk.
  * 2. **A section Otto cannot see says so.** Every CLI-backed provider composes
  *    its own preset internally. That section ships with no text and
- *    `visibility: "not_visible"` rather than being silently skipped — an absent
+ *    `visibility: "not_visible"` rather than being silently skipped - an absent
  *    section reads as "there is nothing there", which is the wrong conclusion.
  * 3. **Only fixed weight.** Conditional and referenced files are not in the
  *    request, so putting them in a preview of the request would misrepresent it.
@@ -62,7 +62,7 @@ export interface BuildPromptPreviewInput {
   runtimeTextByCategory?: Partial<Record<ContextCategory, string>>;
   /**
    * Restrict the assembly to these categories, in the same reading order.
-   * Omitted means every category — reading one section must not cost a re-read
+   * Omitted means every category - reading one section must not cost a re-read
    * of every context file on disk.
    */
   categories?: readonly ContextCategory[];
@@ -117,7 +117,7 @@ export async function buildPromptPreview(
       // the whole preview over; the graph's `dead_import` findings are where
       // missing files get reported.
       if (raw == null) continue;
-      // A roster entry reaches the model as its frontmatter — showing the body
+      // A roster entry reaches the model as its frontmatter - showing the body
       // here would display text that is not in the request, which is exactly the
       // misconception this view exists to clear up.
       const text = category === "skills_roster" ? extractFrontmatter(raw) : raw;

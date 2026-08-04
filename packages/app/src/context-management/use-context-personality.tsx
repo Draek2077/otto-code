@@ -63,7 +63,7 @@ export function useContextPersonalityMemory(params: {
   );
 
   // A host that can store lessons but has no personality picked keeps the
-  // segment present and empty — that is how you find out the feature exists.
+  // segment present and empty - that is how you find out the feature exists.
   const lessonCount = enabled ? (memory.view?.entries.length ?? 0) : null;
 
   return useMemo(

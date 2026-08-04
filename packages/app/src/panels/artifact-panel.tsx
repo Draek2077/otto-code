@@ -55,7 +55,7 @@ function ArtifactPanel() {
   );
 
   // While generating, the HTML file doesn't exist yet, so the content fetch
-  // legitimately 404s — key off the artifact's own status rather than the
+  // legitimately 404s - key off the artifact's own status rather than the
   // content query's loading/error state so this doesn't flicker into the
   // error branch below once retries are exhausted.
   if (artifact?.status === "generating") {
@@ -82,7 +82,7 @@ function ArtifactPanel() {
 
   // A failed generation with no recoverable content (first-ever generation,
   // or a failed regeneration with nothing to fall back to) has nothing to
-  // render — show the failure plainly instead of a generic fetch error.
+  // render - show the failure plainly instead of a generic fetch error.
   if (artifact?.status === "error" && !content) {
     return (
       <View style={styles.centered}>
@@ -119,7 +119,7 @@ function ArtifactPanel() {
         <View style={styles.errorBanner}>
           <TriangleAlert size={14} color={theme.colors.palette.red[300]} />
           <Text style={styles.errorBannerText} numberOfLines={2}>
-            {artifact.errorMessage ?? "Regeneration failed — showing the last successful version."}
+            {artifact.errorMessage ?? "Regeneration failed - showing the last successful version."}
           </Text>
           {generationAgentId ? (
             <Button variant="ghost" size="sm" onPress={handleViewGenerationLog}>

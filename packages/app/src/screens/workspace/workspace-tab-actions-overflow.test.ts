@@ -30,7 +30,7 @@ describe("computeVisibleTabActionKeys", () => {
 
   it("stops at the first tool that no longer fits even if earlier ones would", () => {
     // preview (22) is narrower than artifacts (28), but once artifacts fails
-    // to fit, preview must collapse too — the visible set stays a suffix.
+    // to fit, preview must collapse too - the visible set stays a suffix.
     const visible = computeVisibleTabActionKeys({ actions, availableWidth: 90 });
     expect(visible).toEqual(new Set(["pin:draft", "split-right", "split-down"]));
   });

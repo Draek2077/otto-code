@@ -14,7 +14,7 @@ import type { PromptPreviewQuery } from "./use-prompt-preview";
  *
  * The tree's file rows open the real file in the editor; its prompt rows open
  * this. Both answer "what is the model actually reading", and the difference is
- * only whether the text has a file behind it — so they share the pane rather
+ * only whether the text has a file behind it - so they share the pane rather
  * than living in a tab of their own.
  *
  * There is no edit affordance on purpose. Every section here is either composed
@@ -142,8 +142,8 @@ function PromptSectionBody({
 }
 
 /**
- * A label does not identify a block on its own — a category can emit several
- * with the same name — so repeats carry an occurrence ordinal. Keys are built up
+ * A label does not identify a block on its own - a category can emit several
+ * with the same name - so repeats carry an occurrence ordinal. Keys are built up
  * front rather than from the map index: the list reorders when a what-if changes
  * what is loaded, and an index key would hold the old text under the new label.
  */

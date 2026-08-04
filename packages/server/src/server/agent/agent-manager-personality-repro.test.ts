@@ -147,7 +147,7 @@ function createManager() {
 test("two open chats: switching one personality does not leak into the other", async () => {
   const { manager, workdir, cleanup } = createManager();
   try {
-    // Chat A spawns as Sprocket; Chat B spawns as Atlas — the reported starting state.
+    // Chat A spawns as Sprocket; Chat B spawns as Atlas - the reported starting state.
     const chatA = await manager.createAgent(
       {
         provider: "codex",
@@ -219,7 +219,7 @@ test("concurrent switches on two agents each apply their own selected personalit
       { workspaceId: undefined },
     );
 
-    // Fire both switches at once — the per-agent lock must keep them isolated.
+    // Fire both switches at once - the per-agent lock must keep them isolated.
     await Promise.all([
       manager.setAgentPersonality(chatA.id, atlas()),
       manager.setAgentPersonality(chatB.id, sprocket()),

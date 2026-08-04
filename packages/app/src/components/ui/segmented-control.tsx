@@ -19,7 +19,7 @@ export interface SegmentedControlOption<T extends string> {
   testID?: string;
   /** Marks a segment as wanting attention: same amber the mode chip uses for
    *  its "moderate" tier, so the two read as one language. The tone only
-   *  recolors — hover, press, and selection chrome still behave normally, and
+   *  recolors - hover, press, and selection chrome still behave normally, and
    *  the label brightens on selection exactly like an untoned segment. */
   tone?: "warning";
 }
@@ -32,7 +32,7 @@ interface SegmentedControlProps<T extends string> {
   hideLabels?: boolean;
   // Let the segments flow onto extra lines instead of overflowing the parent.
   // Segments never shrink (they'd clip their labels), so a control with many
-  // options is wider than a phone — wrapping is the only way it fits.
+  // options is wider than a phone - wrapping is the only way it fits.
   wrap?: boolean;
   // Fill the parent and split it evenly between the segments. Use when the
   // control *is* the row (a two-tab strip heading a panel) rather than one chip
@@ -141,7 +141,7 @@ function SegmentItem<T extends string>({
   onValueChange: (value: T) => void;
 }) {
   // Tone recolors, selection brightens. An unselected toned segment is a dimmed
-  // amber — same relationship muted→foreground has on an untoned one — so
+  // amber - same relationship muted→foreground has on an untoned one - so
   // "which tab am I on" stays readable independently of "which tab has news".
   const labelStyle = useMemo(
     () => [
@@ -161,8 +161,8 @@ function SegmentItem<T extends string>({
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.segment,
       segmentSizeStyle,
-      // A toned segment runs the same three states as an untoned one — bare at
-      // rest, boxed on hover, boxed harder when selected — just in amber
+      // A toned segment runs the same three states as an untoned one - bare at
+      // rest, boxed on hover, boxed harder when selected - just in amber
       // instead of surface greys. The two ladders never layer; at rest NEITHER
       // paints a background, which is what makes hover legible at all.
       isSelected &&
@@ -234,7 +234,7 @@ const styles = StyleSheet.create((theme) => {
     // lines as between segments. `flexShrink: 1` + `minWidth: 0` are load-bearing:
     // segments never shrink (flexShrink: 0), so unless the container itself is
     // allowed to shrink below its single-line content width, flexWrap never
-    // engages — the control just overflows and squeezes a neighboring label into
+    // engages - the control just overflows and squeezes a neighboring label into
     // a vertical sliver. Shrinking the container is what forces segments onto new
     // lines when the row is too narrow.
     containerWrap: {
@@ -263,14 +263,14 @@ const styles = StyleSheet.create((theme) => {
     segmentMd: {
       ...geometry.segmentedSegmentMd,
     },
-    // Equal shares of the container. Overrides the default flexShrink: 0 — in
+    // Equal shares of the container. Overrides the default flexShrink: 0 - in
     // stretch mode the segments are meant to resize with the parent.
     segmentStretch: {
       flex: 1,
       flexBasis: 0,
       minWidth: 0,
     },
-    // The thumb is `surface0` — the page background — lifted off the recessed
+    // The thumb is `surface0` - the page background - lifted off the recessed
     // track by fill contrast and a soft shadow, with no outline on either. That
     // only works because `surfaceControlTrack` is a real step away from the page
     // in both ramps; against the old `surface2` on light it was white on white.
@@ -290,7 +290,7 @@ const styles = StyleSheet.create((theme) => {
     },
     // The amber ladder. It mirrors the grey one STATE FOR STATE: no box at
     // rest, a box on hover, a stronger box when selected. The fills are theme
-    // tokens rather than an alpha computed here — light and dark need different
+    // tokens rather than an alpha computed here - light and dark need different
     // weights, and one hardcoded pair can only be right on one of them.
     segmentWarningHover: {
       backgroundColor: theme.colors.statusWarningSurface,

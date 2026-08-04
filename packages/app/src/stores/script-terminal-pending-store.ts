@@ -10,8 +10,8 @@ import { create } from "zustand";
  * that gap so the tab survives long enough to be real.
  *
  * The set is shared rather than local to the workspace screen because scripts
- * start from three places — the workspace header, the mobile header, and the
- * sidebar tools cluster — and the sidebar renders outside the screen that owns
+ * start from three places - the workspace header, the mobile header, and the
+ * sidebar tools cluster - and the sidebar renders outside the screen that owns
  * the terminals query. A call site that marked nothing used to open a tab the
  * next reconcile pass immediately closed again.
  *

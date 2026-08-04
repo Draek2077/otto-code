@@ -11,7 +11,7 @@ import { query } from "./gpu.js";
  * inferred from request counting, so it reflects what the engine is really
  * doing. That matters for agentic use: several concurrent requests are only
  * genuinely parallel if there are free slots to take them, and slots share one
- * KV pool — so more concurrency costs context per request.
+ * KV pool - so more concurrency costs context per request.
  */
 
 /** A CPU busy-fraction sampler: returns the fraction in [0,1], or null. */
@@ -19,11 +19,23 @@ export interface CpuSampler {
   (): number | null;
 }
 
-/** Slot occupancy from the running server. */
+/**
+ * Slot occupancy from the running server.
+ *
+ * `busy` is the sum of `prefill` and `decode`. The split matters because the two
+ * phases feel completely different from outside: prefill is a single batched
+ * pass over the prompt that pins the GPU and returns nothing, decode is the
+ * token-at-a-time stream. A UI that can only say "busy" cannot tell a long
+ * prompt being ingested from a model that has started answering.
+ */
 export interface SlotInfo {
   total: number;
   busy: number;
   idle: number;
+  /** Slots ingesting a prompt: processing, but not a single token emitted yet. */
+  prefill: number;
+  /** Slots emitting tokens. */
+  decode: number;
   contexts: number[];
 }
 
@@ -111,28 +123,45 @@ function fetchJson({
   });
 }
 
+/** Whether a slot is doing anything. Field naming has varied across versions. */
+function isProcessing(rec: Record<string, unknown>): boolean {
+  if (typeof rec.is_processing === "boolean") return rec.is_processing;
+  if (typeof rec.state === "number") return rec.state !== 0;
+  return false;
+}
+
+/** How many tokens this slot has emitted for the request it is on. */
+function decodedTokens(rec: Record<string, unknown>): number {
+  for (const key of ["n_decoded", "n_decoded_tokens", "tokens_predicted"]) {
+    const value = rec[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  // No counter at all: report a non-zero so the slot lands in decode rather than
+  // claiming a prefill that may never have been happening.
+  return 1;
+}
+
 /**
- * Slot occupancy from the running server.
- * @returns {{total:number, busy:number, idle:number, contexts:number[]}|null}
+ * Reduce llama-server's `/slots` array to the occupancy the UI shows.
+ *
+ * Exported separately from the fetch so the phase split can be tested against
+ * the field spellings real llama.cpp builds emit, without a live server.
  */
-async function slots({ host, port }: { host: string; port: number }): Promise<SlotInfo | null> {
-  const data = await fetchJson({ host, port, path: "/slots" });
-  if (!Array.isArray(data)) return null;
-
-  const rows = data as unknown[];
-
-  // Field naming has varied across llama.cpp versions; accept either.
-  const busy = rows.filter((s) => {
-    const rec = s as Record<string, unknown>;
-    if (typeof rec.is_processing === "boolean") return rec.is_processing;
-    if (typeof rec.state === "number") return rec.state !== 0;
-    return false;
-  }).length;
+export function summariseSlots(rows: unknown[]): SlotInfo {
+  const busyRows = rows.filter((s) => isProcessing(s as Record<string, unknown>));
+  // A busy slot that has not yet decoded a token is still ingesting its prompt.
+  // The decoded counter is the only field that separates the two phases, and it
+  // has been spelled three ways across llama.cpp versions; a slot that reports
+  // none of them counts as decode, because a busy slot that cannot prove it is
+  // still prefilling is far more likely to be mid-answer than mid-prompt.
+  const prefill = busyRows.filter((s) => decodedTokens(s as Record<string, unknown>) === 0).length;
 
   return {
     total: rows.length,
-    busy,
-    idle: rows.length - busy,
+    busy: busyRows.length,
+    idle: rows.length - busyRows.length,
+    prefill,
+    decode: busyRows.length - prefill,
     contexts: rows.map((s) => {
       const rec = s as Record<string, unknown>;
       const nCtx = typeof rec.n_ctx === "number" ? rec.n_ctx : undefined;
@@ -140,6 +169,13 @@ async function slots({ host, port }: { host: string; port: number }): Promise<Sl
       return nCtx ?? nPast ?? 0;
     }),
   };
+}
+
+/** Slot occupancy from the running server. */
+async function slots({ host, port }: { host: string; port: number }): Promise<SlotInfo | null> {
+  const data = await fetchJson({ host, port, path: "/slots" });
+  if (!Array.isArray(data)) return null;
+  return summariseSlots(data as unknown[]);
 }
 
 export { slots };

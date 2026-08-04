@@ -211,7 +211,7 @@ describe("desktop editor targets", () => {
       },
     );
 
-    // UNC paths must become \\server\share\... — the leading // is preserved by
+    // UNC paths must become \\server\share\... - the leading // is preserved by
     // the app's path normalization and explorer accepts the backslash form.
     expect(recorder.calls[0]?.args).toEqual(["\\\\server\\share\\project"]);
   });

@@ -19,7 +19,7 @@ interface SherpaOnnxCatalogEntry {
   /**
    * Lowercase hex sha256 of the archive at `archiveUrl`. When set, the
    * downloader verifies the fetched archive against it and refuses to extract on
-   * mismatch — the guard against a compromised release asset or a MITM'd
+   * mismatch - the guard against a compromised release asset or a MITM'd
    * download. Leave unset only until an authoritative digest is pinned from a
    * trusted source; an unset entry downloads with a loud "integrity unverified"
    * warning rather than silently trusting the bytes.

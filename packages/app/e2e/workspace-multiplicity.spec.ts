@@ -17,7 +17,7 @@ import { waitForSidebarHydration } from "./helpers/workspace-ui";
 //
 // It used to also prove that one directory could back any number of workspaces. That is no
 // longer the product: `createLocalCheckoutWorkspace` refuses a second *visible* workspace on an
-// occupied directory and steers the user to a worktree instead — see the settled policy in
+// occupied directory and steers the user to a worktree instead - see the settled policy in
 // docs/workspace-lifecycle.md. Those two tests were removed rather than rewritten, because there
 // is no longer any wire path that mints the duplicate they asserted.
 

@@ -12,7 +12,7 @@ const COMPLETED_NOTICE = [
   "</output>",
   "</task-result>",
   "</system-notice>",
-  "DocsSmokeTwo is now idle — transcript at history://DocsSmokeTwo",
+  "DocsSmokeTwo is now idle - transcript at history://DocsSmokeTwo",
 ].join("\n");
 
 describe("omp system notice detection", () => {

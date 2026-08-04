@@ -69,7 +69,7 @@ const BrowserResizePresetInputSchema = z.enum(["mobile", "tablet", "desktop"]);
 const BrowserColorSchemeInputSchema = z.enum(["light", "dark", "auto"]);
 type BrowserResizePreset = z.infer<typeof BrowserResizePresetInputSchema>;
 
-/** Mirrors the wire schema's maxChars default — the broker input type is the parsed shape. */
+/** Mirrors the wire schema's maxChars default - the broker input type is the parsed shape. */
 const PAGE_TEXT_DEFAULT_MAX_CHARS = 20_000;
 
 /** Same dimensions as the Claude Desktop browser pane's resize presets. */
@@ -101,7 +101,7 @@ function urlPort(url: URL): number {
 
 /**
  * Find the running preview server a URL points at, if any. Preview servers
- * always bind loopback, so a match means "loopback host + same port" — the
+ * always bind loopback, so a match means "loopback host + same port" - the
  * agent may write localhost where the server registered 127.0.0.1.
  */
 function findPreviewServerForUrl(params: {
@@ -147,7 +147,7 @@ function previewTabRedirectResult(params: {
       `Use its designated preview tab instead of opening another one: pass browserId=${server.boundBrowserId} ` +
       `to browser_snapshot, browser_navigate, browser_screenshot, and the other browser tools.`
     : `${server.url} belongs to the preview server "${server.name}", which has no designated preview tab yet. ` +
-      `Call preview_start with name "${server.name}" — it opens (or re-finds) the tab and returns its browserId.`;
+      `Call preview_start with name "${server.name}" - it opens (or re-finds) the tab and returns its browserId.`;
   return browserToolResult({
     payload: {
       requestId: "browser-tools-preview-redirect",
@@ -165,7 +165,7 @@ function previewTabRedirectResult(params: {
 /**
  * SSRF screen behind the URL-shape validation: link-local/cloud-metadata and
  * other special-use destinations are rejected before the navigate command
- * reaches the browser host. Loopback and private-LAN hosts pass — previews
+ * reaches the browser host. Loopback and private-LAN hosts pass - previews
  * and dev servers are the browser pane's purpose. Policy and rationale live
  * in ../agent/url-screen.ts.
  */
@@ -251,7 +251,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
       title: "Create browser tab",
       description:
         "Create a new Otto browser tab in this agent's workspace on the most recently connected browser automation host, opened in the background without switching the user's view. Pass an http(s) URL or a scheme-less host URL, which is treated as http; the returned browserId is used by tab-scoped tools. " +
-        "Do NOT use this to open or view a dev server — preview_start opens the server's designated preview tab and returns its browserId. Use this tool only for external sites and general browsing.",
+        "Do NOT use this to open or view a dev server - preview_start opens the server's designated preview tab and returns its browserId. Use this tool only for external sites and general browsing.",
       inputSchema: {
         url: BrowserHttpUrlInputSchema.optional(),
       },
@@ -489,7 +489,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
       title: "Navigate browser",
       description:
         "Navigate an Otto browser tab to a URL. Needs a tab browserId. Pass an http(s) URL or a scheme-less host URL, which is treated as http. " +
-        "Dev server URLs can only be opened in the server's designated preview tab — the browserId returned by preview_start.",
+        "Dev server URLs can only be opened in the server's designated preview tab - the browserId returned by preview_start.",
       inputSchema: { url: BrowserHttpUrlInputSchema, browserId: BrowserAutomationBrowserIdSchema },
     },
     async ({ url, browserId }) => {
@@ -578,14 +578,14 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
       title: "Capture browser screenshot",
       description:
         "Capture a PNG screenshot of an Otto browser tab, normalized to vision-model-legible dimensions. " +
-        "Default captures the viewport; fullPage captures the whole page (tall pages scale down, small text may blur — the result reports the scale). " +
-        "Pass ref (from the latest browser_snapshot) to capture just that element at up to 3x zoom — best for reading small text, charts, or a component closely. " +
+        "Default captures the viewport; fullPage captures the whole page (tall pages scale down, small text may blur - the result reports the scale). " +
+        "Pass ref (from the latest browser_snapshot) to capture just that element at up to 3x zoom - best for reading small text, charts, or a component closely. " +
         "For exact colors, fonts, and spacing prefer browser_inspect. Needs a tab browserId.",
       inputSchema: {
         browserId: BrowserAutomationBrowserIdSchema,
         fullPage: z.boolean().default(false),
         ref: BrowserRefInputSchema.optional().describe(
-          "Element ref from the latest browser_snapshot — captures just that element, zoomed for legibility",
+          "Element ref from the latest browser_snapshot - captures just that element, zoomed for legibility",
         ),
       },
     },
@@ -607,7 +607,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
             error: {
               code: "browser_denied",
               message:
-                "browser_screenshot captures either an element (ref) or the page (fullPage) — not both.",
+                "browser_screenshot captures either an element (ref) or the page (fullPage) - not both.",
               retryable: false,
             },
           },
@@ -804,7 +804,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
       title: "Inspect browser element",
       description:
         "Inspect a DOM element in an Otto browser tab by CSS selector or snapshot ref. Returns tag/id/class, text content, bounding box, and computed styles. " +
-        "BEST tool for verifying visual properties like colors, fonts, spacing, and dimensions — more accurate than screenshots. " +
+        "BEST tool for verifying visual properties like colors, fonts, spacing, and dimensions - more accurate than screenshots. " +
         "Pass styles to select which CSS properties to return; defaults to common layout and typography properties. Needs a tab browserId.",
       inputSchema: {
         browserId: BrowserAutomationBrowserIdSchema,
@@ -875,7 +875,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
       description:
         "List captured network requests in an Otto browser tab, or fetch a specific response body. " +
         "Without requestId, lists requests with method, URL, status, and requestId. With requestId, returns that request's full response body (useful for inspecting API payloads). " +
-        "Capture starts on the first call for a tab — reload the page (browser_reload) after the first call to record its traffic. " +
+        "Capture starts on the first call for a tab - reload the page (browser_reload) after the first call to record its traffic. " +
         "Use filter 'failed' to show only 4xx/5xx and network errors. Needs a tab browserId.",
       inputSchema: {
         browserId: BrowserAutomationBrowserIdSchema,
@@ -1029,7 +1029,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
       }
       if (!preset && !dimensions && (width !== undefined) !== (height !== undefined)) {
         return resizeInputFailure(
-          "browser_resize needs width and height together — or use a preset.",
+          "browser_resize needs width and height together - or use a preset.",
           { ...context, browserId },
         );
       }
@@ -1110,7 +1110,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Focus browser tab",
       description:
-        "Bring an Otto browser tab to the front of its pane so the user can see it. Tabs opened with browser_new_tab stay in the background — focus one when you have something worth showing (verification proof, a page opened on the user's behalf), not after every action. Needs a tab browserId.",
+        "Bring an Otto browser tab to the front of its pane so the user can see it. Tabs opened with browser_new_tab stay in the background - focus one when you have something worth showing (verification proof, a page opened on the user's behalf), not after every action. Needs a tab browserId.",
       inputSchema: {
         browserId: BrowserAutomationBrowserIdSchema,
       },
@@ -1138,7 +1138,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Read browser page text",
       description:
-        "Extract the readable text of an Otto browser tab — article/main content first, falling back to full body text. " +
+        "Extract the readable text of an Otto browser tab - article/main content first, falling back to full body text. " +
         "BEST tool for reading documentation, articles, or search results: much cheaper than browser_snapshot, which you should use instead when you need element refs to click or fill. " +
         "maxChars defaults to 20000; the truncated flag tells you when content was cut. Needs a tab browserId.",
       inputSchema: {
@@ -1301,7 +1301,7 @@ function browserToolResult(params: {
  * content[0].text. MCP clients forward `structuredContent` alongside `content`,
  * so leaving it in ships the same snapshot / page text / eval result to the
  * model twice, and it is replayed on every subsequent round. Only fields
- * reproduced verbatim by summarizeBrowserSuccess are stripped — the metadata
+ * reproduced verbatim by summarizeBrowserSuccess are stripped - the metadata
  * beside them (stats, url, title, truncated) is small and stays, and
  * structure-only results (logs, network, inspect, list_tabs) are untouched
  * because structuredContent is the only place they exist.
@@ -1430,7 +1430,7 @@ function summarizeBrowserSuccess(
   if (payload.result.command === "page_text") {
     return withDialogs(
       [
-        `Extracted ${payload.result.text.length} characters of page text from <${payload.result.source}>${payload.result.truncated ? " (truncated — raise maxChars for more)" : ""}.`,
+        `Extracted ${payload.result.text.length} characters of page text from <${payload.result.source}>${payload.result.truncated ? " (truncated - raise maxChars for more)" : ""}.`,
         `Title: ${payload.result.title || "Untitled"}`,
         `URL: ${payload.result.url}`,
         "",
@@ -1462,7 +1462,7 @@ function summarizeBrowserMediaSuccess(
   if (result.command === "screenshot") {
     const scaleWarning =
       result.scale !== undefined && result.scale < SCREENSHOT_LEGIBILITY_WARN_SCALE
-        ? ` The page was captured at ${Math.round(result.scale * 100)}% scale to fit — small text may be unreadable. For readable detail, take viewport screenshots with browser_scroll between them, or pass ref to zoom into one element.`
+        ? ` The page was captured at ${Math.round(result.scale * 100)}% scale to fit - small text may be unreadable. For readable detail, take viewport screenshots with browser_scroll between them, or pass ref to zoom into one element.`
         : "";
     return `Captured browser screenshot (${result.width}x${result.height}).${scaleWarning}`;
   }
@@ -1581,12 +1581,12 @@ function summarizeBrowserControlSuccess(
   }
 
   if (result.command === "focus_tab") {
-    return `Focused browser tab ${result.browserId} — it is now visible to the user.`;
+    return `Focused browser tab ${result.browserId} - it is now visible to the user.`;
   }
 
   if (result.command === "set_color_scheme") {
     return result.colorScheme === "auto"
-      ? "Cleared color-scheme emulation — the page follows the OS preference again."
+      ? "Cleared color-scheme emulation - the page follows the OS preference again."
       : `Emulated prefers-color-scheme: ${result.colorScheme}.`;
   }
 

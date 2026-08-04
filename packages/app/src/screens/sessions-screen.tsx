@@ -20,7 +20,7 @@ import { buildOpenProjectRoute } from "@/utils/host-routes";
 
 /**
  * The archive line. History has never had a filter, so an archived chat was only
- * distinguishable by a badge in a mixed list — which made bulk clear impossible to
+ * distinguishable by a badge in a mixed list - which made bulk clear impossible to
  * reason about ("clear what, exactly?"). Splitting the list is the prerequisite.
  */
 type ArchiveFilter = "all" | "active" | "archived";
@@ -73,7 +73,7 @@ function SessionsScreenContent() {
     return [...filtered].sort((a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime());
   }, [agents, archiveFilter]);
 
-  // The hosts a sweep would run against — the selected one, or every host the
+  // The hosts a sweep would run against - the selected one, or every host the
   // history query is already reading from.
   const targetServerIds = useMemo(
     () => (historyServerId ? [historyServerId] : hosts.map((host) => host.serverId)),

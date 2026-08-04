@@ -41,7 +41,7 @@ describe("analyzeResourceTrend", () => {
 
   test("ranks by relative growth so units do not decide the winner", () => {
     // The byte counter has the far bigger absolute slope, but it grew by 10%
-    // while the interval count tripled — the interval count is the real signal.
+    // while the interval count tripled - the interval count is the real signal.
     const samples = series({
       "heap.usedBytes": [100_000_000, 102_500_000, 105_000_000, 107_500_000, 110_000_000],
       "runtime.liveIntervals": [10, 15, 20, 25, 30],

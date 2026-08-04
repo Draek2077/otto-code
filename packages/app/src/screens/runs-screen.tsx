@@ -70,11 +70,11 @@ export function runStatusVariant(status: string): BadgeVariant {
   if (status === "failed" || status === "canceled") {
     return "error";
   }
-  // pending, running, paused — still in flight or waiting on a human.
+  // pending, running, paused - still in flight or waiting on a human.
   return "warning";
 }
 
-/** Label for the run-level status pill — "Completed"/"Failed" read clearer
+/** Label for the run-level status pill - "Completed"/"Failed" read clearer
  * there than the raw status; per-phase badges keep the raw "Done" etc. */
 export function runStatusLabel(status: string): string {
   if (status === "done") {
@@ -122,8 +122,8 @@ const plural = (n: number, one: string): string => `${n} ${n === 1 ? one : `${on
 
 /**
  * The footer's shape pill, sitting beside the status pill: which engine drives
- * this orchestration. Graph runs say so by name — their node count isn't the
- * phase count a plan run reports — everything else counts phases.
+ * this orchestration. Graph runs say so by name - their node count isn't the
+ * phase count a plan run reports - everything else counts phases.
  */
 export function describeRunShape(run: Run): string {
   return run.kind === "graph" ? "Graph" : plural(run.phases.length, "phase");
@@ -131,7 +131,7 @@ export function describeRunShape(run: Run): string {
 
 /**
  * Short complexity chips derived from the run's shape (agents, fan-out…).
- * Phase count is deliberately absent — it's the footer's shape pill.
+ * Phase count is deliberately absent - it's the footer's shape pill.
  */
 export function describeRunComplexity(run: Run): string[] {
   const phases = run.phases;
@@ -219,7 +219,7 @@ export function formatRunDate(iso: string | undefined): string | null {
 
 /**
  * Frozen run duration (createdAt → updatedAt) for a terminal run, e.g. "3m 12s".
- * Returns null while the run is still in flight — the card renders a live
+ * Returns null while the run is still in flight - the card renders a live
  * ticker for those instead (mirrors subagents/track-presentation.ts).
  */
 export function formatRunElapsed(run: Run): string | null {
@@ -237,7 +237,7 @@ export function formatRunElapsed(run: Run): string | null {
 /**
  * Sum of `cumulativeTokens` across the run's conductor + every spawned
  * candidate agent, resolved against the client's live agent directory (the
- * same honest per-agent counter the subagents track uses — see
+ * same honest per-agent counter the subagents track uses - see
  * AgentSnapshotPayload.cumulativeTokens). Null when none of those agents are
  * currently known, so the card never claims a cost it can't back up.
  */
@@ -372,7 +372,7 @@ function RunsScreenContent(): ReactElement {
     () => buildProjectNameByCwd(scheduleProjectTargets),
     [scheduleProjectTargets],
   );
-  // Every known project, whether or not it currently has runs — mirrors the
+  // Every known project, whether or not it currently has runs - mirrors the
   // Artifacts/Schedules project filter so all three surfaces stay consistent.
   const projectOptions = useMemo<ProjectFilterOption[]>(() => {
     const byId = new Map<string, ProjectFilterOption>();
@@ -408,7 +408,7 @@ function RunsScreenContent(): ReactElement {
     setEditPrefill(null);
   }, []);
   // Editing a draft reopens the same dialog on that record (see
-  // NewOrchestrationPrefill.draft) — a draft with nothing to reopen onto (no
+  // NewOrchestrationPrefill.draft) - a draft with nothing to reopen onto (no
   // graph, no project) can't be edited, which the card's gate already covers.
   const editOrchestration = useCallback((prefill: NewOrchestrationPrefill) => {
     setNewOrchestrationOpen(false);
@@ -640,7 +640,7 @@ function RunFooterMeta({
 }
 
 /**
- * A draft is an orchestration the user configured but hasn't run — the one run
+ * A draft is an orchestration the user configured but hasn't run - the one run
  * state that is still editable, so it's the only one that offers "Edit
  * Orchestration". Reopening the dialog needs the graph the draft executes and
  * the project it belongs to; a draft missing either can't be seeded back.
@@ -678,7 +678,7 @@ function useDraftEditAction(input: {
  * glyph + title + kebab in the header, the executor and project lines as the
  * details rows, run-specific detail (chips, summary, phases) below them, a
  * spacer, and a footer of status pill + meta text. The only thing that stays
- * out of the kebab is the approval gate — it's a time-sensitive prompt, not an
+ * out of the kebab is the approval gate - it's a time-sensitive prompt, not an
  * action the user goes looking for.
  *
  * Hover lives on the outer plain View (docs/hover.md): the inner Pressable owns
@@ -818,7 +818,7 @@ function RunCard({
             canCancel={isActive}
             cancelPending={cancelMutation.isPending}
             // The daemon refuses to delete a live run, so the item only shows
-            // once the run is finished — cancel first, then delete.
+            // once the run is finished - cancel first, then delete.
             canDelete={hostCanDelete && !isActive}
             deletePending={deleteMutation.isPending}
             onVisualize={handleVisualize}
@@ -835,7 +835,7 @@ function RunCard({
         />
         <ProjectNameLine projectName={location} />
 
-        {/* Empty detail blocks are omitted, not rendered empty — an empty View
+        {/* Empty detail blocks are omitted, not rendered empty - an empty View
             still consumes one of the card's row gaps, which is what pushed the
             footer away from the details. */}
         {complexity.length > 0 ? (
@@ -942,7 +942,7 @@ function stopPressInPropagation(event: { stopPropagation?: () => void }) {
 }
 
 // Themed icon wrappers so menu icons can live as module-scope constants (avoids
-// the react-perf jsx-as-prop rule) without calling useUnistyles in render — see
+// the react-perf jsx-as-prop rule) without calling useUnistyles in render - see
 // docs/unistyles.md and the artifact-card precedent.
 const ThemedWaypoints = withUnistyles(Waypoints);
 const ThemedPencil = withUnistyles(Pencil);
@@ -1045,7 +1045,7 @@ function RunKebabMenu({
 }
 
 // Chrome for the header's kebab. The hovered card is already surface2, so the
-// control's own hover/press states step up to surfaceHover/surface4 — anything
+// control's own hover/press states step up to surfaceHover/surface4 - anything
 // lower is invisible against the card.
 function kebabTriggerStyle({
   hovered = false,
@@ -1087,7 +1087,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   // Tames the compactUp button doubling so the button, the project filter
   // beside it, and the status filter below all share the compact 32px control
-  // height at every width — matching Artifacts and Schedules.
+  // height at every width - matching Artifacts and Schedules.
   newButton: {
     minHeight: 32,
     paddingHorizontal: theme.spacing[4],
@@ -1130,7 +1130,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
   },
   // Runs render as a single-column list (not the Artifacts/Schedules grid), so
-  // the card sizes to its content — no flex:1 stretch inside the scroll view.
+  // the card sizes to its content - no flex:1 stretch inside the scroll view.
   cardContainer: {
     position: "relative",
   },
@@ -1267,7 +1267,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   // No bottom spacer here (unlike the Artifacts/Schedules grid cards): this card
   // sizes to its content in a single-column list, so there is no sibling to
-  // align the footer with — the spacer only ever added dead space under the
+  // align the footer with - the spacer only ever added dead space under the
   // details. The card's own row gap is the whole separation.
   footerRow: {
     flexDirection: "row",

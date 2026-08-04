@@ -437,7 +437,7 @@ export function AgentList({
    * Long-press means "remove this from my list", and what that means depends on
    * where the row already is. An unarchived chat archives (the fast path this has
    * always had). An **already archived** chat has nowhere further to go by
-   * archiving — re-archiving it is a no-op that reads as a broken gesture — so it
+   * archiving - re-archiving it is a no-op that reads as a broken gesture - so it
    * offers the hard delete instead, behind a destructive confirm that says what
    * delete does and does not touch.
    *
@@ -495,7 +495,7 @@ export function AgentList({
     if (!actionAgent || !actionClient) {
       return;
     }
-    // Timeout errors are swallowed — the daemon will still process the archive
+    // Timeout errors are swallowed - the daemon will still process the archive
     void archiveAgent({ serverId: actionAgent.serverId, agentId: actionAgent.id }).catch(() => {});
     setActionAgent(null);
   }, [actionAgent, actionClient, archiveAgent]);

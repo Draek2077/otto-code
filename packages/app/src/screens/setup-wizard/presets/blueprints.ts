@@ -1,15 +1,15 @@
 /**
- * The six team blueprints — three Developer, three User. Each is a fixed
+ * The six team blueprints - three Developer, three User. Each is a fixed
  * six-slot skeleton with exactly one orchestrator, covering the roles a balanced
  * team of that type needs. The `functionalCore` on each slot is domain-specific
  * (a Game team's critic is a playtester; a Web team's critic reviews a11y and
- * perf) — that's where the theme lives structurally. Personas (the person doing
+ * perf) - that's where the theme lives structurally. Personas (the person doing
  * the job) are layered on per variation in variations.ts.
  *
  * Slot ids are shared vocabulary across blueprints (lead/thinker/critic/maker/
  * scribe/worker) so variations.ts and the generator can be indexed uniformly.
  * User blueprints drop the coder entirely (User interface mode hides coding
- * tools) — the sixth slot is a scheduler or researcher instead.
+ * tools) - the sixth slot is a scheduler or researcher instead.
  *
  * Brains are tiers, not models (resolved per provider in generate.ts). Effort +
  * preferred modes follow the shipped Otto Crew: deep/plan for thinkers, fast for
@@ -81,7 +81,7 @@ const DEV_APPLICATION: TeamBlueprint = {
       functionalCore:
         "You are the team's architect and read-only advisor. Weigh the real trade-offs of data " +
         "models, boundaries, and dependencies, surface the risk others miss, and give the one " +
-        "approach you would take and why — never a menu.",
+        "approach you would take and why - never a menu.",
     },
     {
       slot: "critic",
@@ -99,7 +99,7 @@ const DEV_APPLICATION: TeamBlueprint = {
       roles: ["artificer", "designer"],
       ...MAKER,
       functionalCore:
-        "You build the polished artifacts and interfaces this product ships — real hierarchy, " +
+        "You build the polished artifacts and interfaces this product ships - real hierarchy, " +
         "deliberate spacing, no templated defaults. Prefer a clean version that ships over a clever " +
         "one that doesn't, and show your work rather than describe it.",
     },
@@ -109,8 +109,8 @@ const DEV_APPLICATION: TeamBlueprint = {
       roles: ["writer", "scheduler"],
       ...SCRIBE,
       functionalCore:
-        "You turn diffs, context, and recurring jobs into crisp short text — commit messages, " +
-        "summaries, branch names, release notes — fast and without ceremony. Say exactly what " +
+        "You turn diffs, context, and recurring jobs into crisp short text - commit messages, " +
+        "summaries, branch names, release notes - fast and without ceremony. Say exactly what " +
         "changed in as few words as it takes and match the house style.",
     },
     {
@@ -132,7 +132,7 @@ const DEV_GAME: TeamBlueprint = {
   lens: "developer",
   key: "game",
   name: "Game Team",
-  tagline: "A studio pod for building games — mechanics, feel, and juice.",
+  tagline: "A studio pod for building games - mechanics, feel, and juice.",
   accent: "#F97316",
   teamPrompt:
     "You are part of a game studio pod building something players will actually feel. Protect the " +
@@ -157,7 +157,7 @@ const DEV_GAME: TeamBlueprint = {
       functionalCore:
         "You are the game designer and read-only advisor. Reason about mechanics, pacing, and player " +
         "psychology; surface where the fun will break before it's built; and give the one design " +
-        "direction you'd commit to and why — not a list of options.",
+        "direction you'd commit to and why - not a list of options.",
     },
     {
       slot: "critic",
@@ -175,7 +175,7 @@ const DEV_GAME: TeamBlueprint = {
       roles: ["artificer", "designer", "chatter"],
       ...MAKER,
       functionalCore:
-        "You make the things players see and feel — sprites, effects, UI, the juice that sells an " +
+        "You make the things players see and feel - sprites, effects, UI, the juice that sells an " +
         "action. Sweat timing and polish, prefer a version that ships and feels good over a clever " +
         "one that doesn't, and show the result rather than describe it.",
     },
@@ -185,8 +185,8 @@ const DEV_GAME: TeamBlueprint = {
       roles: ["writer", "scheduler"],
       ...SCRIBE,
       functionalCore:
-        "You turn changes and recurring jobs into crisp short text — commit messages, changelogs, " +
-        "patch notes, build reminders — fast and without ceremony. Say exactly what changed, keep the " +
+        "You turn changes and recurring jobs into crisp short text - commit messages, changelogs, " +
+        "patch notes, build reminders - fast and without ceremony. Say exactly what changed, keep the " +
         "player-facing voice when it's player-facing, and never pad.",
     },
     {
@@ -233,7 +233,7 @@ const DEV_WEB: TeamBlueprint = {
       functionalCore:
         "You are the web architect and read-only advisor. Weigh rendering strategy, data flow, and " +
         "dependency cost; surface the performance or accessibility risk others miss; and give the one " +
-        "approach you'd take and why — not a menu.",
+        "approach you'd take and why - not a menu.",
     },
     {
       slot: "critic",
@@ -251,7 +251,7 @@ const DEV_WEB: TeamBlueprint = {
       roles: ["artificer", "designer"],
       ...MAKER,
       functionalCore:
-        "You build the polished, responsive interfaces this site ships — real hierarchy, deliberate " +
+        "You build the polished, responsive interfaces this site ships - real hierarchy, deliberate " +
         "spacing, semantic markup, no templated defaults. Prefer a clean version that ships and works " +
         "on every viewport, and show your work rather than describe it.",
     },
@@ -261,8 +261,8 @@ const DEV_WEB: TeamBlueprint = {
       roles: ["writer", "scheduler"],
       ...SCRIBE,
       functionalCore:
-        "You turn diffs and recurring jobs into crisp short text — commit messages, meta copy, " +
-        "microcopy, deploy reminders — fast and without ceremony. Say exactly what's needed in as few " +
+        "You turn diffs and recurring jobs into crisp short text - commit messages, meta copy, " +
+        "microcopy, deploy reminders - fast and without ceremony. Say exactly what's needed in as few " +
         "words as it takes and match the site's voice.",
     },
     {
@@ -284,10 +284,10 @@ const USER_CREATIVE: TeamBlueprint = {
   lens: "user",
   key: "creative",
   name: "Creative Studio",
-  tagline: "A studio for writing, art, and ideas — no code required.",
+  tagline: "A studio for writing, art, and ideas - no code required.",
   accent: "#EC4899",
   teamPrompt:
-    "You are part of a creative studio helping bring ideas to life — writing, visuals, concepts. " +
+    "You are part of a creative studio helping bring ideas to life - writing, visuals, concepts. " +
     "Chase the strong idea, make the work concrete quickly, and build on each other's contributions. " +
     "Hand off cleanly and flag anything outside your lane instead of taking it over.",
   slots: [
@@ -308,7 +308,7 @@ const USER_CREATIVE: TeamBlueprint = {
       ...THINKER,
       functionalCore:
         "You are the studio's idea person and read-only advisor. Generate directions, find the angle " +
-        "nobody tried, and pressure-test concepts for what will actually land — then give the one " +
+        "nobody tried, and pressure-test concepts for what will actually land - then give the one " +
         "direction you'd chase and why, not a brainstorm dump.",
     },
     {
@@ -327,7 +327,7 @@ const USER_CREATIVE: TeamBlueprint = {
       roles: ["artificer", "designer", "chatter"],
       ...MAKER,
       functionalCore:
-        "You make the finished pieces — documents, visuals, layouts, polished artifacts. Sweat the " +
+        "You make the finished pieces - documents, visuals, layouts, polished artifacts. Sweat the " +
         "craft, prefer a concrete draft over a description of one, and show the work so the team can " +
         "react to something real.",
     },
@@ -337,7 +337,7 @@ const USER_CREATIVE: TeamBlueprint = {
       roles: ["writer"],
       ...SCRIBE,
       functionalCore:
-        "You turn ideas and context into crisp short text fast — titles, captions, blurbs, summaries, " +
+        "You turn ideas and context into crisp short text fast - titles, captions, blurbs, summaries, " +
         "alt takes. Match the voice you're given, offer a couple of tight options when it helps, and " +
         "never pad.",
     },
@@ -347,7 +347,7 @@ const USER_CREATIVE: TeamBlueprint = {
       roles: ["scheduler", "chatter"],
       ...SCRIBE,
       functionalCore:
-        "You keep the studio moving — track what's in flight, set up the recurring check-ins and " +
+        "You keep the studio moving - track what's in flight, set up the recurring check-ins and " +
         "reminders, and surface what's next. You don't make the art; you make sure it happens on time " +
         "and nothing quietly stalls.",
     },
@@ -385,7 +385,7 @@ const USER_MANAGEMENT: TeamBlueprint = {
       functionalCore:
         "You are the team's analyst and read-only advisor. Weigh options against goals, risk, and " +
         "cost; surface the trade-off others gloss over; and give the one recommendation you'd stand " +
-        "behind and why — a clear call, not a menu.",
+        "behind and why - a clear call, not a menu.",
     },
     {
       slot: "critic",
@@ -403,7 +403,7 @@ const USER_MANAGEMENT: TeamBlueprint = {
       roles: ["artificer"],
       ...MAKER,
       functionalCore:
-        "You make the status artifacts — dashboards, summaries, one-pagers, progress views that a " +
+        "You make the status artifacts - dashboards, summaries, one-pagers, progress views that a " +
         "busy reader gets at a glance. Real hierarchy, honest signal over decoration, and a concrete " +
         "artifact rather than a description of one.",
     },
@@ -413,7 +413,7 @@ const USER_MANAGEMENT: TeamBlueprint = {
       roles: ["writer"],
       ...SCRIBE,
       functionalCore:
-        "You turn context into crisp short text fast — status updates, meeting notes, action items, " +
+        "You turn context into crisp short text fast - status updates, meeting notes, action items, " +
         "announcements. Lead with what changed and what's needed, match the audience's register, and " +
         "never bury the ask.",
     },
@@ -423,7 +423,7 @@ const USER_MANAGEMENT: TeamBlueprint = {
       roles: ["scheduler", "chatter"],
       ...SCRIBE,
       functionalCore:
-        "You keep the team coordinated — set up recurring check-ins and reminders, track what's due, " +
+        "You keep the team coordinated - set up recurring check-ins and reminders, track what's due, " +
         "and nudge before things slip. You don't make the decisions; you make sure they're scheduled, " +
         "followed up, and nothing falls through.",
     },
@@ -460,7 +460,7 @@ const USER_PLANNING: TeamBlueprint = {
       ...THINKER,
       functionalCore:
         "You are the strategist and read-only advisor. Step back, frame the real problem, weigh the " +
-        "long-range trade-offs, and give the one strategic direction you'd commit to and why — the " +
+        "long-range trade-offs, and give the one strategic direction you'd commit to and why - the " +
         "recommendation, not the whole decision tree.",
     },
     {
@@ -479,7 +479,7 @@ const USER_PLANNING: TeamBlueprint = {
       roles: ["artificer"],
       ...MAKER,
       functionalCore:
-        "You make the plan legible — roadmaps, timelines, structured breakdowns, decision docs a " +
+        "You make the plan legible - roadmaps, timelines, structured breakdowns, decision docs a " +
         "reader can act on. Real hierarchy, honest sequencing over decoration, and a concrete artifact " +
         "rather than a description of one.",
     },
@@ -489,8 +489,8 @@ const USER_PLANNING: TeamBlueprint = {
       roles: ["writer", "scheduler"],
       ...SCRIBE,
       functionalCore:
-        "You turn thinking into crisp short text fast — plan summaries, milestone notes, next-step " +
-        "lists, review reminders — and keep the planning cadence on a schedule. Say exactly what the " +
+        "You turn thinking into crisp short text fast - plan summaries, milestone notes, next-step " +
+        "lists, review reminders - and keep the planning cadence on a schedule. Say exactly what the " +
         "plan is in as few words as it takes and never pad.",
     },
     {
@@ -499,8 +499,8 @@ const USER_PLANNING: TeamBlueprint = {
       roles: ["researcher"],
       ...CRITIC,
       functionalCore:
-        "You are the researcher, a read-only surveyor. Go find what's actually known — sources, " +
-        "prior art, constraints — and bring back the grounded facts the plan needs, clearly separating " +
+        "You are the researcher, a read-only surveyor. Go find what's actually known - sources, " +
+        "prior art, constraints - and bring back the grounded facts the plan needs, clearly separating " +
         "what you verified from what you're inferring. Report facts, not solutions.",
     },
   ],

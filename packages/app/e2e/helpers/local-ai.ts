@@ -7,7 +7,7 @@ import { buildHostAgentDetailRoute } from "../../src/utils/host-routes";
  * Playwright project only (`npm run test:e2e:local-ai`), where global setup has
  * already preflighted LM Studio and injected the openai-compatible provider
  * into the isolated OTTO_HOME. Specs must assert on side effects (files, diff
- * rows, tool-call rows, agent status) — never on model prose.
+ * rows, tool-call rows, agent status) - never on model prose.
  */
 
 export const LOCAL_AI_PROVIDER = "openai-compatible";

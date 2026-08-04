@@ -19,7 +19,7 @@ function NewProjectHome({ serverId }: { serverId: string | undefined }) {
 
   // The boundary above only renders us once the host registry has loaded, so an
   // empty list here genuinely means "no hosts configured". Every field on this
-  // page addresses a host, so without one there is nothing to render — send the
+  // page addresses a host, so without one there is nothing to render - send the
   // user to the only surface that can add a host. Mirrors open-project.tsx.
   if (hosts.length === 0) {
     return <Redirect href="/welcome" />;

@@ -4,7 +4,7 @@
 // same first-class accounting Claude has (the gold standard). A provider parses
 // ITS OWN wire usage into the neutral SubagentUsageTotals, feeds each assistant
 // frame to a SubagentUsageAccumulator, and hands the result to the daemon as a
-// plain AgentUsage — after which the provider-neutral sink (agent-manager's
+// plain AgentUsage - after which the provider-neutral sink (agent-manager's
 // observed-sub-agent recording + parent-residual de-inflation) does the rest,
 // identically for every provider. Keep this module free of any provider's field
 // names, model ids, or pricing: those live behind the provider boundary (for
@@ -15,7 +15,7 @@
 // grows to the turn's final value while input/cache stay constant. So the
 // accounting is: keep the largest-output frame per message id (that final frame
 // carries the message's complete, authoritative split), then sum across ids. No
-// roll-up, no estimation — just the raw reported numbers, deduped. Providers that
+// roll-up, no estimation - just the raw reported numbers, deduped. Providers that
 // report one usage per turn (no mid-turn frames) still work: each id is seen once.
 // See [[subagent-real-accounting]].
 
@@ -23,7 +23,7 @@ import type { AgentUsage } from "./agent-sdk-types.js";
 
 /**
  * The four billable token counts for a sub-agent, summed across its turn(s).
- * Straight from the provider's reported usage — the raw numbers, so the cache
+ * Straight from the provider's reported usage - the raw numbers, so the cache
  * split is real (not derived). Field names are neutral; a provider maps its own
  * wire shape onto these (e.g. Claude's cache_read_input_tokens → cacheRead…).
  */
@@ -72,7 +72,7 @@ function positiveDelta(current: number | undefined, recorded: number | undefined
  * the `recorded` watermark (what was already written), per field, clamped at 0.
  * Returns undefined when nothing new accrued.
  *
- * A sub-agent's totals only ever grow, and it can settle more than once — it may
+ * A sub-agent's totals only ever grow, and it can settle more than once - it may
  * be continued/steered into a second stream under the same key, or a late frame
  * can raise its totals after it first settled. Recording the delta each time
  * keeps one row per stream (the same "one query, one row" rule chats follow)
@@ -110,7 +110,7 @@ export function deltaAgentUsage(
  * Stateful per-sub-agent usage accumulator. Feed it each assistant frame's
  * message id / already-parsed usage split / model; it dedups by message id
  * (final streamed frame of a message wins), sums across messages, and remembers
- * the model (first seen — a sub-agent can run a different, cheaper model than its
+ * the model (first seen - a sub-agent can run a different, cheaper model than its
  * parent, which matters for pricing). Provider-agnostic: the caller does the
  * provider-specific parsing before calling {@link observe}.
  */
@@ -142,7 +142,7 @@ export class SubagentUsageAccumulator {
     }
   }
 
-  /** The real token footprint so far — summed across deduped messages. */
+  /** The real token footprint so far - summed across deduped messages. */
   totals(): SubagentUsageTotals {
     const totals: SubagentUsageTotals = {
       inputTokens: 0,
@@ -169,7 +169,7 @@ export class SubagentUsageAccumulator {
    * deduped message id). Deliberately "rounds", not "turns": one user query is
    * one turn / one ledger row, while a sub-agent internally makes many rounds
    * inside its single row. Surfaced on the row because a big `cached` figure is
-   * the SAME context re-read once per round — without the round count it reads
+   * the SAME context re-read once per round - without the round count it reads
    * like a cache "size" rather than cumulative cache-reads.
    */
   roundCount(): number {

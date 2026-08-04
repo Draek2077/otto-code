@@ -2,9 +2,9 @@
 //
 // `agentStreamTail` / `agentStreamHead` are keyed by agent id and, until this
 // module existed, were only ever cleared wholesale by `clearSession` (plus one
-// per-agent clear on `agent_deleted`). Every agent that streamed anything —
+// per-agent clear on `agent_deleted`). Every agent that streamed anything -
 // including agents whose chat was never opened, since `agent_stream` is
-// reduced into the tail for every agent on the host — kept its whole timeline
+// reduced into the tail for every agent on the host - kept its whole timeline
 // in memory for the life of the session. Two minutes of soak cannot show that;
 // it is a property of the code, not a curve.
 //
@@ -55,7 +55,7 @@ export interface AgentStreamEvictionInput {
 
 /**
  * Which agents to release, oldest activity first. Returns `[]` when nothing is
- * over the cap and nothing has departed — the common case, so callers can skip
+ * over the cap and nothing has departed - the common case, so callers can skip
  * the store write entirely.
  */
 export function planAgentStreamEviction(input: AgentStreamEvictionInput): string[] {
@@ -91,7 +91,7 @@ export function planAgentStreamEviction(input: AgentStreamEvictionInput): string
       if (leftAt !== rightAt) {
         return leftAt - rightAt;
       }
-      // Ties break on id so the same input always produces the same plan —
+      // Ties break on id so the same input always produces the same plan -
       // an eviction order that depends on Map insertion order is untestable.
       return left < right ? -1 : 1;
     });

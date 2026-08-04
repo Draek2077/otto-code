@@ -49,7 +49,7 @@ export interface WirePath {
 /**
  * How a path reaches the client.
  *
- * Inside the workspace it is relative, which is what the existing file-open path already takes —
+ * Inside the workspace it is relative, which is what the existing file-open path already takes -
  * that is the whole reason opening a file from this view needs no new tab machinery. Outside it
  * stays absolute and is flagged, so the client never has to infer the distinction by inspecting
  * the string. The flag is the out-of-workspace policy made legible: shown and opened normally,

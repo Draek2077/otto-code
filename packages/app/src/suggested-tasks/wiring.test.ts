@@ -24,7 +24,7 @@ const contextSource = fs.readFileSync(
  * (5e3cc1def) dropped both `client.on(...)` calls out of session-context while
  * leaving the store reducers, the selectors, the overlays and the agent-panel
  * wiring in place. Everything still typechecked, still linted and still
- * rendered — the suggested-task card simply had no data and returned null
+ * rendered - the suggested-task card simply had no data and returned null
  * forever, so "an agent suggested work" stopped reaching the user at all. A
  * reducer with no caller is the shape of that bug, so the test watches for it.
  */
@@ -43,7 +43,7 @@ describe("daemon push wiring for per-parent task lists", () => {
 
   it.each(PUSH_WIRING)("releases the $message subscription on teardown", ({ message }) => {
     // The handle name the subscription is assigned to has to appear a second
-    // time, in the effect's cleanup — a subscription that outlives the effect
+    // time, in the effect's cleanup - a subscription that outlives the effect
     // leaks a handler per reconnect.
     const assignment = new RegExp(`const (\\w+) = client\\.on\\(\\s*"${message}"`);
     const handle = assignment.exec(contextSource)?.[1];

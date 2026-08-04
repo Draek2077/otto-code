@@ -62,7 +62,7 @@ const CONTROL_READY_TIMEOUT_MS = 8_000;
 // tabs stays far below this cap.
 const MAX_DATA_SOCKETS = 32;
 // Deadline from dial until the socket has been handed to attachSocket (E2EE handshake included).
-// A socket that opens but never attaches — e.g. a client that never sends its handshake init —
+// A socket that opens but never attaches - e.g. a client that never sends its handshake init -
 // would otherwise stay resident forever. Legitimate attach completes within seconds of open.
 const DATA_ATTACH_TIMEOUT_MS = 30_000;
 const RELAY_WEBSOCKET_OPTIONS = { handshakeTimeout: 10_000, perMessageDeflate: false } as const;
@@ -401,7 +401,7 @@ export function startRelayTransport({
       };
       if (daemonKeyPair) {
         // attachEncryptedSocket resolves after attachSocket ran, or after it closed the socket on
-        // handshake failure — either way the attach deadline no longer applies.
+        // handshake failure - either way the attach deadline no longer applies.
         void attachEncryptedSocket(
           socket,
           daemonKeyPair,

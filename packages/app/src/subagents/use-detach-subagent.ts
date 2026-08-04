@@ -39,7 +39,7 @@ export function useDetachSubagent(input: UseDetachSubagentInput): (subagentId: s
             // Drop the parent link locally the moment the daemon confirms.
             // Detach is a deliberate, confirmed action, so the parent's
             // sub-agents track should stop listing the child immediately
-            // instead of waiting for the next authoritative refetch — the row
+            // instead of waiting for the next authoritative refetch - the row
             // used to sit there until a reload, which reads as a failed detach
             // even though the daemon had already cleared the label.
             useSessionStore.getState().setAgents(targetServerId, (prev) => {

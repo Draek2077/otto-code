@@ -22,7 +22,7 @@ describe("output field text form", () => {
     expect(parseOutputFields(formatOutputFields(fields))).toEqual(fields);
   });
 
-  test("a bare name is a required string — the common case needs no syntax", () => {
+  test("a bare name is a required string - the common case needs no syntax", () => {
     expect(parseOutputFields("summary")).toEqual([{ key: "summary", type: "string" }]);
   });
 
@@ -51,7 +51,7 @@ describe("query tool text form", () => {
     ]);
   });
 
-  test("a URL's colons survive — the separator is a pipe for exactly this reason", () => {
+  test("a URL's colons survive - the separator is a pipe for exactly this reason", () => {
     expect(
       parseQueryTools("status | http-get | https://example.test/api?q={{q}} | Status"),
     ).toEqual([
@@ -121,7 +121,7 @@ describe("carrying properties the designer cannot edit", () => {
   test("a node keeps capabilities the canvas has no control for", () => {
     // The designer rebuilds nodes on export; without this, opening a graph that
     // uses a newer property and pressing Save would silently delete it. The
-    // property is a passthrough one on purpose — this guards the properties
+    // property is a passthrough one on purpose - this guards the properties
     // that do not exist yet.
     const carried = carryUneditedNodeFields({
       id: "a",

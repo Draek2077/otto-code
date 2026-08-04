@@ -20,9 +20,9 @@ export interface UseGoToDefinitionInput {
   /** The file the editor is showing; may be workspace-relative or absolute. */
   path: string;
   controllerRef: RefObject<EditorController | null>;
-  /** The definition is in the open buffer — move the caret, don't open a tab. */
+  /** The definition is in the open buffer - move the caret, don't open a tab. */
   onJumpInFile: (line: number) => void;
-  /** The definition is in another file — open it at that line. */
+  /** The definition is in another file - open it at that line. */
   onOpenTarget: (target: GoToDefinitionTarget) => void;
   /**
    * Whether the host can answer `code.definition`. When it can, the position-based
@@ -52,21 +52,21 @@ export interface UseGoToDefinitionResult {
  *
  * **A language server first, by position.** When the host can answer
  * `code.definition`, the buffer is mirrored and the caret's position is resolved in
- * context — which `foo` this `foo` means. Its three-valued answer is respected:
+ * context - which `foo` this `foo` means. Its three-valued answer is respected:
  * `indexing` says "ask again in a moment", and only `unavailable` (no server for
  * this language on the host) falls through.
  *
- * **The ctags index second, by name.** Not a compatibility shim — it is the designed
+ * **The ctags index second, by name.** Not a compatibility shim - it is the designed
  * answer for the languages no server covers, and it is honest about what it is.
  *
  * Either way, the result set means the same thing:
  *
- * - **one hit** jumps straight there — inside the buffer when it is this file,
+ * - **one hit** jumps straight there - inside the buffer when it is this file,
  *   otherwise by opening the target file at that line;
  * - **several hits** open a picker. From ctags that is name collision; from a
  *   language server it is real overloads or implementations. Guessing would be
  *   dishonest, so the choice is the user's;
- * - **no hits** is an ordinary outcome, not a failure — a plain toast, never an
+ * - **no hits** is an ordinary outcome, not a failure - a plain toast, never an
  *   error tone.
  */
 export function useGoToDefinition(input: UseGoToDefinitionInput): UseGoToDefinitionResult {
@@ -91,7 +91,7 @@ export function useGoToDefinition(input: UseGoToDefinitionInput): UseGoToDefinit
   const jumpTo = useCallback(
     (target: GoToDefinitionTarget) => {
       // The two sources answer in two path shapes, and the open tab's own path is
-      // a third — see planDefinitionJump, which canonicalizes all of them so a
+      // a third - see planDefinitionJump, which canonicalizes all of them so a
       // definition in this very buffer is never opened as a second tab.
       const plan = planDefinitionJump({ target, openPath: path, workspaceRoot });
       if (plan.kind === "in-file") {

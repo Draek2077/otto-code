@@ -118,7 +118,7 @@ const NAMES_BY_FILENAME: Record<string, string> = {
 };
 
 /**
- * A label for the editor status bar — never empty. Unknown extensions fall back
+ * A label for the editor status bar - never empty. Unknown extensions fall back
  * to the extension itself in caps ("TOML" before it was listed above), which
  * still tells the user more than "Unknown" would.
  */

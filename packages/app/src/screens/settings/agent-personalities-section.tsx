@@ -1,4 +1,4 @@
-// Agent Personalities editor — the per-host roster of named agent templates
+// Agent Personalities editor - the per-host roster of named agent templates
 // (provider->model, canonical effort, mode, personality prompt, roles, and two
 // spinner colors). Lives in the host settings "Agents" section.
 //
@@ -115,8 +115,8 @@ export function usePersonalityProfileFeature(serverId: string): boolean {
 const DEFAULT_GLOW_A = "#4ec4ff";
 const DEFAULT_GLOW_B = "#e14fe8";
 
-// Personality names are single-word "handles" — short, and restricted to
-// letters, digits, hyphen, and underscore — so an agent is trivially
+// Personality names are single-word "handles" - short, and restricted to
+// letters, digits, hyphen, and underscore - so an agent is trivially
 // recognizable at a glance (in the roster, spinner tooltips, and spawn-by-name
 // tooling) and safe to round-trip through it. Blocking whitespace and structural
 // characters (delimiters like | / :, quotes, emoji, control chars) keeps a name
@@ -143,7 +143,7 @@ function isHexColor(value: string): boolean {
 }
 
 // Merge freshly generated lines into a PERSISTED personality's cues, filling
-// only moments that are still empty — never clobbering lines the user added
+// only moments that are still empty - never clobbering lines the user added
 // after saving. Returns null when nothing changed (every produced moment was
 // already populated) so the caller can skip the write. Used by the background
 // cue generation that runs after a cue-less personality is saved.
@@ -178,7 +178,7 @@ interface CueLineDraft {
   text: string;
 }
 
-// One editable line list per protocol cue moment — a Record so adding a moment
+// One editable line list per protocol cue moment - a Record so adding a moment
 // to CUE_MOMENTS lights up the whole editor without touching this shape.
 type DraftVoiceCues = Record<CueMoment, CueLineDraft[]>;
 
@@ -224,14 +224,14 @@ const CUE_KIND_LABELS: Record<CueMoment, string> = {
   done: "Completed",
 };
 
-// Distinct examples per moment — a line should sound wrong at the others.
+// Distinct examples per moment - a line should sound wrong at the others.
 // (The old “All set” example read equally as starting/thinking/done, which is
 // exactly the ambiguity the generator now avoids too.)
 const CUE_KIND_HINTS: Record<CueMoment, string> = {
-  join: "Just picked up the task, about to begin — e.g. “On it”.",
-  thinking: "In the middle of working it out — e.g. “I’m thinking…”.",
-  waiting: "Its own turn is over but its sub-agents are still running — e.g. “Still hearing back”.",
-  done: "Finished, handing back the result — e.g. “Done”.",
+  join: "Just picked up the task, about to begin - e.g. “On it”.",
+  thinking: "In the middle of working it out - e.g. “I’m thinking…”.",
+  waiting: "Its own turn is over but its sub-agents are still running - e.g. “Still hearing back”.",
+  done: "Finished, handing back the result - e.g. “Done”.",
 };
 
 function buildDraftVoiceCues(lines: (moment: CueMoment) => CueLineDraft[]): DraftVoiceCues {
@@ -298,7 +298,7 @@ function encodeVoice(voice: AgentPersonalityVoice | null): string {
 }
 
 // Builds a short spoken introduction for the voice-preview button from the
-// personality's name and first role — plain string templating, no model call.
+// personality's name and first role - plain string templating, no model call.
 function buildPersonalityIntro(name: string, roles: readonly PersonalityRole[]): string {
   const cleanName = name.trim() || "your agent";
   const firstRole = roles[0];
@@ -463,7 +463,7 @@ const CHEVRON_ICON = <ThemedChevronDown uniProps={chevronMapping} />;
 const FLEX_1 = { flex: 1 } as const;
 
 // ---------------------------------------------------------------------------
-// Icon button — hover chrome + tooltip, the app's canonical icon-only affordance
+// Icon button - hover chrome + tooltip, the app's canonical icon-only affordance
 // (mirrors file-view-mode-bar). The ghost Button variant only recolors its icon,
 // so icon-only actions use this instead to get a real hover surface.
 // ---------------------------------------------------------------------------
@@ -592,7 +592,7 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
   );
 
   // Background cue generation resolves after the editor has closed and can lag
-  // by seconds, during which the roster may change — read the freshest config
+  // by seconds, during which the roster may change - read the freshest config
   // at persist time, not a value closed over at render.
   const configRef = useRef(config);
   configRef.current = config;
@@ -681,7 +681,7 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
   // A personality with accrued lessons gets a three-way question instead of a
   // yes/no confirm (transfer / discard / cancel), because the lessons are the
   // only part of a personality that took real work to produce and there is no
-  // undo. Zero lessons keeps the plain confirm — a decision sheet about nothing
+  // undo. Zero lessons keeps the plain confirm - a decision sheet about nothing
   // is just an extra click.
   const [pendingDelete, setPendingDelete] = useState<{
     personality: AgentPersonality;
@@ -835,7 +835,7 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
             <View style={styles.emptyCard}>
               <Text style={styles.emptyText}>
                 No personalities yet. Add one to spawn agents by name with a fixed provider, model,
-                effort, and prompt — or bring back the starter team.
+                effort, and prompt - or bring back the starter team.
               </Text>
               <Button
                 variant="secondary"
@@ -919,7 +919,7 @@ function formatUsageCount(count: number): string {
 /**
  * Accrual, not management: the row states that this personality has learned
  * things, and stops there. Editing them lives in Context Management, so this
- * needs no affordance — just enough that you would not delete it casually.
+ * needs no affordance - just enough that you would not delete it casually.
  * Silent at zero, because "0 lessons" on every row is noise.
  */
 function formatLessonCount(count: number): string | null {
@@ -949,7 +949,7 @@ function derivePersonalityRowInfo(
   return { availability, providerLabel, modelLabel, roles };
 }
 
-// Role pills — one chip per role, matching the Agent Teams list. Optional
+// Role pills - one chip per role, matching the Agent Teams list. Optional
 // right-alignment for the mobile row's top line (name | roles).
 function RolePills({
   roles,
@@ -1064,7 +1064,7 @@ function PersonalityRow({
           </View>
         </View>
         {!available ? (
-          <Text style={styles.stackedUnavailable}>Unavailable — {availability.reason}</Text>
+          <Text style={styles.stackedUnavailable}>Unavailable - {availability.reason}</Text>
         ) : null}
         <View style={styles.stackedActions}>{actions}</View>
       </View>
@@ -1086,7 +1086,7 @@ function PersonalityRow({
         <RolePills roles={roles} />
         {!available ? (
           <Text style={styles.unavailableText} numberOfLines={2}>
-            Unavailable — {availability.reason}
+            Unavailable - {availability.reason}
           </Text>
         ) : null}
       </View>
@@ -1136,7 +1136,7 @@ function PersonalityEditModal({
   const memorySupported = usePersonalityMemoryEnabled(serverId);
   const canPreviewVoice = useTtsPreviewFeature(serverId);
   // This voice speaks cues, so the preview is heard at the cue channel's level
-  // — not the spoken-reply volume, which is a different slider entirely.
+  // - not the spoken-reply volume, which is a different slider entirely.
   const { settings: appSettings } = useAppSettings();
   const canGenerateCues = useVisualizerVoiceCuesFeature(serverId);
   const canGenerateProfile = usePersonalityProfileFeature(serverId);
@@ -1210,7 +1210,7 @@ function PersonalityEditModal({
     () => [
       { id: "", label: "Provider default" },
       ...filterModesForModel(providerEntry?.modes ?? [], selectedModel)
-        // Drop system-assigned modes (Claude "dontAsk") — never a user pick.
+        // Drop system-assigned modes (Claude "dontAsk") - never a user pick.
         .filter((mode) => isUserSelectableMode(draft.provider, mode.id))
         .map((mode) => ({
           id: mode.id,
@@ -1425,7 +1425,7 @@ function PersonalityEditModal({
     void (async () => {
       try {
         const generated = await runCueGeneration(draft);
-        // Merge per moment — only moments that succeeded overwrite; a failed
+        // Merge per moment - only moments that succeeded overwrite; a failed
         // moment keeps the draft's existing (possibly hand-written) lines.
         // Drop late results if the editor already closed (draft is gone).
         if (isMountedRef.current && Object.keys(generated).length > 0) {
@@ -1435,7 +1435,7 @@ function PersonalityEditModal({
           }));
         }
       } catch {
-        // Best-effort — leave the fields as-is.
+        // Best-effort - leave the fields as-is.
       } finally {
         if (isMountedRef.current) {
           setIsGeneratingCues(false);
@@ -1510,14 +1510,14 @@ function PersonalityEditModal({
     // a double-click cannot mint a duplicate personality.
     void (async () => {
       try {
-        // Save the draft as-is — the save NEVER blocks on cue generation (that
+        // Save the draft as-is - the save NEVER blocks on cue generation (that
         // used to hang the editor; see the earlier bounded-timeout fix). onSave
         // closes the editor and returns the saved personality.
         const saved = await onSave(draft);
         // Best-effort courtesy: when the user never filled cues, generate them in
         // the BACKGROUND and persist onto the saved personality when they land.
         // This runs detached (the editor is already closing), touches no modal
-        // state, and quietly does nothing on failure — a cue-less personality is
+        // state, and quietly does nothing on failure - a cue-less personality is
         // valid (it simply stays silent).
         if (saved && canGenerateCues && client && draftVoiceCuesAreEmpty(draft.voiceCues)) {
           void (async () => {
@@ -1527,7 +1527,7 @@ function PersonalityEditModal({
                 await onPersistGeneratedCues(saved.id, generated);
               }
             } catch {
-              // best-effort — leave the personality without cues
+              // best-effort - leave the personality without cues
             }
           })();
         }
@@ -1616,7 +1616,7 @@ function PersonalityEditModal({
               testID="agent-personality-name-input"
             />
             <Text style={styles.fieldHint}>
-              One word — letters, numbers, - or _ — up to {MAX_PERSONALITY_NAME_LENGTH} characters.
+              One word - letters, numbers, - or _ - up to {MAX_PERSONALITY_NAME_LENGTH} characters.
             </Text>
             {nameCollides ? (
               <Text style={styles.fieldError} testID="agent-personality-name-collision">
@@ -1666,7 +1666,7 @@ function PersonalityEditModal({
             </View>
 
             {/* Accrual, not management. This says the personality HAS learned
-                things — enough that you would not delete it casually — and points
+                things - enough that you would not delete it casually - and points
                 at the one surface that owns everything sent before you type.
                 Full CRUD here would need list and diff tooling this dialog does
                 not have, and would split memory across two places. */}
@@ -1810,7 +1810,7 @@ function ProfileGeneratorField({
 }
 
 // ---------------------------------------------------------------------------
-// Voice cues editor — one group per CUE_MOMENTS moment (join / thinking /
+// Voice cues editor - one group per CUE_MOMENTS moment (join / thinking /
 // waiting / done), each an
 // editable list of short spoken lines, with an "Generate with AI" action that
 // authors a set from the draft's name + prompt.
@@ -1952,7 +1952,7 @@ interface PickerRowProps {
   testID: string;
   // Optional control rendered just left of the dropdown (e.g. a preview button).
   trailing?: ReactNode;
-  // Overrides the trigger label — used when the current value is intentionally
+  // Overrides the trigger label - used when the current value is intentionally
   // absent from `options` (a hidden mode) but must still display its real name.
   displayLabel?: string;
 }
@@ -2081,7 +2081,7 @@ function RoleChip({ role, selected, onToggle }: RoleChipProps): ReactElement {
       style={chipStyle}
       accessibilityRole="button"
       accessibilityState={a11yState}
-      accessibilityLabel={`${ROLE_LABELS[role]} — ${ROLE_HINTS[role]}`}
+      accessibilityLabel={`${ROLE_LABELS[role]} - ${ROLE_HINTS[role]}`}
       testID={`agent-personality-role-${role}`}
     >
       <Text style={selected ? styles.chipTextSelected : styles.chipText}>{ROLE_LABELS[role]}</Text>
@@ -2187,8 +2187,8 @@ const styles = StyleSheet.create((theme) => ({
   wideRow: {
     gap: theme.spacing[3],
   },
-  // Stacked (xs) row: a two-column grid — [icon] name|roles over
-  // provider·model|times — with the action buttons centered on their own line.
+  // Stacked (xs) row: a two-column grid - [icon] name|roles over
+  // provider·model|times - with the action buttons centered on their own line.
   stackedRow: {
     paddingVertical: theme.spacing[3],
     paddingHorizontal: theme.spacing[4],
@@ -2254,7 +2254,11 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.full,
     borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderAccent, not border: this pill sits on a surface1 card, so its fill
+    // is surface2 for contrast against that card - but `border` is nearly
+    // identical to surface2 on this theme, which swallows the pill's own
+    // outline. borderAccent is a real step brighter.
+    borderColor: theme.colors.borderAccent,
     backgroundColor: theme.colors.surface2,
   },
   rolePillText: {
@@ -2517,7 +2521,7 @@ const styles = StyleSheet.create((theme) => ({
   },
 }));
 
-// Static combined styles for the stacked mobile row — hoisted so the JSX passes
+// Static combined styles for the stacked mobile row - hoisted so the JSX passes
 // stable array references (react-perf/jsx-no-new-array-as-prop).
 const STACKED_NAME_TITLE_STYLE = [settingsStyles.rowTitle, styles.stackedName];
 const STACKED_META_NAME_STYLE = [styles.stackedMeta, styles.stackedName];

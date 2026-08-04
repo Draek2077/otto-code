@@ -201,7 +201,7 @@ Rules are applied in **descending priority** (highest \`priority\` first). Two
 rules with equal priority may be applied in any order; the specification is
 written so that the result does not depend on the order of equal-priority rules.
 
-### Base amount — the load-bearing rule
+### Base amount - the load-bearing rule
 
 Every rule's discount is computed against the **original subtotal**, NOT against
 the running total after earlier rules. Discounts do **not** compound. A 30% rule
@@ -211,7 +211,7 @@ and a 40% rule on a $100.00 order remove \`$30.00 + $40.00 = $70.00\`, they do
 This is the single most common mistake when re-implementing the engine: applying
 each discount to the amount left by the previous one. Do not do that.
 
-### Combined cap — the other load-bearing rule
+### Combined cap - the other load-bearing rule
 
 The **sum** of all rule discounts is capped at **50% of the original subtotal**.
 Once the accumulated discount reaches half the subtotal, no further discount is

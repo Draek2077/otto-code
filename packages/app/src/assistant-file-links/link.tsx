@@ -70,7 +70,7 @@ export function AssistantMarkdownLink({
     // (the link disappears). The span composes correctly and stays selectable.
     //
     // Tap-to-open: react-native-uitextview only wires onPress onto the *string*
-    // children it turns into RNUITextViewChild nodes — the element children that
+    // children it turns into RNUITextViewChild nodes - the element children that
     // markdown emits for link text pass through untouched, so an onPress placed
     // here never reaches a tappable native node. We thread it down through
     // AssistantLinkPressProvider so each leaf text span re-attaches it to its

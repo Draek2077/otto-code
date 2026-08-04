@@ -83,7 +83,7 @@ import {
 import { findWordAtCursor } from "./word-at-cursor";
 
 // The CM6 assembly shared by the web host (direct DOM mount) and the native
-// webview entry. This module is bundled into the webview HTML — keep it free
+// webview entry. This module is bundled into the webview HTML - keep it free
 // of React, React Native, and app-store imports.
 
 export interface EditorCoreOptions {
@@ -105,7 +105,7 @@ export interface EditorCoreOptions {
   /**
    * An image was pasted or dropped into a markdown document. Omitting it
    * registers no handler, which is how a host without the daemon's
-   * binary-write capability declines the feature — see
+   * binary-write capability declines the feature - see
    * `markdownImageDropHandler`.
    */
   onImageDrop?: (images: readonly EditorDroppedImage[]) => void;
@@ -135,14 +135,14 @@ export interface EditorCoreOptions {
   onPointerSelect?: (select: EditorPointerSelect) => void;
   /**
    * A right-click landed in the editor, reported in viewport coordinates so the
-   * host can anchor its own menu. Supplying this SUPPRESSES the platform menu —
+   * host can anchor its own menu. Supplying this SUPPRESSES the platform menu -
    * the host is then responsible for offering the edit actions (see
    * file-tab-pane's editor context menu).
    */
   onContextMenu?: (point: { x: number; y: number }) => void;
   /**
    * Resolve the language server's explanation for a 1-based position. Absent means no
-   * hover at all — which is the correct state on touch platforms, where there is no
+   * hover at all - which is the correct state on touch platforms, where there is no
    * pointer to rest and CM6's hover events never fire.
    */
   hoverProvider?: (position: { line: number; column: number }) => Promise<EditorHoverAnswer>;
@@ -153,7 +153,7 @@ export interface EditorCoreOptions {
    * that draw the app's auto-hiding overlay bar instead (web/desktop). It is a
    * THEME rule rather than something the overlay hook switches on after mount:
    * an imperative hide only lands on the second frame, so remounting the editor
-   * — which is what switching to split or preview does — flashed the platform
+   * - which is what switching to split or preview does - flashed the platform
    * bar for a frame first. Off by default so the native webview keeps the
    * touch scroll indicator it has no overlay to replace.
    */
@@ -193,7 +193,7 @@ export interface EditorCore {
   setKeyBindings(bindings: readonly EditorKeyBinding[]): void;
   /**
    * Run a markdown formatting command, the toolbar's entry point. Returns false
-   * when the command declined — outside markdown, or with nothing to change —
+   * when the command declined - outside markdown, or with nothing to change -
    * so a button can stay honest about having done nothing.
    */
   runMarkdownCommand(name: MarkdownCommandName): boolean;
@@ -221,7 +221,7 @@ const setDocAnnotation = Annotation.define<boolean>();
 
 // Hover-tooltip scrollbar, derived from the app's own desktop scrollbar
 // (web-desktop-scrollbar.tsx: 6px idle, 9px active, 220ms fade). The track is wider
-// than the thumb because the difference is drawn as a transparent border — that inset
+// than the thumb because the difference is drawn as a transparent border - that inset
 // is what makes it read as an overlay bar. Restated here rather than imported: this
 // module is bundled into the native webview and must not reach into app components.
 const HOVER_SCROLLBAR_IDLE_PX = 6;
@@ -233,7 +233,7 @@ const HOVER_SCROLLBAR_ACTIVE_INSET_PX = (HOVER_SCROLLBAR_TRACK_PX - HOVER_SCROLL
 
 // How long the hover source waits for a real answer before falling back to a tooltip
 // that fills itself in. Deliberately short: it is pure added latency on the cold path,
-// and its only job is to keep a warm server — which answers well inside it — from ever
+// and its only job is to keep a warm server - which answers well inside it - from ever
 // rendering the pending state. It is NOT the pointer-rest delay; CM6's `hoverTime`
 // still owns that and is untouched.
 const HOVER_GRACE_MS = 120;
@@ -248,20 +248,20 @@ const HOVER_SPINNER_PX = 11;
 //
 // Its width is the whole cost of putting it on that side: every pixel is one the line
 // numbers are pushed away from the text they number. So it is sized to the dot plus the
-// smallest gap that still reads as a gap — not to a comfortable margin. A marker channel,
+// smallest gap that still reads as a gap - not to a comfortable margin. A marker channel,
 // not a toolbar.
 const DIAGNOSTIC_GUTTER_PX = 11;
 const DIAGNOSTIC_DOT_PX = 6;
 
 // The overview ruler splits into two bands: problem marks on the left, search
 // hits on the right. Two bands rather than one shared one, because overlapping
-// them would let a hit hide an error — and not hiding errors is the lane's job.
+// them would let a hit hide an error - and not hiding errors is the lane's job.
 const PROBLEM_LANE_WIDTH = "62%";
 const MATCH_LANE_WIDTH = "calc(38% - 2px)";
 
 /**
  * One severity's underline, complete. Kept as a function so a severity can never end up
- * carrying the line style without the colour — see the note at the call site.
+ * carrying the line style without the colour - see the note at the call site.
  */
 function diagnosticUnderline(color: string, style: "wavy" | "dotted"): Record<string, string> {
   return {
@@ -284,7 +284,7 @@ const LINE_PADDING_LEFT_PX = 6;
 
 // The line-length ruler is a 1px background stripe rather than a decoration or
 // an overlay element: no extra DOM, no per-line cost, and it paints behind the
-// text for free. `ch` is the advance width of "0" — exact for a mono stack, and
+// text for free. `ch` is the advance width of "0" - exact for a mono stack, and
 // it rescales with the code font size on its own.
 //
 // The stripe only spans the content box, which is max(longest line, viewport):
@@ -301,7 +301,7 @@ function rulerBackground(spec: EditorThemeSpec): Record<string, string> {
   };
 }
 
-// Column is 1-based and counted in UTF-16 code units — the same unit CM6 uses
+// Column is 1-based and counted in UTF-16 code units - the same unit CM6 uses
 // for offsets, so it always agrees with what the editor itself considers a
 // position. (An astral emoji therefore advances the column by 2; matching CM6
 // beats matching an abstract notion of "character" the editor doesn't share.)
@@ -360,7 +360,7 @@ function overviewRulerRules(spec: EditorThemeSpec): Record<string, Record<string
     },
     // The hit find is currently on: the whole lane, not the right band, so
     // stepping through results moves something you can follow without hunting.
-    // Same amber — see the note on `active` in editor-overview-ruler.ts for why
+    // Same amber - see the note on `active` in editor-overview-ruler.ts for why
     // this is size rather than a second colour.
     ".cm-otto-overview-mark-match-active": {
       left: "1px",
@@ -464,20 +464,20 @@ function buildThemeExtension(spec: EditorThemeSpec): Extension {
       {
         backgroundColor: spec.selectionBackground,
       },
-    // The stripe is the line box itself — a plain background on `.cm-line`, the
+    // The stripe is the line box itself - a plain background on `.cm-line`, the
     // way CM6 ships it. That is what keeps it exactly the height of the row and
     // exactly in step with the gutter: it IS the row, rather than a rectangle
     // computed to match one.
     //
     // The catch is that `drawSelection` renders into `.cm-selectionLayer` at a
-    // NEGATIVE z-index — behind the content — so an OPAQUE line background hides
+    // NEGATIVE z-index - behind the content - so an OPAQUE line background hides
     // the selection on the caret's line completely. `activeLineBackground` is
     // therefore translucent (see editor-theme.ts), which is exactly why CM6's own
     // default is `#cceeff44`. Keep it translucent: an opaque value here silently
     // eats the selection, and moving the stripe into its own layer to dodge that
     // is what broke the alignment (both were tried; see docs/text-editor.md).
     //
-    // The ruler needs no redraw here for the same reason — the gradient on
+    // The ruler needs no redraw here for the same reason - the gradient on
     // `.cm-content` shows through.
     ".cm-activeLine": {
       backgroundColor: spec.activeLineBackground,
@@ -505,7 +505,7 @@ function buildThemeExtension(spec: EditorThemeSpec): Extension {
     // Outline, not border: an inline mark spanning a match must not add width
     // and reflow the line under it. `borderRadius` rounds the fill; the outline
     // is what makes a hit findable when the fill lands on a saturated syntax
-    // color. The active hit is deliberately a big step up, not a nudge — this
+    // color. The active hit is deliberately a big step up, not a nudge - this
     // is the "which one am I on" signal while stepping through results.
     ".cm-searchMatch": {
       backgroundColor: spec.searchMatchBackground,
@@ -550,7 +550,7 @@ function buildThemeExtension(spec: EditorThemeSpec): Extension {
     },
     // Chromium/WebKit. The thumb is drawn inside a transparent border with
     // `background-clip: content-box`, which is what makes a native scrollbar read
-    // as a slim overlay bar rather than a chrome gutter — matching the app's own
+    // as a slim overlay bar rather than a chrome gutter - matching the app's own
     // desktop scrollbar (6px idle, 9px active, fully rounded).
     ".cm-otto-hover::-webkit-scrollbar": {
       width: `${HOVER_SCROLLBAR_TRACK_PX}px`,
@@ -569,7 +569,7 @@ function buildThemeExtension(spec: EditorThemeSpec): Extension {
       transition: `background-color ${HOVER_SCROLLBAR_FADE_MS}ms`,
     },
     // Auto-hide means "visible while the pointer is on the tooltip". For a hover
-    // tooltip that is the whole of it — the surface only exists while pointed at,
+    // tooltip that is the whole of it - the surface only exists while pointed at,
     // so there is no idle state to time out of the way the app's scroll views have.
     ".cm-otto-hover:hover::-webkit-scrollbar-thumb": {
       backgroundColor: spec.scrollbarHandle,
@@ -581,7 +581,7 @@ function buildThemeExtension(spec: EditorThemeSpec): Extension {
     ".cm-otto-hover::-webkit-scrollbar-corner": {
       backgroundColor: "transparent",
     },
-    // The signature. Keeps the code font — it IS code — but NOT a background of its
+    // The signature. Keeps the code font - it IS code - but NOT a background of its
     // own: the tooltip is a single floating card on `tooltipBackground`, and painting
     // the deepened code well (`spec.background`) in here punched a near-black slab out
     // of that card on every dark theme. One surface per card; the mono font and the
@@ -601,7 +601,7 @@ function buildThemeExtension(spec: EditorThemeSpec): Extension {
       overflowWrap: "anywhere",
     },
     // Documentation. Proportional and muted, so prose stops competing with the
-    // signature above it — this is the difference between a blob and a card.
+    // signature above it - this is the difference between a blob and a card.
     ".cm-otto-hover-prose": {
       padding: "8px 10px",
       color: spec.gutterForeground,
@@ -647,13 +647,13 @@ function buildThemeExtension(spec: EditorThemeSpec): Extension {
     // `skip-ink: none` keeps the wave continuous through descenders.
     // Each severity carries the WHOLE decoration, including its colour. Split across a
     // shared base rule plus a colour-only override, the colour silently lost and every
-    // squiggle fell back to `currentColor` — the editor foreground — which reads as "this
+    // squiggle fell back to `currentColor` - the editor foreground - which reads as "this
     // is fine" on the one thing that is not. One rule per severity cannot do that.
     ".cm-otto-diagnostic-error": diagnosticUnderline(spec.diagnostic.error, "wavy"),
     ".cm-otto-diagnostic-warning": diagnosticUnderline(spec.diagnostic.warning, "wavy"),
     ".cm-otto-diagnostic-info": diagnosticUnderline(spec.diagnostic.info, "wavy"),
-    // Dotted, not wavy. A hint is the server being helpful — tsserver emits them by the
-    // dozen on plain JavaScript — and a wavy underline is the visual language of "this is
+    // Dotted, not wavy. A hint is the server being helpful - tsserver emits them by the
+    // dozen on plain JavaScript - and a wavy underline is the visual language of "this is
     // broken". Giving hints their own line style means severity is legible before you
     // read a single colour.
     ".cm-otto-diagnostic-hint": diagnosticUnderline(spec.diagnostic.hint, "dotted"),
@@ -661,7 +661,7 @@ function buildThemeExtension(spec: EditorThemeSpec): Extension {
     // invisible spacer so the code does not shift sideways the first time an error lands.
     //
     // NOTHING here may touch layout. CM6 sets `.cm-gutter { display:flex !important;
-    // flex-direction:column }` and positions the lines it skipped with `marginTop` — a
+    // flex-direction:column }` and positions the lines it skipped with `marginTop` - a
     // `justify-content` of ours centred the whole stack along that vertical main axis and
     // parked every marker hundreds of pixels from its line. Centering belongs on the
     // per-line element below, which has a real height to centre within.
@@ -687,7 +687,7 @@ function buildThemeExtension(spec: EditorThemeSpec): Extension {
     ".cm-otto-diagnostic-dot-warning": { backgroundColor: spec.diagnostic.warning },
     ".cm-otto-diagnostic-dot-info": { backgroundColor: spec.diagnostic.info },
     ".cm-otto-diagnostic-dot-hint": { backgroundColor: spec.diagnostic.hint },
-    // The explanation card. Proportional, because a compiler message is prose — the
+    // The explanation card. Proportional, because a compiler message is prose - the
     // same call as the hover documentation, and for the same reason.
     ".cm-otto-diagnostic-card": {
       fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif",
@@ -903,7 +903,7 @@ function buildFindQuery(find: EditorFindState): SearchQuery {
 // read as vertical movement rather than as a jump to column 1 every time.
 //
 // mousedown, not click, so it lands before the browser starts a drag-selection
-// over the gutter text — and `preventDefault` keeps that drag from starting at
+// over the gutter text - and `preventDefault` keeps that drag from starting at
 // all, which is why the numbers stay unselectable without a selection-clearing
 // hack. Scrolling is deliberately left alone: the line was on screen, the user
 // just clicked it.
@@ -927,8 +927,8 @@ function handleLineNumberMouseDown(view: EditorView, block: BlockInfo, event: Ev
 
 /**
  * The rebindable half of the editor's keymap, built from whatever bindings the
- * host handed us. Everything else CM6 binds — `defaultKeymap`, `historyKeymap`,
- * `indentWithTab`, Escape-closes-find — is mounted separately and untouched by a
+ * host handed us. Everything else CM6 binds - `defaultKeymap`, `historyKeymap`,
+ * `indentWithTab`, Escape-closes-find - is mounted separately and untouched by a
  * rebind, so a user who never opens the shortcuts screen still gets a complete
  * editor.
  *
@@ -955,7 +955,7 @@ function buildShortcutKeymap(
         // Markdown formatting is the editor's own work, not the host's: it edits
         // this document and never leaves. It also DECLINES outside markdown, and
         // returning false here is what hands the key to the next binding for the
-        // same combo — which is how one keymap serves `Mod-b` as bold in a `.md`
+        // same combo - which is how one keymap serves `Mod-b` as bold in a `.md`
         // file and as Go to definition in a `.ts` one.
         if (isMarkdownCommandName(binding.action)) {
           return getMarkdownCommand(binding.action)(view);
@@ -983,7 +983,7 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
 
   // Dirty is a COMPARISON against the saved text, not a latch on "an edit
   // happened". Any edit that leaves the document equal to that text is not a
-  // modification, however it got there — undo, redo, a cut whose paste puts it
+  // modification, however it got there - undo, redo, a cut whose paste puts it
   // back, retyping the character you just deleted. Latching on the first
   // docChanged left Save and Revert armed against a file that no longer
   // differed from disk.
@@ -992,7 +992,7 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
   // primitive for a per-keystroke check: it rejects on length or line count
   // first (O(1) for ordinary typing) and then prunes the subtrees CM6's rope
   // shares between two near-identical documents, so a full character walk is
-  // reached only for an equal-length edit — exactly the case that might be a
+  // reached only for an equal-length edit - exactly the case that might be a
   // return to clean. That pruning is why the baseline reuses `state.doc` when
   // the two start out identical rather than building a second, unrelated rope.
   let cleanDoc: Text;
@@ -1051,14 +1051,14 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
   // Reveal the primary selection by scrolling to its ACTUAL rendered position.
   //
   // Why not CM6's own `scrollIntoView`: in this embedded editor CM6's scroll
-  // pass lands the scroller at the wrong offset — measured at ~175px (≈10 lines)
+  // pass lands the scroller at the wrong offset - measured at ~175px (≈10 lines)
   // past a search match, with no scrollable ancestor involved, so it is CM6's
   // height-map estimate for the jump, not a feedback loop. It also does not
   // self-correct, so the target sits just out of view. This bit both typing at
   // an off-screen caret and stepping through search matches.
   //
   // `coordsAtPos` returns the target's real DOM rectangle (ground truth,
-  // independent of the height map) once the line is rendered — which it is after
+  // independent of the height map) once the line is rendered - which it is after
   // CM6's own pass, since CM6 lands close enough to render the region. We read
   // that rect on the next frame and nudge `.cm-scroller` directly (via
   // `setScrollTopSuppressed`, which also keeps split-view sync from echoing) so
@@ -1146,7 +1146,7 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
         indentWithTab,
       ]),
       // Right-click is a "act on what I am pointing at" gesture, so the caret
-      // moves to the click before the menu opens — unless the click landed
+      // moves to the click before the menu opens - unless the click landed
       // inside an existing selection, which the user is pointing at on purpose.
       // Without this, "Go to Definition" would run on wherever the caret
       // happened to be, not on the word under the pointer.
@@ -1155,7 +1155,7 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
         : []),
       // ORDER IS THE LAYOUT for gutters: CM6 renders them left to right in extension
       // order, so this mounting AFTER `lineNumbers()` is what puts the glyph column on
-      // the numbers' right — and that is deliberate, not incidental.
+      // the numbers' right - and that is deliberate, not incidental.
       //
       // The numbers are `text-align: right`, which makes the left side of their gutter
       // ragged whitespace that varies with digit count. A glyph column over there floats
@@ -1242,7 +1242,7 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
   let destroyed = false;
 
   // Reuse the document's own rope as the baseline in the ordinary case (nothing
-  // recovered, so the two are the same text) — see the `cleanDoc` note above.
+  // recovered, so the two are the same text) - see the `cleanDoc` note above.
   // A recovered draft starts out genuinely dirty, and the host is told so rather
   // than left to infer it from its own restore path.
   cleanDoc =
@@ -1268,7 +1268,7 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
    * A single `view.focus()` is enough when the editor is already on screen, and
    * not enough when it has only just mounted: navigating to a file opens the
    * pane, mounts the editor and calls this in one pass, while the element the
-   * click landed on is still being torn down — the browser hands focus back to
+   * click landed on is still being torn down - the browser hands focus back to
    * `document.body` after we asked for it. Re-asserting for a handful of frames
    * covers that without a timer that outlives the intent. It stops the instant
    * focus lands, so it cannot fight a user who clicks somewhere else.
@@ -1358,7 +1358,7 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
         annotations: setDocAnnotation.of(true),
       });
       // setDoc only ever installs a known-saved document (revert, reload from
-      // disk), so the text it just wrote is the new baseline — and reusing the
+      // disk), so the text it just wrote is the new baseline - and reusing the
       // rope it produced keeps later comparisons on the cheap path.
       adoptCleanDoc(view.state.doc);
     },
@@ -1427,7 +1427,7 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
         selection: { anchor: toInfo.to, head: fromInfo.from },
         // Centering is for arriving from somewhere else. Selecting the line you
         // are already looking at must not move the page under you, so that path
-        // asks for no reveal at all — not even the nudge, which would still
+        // asks for no reveal at all - not even the nudge, which would still
         // shift a line sitting inside the viewport's top or bottom margin.
         ...(reveal ? { effects: EditorView.scrollIntoView(fromInfo.from, { y: "center" }) } : null),
       });
@@ -1523,7 +1523,7 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
  * module is bundled into the webview and must stay free of React and app imports, and
  * a hover is a glance rather than a document.
  *
- * `hoverTooltip` is pointer-driven, so this contributes nothing on touch platforms —
+ * `hoverTooltip` is pointer-driven, so this contributes nothing on touch platforms -
  * which is correct, not a gap. A long-press affordance would be a different feature.
  *
  * ## Why this is not just `await provider(...)`
@@ -1531,11 +1531,11 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
  * A cold language server answers in seconds, not milliseconds, and awaiting the source
  * means CM6 has nothing to show for all of it. Worse, `HoverPlugin.update` drops a
  * pending source promise on ANY view update and restarts the hover 20ms later, so on a
- * cold server the answer was routinely thrown away and re-asked forever — which is why
+ * cold server the answer was routinely thrown away and re-asked forever - which is why
  * hovering early showed nothing at all rather than showing up late.
  *
  * So: race the provider against a short grace period. Answer inside the grace and the
- * tooltip is built from the finished content, exactly as before — the warm path never
+ * tooltip is built from the finished content, exactly as before - the warm path never
  * flashes a placeholder and never renders an extra frame. Miss it and we return the
  * tooltip SYNCHRONOUSLY with a pending body and fill it in when the answer lands. A
  * synchronous return also has no pending promise for `update` to cancel, which is what
@@ -1546,7 +1546,7 @@ function buildHoverTooltip(
   readTheme: () => EditorThemeSpec,
 ): Extension {
   return hoverTooltip(async (view, pos) => {
-    // Problems come first, and from local state — they are already here, so they never
+    // Problems come first, and from local state - they are already here, so they never
     // wait on a request. This is also the only tooltip that can appear on punctuation:
     // a stray brace or a missing semicolon is not an identifier, and "identifiers only"
     // is a rule about the *server's* hover, not about errors.
@@ -1586,7 +1586,7 @@ function buildHoverTooltip(
           }));
     }
 
-    // Slow server. When there is a problem here, that is what the user is asking about —
+    // Slow server. When there is a problem here, that is what the user is asking about -
     // show it now rather than making them wait behind a type signature they did not ask for.
     if (diagnostics.length > 0) {
       return hoverTooltipAt(word, () => ({
@@ -1633,7 +1633,7 @@ interface FillingHoverInput {
 /**
  * A tooltip that exists before its content does. Shows the pending state, swaps in the
  * explanation when it lands, re-asks while the server reports itself still indexing, and
- * retracts itself if the answer turns out to be "nothing" — an empty frame left sitting
+ * retracts itself if the answer turns out to be "nothing" - an empty frame left sitting
  * over the code is the one outcome worse than no tooltip.
  */
 function createFillingHoverView(input: FillingHoverInput): TooltipView {
@@ -1661,7 +1661,7 @@ function createFillingHoverView(input: FillingHoverInput): TooltipView {
       return;
     }
     if (answer.kind === "warming" && Date.now() < giveUpAt) {
-      // Still booting or indexing. Hold the tooltip and ask again — the pointer is
+      // Still booting or indexing. Hold the tooltip and ask again - the pointer is
       // resting on the same word, so the user's question has not changed.
       window.setTimeout(askAgain, HOVER_RETRY_MS);
       return;
@@ -1682,7 +1682,7 @@ function createFillingHoverView(input: FillingHoverInput): TooltipView {
 /**
  * Anchored to the whole word, not the character under the pointer, so CM6's
  * `isOverRange` check keeps the tooltip up while the pointer drifts across the
- * identifier — which matters far more once the tooltip can outlive the request.
+ * identifier - which matters far more once the tooltip can outlive the request.
  */
 function hoverTooltipAt(
   word: { from: number; to: number },
@@ -1701,7 +1701,7 @@ function delay(ms: number): Promise<void> {
  * The waiting state: a spinner and a word, sized close enough to a one-line signature
  * that filling it in reads as content arriving rather than as the tooltip jumping.
  * The tooltip plugin keeps a ResizeObserver on each tooltip's DOM, so the swap
- * repositions itself — nothing here has to re-measure.
+ * repositions itself - nothing here has to re-measure.
  */
 function createPendingHover(spec: EditorThemeSpec): {
   dom: HTMLElement;
@@ -1758,7 +1758,7 @@ function renderHoverContent(markdown: string, spec: EditorThemeSpec): HTMLElemen
 
 /**
  * The signature, highlighted with the same tokenizer and the same colours as the buffer
- * behind it — so a type in a hover is the colour that type is in the code.
+ * behind it - so a type in a hover is the colour that type is in the code.
  */
 function renderHoverCode(segment: HoverCodeSegment, spec: EditorThemeSpec): HTMLElement {
   const pre = document.createElement("pre");

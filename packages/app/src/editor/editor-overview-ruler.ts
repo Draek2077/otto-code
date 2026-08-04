@@ -17,7 +17,7 @@ import {
  * The overview ruler: a full-height lane down the right edge that answers two
  * questions at a glance and takes one gesture.
  *
- * Where am I — the viewport thumb. Where is everything I care about — problem
+ * Where am I - the viewport thumb. Where is everything I care about - problem
  * marks, search hits and the caret, drawn at the position they occupy in the
  * WHOLE document rather than in the part currently rendered. Click or drag the
  * lane and the document scrolls there.
@@ -27,8 +27,8 @@ import {
  * same thing twice, and a thumb that hides the marks it overlaps is worse than a
  * thumb that is translucent over them.
  *
- * Marks come from state the editor already holds — the diagnostics field, the
- * search query, the selection — so there is no new data channel and nothing to
+ * Marks come from state the editor already holds - the diagnostics field, the
+ * search query, the selection - so there is no new data channel and nothing to
  * keep in sync. Git-changed lines are the obvious fourth lane and are deliberately
  * absent: the editor is not told what the file looked like at HEAD.
  *
@@ -67,18 +67,18 @@ interface RulerMark {
   /**
    * The hit the user is standing on. Marked out by SIZE, not by another colour:
    * in the dark themes `statusWarningStrong` and `statusWarning` are the same
-   * amber, so a second token would differentiate nothing — while a full-width,
+   * amber, so a second token would differentiate nothing - while a full-width,
    * taller mark reads as "this one" in every theme.
    */
   active?: boolean;
-  /** Native tooltip text — the server's own words, or undefined for a search hit. */
+  /** Native tooltip text - the server's own words, or undefined for a search hit. */
   title?: string;
 }
 
 export interface OverviewRulerOptions {
   /**
    * Read at draw time rather than captured, so a theme switch reaches the lane
-   * without rebuilding the extension — the same getter idiom the diagnostics and
+   * without rebuilding the extension - the same getter idiom the diagnostics and
    * hover extensions use.
    */
   readTheme: () => EditorThemeSpec;
@@ -132,7 +132,7 @@ class OverviewRuler implements PluginValue {
     this.cursorMark.className = "cm-otto-overview-cursor";
     this.track.appendChild(this.cursorMark);
 
-    // Last child, so it paints over the marks — and is translucent, so the marks
+    // Last child, so it paints over the marks - and is translucent, so the marks
     // under the viewport stay readable.
     this.thumb = document.createElement("div");
     this.thumb.className = "cm-otto-overview-thumb";
@@ -285,7 +285,7 @@ class OverviewRuler implements PluginValue {
 
     const metrics = this.metrics();
     if (metrics.trackHeight <= 0) {
-      // Laid out at zero height — mounted but not yet measured. The observer
+      // Laid out at zero height - mounted but not yet measured. The observer
       // will call back with a real height and redraw.
       return;
     }
@@ -311,7 +311,7 @@ class OverviewRuler implements PluginValue {
 
   /**
    * Selected ranges as bands, so a selection you have scrolled away from is still
-   * findable — and so "how much of this file did I just select" has an answer
+   * findable - and so "how much of this file did I just select" has an answer
    * that does not involve scrolling to both ends of it.
    *
    * Empty ranges are skipped: a bare caret is already drawn by `drawCursor`, and a
@@ -349,7 +349,7 @@ class OverviewRuler implements PluginValue {
       fragment.appendChild(renderMark(mark));
     }
     // Replaced wholesale rather than diffed. The set is bounded by the bucket
-    // collapse — one element per few pixels of track — so this is a few dozen
+    // collapse - one element per few pixels of track - so this is a few dozen
     // nodes on a real file, and a diff would cost more to maintain than to skip.
     this.marksLayer.replaceChildren(fragment);
   }
@@ -407,7 +407,7 @@ class OverviewRuler implements PluginValue {
             break;
           }
           // The hit the selection is sitting exactly on is the one find is
-          // "at" — the same test the match counter in the status strip uses.
+          // "at" - the same test the match counter in the status strip uses.
           const active = step.value.from === main.from && step.value.to === main.to;
           const top = rulerMarkTop(this.contentTopAt(step.value.from), metrics);
           const key = `match:${rulerBucket(top)}`;
@@ -429,14 +429,14 @@ class OverviewRuler implements PluginValue {
    * Scroll-space offset of the line containing `pos`.
    *
    * `lineBlockAt` is the height map, which is the only source that agrees with
-   * `scrollTop` for lines that have never been rendered — a `coordsAtPos` would
+   * `scrollTop` for lines that have never been rendered - a `coordsAtPos` would
    * be exact for the viewport and null for the 90% of a long file that is not in it.
    */
   private contentTopAt(pos: number): number {
     return this.view.lineBlockAt(this.clampToDoc(pos)).top;
   }
 
-  /** The BOTTOM of the line containing `pos` — a selection's last line is included in it. */
+  /** The BOTTOM of the line containing `pos` - a selection's last line is included in it. */
   private contentBottomAt(pos: number): number {
     return this.view.lineBlockAt(this.clampToDoc(pos)).bottom;
   }

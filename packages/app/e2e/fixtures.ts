@@ -20,7 +20,7 @@ interface TrackedProjectPickerFixture extends ProjectPickerFixture {
 
 // Test setup is wired through an `auto: true` fixture rather than `test.beforeEach`.
 // `test.beforeEach` declared at the top level of a non-test fixture file is unreliable
-// across spec-file boundaries — Playwright sometimes skips it for the first test of a
+// across spec-file boundaries - Playwright sometimes skips it for the first test of a
 // subsequent spec when multiple specs run in the same worker. Auto fixtures run
 // reliably for every test that uses this `test` object.
 const test = base.extend<{
@@ -40,7 +40,7 @@ const test = base.extend<{
    * only because they won a race: "/" usually resolved before the seeded host's
    * WebSocket finished connecting, so the gate saw no host and fell through. On
    * a loaded CI runner that race flips and every spec that touches the app shell
-   * dies on a "Welcome to Otto" screen — which reads as a broken sidebar or a
+   * dies on a "Welcome to Otto" screen - which reads as a broken sidebar or a
    * missing locator, not as the wizard.
    *
    * Opt out with `test.use({ seedSetupWizardComplete: false })` when the wizard
@@ -149,7 +149,7 @@ const test = base.extend<{
 
       await provide();
 
-      // The console log is evidence for passing runs too — the QA report keeps
+      // The console log is evidence for passing runs too - the QA report keeps
       // it beside each test so a human can audit a green result, not just a red
       // one. (It used to attach only on failure.)
       if (entries.length > 0) {
@@ -160,7 +160,7 @@ const test = base.extend<{
       }
 
       // Fallback money shot: every passing test ships visual proof even if it
-      // never called `moneyShot()` itself. An explicit call always wins — this
+      // never called `moneyShot()` itself. An explicit call always wins - this
       // frame is captured at teardown, which is often past the interesting
       // state. See helpers/evidence.ts.
       const hasExplicitMoneyShot = testInfo.attachments.some((attachment) =>
@@ -173,7 +173,7 @@ const test = base.extend<{
             contentType: "image/png",
           });
         } catch {
-          // Page already closed by the test — nothing to prove, nothing to fail.
+          // Page already closed by the test - nothing to prove, nothing to fail.
         }
       }
     },

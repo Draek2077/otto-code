@@ -3,7 +3,7 @@ import { getParserForFile } from "./parsers.js";
 
 // ctags-style symbol extraction. It reuses the same Lezer parse trees the
 // highlighter walks, but with a highlighter keyed only to *definition*-flavored
-// tags — so it captures declarations (a function, class, const, type) rather
+// tags - so it captures declarations (a function, class, const, type) rather
 // than every reference. Name-based and honest: no type resolution, and a
 // grammar that doesn't tag a construct as a definition simply won't surface it.
 

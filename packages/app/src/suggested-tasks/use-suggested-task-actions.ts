@@ -11,12 +11,12 @@ export interface UseSuggestedTaskActionsInput {
 
 export interface SuggestedTaskActions {
   // One id starts a single chip; the whole pending queue starts them all,
-  // applying the same mode to each (one agent/chat each — no combining).
+  // applying the same mode to each (one agent/chat each - no combining).
   startTasks: (taskIds: readonly string[], mode: TasksSuggestedStartMode) => Promise<void>;
   dismissTasks: (taskIds: readonly string[]) => void;
 }
 
-const DAEMON_UNAVAILABLE = "Host is unavailable — reconnect to start this task.";
+const DAEMON_UNAVAILABLE = "Host is unavailable - reconnect to start this task.";
 
 function pluralize(count: number, singular: string): string {
   return count === 1 ? singular : `${singular}s`;
@@ -33,7 +33,7 @@ function startSuccessMessage(count: number, mode: TasksSuggestedStartMode): stri
   if (mode === "subagent") {
     return `Started ${count} ${pluralize(count, "subagent")}`;
   }
-  // in_session lands in the current chat — no toast, the result is on screen.
+  // in_session lands in the current chat - no toast, the result is on screen.
   return null;
 }
 

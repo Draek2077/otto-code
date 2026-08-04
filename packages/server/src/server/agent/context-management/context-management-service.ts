@@ -26,7 +26,7 @@ import type { ContextCategory, ContextCategoryVisibility } from "./types.js";
 const CACHE_TTL_MS = 15_000;
 
 /**
- * A personality's lessons as they are actually injected — the same text the
+ * A personality's lessons as they are actually injected - the same text the
  * Memory tab shows, because both come from `composeMemoryBrief`.
  */
 export interface PersonalityMemoryBrief {
@@ -46,7 +46,7 @@ export interface WorkspaceContextRuntime {
   /** The active model's real context window, when the provider reports one. */
   windowTokens?: number;
   /**
-   * Prompt text Otto composes and injects itself — personality, team, daemon
+   * Prompt text Otto composes and injects itself - personality, team, daemon
    * append. Exactly known, unlike anything a CLI loads internally.
    */
   injectedPromptText?: string;
@@ -56,7 +56,7 @@ export interface WorkspaceContextRuntime {
    */
   mcpToolsText?: string;
   /**
-   * The provider preset Otto composes itself — the standing instructions it puts
+   * The provider preset Otto composes itself - the standing instructions it puts
    * in front of the model before any user or personality text. Present only
    * where Otto builds the request (openai-compat); a CLI composes its own preset
    * in its own process and never hands it back.
@@ -74,7 +74,7 @@ export interface ContextManagementServiceDeps {
    * The injected memory brief for one personality in one project, so the report
    * can answer "what would this cost if <personality> ran here" and the preview
    * can show the text that cost buys. Absent on hosts that don't wire
-   * personality memory — the report is then simply personality-agnostic, which
+   * personality memory - the report is then simply personality-agnostic, which
    * is the pre-memory behavior.
    */
   resolvePersonalityMemoryBrief?: (params: {
@@ -102,7 +102,7 @@ export interface GetContextReportInput {
 export interface GetPromptPreviewInput extends GetContextReportInput {
   /**
    * Assemble only this section. The tab shows one section at a time, and the
-   * ones worth reading are runtime text Otto already holds — assembling the rest
+   * ones worth reading are runtime text Otto already holds - assembling the rest
    * would re-read every context file on disk to build text nobody asked for.
    */
   category?: ContextCategory;
@@ -187,7 +187,7 @@ export class ContextManagementService {
     const visibilityByCategory = resolveCategoryVisibility({ provider, runtime });
 
     // A personality's memory brief is prompt text Otto composes and injects, so
-    // it belongs in `otto_injected` rather than a category of its own —
+    // it belongs in `otto_injected` rather than a category of its own -
     // ContextCategory is a z.enum travelling daemon->client, and a new member
     // would make a new daemon's report unparseable by an older client.
     const personalityMemoryTokens = (
@@ -276,7 +276,7 @@ export class ContextManagementService {
    * Deliberately built on top of `getReport` rather than beside it: the preview
    * must show exactly the files the graph counted, or the two surfaces would
    * disagree about the same request. Returns null on the same terms the report
-   * does — no workspace, or no provider to resolve conventions from.
+   * does - no workspace, or no provider to resolve conventions from.
    */
   async getPromptPreview(input: GetPromptPreviewInput): Promise<ContextPromptPreview | null> {
     const report = await this.getReport(input);
@@ -331,7 +331,7 @@ export class ContextManagementService {
  * What Otto can honestly claim to see, per category, for one provider.
  *
  * Otto owns the whole payload for `openai-compat`, which makes it the only
- * provider whose preset and tool schemas are measurable — and the ground truth
+ * provider whose preset and tool schemas are measurable - and the ground truth
  * every convention-based estimate is validated against. Every CLI-backed
  * provider assembles its own preset and hands its MCP servers to a subprocess,
  * so those two categories are unmeasurable there. Saying so on the row is the
@@ -347,7 +347,7 @@ function resolveCategoryVisibility(params: {
 
   return {
     // Otto composes personality, team and daemon-append text itself, on every
-    // provider — this row is exact everywhere.
+    // provider - this row is exact everywhere.
     otto_injected: "exact",
     system_prompt: ownsPayload && runtime?.systemPromptText ? "exact" : "not_visible",
     mcp_tools: ownsPayload && runtime?.mcpToolsText ? "exact" : "not_visible",

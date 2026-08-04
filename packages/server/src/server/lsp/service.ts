@@ -167,7 +167,7 @@ interface RenameFileRanges {
 }
 
 /**
- * What a rename *would* do. Nothing is written by producing this — the whole point is
+ * What a rename *would* do. Nothing is written by producing this - the whole point is
  * that a project-wide edit is auditable before it happens.
  */
 export interface RenamePlan {
@@ -177,7 +177,7 @@ export interface RenamePlan {
   editCount: number;
   /**
    * Identity of this exact set of edits. Echoed back on apply so the daemon can prove the
-   * plan being applied is the plan that was audited — computed here rather than by the
+   * plan being applied is the plan that was audited - computed here rather than by the
    * client so there is only one definition of "the same plan" in the system.
    */
   planId: string;
@@ -195,7 +195,7 @@ export interface RenameApplyQuery extends RenameQuery {
 
 export type RenameApplyStatus =
   /**
-   * The run happened. NOT the same as "everything applied" — read `complete` and the
+   * The run happened. NOT the same as "everything applied" - read `complete` and the
    * per-file outcomes for that. A run where two of fourteen edits no longer fit is still a
    * run that took place, and reporting it as a failure would hide the twelve that landed.
    */
@@ -249,7 +249,7 @@ const RangeSchema = z.object({ start: PositionSchema, end: PositionSchema });
 const LocationSchema = z.object({ uri: z.string(), range: RangeSchema });
 
 /**
- * `LocationLink` prefers `targetSelectionRange` — the identifier itself — over
+ * `LocationLink` prefers `targetSelectionRange` - the identifier itself - over
  * `targetRange`, which spans the whole declaration and would land the caret on the
  * line above the name for anything with a doc comment.
  */
@@ -267,7 +267,7 @@ const DefinitionReplySchema = z.union([
 ]);
 
 /**
- * `Hover.contents` has three legal shapes across LSP versions — a marked string, an
+ * `Hover.contents` has three legal shapes across LSP versions - a marked string, an
  * array of them, or a `MarkupContent`. Servers in the wild still send all three.
  */
 const MarkedStringSchema = z.union([
@@ -290,7 +290,7 @@ const TextEditSchema = z.object({ range: RangeSchema, newText: z.string() });
 
 /**
  * Only the `changes` map is read. `documentChanges` additionally carries file
- * creates/renames/deletes, which a symbol rename does not produce — and applying an
+ * creates/renames/deletes, which a symbol rename does not produce - and applying an
  * unreviewed file operation is exactly what the dry-run tab exists to prevent. A server
  * that answers only in `documentChanges` reads as "nothing to rename" rather than
  * silently doing something unaudited.
@@ -342,7 +342,7 @@ export class LspService {
 
   /**
    * Subscribe to the set of workspaces with language-server work in flight. The daemon
-   * broadcasts it so a workspace row can show that a cold start is live — which is the
+   * broadcasts it so a workspace row can show that a cold start is live - which is the
    * whole point on a large project, where the first lookup is the slow one.
    */
   onActivityChange(listener: (busyRoots: string[]) => void): void {
@@ -362,7 +362,7 @@ export class LspService {
     this.diagnosticsListener = listener;
   }
 
-  /** The current problem set for one document — what a freshly opened tab needs. */
+  /** The current problem set for one document - what a freshly opened tab needs. */
   diagnosticsFor(filePath: string): CodeDiagnostic[] {
     return this.diagnostics.merged(documentKey(filePath));
   }
@@ -397,7 +397,7 @@ export class LspService {
       return;
     }
 
-    // `open.filePath` deliberately, not the path derived from the server's URI — the
+    // `open.filePath` deliberately, not the path derived from the server's URI - the
     // client matches this against the path it opened.
     this.emitDiagnostics(key, open);
   }
@@ -511,7 +511,7 @@ export class LspService {
   }
 
   /**
-   * Record the buffer, then bind it to the servers for its language — spawning them if
+   * Record the buffer, then bind it to the servers for its language - spawning them if
    * this is the first document of that language in the workspace.
    *
    * The binding is what makes diagnostics work at all, and it is a deliberate revision of
@@ -522,7 +522,7 @@ export class LspService {
    *
    * The cost controls are unchanged and are what make this affordable: the master switch,
    * the per-language toggles, the LRU cap, and idle reap. What is gone is only the case of
-   * "a file of an enabled language is open and its server is not running" — which was never
+   * "a file of an enabled language is open and its server is not running" - which was never
    * a state worth preserving.
    */
   async syncDocument(input: SyncDocumentInput): Promise<void> {
@@ -544,7 +544,7 @@ export class LspService {
    * Not every server on a file does everything: `oxlint` binds `.ts` beside the
    * TypeScript server and publishes diagnostics only. Filtering on the advertised
    * capability keeps a diagnostics-only server from turning every definition lookup into
-   * a wasted round-trip — and, worse, from making the "every server failed" branch fire
+   * a wasted round-trip - and, worse, from making the "every server failed" branch fire
    * when the one server that could answer succeeded.
    */
   private async capableServersFor(
@@ -605,7 +605,7 @@ export class LspService {
 
   /**
    * The server's own explanation of the symbol under the caret. First server with
-   * something to say wins — merging two servers' prose would read as gibberish, unlike
+   * something to say wins - merging two servers' prose would read as gibberish, unlike
    * merging two sets of locations.
    */
   async hover(query: DefinitionQuery): Promise<HoverResult> {
@@ -684,7 +684,7 @@ export class LspService {
 
     // A NON-EMPTY answer from a still-loading server is the dangerous case, and the one
     // this used to report as `ok`. Measured on this repo: for 7 seconds after spawn,
-    // `fromFileUri` returned 2 hits in 1 file when the truth is 14 in 4 — a complete-looking
+    // `fromFileUri` returned 2 hits in 1 file when the truth is 14 in 4 - a complete-looking
     // answer that was 7x short. So indexing outranks having results: the caller is told the
     // list is provisional and gets the partial set to show meanwhile.
     if (bound.some((entry) => entry.connection.isIndexing)) {
@@ -694,7 +694,7 @@ export class LspService {
   }
 
   /**
-   * What a rename would do, and nothing else — no file is written here. The client puts
+   * What a rename would do, and nothing else - no file is written here. The client puts
    * this in front of the user as a job to audit before applying, because a rename's blast
    * radius is the whole project and an inline rename box hides it behind one keystroke.
    */
@@ -713,7 +713,7 @@ export class LspService {
 
     // Refused outright while any bound server is still building its project model. A
     // rename's whole purpose here is an auditable blast radius, and a plan produced against
-    // a half-loaded program under-reports it — "1 file, 2 edits" for something that touches
+    // a half-loaded program under-reports it - "1 file, 2 edits" for something that touches
     // 4 files and 14 sites. Every other request degrades to a bad answer; this one degrades
     // to a destructive edit, so it does not get to guess.
     if (bound.some((entry) => entry.connection.isIndexing)) {
@@ -781,7 +781,7 @@ export class LspService {
 
   /**
    * One position-based request to one server. Returns `undefined` when that server
-   * failed, which callers treat as "this one had nothing" rather than as an error — one
+   * failed, which callers treat as "this one had nothing" rather than as an error - one
    * server answering is success.
    */
   private async ask(
@@ -809,10 +809,10 @@ export class LspService {
   /**
    * Run a rename the user audited.
    *
-   * **The stored plan is executed — not one re-derived now.** A deliberate reversal of the
+   * **The stored plan is executed - not one re-derived now.** A deliberate reversal of the
    * first design, which recomputed the plan and refused on any difference. The property that
    * design was really protecting was never *recomputation*; it was *the client is not the
-   * author of the edits* — and keeping the plan daemon-side preserves that exactly while
+   * author of the edits* - and keeping the plan daemon-side preserves that exactly while
    * giving the user what a dry run actually promises: the edits you approved are the edits
    * that run. Recomputing also refused the whole job whenever anything moved, and in a
    * product whose agents write files continuously that is the common case, not the rare one.
@@ -875,7 +875,7 @@ export class LspService {
    * Put a run back.
    *
    * Only files still holding exactly what the run wrote are restored. Anything edited since
-   * is reported and left alone — a blind restore would destroy that work, which is a worse
+   * is reported and left alone - a blind restore would destroy that work, which is a worse
    * outcome than not undoing.
    */
   async renameUndo(runId: string): Promise<RenameUndoResult> {
@@ -923,7 +923,7 @@ export class LspService {
    * from the much shorter background one.
    *
    * Called from this service's own request path rather than pushed by the client: there is
-   * no focus signal on the wire, and every code-intelligence request already *is* one —
+   * no focus signal on the wire, and every code-intelligence request already *is* one -
    * a hover, a definition lookup or a buffer sync only happens for the file in front of
    * someone. Inventing a second signal would give the idle policy two sources of truth,
    * and the one that goes stale is the one that leaves servers running.
@@ -968,7 +968,7 @@ function diagnosticsServerKey(rootPath: string, serverId: string): string {
  * Read each planned file once and record, for every edit, the text it would replace.
  *
  * This is the step that turns a description of a change into a job that can be verified and
- * reversed. One read per file, and only at plan time — the run itself re-reads to check that
+ * reversed. One read per file, and only at plan time - the run itself re-reads to check that
  * nothing moved since.
  *
  * A file that cannot be read keeps its edits with an empty `oldText`, which the run will
@@ -1019,7 +1019,7 @@ function groundEdit(edit: Omit<PlannedEdit, "oldText">, oldText: string): Planne
 
 /**
  * An edit with no ground truth, for a file that could not be read. The run will refuse to
- * match it — which is the point: an unreadable file must not quietly shrink the blast radius
+ * match it - which is the point: an unreadable file must not quietly shrink the blast radius
  * the user is shown.
  */
 function withoutGroundTruth(edit: Omit<PlannedEdit, "oldText">): PlannedEdit {

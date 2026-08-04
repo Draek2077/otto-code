@@ -13,13 +13,13 @@
 // These are LIST prices and will drift as Anthropic changes pricing. They are not
 // trusted blindly: verifyClaudeTreePricing() re-prices the turn's whole-tree token
 // totals (from the SDK's own modelUsage) and compares to the SDK's costUSD, so a
-// stale table surfaces as a logged warning instead of silently skewing the books —
+// stale table surfaces as a logged warning instead of silently skewing the books -
 // and because the parent is booked as the residual (total − Σ sub-agent), any
 // table drift lands on the parent, never inflating the grand total.
 //
 // PROVIDER-BOUNDARY INVARIANT: only ever call these from code that KNOWS it is
 // genuinely the Claude provider (the Claude agent + its watcher). NEVER dispatch
-// pricing by model id from provider-neutral code — another provider (e.g. an
+// pricing by model id from provider-neutral code - another provider (e.g. an
 // OpenAI-compatible gateway or router) can legitimately serve a "claude-*" model
 // id at entirely different prices, so keying Anthropic rates off the id alone
 // would misprice it. The neutral core (agent/subagent-usage.ts, agent-manager's
@@ -37,7 +37,7 @@ export interface ClaudeModelRates {
 
 function rates(input: number, output: number): ClaudeModelRates {
   // cache-read 0.1× input, 5-minute cache-write 1.25× input (Anthropic's fixed
-  // multipliers) — derived so a rate change only needs the two headline numbers.
+  // multipliers) - derived so a rate change only needs the two headline numbers.
   return {
     inputPerMTok: input,
     outputPerMTok: output,
@@ -49,20 +49,20 @@ function rates(input: number, output: number): ClaudeModelRates {
 // Exact model id (lowercased) → rates. Only the models we can price with
 // confidence; everything else is deliberately absent (→ undefined).
 const CLAUDE_MODEL_RATES: Readonly<Record<string, ClaudeModelRates>> = {
-  // Fable 5 — $10 in / $50 out, the tier above Opus.
+  // Fable 5 - $10 in / $50 out, the tier above Opus.
   "claude-fable-5": rates(10, 50),
-  // Opus 5 and Opus 4.6+ — $5 in / $25 out. (The $15/$75 card belonged to
+  // Opus 5 and Opus 4.6+ - $5 in / $25 out. (The $15/$75 card belonged to
   // Opus 4.1 and earlier; every Opus we list here ships at the lower rate.)
   "claude-opus-5": rates(5, 25),
   "claude-opus-4-8": rates(5, 25),
   "claude-opus-4-7": rates(5, 25),
   "claude-opus-4-6": rates(5, 25),
   "claude-opus-4-5": rates(5, 25),
-  // Sonnet — $3 in / $15 out (standard, ≤200K context).
+  // Sonnet - $3 in / $15 out (standard, ≤200K context).
   "claude-sonnet-5": rates(3, 15),
   "claude-sonnet-4-6": rates(3, 15),
   "claude-sonnet-4-5": rates(3, 15),
-  // Haiku 4.5 — $1 in / $5 out. Both the plain and the dated API id.
+  // Haiku 4.5 - $1 in / $5 out. Both the plain and the dated API id.
   "claude-haiku-4-5": rates(1, 5),
   "claude-haiku-4-5-20251001": rates(1, 5),
 };
@@ -77,7 +77,7 @@ export function claudeModelRates(model: string | undefined): ClaudeModelRates | 
 
 /**
  * Price a real token split against a model's rate card. `inputTokens` is FRESH
- * (uncached) input — Anthropic's `input_tokens` already excludes cache — so the
+ * (uncached) input - Anthropic's `input_tokens` already excludes cache - so the
  * three input classes are disjoint and summed at their own rates. Returns USD, or
  * undefined when the model isn't priceable (caller attributes 0).
  */
@@ -158,7 +158,7 @@ export interface ClaudeTreePricingVerification {
 /**
  * Re-price the turn's whole-tree per-model token totals with our table and
  * compare to the SDK's own `costUSD`, so table drift is caught and logged. Purely
- * diagnostic — the books are kept balanced by the parent-residual rule regardless.
+ * diagnostic - the books are kept balanced by the parent-residual rule regardless.
  * `relativeTolerance` is a fraction (default 2%); a model matches when the
  * absolute delta is within tolerance OR within a 1e-4 USD floor (rounding noise).
  */

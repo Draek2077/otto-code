@@ -55,7 +55,7 @@ import {
   type AgentProviderDefinition,
 } from "@otto-code/protocol/provider-manifest";
 
-// The Mode chip always lives inline in the toolbar — it shrinks to an icon-only
+// The Mode chip always lives inline in the toolbar - it shrinks to an icon-only
 // badge when compact rather than dropping below the input box.
 
 interface ModeIconProps {
@@ -227,7 +227,7 @@ function LockedAgentModeBadge({
       </TooltipTrigger>
       <TooltipContent side="top" align="center" offset={8}>
         <Text style={styles.tooltipText}>
-          {`Runs in ${label} — this mode is locked and can't be changed.`}
+          {`Runs in ${label} - this mode is locked and can't be changed.`}
         </Text>
       </TooltipContent>
     </Tooltip>
@@ -287,7 +287,7 @@ function AgentModeControlView({
     mutedColor: theme.colors.foregroundMuted,
   });
 
-  // Modes are a small finite set (like effort levels) — no search needed. Only
+  // Modes are a small finite set (like effort levels) - no search needed. Only
   // user-selectable modes appear as options.
   const options = useMemo<ComboboxOption[]>(
     () => selectableModes.map((m) => ({ id: m.id, label: formatAgentModeLabel(m) })),
@@ -380,7 +380,7 @@ function AgentModeControlView({
   if (!selectedMode) return null;
 
   // Locked: the agent's active mode isn't user-selectable (Claude "dontAsk"). Show
-  // it as a static badge — visible but with no dropdown — so it's clear the agent
+  // it as a static badge - visible but with no dropdown - so it's clear the agent
   // is stuck in it.
   if (isLocked) {
     return (

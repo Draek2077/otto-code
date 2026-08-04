@@ -986,7 +986,7 @@ function buildWorkspaceDraftSetupFromComposer(input: {
     model: input.composerState.effectiveModelId || null,
     thinkingOptionId: input.composerState.effectiveThinkingOptionId || null,
     featureValues: input.composerState.featureValues ?? {},
-    // Carry the picked identity, not just its provider/model — the draft tab's
+    // Carry the picked identity, not just its provider/model - the draft tab's
     // initialValues outrank device memory, so a dropped personality here can't
     // be recovered downstream.
     personality: resolveSpawnPersonalityId(input.composerState.agentControls.personality),
@@ -2505,7 +2505,7 @@ const styles = StyleSheet.create((theme) => ({
   badge: {
     flexDirection: "row",
     alignItems: "center",
-    // 1.5x on compact to wrap the badge icons' compact upscale — otherwise the
+    // 1.5x on compact to wrap the badge icons' compact upscale - otherwise the
     // theme-scaled icon/text get clipped by the fixed desktop height.
     height: compactUp(BADGE_HEIGHT, 1.5),
     maxWidth: 240,
@@ -2574,7 +2574,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
   },
   projectIconFallbackText: {
-    // Single uppercase initial inside an iconSize.md (16px) square — below the
+    // Single uppercase initial inside an iconSize.md (16px) square - below the
     // smallest font-size token, so it stays a literal sized to the box.
     fontSize: PROJECT_ICON_FALLBACK_FONT_SIZE,
     fontWeight: "600",

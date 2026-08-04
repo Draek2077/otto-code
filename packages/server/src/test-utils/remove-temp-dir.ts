@@ -5,7 +5,7 @@ import { rm } from "node:fs/promises";
  * Delete a throwaway test directory, tolerating Windows file locking.
  *
  * Windows refuses to remove a directory while any process still holds a handle
- * inside it — a PTY sitting in it as its cwd, a git child that has not fully
+ * inside it - a PTY sitting in it as its cwd, a git child that has not fully
  * exited, or an antivirus scanner mid-scan. The OS reports that as EPERM (and
  * sometimes EBUSY), so a bare `rmSync` fails a suite whose assertions all
  * passed, which reads as a product bug when it is only cleanup losing a race.

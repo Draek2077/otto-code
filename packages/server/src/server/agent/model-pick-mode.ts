@@ -27,14 +27,14 @@ function selectsModel(mode: AgentMode): boolean {
  * own choice and a chosen model silently loses).
  *
  * Returns undefined when there is nothing to do, which is the case for every
- * provider that has no such mode — the coercion is driven by the `selectsModel`
+ * provider that has no such mode - the coercion is driven by the `selectsModel`
  * flag on the mode, never by a provider or mode-id check. Codex has a mode
  * literally named "auto" that is a permission level and nothing else; it is
  * correctly untouched.
  *
  * The landing mode is the provider's own declared default (Claude: "Always
  * Ask"). Otto keeps no record of the mode an agent held before it entered Auto,
- * so there is no earlier state to restore — the provider default is the honest
+ * so there is no earlier state to restore - the provider default is the honest
  * choice rather than a guess. Two invariants constrain it:
  *
  *  - Attendedness is preserved. Coercing an unattended run into a mode that

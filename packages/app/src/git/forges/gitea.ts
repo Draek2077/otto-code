@@ -21,7 +21,7 @@ const GiteaMergeFactsSchema = z
 type GiteaMergeFacts = z.infer<typeof GiteaMergeFactsSchema>;
 
 // forgeSpecific.ciStatus carries Gitea's raw aggregate CI string. Server twin:
-// packages/server/src/services/gitea-service.ts (mapGiteaCommitStatus) — "warning"
+// packages/server/src/services/gitea-service.ts (mapGiteaCommitStatus) - "warning"
 // and "error" are terminal, non-passing states, but the generic mapCheckStatus
 // would show them as pending, so interpret them here where the module owns Gitea
 // facts.

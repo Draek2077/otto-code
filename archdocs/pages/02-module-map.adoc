@@ -4,7 +4,7 @@
 Otto is an npm workspace monorepo of eleven packages. The split is clean at the
 package boundary: *backend* is everything the daemon process runs, *frontend* is
 everything a client renders, and the two only meet through the shared contract
-packages — never by importing each other.
+packages - never by importing each other.
 
 == Package layering
 
@@ -71,7 +71,7 @@ runtime".
 
 |Transport & session
 |`websocket-server.ts`, `session.ts`, `server/session/*`, `relay-transport.ts`
-|`session.ts` is the per-client RPC dispatcher — and the largest module in the repo
+|`session.ts` is the per-client RPC dispatcher - and the largest module in the repo
 (see inventory below). `server/session/` holds its in-progress decomposition: files,
 checkout, git-mutation, provider, voice sub-handlers.
 
@@ -79,8 +79,8 @@ checkout, git-mutation, provider, voice sub-handlers.
 |`agent/agent-manager.ts`, `agent/create-agent/`, `agent/providers/`,
 `agent/tools/otto-tools.ts`, `agent/mcp-server.ts`
 |Providers split into two loop-ownership models: *provider-owned* loops (Claude,
-Codex, OpenCode, Pi, ACP family — the daemon streams and maps events) and
-*daemon-owned* loops (OpenAI-compatible — the daemon runs the tool rounds, injects
+Codex, OpenCode, Pi, ACP family - the daemon streams and maps events) and
+*daemon-owned* loops (OpenAI-compatible - the daemon runs the tool rounds, injects
 the Otto catalog, compacts mid-turn, bills per round).
 
 |Timeline & persistence
@@ -97,7 +97,7 @@ implementations.
 |IDE services
 |`terminal/` (PTY worker process), `server/session/files/`, `preview/`,
 `browser-tools/`, `artifact/`, `service-proxy.ts`
-|`browser-tools/broker.ts` is the daemon side of browser verification — it brokers
+|`browser-tools/broker.ts` is the daemon side of browser verification - it brokers
 agent tool calls to a *connected client's* real browser tab; the daemon never runs a
 browser itself.
 
@@ -109,7 +109,7 @@ engine), `schedule/`, `loop-service.ts`, `chat/`, `push/`
 |Accounting
 |`activity-stats/` (counter store + usage ledger), `agent/subagent-usage.ts`,
 `agent/claude/claude-pricing.ts`, `personality-stats-store.ts`
-|All writes funnel through AgentManager callbacks — the audit chokepoint.
+|All writes funnel through AgentManager callbacks - the audit chokepoint.
 
 |Speech & voice
 |`speech/`, `agent/stt-manager.ts`, `agent/tts-manager.ts`, `dictation/`
@@ -135,7 +135,7 @@ the redirect from bootstrap state + last-workspace memory.
 |Sync engine
 |`contexts/session-context.tsx`, `timeline/`, `data/push-router.ts`, `data/query.ts`
 |The frontend half of Timeline & Sync: reducer queue with a `{epoch, seq}` cursor,
-catch-up planning, and a React Query cache that is a *push-fed replica* — global
+catch-up planning, and a React Query cache that is a *push-fed replica* - global
 `refetch*: false`, updated only by push-router writes and explicit invalidation.
 
 |Chat surface
@@ -197,11 +197,11 @@ role is intentional; the size is not.
 
 |`agent/tools/otto-tools.ts`
 |4,426
-|The whole tool catalog in one module — each tool is a candidate for per-domain files.
+|The whole tool catalog in one module - each tool is a candidate for per-domain files.
 
 |`git/diff-pane.tsx` / `components/message.tsx`
 |3,862 / 3,371
-|Diff rendering and the chat bubble renderer — both performance-critical, both
+|Diff rendering and the chat bubble renderer - both performance-critical, both
 monolithic.
 |===
 

@@ -90,7 +90,7 @@ export function keptHunkIdsFor(
   return kept;
 }
 
-/** Every decision key in the proposal set — the default after each round. */
+/** Every decision key in the proposal set - the default after each round. */
 export function allRefineSetKeys(proposals: readonly RefineFileProposal[]): Set<string> {
   const keys = new Set<string>();
   for (const proposal of proposals) {
@@ -109,7 +109,7 @@ export interface RefineSetResult {
   /**
    * False when every hunk in this file was dropped, so the result is byte-for-byte
    * the pinned base. Accept skips these rather than issuing a write that would
-   * change nothing but the mtime — and a no-op write is exactly the kind of
+   * change nothing but the mtime - and a no-op write is exactly the kind of
    * "did something happen?" ambiguity a review surface must not create.
    */
   changed: boolean;
@@ -117,7 +117,7 @@ export interface RefineSetResult {
 
 /**
  * Replay every file's diff with the session's decisions applied. This is what
- * Accept writes, and — fed back as the next round's input — what makes
+ * Accept writes, and - fed back as the next round's input - what makes
  * regeneration build on what the user kept (see `use-refine-session.ts`).
  */
 export function applyRefineSet(

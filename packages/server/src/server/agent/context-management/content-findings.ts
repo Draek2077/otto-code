@@ -2,7 +2,7 @@
  * Deterministic, no-AI findings over resolved context files (charter §7.5).
  *
  * These exist because "here is the exact block to delete" is far more
- * actionable — and far more trustworthy — than "let a model rewrite your
+ * actionable - and far more trustworthy - than "let a model rewrite your
  * rules". They ship before the AI path, not after it.
  *
  * Everything here is content comparison, so it runs as a post-pass over the
@@ -111,7 +111,7 @@ function collectCrossScopeDuplicates(files: readonly ContextFileContent[]): void
 
     push(first.file, {
       kind: "duplicate_across_scope",
-      message: `"${firstLine(first.block.raw)}" also appears in ${otherNode.relPath} — it is sent twice`,
+      message: `"${firstLine(first.block.raw)}" also appears in ${otherNode.relPath} - it is sent twice`,
       range: { start: first.block.start, end: first.block.end },
       relatedNodeIds: [otherNode.id],
     });
@@ -148,7 +148,7 @@ function collectOversizedMemoryLines(file: ContextFileContent): void {
     if (trimmed.length > MAX_MEMORY_INDEX_LINE_CHARS) {
       push(file, {
         kind: "oversized_memory_entry",
-        message: `Index line is ${trimmed.length} characters — the convention is one line per entry, with detail in the entry file`,
+        message: `Index line is ${trimmed.length} characters - the convention is one line per entry, with detail in the entry file`,
         range: { start: offset, end: offset + line.length },
       });
     }

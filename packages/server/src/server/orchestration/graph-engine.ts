@@ -31,13 +31,13 @@ import {
 
 // The deterministic-graph engine (projects/orchestration-graphs): executes a
 // user-authored OrchestrationGraph exactly as drawn. Pure control flow over an
-// injected port, mirroring run-engine.ts — no daemon deps, unit-testable with
+// injected port, mirroring run-engine.ts - no daemon deps, unit-testable with
 // a fake port. Key semantics:
 //
 // - The single orchestrator node is NOT executed here: its agent (the run's
 //   conductorAgentId) is spawned by the caller before execution and hosts the
 //   orchestration chat. The engine routes node completions to it via
-//   `notifyOrchestrator` — it activates when information arrives.
+//   `notifyOrchestrator` - it activates when information arrives.
 // - Fan-in is an all-inputs barrier held HERE: a node's agent is spawned only
 //   when every upstream node has finished. Agents never know about waiting.
 // - Loops are node-level annotations: `times` re-dispatches with the previous
@@ -63,7 +63,7 @@ export interface GraphEngineSpawnInput {
   purpose: "worker" | "judge";
   /**
    * The node's declared output fields, when it has them. The port stamps them
-   * on the spawned agent so its tool catalog can register submit_output —
+   * on the spawned agent so its tool catalog can register submit_output -
    * which is how structured output reaches every provider identically.
    */
   outputFields?: GraphOutputField[];
@@ -79,7 +79,7 @@ export interface GraphEnginePort {
   spawn(input: GraphEngineSpawnInput): Promise<RunEngineSpawnResult>;
   awaitAgent(input: { agentId: string; signal: AbortSignal }): Promise<RunEngineAwaitResult>;
   /**
-   * Really stop one agent — used when a node hits its time limit. Racing a
+   * Really stop one agent - used when a node hits its time limit. Racing a
    * timer against `awaitAgent` would only stop *waiting*; the agent would keep
    * running and keep spending. Best-effort: an agent that already settled is
    * not an error.
@@ -91,7 +91,7 @@ export interface GraphEnginePort {
   now(): string;
   /**
    * Render a node's prompt from a stored template. Absent on hosts without the
-   * template store — a node bound to a template then falls back to its inline
+   * template store - a node bound to a template then falls back to its inline
    * prompt, which is the same degradation as a deleted template.
    */
   renderPromptTemplate?(input: {
@@ -114,7 +114,7 @@ export function substituteGraphInputs(text: string, inputs: Record<string, strin
  * Build the initial Run projection for a graph execution. Pure. Worker nodes
  * project into `phases[]` (type "graph-node") so existing clients render the
  * run without a new list schema; `dependsOn` carries the drawn edges (root
- * edges excluded — they are ordering-only and satisfied at start).
+ * edges excluded - they are ordering-only and satisfied at start).
  */
 export function buildRunFromGraph(input: {
   graph: OrchestrationGraph;
@@ -130,7 +130,7 @@ export function buildRunFromGraph(input: {
   teamId?: string;
   teamName?: string;
 }): Run {
-  // Structural problems first, then expression syntax — the latter needs the
+  // Structural problems first, then expression syntax - the latter needs the
   // JSONata parser, which is daemon-only (the designer's shared validator must
   // stay dependency-free for the client bundle).
   const problems = [
@@ -207,7 +207,7 @@ function buildNodeBasePrompt(node: GraphNode, inputs: Record<string, string>): s
 }
 
 // A node settles three ways, not two. `skipped` is control flow routing around
-// the node — an ordinary outcome that must never read as an error, and never as
+// the node - an ordinary outcome that must never read as an error, and never as
 // silence: every skip carries a reason so the run can say why part of the graph
 // didn't run. Adding the third state before conditional edges exist is
 // deliberate; threading it through joins and the wrap-up afterwards is strictly
@@ -232,7 +232,7 @@ const SKIP_SENTENCES: Record<GraphSkipReason, string> = {
   canceled: "Run canceled.",
 };
 
-// Minimal counting semaphore — bounds concurrent child agents without waves
+// Minimal counting semaphore - bounds concurrent child agents without waves
 // (a node whose inputs are ready never waits on an unrelated branch).
 class Semaphore {
   private available: number;
@@ -278,7 +278,7 @@ interface GraphRunContext {
 /**
  * Execute a graph run to completion. Mutates the working copy of `run`,
  * emitting on every state change, and returns the terminal Run. Expected
- * outcomes (node failure, cancel, cap trip) become a terminal run status —
+ * outcomes (node failure, cancel, cap trip) become a terminal run status -
  * this only throws if the port itself throws unexpectedly.
  */
 export async function executeGraphRun(input: {
@@ -360,8 +360,8 @@ export async function executeGraphRun(input: {
 // wrap-up for the orchestrator to relay rather than a recap of everything.
 // (Every node's completion still streamed into the chat as it happened.)
 //
-// The root has no input port — it is the entry point, fed by the orchestration's
-// own prompt — but graphs authored before that carried explicit deliver-back
+// The root has no input port - it is the entry point, fed by the orchestration's
+// own prompt - but graphs authored before that carried explicit deliver-back
 // edges into it, and those still count.
 function collectDeliverables(
   ctx: GraphRunContext,
@@ -486,9 +486,9 @@ type IncomingGate =
  * Decide whether this node runs, from the state of its incoming edges.
  *
  * A drawn edge is a *requirement*, so the rule is: run when at least one edge
- * delivers and none was ruled out by its own condition. That distinction —
+ * delivers and none was ruled out by its own condition. That distinction -
  * between an edge whose condition said no (this node is not on the taken path)
- * and an edge whose upstream was itself skipped (the path died further back) —
+ * and an edge whose upstream was itself skipped (the path died further back) -
  * is what makes a diamond work: a join below two conditional branches still
  * runs off whichever branch executed, because the pruned side reaches it as
  * *upstream-skipped* rather than as a veto.
@@ -566,7 +566,7 @@ async function markSkipped(
  * Run a node, retrying transient failure within its policy.
  *
  * One loop, one counter, and every attempt spawns through the same capped path
- * — so a retry is charged to the run's agent budget like any other agent. The
+ * - so a retry is charged to the run's agent budget like any other agent. The
  * failure path never re-enters this function: retry that can be triggered from
  * inside a failure handler compounds without bound, which is a real failure
  * mode in the prior art this design learned from.
@@ -596,7 +596,7 @@ async function dispatchNode(
     try {
       return await dispatchNodeAttempt(ctx, node, phase, upstream);
     } catch (error) {
-      // A cancelled run is not a transient failure — stop immediately.
+      // A cancelled run is not a transient failure - stop immediately.
       if (ctx.signal.aborted) {
         throw error;
       }
@@ -618,7 +618,7 @@ function delay(ms: number, signal: AbortSignal): Promise<void> {
   if (ms <= 0) {
     return Promise.resolve();
   }
-  // Whichever comes first — a backoff must never outlive the run it belongs to,
+  // Whichever comes first - a backoff must never outlive the run it belongs to,
   // so a cancel ends the wait immediately.
   return Promise.race([
     new Promise<void>((resolve) => {
@@ -758,7 +758,7 @@ interface NodeDispatchResult {
 }
 
 /**
- * The node's own instruction — from its bound template when it has one, and
+ * The node's own instruction - from its bound template when it has one, and
  * from its inline prompt otherwise.
  *
  * A template that can't be rendered (deleted, bad syntax, host without the
@@ -867,7 +867,7 @@ async function spawnAndAwait(
 ): Promise<NodeDispatchResult> {
   if (ctx.agentsSpawned >= ctx.caps.maxAgents) {
     throw new RunEngineError(
-      `Agent cap reached (${ctx.caps.maxAgents}) — the run stops rather than sprawl.`,
+      `Agent cap reached (${ctx.caps.maxAgents}) - the run stops rather than sprawl.`,
       node.id,
     );
   }
@@ -907,7 +907,7 @@ async function spawnAndAwait(
     }
     // Cancel must CASCADE: aborting the run stops the await, but the child is
     // a live OS process that would keep running and keep spending. Best-effort
-    // — cancelAgent already tolerates an agent that settled first.
+    // - cancelAgent already tolerates an agent that settled first.
     const cancelChild = () => {
       void ctx.port.cancelAgent({ agentId: spawned.agentId });
     };
@@ -964,10 +964,10 @@ function recordWorkerResult(
  * Take what the node actually produced against what it declared.
  *
  * The submit_output tool is the contract, and a node that declared fields and
- * never delivered them has failed at its job — but a model that wrote correct
+ * never delivered them has failed at its job - but a model that wrote correct
  * JSON in prose instead of calling the tool has done the work, and small local
  * models do this often enough that discarding it would be the wrong kind of
- * strict. So: tool call first, prose second, failure third — and the failure
+ * strict. So: tool call first, prose second, failure third - and the failure
  * names the contract so the author can see what was missing.
  */
 function harvestOutputFields(
@@ -987,7 +987,7 @@ function harvestOutputFields(
       .map((field) => field.key)
       .join(
         ", ",
-      )}) but never submitted them — the submit_output tool was not called and the final message had no matching object.`,
+      )}) but never submitted them - the submit_output tool was not called and the final message had no matching object.`,
     node.id,
   );
 }
@@ -1007,7 +1007,7 @@ function assembleNodeTask(input: {
   }
   for (const material of input.upstream) {
     // Structured fields go first and labelled: they are the part a downstream
-    // node can act on without re-reading anything. The prose still follows —
+    // node can act on without re-reading anything. The prose still follows -
     // it carries the reasoning the fields deliberately don't.
     if (material.fields) {
       parts.push(
@@ -1034,7 +1034,7 @@ function assembleNodeTask(input: {
     );
   }
   // Last, so it is the freshest instruction in the context when the agent
-  // starts working — and so it survives a long upstream material block.
+  // starts working - and so it survives a long upstream material block.
   if (input.declaredFields) {
     parts.push(buildOutputInstruction(input.declaredFields));
   }
@@ -1048,22 +1048,22 @@ function buildWrapUpMessage(
   const lines = run.phases.map((phase) => {
     const reason =
       phase.status === "skipped" && phase.skipReason
-        ? ` — ${SKIP_SENTENCES[phase.skipReason as GraphSkipReason] ?? phase.skipReason}`
+        ? ` - ${SKIP_SENTENCES[phase.skipReason as GraphSkipReason] ?? phase.skipReason}`
         : "";
     return `- ${phase.title}: ${phase.status}${reason}`;
   });
   const skipped = run.phases.filter((phase) => phase.status === "skipped");
   let heading: string;
   if (run.status === "done") {
-    // A run that skipped part of the graph is still done — but saying so
+    // A run that skipped part of the graph is still done - but saying so
     // silently is the one outcome this engine must never produce.
     const skipNote =
       skipped.length > 0
-        ? ` ${skipped.length} node${skipped.length === 1 ? "" : "s"} did not run (see the outcomes below) — say so in your answer.`
+        ? ` ${skipped.length} node${skipped.length === 1 ? "" : "s"} did not run (see the outcomes below) - say so in your answer.`
         : "";
     heading =
       deliverables.length > 0
-        ? `Every node has settled.${skipNote} The outputs below are this graph's final answers — relay them to the user (synthesized, not paraphrased away).`
+        ? `Every node has settled.${skipNote} The outputs below are this graph's final answers - relay them to the user (synthesized, not paraphrased away).`
         : `Every node has settled.${skipNote} Synthesize the results above into a final answer for the user.`;
   } else if (run.status === "canceled") {
     heading = "The orchestration was canceled. Briefly summarize what completed before the cancel.";

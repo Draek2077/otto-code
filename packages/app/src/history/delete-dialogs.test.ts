@@ -60,7 +60,7 @@ describe("resolveDeleteAgentDialog", () => {
     }
   });
 
-  it("never offers a checkbox — deleting provider data is not an option Otto exposes", () => {
+  it("never offers a checkbox - deleting provider data is not an option Otto exposes", () => {
     const dialog = resolveDeleteAgentDialog({ title: "x", provider: "claude" });
     expect(dialog.checkboxLabel).toBeUndefined();
     expect(dialog.alternateLabel).toBeUndefined();
@@ -85,7 +85,7 @@ describe("resolveClearArchivedDialog", () => {
     expect(dialog.message).toContain("Chats you haven't archived are untouched.");
   });
 
-  it("repeats the provider-transcript disclosure — bulk is not a back door", () => {
+  it("repeats the provider-transcript disclosure - bulk is not a back door", () => {
     const dialog = resolveClearArchivedDialog({ matched: 5 });
     expect(dialog.message).toContain(
       "The agent providers' own transcripts on the host are left in place",
@@ -116,7 +116,7 @@ describe("outcome dialogs", () => {
 
 // The destructive-delete copy is the last place a user should have to read a
 // second language, so it follows the active locale like any other confirmation.
-// Provider names stay as shipped — they are product names, not copy.
+// Provider names stay as shipped - they are product names, not copy.
 describe("active language", () => {
   it("translates the delete confirm while keeping the provider name", async () => {
     await i18n.changeLanguage("zh-CN");

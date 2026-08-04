@@ -12,7 +12,7 @@ import { compactFont } from "@/styles/theme";
  * The selected commit's full message, pinned along the bottom of the pane.
  *
  * The commit table can only show a subject truncated to one line, and the body
- * is where the reasoning lives — the "why" that makes a diff make sense. The
+ * is where the reasoning lives - the "why" that makes a diff make sense. The
  * daemon already sends it; not rendering it anywhere was throwing away the most
  * valuable text in the response.
  *

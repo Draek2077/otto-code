@@ -17,7 +17,7 @@ export async function expectAgentIdle(page: Page, timeout = 30_000): Promise<voi
   await expect(page.getByRole("button", { name: /stop|cancel/i })).toHaveCount(0, { timeout });
 }
 
-// The working indicator is an animated spinner View — no semantic ARIA role, testId is correct.
+// The working indicator is an animated spinner View - no semantic ARIA role, testId is correct.
 export async function expectInlineWorkingIndicator(page: Page): Promise<void> {
   await expect(page.getByTestId("turn-working-indicator")).toBeVisible({ timeout: 30_000 });
 }

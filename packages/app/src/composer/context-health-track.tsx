@@ -21,7 +21,7 @@ import { isContextWarningMuted, useContextManagementStore } from "@/context-mana
 import { useWorkspaceContextReport } from "@/context-management/use-context-report";
 
 // Icon colors must come through a theme-reactive prop, and `useUnistyles()` is
-// banned — wrapping the leaf icons is the sanctioned route (docs/unistyles.md).
+// banned - wrapping the leaf icons is the sanctioned route (docs/unistyles.md).
 const ThemedTriangleAlert = withUnistyles(TriangleAlert);
 const ThemedX = withUnistyles(X);
 
@@ -32,7 +32,7 @@ interface ContextHealthTrackProps {
 
 /**
  * The fixed weight this workspace carries into every request, surfaced as the
- * topmost fly-out above the composer — mounted BEFORE RateLimitWarningTrack so
+ * topmost fly-out above the composer - mounted BEFORE RateLimitWarningTrack so
  * it sits highest in the fanned stack while painting furthest back, behind the
  * usage warning and the message box.
  *
@@ -128,7 +128,7 @@ export function ContextHealthTrack({ serverId, agentId }: ContextHealthTrackProp
               onDismiss={handleDismiss}
             />
           </View>
-          <ComposerTrackSeamShadow />
+          <ComposerTrackSeamShadow layer={COMPOSER_TRACK_LAYERS.contextHealth} />
         </ChatWidthBounds>
       </View>
     </ComposerTrackTransition>
@@ -167,7 +167,7 @@ function ContextHealthDismissButton({
 
 const styles = StyleSheet.create((theme) => {
   // Amber over a faint amber wash, matching the Auto mode chip and the
-  // rate-limit track. Critical escalates the same shape to red — reserved for
+  // rate-limit track. Critical escalates the same shape to red - reserved for
   // "this cannot fit", not merely "this is expensive".
   const surfaceBase = {
     alignSelf: "stretch",

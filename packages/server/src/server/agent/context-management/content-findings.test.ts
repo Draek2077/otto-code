@@ -96,8 +96,8 @@ describe("collectContentFindings", () => {
   });
 
   it("flags a memory index line that has grown into a paragraph", () => {
-    const long = `- [Thing](thing.md) — ${"detail ".repeat(40)}`;
-    const memory = file("MEMORY.md", `# Index\n\n- [Short](a.md) — hook\n${long}\n`, {
+    const long = `- [Thing](thing.md) - ${"detail ".repeat(40)}`;
+    const memory = file("MEMORY.md", `# Index\n\n- [Short](a.md) - hook\n${long}\n`, {
       category: "memory_index",
     });
 
@@ -111,7 +111,7 @@ describe("collectContentFindings", () => {
   });
 
   it("leaves a well-formed memory index alone", () => {
-    const memory = file("MEMORY.md", "# Index\n\n- [Short](a.md) — a brief hook\n", {
+    const memory = file("MEMORY.md", "# Index\n\n- [Short](a.md) - a brief hook\n", {
       category: "memory_index",
     });
 

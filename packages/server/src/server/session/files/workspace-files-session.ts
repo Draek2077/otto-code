@@ -79,7 +79,7 @@ const ACCESS_OUTSIDE_WORKSPACES_MESSAGE = "Access outside of known workspaces is
  * of Otto's known workspace roots (nor a descendant of one). Carries the same
  * message the handlers surface to the client so directory browsing, search,
  * and indexing stay bounded to paths Otto actually knows about. Single-file
- * read/write/watch do not throw this — they are exempt by design.
+ * read/write/watch do not throw this - they are exempt by design.
  */
 class WorkspaceAccessError extends Error {
   constructor() {
@@ -92,7 +92,7 @@ class WorkspaceAccessError extends Error {
  * What a workspace file-access request reaches outside its own domain: the
  * outbound message channel (text + binary). `hasBinaryChannel` gates the
  * binary file-explorer transfer path the same way the terminal subsystem does
- * — old clients without a binary channel fall back to inline JSON file content.
+ * - old clients without a binary channel fall back to inline JSON file content.
  */
 export interface WorkspaceFilesSessionHost {
   // `source` is the socket that issued the request. Otto routes file-transfer
@@ -118,14 +118,14 @@ export interface WorkspaceFilesSessionOptions {
   logger: pino.Logger;
   /**
    * Resolves the distinct absolute filesystem roots the client is allowed to
-   * reach through the **directory-scoped** file RPCs — every known Otto
+   * reach through the **directory-scoped** file RPCs - every known Otto
    * workspace (and project) path. Evaluated per request so workspaces created
    * or removed mid-session are reflected immediately. A requested `cwd` is
    * honored only when it equals or sits inside one of these roots; anything
    * else is refused. This bounds directory listing, project search/replace,
    * code indexing, project icons, and download tokens to workspaces Otto knows
    * about. Single-file read/write/watch are deliberately exempt (preview/edit
-   * any file, gated on the client and by OS permissions) — see the call sites.
+   * any file, gated on the client and by OS permissions) - see the call sites.
    * Path-containment within the `cwd` is still enforced separately by the
    * file-explorer service.
    */
@@ -138,7 +138,7 @@ export interface WorkspaceFilesSessionOptions {
  * A client's workspace file-access surface: browsing directories, reading file
  * contents (inline JSON or binary frames), receiving uploads, issuing download
  * tokens, and reading project icons. It owns the upload store and reaches no
- * workspace-git, registry, or subscription state — file I/O scoped to a cwd is
+ * workspace-git, registry, or subscription state - file I/O scoped to a cwd is
  * the whole concern.
  */
 export class WorkspaceFilesSession {
@@ -167,7 +167,7 @@ export class WorkspaceFilesSession {
       emitEvent: (event) => {
         this.host.emit({ type: "file.watch.event", payload: event });
         // Bonus signal, not the correctness mechanism. This watcher only sees files a client has
-        // open in a tab, and a `Directory.Build.props` rarely does — the solution cache's own
+        // open in a tab, and a `Directory.Build.props` rarely does - the solution cache's own
         // read-side freshness check is what keeps the tree honest. When a tab *is* open on one,
         // this drops the affected evaluations immediately instead of at the next read.
         this.solutionService.invalidatePath(resolvePath(event.cwd, event.path));
@@ -183,7 +183,7 @@ export class WorkspaceFilesSession {
   /**
    * Boundary gate for every file RPC: the requested `cwd` must be one of Otto's
    * known workspace roots or a descendant of one. This is what lets a client
-   * open files from any workspace — not just the active one — while keeping the
+   * open files from any workspace - not just the active one - while keeping the
    * daemon from serving arbitrary paths outside every workspace it knows about.
    * WSL/Windows path forms are folded together by `isSameOrDescendantPath`.
    */
@@ -217,7 +217,7 @@ export class WorkspaceFilesSession {
     try {
       // Single-file watch is unbounded: a tab may preview/edit a file outside
       // every known workspace, and its watch must follow. OS filesystem
-      // permissions are the boundary here — the directory-scoped RPCs below
+      // permissions are the boundary here - the directory-scoped RPCs below
       // stay workspace-bounded via assertCwdWithinKnownWorkspace.
       await this.fileWatcher.subscribe({ cwd, path: request.path });
       respond(true, null);
@@ -268,7 +268,7 @@ export class WorkspaceFilesSession {
 
     try {
       if (mode === "list") {
-        // Directory browsing stays workspace-bounded — there is no
+        // Directory browsing stays workspace-bounded - there is no
         // "browse any folder" surface. Single-file reads (the `else` branch)
         // are unbounded so any file can be previewed; OS permissions gate them.
         await this.assertCwdWithinKnownWorkspace(cwd);
@@ -420,7 +420,7 @@ export class WorkspaceFilesSession {
   }
 
   /**
-   * The binary sibling of `file.write`. Workspace-bounded, unlike that one —
+   * The binary sibling of `file.write`. Workspace-bounded, unlike that one -
    * see `FsFileWriteBinaryRequestSchema` for the reasoning.
    *
    * The bytes normally follow as file-transfer frames, so this is the metadata
@@ -518,7 +518,7 @@ export class WorkspaceFilesSession {
   /**
    * Create, delete and rename share one shape, and one policy that separates
    * them from `file.write`: they are **workspace-bounded**. `file.write` is
-   * deliberately not — a tab may edit a file outside every known workspace —
+   * deliberately not - a tab may edit a file outside every known workspace -
    * but the mutation surface is reached from the explorer tree, which is itself
    * workspace-bounded, and "unlink any path on the host" is not a capability
    * worth having for the sake of symmetry. Containment inside `cwd` is enforced
@@ -951,7 +951,7 @@ export class WorkspaceFilesSession {
     }
   }
 
-  /** Computes the plan only. Nothing is written here — applying is a separate, explicit act. */
+  /** Computes the plan only. Nothing is written here - applying is a separate, explicit act. */
   async handleCodeRenamePreviewRequest(request: CodeRenamePreviewRequest): Promise<void> {
     const cwd = request.cwd.trim();
     try {
@@ -998,8 +998,8 @@ export class WorkspaceFilesSession {
   }
 
   /**
-   * The one request in this subsystem that writes. It carries no edits — only the `planId`
-   * of the plan the user audited — so the daemon's own language server stays the sole
+   * The one request in this subsystem that writes. It carries no edits - only the `planId`
+   * of the plan the user audited - so the daemon's own language server stays the sole
    * author of what lands on disk. See `LspService.renameApply` for the four gates.
    */
   async handleCodeRenameApplyRequest(request: CodeRenameApplyRequest): Promise<void> {
@@ -1053,7 +1053,7 @@ export class WorkspaceFilesSession {
   }
 
   /**
-   * Take a run back. Carries only the run id — the daemon holds the before-images, so an
+   * Take a run back. Carries only the run id - the daemon holds the before-images, so an
    * undo can no more be forged into an arbitrary write than an apply can.
    */
   async handleCodeRenameUndoRequest(request: CodeRenameUndoRequest): Promise<void> {
@@ -1225,7 +1225,7 @@ export class WorkspaceFilesSession {
    *
    * Note the deliberate asymmetry with every other file RPC here: the project path is **not**
    * re-contained inside the workspace. A solution may name a project outside the root, and the
-   * settled policy is to stay out of the way — the solution file itself is the authority naming
+   * settled policy is to stay out of the way - the solution file itself is the authority naming
    * that path, so this is following a declaration rather than free-browsing the disk. The `cwd`
    * guard above still applies, so a client cannot use this to read an arbitrary directory: it can
    * only reach what a solution Otto already knows about points at.
@@ -1395,7 +1395,7 @@ export class WorkspaceFilesSession {
 
   /**
    * File-transfer frames feed two stores. They are told apart by which one owns
-   * the `requestId`, asked before anything is applied — not by letting one store
+   * the `requestId`, asked before anything is applied - not by letting one store
    * decline the frame, because `FileUploadStore.receiveFrame` returns null both
    * for "not mine" and for "mine, nothing to report yet", and a frame routed on
    * that would be applied twice.

@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "@playwright/test";
 
 // Renders demo/assets/feature-graphic.html to the Play Store feature graphic
-// (exactly 1024×500 PNG) plus a 2× variant for the website. No daemon needed —
+// (exactly 1024×500 PNG) plus a 2× variant for the website. No daemon needed -
 // this is a static page render.
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));

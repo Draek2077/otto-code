@@ -11,7 +11,7 @@ function getHasFinePointer(): boolean {
 }
 
 /**
- * True when the primary input is a hover-capable mouse/trackpad — a desktop
+ * True when the primary input is a hover-capable mouse/trackpad - a desktop
  * browser or Electron, regardless of window width. False on touch-primary
  * devices and on native, where hover-driven UI (overlay scrollbars, keyboard
  * hints) has no pointer to serve.

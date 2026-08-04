@@ -5,7 +5,7 @@ import type { RecordClearedInput } from "./cleared-subagent-tokens-store";
 /**
  * Bulk "Clear all completed": archive every terminal (completed) subagent row
  * in one gesture. Only ever called with tidy-eligible rows (terminal, not
- * attention) — it never touches a running or errored row. Confirms once because
+ * attention) - it never touches a running or errored row. Confirms once because
  * archiving many rows at once is more consequential than a single archive.
  * See docs/agent-lifecycle.md (the sub-agents track).
  */
@@ -25,7 +25,7 @@ export function resolveClearCompletedDialog(count: number): ConfirmDialogInput {
 }
 
 /**
- * A row that can be cleared — its id plus whatever spend it carried, so the
+ * A row that can be cleared - its id plus whatever spend it carried, so the
  * tally can preserve both the token total and the real cost.
  */
 export interface ClearableSubagentRow {
@@ -52,7 +52,7 @@ export interface ClearCompletedSubagentsInput {
  * Core clear: archive each row and, only on a successful archive, roll its tokens
  * into the parent tally. A failed archive leaves the row live (still counted
  * normally) and records nothing, so the header stays exactly correct either way.
- * No confirmation — the auto-clear driver and the confirming manual wrapper both
+ * No confirmation - the auto-clear driver and the confirming manual wrapper both
  * funnel through here.
  */
 export async function clearCompletedSubagents(

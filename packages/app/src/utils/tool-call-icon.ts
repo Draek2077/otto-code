@@ -1,10 +1,10 @@
 import type { ComponentType } from "react";
 import {
-  Brain,
   Eye,
   Handyman,
   MicVocal,
   Pencil,
+  Psychology,
   Search,
   Sparkles,
   SquareTerminal,
@@ -18,7 +18,7 @@ import { resolveToolCallIconName, type ToolCallIcon } from "./tool-call-icon-nam
 export type ToolCallIconComponent = ComponentType<{
   size: number;
   color: string;
-  // Only the Otto face reads this — it winks while the call is running.
+  // Only the Otto face reads this - it winks while the call is running.
   isActive?: boolean;
 }>;
 
@@ -29,11 +29,11 @@ const ICON_COMPONENTS: Record<ToolCallIcon, ToolCallIconComponent> = {
   pencil: Pencil,
   search: Search,
   // Otto's own face rather than a stock robot head: in the transcript this row
-  // is Otto doing the work. Scoped to the chat tool-call rail — provider logos,
+  // is Otto doing the work. Scoped to the chat tool-call rail - provider logos,
   // Settings, and Stats keep the neutral robot.
   bot: OttoFaceIcon,
   sparkles: Sparkles,
-  brain: Brain,
+  brain: Psychology,
   mic_vocal: MicVocal,
   handyman: Handyman,
   otto: OttoLogo,
@@ -41,7 +41,7 @@ const ICON_COMPONENTS: Record<ToolCallIcon, ToolCallIconComponent> = {
 
 // Lucide ships every glyph with slack inside its 24×24 viewBox, which callers
 // correct with a negative margin. The Otto face crops its viewBox to the ink
-// instead, so that correction would push it off the rail — and because the mark
+// instead, so that correction would push it off the rail - and because the mark
 // is wide and short, it needs its own width to carry the same optical weight.
 const TIGHT_GLYPH_ICONS: ReadonlySet<ToolCallIconComponent> = new Set([OttoFaceIcon]);
 

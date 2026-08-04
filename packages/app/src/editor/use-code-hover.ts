@@ -16,7 +16,7 @@ export interface UseCodeHoverInput {
  * Hover explanations from the language server, shaped for the editor core's tooltip.
  *
  * The buffer is mirrored before asking, exactly as go-to-definition does, so the
- * explanation accounts for unsaved edits rather than describing what is on disk — but
+ * explanation accounts for unsaved edits rather than describing what is on disk - but
  * only when the buffer actually changed since the last ask. A hover fires on every
  * pointer rest, and re-shipping the whole document each time is the single largest
  * cost on the warm path, especially over the relay.
@@ -24,7 +24,7 @@ export interface UseCodeHoverInput {
  * The four answers are kept apart rather than collapsed to "markdown or nothing",
  * because the tooltip does something different with each: `content` fills in, `none`
  * retracts, and `warming` holds the tooltip open and asks again. Collapsing them is
- * what made a cold editor show nothing at all — indistinguishable from resting the
+ * what made a cold editor show nothing at all - indistinguishable from resting the
  * pointer on a comma.
  *
  * Returns `undefined` when disabled, because the editor core treats an absent provider

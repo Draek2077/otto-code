@@ -88,7 +88,7 @@ export function normalizeWorkspaceTabTarget(
   }
   // DEFERRED(paseoDiffTab): `working_diff` and `commit_diff` are in the target
   // union because Otto inherits Paseo's tab model wholesale, but neither has a
-  // registered panel here — we kept our own Changes view instead of adopting
+  // registered panel here - we kept our own Changes view instead of adopting
   // their diff tabs. Normalizing them would hand the store a target that opens
   // an empty pane, so they deliberately fall through to null. This is NOT the
   // same bug as `provider_subagent` above, which does have a panel and was only
@@ -119,7 +119,7 @@ function normalizeFileHistoryTabTarget(
 /**
  * A references tab needs all four fields to mean anything: the position is what was asked
  * about, and the symbol is what the tab is called. Unlike `fileHistory`, a bad position
- * cannot degrade to "the whole file" — there is no such search — so it drops the tab.
+ * cannot degrade to "the whole file" - there is no such search - so it drops the tab.
  */
 function normalizeCodeReferencesTabTarget(
   value: Extract<WorkspaceTabTarget, { kind: "codeReferences" }>,
@@ -164,7 +164,7 @@ function isPositionKeyedTarget(value: WorkspaceTabTarget): value is PositionKeye
 
 /**
  * Position, not symbol name. Two identically named symbols in different scopes are two
- * different things, and matching on the name would collapse them into one tab — precisely
+ * different things, and matching on the name would collapse them into one tab - precisely
  * the confusion a language server exists to remove. The kind is part of it too: a rename job
  * and a reference search on the same symbol are different tabs.
  */
@@ -200,7 +200,7 @@ function normalizeCodeRenameTabTarget(
  * A refine job needs at least one rewritable document; without one there is
  * nothing the tab could ever write, so a half-persisted target is dropped
  * rather than restored as an empty session. Read-only references are optional
- * by nature — losing them costs context, not correctness.
+ * by nature - losing them costs context, not correctness.
  */
 function normalizeRefineTabTarget(
   value: Extract<WorkspaceTabTarget, { kind: "refine" }>,
@@ -270,7 +270,7 @@ export function normalizeWorkspaceDraftTabSetup(
   };
 }
 
-// Kinds whose equality is "same single id field" — everything except draft
+// Kinds whose equality is "same single id field" - everything except draft
 // (two fields), file (its own equality fn), and visualizer (optional runId).
 // Kept as a lookup rather than another `if (left.kind === X && right.kind
 // === X)` branch per kind to stay under the cyclomatic-complexity ceiling.
@@ -303,19 +303,19 @@ export function workspaceTabTargetsEqual(
   }
   // Two path-keyed kinds, sharing one branch to stay inside this function's
   // complexity ceiling:
-  //   fileHistory — path PLUS scope, because whole-file history and a
+  //   fileHistory - path PLUS scope, because whole-file history and a
   //     line-scoped history of the same file are different questions.
-  //   refine — the primary path alone, because a second refine of the same
+  //   refine - the primary path alone, because a second refine of the same
   //     document is a fresh pin of the same job and supersedes the first.
   if (isPathKeyedTarget(left) && isPathKeyedTarget(right)) {
     return pathKeyedTargetsEqual(left, right);
   }
-  // Both code-intelligence tabs are keyed the same way, so they share one branch —
+  // Both code-intelligence tabs are keyed the same way, so they share one branch -
   // two branches here would push this function past its complexity ceiling.
   if (isPositionKeyedTarget(left) && isPositionKeyedTarget(right)) {
     return positionKeyedTargetsEqual(left, right);
   }
-  // Singleton per workspace — kind alone settles identity.
+  // Singleton per workspace - kind alone settles identity.
   if (left.kind === "contextManagement") {
     return true;
   }
@@ -407,7 +407,7 @@ function buildJobTabId(target: WorkspaceTabTarget): string | null {
   }
   // The primary path alone: a second refine of the same document supersedes the
   // first, so neither the rest of the working set nor the preset is part of the
-  // identity — a re-request is a fresh pin of the same job.
+  // identity - a re-request is a fresh pin of the same job.
   if (target.kind === "refine") {
     return `refine_${target.paths[0] ?? ""}`;
   }

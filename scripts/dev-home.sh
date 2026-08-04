@@ -6,7 +6,7 @@ default_dev_otto_root() {
 
 # The dev daemon port. Deliberately NOT 6868: that belongs to the installed
 # desktop app's daemon over `~/.otto`, and a dev daemon that lands on it either
-# crash-loops fighting for the port or — worse — silently hands dev clients and
+# crash-loops fighting for the port or - worse - silently hands dev clients and
 # `npm run cli` the production agent state. Keep the two on separate ports so
 # both can run at once. Override with OTTO_DEV_DAEMON_PORT.
 dev_daemon_port() {
@@ -17,9 +17,9 @@ dev_daemon_port() {
 # Electron, `npm run cli`). It sits under packages/desktop because that is where
 # the desktop dev script has always put it, and that is where the accumulated
 # dev state lives. Everything else was pointed here rather than the reverse so
-# no one has to move a populated home — and its git worktrees — to get one.
+# no one has to move a populated home - and its git worktrees - to get one.
 # Derived from the checkout root, so an Otto worktree still gets its own.
-# OTTO_DEV_HOME names a *managed* home other than the default one — the escape
+# OTTO_DEV_HOME names a *managed* home other than the default one - the escape
 # hatch for standing up an additional isolated lane (see the agent lane in
 # docs/development.md). It differs from raw OTTO_HOME, which is honored but never
 # written to: a managed home gets its config.json seeded with the lane's port, so
@@ -110,7 +110,7 @@ resolve_dev_daemon_endpoint() {
   fi
 
   # Bind the default before matching. Expanding OTTO_LISTEN directly in the
-  # branch bodies emits a bare "localhost:" whenever it is unset — the case
+  # branch bodies emits a bare "localhost:" whenever it is unset - the case
   # matches the default, then the body strips a prefix off an empty string.
   local listen="${OTTO_LISTEN:-127.0.0.1:$(dev_daemon_port)}"
   case "$listen" in

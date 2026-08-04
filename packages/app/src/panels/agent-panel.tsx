@@ -338,7 +338,7 @@ function buildAgentDescriptorState(agent: Agent | null) {
     // provider's logo. Empty resolves to the neutral Bot icon instead.
     provider: agent?.provider ?? "",
     // Distinguishes "still fetching this agent" from "fetched, and it has no
-    // title" — only the former is a loading state.
+    // title" - only the former is a loading state.
     isHydrated: agent !== null,
     title: agent?.title ?? null,
     status: agent?.status ?? null,
@@ -455,7 +455,7 @@ export function AgentConversationPanel() {
   const content = target.kind === "draft" ? <DraftPanel /> : <AgentPanel />;
   // Black tab background: render the whole chat pane (stream + composer) on
   // pure black with dark-theme colors regardless of the app-wide light/dark
-  // mode. Chat tabs only — terminal/browser/preview panes are not wrapped.
+  // mode. Chat tabs only - terminal/browser/preview panes are not wrapped.
   return <BlackChatScope enabled={settings.blackTabBackground}>{content}</BlackChatScope>;
 }
 
@@ -638,7 +638,7 @@ function AgentPanelBody({
   // A track row can outlive its record in the store (observed subagents are
   // ephemeral projections; a placement remove or reconnect drops them). The
   // fetch now resolves those from the daemon registry, so a not_found is
-  // recoverable — let the user re-run the lookup instead of dead-ending.
+  // recoverable - let the user re-run the lookup instead of dead-ending.
   const handleRetryLookup = useCallback(() => {
     lookupAttemptTokenRef.current += 1;
     setLookupState({ tag: "idle" });
@@ -979,7 +979,7 @@ function ChatAgentContent({
   }, [agentHistorySyncGeneration, agentId, historySyncGeneration]);
 
   // Focusing a pane only fetches when the client does not already hold the
-  // transcript — see `shouldSyncAgentTimelineOnFocus` for why an unconditional
+  // transcript - see `shouldSyncAgentTimelineOnFocus` for why an unconditional
   // fetch here was the navigation path's most expensive redundant round-trip.
   useEffect(() => {
     if (!isPaneFocused || !agentId || !isConnected || !hasSession) {
@@ -1316,7 +1316,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   // once dismissed (or the feature is off) it settles back inline as history.
   const pinnedTaskList = usePinnedTaskList({ serverId, agentId });
   const pinnedTaskListId = pinnedTaskList.item?.id;
-  // The pane, not the window, is what the composer has to fit inside — measured
+  // The pane, not the window, is what the composer has to fit inside - measured
   // on `root`, whose height its own parent owns, so a growing composer can never
   // feed back into it.
   const { onLayout: onPaneLayout, height: paneHeight } = useContainerHeight();
@@ -1449,10 +1449,10 @@ const AgentStreamSection = memo(function AgentStreamSection({
   // flushes never re-render this section at all (the store notification sees
   // an identical snapshot). When the panel becomes active again the context
   // flip re-renders this component and the selector closure reads the live
-  // tail during that same render — reactive, not an imperative getState()
+  // tail during that same render - reactive, not an imperative getState()
   // snapshot, so reactivation can't freeze on a stale value.
   // This slot renders the tail even while hidden (it holds a frozen reference
-  // to it), so it retains for as long as it is mounted — not only while active.
+  // to it), so it retains for as long as it is mounted - not only while active.
   useAgentStreamRetention(serverId, agentId ?? null);
   const isPanelActive = useRetainedPanelActive();
   const frozenStreamItemsRef = useRef<StreamItem[] | undefined>(undefined);
@@ -1761,11 +1761,11 @@ function ActiveAgentComposer({
 
         // /clear disables the preview button for this chat (no agent tab is
         // focused anymore), so every preview server for this cwd should stop
-        // instantly rather than keep running orphaned — not just close their
+        // instantly rather than keep running orphaned - not just close their
         // tabs. previewListConfig's runningServers is the source of truth for
         // "is a server running", since a server can outlive its bound tab.
         // External ("ext:") servers are excluded: those are port-probed
-        // processes the daemon never spawned (e.g. the user's own dev server —
+        // processes the daemon never spawned (e.g. the user's own dev server -
         // possibly the very Metro serving this app), and stopping one
         // tree-kills whatever owns the port. Only explicit user action may
         // stop an external server.
@@ -1832,7 +1832,7 @@ function ActiveAgentComposer({
   return (
     <ReanimatedAnimated.View style={inputAreaStyle} onLayout={onInputAreaLayout}>
       {/* Topmost card in the fanned stack (highest), yet painted first so it sits
-          BEHIND every flyout below it and the composer — see RateLimitWarningTrack. */}
+          BEHIND every flyout below it and the composer - see RateLimitWarningTrack. */}
       {/* Mounted above the usage warning: highest in the fan, painted furthest
           back. Context health is important but never urgent, so it yields the
           position nearest the composer to the rate-limit strip. */}
@@ -1981,8 +1981,8 @@ const styles = StyleSheet.create((theme) => ({
     width: "100%",
     backgroundColor: theme.colors.surface0,
   },
-  // Highest layer in the composer fan so a dismissed card's exiting web clone —
-  // appended after the composer in the DOM — still paints beneath it.
+  // Highest layer in the composer fan so a dismissed card's exiting web clone -
+  // appended after the composer in the DOM - still paints beneath it.
   composerLayer: {
     zIndex: COMPOSER_TRACK_LAYERS.composer,
   },

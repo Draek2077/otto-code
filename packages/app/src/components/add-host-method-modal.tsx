@@ -14,7 +14,9 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[4],
     padding: theme.spacing[4],
     borderRadius: theme.borderRadius.xl,
-    backgroundColor: theme.colors.surface2,
+    // surface1, not surface2: `border` is nearly identical to surface2 on this
+    // theme, which swallows the card's own outline.
+    backgroundColor: theme.colors.surface1,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },

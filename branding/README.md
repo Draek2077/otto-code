@@ -11,16 +11,16 @@ the eyes. The design is inspired by boxy 80's-movie robots without copying any o
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `otto-logo.svg`            | Full logo: robot layer (`#robot`) + wordmark layer (`#wordmark`), 512×512                                                                                                                                                                                                                                                 |
 | `otto-icon.svg`            | Icon: face only (eyes, brows, nose bridge), single solid pupil per eye, 512×512                                                                                                                                                                                                                                           |
-| `otto-icon-small.svg`      | Small-size icon. Currently identical geometry to `otto-icon.svg` — the single solid pupil already reads cleanly at 48px and below, so there's no separate ring-dropping step anymore. Kept as its own file so a future redesign can reintroduce small-size-specific simplification without touching the full-size master. |
+| `otto-icon-small.svg`      | Small-size icon. Currently identical geometry to `otto-icon.svg` - the single solid pupil already reads cleanly at 48px and below, so there's no separate ring-dropping step anymore. Kept as its own file so a future redesign can reintroduce small-size-specific simplification without touching the full-size master. |
 | `otto-icon-wink.svg`       | Expression variant: raised left brow + winking right eye. Not shipped as the app icon; reserved for fun surfaces (stickers, success states).                                                                                                                                                                              |
-| `otto-icon-wink-small.svg` | Small-size wink variant, same relationship to `otto-icon-wink.svg` as `otto-icon-small.svg` has to `otto-icon.svg` — currently identical geometry.                                                                                                                                                                        |
+| `otto-icon-wink-small.svg` | Small-size wink variant, same relationship to `otto-icon-wink.svg` as `otto-icon-small.svg` has to `otto-icon.svg` - currently identical geometry.                                                                                                                                                                        |
 
 All masters draw with `stroke="currentColor"` (and `fill="currentColor"` on solid pupils)
 so they preview in any color context. Keep that convention when editing in Inkscape or
 similar: an ungroup operation resolves inherited `currentColor` into a literal hex value
 on each element, which silently breaks recoloring for every generated asset. Re-wrap
 edited shapes in a `<g stroke="currentColor">` (or re-apply `stroke="currentColor"`
-directly) before saving, and save as **Plain SVG** — Inkscape's default save format embeds
+directly) before saving, and save as **Plain SVG** - Inkscape's default save format embeds
 `sodipodi:`/`inkscape:` editor metadata that the generator script's regex-based extractor
 can't parse, and the whole run will throw an XML namespace error.
 
@@ -34,23 +34,23 @@ exception). Rules that keep the mark coherent when editing:
   as a letter T; more stops reading as an eyebrow. Unchanged by the July 2026 redesign.
 - **Eyes overlap the stems:** each O now sits far enough inward that its inner edge
   (center ± radius ± half stroke) lands _past_ its stem's centerline rather than
-  exactly on it — the stem visually enters the ring, reading closer to a lowercase
+  exactly on it - the stem visually enters the ring, reading closer to a lowercase
   "d"/"b" than a tangent touch (logo: eyes at 171.87/340.13, overlap 9.87; icon: eyes
   at 145.57/366.43, overlap 13.57). This replaces the older "eyes touch the stems"
-  rule — deliberate as of the July 2026 redesign, not a regression.
+  rule - deliberate as of the July 2026 redesign, not a regression.
 - **Brow gap:** crossbar bottom edge floats 10 units (logo) / 20 units (icon) above the
-  eye's top edge. Unchanged — this only depends on each eye's cy/r, which the redesign
+  eye's top edge. Unchanged - this only depends on each eye's cy/r, which the redesign
   didn't touch.
 - **Baseline:** stems end at the same y as the O's outer bottom edge (logo 330, icon 364).
   Unchanged for the same reason.
-- Icon face bounding box is ~61.6..450.4 × 148..364 — still centered on (256,256), but
+- Icon face bounding box is ~61.6..450.4 × 148..364 - still centered on (256,256), but
   narrower horizontally than before (was 48..464) since the eyes moved inward.
 
 ## Two-layer loading pulse
 
 `#wordmark` and `#robot` in `otto-logo.svg` are separate layers on purpose: the app's
 startup splash keeps the wordmark solid and fades the robot layer in and out as the
-loading pulse. Keep any new detail in the correct layer — nothing in `#wordmark` may
+loading pulse. Keep any new detail in the correct layer - nothing in `#wordmark` may
 animate, and `#robot` must remain legible-optional (the wordmark alone must read as
 OTTO).
 
@@ -64,13 +64,13 @@ node scripts/generate-brand-assets.mjs
 ```
 
 Edit the masters (or the tile/badge parameters in the script), re-run, and commit the
-regenerated files. Do not hand-edit the generated files — the script is the source of
+regenerated files. Do not hand-edit the generated files - the script is the source of
 truth for sizes, tile radii, and status-badge colors (blue `#3b82f6` running, green
 `#22c55e` attention, matching `use-favicon-status.ts`).
 
 ## Dev-build icons
 
-The same run also writes `packages/desktop/assets/dev/` — the desktop icon and the
+The same run also writes `packages/desktop/assets/dev/` - the desktop icon and the
 Windows/Linux tray icons over a navy tile (`DEV_TILE_COLOR`, blue-900 `#1e3a8a`)
 instead of the shipped black one. Running the installed Otto and a dev Otto side by
 side is the expected setup (see [docs/development.md](../docs/development.md) →
@@ -79,7 +79,7 @@ entries indistinguishable.
 
 These never reach a release build. `packages/desktop/src/features/dev-icon.ts` only
 looks in `dev/` when `!app.isPackaged`, and nothing in `electron-builder.yml` copies
-that folder — `files:` ships `dist/**` only, `extraResources:` names individual asset
+that folder - `files:` ships `dist/**` only, `extraResources:` names individual asset
 files, and `linux.icon: assets` scans for loose `NxN.png`. A missing `dev/` folder
 falls back to the normal icon, so a checkout that has not run the generator still
 launches.

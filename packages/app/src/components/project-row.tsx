@@ -9,11 +9,11 @@ import { resolveModelLabel, resolveProviderLabel } from "@/utils/provider-defini
 const PROVIDER_ICON_SIZE = 14;
 
 export interface ExecutorRowProps {
-  /** Host the item lives on — used to resolve the provider's display label. */
+  /** Host the item lives on - used to resolve the provider's display label. */
   serverId: string;
   /** Name of the personality that ran (last ran) the item; null when none. */
   personalityName: string | null;
-  /** Provider id that executed the run — drives both the glyph and the label. */
+  /** Provider id that executed the run - drives both the glyph and the label. */
   provider: string | null;
   /** Model id that executed the run, when known. */
   model: string | null;

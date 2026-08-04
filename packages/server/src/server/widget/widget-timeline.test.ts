@@ -87,7 +87,7 @@ describe("normalizeWidgetTimelineItem", () => {
     expect(String((toolCall.detail as { text?: string }).text)).toContain("HTML or SVG");
   });
 
-  test("is idempotent — re-running does not replace a good payload", () => {
+  test("is idempotent - re-running does not replace a good payload", () => {
     const once = normalizeWidgetTimelineItem(
       widgetToolCall({ title: "chart", loading_messages: [], widget_code: "<p>x</p>" }),
     );

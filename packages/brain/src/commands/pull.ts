@@ -1,5 +1,5 @@
 /**
- * `otto brain pull <model>` — download a model from the catalog into the managed
+ * `otto brain pull <model>` - download a model from the catalog into the managed
  * models directory, using only Node's fetch (no external downloader). The catalog
  * is the same one seeded from docs/candidate-models.md. `--list-quants` shows what
  * quantizations the repo offers and `--quant <label>` downloads a specific one.
@@ -18,6 +18,7 @@ import {
 import type { AnyCommandResult, OutputSchema } from "../output/index.js";
 import { CommandError } from "../output/types.js";
 import { formatBytes } from "../models/scan.js";
+import { withActivity } from "../service/activity.js";
 
 export interface PullRow {
   model: string;
@@ -126,19 +127,25 @@ export async function runPullCommand(
     const files = [...choice.files, ...(mmproj ? mmproj.files : [])];
     const total = choice.sizeBytes + (mmproj?.sizeBytes ?? 0);
     let lastPct = -1;
-    const written = await downloadRepoFiles({
-      repo: model.hfRepo,
-      files,
-      destRoot: managedModelsDir(config),
-      token,
-      onProgress: (p) => {
-        const pct = total ? Math.floor((p.receivedBytes / total) * 100) : 0;
-        if (pct !== lastPct && pct % 5 === 0) {
-          lastPct = pct;
-          process.stderr.write(`  ${model.name} ${choice.quant}: ${pct}%\r`);
-        }
-      },
-    });
+    const written = await withActivity(
+      "download",
+      { target: `${model.name} (${choice.quant})` },
+      (activity) =>
+        downloadRepoFiles({
+          repo: model.hfRepo,
+          files,
+          destRoot: managedModelsDir(config),
+          token,
+          onProgress: (p) => {
+            activity.update(total ? p.receivedBytes / total : null);
+            const pct = total ? Math.floor((p.receivedBytes / total) * 100) : 0;
+            if (pct !== lastPct && pct % 5 === 0) {
+              lastPct = pct;
+              process.stderr.write(`  ${model.name} ${choice.quant}: ${pct}%\r`);
+            }
+          },
+        }),
+    );
     process.stderr.write("\n");
     return {
       type: "single",
@@ -154,20 +161,25 @@ export async function runPullCommand(
 
   const destRoot = managedModelsDir(config);
   let lastPct = -1;
-  const localPath = await pullModel({
-    model,
-    destRoot,
-    file: options.file,
-    token,
-    onProgress: (p) => {
-      if (!p.totalBytes) return;
-      const pct = Math.floor((p.receivedBytes / p.totalBytes) * 100);
-      if (pct !== lastPct && pct % 5 === 0) {
-        lastPct = pct;
-        process.stderr.write(`  ${model.name}: ${pct}%\r`);
-      }
-    },
-  });
+  // Announced so the Brain rail can show the download: this is the longest-
+  // running thing the brain does, and the only one measured in tens of GiB.
+  const localPath = await withActivity("download", { target: model.name }, (activity) =>
+    pullModel({
+      model,
+      destRoot,
+      file: options.file,
+      token,
+      onProgress: (p) => {
+        if (!p.totalBytes) return;
+        activity.update(p.receivedBytes / p.totalBytes);
+        const pct = Math.floor((p.receivedBytes / p.totalBytes) * 100);
+        if (pct !== lastPct && pct % 5 === 0) {
+          lastPct = pct;
+          process.stderr.write(`  ${model.name}: ${pct}%\r`);
+        }
+      },
+    }),
+  );
   process.stderr.write("\n");
 
   return {

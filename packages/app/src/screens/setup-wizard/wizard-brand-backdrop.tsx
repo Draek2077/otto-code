@@ -1,16 +1,16 @@
 /**
- * WizardBrandBackdrop — the setup wizard's branded field, shared by the
+ * WizardBrandBackdrop - the setup wizard's branded field, shared by the
  * Welcome cover and the Done step.
  *
  * Reproduces the marketing feature graphic's art language
  * (packages/app/demo/assets/feature-graphic.html) from live primitives,
  * layered back-to-front:
  *
- *   1. Theme base — `theme.colors.surface0`, the app background. The bookend
+ *   1. Theme base - `theme.colors.surface0`, the app background. The bookend
  *      rides whatever theme the app is in (light → near-white field, dark →
  *      near-black field) instead of a fixed dark slab, so the moment feels
  *      continuous with the app rather than a hard splash cut.
- *   2. Dual radial glow — indigo top-right + teal bottom-left — via
+ *   2. Dual radial glow - indigo top-right + teal bottom-left - via
  *      react-native-svg RadialGradient (native-safe; CSS radial-gradient is
  *      web-only). Same Svg/RadialGradient/Stop primitives as BlobLoader's
  *      GlowLayer. These are low-alpha brand splashes that tint into the field
@@ -26,7 +26,7 @@
  * API:
  *   <WizardBrandBackdrop>{hero content}</WizardBrandBackdrop>
  *
- * Pure presentation — no wizard state. Foreground content (logo, text, CTA)
+ * Pure presentation - no wizard state. Foreground content (logo, text, CTA)
  * reads theme tokens directly so it inverts with the field.
  */
 
@@ -50,7 +50,7 @@ const GRID_MASK_CSS = "radial-gradient(640px 400px at 70% 30%, black, transparen
 
 // The grid stroke follows the theme foreground. withUnistyles maps the theme
 // onto the SVG presentation props (same pattern as OttoLogo's themedForeground),
-// so only this leaf repaints on theme change — no React re-render of the tree.
+// so only this leaf repaints on theme change - no React re-render of the tree.
 const ThemedGridPath = withUnistyles(Path, (theme: Theme) => ({
   stroke: theme.colors.foreground,
   strokeOpacity: GRID_LINE_OPACITY,
@@ -82,7 +82,7 @@ function GlowField({ indigoId, tealId }: { indigoId: string; tealId: string }) {
 }
 
 /**
- * The 44px grid as an SVG pattern (pixel units — no viewBox), so the same
+ * The 44px grid as an SVG pattern (pixel units - no viewBox), so the same
  * implementation renders on web and native. Each tile draws its top and left
  * edge, tiling into a full lattice. The stroke is theme-tinted (ThemedGridPath).
  */
@@ -149,7 +149,7 @@ const styles = StyleSheet.create((theme) => ({
     right: 0,
     bottom: 0,
     // Web: fade the grid radially like the feature graphic (CSS masks are
-    // web-only). Native: no mask — dim the whole grid instead so it stays a
+    // web-only). Native: no mask - dim the whole grid instead so it stays a
     // whisper without the edge fade.
     ...(isWeb
       ? ({

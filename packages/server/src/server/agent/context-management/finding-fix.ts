@@ -1,5 +1,5 @@
 /**
- * Deletes the range a mechanically-fixable finding flagged — the "Fix all"
+ * Deletes the range a mechanically-fixable finding flagged - the "Fix all"
  * button in the Issues tab (charter §7.5). Same one-span-rewrite shape as
  * `edge-convert.ts`, batched: findings are grouped by file so a file with
  * several flagged spans gets one read and one write, not one per finding.
@@ -30,7 +30,7 @@ export interface FindingFixResult {
   errors: string[];
 }
 
-/** A bare list marker with nothing else on the line — safe to drop entirely. */
+/** A bare list marker with nothing else on the line - safe to drop entirely. */
 const BARE_LINE_MARKER = /^[-*+]$|^\d+[.)]$/;
 
 function lineBounds(
@@ -72,7 +72,7 @@ function describe(error: unknown): string {
  * Applies every fixable finding it can. Findings in the same file are deleted
  * in one read/write, back-to-front by range so an earlier deletion never
  * shifts the offsets a later one still needs. A file that no longer contains
- * the expected snippet at its range — edited since the scan — is skipped
+ * the expected snippet at its range - edited since the scan - is skipped
  * rather than risking a corrupt write; everything else in that same file
  * still goes through.
  */

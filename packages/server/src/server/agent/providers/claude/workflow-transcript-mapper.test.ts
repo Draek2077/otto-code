@@ -46,7 +46,7 @@ function assistantToolUse(
 }
 
 // A frame carrying an explicit usage block (and optional model), for exercising
-// the full in/out/cache accounting — shapes mirror the real on-disk transcript.
+// the full in/out/cache accounting - shapes mirror the real on-disk transcript.
 function usageFrame(opts: {
   uuid: string;
   messageId: string;

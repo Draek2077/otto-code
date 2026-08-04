@@ -134,7 +134,7 @@ export interface RegisteredProject {
  * Register a directory as a project WITHOUT creating a workspace for it (the
  * `emptyProjects` case). `openProjectViaDaemon` also backs the directory with a
  * "main" workspace, which makes the new-workspace composer refuse to create a
- * second workspace on it ("This directory already backs the workspace …") — use
+ * second workspace on it ("This directory already backs the workspace …") - use
  * this when the spec needs a composer-selectable, workspace-free target.
  *
  * The two ids are not interchangeable and `project.add` only answers with the
@@ -542,7 +542,7 @@ export interface AgentCreatedDelayControl {
 /**
  * Ceiling for either gate below. Both wait on a WebSocket message that the app
  * only sends when everything upstream of it succeeded, so a gate that never
- * opens is the normal shape of a break here — and an unbounded wait spends the
+ * opens is the normal shape of a break here - and an unbounded wait spends the
  * whole test timeout to report nothing at all. Bounded well under a spec's
  * timeout, the failure arrives with the daemon's own error text attached, which
  * is almost always the answer: when workspace creation is refused, no create
@@ -640,7 +640,7 @@ export async function delayBrowserAgentCreatedStatus(
     const errors =
       daemonErrors.length > 0
         ? daemonErrors.map((error) => `  - ${error}`).join("\n")
-        : "  (none — the daemon reported no error, so look upstream in the app)";
+        : "  (none - the daemon reported no error, so look upstream in the app)";
     return `Requests the app sent: ${requests}\nErrors the daemon returned:\n${errors}`;
   };
 

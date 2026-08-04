@@ -33,7 +33,7 @@ export function AttachmentLightbox({ metadata, onClose }: AttachmentLightboxProp
   // Close on Escape by claiming `agent.interrupt` at a priority above the
   // composer's (100–200). The global shortcut listener runs in the capture
   // phase, so a plain window `keydown` listener here would fire only after the
-  // composer had already cancelled the running agent — the exact bug this
+  // composer had already cancelled the running agent - the exact bug this
   // replaces. Routing through the dispatcher makes precedence explicit and
   // order-independent. Only the open lightbox is `enabled`, so stacked
   // instances (one per message) never contend.

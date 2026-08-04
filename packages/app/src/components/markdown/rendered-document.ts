@@ -34,7 +34,7 @@ export interface RenderedDocument {
  * A `.adoc` file is converted to markdown, which is what lets an AsciiDoc
  * `[mermaid]` block render through the same `MermaidBlock` as a ```mermaid
  * fence in a `.md`. Its own header attributes become the frontmatter block, and
- * the HTML pass is skipped — the converter already resolved AsciiDoc's own
+ * the HTML pass is skipped - the converter already resolved AsciiDoc's own
  * passthrough markup.
  */
 export function toRenderedDocument(kind: RenderedDocumentKind, content: string): RenderedDocument {

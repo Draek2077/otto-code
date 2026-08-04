@@ -1,8 +1,8 @@
-# Mango Threads — storefront
+# Mango Threads - storefront
 
 The web storefront for Mango Threads: small-batch everyday apparel in warm,
-sun-washed color. This is the customer-facing shop — hero, catalog grid, and
-cart — built deliberately light so it stays fast to iterate on.
+sun-washed color. This is the customer-facing shop - hero, catalog grid, and
+cart - built deliberately light so it stays fast to iterate on.
 
 ## Stack
 

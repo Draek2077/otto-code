@@ -1,13 +1,13 @@
 // Lightweight, dependency-free language guesser for code fences that arrive
 // without an info string. Agents emit bare ``` blocks constantly, so this
-// recovers highlighting for them — but it is deliberately conservative: when
+// recovers highlighting for them - but it is deliberately conservative: when
 // the signals are weak or two languages tie, it returns null and the caller
 // renders plain monospace rather than confidently mis-coloring the block.
 //
 // Every returned extension is a key in parsers.ts's table, so the result plugs
 // straight into highlightCode(`x.${ext}`).
 
-// Only look at the head of large blocks — the language is obvious well before
+// Only look at the head of large blocks - the language is obvious well before
 // 4k chars, and detection runs on every streamed chunk.
 const SAMPLE_LIMIT = 4000;
 
@@ -38,7 +38,7 @@ const RULES: Rule[] = [
   { ext: "sh", re: /\|\s*(grep|awk|sed|xargs|head|tail|sort|uniq|wc)\b/, weight: 2 },
   { ext: "sh", re: /^\s*export\s+\w+=/m, weight: 2 },
 
-  // SQL — keyword-insensitive; combos are what make it unambiguous.
+  // SQL - keyword-insensitive; combos are what make it unambiguous.
   { ext: "sql", re: /\bSELECT\b[\s\S]*\bFROM\b/i, weight: 4 },
   { ext: "sql", re: /\bINSERT\s+INTO\b/i, weight: 4 },
   { ext: "sql", re: /\bUPDATE\b[\s\S]*\bSET\b/i, weight: 4 },
@@ -57,7 +57,7 @@ const RULES: Rule[] = [
   { ext: "py", re: /\b(True|False|None)\b/, weight: 1 },
   { ext: "py", re: /^\s*@\w+/m, weight: 1 },
 
-  // JavaScript / TypeScript (folded to ts — its parser handles plain JS)
+  // JavaScript / TypeScript (folded to ts - its parser handles plain JS)
   { ext: "ts", re: /\b(const|let)\s+\w+\s*=/, weight: 2 },
   { ext: "ts", re: /\bfunction\s*\*?\s*\w*\s*\(/, weight: 2 },
   { ext: "ts", re: /=>\s*[{([]/, weight: 2 },
@@ -131,8 +131,8 @@ function scoreRules(sample: string): Map<string, number> {
 /**
  * Every extension `detectLanguage` can return.
  *
- * Exported so the invariant in this file's header — that each one is a key in
- * parsers.ts's table — can actually be tested. It stopped being true once
+ * Exported so the invariant in this file's header - that each one is a key in
+ * parsers.ts's table - can actually be tested. It stopped being true once
  * before: the v0.2.5 merge dropped the shell and SQL rows from that table while
  * these rules kept scoring both, so detection claimed a language the renderer
  * could not colour.
@@ -146,7 +146,7 @@ export function detectLanguage(code: string): string | null {
   const trimmed = sample.trim();
   if (trimmed.length < 3) return null;
 
-  // Shebang — the single strongest signal, short-circuit on it.
+  // Shebang - the single strongest signal, short-circuit on it.
   if (trimmed.startsWith("#!")) {
     const firstLine = trimmed.slice(
       0,
@@ -157,13 +157,13 @@ export function detectLanguage(code: string): string | null {
     if (/\bnode\b/.test(firstLine)) return "ts";
   }
 
-  // JSON — structural and cheaply verifiable, so a successful parse is decisive.
+  // JSON - structural and cheaply verifiable, so a successful parse is decisive.
   if (/^[[{]/.test(trimmed) && /[\]}]$/.test(trimmed)) {
     try {
       JSON.parse(trimmed);
       return "json";
     } catch {
-      // Not valid JSON — likely a JS object literal or a fragment; keep scoring.
+      // Not valid JSON - likely a JS object literal or a fragment; keep scoring.
     }
   }
 

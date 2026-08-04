@@ -339,7 +339,7 @@ describe("resolveStartupRoute", () => {
   });
 
   it("does not send a fresh device to the wizard when only a saved (offline) host exists", () => {
-    // Wizard requires an ONLINE host — its providers step calls useProvidersSnapshot()
+    // Wizard requires an ONLINE host - its providers step calls useProvidersSnapshot()
     // which needs a live connection. With only a saved-but-offline host, fall through
     // to the host route or welcome so the user can reconnect first.
     expect(

@@ -52,7 +52,7 @@ test("archiveObservedSubagent retires the projection and dispatches an archived 
   expect(last?.id).toBe(OBSERVED_ID);
   expect(last?.archivedAt).toBe(archivedAt);
   // Archiving a still-live row transitions it to a terminal state (the stop
-  // itself is best-effort — here the parent session is gone, which must not
+  // itself is best-effort - here the parent session is gone, which must not
   // block the archive).
   expect(last?.status).toBe("closed");
   expect(last?.requiresAttention).toBe(false);

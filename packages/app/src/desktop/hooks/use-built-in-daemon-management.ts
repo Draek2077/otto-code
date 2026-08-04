@@ -50,7 +50,7 @@ export function useBuiltInDaemonManagement(
   } = useMutation<DaemonManagementToggleResult, Error, { forceEnable: boolean }>({
     mutationFn: async ({ forceEnable }) => {
       // forceEnable takes the enable branch regardless of the persisted
-      // setting — the recovery affordance must never reach the stop/confirm
+      // setting - the recovery affordance must never reach the stop/confirm
       // path even if manageBuiltInDaemon was left true.
       const wasManagingDaemon = forceEnable ? false : settings.manageBuiltInDaemon;
       try {

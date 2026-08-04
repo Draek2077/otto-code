@@ -2,8 +2,8 @@
 // image has a URL it can render from: an assistant markdown image (a browser
 // screenshot, a Read of a PNG), or the image a file tab is showing. They belong
 // to no draft, no queued message and no workspace attachment, so the draft
-// store's attachment GC — which runs on every draft save, every lifecycle
-// change and once on rehydrate — saw them as unreferenced and deleted the file
+// store's attachment GC - which runs on every draft save, every lifecycle
+// change and once on rehydrate - saw them as unreferenced and deleted the file
 // microseconds after it was written. The chat then had a URL pointing at
 // nothing and rendered "Unable to load image preview."
 //
@@ -53,7 +53,7 @@ export function collectPinnedPreviewAttachmentIds(target: Set<string>): void {
 }
 
 /**
- * Drops every pin. Paired with clearing the preview attachments themselves — a
+ * Drops every pin. Paired with clearing the preview attachments themselves - a
  * pin for a file that no longer exists protects nothing and only holds the id
  * against whatever is minted next.
  */

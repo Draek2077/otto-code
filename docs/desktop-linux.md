@@ -1,4 +1,4 @@
-# Desktop on Linux — packaging, sandbox, and startup resilience
+# Desktop on Linux - packaging, sandbox, and startup resilience
 
 Linux-specific behavior of the Electron desktop app (`packages/desktop`): how it's
 packaged, how the Chromium sandbox is handled per format, and the layers that keep
@@ -6,7 +6,7 @@ it launching on hostile environments (VMs without 3D, Ubuntu 24.04's namespace
 lockdown, renderer crashes). Cross-platform desktop behavior lives with the code;
 this page is the durable Linux story.
 
-> Collecting ground here as we learn it — expect this to get reorganized as the
+> Collecting ground here as we learn it - expect this to get reorganized as the
 > Linux surface fills in.
 
 ## Packaging
@@ -31,7 +31,7 @@ a window, so the one executable doubles as the CLI (see `main.ts`
 ## The Chromium sandbox, per format
 
 `.deb`/`.rpm` keep the **SUID `chrome-sandbox` on** (matching VS Code). The
-**AppImage disables the sandbox** — its runtime mounts the app from `/tmp` under the
+**AppImage disables the sandbox** - its runtime mounts the app from `/tmp` under the
 user's UID, where the SUID helper can't work. That gate lives in
 [`main.ts`](../packages/desktop/src/main.ts):
 
@@ -41,11 +41,11 @@ if (process.platform === "linux" && process.env.APPIMAGE) {
 }
 ```
 
-> **Gotcha — the custom `afterInstall` owns the `chrome-sandbox` chmod.**
+> **Gotcha - the custom `afterInstall` owns the `chrome-sandbox` chmod.**
 > electron-builder's stock deb/rpm postinst (`app-builder-lib/templates/linux/after-install.tpl`)
 > does three things: symlink the executable, set the `chrome-sandbox` SUID
 > permissions, and install the AppArmor profile. Setting `deb.afterInstall` /
-> `rpm.afterInstall` **replaces that template wholesale** — electron-builder does
+> `rpm.afterInstall` **replaces that template wholesale** - electron-builder does
 > not merge or append. Because we ship a custom [`after-install.sh`](../packages/desktop/build/linux/after-install.sh)
 > (to symlink the lowercase `otto` CLI and load our AppArmor profile), the
 > `chrome-sandbox` chmod is _ours to reproduce_. If it's missing, every `.deb`/`.rpm`
@@ -80,23 +80,23 @@ error and `aa-status` lists `otto`.
 
 A VM guest with no 3D acceleration (log shows `VMware: No 3D enabled`) or a broken GPU
 driver crashes/hangs Chromium's GPU process, leaving a blank window. Otto recovers
-automatically — see [`gpu-fallback.ts`](../packages/desktop/src/gpu-fallback.ts),
+automatically - see [`gpu-fallback.ts`](../packages/desktop/src/gpu-fallback.ts),
 wired in `main.ts` before `app.whenReady()`. Three independent nets:
 
-1. **Reactive** — on the first GPU `child-process-gone` failure, write a marker
+1. **Reactive** - on the first GPU `child-process-gone` failure, write a marker
    (`disable-hardware-acceleration` in userData) and `app.relaunch()`. Loop-guarded.
-2. **Proactive startup sentinel** — a `startup-in-progress` file is armed right before
+2. **Proactive startup sentinel** - a `startup-in-progress` file is armed right before
    the first window is created (GUI path only) and cleared on the window's first
    paint. A sentinel that survives to the next launch means the previous launch never
    painted (hang or hard crash, no GPU event fired). This catches the blank-window-no-crash
    case the reactive net misses on the _next_ boot. **Two-strikes:** a _single_ surviving
-   sentinel retries hardware once more instead of latching software — a lone never-paint is
+   sentinel retries hardware once more instead of latching software - a lone never-paint is
    usually a launch killed/restarted before first paint (routine in dev), not a dead GPU.
    Only `NEVER_PAINTED_STRIKE_LIMIT` (2) consecutive never-paints promote to the marker; a
    healthy paint in between resets the strike counter. (The Linux paint watchdog, net #3,
-   still latches a genuine first-launch hang immediately — the softening only affects the
+   still latches a genuine first-launch hang immediately - the softening only affects the
    sentinel path, which is the false-positive-prone one.)
-3. **First-launch paint watchdog** (Linux only, `armGpuStartupPaintWatchdog`) — a 15s
+3. **First-launch paint watchdog** (Linux only, `armGpuStartupPaintWatchdog`) - a 15s
    timer armed alongside the sentinel and cleared on first paint. If the first window
    never paints within 15s, it writes the marker and relaunches into software rendering
    _immediately_, so the user doesn't have to quit and reopen to trigger sentinel
@@ -109,7 +109,7 @@ working fallback** for a no-3D guest: on a Wayland session, presentation falls i
 X11 software-bitmap path while the window stays a Wayland surface, so no frame is ever
 committed and the window is invisible (`XGetWindowAttributes failed for window 1`).
 Instead, Linux **relaunches with real process argv** `--ozone-platform=x11
---use-gl=disabled` (forcing X11/XWayland + the software presenter, matching VS Code) —
+--use-gl=disabled` (forcing X11/XWayland + the software presenter, matching VS Code) -
 `app.commandLine.appendSwitch()` is too late, since the browser process has already
 chosen its Ozone platform by the time this module runs. That's also why
 [`passthrough.ts`](../packages/desktop/src/daemon/cli/passthrough.ts) lists
@@ -117,18 +117,18 @@ chosen its Ozone platform by the time this module runs. That's also why
 without flipping the launch into CLI-passthrough mode. All hooks are try/catch-wrapped
 so they can't crash boot.
 
-> **Limitation — the invisible-but-"painted" Wayland case.** The watchdog and sentinel
+> **Limitation - the invisible-but-"painted" Wayland case.** The watchdog and sentinel
 > both clear on `ready-to-show` (via `markGpuStartupHealthy`, deliberately on
 > `ready-to-show` rather than `show` so start-minimized-to-tray still disarms them). On
 > most no-3D hangs `ready-to-show` never fires, so this works. But in some broken-Wayland
-> configs `ready-to-show` fires into a surface the compositor never displays — there,
+> configs `ready-to-show` fires into a surface the compositor never displays - there,
 > both nets are cleared and auto-recovery is defeated. `win.isVisible()` can't detect
 > this (it reflects the _shown_ state, not compositor presentation), so it isn't a fix;
 > the escape hatches below are the workaround. A real Linux compositor-visibility
 > watchdog (like macOS's `setupDarwinCompositorWatchdog`) would be needed to close it.
 
 **Self-healing (the marker is no longer a one-way latch).** Historically the marker was
-sticky forever — once written, only `OTTO_FORCE_GPU=1` cleared it — so one transient hiccup
+sticky forever - once written, only `OTTO_FORCE_GPU=1` cleared it - so one transient hiccup
 (a dev launch killed before paint; a single Modern-Standby GPU lock) pinned software
 rendering, and its most visible symptom was the Visualizer permanently force-disabling its
 bloom pass. A sibling `gpu-fallback-state.json` now lets the fallback recover on its own,
@@ -138,7 +138,7 @@ via two mechanisms in `applyPersistedHardwareAccelerationFallback` /
 - **Two-strikes** on the never-paint promotion (above), so the common false positive never
   latches in the first place.
 - **Periodic hardware re-probe** for an _already-written_ marker. You can't tell a GPU has
-  recovered from within software mode — a CPU rasterizer always paints — so after
+  recovered from within software mode - a CPU rasterizer always paints - so after
   `REPROBE_BASE_LAUNCHES` (8) software launches, the next launch runs **hardware** despite
   the marker (`probing: true`, and `isSoftwareRenderingActive()` reports hardware for that
   launch so the renderer doesn't needlessly trim visuals). If it paints → clear the marker
@@ -151,14 +151,14 @@ via two mechanisms in `applyPersistedHardwareAccelerationFallback` /
 
 | Var                         | Effect                                                                                                                                                                                                                                                                              |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `OTTO_FORCE_GPU=1`          | Clears the marker + sentinel + self-heal state and keeps hardware acceleration on — the immediate override. (Even without it, the fallback now self-heals: see "Self-healing" above.)                                                                                               |
-| `OTTO_ELECTRON_FLAGS="..."` | Appends arbitrary Chromium switches; a one-shot manual workaround. On a no-3D Linux guest use `--ozone-platform=x11 --use-gl=disabled` (the same combo the auto-fallback relaunches with). Only applies when launched from a shell that has the var set — not from the desktop icon |
+| `OTTO_FORCE_GPU=1`          | Clears the marker + sentinel + self-heal state and keeps hardware acceleration on - the immediate override. (Even without it, the fallback now self-heals: see "Self-healing" above.)                                                                                               |
+| `OTTO_ELECTRON_FLAGS="..."` | Appends arbitrary Chromium switches; a one-shot manual workaround. On a no-3D Linux guest use `--ozone-platform=x11 --use-gl=disabled` (the same combo the auto-fallback relaunches with). Only applies when launched from a shell that has the var set - not from the desktop icon |
 
 ## Deferred window reveal (software-rendering flicker)
 
 Software rendering surfaced a latent startup-ordering issue: the window was revealed on
-raw first paint (`ready-to-show`), and the web app has a legitimate boot transient —
-**Workspaces → splash → Workspaces** — as the managed daemon-start flag flips and then
+raw first paint (`ready-to-show`), and the web app has a legitimate boot transient -
+**Workspaces → splash → Workspaces** - as the managed daemon-start flag flips and then
 the host comes online (`resolveStartupBlocker`/`resolveStartupRoute` in
 [`host-runtime-bootstrap.ts`](../packages/app/src/navigation/host-runtime-bootstrap.ts)).
 Hardware acceleration hides this only by luck: the GPU composites its first frame late
@@ -172,25 +172,25 @@ the renderer to signal its first **durable** screen over `otto:window:signalRead
 
 - **Renderer** ([`_layout.tsx`](../packages/app/src/app/_layout.tsx), `isPresentable`) fires
   once when it's showing the settling splash, the error splash, has given up, or has real
-  content ready — deliberately **not** on the premature Workspaces render that precedes the
+  content ready - deliberately **not** on the premature Workspaces render that precedes the
   splash. So the user sees splash → Workspaces (the expected order) in every render mode.
 - **Main** ([`main.ts`](../packages/desktop/src/main.ts) `createWindow`) holds `show()` until
   that signal, keyed through a per-`webContents` reveal registry in
   [`window-manager.ts`](../packages/desktop/src/window/window-manager.ts)
   (`registerPendingWindowReveal`). A **4s fallback timer** (armed on `ready-to-show`)
-  guarantees the window still shows if the renderer never signals — an older web bundle
+  guarantees the window still shows if the renderer never signals - an older web bundle
   without the call, or a hang. Start-minimized-to-tray reveals immediately on
   `ready-to-show` (no window to show, no signal to wait for).
 
 The signal is optional at every layer (`signalReady?`), so an old shell + new bundle or a
 non-Electron runtime degrades to the fallback, never a broken or permanently-hidden
 window. This is cross-platform; the motivation is the Linux software-rendering path, which
-is the only place the flicker is observable — verify reveal timing there.
+is the only place the flicker is observable - verify reveal timing there.
 
 ## Crash dialog
 
 When a window's renderer dies, [`crash-dialog.ts`](../packages/desktop/src/crash-dialog.ts)
-(`registerCrashDialog`, wired in `main.ts` bootstrap) shows a **native** dialog — which
+(`registerCrashDialog`, wired in `main.ts` bootstrap) shows a **native** dialog - which
 doesn't depend on Chromium or the GPU, so it appears even when the graphics stack is
 what failed. Buttons: **Reload / Restart in Safe Mode** (writes the software-render
 marker and relaunches) **/ Quit**. It's suppressed via `isGpuRecoveryInProgress()`
@@ -203,14 +203,14 @@ an error instead of exiting silently.
 ## Diagnostics
 
 - **Logs**: `~/.config/Otto/logs/main.log` (electron-log). This is where the GPU
-  fallback, crash dialog, and startup steps write. Get the _full_ file — the real
+  fallback, crash dialog, and startup steps write. Get the _full_ file - the real
   FATAL/crash line often lands right after the point where a pasted snippet cuts off.
 - **`Most NODE_OPTIONS are not supported in packaged apps`** is a **red herring**. Otto
   has zero `NODE_OPTIONS` in its code; the app inherits the user's login-shell env
   (`login-shell-env.ts`), and if their shell profile exports `NODE_OPTIONS`, Electron
-  notes it ignores most of it in a packaged app. Cosmetic — not a startup failure.
+  notes it ignores most of it in a packaged app. Cosmetic - not a startup failure.
 - **`VMware: No 3D enabled`** is the real signal for the blank-window class of report:
   no hardware GL. The GPU fallback above is the durable fix; on Linux the immediate
   manual workaround is `OTTO_ELECTRON_FLAGS="--ozone-platform=x11 --use-gl=disabled"`
-  (`--disable-gpu` alone does _not_ recover a no-3D Wayland guest — see the per-platform
+  (`--disable-gpu` alone does _not_ recover a no-3D Wayland guest - see the per-platform
   note above).

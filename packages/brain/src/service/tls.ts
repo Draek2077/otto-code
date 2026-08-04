@@ -4,11 +4,11 @@
  * generalized from otto-brain-relay's `cert.js`.
  *
  * Modes (resolved from `config.tls`):
- *  - `files`       — read the cert/key paths you provide; no renewal.
- *  - `self-signed` — generate a local keypair on first run, cached under
+ *  - `files`       - read the cert/key paths you provide; no renewal.
+ *  - `self-signed` - generate a local keypair on first run, cached under
  *                    `certDir`; regenerated when it nears expiry. Clients must
  *                    trust it (or pass `-k`); there is no chain of trust.
- *  - `tailscale`   — issue/renew a real Let's Encrypt cert for this machine's
+ *  - `tailscale`   - issue/renew a real Let's Encrypt cert for this machine's
  *                    MagicDNS name via `tailscaled`, so tailnet clients see no
  *                    warnings. Renewal is hot: `renewed` fires with the new
  *                    { cert, key } and the server swaps its secure context
@@ -50,7 +50,7 @@ export interface TlsLogger {
   warn?(message: string): void;
 }
 
-/** Concrete, fully-resolved options — no nulls, no auto-detection left to do. */
+/** Concrete, fully-resolved options - no nulls, no auto-detection left to do. */
 export interface CertManagerOptions {
   mode: "files" | "self-signed" | "tailscale";
   certFile: string;

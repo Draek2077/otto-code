@@ -22,7 +22,7 @@ export interface ContextTreeRow {
   key: string;
   kind: ContextRowKind;
   depth: number;
-  /** which indent rails keep running below this row — see tree-rail-mask.ts */
+  /** which indent rails keep running below this row - see tree-rail-mask.ts */
   ancestorMask: number;
   /** Present on `node` rows. */
   node?: ContextNode;
@@ -32,7 +32,7 @@ export interface ContextTreeRow {
   estTokens: number;
   /**
    * Present on `category` rows the daemon disclosed something about. Drives the
-   * "Otto cannot measure this here" note in place of a token figure — see
+   * "Otto cannot measure this here" note in place of a token figure - see
    * `isUnmeasuredCategory`.
    */
   visibility?: ContextCategoryVisibility;
@@ -52,7 +52,7 @@ const CATEGORY_ORDER: ContextCategory[] = [
 ];
 
 /**
- * Categories that are prompt text rather than files — Otto composes them at
+ * Categories that are prompt text rather than files - Otto composes them at
  * request time, so their row opens the assembled section instead of an editor.
  * Everything else in the tree resolves to a file on disk, which the file pane
  * already handles.
@@ -134,7 +134,7 @@ export function buildContextTree(input: BuildContextTreeInput): ContextTreeRow[]
 
   const emitSiblings = (links: readonly ChildLink[], depth: number, parentMask: number): void => {
     // A link whose node is missing from the report emits no row, so it must not
-    // count when deciding which sibling is last — otherwise the rail closes early.
+    // count when deciding which sibling is last - otherwise the rail closes early.
     const emitted = links.filter((link) => nodesById.has(link.nodeId));
     const lastIndex = emitted.length - 1;
     emitted.forEach((link, index) => {
@@ -149,7 +149,7 @@ export function buildContextTree(input: BuildContextTreeInput): ContextTreeRow[]
     );
     const total = report.categoryTotals.find((entry) => entry.category === category);
     // Categories Otto knows only as a number (MCP schemas, injected prompt)
-    // still deserve a row — they are often the biggest thing in the request.
+    // still deserve a row - they are often the biggest thing in the request.
     if (roots.length === 0 && !total) continue;
     // But a row with no files under it, no number, and no text to read is a
     // dead end: `not_visible` means the provider composes that part inside its

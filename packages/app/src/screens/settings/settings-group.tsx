@@ -16,7 +16,7 @@ interface SettingsGroupProps {
 
 /**
  * Top-level grouping above one or more SettingsSection blocks. Use when a
- * settings screen has more than one logical area — the group title carries the
+ * settings screen has more than one logical area - the group title carries the
  * category, the optional info tooltip explains it, and the inner sections keep
  * their muted iOS-style labels.
  */

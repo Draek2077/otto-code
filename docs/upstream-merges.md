@@ -2,7 +2,7 @@
 
 Otto is a fork of [Paseo](https://github.com/getpaseo/paseo) with full upstream
 history preserved. The `upstream` remote points at the Paseo repo, so upstream
-changes are ingested with a normal `git merge` — plus a rebrand pass, because
+changes are ingested with a normal `git merge` - plus a rebrand pass, because
 every upstream change that mentions "paseo" must be translated to Otto naming.
 
 The rebrand is purely rule-based (see `scripts/rebrand-upstream.pl`), which makes
@@ -19,7 +19,7 @@ the rules on it.
 | `getpaseo` org                                | `Draek2077`                                                      |
 | `paseo.sh` domain                             | `otto-code.me`                                                   |
 | `PASEO_*` env vars                            | `OTTO_*`                                                         |
-| `sh.paseo` / `.debug` / `.desktop` bundle ids | `ai.ottocode` / `.debug` / `.desktop` (no hyphens — reverse-DNS) |
+| `sh.paseo` / `.debug` / `.desktop` bundle ids | `ai.ottocode` / `.debug` / `.desktop` (no hyphens - reverse-DNS) |
 | `paseo` CLI command                           | `otto`                                                           |
 | `~/.paseo` data dir, `paseo.json` config      | `~/.otto`, `otto.json`                                           |
 | Default daemon port `6767`                    | `6868`                                                           |
@@ -30,14 +30,14 @@ the rules on it.
 git fetch upstream
 node scripts/upstream-status.mjs          # what changed, and does it hit anything we own?
 git checkout -b merge/upstream-$(date +%Y-%m) main
-git merge v0.2.0                          # merge at a release tag, not at main — see Cadence
+git merge v0.2.0                          # merge at a release tag, not at main - see Cadence
 ```
 
 ### 0. Read the drift report first
 
 `scripts/upstream-status.mjs` prints the baseline (`git merge-base HEAD
 upstream/main`), how far upstream has moved, which release tags are available to
-merge at, and — the part that matters — whether upstream landed work inside a
+merge at, and - the part that matters - whether upstream landed work inside a
 subsystem Otto has independently rebuilt. Do not start a merge without reading
 the **watchlist** section; the ledger below records what previous merges decided
 about each of those subsystems so the same argument isn't had twice.
@@ -71,7 +71,7 @@ Rename any new paseo-named files/dirs:
 git ls-files | grep -i paseo   # then git mv each, applying Paseo->Otto / paseo->otto
 ```
 
-### 3. Audit — must be clean before committing
+### 3. Audit - must be clean before committing
 
 ```bash
 git grep -ilE 'paseo|getpaseo' -- \
@@ -89,15 +89,15 @@ git grep -ilE 'paseo|getpaseo' -- \
 Expected output: **nothing**. The excluded files keep Paseo references on
 purpose:
 
-- `LICENSE`, `NOTICE`, and the README credits — AGPL attribution.
+- `LICENSE`, `NOTICE`, and the README credits - AGPL attribution.
 - `CLAUDE.md`, `docs/upstream-merges.md`, `docs/fork-release-guide.md`, and
-  `scripts/rebrand-upstream.pl` — they document the fork relationship and the
+  `scripts/rebrand-upstream.pl` - they document the fork relationship and the
   rebrand rules themselves.
-- The website landing/footer/sponsor pages — public "built on Paseo" credit
+- The website landing/footer/sponsor pages - public "built on Paseo" credit
   and the sponsorship page pointing at upstream's author.
-- `packages/app/src/styles/theme.ts` — comments recording which themes are
+- `packages/app/src/styles/theme.ts` - comments recording which themes are
   inherited from upstream.
-- `packages/app/src/utils/upstream-base-version.ts` — the single source of the
+- `packages/app/src/utils/upstream-base-version.ts` - the single source of the
   upstream base name + version shown in Settings → About. It is Otto-only (so
   the rebrand pass never touches it) and deliberately holds the "Paseo" literal
   so the display code and i18n never have to. Bump its version in step 4 below.
@@ -135,7 +135,7 @@ Every upstream merge **must** update `UPSTREAM_BASE_VERSION` in
 `packages/app/src/utils/upstream-base-version.ts` to the Paseo release this merge
 ingests. That constant is the single source of the "Based on Paseo vX.Y.Z" line
 shown in Settings → About next to the Otto app version, so users can tell which
-upstream fixes are under the hood — a stale value silently misreports the base.
+upstream fixes are under the hood - a stale value silently misreports the base.
 
 Only the version changes; `UPSTREAM_BASE_NAME` stays `"Paseo"`. Read the number
 from the upstream tip you're merging (works during or after the merge):
@@ -146,7 +146,7 @@ git show upstream/main:package.json | grep -m1 '"version"'   # or from the fetch
 git describe --tags upstream/main                            # sanity-check the tag
 ```
 
-This is why the file is on the audit exclusion list in step 3 — it is the one
+This is why the file is on the audit exclusion list in step 3 - it is the one
 place the "Paseo" literal is allowed to live. Do not move the name/version into
 the display code or i18n strings; the rebrand pass would rewrite them on the next
 merge that touches those files.
@@ -174,13 +174,13 @@ Then merge the branch into `main`.
 ## Script gotchas (learned the hard way)
 
 - **Third-party links stay upstream-named.** Community projects like
-  `paseo-relay` and `paseo-vscode` are real external URLs — rebranding them
+  `paseo-relay` and `paseo-vscode` are real external URLs - rebranding them
   breaks the links. Check README/community references after running the script.
 - **The `6767` rule can mangle lookalikes.** It once rewrote a test UUID
   containing `-6767-` segments. After a merge, scan for accidental `6868`
   inside UUIDs/hashes: `git grep -nE '6868-6868'`.
 - **Bundle ids must stay hyphen-free.** Never let `sh.paseo` map to anything
-  containing `otto-code` — reverse-DNS segments cannot contain hyphens.
+  containing `otto-code` - reverse-DNS segments cannot contain hyphens.
 - **`LICENSE` is never rewritten.** The upstream copyright notice must remain
   verbatim (AGPL requirement). The script is simply never run against it.
 
@@ -207,13 +207,13 @@ Rules:
 - **Merge at `vX.Y.0` minor tags.** Patch releases are only worth a merge when
   they carry a fix Otto actually needs.
 - **Never merge an `-rc` / `-beta` tag or a bare `main`.** `upstream-status.mjs`
-  flags this — a `describe` output ending in `-N-g<sha>` means the tip is
+  flags this - a `describe` output ending in `-N-g<sha>` means the tip is
   mid-flight. Unreleased work sits there (upstream's Hub subsystem lived on
   `main` for days in no tag at all).
 - **Cherry-pick out-of-band** for security fixes or a bug that's actively biting.
   Record it in the ledger so the next full merge knows it's already in.
 - **Don't stretch past two minor releases.** Beyond that, the real risk isn't
-  conflict volume — it's upstream independently rebuilding something Otto already
+  conflict volume - it's upstream independently rebuilding something Otto already
   ships (see the `v0.2.0` forge entry below).
 - **Read every minor release's changelog even when you skip the merge.** This is
   the cheap early warning for that rival-abstraction problem, and it's the only
@@ -221,7 +221,7 @@ Rules:
 
 ## What we last took
 
-Git is the authority on **what** we last merged — `git merge-base HEAD
+Git is the authority on **what** we last merged - `git merge-base HEAD
 upstream/main`, accurate as long as upstream is always ingested with a real merge
 (never a squash or rebase). `scripts/upstream-status.mjs` reads it for you.
 
@@ -231,8 +231,8 @@ same subsystems from scratch.
 
 | Merged     | Upstream tag | Upstream sha | Otto version | Deliberately skipped                                                            |
 | ---------- | ------------ | ------------ | ------------ | ------------------------------------------------------------------------------- |
-| 2026-07-12 | v0.1.106     | `c05e337cd`  | 0.5.x        | —                                                                               |
-| 2026-08-01 | v0.2.5       | `6fc491e62`  | 0.7.5        | Hub (`a414f8ea8`) — **permanent**; upstream's client-side subagent presentation |
+| 2026-07-12 | v0.1.106     | `c05e337cd`  | 0.5.x        | -                                                                               |
+| 2026-08-01 | v0.2.5       | `6fc491e62`  | 0.7.5        | Hub (`a414f8ea8`) - **permanent**; upstream's client-side subagent presentation |
 
 The v0.2.5 row also left behind things nobody chose to skip. Large conflicted
 files were resolved wholesale to OURS, which drops upstream hunks silently: no
@@ -255,21 +255,21 @@ Two mechanical sweeps catch what slips through, and both belong in step 5:
 
 These carry across merges. Revisit only when the stated trigger fires.
 
-- **Hub (`a414f8ea8`) — permanent exclusion. Never incorporate.**
+- **Hub (`a414f8ea8`) - permanent exclusion. Never incorporate.**
 
   A daemon↔cloud control plane whose counterparty is a closed "Paseo Cloud" repo
   this fork has no access to. Untestable and unusable here, and it is not on
-  Otto's roadmap in any form — Otto's remote story is the E2E-encrypted relay
+  Otto's roadmap in any form - Otto's remote story is the E2E-encrypted relay
   (see [SECURITY.md](../SECURITY.md)), which is self-hosted by design. Nothing
   about Hub is unsafe (enrollment is genuinely opt-in; nothing phones home before
-  `hub connect`) — it simply buys this fork nothing, ever. **No revisit trigger.**
+  `hub connect`) - it simply buys this fork nothing, ever. **No revisit trigger.**
 
   **It is not self-contained, and that is the part to plan for.** The
   `packages/server/src/server/hub/` directory is only half of it. The commit also
   threads a new `owner` concept through agent persistence:
-  - `agent/agent-owner.ts` — new `AgentOwnerSchema`, a `discriminatedUnion` with
+  - `agent/agent-owner.ts` - new `AgentOwnerSchema`, a `discriminatedUnion` with
     one variant (`daemon`) that is plainly built to grow.
-  - `agent/agent-storage.ts` — `owner` added to the **persisted agent record**,
+  - `agent/agent-storage.ts` - `owner` added to the **persisted agent record**,
     plus two secondary indices (`daemonAgentIdsByExecution`,
     `daemonExecutionKeysByAgentId`) and `findByDaemonExecution`.
   - Threaded onward through `agent-loading.ts`, `agent-projections.ts`,
@@ -283,13 +283,13 @@ These carry across merges. Revisit only when the stated trigger fires.
   merge touching those shared files re-offers Hub hunks, and each must be
   rejected again. Two consequences worth knowing before you hit them:
   - The `owner` field is `.optional()`, so declining it is protocol-safe in both
-    directions — we simply never write or read it.
+    directions - we simply never write or read it.
   - The real risk is **compile coupling**: if a later upstream change puts
     non-Hub logic in a file that references Hub types, that hunk cannot be taken
     as-is. Strip the Hub reference rather than pulling the subsystem in behind it.
 
   Enforce the exclusion in step 3 of the audit rather than trusting merge-time
-  vigilance — the grep is in the audit block above.
+  vigilance - the grep is in the audit block above.
 
   **Update (2026-08-02): Hub landed, and is now gated off rather than stripped.**
   The v0.2.5 merge brought the whole subsystem in: 12 files under
@@ -326,20 +326,20 @@ These carry across merges. Revisit only when the stated trigger fires.
   unsupported. Should it ever be reconsidered, that is a product call, not an
   implementation one.
 
-- **Forge abstraction (`a8ebd390f`) — took theirs, ported ours onto it.**
+- **Forge abstraction (`a8ebd390f`) - took theirs, ported ours onto it.**
   Upstream shipped a pluggable forge layer (GitLab, Gitea/Forgejo/Codeberg,
   CLI-delegated auth) covering the same concern as our `git-hosting` layer
   (GitHub + Bitbucket Cloud, stored credentials). Two rival abstractions over one
   concern means hand-merging every future upstream PR that touches PR/issue code,
   so upstream's is now the base and Bitbucket Cloud is a REST-backed adapter
   registered against it. **This is the cautionary tale the cadence rules exist
-  for** — upstream built it while we were building ours, and nobody noticed until
+  for** - upstream built it while we were building ours, and nobody noticed until
   the merge. Hence the watchlist in `upstream-status.mjs`.
 
-- **Provider subagents (`66445adc0` and successors) — split by layer.**
+- **Provider subagents (`66445adc0` and successors) - split by layer.**
   We take upstream's **daemon-side ingestion verbatim and never edit those
   files** (`ProviderSubagentStore`, the `agent.provider_subagents.*` RPCs, and
-  every provider adapter), because that is where their recurring fixes land —
+  every provider adapter), because that is where their recurring fixes land -
   phantom parents, stuck sessions, hidden Codex subagents. We keep **our client
   presentation** and project their store into Otto's observed-subagent model,
   which carries the per-subagent usage accounting, nesting, and stop control
@@ -356,7 +356,7 @@ These carry across merges. Revisit only when the stated trigger fires.
   record behind it. Their panel is registered and wired end to end
   (`workspace-tab-menu.ts` opens the `provider_subagent` tab; the panel reads
   `subagents/provider-store`), which is what makes provider-native subagents
-  visible at all — previously they were not.
+  visible at all - previously they were not.
 
   So: still take the daemon side verbatim, still keep our presentation for our
   own rows, and **do** take their row kind, their panel, and the `${row.kind}_`

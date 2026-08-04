@@ -7,7 +7,7 @@
 // the slider field both on `flexBasis: "auto"`, the label's *intrinsic* width
 // competed with the slider's, so a row with a longer hint got a narrower slider
 // and squeezed its percent readout off the end. The field is therefore a fixed
-// basis and unshrinkable, and the label block — which can wrap — absorbs the
+// basis and unshrinkable, and the label block - which can wrap - absorbs the
 // difference. Hint length is now free to vary.
 import { useCallback, useEffect, useState } from "react";
 import { Text, View } from "react-native";
@@ -22,7 +22,7 @@ interface SettingsVolumeRowProps {
   hint: string;
   /** Current committed value, 0-100. */
   value: number;
-  /** Called once per gesture, on release — not on every tick of the drag. */
+  /** Called once per gesture, on release - not on every tick of the drag. */
   onCommit: (next: number) => void;
   accessibilityLabel: string;
   testID: string;
@@ -82,7 +82,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[3],
     // Fixed at `sm`+ so every volume row's slider is the same length whatever
     // its hint says; full width when `rowResponsive` stacks at `xs`. Neither
-    // grows nor shrinks — the label block absorbs the leftover width, and it is
+    // grows nor shrinks - the label block absorbs the leftover width, and it is
     // the one that can wrap.
     flexGrow: 0,
     flexShrink: 0,

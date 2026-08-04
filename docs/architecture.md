@@ -41,7 +41,7 @@ Your code never leaves your machine. Otto is local-first.
 
 ## Packages
 
-### `packages/server` — The daemon
+### `packages/server` - The daemon
 
 The heart of Otto. A Node.js process that:
 
@@ -70,25 +70,25 @@ All paths are under `packages/server/src/`.
 | `server/schedule/`              | Cron-based scheduled agents                                                                                                              |
 | `server/loop-service.ts`        | Looping agent runs that retry until an exit condition                                                                                    |
 | `server/chat/`                  | Chat rooms for agent-to-agent and human-to-agent messaging                                                                               |
-| `server/preview/`               | Preview dev-server supervision: launch.json config, spawn/readiness/tree-kill, `preview_*` agent tools — see [preview.md](preview.md)    |
+| `server/preview/`               | Preview dev-server supervision: launch.json config, spawn/readiness/tree-kill, `preview_*` agent tools - see [preview.md](preview.md)    |
 | `server/browser-tools/`         | Agent-facing `browser_*` tools against real Otto browser tabs: snapshot, inspect, click/fill, eval, console/network capture, tab control |
-| `server/artifact/`              | Agent-generated HTML artifacts: per-project store, service, file watcher, HTML validation — see [data-model.md](data-model.md)           |
+| `server/artifact/`              | Agent-generated HTML artifacts: per-project store, service, file watcher, HTML validation - see [data-model.md](data-model.md)           |
 
-### `packages/protocol` — Wire schemas and shared protocol types
+### `packages/protocol` - Wire schemas and shared protocol types
 
 The source of truth for WebSocket messages, binary frame codecs, endpoint parsing,
 agent timeline types, provider config schemas, and other values shared by daemon
 and clients. Server, app, CLI, and `@otto-code/client` all depend on this package;
 it does not depend on the server.
 
-### `packages/client` — Daemon client library and SDK facade
+### `packages/client` - Daemon client library and SDK facade
 
 Owns the low-level daemon WebSocket driver plus the higher-level `OttoClient`
 facade. App and CLI may import the low-level driver from
 `@otto-code/client/internal/daemon-client` during migration, while new SDK-shaped
 code imports from `@otto-code/client`.
 
-### `packages/app` — Mobile + web client (Expo)
+### `packages/app` - Mobile + web client (Expo)
 
 Cross-platform React Native app that connects to one or more daemons.
 
@@ -100,7 +100,7 @@ Cross-platform React Native app that connects to one or more daemons.
 - Timeline sync correctness is documented in [docs/timeline-sync.md](timeline-sync.md): live streams are for immediacy, `fetch_agent_timeline_request` is authoritative, and catch-up is paged but complete.
 - Voice features: dictation (STT) and voice agent (realtime)
 
-### `packages/cli` — Command-line client
+### `packages/cli` - Command-line client
 
 Commander.js CLI with Docker-style commands. Common agent operations are also exposed at the top level (e.g. `otto ls`, `otto run`).
 
@@ -117,19 +117,19 @@ Commander.js CLI with Docker-style commands. Common agent operations are also ex
 
 Communicates with the daemon via the same WebSocket protocol as the app.
 
-### `packages/relay` — E2E encrypted relay
+### `packages/relay` - E2E encrypted relay
 
 Enables remote access when the daemon is behind a firewall.
 
 - Curve25519 ECDH key exchange + XSalsa20-Poly1305 (NaCl `box`) encryption
-- Relay server is zero-knowledge — it routes encrypted bytes, cannot read content
+- Relay server is zero-knowledge - it routes encrypted bytes, cannot read content
 - Client and daemon channels with identical API (`createClientChannel`, `createDaemonChannel`)
 - Pairing via QR code transfers the daemon's public key to the client
 - Self-hosted relays opt into TLS with `daemon.relay.useTls` or `OTTO_RELAY_USE_TLS=true`; the public (client-facing) TLS setting can be overridden independently via `daemon.relay.publicUseTls` or `OTTO_RELAY_PUBLIC_USE_TLS`
 
 See [SECURITY.md](../SECURITY.md) for the full threat model.
 
-### `packages/desktop` — Desktop app (Electron)
+### `packages/desktop` - Desktop app (Electron)
 
 Electron wrapper for macOS, Linux, and Windows.
 
@@ -137,13 +137,13 @@ Electron wrapper for macOS, Linux, and Windows.
 - Native file access for workspace integration
 - Same WebSocket client as mobile app
 
-**Multi-window (hybrid land-on model).** `createWindow()` in `main.ts` is reusable: `⌘⇧N`/File→New Window, relaunching the app (`second-instance`), and the sidebar "Open in new window" action each open a fresh `BrowserWindow`. Every window shows the full sidebar — there is no per-window project ownership or filtering. "Land on a project" is delivered by a per-`webContents` `PendingOpenProjectStore`: each window pulls its own pending project path on mount (`otto:get-pending-open-project`) and runs the normal open-project flow, identical to a CLI `otto <path>` launch.
+**Multi-window (hybrid land-on model).** `createWindow()` in `main.ts` is reusable: `⌘⇧N`/File→New Window, relaunching the app (`second-instance`), and the sidebar "Open in new window" action each open a fresh `BrowserWindow`. Every window shows the full sidebar - there is no per-window project ownership or filtering. "Land on a project" is delivered by a per-`webContents` `PendingOpenProjectStore`: each window pulls its own pending project path on mount (`otto:get-pending-open-project`) and runs the normal open-project flow, identical to a CLI `otto <path>` launch.
 
-> **Window-state v1 limitation:** only the _first_ window of a session restores and persists saved geometry (size/position/maximized). Windows opened via ⌘⇧N / second-instance / "Open in new window" open at the default size, OS-cascaded, and do not persist — this avoids every window stacking on the same restored bounds and fighting over the single window-state store. Lifting this needs per-window state keys.
+> **Window-state v1 limitation:** only the _first_ window of a session restores and persists saved geometry (size/position/maximized). Windows opened via ⌘⇧N / second-instance / "Open in new window" open at the default size, OS-cascaded, and do not persist - this avoids every window stacking on the same restored bounds and fighting over the single window-state store. Lifting this needs per-window state keys.
 >
 > **In-app browser panes are not yet per-window.** Browser webviews are tracked by one process-global registry that keeps a single current `WebContents` per browser id. Human focus still records the workspace-active browser for UI state and `list_tabs` reporting, but agent automation targets only explicit browser ids returned by `browser_new_tab` or `browser_list_tabs`. The webview registration queue (`pendingBrowserWebviewIds` in `main.ts`) is still process-global. With browser panes open in two windows, a menu Reload can target the other window's webview, and near-simultaneous webview attach across windows can register under the wrong browser id. Multi-window v1 ships windows; making the browser-webview subsystem window-scoped is a follow-up.
 
-### `packages/website` — Marketing site
+### `packages/website` - Marketing site
 
 TanStack Router + Cloudflare Workers. Serves otto-code.me.
 
@@ -178,10 +178,10 @@ New session RPCs use dotted names with `.request` and `.response` suffixes, such
 
 **Notable session message types:**
 
-- `agent_update` — Agent state changed (status, title, labels)
-- `agent_stream` — New timeline event from a running agent
-- `workspace_update`, `script_status_update`, `workspace_setup_progress` — Workspace state
-- `agent_permission_request` / `agent_permission_resolved` — Tool-call permission flow
+- `agent_update` - Agent state changed (status, title, labels)
+- `agent_stream` - New timeline event from a running agent
+- `workspace_update`, `script_status_update`, `workspace_setup_progress` - Workspace state
+- `agent_permission_request` / `agent_permission_resolved` - Tool-call permission flow
 - `agent_deleted`, `agent_archived`, `agent_status`, `agent_list`
 - `checkout_status_update`, `checkout_diff_update`, and the full `checkout_*` request/response set for git operations
 - Terminal subscribe/input/capture commands
@@ -205,7 +205,7 @@ Terminal I/O is sent as binary WebSocket frames decoded by `decodeTerminalStream
 - 1-byte slot: terminal slot id
 - variable payload: bytes for output/input, JSON-encoded `{ rows, cols }` for resize, terminal snapshot for snapshot
 
-Terminal PTY size is last-interacting-client-wins. A client claims the PTY size only when its terminal viewport genuinely changes size or the user focuses/taps the terminal. Passive rendering work — attaching, restoring visibility, font settling, renderer refits, or just looking at a visible terminal — must not send a resize frame. The server does not broadcast resize ownership; the resized PTY redraws through normal output, and every attached client renders that output in its own local viewport.
+Terminal PTY size is last-interacting-client-wins. A client claims the PTY size only when its terminal viewport genuinely changes size or the user focuses/taps the terminal. Passive rendering work - attaching, restoring visibility, font settling, renderer refits, or just looking at a visible terminal - must not send a resize frame. The server does not broadcast resize ownership; the resized PTY redraws through normal output, and every attached client renders that output in its own local viewport.
 
 There is also a separate file-transfer binary frame format in the same directory, used for download/upload streams.
 
@@ -236,11 +236,11 @@ initializing → idle ⇄ running
               closed
 ```
 
-- `initializing` — provider session is being created
-- `idle` — has a live session, awaiting the next prompt
-- `running` — provider is currently producing a turn
-- `error` — last attempt failed; session is still attached
-- `closed` — terminal state, no live session
+- `initializing` - provider session is being created
+- `idle` - has a live session, awaiting the next prompt
+- `running` - provider is currently producing a turn
+- `error` - last attempt failed; session is still attached
+- `closed` - terminal state, no live session
 
 `ManagedAgent` is a discriminated union over those lifecycle tags. Notes:
 
@@ -254,7 +254,7 @@ initializing → idle ⇄ running
 
 Two workspaces can share the same `cwd` (e.g. a `directory` workspace and a `local_checkout` workspace on the same folder, or several workspaces opened against one checkout). Model B keeps these distinct: they share everything the directory determines, but nothing the workspace owns. The right-sidebar surfaces split cleanly along this line, and the split is enforced purely by **what each piece of state is keyed by**.
 
-**Directory-backed (shared by same-`cwd` workspaces) — keyed by `(serverId, cwd)`, never by `workspaceId`:**
+**Directory-backed (shared by same-`cwd` workspaces) - keyed by `(serverId, cwd)`, never by `workspaceId`:**
 
 | Surface                | Key                                                      | Source                                                  |
 | ---------------------- | -------------------------------------------------------- | ------------------------------------------------------- |
@@ -265,7 +265,7 @@ Two workspaces can share the same `cwd` (e.g. a `directory` workspace and a `loc
 | File preview content   | `["workspaceFile", serverId, cwd, path]`                 | `packages/app/src/components/file-pane.tsx`             |
 | File explorer listings | fetched via `listDirectory(workspaceRoot, path)`         | `packages/app/src/hooks/use-file-explorer-actions.ts`   |
 
-**Workspace-owned (independent per workspace) — keyed by `workspaceId` (falling back to `cwd` only when no `workspaceId` exists):**
+**Workspace-owned (independent per workspace) - keyed by `workspaceId` (falling back to `cwd` only when no `workspaceId` exists):**
 
 | State                        | Key builder / store                                | Source                                                        |
 | ---------------------------- | -------------------------------------------------- | ------------------------------------------------------------- |
@@ -277,9 +277,9 @@ Two workspaces can share the same `cwd` (e.g. a `directory` workspace and a `loc
 
 `diff-pane.tsx` is the canonical wiring site: it passes `{ serverId, cwd }` to the git queries and `{ serverId, workspaceId, cwd }` to the draft/override/attachment scope keys.
 
-**Do not "fix" the sharing away.** Re-keying a directory-backed query by `workspaceId` makes same-`cwd` workspaces diverge (two windows onto the same git tree showing different diffs). Re-keying owned state (drafts, expanded paths) by `cwd` makes them leak between distinct workspaces on the same folder. The `workspaceId`-keyed builders carry a `// workspaceId is opaque; do not parse this key back into a path.` comment — the opaque-id fallback to `cwd` exists only for old payloads without a `workspaceId`, not as a content-sharing mechanism.
+**Do not "fix" the sharing away.** Re-keying a directory-backed query by `workspaceId` makes same-`cwd` workspaces diverge (two windows onto the same git tree showing different diffs). Re-keying owned state (drafts, expanded paths) by `cwd` makes them leak between distinct workspaces on the same folder. The `workspaceId`-keyed builders carry a `// workspaceId is opaque; do not parse this key back into a path.` comment - the opaque-id fallback to `cwd` exists only for old payloads without a `workspaceId`, not as a content-sharing mechanism.
 
-One deliberate non-violation: `AgentFileExplorerState.directories`/`files` cache directory listings inside the `workspaceId`-keyed explorer map. Same-`cwd` workspaces therefore keep duplicate caches, but they can never diverge — both fetch the identical directory via `listDirectory(workspaceRoot, …)`. This is duplication, not leakage, and is left as-is.
+One deliberate non-violation: `AgentFileExplorerState.directories`/`files` cache directory listings inside the `workspaceId`-keyed explorer map. Same-`cwd` workspaces therefore keep duplicate caches, but they can never diverge - both fetch the identical directory via `listDirectory(workspaceRoot, …)`. This is duplication, not leakage, and is left as-is.
 
 ## Agent providers
 
@@ -295,7 +295,7 @@ The built-in, user-facing providers are Claude Code, Codex, Copilot, OpenCode, P
 | OpenCode           | OpenCode server / CLI                                                                                                                           | Provider-managed                                   |
 | Pi                 | Local Pi RPC process                                                                                                                            | Provider-managed                                   |
 | OMP                | Oh My Pi via the Pi RPC client (`omp` binary)                                                                                                   | `~/.omp/agent/sessions`                            |
-| OpenAI-compatible  | Any OpenAI-compatible endpoint (`openai-compat-agent`); base for custom providers with `extends: "openai-compatible"` — LM Studio, Ollama, etc. | Daemon-managed                                     |
+| OpenAI-compatible  | Any OpenAI-compatible endpoint (`openai-compat-agent`); base for custom providers with `extends: "openai-compatible"` - LM Studio, Ollama, etc. | Daemon-managed                                     |
 | Cursor / Kiro      | ACP wrappers (`cursor-acp-agent`, `kiro-acp-agent`)                                                                                             | Provider-managed                                   |
 | Generic ACP        | ACP wrapper for the one-click catalog and custom ACP providers                                                                                  | Provider-managed                                   |
 | Mock load test     | In-process fake                                                                                                                                 | In-memory                                          |

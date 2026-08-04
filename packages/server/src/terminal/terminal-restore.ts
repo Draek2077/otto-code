@@ -10,7 +10,7 @@ import type { TerminalStateSnapshot, TerminalStateSnapshotOptions } from "./term
 export const MAX_TERMINAL_OUTPUT_FRAME_BYTES = 256 * 1024;
 
 // A client is only forced onto the snapshot catch-up path once its transport is
-// genuinely backed up — measured by the socket's bufferedAmount, not by how much
+// genuinely backed up - measured by the socket's bufferedAmount, not by how much
 // the terminal has produced. Set well above any normal in-flight burst (a
 // keeping-up client drains continuously and never approaches this) but low
 // enough that a stalled socket crosses it long before a large burst finishes.

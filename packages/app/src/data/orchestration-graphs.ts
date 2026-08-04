@@ -5,7 +5,7 @@ import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 // Query keys + cache helpers for the host-level orchestration Graph templates
 // (projects/orchestration-graphs). Fetched once, then kept fresh by
 // runs.graphs.changed.notification pushes, which carry the FULL list (graphs
-// are few and small), so the cache is simply replaced — no per-id merging.
+// are few and small), so the cache is simply replaced - no per-id merging.
 
 export function orchestrationGraphsQueryKey(serverId: string): readonly unknown[] {
   return ["orchestration-graphs", serverId, "list"];

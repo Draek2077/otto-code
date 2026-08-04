@@ -18,7 +18,7 @@ interface RateLimitWarningTrackProps {
 }
 
 // Provider-reported plan rate-limit status, surfaced as a fly-out that emerges
-// from the top of the composer — the same drawer idiom as the subagents track,
+// from the top of the composer - the same drawer idiom as the subagents track,
 // but tinted amber like the Auto mode chip. It mounts FIRST among the composer's
 // fly-outs, so it sits at the very top of the fanned stack (highest) while its
 // natural back-most paint order tucks it BEHIND every flyout below it and the
@@ -34,7 +34,7 @@ export function RateLimitWarningTrack({
     state.sessions[serverId]?.agentRateLimits.get(agentId),
   );
   // The agent's provider + cwd resolve the friendly provider name shown in the
-  // warning — no hardcoded "Claude". A custom endpoint agent shows its configured
+  // warning - no hardcoded "Claude". A custom endpoint agent shows its configured
   // name (e.g. "LM Studio"); the snapshot label is the same source the model/mode
   // controls use. Falls back to the provider id only when the snapshot is absent.
   const agentProvider = useSessionStore(
@@ -62,7 +62,7 @@ export function RateLimitWarningTrack({
   );
 
   // Per-turn re-emits are deduped, so nothing would re-render the warning back in
-  // when the mute lapses — schedule a tick at `mutedUntil` to do it ourselves.
+  // when the mute lapses - schedule a tick at `mutedUntil` to do it ourselves.
   const [, tick] = useReducer((n: number) => n + 1, 0);
   const mutedUntil = dismissal?.mutedUntil;
   useEffect(() => {
@@ -91,7 +91,7 @@ export function RateLimitWarningTrack({
   const tone: FlyoutTone = rateLimitInfo?.status === "rejected" ? "red" : "orange";
   const dismissLabel = t("composer.rateLimit.dismiss");
 
-  // The transition wrapper is rendered either way — an empty one is how the band
+  // The transition wrapper is rendered either way - an empty one is how the band
   // is dismissed, and it has to stay mounted to animate the band out.
   return (
     <ComposerTrackTransition layer={COMPOSER_TRACK_LAYERS.rateLimit}>
@@ -100,6 +100,7 @@ export function RateLimitWarningTrack({
           tone={tone}
           message={message}
           icon={TriangleAlert}
+          layer={COMPOSER_TRACK_LAYERS.rateLimit}
           onDismiss={handleDismiss}
           dismissLabel={dismissLabel}
           testID="composer-rate-limit-track"
@@ -113,7 +114,7 @@ export function RateLimitWarningTrack({
 
 // One compact line, segments joined with " · ": headline (provider + window),
 // then percent used, reset time, and overage note when reported. `provider` is
-// the resolved provider display name — never a hardcoded product name.
+// the resolved provider display name - never a hardcoded product name.
 function formatRateLimitWarning(t: TFunction, info: AgentRateLimitInfo, provider: string): string {
   let windowLabel = t("composer.rateLimit.windowPlan");
   if (info.limitType === "five_hour") {

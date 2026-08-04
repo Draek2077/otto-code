@@ -9,8 +9,8 @@ import { useSessionStore } from "@/stores/session-store";
  *
  * The `indexing` state is load-bearing here in a way it is nowhere else in this subsystem.
  * A language server that is still loading its project under-reports a rename's blast radius
- * — measured on this repo at 1 file / 2 edits for something that actually touches 4 files
- * and 14 sites — and a dry run that under-reports is worse than no dry run at all, because
+ * - measured on this repo at 1 file / 2 edits for something that actually touches 4 files
+ * and 14 sites - and a dry run that under-reports is worse than no dry run at all, because
  * it is believed. So the daemon refuses to plan while indexing, and this hook waits and
  * re-asks rather than showing a plan it cannot stand behind.
  */
@@ -27,14 +27,14 @@ export type RenameJobPhase =
   /** Running right now. */
   | { kind: "applying" }
   /**
-   * The run happened. NOT necessarily "everything applied" — `outcome.complete` says that,
+   * The run happened. NOT necessarily "everything applied" - `outcome.complete` says that,
    * and the per-file outcomes say which parts did not. The tab becomes a receipt with an
    * undo, rather than a success message.
    */
   | { kind: "ran"; outcome: CodeRenameApplyOutcome }
   /** Undoing right now. */
   | { kind: "undoing"; outcome: CodeRenameApplyOutcome }
-  /** The run was taken back — wholly or partly. */
+  /** The run was taken back - wholly or partly. */
   | { kind: "undone"; undo: CodeRenameUndoOutcome }
   /** Nothing ran, and why. */
   | { kind: "failed"; reason: string; canRetry: boolean };
@@ -75,7 +75,7 @@ export function useCodeRenameJob(input: UseCodeRenameJobInput): CodeRenameJob {
   const [replanToken, setReplanToken] = useState(0);
 
   // The identity of the plan on screen. Sent back on apply so the daemon can prove the plan
-  // it is about to write is the plan that was audited — the client never posts edits.
+  // it is about to write is the plan that was audited - the client never posts edits.
   const planIdRef = useRef("");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -171,7 +171,7 @@ export function useCodeRenameJob(input: UseCodeRenameJobInput): CodeRenameJob {
       .then((outcome) => {
         // `ok` means the run took place, not that every edit landed. A run where two of
         // fourteen edits no longer fit still wrote twelve, and calling that a failure would
-        // hide them — and hide the fact that there is now something to undo.
+        // hide them - and hide the fact that there is now something to undo.
         if (outcome.status === "ok") {
           setPhase({ kind: "ran", outcome });
           return undefined;
@@ -230,7 +230,7 @@ export function useCodeRenameJob(input: UseCodeRenameJobInput): CodeRenameJob {
  */
 function describeFailure(outcome: { status: string; error: string | null }): string {
   if (outcome.status === "stale") {
-    return "The rename changed since you reviewed it — nothing was written. Re-plan to see the new impact.";
+    return "The rename changed since you reviewed it - nothing was written. Re-plan to see the new impact.";
   }
   if (outcome.status === "indexing") {
     return "The project started loading again, so the plan could no longer be trusted. Nothing was written.";

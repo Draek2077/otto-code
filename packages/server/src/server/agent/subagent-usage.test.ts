@@ -10,7 +10,7 @@ import {
 describe("SubagentUsageAccumulator", () => {
   it("dedups by message.id keeping the final (max-output) frame, then sums", () => {
     const acc = new SubagentUsageAccumulator();
-    // msg_A streams twice — the final frame (out=913) carries the real split.
+    // msg_A streams twice - the final frame (out=913) carries the real split.
     acc.observe({
       messageId: "msg_A",
       usage: {
@@ -132,7 +132,7 @@ describe("subagentUsageToAgentUsage", () => {
       cacheCreationInputTokens: 726,
       outputTokens: 913,
     });
-    // Cost is a provider concern, set separately — never here.
+    // Cost is a provider concern, set separately - never here.
     expect(usage.totalCostUsd).toBeUndefined();
   });
 });

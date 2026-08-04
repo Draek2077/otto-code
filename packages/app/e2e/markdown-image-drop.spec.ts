@@ -24,7 +24,7 @@ import { seedWorkspace, type SeededWorkspace } from "./helpers/seed-client";
 // to write outside a workspace. What only a real browser and a real daemon can
 // prove is the wiring: that the handler is registered on the right element,
 // that the asynchronous read reaches the host, and above all that the link
-// lands where the pointer was rather than where the caret was — the pointer
+// lands where the pointer was rather than where the caret was - the pointer
 // position is gone by the time the FileReader resolves, so that is the piece
 // most likely to regress.
 //
@@ -68,7 +68,7 @@ const PLAIN_DOCUMENT = { folder: "non-image", file: "plain-drop.md" };
 
 const ALL_DOCUMENTS = [DROP_DOCUMENT, PASTE_DOCUMENT, CLASH_DOCUMENT, PLAIN_DOCUMENT];
 
-/** `pasted-image-20260802-163055.png` — a clipboard image has no name to keep. */
+/** `pasted-image-20260802-163055.png` - a clipboard image has no name to keep. */
 const PASTED_IMAGE_NAME = /^pasted-image-\d{8}-\d{6}\.png$/;
 const PASTED_IMAGE_LINK = /!\[\]\(assets\/pasted-image-\d{8}-\d{6}\.png\)/;
 

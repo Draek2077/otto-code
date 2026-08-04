@@ -48,7 +48,7 @@ test.describe("Running-agent personality switch", () => {
         timeout: 30_000,
       });
 
-      // Switch via the RPC — the daemon re-resolves the roster id against the
+      // Switch via the RPC - the daemon re-resolves the roster id against the
       // agent's cwd, applies prompt + brain, and broadcasts the new state.
       await client.setAgentPersonality(session.agentId, personality.id);
 

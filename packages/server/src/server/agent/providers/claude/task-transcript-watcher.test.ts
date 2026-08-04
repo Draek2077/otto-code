@@ -123,7 +123,7 @@ describe("TaskTranscriptWatcher", () => {
 
   test("emits the deduped usage split, model, rounds and grand total from disk", () => {
     // Two frames of one message (message_start snapshot then final) plus a
-    // second message — the accumulator must keep the max-output frame per id.
+    // second message - the accumulator must keep the max-output frame per id.
     writeTranscript("agent-1-id", [
       { type: "user", uuid: "u1", message: { role: "user", content: "count the words" } },
       assistantFrame("msg_1", 2),
@@ -191,7 +191,7 @@ describe("TaskTranscriptWatcher", () => {
     expect(postSettle.update.status).toBe("idle");
     expect(postSettle.update.usage?.outputTokens).toBe(45);
 
-    // After the drain window the entry is done — later writes no longer emit.
+    // After the drain window the entry is done - later writes no longer emit.
     vi.advanceTimersByTime(200);
     const countAfterDrain = usageUpdates().length;
     writeTranscript("grow-id", [assistantFrame("msg_4", 5)], true);

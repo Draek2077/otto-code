@@ -16,7 +16,7 @@ export interface OnDiskWorktreeInfo {
 }
 
 export interface BuildReattachCandidatesInput {
-  // Every worktree-kind workspace record for the project — active AND archived.
+  // Every worktree-kind workspace record for the project - active AND archived.
   // Active records are excluded from the results; they are already live. Archived
   // records with a branch become the primary "reopen what I left" targets.
   worktreeWorkspaces: PersistedWorkspaceRecord[];
@@ -39,9 +39,9 @@ function defaultReadBaseBranch(worktreePath: string): string | null {
 /**
  * Compute the set of re-attachable Otto worktrees for a project. Two kinds:
  *
- * 1. Archived worktree workspace records with a kept branch — revived in place,
+ * 1. Archived worktree workspace records with a kept branch - revived in place,
  *    recreating the backing directory from the branch when it is gone.
- * 2. On-disk Otto worktrees that no workspace record references at all (orphans) —
+ * 2. On-disk Otto worktrees that no workspace record references at all (orphans) -
  *    a fresh workspace is bound to the existing directory.
  *
  * A worktree backed by an ACTIVE (non-archived) workspace is never a candidate;

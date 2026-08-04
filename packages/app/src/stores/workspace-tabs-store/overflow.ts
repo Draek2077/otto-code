@@ -8,7 +8,7 @@
 
 /**
  * How many tabs fit in the strip before the rest collapse into the overflow
- * menu — derived from available space and a per-tab minimum width, never a fixed
+ * menu - derived from available space and a per-tab minimum width, never a fixed
  * count. Returns `totalTabs` (no overflow) whenever they all fit at the minimum,
  * otherwise reserves room for the overflow control and refits, always keeping at
  * least one tab visible. When the width isn't measured yet (0) everything stays
@@ -17,7 +17,7 @@
  */
 export function computeVisibleTabCount(input: {
   totalTabs: number;
-  /** Width available for the chips — already net of the toggle, tools strip, and row padding, but NOT the overflow control. */
+  /** Width available for the chips - already net of the toggle, tools strip, and row padding, but NOT the overflow control. */
   availableWidth: number;
   minTabWidth: number;
   overflowControlWidth: number;
@@ -29,7 +29,7 @@ export function computeVisibleTabCount(input: {
   if (minTabWidth <= 0 || availableWidth <= 0) {
     return totalTabs;
   }
-  // Everything fits at the minimum width — no overflow control, no menu.
+  // Everything fits at the minimum width - no overflow control, no menu.
   const fitAll = Math.floor(availableWidth / minTabWidth);
   if (fitAll >= totalTabs) {
     return totalTabs;
@@ -53,7 +53,7 @@ export interface TabOverflowSplit<T> {
  * The visible set is normally the first `cap` tabs. The one exception is the
  * active tab: if it sits past the cap it is pulled into the last visible slot
  * so the focused tab is always shown in the strip (never stranded in the menu).
- * That pull-in is display-only — it does not mutate the persisted order — and it
+ * That pull-in is display-only - it does not mutate the persisted order - and it
  * displaces whatever tab was in the last visible slot into the hidden set,
  * preserving every other tab's relative order.
  */
@@ -75,7 +75,7 @@ export function splitTabsForOverflow<T>(input: {
     return { visible: items.slice(0, cap), hidden: items.slice(cap) };
   }
 
-  // Active tab is past the cap — surface it in the last visible slot and bump
+  // Active tab is past the cap - surface it in the last visible slot and bump
   // the tab that would have occupied that slot into the hidden set. Every tab
   // except the displaced one keeps its position.
   const activeItem = items[activeIndex]!;

@@ -50,7 +50,7 @@ export function ensurePanelsRegistered(): void {
   // wholesale, but nothing can open one: `normalizeWorkspaceTabTarget`
   // (`workspace-tabs/identity.ts`) deliberately returns null for both, which is
   // what keeps the missing panel from ever becoming a dead tab. That null is
-  // load-bearing — if you register a diff panel here, add the matching branches
+  // load-bearing - if you register a diff panel here, add the matching branches
   // there in the same change, and not before.
   panelsRegistered = true;
 }

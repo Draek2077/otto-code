@@ -399,7 +399,7 @@ test("S7: open nested git repo (own .git) creates a SEPARATE workspace at the in
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// S8. Open a child of an archived NON-GIT ancestor: I4 — ancestor doesn't claim
+// S8. Open a child of an archived NON-GIT ancestor: I4 - ancestor doesn't claim
 //     subtree. Fresh workspace at child path. Archived ancestor untouched.
 //     This is the vfonic case from issue #564.
 // ─────────────────────────────────────────────────────────────────────────────

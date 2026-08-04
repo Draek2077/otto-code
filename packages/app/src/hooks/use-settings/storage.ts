@@ -24,7 +24,7 @@ export type SendBehavior = "interrupt" | "queue";
 export type ReleaseChannel = "stable" | "beta";
 export type ServiceUrlBehavior = "ask" | "in-app" | "external";
 // Where app-initiated link opens land: a normal Otto browser tab ("in-app") or
-// the system browser ("external", default — today's behavior). One global
+// the system browser ("external", default - today's behavior). One global
 // setting for every outbound http(s) link (PR links, chat markdown links, docs
 // links). Surfaces without the browser pane (native mobile, plain web, no
 // workspace mounted) always fall back to the system browser. See
@@ -43,16 +43,16 @@ export type TabOrientation = "horizontal" | "vertical";
 export type ColorSchemeMode = "light" | "dark" | "system";
 export type ChatTimestampDisplay = "absolute" | "relative";
 // Device-local display depth chosen in the setup wizard's first step. Presentation
-// only — never synced to the daemon. See projects/first-time-wizard/interface-modes.md.
+// only - never synced to the daemon. See projects/first-time-wizard/interface-modes.md.
 export type InterfaceMode = "user" | "developer";
 // What screen the app opens to. "workspaces" (default) restores the last
 // remembered workspace, matching today's behavior. "home" always opens the
 // project/workspace list. "dashboard" always opens the activity-stats screen.
-// Device-local presentation only — never synced to the daemon.
+// Device-local presentation only - never synced to the daemon.
 export type AppStartScreen = "dashboard" | "home" | "workspaces";
 // The action pre-selected as the primary of a suggested-task card's split button
 // (the caret still offers the rest). Mirrors the daemon's TasksSuggestedStartMode
-// wire enum. Device-local presentation only — never synced to the daemon.
+// wire enum. Device-local presentation only - never synced to the daemon.
 export type SuggestedTasksDefaultMode = TasksSuggestedStartMode;
 
 const LIGHT_THEME_NAMES: readonly LightThemeName[] = [
@@ -98,7 +98,7 @@ export const DEFAULT_TERMINAL_SCROLLBACK_LINES = 10_000;
 export const MIN_TERMINAL_SCROLLBACK_LINES = 0;
 export const MAX_TERMINAL_SCROLLBACK_LINES = 1_000_000;
 // Re-exported from a dependency-free module so a caller that only wants a bound is not forced to
-// load this file's whole import graph — see limits.ts for why that matters outside Metro.
+// load this file's whole import graph - see limits.ts for why that matters outside Metro.
 import {
   DEFAULT_CODE_FONT_SIZE,
   DEFAULT_UI_FONT_SIZE,
@@ -152,11 +152,11 @@ export interface AppSettings {
   promptSuggestionsEnabled: boolean;
   // Show provider-reported plan rate-limit warnings (e.g. Claude claude.ai
   // plan windows) as a strip above the composer. Device-local presentation
-  // only — the daemon keeps emitting events either way. Default on.
+  // only - the daemon keeps emitting events either way. Default on.
   rateLimitWarningsEnabled: boolean;
   // Run the in-app resource monitor: frame timing, retained-state census and
   // daemon-traffic accounting, feeding the Client resources section of the app
-  // diagnostic report. Device-local and entirely internal — nothing leaves the
+  // diagnostic report. Device-local and entirely internal - nothing leaves the
   // machine. Default on while performance work is in flight; off stops the
   // frame loop and the census interval so an untroubled app pays nothing. The
   // timer counters stay patched either way (they are installed before this
@@ -165,7 +165,7 @@ export interface AppSettings {
   resourceMonitorEnabled: boolean;
   // Show the fixed-context warning above the composer when this workspace's
   // context takes a large share of the model's window. Device-local
-  // presentation only — the daemon keeps scanning either way, and the Context
+  // presentation only - the daemon keeps scanning either way, and the Context
   // Management tab stays reachable. Default on.
   contextWarningsEnabled: boolean;
   // Last context window the user evaluated against in the Context tab, so the
@@ -196,7 +196,7 @@ export interface AppSettings {
   // Repeating cue tone while voice mode waits for the agent's reply.
   // Device-local: gates playback on this device only.
   voiceThinkingTone: boolean;
-  // Whether agents speak short personality "voice cues" — a spoken line in the
+  // Whether agents speak short personality "voice cues" - a spoken line in the
   // agent's own personality voice when it starts, first thinks, waits on its
   // sub-agents, and completes. An AGENT notification channel, not a Visualizer
   // feature: playback is app-global and does not care whether any Visualizer
@@ -205,7 +205,7 @@ export interface AppSettings {
   // host advertises the visualizerVoiceCues + ttsPreview capabilities. On by
   // default. See docs/agent-personalities.md "Voice cues".
   agentVoiceCues: boolean;
-  // Loudness of those cues as a 0-100 percent — a SEPARATE audio channel from
+  // Loudness of those cues as a 0-100 percent - a SEPARATE audio channel from
   // the Visualizer's sound effects (visualizerSoundVolume / visualizerSoundMuted),
   // which no longer touch cues at all. Two channels, because they are two
   // unrelated things: one is ambience for a graph you are watching, the other is
@@ -213,7 +213,7 @@ export interface AppSettings {
   // that suits one rarely suits the other. 0 is silence; the toggle above is the
   // real off-switch. Device-local.
   agentVoiceCuesVolume: number;
-  // Quick silence for cues, flipped by the workspace header's speech button —
+  // Quick silence for cues, flipped by the workspace header's speech button -
   // NOT the same thing as `agentVoiceCues` above. Enable is "do I want this
   // feature at all" and lives in settings; mute is "not right now", one click
   // away from wherever you are working, the way the Visualizer's speaker button
@@ -221,17 +221,17 @@ export interface AppSettings {
   // the feature configured and the header button present; disabling removes the
   // button entirely, because there is nothing left to mute. Device-local.
   agentVoiceCuesMuted: boolean;
-  // Loudness of SPOKEN REPLIES as a 0-100 percent — voice mode, auto-speech, and
+  // Loudness of SPOKEN REPLIES as a 0-100 percent - voice mode, auto-speech, and
   // the per-message play button, plus voice mode's thinking tone. The third and
   // last audio channel, alongside the cue volume above and the Visualizer's
   // sound effects, and independent of both: this is the agent talking TO you,
   // and it is the one people reach for when the reply is too loud to keep on in
-  // an open office. 50 like the other two — the three sliders start level, and
+  // an open office. 50 like the other two - the three sliders start level, and
   // the app is deliberately quieter out of the box than the raw synthesis was.
   // 0 is silence. Device-local.
   voicePlaybackVolume: number;
   // Auto-speech: read incoming assistant messages aloud, queued so playback
-  // never talks over itself. Sparse map keyed by `${serverId}:${agentId}` — each
+  // never talks over itself. Sparse map keyed by `${serverId}:${agentId}` - each
   // chat toggles independently from the composer's speaker icon. Device-local for
   // the same reason the cue settings are: it gates what THIS device's speaker
   // does. Off by default (missing key = off). See docs/message-playback.md.
@@ -249,7 +249,7 @@ export interface AppSettings {
   // Width, in px, the user dragged the vertical tab rail's splitter to. One
   // width for EVERY rail on the device, not per-pane: a rail's width is a
   // reading preference (how much of a tab label you want to see), not a
-  // property of the pane it sits in. `null` — the default — means no user width
+  // property of the pane it sits in. `null` - the default - means no user width
   // yet, so the rail keeps sizing itself to its widest current label. A saved
   // number is an outright override of that content-driven width, never a
   // second clamp on top of it: a splitter that sometimes refuses to move is
@@ -262,14 +262,14 @@ export interface AppSettings {
   // pays a remount plus a refetch when it is next opened.
   //
   // A retained tree costs +59 to +118 live `useQuery` observers and +76 to +169
-  // DOM nodes — a range, not a constant, because it depends on what that
+  // DOM nodes - a range, not a constant, because it depends on what that
   // workspace has open. Reason about a cap from the range; a policy derived
   // from one number is derived from one arrangement of tabs.
   //
   // The cost is memory, NOT frame rate. That was measured and it did not hold:
   // 3 resident trees versus 6 is inside run-to-run noise on every frame metric
   // the soak can produce. Do not reintroduce "higher means a worse frame rate"
-  // here — findings/client-performance/2026-07-25-workspace-tree-retention.md
+  // here - findings/client-performance/2026-07-25-workspace-tree-retention.md
   // exists to keep that claim out.
   //
   // The real failure mode is the other direction: set below the number of
@@ -283,11 +283,11 @@ export interface AppSettings {
   // How many tabs a single pane keeps mounted at once. The frontmost tab plus
   // the most recently visited ones stay resident and hidden; past this many the
   // least-recently-used is unmounted and pays a full remount when it is next
-  // opened — the whole transcript's render model, layout, markdown and syntax
+  // opened - the whole transcript's render model, layout, markdown and syntax
   // highlighting in one blocking render, plus a timeline refetch if its stream
   // buffers were released meanwhile.
   //
-  // `null` — the default — means "match this device", which resolves to 6 on a
+  // `null` - the default - means "match this device", which resolves to 6 on a
   // desktop-class machine and 3 on a compact form factor. A number is an
   // explicit user choice and is honoured on every device, clamped only to
   // [MIN_MOUNTED_TAB_LIMIT, MAX_MOUNTED_TAB_LIMIT].
@@ -305,11 +305,11 @@ export interface AppSettings {
   // expandable group; the most recent action of a run stays outside it.
   groupConsecutiveActions: boolean;
   // Slim metrics row at the top of the chat pane: this chat's total spend and
-  // everything spawned under it (see subagents/chat-totals.ts). Off by default —
+  // everything spawned under it (see subagents/chat-totals.ts). Off by default -
   // it earns its height only for people who watch cost. Device-local.
   chatMetricsBar: boolean;
   // Keep the pinned tab-bar and diff-toolbar options hidden until the pointer
-  // is over their toolbar area (web only — hover). When false (default), pinned
+  // is over their toolbar area (web only - hover). When false (default), pinned
   // options are always visible.
   hidePinnedToolbarOptions: boolean;
   // Keep chat message operational details (timestamp, duration, copy/fork/
@@ -339,7 +339,7 @@ export interface AppSettings {
   wrapCodeLines: boolean;
   // Auto-archive completed sub-agents out of a chat's sub-agents track once they
   // settle, instead of leaving them in the collapsed "Completed" group for a
-  // manual "Clear all completed". Purely visual decluttering — the cleared rows'
+  // manual "Clear all completed". Purely visual decluttering - the cleared rows'
   // token totals are rolled into the track header first so no metrics are lost
   // (see subagents/cleared-subagent-tokens-store.ts). Device-local presentation
   // only. Default off. See docs/agent-lifecycle.md (the sub-agents track).
@@ -390,13 +390,13 @@ export interface AppSettings {
   // instead of leaving it up for the user to close. Default off.
   pinnedTaskListAutoDismiss: boolean;
   // "Don't show this again" on the heads-up shown when a user opens a browser
-  // tab while the host's Browser tools master is off — agents can't see or drive
+  // tab while the host's Browser tools master is off - agents can't see or drive
   // that tab. Purely informational, so it is suppressible; the Preview warning
   // deliberately is NOT, because preview without browser tools is broken rather
   // than merely limited. Device-local, defaults to showing the warning.
   suppressBrowserToolsWarning: boolean;
   // Which Visualizer page panels start visible when a Visualizer tab attaches
-  // (seeded via the bridge `config.panels` message — see
+  // (seeded via the bridge `config.panels` message - see
   // packages/app/src/panels/visualizer-panel.tsx and
   // vendor/agent-flow/OTTO-PATCHES.md). Defaults mirror the vendored page's
   // own defaults (web/components/agent-visualizer/index.tsx useState calls).
@@ -405,16 +405,16 @@ export interface AppSettings {
   visualizerPanelFileAttention: boolean;
   visualizerPanelCostOverlay: boolean;
   // Whether the per-node stats readout overlay is drawn on the canvas (sent to
-  // the page as config.panels.stats — see vendor/agent-flow/OTTO-PATCHES.md).
+  // the page as config.panels.stats - see vendor/agent-flow/OTTO-PATCHES.md).
   // Off by default, mirroring the vendored page's showStats default. Toggled
   // from the visualizer toolbar's "Toggle Stats" button. Device-local.
   visualizerPanelStats: boolean;
   // Visualizer canvas render controls (bridge `config.render` + the shell's
-  // devicePixelRatio cap — see docs/visualizer.md "Risks / gotchas"). All
+  // devicePixelRatio cap - see docs/visualizer.md "Risks / gotchas"). All
   // decorative layers default on to match upstream; quality defaults to the
   // fastest tier (a maximized 2x pane measured 14 FPS at native dpr).
   visualizerRenderBloom: boolean;
-  // Per-node glow halo (sent to the page as config.render.nodeGlow — see
+  // Per-node glow halo (sent to the page as config.render.nodeGlow - see
   // vendor/agent-flow/OTTO-PATCHES.md). Distinct from bloom: this is the soft
   // halo hugging each agent node, bloom is the whole-viewport blurred echo.
   // Defaults on to match the page's historical always-on glow. Device-local.
@@ -423,32 +423,32 @@ export interface AppSettings {
   visualizerRenderBackdrop: boolean;
   visualizerRenderQuality: VisualizerRenderQuality;
   // Whether the bottom-right on-screen FPS meter is shown (sent to the page as
-  // config.render.showFps — see vendor/agent-flow/OTTO-PATCHES.md). A perf
+  // config.render.showFps - see vendor/agent-flow/OTTO-PATCHES.md). A perf
   // diagnostic, off by default like the other debug overlays; opt in when
   // investigating render throughput. Device-local.
   visualizerShowFps: boolean;
   // Silhouette drawn for agent nodes on the canvas (sent to the page as
-  // config.render.nodeShape — see vendor/agent-flow/OTTO-PATCHES.md). Defaults
+  // config.render.nodeShape - see vendor/agent-flow/OTTO-PATCHES.md). Defaults
   // to "circle" (the vendored page's own omitted-config fallback remains
   // "hexagon", its historical look). Device-local.
   visualizerNodeShape: VisualizerNodeShape;
   // How the main agent node reports context occupancy (sent to the page as
-  // config.render.contextDisplay — see vendor/agent-flow/OTTO-PATCHES.md). The
+  // config.render.contextDisplay - see vendor/agent-flow/OTTO-PATCHES.md). The
   // page used to draw the ring AND the bar, which is the same number twice, so
   // this picks one: "ring" hugs the node and leaves only the token count where
   // the bar was; "bar" is the segmented bar. Sub-agents have no ring and keep
   // their bar either way. Device-local.
   visualizerContextDisplay: VisualizerContextDisplay;
-  // Visualizer master audio volume as a 0-100 percent — the LEVEL used when the
+  // Visualizer master audio volume as a 0-100 percent - the LEVEL used when the
   // page is unmuted (sent to the page as a 0..1 `config.soundVolume`, gated by
-  // visualizerSoundMuted below — see vendor/agent-flow/OTTO-PATCHES.md). The
+  // visualizerSoundMuted below - see vendor/agent-flow/OTTO-PATCHES.md). The
   // Settings "Sound" slider drives it; the in-page speaker button only toggles
   // mute, so this stays put and unmuting restores exactly this level.
   visualizerSoundVolume: number;
   // Whether the Visualizer's sound effects are muted. Toggled by the in-page
   // speaker button (reported back via the `sound-muted` page->host message) and
   // persisted here so the choice survives closing the tab and restarting the
-  // app — the page's own localStorage is wiped every run on Otto's fresh
+  // app - the page's own localStorage is wiped every run on Otto's fresh
   // webview partition. Defaults unmuted so first-time users hear the feature
   // at the default 50% level; muting is one click away in the page.
   visualizerSoundMuted: boolean;
@@ -457,11 +457,11 @@ export interface AppSettings {
   // Toggled by the native toolbar's HUD-eye and persisted here so it applies to
   // every Visualizer tab at once and survives restarts (the page's own state
   // resets on Otto's fresh webview partition). Sent to the page as
-  // `config.hudHidden` — see vendor/agent-flow/OTTO-PATCHES.md.
+  // `config.hudHidden` - see vendor/agent-flow/OTTO-PATCHES.md.
   visualizerHudHidden: boolean;
   // Picture-in-picture Visualizer: a small always-on-top viewport pinned to the
   // top-right of the workspace content, so the graph stays glanceable while you
-  // work in the chat. Mutually exclusive with the Visualizer TAB by design —
+  // work in the chat. Mutually exclusive with the Visualizer TAB by design -
   // one live guest at a time, so there is only ever one simulation and one star
   // field (see docs/visualizer.md "PIP mode"). Device-local.
   visualizerPipOpen: boolean;
@@ -474,13 +474,13 @@ export interface AppSettings {
   // Where the user dragged it, stored as a 0..1 fraction of the free space
   // (container size minus the PIP's own size) rather than pixels. That is what
   // makes it survive a window resize sensibly: 1 stays pinned to the right/
-  // bottom edge, 0 to the left/top, anything between keeps its proportion — and
+  // bottom edge, 0 to the left/top, anything between keeps its proportion - and
   // it can never end up outside the workspace, whatever size the window becomes.
   // Defaults to the top-right corner.
   visualizerPipX: number;
   visualizerPipY: number;
   // Per-feature enable/disable flags for the gated-feature registry (see
-  // features/feature-catalog.ts). A disabled feature is kept out of memory — its
+  // features/feature-catalog.ts). A disabled feature is kept out of memory - its
   // panel sits behind a React.lazy boundary that never fires while off. Sparse
   // by design: a MISSING key resolves to the feature's own `defaultEnabled` (see
   // resolveFeatureEnabled), so new features default on and existing devices are
@@ -511,7 +511,7 @@ export type VisualizerContextDisplay = "ring" | "bar";
 
 export const VISUALIZER_CONTEXT_DISPLAYS: readonly VisualizerContextDisplay[] = ["ring", "bar"];
 
-/** PIP viewport sizes. Two, per the charter — small is a glance, medium is
+/** PIP viewport sizes. Two, per the charter - small is a glance, medium is
  * watchable without giving up the chat underneath. */
 export type VisualizerPipSize = "small" | "medium";
 
@@ -661,7 +661,7 @@ export async function saveAppSettings(input: {
 }
 
 // Parses a persisted settings blob, returning a plain object or `null` when the
-// stored string is unreadable — corrupt JSON, or a non-object (array/primitive).
+// stored string is unreadable - corrupt JSON, or a non-object (array/primitive).
 // Corruption is a real field condition: an interrupted write during a version
 // upgrade can leave a truncated blob, which is exactly the 0.5.0→0.5.1 profile
 // (a Settings crash that only "clearing data" resolved). Callers treat `null` as
@@ -792,7 +792,7 @@ function migrateTutorialFlag(stored: Record<string, unknown>): Partial<AppSettin
 // upgrader, who must never be dropped into the first-run wizard. Only fires when
 // the field is absent, so it never overrides an explicitly persisted value. The
 // fresh-install seed path keeps the `false` default. `interfaceMode` needs no
-// such migration — its absent → null → "developer" resolution already keeps
+// such migration - its absent → null → "developer" resolution already keeps
 // legacy devices in today's full app (see useInterfaceMode).
 function migrateSetupWizardFlag(stored: Record<string, unknown>): Partial<AppSettings> {
   if (stored.hasCompletedSetupWizard === undefined) {
@@ -884,7 +884,7 @@ function pickFontSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
 }
 
 // Plain boolean fields validate identically, so they're copied in a loop rather
-// than as one `if (typeof … === "boolean")` per field — that repetition was what
+// than as one `if (typeof … === "boolean")` per field - that repetition was what
 // kept pushing this function past the complexity limit as settings were added.
 const WORKSPACE_LAYOUT_BOOLEAN_KEYS = [
   "autoExpandReasoning",
@@ -953,7 +953,7 @@ function pickVoicePlaybackSettings(stored: Partial<AppSettings>): Partial<AppSet
 }
 
 // Per-agent auto-speech enabled flags, keyed by `buildAgentAutoSpeechKey`.
-// Sparse record — a missing key means off, and turning a chat off deletes its
+// Sparse record - a missing key means off, and turning a chat off deletes its
 // key rather than storing `false`. Validates that every stored value is a
 // boolean, dropping anything else.
 function pickAgentAutoSpeechSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
@@ -970,7 +970,7 @@ function pickAgentAutoSpeechSettings(stored: Partial<AppSettings>): Partial<AppS
   // COMPAT(autoSpeech): added in v0.7.1, drop after 2027-01-26. The mode used to
   // be one global boolean; a stored `autoSpeech: true` lands here as a non-object
   // and is discarded rather than migrated, because there is no honest per-chat
-  // answer to "which chats did the global flag mean" — silently arming every
+  // answer to "which chats did the global flag mean" - silently arming every
   // open chat is the worse guess. The user re-toggles the chats they want.
   return {};
 }
@@ -1124,7 +1124,7 @@ function pickTabLayoutSettings(stored: Partial<AppSettings>): Partial<AppSetting
   ) {
     result.defaultTabOrientation = stored.defaultTabOrientation as TabOrientation;
   }
-  // `null` is a real persisted value here ("no user width — size to content"),
+  // `null` is a real persisted value here ("no user width - size to content"),
   // so it has to survive the round trip rather than fall through to the default
   // by absence, which is why this is not just a number check.
   const verticalTabRailWidth = parseVerticalTabRailWidth(stored.verticalTabRailWidth);
@@ -1229,7 +1229,7 @@ function pickVisualizerSettings(stored: Partial<AppSettings>): Partial<AppSettin
 }
 
 // Split out of pickVisualizerSettings purely to keep that function inside the
-// repo's complexity budget — the visualizer picker is one long flat chain of
+// repo's complexity budget - the visualizer picker is one long flat chain of
 // independent field guards, so where it's cut is arbitrary; PIP is the natural
 // seam because it's the newest, self-contained group.
 function pickVisualizerPipSettings(stored: Partial<AppSettings>): Partial<AppSettings> {

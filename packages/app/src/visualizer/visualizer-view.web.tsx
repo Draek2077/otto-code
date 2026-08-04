@@ -28,7 +28,7 @@ const IFRAME_STYLE: CSSProperties = {
 };
 
 /** Web renderer for the Visualizer. A sandboxed iframe with no `allow-same-origin`
- * isolates the bundle from the host app while still letting its scripts run — the
+ * isolates the bundle from the host app while still letting its scripts run - the
  * page needs zero cooperation, it falls back to `window.parent.postMessage`. */
 export const VisualizerView = forwardRef<VisualizerViewHandle, VisualizerViewProps>(
   function VisualizerView(

@@ -1,4 +1,4 @@
-// Otto Tools categorized settings — daemon-wide, per-group gating of the Otto
+// Otto Tools categorized settings - daemon-wide, per-group gating of the Otto
 // tool catalog on the MCP (Claude) path, plus the daemon-wide agent-behavior
 // and metadata-generation toggles. All of these are daemon settings, so they
 // live in Host settings and read/write via useDaemonConfig/patchConfig.
@@ -34,7 +34,7 @@ import {
   type OttoToolGroupMeta,
 } from "./otto-tools-config";
 
-// Non-first rows in a grouped card carry a top divider — the iOS-style split
+// Non-first rows in a grouped card carry a top divider - the iOS-style split
 // line every other settings section uses. The first row in a card omits it.
 const ROW_WITH_BORDER = [settingsStyles.row, settingsStyles.rowBorder];
 
@@ -352,7 +352,7 @@ export function OttoToolsSection({ serverId }: { serverId: string }) {
 // The Browser Tools section: its own grouped card after Otto Tools. The "Browser
 // tools" master (a security opt-in for agent access to Otto browser tabs, and
 // the functional gate over the whole Preview subsystem) sits above its two
-// browser categories — Control and Preview. Rows grey out when the
+// browser categories - Control and Preview. Rows grey out when the
 // master is off.
 export function BrowserToolsSection({ serverId }: { serverId: string }) {
   const isConnected = useHostRuntimeIsConnected(serverId);

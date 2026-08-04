@@ -22,7 +22,7 @@ export interface ActivityCounters {
   // tokens; "Out" = output tokens (same split recordUsageActivity uses for the
   // tokensSent/tokensReceived grand totals). Cost is stored as an INTEGER count
   // of micro-USD (usd * 1e6, rounded) so it stays summable like every other
-  // counter — never a float in the store. Cost is only populated for turns that
+  // counter - never a float in the store. Cost is only populated for turns that
   // report a real provider cost (Claude's totalCostUsd today); token-only
   // categories leave their cost leaf at 0.
   /** Grand real spend across all categories, micro-USD. Claude-backed today. */
@@ -165,7 +165,7 @@ function sanitizePersisted(value: unknown): PersistedShape {
 }
 
 /**
- * Daemon-wide, file-backed "fun stats" counters — messages, tokens, agents
+ * Daemon-wide, file-backed "fun stats" counters - messages, tokens, agents
  * created, runs, subagents, background tasks, thoughts, tool calls, artifacts,
  * schedules. Bucketed by calendar day (not by session/connection) so activity
  * that happens while no client is connected is never lost, and restarts don't
@@ -188,7 +188,7 @@ export class ActivityStatsStore {
 
   /**
    * Register the (single) coalesced change listener. Fires at most once per
-   * CHANGE_NOTIFY_COALESCE_MS after any counter increments — the hook behind
+   * CHANGE_NOTIFY_COALESCE_MS after any counter increments - the hook behind
    * the daemon-wide activity_stats_changed push.
    */
   onDidChange(listener: () => void): void {
@@ -226,7 +226,7 @@ export class ActivityStatsStore {
     }
     // Apply the window at rest as well, so a daemon that boots and never
     // increments still reports a trimmed `daily` map. Only the in-memory view is
-    // corrected here — the next increment persists it. `allTime` is untouched by
+    // corrected here - the next increment persists it. `allTime` is untouched by
     // design: cumulative totals outlive trimmed buckets.
     trimOldDays(this.cache.daily, new Date());
     return this.cache;
@@ -258,7 +258,7 @@ export class ActivityStatsStore {
 
   /**
    * Wipe every counter back to zero (all-time totals and all day buckets) and
-   * persist the empty state — the daemon side of the Metrics "Reset" button.
+   * persist the empty state - the daemon side of the Metrics "Reset" button.
    * Serialized through the same queue as increment() so it can't race a
    * concurrent write, and fires the coalesced change notification so connected
    * clients re-fetch and see the cleared tiles.
@@ -311,7 +311,7 @@ export class ActivityStatsStore {
  * Counting buckets alone was not retention: a daemon idle for months kept its
  * last 35 **non-empty** day keys even if every one of them was a year old.
  * `getRollups()` never reads them (it only walks back DAILY_RETENTION_DAYS from
- * today), so they were inert — but "retained forever because nothing happened"
+ * today), so they were inert - but "retained forever because nothing happened"
  * is the opposite of a window. The count pass stays as the backstop for keys the
  * age pass cannot judge, i.e. future-dated buckets from clock skew.
  *

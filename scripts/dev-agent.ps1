@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 # The AGENT lane: a daemon + web front end an AI agent can start, drive and
 # screenshot on its own, without disturbing anything the human has running.
 #
-# It is a fourth fixed lane alongside the installed app (6868) and dev (6788) —
+# It is a fourth fixed lane alongside the installed app (6868) and dev (6788) -
 # see docs/development.md → "Four lanes". Everything it owns is its own: port,
 # OTTO_HOME, Metro port. Start it while Otto Release and Otto Dev are both up and
 # nothing collides; that is the entire point of this script existing.

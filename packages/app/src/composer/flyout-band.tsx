@@ -38,6 +38,12 @@ export interface FlyoutBandProps {
   message: string;
   /** Leading status icon, tinted to the tone. */
   icon: FlyoutIcon;
+  /**
+   * This band's slot in COMPOSER_TRACK_LAYERS, forwarded to
+   * ComposerTrackSeamShadow so its gradient id stays unique among whichever
+   * other composer tracks are mounted alongside it.
+   */
+  layer: number;
   /** Omit to render a band with no dismiss affordance. */
   onDismiss?: () => void;
   dismissLabel?: string;
@@ -50,6 +56,7 @@ export function FlyoutBand({
   tone,
   message,
   icon,
+  layer,
   onDismiss,
   dismissLabel,
   testID,
@@ -78,7 +85,7 @@ export function FlyoutBand({
             />
           ) : null}
         </View>
-        <ComposerTrackSeamShadow />
+        <ComposerTrackSeamShadow layer={layer} />
       </ChatWidthBounds>
     </View>
   );

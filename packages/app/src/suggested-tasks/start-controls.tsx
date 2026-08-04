@@ -39,7 +39,7 @@ const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.destruc
 
 // Per-mode display copy + a stable leading icon (react-perf forbids inline JSX
 // as a prop, so each icon element is built once at module scope). Descriptions
-// mirror the daemon's four start modes — only `subagent` links to this chat.
+// mirror the daemon's four start modes - only `subagent` links to this chat.
 interface ModeMeta {
   primaryLabel: string;
   menuLabel: string;

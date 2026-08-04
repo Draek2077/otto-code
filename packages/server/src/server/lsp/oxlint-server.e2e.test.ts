@@ -10,7 +10,7 @@ import { LspService, type DiagnosticsSnapshot } from "./service.js";
  *
  * This is the end-to-end proof for Phase 5b: an unsolicited `publishDiagnostics` from a
  * foreign process, parsed, converted, stored, and delivered to the listener the daemon
- * broadcasts from. A stub server could not prove it — the whole risk in a push channel is
+ * broadcasts from. A stub server could not prove it - the whole risk in a push channel is
  * whether a real server volunteers anything at all, and under what conditions.
  *
  * oxlint is also the row that makes the multi-server binding real rather than test-only: it
@@ -33,7 +33,7 @@ afterEach(async () => {
 });
 
 /**
- * The repo itself, because `oxlint`'s only discovery rung is `workspaceBin` — deliberately,
+ * The repo itself, because `oxlint`'s only discovery rung is `workspaceBin` - deliberately,
  * so a project that never adopted oxlint is never linted by it. A temp directory therefore
  * cannot supply the server, which is the rule working, not a limitation of the test.
  */

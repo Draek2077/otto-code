@@ -22,7 +22,7 @@ export interface AgentAutoTitleRequest {
   firstAgentContext: FirstAgentContext;
   /**
    * The deterministic first-line title the chat was created with. The AI title
-   * only replaces this exact value — a user rename or an explicit caller-set
+   * only replaces this exact value - a user rename or an explicit caller-set
    * title (which never equals the provisional) is left untouched.
    */
   provisionalTitle: string | null;
@@ -42,7 +42,7 @@ interface AgentAutoTitleOptions {
 /**
  * Writes a short, human-friendly chat title from the first message of a new
  * chat, replacing the provisional first-line-of-prompt title. Runs off the
- * create hot path (scheduled on the next tick) and is best-effort — a failed or
+ * create hot path (scheduled on the next tick) and is best-effort - a failed or
  * empty generation just leaves the provisional title in place.
  *
  * Mirrors {@link WorkspaceAutoName} for agents: workspaces get an AI title from

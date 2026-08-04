@@ -329,7 +329,7 @@ export function InlineReviewGutterCell({
     [lineHeightStyle],
   );
   // Clamp to the row's own height so the button never overflows into a
-  // neighboring row — react-native-web gives every row its own stacking
+  // neighboring row - react-native-web gives every row its own stacking
   // context, so an overflowing button can end up painted over by whichever
   // adjacent row happens to come later in paint order.
   const actionIconSize =

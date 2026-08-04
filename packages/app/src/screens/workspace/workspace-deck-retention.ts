@@ -4,7 +4,7 @@ interface PruneMountedWorkspaceSelectionsInput {
   currentSelections: ActiveWorkspaceSelection[];
   activeSelection: ActiveWorkspaceSelection | null;
   /**
-   * How many workspace trees stay mounted — the user's `mountedWorkspaceLimit`.
+   * How many workspace trees stay mounted - the user's `mountedWorkspaceLimit`.
    * Required, and this module deliberately holds no default of its own: the
    * limit is a user setting now, and a fallback constant here would be a second
    * cap that can silently disagree with the one in Settings. Keeping the module

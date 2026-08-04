@@ -1,8 +1,8 @@
-# Solution view — the unbuilt phases
+# Solution view - the unbuilt phases
 
-**Phases 0 and 1 shipped 2026-07-25.** Everything durable about them — the architecture, the
+**Phases 0 and 1 shipped 2026-07-25.** Everything durable about them - the architecture, the
 libraries and why the alternatives were rejected, the "disabled does no work" contract, the
-out-of-workspace policy, the cross-platform constraints — now lives in
+out-of-workspace policy, the cross-platform constraints - now lives in
 [docs/solution-view.md](../../docs/solution-view.md). Status lives in
 [projects/README.md](../README.md). This file is what remains: the plan for Phases 2 to 4.
 
@@ -14,7 +14,7 @@ domain knowledge; the daemon owns discovery, caching, the process lifecycle and 
 `SolutionProvider` seam; the client renders it inside the Files tab behind a switcher that appears
 only when a solution exists. Read-only, and the sidecar has no mutation verb at all.
 
-## Phase 2 — general file mutations (a prerequisite, and not .NET work)
+## Phase 2 - general file mutations (a prerequisite, and not .NET work)
 
 **Otto has no file create, delete, rename or move RPC.** The entire mutation surface today is
 `file.write` (conditional; `allowCreate` only for the deleted-file re-create flow), `file.replace`
@@ -24,7 +24,7 @@ a time.
 So "manage files within projects" has a prerequisite strictly larger than the Solution view itself.
 That work benefits the Files lens identically and **must not be smuggled in as a .NET feature**.
 
-For SDK-style projects this alone delivers add/remove correctly, because **membership is implicit** —
+For SDK-style projects this alone delivers add/remove correctly, because **membership is implicit** -
 creating a `.cs` file _is_ adding it to the project, with no `.csproj` edit at all. Explicit-item
 projects are the minority that needs real editing, and they are already detectable: the daemon
 reports each item's origin as `SolutionProjectNode.isImplicit`, collected during evaluation precisely
@@ -34,20 +34,20 @@ Open before starting: the shape of a create/rename/move RPC family that is hones
 partial failure the way `code.rename.apply` is, and whether a move inside a project needs to be one
 transaction with the `.csproj` edit for the explicit-item case.
 
-## Phase 3 — solution and project mutations
+## Phase 3 - solution and project mutations
 
-Add and remove a project to/from a solution, and manage solution folders — **via
+Add and remove a project to/from a solution, and manage solution folders - **via
 SolutionPersistence's writer**, which round-trips both formats and preserves formatting. New project
 from a template (`dotnet new`), references and packages (`dotnet add reference|package`).
 `.sln`/`.slnx` are never written by hand.
 
 The sidecar deliberately has no mutation method today; Phase 3 is where `solution.mutate` is added,
-and the read-only property it currently enjoys — a view that structurally cannot corrupt a solution —
+and the read-only property it currently enjoys - a view that structurally cannot corrupt a solution -
 is what it trades away. Worth an explicit undo story before the first writer lands.
 
 Depends on Phase 2 for the file half.
 
-## Phase 4 — pin the C# language server to the selected solution
+## Phase 4 - pin the C# language server to the selected solution
 
 `csharp-ls` accepts `--solution`. Today `rootPath` is just the workspace `cwd`, so in a repo with two
 solutions the server picks one on its own and we cannot tell which. The user's selection is already

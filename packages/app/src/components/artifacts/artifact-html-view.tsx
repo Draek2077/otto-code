@@ -7,7 +7,7 @@ export interface ArtifactHtmlViewProps {
 }
 
 // react-native-webview always allows "about:blank" (the origin of the initial
-// source={{ html }} document) regardless of this list — it's only consulted
+// source={{ html }} document) regardless of this list - it's only consulted
 // for subsequent navigation attempts. An empty whitelist means the artifact
 // can render itself but can't navigate the WebView to an external URL (e.g.
 // via a clicked `<a>` or `location.href`).

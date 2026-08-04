@@ -185,7 +185,7 @@ describe("OpenCode auto_accept feature", () => {
     const client = new OpenCodeAgentClient(createTestLogger());
 
     // Unattendedness is carried by auto_accept, not by a specific agent. The
-    // mode stays unset so OpenCode picks its own default agent — `build` may
+    // mode stays unset so OpenCode picks its own default agent - `build` may
     // not exist in the user's OpenCode config.
     expect(
       client.resolveCreateConfig({

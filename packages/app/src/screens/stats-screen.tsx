@@ -104,7 +104,7 @@ const TAB_OPTIONS: SegmentedControlOption<MetricsTab>[] = [
   { value: "log", label: "Log" },
 ];
 
-// LEFT column — non-token activity counters. tokensSent/tokensReceived moved to
+// LEFT column - non-token activity counters. tokensSent/tokensReceived moved to
 // the right (Usage & Cost) column; artifactsCreated + schedulesExecuted get their
 // own bottom row (see buildLeftColumn).
 const LEFT_MAIN_TILES: { field: keyof ActivityCounters; label: string; Icon: typeof ThemedSend }[] =
@@ -137,7 +137,7 @@ function countTile(
   return { key: field, label, Icon, value: counters[field], format: "count" };
 }
 
-// RIGHT column top row — the two headline totals, kept alone (2-up) so they read
+// RIGHT column top row - the two headline totals, kept alone (2-up) so they read
 // big: everything in, everything out.
 function buildTotalsTiles(counters: ActivityCounters): TileDef[] {
   return [
@@ -158,7 +158,7 @@ function buildTotalsTiles(counters: ActivityCounters): TileDef[] {
   ];
 }
 
-// The money spent — shown ONLY when a provider actually billed for it
+// The money spent - shown ONLY when a provider actually billed for it
 // (`costMicroUsd > 0`), never as a misleading "$0" for token-only providers
 // (LM Studio, etc.). Rendered as a single full-width tile so money reads as the
 // headline it is, separate from the token totals above and the token breakdown
@@ -175,13 +175,13 @@ function buildCostTiles(counters: ActivityCounters): TileDef[] {
   ];
 }
 
-// RIGHT column breakdown — ONE partition of the total tokens, by *why they were
+// RIGHT column breakdown - ONE partition of the total tokens, by *why they were
 // spent*, so a user staring at "30M tokens" can see where it came from. These
 // four buckets are disjoint and sum to the grand total (compaction is backed out
 // of the turn buckets at the increment site, generations ride their own path):
 //   your chats + sub-agent chats they spawned + background auto-text + context
 //   compaction = everything.
-// Deliberately NOT a provider split — "Claude vs other" re-slices the same tokens
+// Deliberately NOT a provider split - "Claude vs other" re-slices the same tokens
 // a second way and reads as $0/"other" noise for anyone not on Claude. Token-
 // denominated because tokens are the one unit every provider reports honestly.
 // Only rendered when the daemon populates these (gated).
@@ -272,7 +272,7 @@ function StatsScreenContent(): ReactElement {
       }
       // Dedup by value: the reporter re-fires with a fresh object each render
       // (totals are recomputed from a per-render `now`), so bail out when nothing
-      // actually changed — otherwise this would re-render in a loop.
+      // actually changed - otherwise this would re-render in a loop.
       const existing = prev[serverId];
       if (
         existing &&
@@ -339,7 +339,7 @@ function StatsScreenContent(): ReactElement {
               screen: the daemon counters above say what Otto did, this says
               what it is currently costing the machine it is running on. It sits
               below the Log tab's range totals because those belong to the
-              ledger they total — the machine readout belongs to the window. */}
+              ledger they total - the machine readout belongs to the window. */}
           <ClientResourceBar />
         </View>
       )}
@@ -347,7 +347,7 @@ function StatsScreenContent(): ReactElement {
   );
 }
 
-// Responsive grid for the "boring" stat tiles — fits up to 3 per row, dropping to
+// Responsive grid for the "boring" stat tiles - fits up to 3 per row, dropping to
 // 2 when the (half-screen) column is narrow. Tiles stay small so the special rows
 // (artifacts/schedules on the left, tokens in/out on the right) that keep just 2
 // tiles read as bigger and draw the eye. An incomplete last row is CENTERED, not
@@ -415,7 +415,7 @@ function HostStatsSection({
   const sectionStyle = useMemo(() => [styles.section, divided && styles.sectionDivided], [divided]);
 
   // The themed auto-hiding overlay scrollbar replaces the web platform
-  // scrollbar at every width — a narrow (compact) window gets the same modern
+  // scrollbar at every width - a narrow (compact) window gets the same modern
   // overlay, not a chunky always-on gutter. Native keeps its own indicator,
   // which already auto-hides.
   const scrollRef = useRef<ScrollView>(null);
@@ -481,11 +481,11 @@ function HostStatsSection({
           the ledger scroll. Tabs + range filter are centered across the full
           width. Reset is
           popped out of the flow (absolutely pinned right) so it doesn't skew
-          that centering. The range selector is shared by both tabs — it buckets
+          that centering. The range selector is shared by both tabs - it buckets
           the Summary rollups and filters the Log's rows to the same window.
           On compact there isn't room for that: the controls stack onto their own
           full-width lines (segments wrapping inside each), and Reset moves out of
-          this row entirely to the bottom of the section (see below) — a rarely
+          this row entirely to the bottom of the section (see below) - a rarely
           used destructive action shouldn't crowd the controls on a phone. */}
       <View style={styles.toolbar}>
         <View style={isCompact ? styles.controlsRowStacked : styles.controlsRow}>
@@ -526,7 +526,7 @@ function HostStatsSection({
           showsVerticalScrollIndicator={!isWeb}
         >
           {logSupported && tab === "log" ? (
-            // The ledger reads like chat content — one long column of rows — so
+            // The ledger reads like chat content - one long column of rows - so
             // it honours the same Appearance → Chat width setting: capped at the
             // default/wide width and centered, or edge-to-edge on "full". The
             // Summary tab stays unbounded; its two tile columns are a grid that
@@ -558,7 +558,7 @@ function StatColumn({
 }): ReactElement {
   // Side by side, each column takes an equal share of the WIDTH (flex: 1 in a
   // row). Stacked, that same flex: 1 would instead divide the available HEIGHT
-  // between the two columns — squashing each to half and letting its tiles spill
+  // between the two columns - squashing each to half and letting its tiles spill
   // over the divider and the next column's header. Stacked columns size to their
   // content instead.
   const isCompact = useIsCompactFormFactor();
@@ -590,7 +590,7 @@ function TileGrid({ tiles, window }: { tiles: TileDef[]; window: RollupWindow })
       {rows.map((row) => {
         const empty = columns - row.length;
         // empty is 1 or 2 (max 3 cols): a single empty cell splits into two
-        // half-spacers, two empties into two full ones — always symmetric.
+        // half-spacers, two empties into two full ones - always symmetric.
         const edgeStyle = empty === 1 ? styles.gridSpacerHalf : styles.gridSpacer;
         return (
           <View key={row[0]!.key} style={styles.gridRow}>
@@ -650,7 +650,7 @@ function StatTile({
 
   // Brief highlight when the *displayed* value changes (raw-count changes that
   // round to the same formatted string would flash invisibly). First render
-  // never flashes — only live updates after mount do.
+  // never flashes - only live updates after mount do.
   useEffect(() => {
     if (previousDisplay.current !== null && previousDisplay.current !== display) {
       flash.value = withSequence(
@@ -705,7 +705,7 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minHeight: 0,
   },
-  // Fixed range-totals bar under the scroll region — stays put while the log
+  // Fixed range-totals bar under the scroll region - stays put while the log
   // scrolls (the Log tab's totals, not a row at the list's end). Horizontal
   // padding mirrors scrollContent so it lines up with the rows above.
   pinnedTotals: {
@@ -736,7 +736,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[6],
   },
   // A host panel: pinned toolbar + its own scroll region, claiming a flex share
-  // of the screen. No gap — the toolbar's bottom rule is the seam.
+  // of the screen. No gap - the toolbar's bottom rule is the seam.
   section: {
     flex: 1,
     minHeight: 0,
@@ -796,14 +796,14 @@ const styles = StyleSheet.create((theme) => ({
   },
   // Reset opts out of the 1.5x compact touch-target inflation Button applies to
   // `sm`. A 48px pill plus its footer padding made this rarely-used destructive
-  // action the tallest band on a phone — taller than the pinned totals it sits
+  // action the tallest band on a phone - taller than the pinned totals it sits
   // beside. Back to the base 32px control height so the footer stays slimmer
   // than the totals bar.
   resetBottomButton: {
     minHeight: COMPACT_CONTROL_HEIGHT,
   },
   // Reset lifted out of the flow so it doesn't count toward centering the tabs
-  // and filter — pinned to the top-right of the controls row.
+  // and filter - pinned to the top-right of the controls row.
   resetPinned: {
     position: "absolute",
     right: 0,
@@ -846,7 +846,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 12,
     textAlign: "center",
   },
-  // The seam between the two sides — vertical when side-by-side, a horizontal
+  // The seam between the two sides - vertical when side-by-side, a horizontal
   // rule when the columns stack on compact.
   dividerVertical: {
     width: 1,
@@ -883,7 +883,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
   },
-  // Accent overlay animated via opacity only — absolutely positioned, so the
+  // Accent overlay animated via opacity only - absolutely positioned, so the
   // update flash never shifts layout.
   tileFlash: {
     position: "absolute",

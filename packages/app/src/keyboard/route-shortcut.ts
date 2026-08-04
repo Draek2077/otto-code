@@ -176,7 +176,7 @@ function routeSettingsToggle(ctx: ShortcutRoutingContext): ShortcutAction {
  * so that being focus-scoped they outrank the general binding on the same combo
  * while the editor has focus. The keystroke itself is executed by CodeMirror,
  * whose keymap is built out of those same bindings (editor/editor-key-bindings.ts)
- * — matching here and returning `none` is precisely what makes the shadowed
+ * - matching here and returning `none` is precisely what makes the shadowed
  * general action stand down while leaving the event to reach the editor: the
  * caller only calls `preventDefault` on an action it actually performed.
  */

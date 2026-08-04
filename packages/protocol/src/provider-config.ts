@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { AgentProvider } from "./agent-types.js";
-import { AgentProviderSchema } from "./provider-manifest.js";
+import { AgentProviderSchema, OTTO_BRAIN_PROVIDER_ID } from "./provider-manifest.js";
 
 const ProviderCommandDefaultSchema = z.object({
   mode: z.literal("default"),
@@ -47,7 +47,7 @@ export const ProviderProfileModelSchema = z.object({
  * Coarse categories for Otto's agent-facing tool catalog. Providers that receive
  * Otto tools natively (see the openai-compat provider) can be scoped to a subset
  * of these groups; omitting the selection means all groups. Kept deliberately
- * coarse — users pick groups, not individual tools.
+ * coarse - users pick groups, not individual tools.
  */
 export const OTTO_TOOL_GROUPS = [
   "preview",
@@ -105,7 +105,7 @@ const McpSseServerConfigSchema = z.object({
 /**
  * Canonical MCP server config. Shared by AgentSessionConfig (per-agent servers
  * sent at create time) and ProviderOverride (provider-level servers in the
- * daemon config). stdio entries execute arbitrary commands as the daemon user —
+ * daemon config). stdio entries execute arbitrary commands as the daemon user -
  * both sources sit behind existing trust boundaries (daemon-side config file,
  * authenticated agent-create RPC).
  */
@@ -114,6 +114,53 @@ export const McpServerConfigSchema = z.discriminatedUnion("type", [
   McpHttpServerConfigSchema,
   McpSseServerConfigSchema,
 ]);
+
+/**
+ * OAuth tokens held for a connector whose MCP server authenticates over OAuth
+ * 2.1 (the "log in, don't paste a token" path). Mirrors the SDK's OAuthTokens
+ * shape. Secret-bearing, so it is host-owned like every other credential in
+ * daemon config and is redacted before the config is sent to a client.
+ *
+ * `expiresAt` is absolute epoch MILLISECONDS, not the `expires_in` duration the
+ * token endpoint returns: a duration is only meaningful next to the instant it
+ * was issued, and that instant is not on the wire.
+ */
+export const ConnectorOAuthTokensSchema = z.object({
+  accessToken: z.string().min(1),
+  tokenType: z.string().optional(),
+  refreshToken: z.string().optional(),
+  scope: z.string().optional(),
+  expiresAt: z.number().optional(),
+});
+
+/**
+ * The OAuth client identity this daemon registered with a connector's
+ * authorization server, kept so a second login reuses the registration instead
+ * of re-running dynamic client registration. Keyed alongside the redirect URI it
+ * was registered against: if the loopback port moves, the registration is stale
+ * and must be redone.
+ */
+export const ConnectorOAuthClientSchema = z.object({
+  clientId: z.string().min(1),
+  clientSecret: z.string().optional(),
+  redirectUri: z.string().min(1),
+});
+
+/**
+ * Everything the daemon persists about a connector's authorization. Absent means
+ * the connector either needs no credential or carries a static token in its
+ * transport (env var for stdio, Authorization header for http/sse) - this block
+ * is only for the interactive OAuth path.
+ */
+export const ConnectorAuthStateSchema = z.object({
+  kind: z.literal("oauth"),
+  tokens: ConnectorOAuthTokensSchema.optional(),
+  client: ConnectorOAuthClientSchema.optional(),
+  /** Account label shown in the UI once connected (email / workspace name). */
+  account: z.string().optional(),
+  /** Epoch ms of the last successful authorization; drives "Connected on ...". */
+  authorizedAt: z.number().optional(),
+});
 
 /**
  * Per-workspace state for a connector, keyed by workspace cwd in
@@ -146,6 +193,11 @@ export const ConnectorConfigSchema = z.object({
   enabled: z.boolean().optional(),
   /** Tool names (unqualified, as the server reports them) withheld from the model. */
   disabledTools: z.array(z.string()).optional(),
+  /**
+   * OAuth authorization state, when this connector logs in rather than taking a
+   * pasted token. Optional so every existing connector parses unchanged.
+   */
+  auth: ConnectorAuthStateSchema.optional(),
   /** Per-workspace activation keyed by workspace cwd. Phase 2; inert today. */
   workspaces: z.record(z.string(), ConnectorWorkspaceStateSchema).optional(),
   /** Display ordering in the UI; lower sorts first. */
@@ -179,7 +231,7 @@ export const COMPACTION_THRESHOLD_PERCENTS = [50, 60, 70, 80, 90] as const;
 /**
  * Max model→tool→model rounds per turn for providers whose tool loop the
  * daemon owns (openai-compat). The turn stops with an error after this many
- * rounds without a final answer — a runaway-loop safety valve, most often hit
+ * rounds without a final answer - a runaway-loop safety valve, most often hit
  * by smaller local models that keep calling tools instead of converging.
  * Bounds keep the setting a sane guard rail rather than an off switch.
  */
@@ -253,10 +305,13 @@ const PROVIDER_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
 export const ProviderOverridesSchema = z
   .record(z.string(), ProviderOverrideSchema)
   .superRefine((providers, ctx) => {
-    const builtinProviderIdSet = new Set<string>(BUILTIN_PROVIDER_IDS);
+    // otto-brain is builtin (endpoint comes from brain settings, not
+    // extends/label) but not a valid `extends` target for a custom provider,
+    // so it's added only here rather than to BUILTIN_PROVIDER_IDS itself.
+    const builtinProviderIdSet = new Set<string>([...BUILTIN_PROVIDER_IDS, OTTO_BRAIN_PROVIDER_ID]);
     // "acp" spawns a generic ACP agent process; "openai-compatible" is served
     // natively by the daemon against an OpenAI-compatible HTTP endpoint
-    // (LM Studio, Ollama, vLLM, ...) — no external binary involved.
+    // (LM Studio, Ollama, vLLM, ...) - no external binary involved.
     const validExtendsValues = new Set<string>([
       ...BUILTIN_PROVIDER_IDS,
       "acp",
@@ -323,6 +378,9 @@ export const AgentProviderRuntimeSettingsMapSchema = z
   });
 
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
+export type ConnectorOAuthTokens = z.infer<typeof ConnectorOAuthTokensSchema>;
+export type ConnectorOAuthClient = z.infer<typeof ConnectorOAuthClientSchema>;
+export type ConnectorAuthState = z.infer<typeof ConnectorAuthStateSchema>;
 export type ConnectorWorkspaceState = z.infer<typeof ConnectorWorkspaceStateSchema>;
 export type ConnectorConfig = z.infer<typeof ConnectorConfigSchema>;
 export type ConnectorsConfig = z.infer<typeof ConnectorsConfigSchema>;

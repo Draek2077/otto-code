@@ -47,7 +47,7 @@ export const WRITE_TOOL_NAMES = [
  * Bash is here rather than in the write list on purpose: at `read` a node may
  * legitimately need to run a check (a test, a linter, a git query), and denying
  * the shell would make "read" useless for the reviewer nodes it exists for. The
- * trade is explicit — `read` bounds *tools*, and a shell can still write.
+ * trade is explicit - `read` bounds *tools*, and a shell can still write.
  * A node that must not touch the workspace at all is `none`.
  */
 export const READ_TOOL_NAMES = [
@@ -99,7 +99,7 @@ export const OTTO_EXECUTE_TOOL_NAMES = [
  * This is the statically-known membership of the groups
  * `isOttoToolAllowedForAccess` denies at `none`. It exists for providers that
  * impose the ceiling by denying names (Claude's disallowedTools); the
- * predicate — not this list — is what the catalog enforces with, so a future
+ * predicate - not this list - is what the catalog enforces with, so a future
  * tool in one of those groups is denied before anyone lists it here.
  */
 export const OTTO_NONE_DENIED_TOOL_NAMES = [
@@ -123,7 +123,7 @@ export const OTTO_NONE_DENIED_TOOL_NAMES = [
  * Tool groups that operate on the workspace. At `none` a tool in one of these
  * groups is denied unless it appears in OTTO_NONE_ALLOWED_TOOL_NAMES: deny by
  * default, so a NEW catalog tool in a workspace-shaped group starts denied and
- * must be allowed explicitly — the same instinct as ottoToolPermissionKind
+ * must be allowed explicitly - the same instinct as ottoToolPermissionKind
  * defaulting unknown names to "execute".
  */
 const OTTO_NONE_DENIED_GROUPS: ReadonlySet<OttoToolGroup> = new Set([
@@ -155,7 +155,7 @@ const OTTO_NONE_ALLOWED_TOOL_SET: ReadonlySet<string> = new Set(OTTO_NONE_ALLOWE
  * `otto.x`). This predicate bounds the workspace axis only: agent lifecycle,
  * scheduling, widgets and web tools (and any non-Otto MCP tool, which falls
  * through to the "agents" catch-all group) are separate axes and stay
- * untouched — an orchestrating node declared `none` still coordinates.
+ * untouched - an orchestrating node declared `none` still coordinates.
  */
 export function isOttoToolAllowedForAccess(name: string, access: WorkspaceAccess): boolean {
   if (access === "write") {
@@ -175,7 +175,7 @@ export function isOttoToolAllowedForAccess(name: string, access: WorkspaceAccess
 }
 
 /**
- * The statically-known Otto catalog names this level must deny — the catalog
+ * The statically-known Otto catalog names this level must deny - the catalog
  * counterpart of deniedToolsForAccess, for providers that impose the ceiling
  * by denying names. The registration-time gate in otto-tools.ts (built on
  * isOttoToolAllowedForAccess) is the primary enforcement; this list is the
@@ -199,7 +199,7 @@ export function ottoToolsDeniedForAccess(access: WorkspaceAccess): string[] {
  * capabilities omit `supportsWorkspaceAccessNone` and the spawn gate
  * (capabilitiesEnforceAccess) refuses `none` nodes on Codex seats. The
  * read-only returned for `none` here is defense in depth for a config that
- * arrives by another path — the floor, not the level.
+ * arrives by another path - the floor, not the level.
  */
 export function codexSandboxModeForAccess(access: WorkspaceAccess): string | null {
   switch (access) {

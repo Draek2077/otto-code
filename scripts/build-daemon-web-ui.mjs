@@ -38,7 +38,7 @@ function run(command, args, options) {
 async function exportBrowserWebApp() {
   console.log("Exporting browser web app...");
   // Invoke npm via its own JS entry point (npm sets npm_execpath for any script
-  // it runs) instead of the "npm"/"npm.cmd" binary name — spawn with
+  // it runs) instead of the "npm"/"npm.cmd" binary name - spawn with
   // shell: false cannot resolve npm.cmd on Windows.
   const npmExecPath = process.env.npm_execpath;
   const [command, prefixArgs] =

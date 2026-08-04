@@ -10,14 +10,14 @@ import {
  * Where the Changes view's base branch is remembered, keyed by branch.
  *
  * This deliberately does **not** live in `worktree.json`. That file is an Otto worktree's
- * identity record — it requires a `baseRefName` and is written at worktree creation — and a
+ * identity record - it requires a `baseRefName` and is written at worktree creation - and a
  * plain checkout has no such record to extend. More importantly a plain checkout's gitdir is
  * shared by *every* branch you check out, so a single scalar base would bleed one branch's
  * comparison onto the next branch you switch to. Keying by branch name is what makes the base
  * picker work outside an Otto worktree at all.
  *
  * Both files sit under `<gitdir>/otto/`, so this reuses the same gitdir resolution and lands
- * per-worktree for linked worktrees and per-repo for a plain checkout — which is exactly the
+ * per-worktree for linked worktrees and per-repo for a plain checkout - which is exactly the
  * scoping each one wants.
  */
 const DiffBaseEntrySchema = z.object({
@@ -48,7 +48,7 @@ function getDiffBaseStorePath(worktreeRoot: string): string {
  * A malformed store degrades to "nothing remembered" rather than throwing.
  *
  * This is read on the path that renders the Changes view for every workspace. A corrupt
- * preference file is not a reason to fail the whole view — the base falls back through the
+ * preference file is not a reason to fail the whole view - the base falls back through the
  * resolution ladder and the next explicit pick rewrites the file.
  */
 function readDiffBaseStore(worktreeRoot: string): z.infer<typeof DiffBaseStoreSchema> | null {

@@ -10,7 +10,7 @@ const DEFAULT_BUFFER_SIZE_SECONDS = 60;
 const DEFAULT_SILERO_THRESHOLD = 0.5;
 const DEFAULT_WINDOW_SIZE = 512;
 
-// Silero internal durations — kept low so isDetected() tracks actual sound.
+// Silero internal durations - kept low so isDetected() tracks actual sound.
 // Our own state machine handles speech confirmation and end-of-speech detection.
 const SILERO_MIN_SILENCE_DURATION = 0.2;
 const SILERO_MIN_SPEECH_DURATION = 0.1;

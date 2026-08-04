@@ -7,7 +7,7 @@ import { writeJsonFileAtomic } from "../atomic-file.js";
 
 // File-backed persistence for prompt templates (projects/orchestration-graphs,
 // Stage 5). One JSON file per template under `$OTTO_HOME/prompt-templates/`,
-// mirroring GraphStore exactly — atomic writes, per-id serialized mutation, no
+// mirroring GraphStore exactly - atomic writes, per-id serialized mutation, no
 // migrations. Host-level for the same reason graphs are: a prompt worth reusing
 // is worth reusing across every workspace on the machine.
 export type PromptTemplatesChangeListener = (templates: PromptTemplate[]) => void;

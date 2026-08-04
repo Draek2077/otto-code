@@ -1,7 +1,7 @@
 /**
  * Per-model hosting profiles and the measured-calibration lookup, ported from the
  * original profiles.js. Only settings with a demonstrated effect on stability or
- * throughput are stored — notably `reasoningBudget`, which defaults to -1
+ * throughput are stored - notably `reasoningBudget`, which defaults to -1
  * (unrestricted) in llama-server and in that state makes thinking models spend an
  * entire token allowance reasoning and return no content at all.
  */
@@ -74,7 +74,7 @@ export function hasStaleCalibration(store: ProfilesStore, model: Model, profile:
  * file: two models sharing an architecture and head dimensions cost the same per
  * layer regardless of quantisation or fine-tuning. Storing the measurement *per
  * layer* and keying it without the layer count lets one calibration serve a whole
- * family — which matters on a library holding a dozen variants of one base, and is
+ * family - which matters on a library holding a dozen variants of one base, and is
  * necessary because MTP builds carry an extra multi-token-prediction layer (65
  * blocks where the base has 64) and would otherwise never match.
  */

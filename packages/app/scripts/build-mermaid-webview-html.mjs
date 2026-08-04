@@ -6,8 +6,8 @@ import { fileURLToPath } from "node:url";
 // Bundles the mermaid webview payload the same way the editor and terminal
 // payloads are built (build-editor-webview-html.mjs is the reference).
 //
-// This is the largest of the three by a wide margin — mermaid is ~3.4 MB
-// minified — which is why the generated module is only ever reached through a
+// This is the largest of the three by a wide margin - mermaid is ~3.4 MB
+// minified - which is why the generated module is only ever reached through a
 // dynamic import() in mermaid-diagram.native.tsx. See docs/markdown-rendering.md.
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

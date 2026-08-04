@@ -5,7 +5,7 @@ import type { DemoAppearanceOptions } from "./appearance";
  * default (theme id "dark", displayed as "Twilight"); "daylight" is the
  * light-spectrum neutral default (theme id + display name both "daylight").
  * Neotokyo (theme id "cyberpunk") is reserved for the dedicated Themes
- * showcase (12-themes) — it's a feature to demo, not a backdrop for every
+ * showcase (12-themes) - it's a feature to demo, not a backdrop for every
  * other scenario.
  */
 export type DemoThemeName = "twilight" | "daylight";

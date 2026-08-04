@@ -9,7 +9,7 @@ import { writeJsonFileAtomic } from "../atomic-file.js";
 // counters are that, and they outlive trimmed rows). Best-effort: a dropped
 // append just costs one row, never correctness of the durable counters.
 //
-// Retention is the 30-day age window and nothing else (user decision) — every
+// Retention is the 30-day age window and nothing else (user decision) - every
 // row within the last 30 days is kept, however many that is.
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1_000;
 const DEFAULT_PAGE = 200;
@@ -98,7 +98,7 @@ function sanitizePersisted(value: unknown): PersistedShape {
   return { version: 1, events };
 }
 
-/** Drop rows older than the 30-day age window — the sole retention rule. */
+/** Drop rows older than the 30-day age window - the sole retention rule. */
 function trim(events: UsageEvent[], now: number): UsageEvent[] {
   const cutoff = now - MAX_AGE_MS;
   return events.filter((event) => event.at >= cutoff);
@@ -106,7 +106,7 @@ function trim(events: UsageEvent[], now: number): UsageEvent[] {
 
 /**
  * Daemon-wide, file-backed itemized usage ledger. One JSON array under
- * $OTTO_HOME, cached in memory, rewritten atomically on a coalesced timer —
+ * $OTTO_HOME, cached in memory, rewritten atomically on a coalesced timer -
  * modeled on ActivityStatsStore (serialized read-modify-write queue, atomic
  * writes). Reads are pure in-memory slices, so pagination is cheap.
  */
@@ -139,7 +139,7 @@ export class UsageLogStore {
     }
     // Retention is an *age* window, so it has to apply at rest too. Trimming
     // only inside append() meant a daemon that booted and recorded no new usage
-    // served rows arbitrarily older than the window — the window silently
+    // served rows arbitrarily older than the window - the window silently
     // stopped existing the moment the machine went quiet. Doing it here rather
     // than in getPage() keeps reads pure in-memory slices.
     const trimmed = trim(this.cache.events, Date.now());
@@ -167,7 +167,7 @@ export class UsageLogStore {
   }
 
   /**
-   * Drop every ledger row and persist the empty log immediately — the daemon
+   * Drop every ledger row and persist the empty log immediately - the daemon
    * side of the Metrics "Reset" button. Serialized through the same queue as
    * append() so it can't race an in-flight append, and written synchronously
    * (not on the coalesced timer) so a follow-up getPage() reflects the wipe.

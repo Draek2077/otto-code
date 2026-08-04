@@ -823,7 +823,7 @@ export class TerminalEmulatorRuntime {
     }
 
     // The next op is a barrier. Before clear()/reset()/resize() touches the terminal, any
-    // ungated plain writes still parsing in xterm's buffer must finish — otherwise a
+    // ungated plain writes still parsing in xterm's buffer must finish - otherwise a
     // synchronous reset could interleave with them. When none are ungated (mount, or right
     // after another barrier) there is nothing to wait for, so apply the barrier at once.
     if (!this.hasUngatedWrites) {

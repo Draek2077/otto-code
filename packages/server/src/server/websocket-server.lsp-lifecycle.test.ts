@@ -57,7 +57,7 @@ function createLogger() {
 }
 
 /**
- * Stands in for the daemon-scoped pool. Only the lifecycle calls matter here — this test
+ * Stands in for the daemon-scoped pool. Only the lifecycle calls matter here - this test
  * exists because those had no production caller at all, not to re-check what they do.
  */
 function createLspServiceSpy() {

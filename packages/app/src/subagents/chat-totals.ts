@@ -6,7 +6,7 @@ import { isTrackDescendantOf } from "./select";
 import { useClearedSubagentTotals } from "./cleared-subagent-tokens-store";
 
 /**
- * THE chat total — defined once, here, and read by every surface that shows
+ * THE chat total - defined once, here, and read by every surface that shows
  * "what this chat cost". Before this existed, four surfaces each showed a
  * different number and none of them was the whole chat: the Visualizer summed
  * context-window OCCUPANCY, the chat indicator showed the parent's occupancy
@@ -16,12 +16,12 @@ import { useClearedSubagentTotals } from "./cleared-subagent-tokens-store";
  *
  * 1. **Spend, never occupancy.** These are lifetime tokens billed, not how full
  *    a context window is. The two share no units and must never be mixed in one
- *    readout — see docs/glossary.md ("total tokens" vs "context").
+ *    readout - see docs/glossary.md ("total tokens" vs "context").
  * 2. **Cost is reported, never estimated.** `costUsd` only ever sums figures a
  *    provider actually reported, already de-inflated daemon-side so a parent
  *    never carries what its sub-agents reported. Where a provider cannot price
  *    (local models, most OpenAI-compatible endpoints), the answer is a blank and
- *    `costCoverage` says why. A confident wrong number is worse than none — it
+ *    `costCoverage` says why. A confident wrong number is worse than none - it
  *    is the thing that eroded trust in the old display.
  */
 export interface ChatTotals {
@@ -34,9 +34,9 @@ export interface ChatTotals {
   /** Σ of provider-reported cost. `null` ⇒ nothing here was priceable. */
   costUsd: number | null;
   /**
-   * `complete` — everything that spent tokens was priced; `costUsd` is the total.
-   * `partial` — some contributors were unpriced; `costUsd` is a FLOOR and must
-   * be presented as one. `none` — nothing was priceable; show tokens only.
+   * `complete` - everything that spent tokens was priced; `costUsd` is the total.
+   * `partial` - some contributors were unpriced; `costUsd` is a FLOOR and must
+   * be presented as one. `none` - nothing was priceable; show tokens only.
    */
   costCoverage: "complete" | "partial" | "none";
   /**
@@ -69,13 +69,13 @@ interface Tally {
   cacheCreationInputTokens: number;
   outputTokens: number;
   costUsd: number;
-  /** Contributors that spent tokens — the denominator for cost coverage. */
+  /** Contributors that spent tokens - the denominator for cost coverage. */
   spenders: number;
   /** ...of which carried a real cost. */
   costed: number;
   /**
    * True once any contributor is itself only partially priced. Tracked
-   * separately from the counts because such a contributor IS costed — its
+   * separately from the counts because such a contributor IS costed - its
    * figure is just a floor, and a floor anywhere makes the whole sum a floor.
    */
   anyPartial: boolean;
@@ -107,7 +107,7 @@ function positive(value: number | undefined): number {
  * Fold one contributor in. `cumulativeTokens` is the authoritative scalar (every
  * daemon reports it); `cumulativeUsage` adds the split and the cost when the
  * daemon is new enough to send it. A contributor with the scalar but no split
- * still counts its tokens — it just clears `hasSplit`, because a partial
+ * still counts its tokens - it just clears `hasSplit`, because a partial
  * breakdown presented as exact would be its own small lie.
  */
 export function addChatContributor(
@@ -182,7 +182,7 @@ export interface ChatTotalsParams {
 }
 
 /**
- * Totals for one chat and everything spawned under it — the parent plus the
+ * Totals for one chat and everything spawned under it - the parent plus the
  * same descendant set the sub-agents track shows (observed fan-out at any
  * depth; an attended child breaks the chain because it is its own chat with its
  * own total).
@@ -208,7 +208,7 @@ export function selectChatTotals(
   }
   for (const agent of agents.values()) {
     // Archived descendants are excluded here and accounted for through
-    // `cleared` instead — counting both would double-count the same spend.
+    // `cleared` instead - counting both would double-count the same spend.
     if (agent.archivedAt || !isTrackDescendantOf(agent, params.agentId, agents)) {
       continue;
     }

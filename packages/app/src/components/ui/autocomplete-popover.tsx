@@ -132,7 +132,7 @@ export function AutocompletePopover({
   }));
 
   // The popover portals into a FloatingPanelPortalHost inside #root, outside
-  // any drag-region container — without the no-drag carve-out its options are
+  // any drag-region container - without the no-drag carve-out its options are
   // click-dead over Electron drag rects (the New Workspace screen's content
   // view is one big drag region behind the composer). The frame exists only
   // while the popover is open, so this can't punch persistent drag holes.

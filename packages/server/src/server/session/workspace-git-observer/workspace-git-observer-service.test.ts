@@ -18,7 +18,7 @@ const WS2 = resolve("/repo/ws2");
 // The service reads only WorkspaceGitService.registerWorkspace plus a handful of injected
 // session callbacks. The harness below implements exactly that slice as in-memory adapters:
 // registerWorkspace captures the per-cwd listener so a test can drive a git snapshot, and the
-// callbacks are capture-arrays. No mocks — the seams are the injected ports.
+// callbacks are capture-arrays. No mocks - the seams are the injected ports.
 
 function makeDescriptor(overrides: {
   id: string;
@@ -159,7 +159,7 @@ describe("syncObservers", () => {
     expect(h.registerCalls).toEqual([WS1]);
   });
 
-  test("is idempotent — re-syncing the same git workspace does not re-register", () => {
+  test("is idempotent - re-syncing the same git workspace does not re-register", () => {
     const h = buildHarness();
     const descriptor = makeDescriptor({ id: "ws1", workspaceDirectory: WS1 });
     h.service.syncObservers([descriptor]);

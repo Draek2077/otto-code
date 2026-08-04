@@ -12,7 +12,7 @@ const DISABLE_DEFAULT_SEED_ONCE_KEY = "@otto:e2e-disable-default-seed-once";
 //
 // Must run AFTER the first navigation: the auto-seed fixture writes the registry + nonce on load,
 // and reseeds on every navigation. We write the full registry here and set the fixture's
-// disable-once flag, then reload — so the fixture skips its reset and the registry survives. This
+// disable-once flag, then reload - so the fixture skips its reset and the registry survives. This
 // avoids depending on the (unspecified) ordering of multiple Playwright init scripts. Optionally
 // relabels the seeded primary host so assertions can target a distinctive name.
 export async function addOfflineHostAndReload(

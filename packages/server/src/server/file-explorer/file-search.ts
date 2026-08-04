@@ -12,7 +12,7 @@ import { readExplorerFile, writeExplorerFile, type WriteExplorerFileResult } fro
 import { expandUserPath } from "../path-utils.js";
 
 // Pure-JS project search: .gitignore-aware, size-capped, binary-sniffing,
-// yielding to the event loop between batches. Deliberately no ripgrep — the
+// yielding to the event loop between batches. Deliberately no ripgrep - the
 // constraint is nothing spawned; revisit only with performance evidence.
 
 const MAX_FILE_SIZE_BYTES = 1_000_000;
@@ -283,7 +283,7 @@ export type ReplaceFileOutcome =
 
 /**
  * Applies preview-approved replacements. Every file preconditions on the hash
- * the preview was built against — a changed file is skipped, never corrupted.
+ * the preview was built against - a changed file is skipped, never corrupted.
  * Matches are applied bottom-up so coordinates stay valid, and the whole file
  * goes through the same conditional-write path as editor saves (containment,
  * EOL preservation, atomic replace).

@@ -89,7 +89,7 @@ export function validateOpenAiCredentialRequirements(params: {
         },
         missingOpenAiCredentialsFor,
       },
-      "Invalid speech configuration: OpenAI provider selected but credentials are missing — speech features will be unavailable",
+      "Invalid speech configuration: OpenAI provider selected but credentials are missing - speech features will be unavailable",
     );
   }
 }

@@ -2,7 +2,7 @@
 // Emit the set of files the daemon and CLI need at runtime, computed by
 // static module-graph tracing (@vercel/nft) from the three entry points.
 // Used by nix/package.nix's installPhase to materialize $out/lib/otto
-// with only the bytes the daemon actually loads — no Expo, RN, Metro,
+// with only the bytes the daemon actually loads - no Expo, RN, Metro,
 // Electron, ML stacks, or other non-daemon workspace bloat.
 //
 // Output: newline-separated repo-relative file paths on stdout. The Nix
@@ -45,7 +45,7 @@ const additionalInputs = [
   "packages/cli/bin/otto",
   // node-pty's compiled native addon. nft can't trace it because
   // node-pty loads it via `require(path.join(__dirname, 'prebuilds/<plat>/pty.node'))`
-  // with a runtime-computed platform suffix. Pin to the host platform —
+  // with a runtime-computed platform suffix. Pin to the host platform -
   // the Nix derivation builds for one platform at a time and ships only
   // its own binaries.
   `node_modules/node-pty/prebuilds/${process.platform}-${process.arch}/**`,

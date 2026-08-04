@@ -7,7 +7,7 @@ const { withAppBuildGradle } = require("expo/config-plugins");
 // issues on that platform), so Expo's `export:embed` receives a bare
 // `index.ts`. Expo forwards that relative entry to Metro unchanged, and in an
 // npm-workspace monorepo Metro resolves it against the workspace server root
-// instead of the app dir — failing the JS bundle step with
+// instead of the app dir - failing the JS bundle step with
 // "Unable to resolve module ./index.ts from <monorepo root>". On Linux/macOS
 // `cliPath()` returns the absolute path, so EAS/CI builds never hit this.
 //

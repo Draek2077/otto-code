@@ -1,7 +1,7 @@
 /**
- * InterfaceModeStep — wizard step 1. Two large cards, User vs Developer. The
+ * InterfaceModeStep - wizard step 1. Two large cards, User vs Developer. The
  * first real question of setup: the chosen depth reframes every screen after it
- * (and the app it lands in). Presentational — selection is lifted to the shell,
+ * (and the app it lands in). Presentational - selection is lifted to the shell,
  * which persists `interfaceMode` immediately so the rest of the wizard already
  * renders at the chosen depth.
  */

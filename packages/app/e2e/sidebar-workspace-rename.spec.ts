@@ -32,7 +32,7 @@ async function openRenameModal(page: Page, workspaceId: string) {
 
 // In Model B the workspace title is its identity: renaming sets a custom title
 // layered over the derived branch/directory name, and reconciliation never
-// touches it. The sidebar row shows the title verbatim — no branch mutation.
+// touches it. The sidebar row shows the title verbatim - no branch mutation.
 test.describe("Sidebar workspace rename", () => {
   test("renaming via kebab sets a custom title that survives reload", async ({ page }) => {
     const workspace = await seedWorkspace({ repoPrefix: "sidebar-rename-" });
@@ -53,7 +53,7 @@ test.describe("Sidebar workspace rename", () => {
       await page.getByTestId(workspaceRenameModalTestId(workspace.workspaceId, "submit")).click();
 
       await expect(input).toHaveCount(0, { timeout: 15_000 });
-      // The title is shown exactly as typed — not slugified into a branch name.
+      // The title is shown exactly as typed - not slugified into a branch name.
       await expect(page.getByTestId(workspaceRowTestId(workspace.workspaceId))).toContainText(
         customTitle,
         { timeout: 15_000 },

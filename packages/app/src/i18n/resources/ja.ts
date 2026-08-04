@@ -247,7 +247,7 @@ export const ja: TranslationResources = {
         global: "すべての場所",
         project: "このプロジェクト",
         elsewhere: "別のプロジェクト",
-        unattached: "プロジェクト未設定 — 送信されません",
+        unattached: "プロジェクト未設定 - 送信されません",
         change: "適用範囲: {{scope}}。タップで変更します。",
       },
       row: {
@@ -1225,16 +1225,16 @@ export const ja: TranslationResources = {
           // Branch cleanup section (worktreeArchiveBranchCleanup)
           branchIntro: "このワークツリーはブランチ {{branchName}} 上にあります。",
           deleteBranchCheckbox: "ブランチ {{branchName}} も削除する",
-          branchMerged: "{{baseBranch}} に完全にマージ済み — 安全に削除できます。",
-          branchMergedNoBase: "完全にマージ済み — 安全に削除できます。",
+          branchMerged: "{{baseBranch}} に完全にマージ済み - 安全に削除できます。",
+          branchMergedNoBase: "完全にマージ済み - 安全に削除できます。",
           branchUnmergedCommit:
-            "{{baseBranch}} にマージされていません — 削除すると{{count}}件のコミットが失われます。",
+            "{{baseBranch}} にマージされていません - 削除すると{{count}}件のコミットが失われます。",
           branchUnmergedCommits:
-            "{{baseBranch}} にマージされていません — 削除すると{{count}}件のコミットが失われます。",
+            "{{baseBranch}} にマージされていません - 削除すると{{count}}件のコミットが失われます。",
           branchUnmergedCommitNoBase:
-            "マージされていません — 削除すると{{count}}件のコミットが失われます。",
+            "マージされていません - 削除すると{{count}}件のコミットが失われます。",
           branchUnmergedCommitsNoBase:
-            "マージされていません — 削除すると{{count}}件のコミットが失われます。",
+            "マージされていません - 削除すると{{count}}件のコミットが失われます。",
           branchMergeUnknown: "マージ状態を判定できませんでした。",
           branchRemoteKept: "origin 上のコピーは保持されます。",
           branchDeleted: "ブランチ {{branchName}} を削除しました。",
@@ -1279,7 +1279,7 @@ export const ja: TranslationResources = {
         deletedFile: "削除済み",
         baseChip: "{{baseRef}} との比較",
         baseChipReadOnly: "{{baseRef}} と比較中",
-        baseChipEditable: "{{baseRef}} と比較中 — タップして変更",
+        baseChipEditable: "{{baseRef}} と比較中 - タップして変更",
         baseChipInferred: "{{baseRef}} と比較中。このブランチの親として検出されました",
         baseChipWorktree: "{{baseRef}} と比較中。このワークツリーの作成元のブランチです",
         baseChipPinned: "{{baseRef}} と比較中。あなたが選択したブランチです",
@@ -2207,7 +2207,7 @@ export const ja: TranslationResources = {
     team: {
       title: "どんなチームがほしいですか？",
       subtitle:
-        "チームを選ぶと、Otto がバランスの取れた完全な布陣を組み立てます — 名前と個性を持ったメンバーです。合わなければシャッフルを。自分のエージェントから組むこともできます。",
+        "チームを選ぶと、Otto がバランスの取れた完全な布陣を組み立てます - 名前と個性を持ったメンバーです。合わなければシャッフルを。自分のエージェントから組むこともできます。",
       unsupportedTitle: "チームを組む",
       unsupportedBody:
         "このホストはまだエージェントチームに対応していません。ホストを更新すると Otto がチームを組み立てます。いまはこの手順をスキップできます。",
@@ -2218,7 +2218,7 @@ export const ja: TranslationResources = {
         },
         game: {
           name: "ゲームチーム",
-          tagline: "ゲーム制作のためのスタジオ班 — メカニクス、手触り、そして遊び心。",
+          tagline: "ゲーム制作のためのスタジオ班 - メカニクス、手触り、そして遊び心。",
         },
         web: {
           name: "Web チーム",
@@ -2546,9 +2546,9 @@ export const ja: TranslationResources = {
     wordWrap: "折り返し",
     outOfProject: {
       badge:
-        "プロジェクト ({{project}}) の外側を編集しています — エージェントのコンテキストにも、このワークスペースの Git 変更にも含まれません。",
+        "プロジェクト ({{project}}) の外側を編集しています - エージェントのコンテキストにも、このワークスペースの Git 変更にも含まれません。",
       badgeNoProject:
-        "プロジェクトの外側を編集しています — エージェントのコンテキストにも、このワークスペースの Git 変更にも含まれません。",
+        "プロジェクトの外側を編集しています - エージェントのコンテキストにも、このワークスペースの Git 変更にも含まれません。",
     },
     contextMenu: {
       cut: "切り取り",
@@ -2607,7 +2607,7 @@ export const ja: TranslationResources = {
     loading: "ファイルを読み込み中...",
     noResults: "ファイルなし",
   },
-  // Refine — the reviewed AI rewrite (docs/refine.md). Only the two
+  // Refine - the reviewed AI rewrite (docs/refine.md). Only the two
   // entry-point strings are translated here; the Refine tab itself is literal
   // English pending the pre-release i18n sweep, like the rename/references tabs.
   refine: {
@@ -2628,8 +2628,8 @@ export const ja: TranslationResources = {
     toolbar: {
       discard: "この提案を破棄してすべてのファイルを読み直す",
       writing: "書き込み中…",
-      acceptOne: "承認 — 残した変更を書き込む",
-      acceptMany: "承認 — {{count}} ファイルに書き込む",
+      acceptOne: "承認 - 残した変更を書き込む",
+      acceptMany: "承認 - {{count}} ファイルに書き込む",
       dropAll: "すべての変更を破棄",
       keepAll: "すべての変更を残す",
     },
@@ -2693,20 +2693,20 @@ export const ja: TranslationResources = {
       pinning: "ファイルを現在の状態で固定しています。すべての提案はこれを基準に測られます。",
       unreadable: "この作業セットは読み取れませんでした。",
       idle: "まだ提案はありません。どのファイルにも手を加えていません。",
-      generating: "ラウンド {{round}} — 書き換え中。",
+      generating: "ラウンド {{round}} - 書き換え中。",
       accepting: "残した変更を書き込んでいます。",
-      acceptedOne: "完了 — 1 ファイルに書き込みました。",
-      acceptedMany: "完了 — {{count}} ファイルに書き込みました。",
+      acceptedOne: "完了 - 1 ファイルに書き込みました。",
+      acceptedMany: "完了 - {{count}} ファイルに書き込みました。",
       partiallyAccepted:
         "{{written}} 件を書き込み、{{skipped}} 件はそのままにしました。上書きは行っていません。",
       reviewOne:
-        "ラウンド {{round}} — {{total}} 件中 {{kept}} 件の変更を保持、+{{additions}} −{{removals}} 行。まだ何も書き込まれていません。",
+        "ラウンド {{round}} - {{total}} 件中 {{kept}} 件の変更を保持、+{{additions}} −{{removals}} 行。まだ何も書き込まれていません。",
       reviewMany:
-        "ラウンド {{round}} — {{total}} 件中 {{kept}} 件の変更を保持、+{{additions}} −{{removals}} 行。まだ何も書き込まれていません。",
+        "ラウンド {{round}} - {{total}} 件中 {{kept}} 件の変更を保持、+{{additions}} −{{removals}} 行。まだ何も書き込まれていません。",
       reviewOneScoped:
-        "ラウンド {{round}} — {{proposedFiles}} ファイル中 {{changedFiles}} ファイルで、{{total}} 件中 {{kept}} 件の変更を保持、+{{additions}} −{{removals}} 行。まだ何も書き込まれていません。",
+        "ラウンド {{round}} - {{proposedFiles}} ファイル中 {{changedFiles}} ファイルで、{{total}} 件中 {{kept}} 件の変更を保持、+{{additions}} −{{removals}} 行。まだ何も書き込まれていません。",
       reviewManyScoped:
-        "ラウンド {{round}} — {{proposedFiles}} ファイル中 {{changedFiles}} ファイルで、{{total}} 件中 {{kept}} 件の変更を保持、+{{additions}} −{{removals}} 行。まだ何も書き込まれていません。",
+        "ラウンド {{round}} - {{proposedFiles}} ファイル中 {{changedFiles}} ファイルで、{{total}} 件中 {{kept}} 件の変更を保持、+{{additions}} −{{removals}} 行。まだ何も書き込まれていません。",
     },
   },
   refactor: {

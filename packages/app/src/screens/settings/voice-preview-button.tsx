@@ -1,4 +1,4 @@
-// Voice-preview button — a small icon button that reads a short sample aloud in
+// Voice-preview button - a small icon button that reads a short sample aloud in
 // the selected voice, shown next to voice pickers (TTS/STT settings and the
 // agent-personality editor). It calls the host `speech.tts.preview` RPC, then
 // plays the returned audio through the shared voice audio engine.
@@ -114,7 +114,7 @@ export function VoicePreviewButton({
     // multi-second synthesis round-trip. Browsers only resume an AudioContext in
     // response to a live user activation; if we defer initialization until after
     // the `await` below, the gesture has expired and the context stays suspended
-    // — the sample decodes but never reaches the speakers ("I hear nothing").
+    // - the sample decodes but never reaches the speakers ("I hear nothing").
     // Kicking off initialize() here (not awaiting) keeps the resume() call within
     // the gesture; playback still awaits readiness via play().
     void audioEngine.initialize().catch(() => undefined);

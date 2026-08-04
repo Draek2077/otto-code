@@ -1,4 +1,4 @@
-// Synthetic event source for Claude Workflow (ultracode) runs — see
+// Synthetic event source for Claude Workflow (ultracode) runs - see
 // docs/subagent-accounting.md, "Workflow decomposition: a synthetic event source".
 //
 // A Workflow's internal agent() fan-out carries NO per-agent identity on the
@@ -14,16 +14,16 @@
 //
 // This watcher is armed by the Claude provider when a `local_workflow`
 // task_started fires (bound to the workflow's observed row key), tails those
-// files, and re-emits Otto's EXISTING observed-subagent events — one observed
-// child per internal agent, nested under the workflow row via `parentKey` — so
+// files, and re-emits Otto's EXISTING observed-subagent events - one observed
+// child per internal agent, nested under the workflow row via `parentKey` - so
 // the subagents track, visualizer, and metrics ingest the fan-out exactly as if
 // it were a real SDK stream. At disarm it reconciles against the run-state file
 // for authoritative per-agent tokens + final state.
 //
 // Dir binding: the SDK task_id ≠ the on-disk wf_<runId> dir name, and the only
-// on-disk correlator is the `taskId` field in the run-state file — which is
+// on-disk correlator is the `taskId` field in the run-state file - which is
 // written at COMPLETION. So a live run is bound heuristically (oldest unclaimed
-// live-looking dir, including a dir created just before arm — the engine can
+// live-looking dir, including a dir created just before arm - the engine can
 // create it before task_started reaches the provider), and identity is
 // confirmed retroactively the moment the run-state appears: a taskId match
 // confirms the bind, a mismatch releases the dir and resumes discovery.
@@ -42,7 +42,7 @@ import { JsonlTail } from "./jsonl-tail.js";
 import { WorkflowSubagentTranscriptMapper } from "./workflow-transcript-mapper.js";
 
 const POLL_INTERVAL_MS = 700;
-// An unbound watcher stops discovery-polling after this long — a run whose dir
+// An unbound watcher stops discovery-polling after this long - a run whose dir
 // never appeared (engine crashed pre-write, wrong session dir, ...) must not
 // leave a readdir interval running forever.
 const BIND_DEADLINE_MS = 90_000;
@@ -50,7 +50,7 @@ const BIND_DEADLINE_MS = 90_000;
 // created this recently before arm (covers the create-dir → task_started race);
 // anything older is some earlier run's.
 const PRE_ARM_RECENCY_MS = 30_000;
-// agentType values that make poor row titles — mirrors deriveObservedSubagentTitle's
+// agentType values that make poor row titles - mirrors deriveObservedSubagentTitle's
 // rejection set (@otto-code/protocol/observed-subagent-title) plus the workflow
 // sentinel, so a distinct per-agent prompt is used as the title/label instead.
 const GENERIC_AGENT_TYPES = new Set([
@@ -102,7 +102,7 @@ interface AgentState {
   lastTokens: number;
   /**
    * Track-row liveness for this workflow child, derived from its transcript
-   * (a workflow's internal agents get no SDK task report of their own — the
+   * (a workflow's internal agents get no SDK task report of their own - the
    * live stream carries none of them). `countedToolCallIds` makes the count
    * idempotent across a call's running → completed entries.
    * See docs/chat-lifecycle.md (the subagents track).
@@ -197,7 +197,7 @@ export class WorkflowTranscriptWatcher {
     if (!this.boundDir) {
       // Last-chance identity bind: our dir may have been claimed by a
       // mis-bound sibling (or discovery stopped at the bind deadline) while
-      // the run-state file — the ground truth — only appeared at completion.
+      // the run-state file - the ground truth - only appeared at completion.
       // A positive taskId match overrides claims, rejections, and the
       // deadline so the run's rows still backfill below.
       this.bindByRunStateIdentity();
@@ -295,7 +295,7 @@ export class WorkflowTranscriptWatcher {
         return;
       }
       if (this.stopAfterNextScan) {
-        // The run finished on disk and one full scan ran strictly after that —
+        // The run finished on disk and one full scan ran strictly after that -
         // nothing left to tail; disarm() will still do the final reconcile.
         this.stopPolling("run settled on disk");
         return;
@@ -339,14 +339,14 @@ export class WorkflowTranscriptWatcher {
         }
         if ((this.opts.taskId && info.taskId) || this.preArmDirs.has(dir)) {
           // Provably another run's (taskId mismatch), or a completed dir that
-          // predates us with nothing to confirm it — never bind it.
+          // predates us with nothing to confirm it - never bind it.
           this.rejectedDirs.add(dir);
           continue;
         }
-        // Completed post-arm dir with no taskId to compare — plausible fast
+        // Completed post-arm dir with no taskId to compare - plausible fast
         // run of ours; falls through as a heuristic candidate.
       } else if (this.preArmDirs.has(dir)) {
-        // A live pre-arm dir qualifies only when created just before arm —
+        // A live pre-arm dir qualifies only when created just before arm -
         // the engine can create wf_<runId>/ before task_started reaches the
         // provider. Older pre-arm dirs belong to earlier runs.
         const createdAt = this.dirCreatedAt(dir);
@@ -403,7 +403,7 @@ export class WorkflowTranscriptWatcher {
   /**
    * Retroactive identity check on a heuristic bind: the run-state file appears
    * at completion carrying the run's `taskId`. A match (or nothing to compare)
-   * confirms the bind; a mismatch means we tailed another run's dir — settle
+   * confirms the bind; a mismatch means we tailed another run's dir - settle
    * what we announced, release the dir, and resume discovery.
    */
   private verifyBoundIdentity(): "ok" | "mismatch" {
@@ -587,7 +587,7 @@ export class WorkflowTranscriptWatcher {
         ...(status === "error" ? { requiresAttention: true } : {}),
         ...(state.lastTokens > 0 ? { cumulativeTokens: state.lastTokens } : {}),
         // The run's final tool count stays on the finished row ("89 tools" is
-        // what it DID); currentTool is deliberately not re-asserted here — the
+        // what it DID); currentTool is deliberately not re-asserted here - the
         // projection drops it on a terminal row.
         ...(state.countedToolCallIds.size > 0
           ? { toolUseCount: state.countedToolCallIds.size }
@@ -602,7 +602,7 @@ export class WorkflowTranscriptWatcher {
 
   /**
    * Push the child's running figures when they move: token totals, or the
-   * liveness pair (tool count / current tool) when only those changed — a child
+   * liveness pair (tool count / current tool) when only those changed - a child
    * that is grinding through tools between assistant frames must still look
    * alive on the row. See docs/chat-lifecycle.md (the subagents track).
    */
@@ -615,7 +615,7 @@ export class WorkflowTranscriptWatcher {
     state.lastTokens = Math.max(state.lastTokens, tokens);
     // A settled child must not flip back to running when a late transcript
     // chunk raises its token total (the final chunk usually lands on the same
-    // tick as the journal result) — re-assert the settled status instead.
+    // tick as the journal result) - re-assert the settled status instead.
     const status = state.settled ? (state.settledStatus ?? "idle") : "running";
     const model = state.mapper.model();
     this.opts.emit({
@@ -626,14 +626,14 @@ export class WorkflowTranscriptWatcher {
         status,
         ...(status === "error" ? { requiresAttention: true } : {}),
         // Full in/out/cache split (the real per-frame API numbers) priced on the
-        // subagent's OWN model, alongside the grand-total scalar — so the ledger
+        // subagent's OWN model, alongside the grand-total scalar - so the ledger
         // costs this subagent on its own usage (not a roll-up) and the track
         // readout matches native agents.
         usage: toClaudeSubagentUsage(totals, model),
         usageRounds: state.mapper.roundCount(),
         ...(model ? { model } : {}),
         // A tool-only emit can land before the first assistant frame, when the
-        // total is still 0 — say nothing rather than report a zero.
+        // total is still 0 - say nothing rather than report a zero.
         ...(tokens > 0 ? { cumulativeTokens: tokens } : {}),
         ...(state.countedToolCallIds.size > 0
           ? { toolUseCount: state.countedToolCallIds.size }
@@ -761,7 +761,7 @@ export class WorkflowTranscriptWatcher {
     }
   }
 
-  // <projectDir>/<sessionId>/workflows/<wf_runId>.json — sibling of subagents/.
+  // <projectDir>/<sessionId>/workflows/<wf_runId>.json - sibling of subagents/.
   private runStatePathFor(dir: string): string | null {
     if (!this.baseDir) {
       return null;
@@ -789,7 +789,7 @@ export class WorkflowTranscriptWatcher {
         taskId: typeof parsed.taskId === "string" ? parsed.taskId : undefined,
       };
     } catch {
-      // Partially written — treat as absent and retry on the next tick.
+      // Partially written - treat as absent and retry on the next tick.
       return { exists: false };
     }
   }

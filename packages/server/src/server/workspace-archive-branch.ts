@@ -40,7 +40,7 @@ const NON_WORKTREE_DETECTION: Omit<WorktreeArchiveBranchDetection, "directoryWil
  * Read-only inspection of a worktree's leftover branch ahead of archiving it.
  * Answers: is this an Otto-owned worktree, what branch is it on, is that branch
  * fully merged into its base, and can the branch actually be deleted once the
- * worktree directory is gone. Never throws — every git failure degrades to
+ * worktree directory is gone. Never throws - every git failure degrades to
  * "unknown" so the caller can still archive.
  */
 export async function detectWorktreeArchiveBranch(
@@ -123,9 +123,9 @@ async function computeMergeState(
   };
 }
 
-// Prefer the remote-tracking base (origin/<base>) when present — a branch is
+// Prefer the remote-tracking base (origin/<base>) when present - a branch is
 // "merged" once its commits reach the base someone will actually integrate into
-// — then fall back to the local base branch.
+// - then fall back to the local base branch.
 async function resolveBaseComparisonRef(cwd: string, baseBranch: string): Promise<string | null> {
   const originRef = `refs/remotes/origin/${baseBranch}`;
   if (await gitRefExists(cwd, originRef)) {
@@ -170,14 +170,14 @@ async function revListCount(cwd: string, range: string): Promise<number | null> 
 
 // A local branch may be checked out in at most one worktree. If git reports it
 // checked out at a path other than the worktree we're archiving, deleting it
-// will fail — so surface that up front. Best-effort: failures read as "not
+// will fail - so surface that up front. Best-effort: failures read as "not
 // elsewhere" so a git hiccup never blocks the archive.
 /**
  * Canonical form for comparing two paths that name the same directory.
  *
  * `resolve` alone is not enough. Windows hands out 8.3 short names for temp directories
  * (`RUNNER~1\AppData\...`), and git may report the long form while the caller holds the short
- * one — or the reverse. Comparing those two spellings says "different directory", which here
+ * one - or the reverse. Comparing those two spellings says "different directory", which here
  * means the worktree being archived looks like some *other* worktree holding its branch, and
  * archiving is refused for a conflict that does not exist. Symlinked paths and case differences
  * behave the same way.
@@ -238,7 +238,7 @@ export interface DeleteLocalBranchResult {
  * will accept the deletion. Uses -D (force) because the caller has already
  * surfaced the branch's merge state to the user and taken their explicit choice;
  * git's own -d merged-check compares against the upstream, not the base branch
- * the user was shown, so it would spuriously refuse. Never throws — a failed
+ * the user was shown, so it would spuriously refuse. Never throws - a failed
  * delete is logged by the caller and the archive still succeeds.
  */
 export async function deleteLocalBranch(input: {

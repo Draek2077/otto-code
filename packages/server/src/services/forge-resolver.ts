@@ -79,10 +79,10 @@ export function createForgeResolver(options: CreateForgeResolverOptions = {}): F
   // Coalesce concurrent probes of the same host so "never re-probe" holds under
   // concurrency: callers racing on the same host await one shared probe.
   const inFlightProbes = new Map<string, Promise<string | null>>();
-  // resolveRemoteUrl spawns `git config` — memoize per cwd so repeated resolve()
+  // resolveRemoteUrl spawns `git config` - memoize per cwd so repeated resolve()
   // calls (the PR-status poll hits this every cycle) don't re-spawn it. TTL'd
   // (not permanent, unlike a positive host probe) so a remote added/changed
-  // from outside Otto — `git remote add`/`set-url` run in a terminal — is
+  // from outside Otto - `git remote add`/`set-url` run in a terminal - is
   // still picked up within a cycle instead of staying pinned forever; a Otto
   // git mutation still busts it immediately via invalidate(cwd).
   const remoteUrlByCwd = new LRUCache<

@@ -102,7 +102,7 @@ describe("resolveExclusiveTeamMembers", () => {
   const panel: AgentTeam = { id: "team-panel", name: "Panel", memberIds: ["p-atlas", "p-vera"] };
 
   test("returns members no remaining team also claims", () => {
-    // p-atlas is shared with the panel, p-deleted is dangling — only p-dash is
+    // p-atlas is shared with the panel, p-deleted is dangling - only p-dash is
     // left with no team once the crew goes.
     expect(resolveExclusiveTeamMembers(crew, [panel], roster)).toEqual([dash]);
   });

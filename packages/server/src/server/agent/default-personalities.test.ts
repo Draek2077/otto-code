@@ -15,7 +15,7 @@ import { isClaudeManifestModelId } from "./providers/claude/model-manifest.js";
 import { listLocalTtsVoices } from "../speech/providers/local/sherpa/tts-voices.js";
 
 // Guardrails on the shipped starter roster. A typo in a model id, mode, or voice
-// name would silently make a default "out of commission" on every host — these
+// name would silently make a default "out of commission" on every host - these
 // tests catch that at build time instead of on a user's machine. Provider-scoped
 // facts (Claude model ids/modes, Kokoro voice names) are validated against the
 // live catalogs here in the server package, where those catalogs live.

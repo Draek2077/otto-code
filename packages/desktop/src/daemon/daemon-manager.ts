@@ -648,7 +648,7 @@ export function createDaemonCommandHandlers(options?: {
           // The user already agreed to this quit by pressing "Update now", and
           // the installer is spawned before app.quit() lands. A "warn before
           // quitting" prompt here would be asking a question that's already
-          // answered — and cancelling it wouldn't save the session anyway,
+          // answered - and cancelling it wouldn't save the session anyway,
           // because the installer taskkills the app on its way through.
           markQuitPreConfirmed();
           await stopDesktopDaemon("app_update");

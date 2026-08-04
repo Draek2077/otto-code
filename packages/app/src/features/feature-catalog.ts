@@ -1,7 +1,7 @@
 import type { WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 
 // The gated-feature registry. A "feature" here is an optional, self-contained
-// subsystem the user can turn off entirely — not just hidden from the UI, but
+// subsystem the user can turn off entirely - not just hidden from the UI, but
 // kept out of memory: its panel module sits behind a React.lazy boundary, so a
 // disabled feature's code is never import()-ed (see visualizer-panel-
 // registration.tsx). The founding member is the Visualizer; more slot in by
@@ -15,7 +15,7 @@ export const FEATURE_IDS: readonly FeatureId[] = ["visualizer", "contextManageme
 
 export interface FeatureDefinition {
   id: FeatureId;
-  /** Human-facing name. Raw English — the toggles live in the developer-mode-
+  /** Human-facing name. Raw English - the toggles live in the developer-mode-
    *  only settings surfaces, which are themselves raw English pending a
    *  translation pass (see screens/settings/visualizer-section.tsx). */
   label: string;
@@ -34,7 +34,7 @@ export const FEATURE_CATALOG: Record<FeatureId, FeatureDefinition> = {
     id: "visualizer",
     label: "Visualizer",
     description:
-      "The live agent-orchestration graph. Turning it off removes the header button, the Runs “Visualize” action, and its settings — and keeps its render bundle from ever loading into memory.",
+      "The live agent-orchestration graph. Turning it off removes the header button, the Runs “Visualize” action, and its settings - and keeps its render bundle from ever loading into memory.",
     panelKinds: ["visualizer"],
     defaultEnabled: true,
   },

@@ -343,7 +343,7 @@ test("clearing a personality keeps the brain and removes the personality-owned p
 
     await harness.manager.setAgentPersonality(agent.id, null);
 
-    // Clear applies no brain setters — only the prompt half.
+    // Clear applies no brain setters - only the prompt half.
     expect(session.calls).toEqual(["applyPersonality:enter", "applyPersonality:exit"]);
     expect(agent.config.personalitySnapshot).toBeUndefined();
     expect(agent.config.systemPrompt).toBeUndefined();
@@ -467,7 +467,7 @@ test("a live switch recomposes against the frozen born team, not the current one
       { workspaceId: undefined },
     );
 
-    // Switching personalities — even to one outside the born team — keeps the
+    // Switching personalities - even to one outside the born team - keeps the
     // frozen team prompt ahead of the incoming personality prompt.
     await harness.manager.setAgentPersonality(
       agent.id,

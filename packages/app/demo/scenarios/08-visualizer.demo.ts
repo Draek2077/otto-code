@@ -12,12 +12,12 @@ import { beat, pause, resetPacingSeed } from "../helpers/pacing";
 import { seedDemoWorkspace, type DemoWorkspace } from "../staging/seed";
 
 /**
- * Scenario 08 — The Visualizer (one feature: the live agent constellation).
+ * Scenario 08 - The Visualizer (one feature: the live agent constellation).
  * A real Claude run streams while the Visualizer tab is open, so the node is
  * genuinely active in every shot.
  *
  * Capture caveat: the guest canvas is WebGL. Headless capture may software-
- * render or blank depending on the machine — inspect the first DEMO_REAL
+ * render or blank depending on the machine - inspect the first DEMO_REAL
  * take, and if the canvas is empty re-run headed (the DOM waits below only
  * prove the guest booted, never what it drew; that's a deliberate e2e rule
  * this scenario inherits).
@@ -64,7 +64,7 @@ test("visualizer walkthrough", async ({ page }, testInfo) => {
     model: "opus",
     title: "Ring buffer tour",
     initialPrompt:
-      "Read through src/ and explain how the event ring buffer works — ingestion, eviction, and the gauges. Short summary at the end. Read-only, no code changes.",
+      "Read through src/ and explain how the event ring buffer works - ingestion, eviction, and the gauges. Short summary at the end. Read-only, no code changes.",
   });
 
   await gotoWorkspace(page, workspace.workspaceId);
@@ -83,7 +83,7 @@ test("visualizer walkthrough", async ({ page }, testInfo) => {
   await recorder.shot(
     "constellation",
     "Your agents, as a living constellation",
-    "Every chat is a node — pulsing while it thinks, orbited by the tools it calls.",
+    "Every chat is a node - pulsing while it thinks, orbited by the tools it calls.",
   );
 
   const dialog = await openVisualizerChatsDropdown(page);
@@ -91,7 +91,7 @@ test("visualizer walkthrough", async ({ page }, testInfo) => {
   await recorder.shot(
     "chats",
     "Jump between chats",
-    "The toolbar mirrors the live session list — focus any agent's node from here.",
+    "The toolbar mirrors the live session list - focus any agent's node from here.",
   );
   await page.keyboard.press("Escape");
   await expect(dialog).not.toBeVisible({ timeout: 10_000 });
@@ -101,7 +101,7 @@ test("visualizer walkthrough", async ({ page }, testInfo) => {
   await recorder.shot(
     "settled",
     "Work done, node at rest",
-    "When the turn ends the node settles to idle — the constellation always tells the truth.",
+    "When the turn ends the node settles to idle - the constellation always tells the truth.",
   );
 
   await recorder.finish(testInfo);

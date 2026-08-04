@@ -149,7 +149,7 @@ function getFallbackModel(models: AgentModelDefinition[] | null): AgentModelDefi
 /**
  * The configured model is the user's explicit selection, so it wins whenever it
  * resolves to a real model in the provider catalog. The runtime model is only
- * what the provider reported for the LAST turn — it lags a fresh switch (the
+ * what the provider reported for the LAST turn - it lags a fresh switch (the
  * provider keeps reporting the old model until its query restarts) and under
  * Claude's Auto mode it names whatever the CLI picked for that turn. Preferring
  * it here is what made a mid-chat switch silently revert in the picker.
@@ -241,13 +241,13 @@ function resolveThinkingDisplay(
  * Returns a display LABEL, never an id and never a model. That is deliberate and
  * structural: a label cannot be fed back into the picker, which is keyed by id,
  * so this fact can never become a selection again. Do not change the return type
- * to an id or an AgentModelDefinition — preferring the runtime model in the
+ * to an id or an AgentModelDefinition - preferring the runtime model in the
  * selection is exactly the bug this pair of functions exists to keep fixed.
  *
  * Null (say nothing) when:
  *  - there is no runtime model yet, e.g. a chat that has not run a turn;
  *  - the runtime model is not in the provider catalog, so we cannot name it
- *    honestly — a raw dated id like `claude-opus-5-20260101` is noise, and it
+ *    honestly - a raw dated id like `claude-opus-5-20260101` is noise, and it
  *    reads as a difference when it is usually the same model;
  *  - it matches the selection, where the row would just restate the headline.
  */

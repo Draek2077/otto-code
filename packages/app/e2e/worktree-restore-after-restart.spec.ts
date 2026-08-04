@@ -74,7 +74,7 @@ test.describe("Worktree restore after daemon restart", () => {
   }) => {
     // A otto worktree is cut on its own branch named after the slug, and the
     // worktree workspace is displayed under the same name. These are the values
-    // the History table cells must show after restore — never "main".
+    // the History table cells must show after restore - never "main".
     const worktreeSlug = `restart-restore-${randomUUID().slice(0, 8)}`;
 
     const project = await openProjectViaDaemon(worktreeClient, tempRepo.path);
@@ -117,7 +117,7 @@ test.describe("Worktree restore after daemon restart", () => {
     // KEY ASSERTION: reproduce the screenshot state. Right after the daemon
     // restart, with NO restore and NO row click, the rendered History table cells
     // (fed by each agent row's projectPlacement via fetch_agent_history) must read
-    // the worktree branch and the worktree workspace name — never "main".
+    // the worktree branch and the worktree workspace name - never "main".
     const branchCell = page.getByTestId(`agent-row-branch-${serverId}-${agent.id}`);
     const workspaceCell = page.getByTestId(`agent-row-workspace-${serverId}-${agent.id}`);
 

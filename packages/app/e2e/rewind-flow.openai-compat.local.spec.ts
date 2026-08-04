@@ -16,10 +16,10 @@ import {
  * typed to the CLI providers (its launch config has no openai-compatible
  * branch), so this is a minimal local variant following the same shape. The
  * openai-compat provider only supports conversation rewind
- * (supportsRewindConversation, no files/both — see CAPABILITIES in
+ * (supportsRewindConversation, no files/both - see CAPABILITIES in
  * openai-compat-agent.ts), so the flow is: one chat turn, rewind it away,
  * prove the transcript and durable timeline are empty, then prove the session
- * still completes a fresh turn. Asserts on row counts and timeline structure —
+ * still completes a fresh turn. Asserts on row counts and timeline structure -
  * never on model prose.
  */
 

@@ -5,7 +5,7 @@ import { connectSeedClient } from "./seed-client";
  * Remove daemon projects whose root directory no longer exists on disk.
  *
  * Specs seed a temp directory, register it as a project, and delete the
- * directory when they finish — routinely before, or instead of, removing the
+ * directory when they finish - routinely before, or instead of, removing the
  * project record. The shard's daemon is shared and long-lived, so the dead
  * project keeps being served for the rest of the run, and it poisons every spec
  * that comes after:
@@ -21,7 +21,7 @@ import { connectSeedClient } from "./seed-client";
  * - `WorkspaceGitServiceImpl.startWorkspaceWatchers` tries to watch
  *   `<gone>/.git/refs/heads` and throws ENOENT.
  *
- * Specs should still tear their own records down — that is the ordering rule:
+ * Specs should still tear their own records down - that is the ordering rule:
  * remove daemon records first, delete the directory second. This sweep is the
  * net under it, because the failure mode is silent in the owning spec and only
  * shows up as unrelated specs failing later.

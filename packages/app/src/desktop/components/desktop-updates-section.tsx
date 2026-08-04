@@ -344,7 +344,7 @@ export function LocalDaemonSection() {
       ? t("desktop.daemon.status.running")
       : t("desktop.daemon.status.notRunning"));
   const daemonStatusDetailText = t("desktop.daemon.status.pid", {
-    pid: daemonStatus?.pid ? daemonStatus.pid : "—",
+    pid: daemonStatus?.pid ? daemonStatus.pid : "-",
   });
   const isDaemonManagementPaused = !daemonSettings.manageBuiltInDaemon;
 
@@ -522,7 +522,7 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
     lineHeight: 18,
   },
-  // Row handed to AdaptiveModalSheet's `footer` — the sheet's own wrapper
+  // Row handed to AdaptiveModalSheet's `footer` - the sheet's own wrapper
   // already supplies padding, the top border, and the row alignment.
   modalFooter: {
     flex: 1,

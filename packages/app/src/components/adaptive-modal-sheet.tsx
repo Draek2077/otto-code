@@ -21,7 +21,12 @@ import type {
 } from "react-native";
 import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { getOverlayRoot, OVERLAY_Z } from "../lib/overlay-root";
+import {
+  getOverlayRoot,
+  OverlayLayerProvider,
+  OVERLAY_Z,
+  useCurrentOverlayLayer,
+} from "../lib/overlay-root";
 import {
   BottomSheetBackdrop,
   BottomSheetScrollView,
@@ -41,7 +46,7 @@ import { useSheetScrollRegion } from "@/components/use-sheet-scroll-region";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // Content indent token shared by the sheet header (title, back arrow, leading
-// icon, search input icon), the body, and the footer — so the title, the fields
+// icon, search input icon), the body, and the footer - so the title, the fields
 // under it, and the action buttons all sit on one vertical line. Rows whose
 // leading icon should line up with the header must match this padding.
 //
@@ -337,7 +342,7 @@ export type AdaptiveTextInputProps = TextInputProps & {
 // can seed it once with initialValue and remount with resetKey for real resets.
 // See https://github.com/facebook/react-native/issues/44157
 //
-// Text color and placeholder color are owned by this leaf — not the caller.
+// Text color and placeholder color are owned by this leaf - not the caller.
 // `@gorhom/bottom-sheet` mounts header subtrees before the sheet is visible
 // under whatever theme is active at mount time, then keeps them mounted across
 // theme changes; any caller that paints color via `StyleSheet.create((theme) =>
@@ -543,7 +548,7 @@ export interface AdaptiveModalSheetProps {
   /** Extra style for the scrollable content container. */
   contentContainerStyle?: StyleProp<ViewStyle>;
   /**
-   * Fixed slot rendered between the header and the scrollable content — e.g. a
+   * Fixed slot rendered between the header and the scrollable content - e.g. a
    * tab strip that must stay visible while the content scrolls.
    */
   subHeader?: ReactNode;
@@ -566,7 +571,7 @@ export interface AdaptiveModalSheetProps {
   presentation?: "push" | "replace";
   /**
    * Render the themed desktop-web scrollbar over the scroll area instead of the
-   * native browser scrollbar. On by default — every dialog gets the same
+   * native browser scrollbar. On by default - every dialog gets the same
    * hover-hiding bar. No-op on native and on the mobile bottom sheet.
    */
   webScrollbar?: boolean;
@@ -602,6 +607,13 @@ export function AdaptiveModalSheet({
   const { t } = useTranslation();
   const isMobile = useIsCompactFormFactor();
   const insets = useSafeAreaInsets();
+  // Resolve this sheet's own stacking layer from the ambient context instead of
+  // a flat OVERLAY_Z.modal, and re-provide it to descendants. Without this, a
+  // Combobox/SelectField popover rendered inside the sheet computes its
+  // z-index from the same ambient layer (0) this sheet started from, landing
+  // BELOW this sheet's z-index and rendering invisibly behind the card.
+  const ambientOverlayLayer = useCurrentOverlayLayer();
+  const modalOverlayLayer = ambientOverlayLayer + OVERLAY_Z.modal;
   const desktopScrollRef = useRef<ScrollView>(null);
   const desktopScrollRegion = useSheetScrollRegion(desktopScrollRef, {
     surface: "surface1",
@@ -752,6 +764,7 @@ export function AdaptiveModalSheet({
   const desktopOverlayStyle = useMemo(
     () => [
       styles.desktopOverlay,
+      { zIndex: modalOverlayLayer },
       isWeb && {
         opacity: isWebClosing ? 0 : 1,
         transitionDuration: `${WEB_EXIT_DURATION_MS}ms`,
@@ -759,7 +772,7 @@ export function AdaptiveModalSheet({
         transitionTimingFunction: "ease",
       },
     ],
-    [isWebClosing],
+    [isWebClosing, modalOverlayLayer],
   );
 
   useEffect(() => {
@@ -798,56 +811,58 @@ export function AdaptiveModalSheet({
 
   if (isMobile) {
     return (
-      <IsolatedBottomSheetModal
-        ref={sheetRef}
-        snapPoints={resolvedSnapPoints}
-        index={0}
-        enableDynamicSizing={false}
-        onChange={handleSheetChange}
-        onDismiss={handleDismiss}
-        backdropComponent={renderBackdrop}
-        enablePanDownToClose
-        backgroundComponent={SheetBackground}
-        handleIndicatorStyle={handleIndicatorStyle}
-        keyboardBehavior="extend"
-        keyboardBlurBehavior="restore"
-        accessible={false}
-        presentation={presentation}
-      >
-        <View onLayout={onHeaderLayout}>
-          <SheetHeaderView header={header} onClose={onClose} testID={testID} />
-        </View>
-        {subHeader ? <View onLayout={onSubHeaderLayout}>{subHeader}</View> : null}
-        {scrollable ? (
-          <View style={styles.bottomSheetScrollContainer}>
-            <BottomSheetScrollView
-              ref={mobileScrollRef as unknown as Ref<never>}
-              style={
-                sizeContentToCurrentSnapPoint
-                  ? [BOTTOM_SHEET_SCROLL_STYLE, styles.bottomSheetVisibleScroll]
-                  : BOTTOM_SHEET_SCROLL_STYLE
-              }
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-              onLayout={mobileScrollRegion.onLayout}
-              onScroll={mobileScrollRegion.onScroll}
-              onContentSizeChange={mobileScrollRegion.onContentSizeChange}
-            >
-              <View style={bottomSheetContentStyle} onLayout={onContentLayout}>
-                {children}
-              </View>
-            </BottomSheetScrollView>
-            {mobileScrollRegion.decorations}
+      <OverlayLayerProvider layer={modalOverlayLayer}>
+        <IsolatedBottomSheetModal
+          ref={sheetRef}
+          snapPoints={resolvedSnapPoints}
+          index={0}
+          enableDynamicSizing={false}
+          onChange={handleSheetChange}
+          onDismiss={handleDismiss}
+          backdropComponent={renderBackdrop}
+          enablePanDownToClose
+          backgroundComponent={SheetBackground}
+          handleIndicatorStyle={handleIndicatorStyle}
+          keyboardBehavior="extend"
+          keyboardBlurBehavior="restore"
+          accessible={false}
+          presentation={presentation}
+        >
+          <View onLayout={onHeaderLayout}>
+            <SheetHeaderView header={header} onClose={onClose} testID={testID} />
           </View>
-        ) : (
-          <View style={bottomSheetStaticContentStyle}>{children}</View>
-        )}
-        {footer ? (
-          <View style={footerStyle} onLayout={onFooterLayout}>
-            {footer}
-          </View>
-        ) : null}
-      </IsolatedBottomSheetModal>
+          {subHeader ? <View onLayout={onSubHeaderLayout}>{subHeader}</View> : null}
+          {scrollable ? (
+            <View style={styles.bottomSheetScrollContainer}>
+              <BottomSheetScrollView
+                ref={mobileScrollRef as unknown as Ref<never>}
+                style={
+                  sizeContentToCurrentSnapPoint
+                    ? [BOTTOM_SHEET_SCROLL_STYLE, styles.bottomSheetVisibleScroll]
+                    : BOTTOM_SHEET_SCROLL_STYLE
+                }
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                onLayout={mobileScrollRegion.onLayout}
+                onScroll={mobileScrollRegion.onScroll}
+                onContentSizeChange={mobileScrollRegion.onContentSizeChange}
+              >
+                <View style={bottomSheetContentStyle} onLayout={onContentLayout}>
+                  {children}
+                </View>
+              </BottomSheetScrollView>
+              {mobileScrollRegion.decorations}
+            </View>
+          ) : (
+            <View style={bottomSheetStaticContentStyle}>{children}</View>
+          )}
+          {footer ? (
+            <View style={footerStyle} onLayout={onFooterLayout}>
+              {footer}
+            </View>
+          ) : null}
+        </IsolatedBottomSheetModal>
+      </OverlayLayerProvider>
     );
   }
 
@@ -880,14 +895,16 @@ export function AdaptiveModalSheet({
   );
 
   const desktopContent = (
-    <View style={desktopOverlayStyle} testID={testID}>
-      <Pressable
-        accessibilityLabel={t("common.actions.dismiss")}
-        style={ABSOLUTE_FILL_STYLE}
-        onPress={onClose}
-      />
-      <View style={desktopCardStyle}>{cardInner}</View>
-    </View>
+    <OverlayLayerProvider layer={modalOverlayLayer}>
+      <View style={desktopOverlayStyle} testID={testID}>
+        <Pressable
+          accessibilityLabel={t("common.actions.dismiss")}
+          style={ABSOLUTE_FILL_STYLE}
+          onPress={onClose}
+        />
+        <View style={desktopCardStyle}>{cardInner}</View>
+      </View>
+    </OverlayLayerProvider>
   );
 
   // On web, use portal to overlay root for consistent stacking with toasts

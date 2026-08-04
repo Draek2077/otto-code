@@ -65,7 +65,7 @@ export function resolvePersonalityForForm(
       }).optionId;
     } catch {
       // Model advertises only custom options that don't map to the canonical
-      // scale — leave effort unset rather than guessing.
+      // scale - leave effort unset rather than guessing.
       thinkingOptionId = "";
     }
   }

@@ -30,19 +30,19 @@ interface ContextSidebarTabsProps {
  * Splits the lower half of the sidebar into the load graph, the selected
  * personality's remembered lessons (on a host that stores them), and the fix
  * list. `stretch`, so the row of segments spans whatever width is left beside
- * the compaction action rather than trailing off into empty sidebar — this
+ * the compaction action rather than trailing off into empty sidebar - this
  * control *is* the row, not a chip sitting in a toolbar. Three segments at most,
  * so an equal split is wide enough for "Issues (40)" to keep its count; that
  * concern is what kept this un-stretched while a fourth segment existed.
  *
- * The issues segment takes the `warning` tone while it holds anything — the
+ * The issues segment takes the `warning` tone while it holds anything - the
  * mode chip's amber, not a treatment of its own. That is the whole signal:
  * findings moved out of the summary, so something has to mark that there is a
  * reason to look. With nothing to fix it is an ordinary segment.
  *
  * Memory carries a plain count and never a tone. Lessons are not a problem to
  * fix, and amber here would read as "this personality has learned something
- * wrong" — which is a judgement this row has no way to make.
+ * wrong" - which is a judgement this row has no way to make.
  */
 export function ContextSidebarTabs({
   active,

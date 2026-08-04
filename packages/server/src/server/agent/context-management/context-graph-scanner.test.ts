@@ -7,7 +7,7 @@ import { encodeClaudeProjectDir, type ContextResolutionInput } from "./provider-
 import type { ContextNode } from "./types.js";
 
 /**
- * Real temp trees, no mocked filesystem — the scanner's whole job is deciding
+ * Real temp trees, no mocked filesystem - the scanner's whole job is deciding
  * what exists, so a fake `fs` would test nothing (docs/testing.md).
  */
 let tempRoot: string;
@@ -61,7 +61,7 @@ describe("scanContextGraph", () => {
   it("resolves the project, global and memory load points as fixed weight", async () => {
     await writeFile(path.join(projectRoot, "CLAUDE.md"), "project rules");
     await writeFile(path.join(homeDir, ".claude", "CLAUDE.md"), "global rules");
-    await writeFile(memoryIndexPath(), "- [a](a.md) — hook");
+    await writeFile(memoryIndexPath(), "- [a](a.md) - hook");
 
     const result = await scanContextGraph("claude", input());
 
@@ -137,7 +137,7 @@ describe("scanContextGraph", () => {
 
     expect(shared).toHaveLength(1);
     expect(shared[0]?.alsoImportedByNodeIds).toHaveLength(1);
-    // Both parents still show an edge — the graph is honest even though the
+    // Both parents still show an edge - the graph is honest even though the
     // token count is not doubled.
     expect(
       result.edges.filter((edge) => edge.toNodeId === shared[0]?.id && edge.kind === "import"),
@@ -215,7 +215,7 @@ describe("scanContextGraph", () => {
     expect(result.supported).toBe(true);
     // We cannot see inside the subprocess, so the UI must not present this as fact.
     expect(result.confidence).toBe("unverified");
-    // No @import mechanism is known — the "Always load" action stays disabled.
+    // No @import mechanism is known - the "Always load" action stays disabled.
     expect(result.supportsImports).toBe(false);
     expect(nodeFor(result.nodes, "AGENTS.md")?.scope).toBe("project");
     expect(nodeFor(result.nodes, "~/.codex/AGENTS.md")?.scope).toBe("global");
@@ -248,7 +248,7 @@ describe("scanContextGraph", () => {
 
     const result = await scanContextGraph("codex", input());
 
-    // The file is real, but Codex would render "@docs/a.md" as literal text —
+    // The file is real, but Codex would render "@docs/a.md" as literal text -
     // counting it as loaded would overstate the bill.
     expect(nodeFor(result.nodes, "docs/a.md")).toBeUndefined();
   });

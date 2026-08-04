@@ -45,7 +45,7 @@ class LRUCache<K, V> {
 const tokenizationCache = new LRUCache<string, HighlightToken[][]>(200);
 
 // Tokenize `code` to per-line tokens, cached. Returns null when the language is
-// unsupported, the input is over the size cap, or parsing throws — callers then
+// unsupported, the input is over the size cap, or parsing throws - callers then
 // render plain text.
 export function tokenizeToLines(code: string, ext: string | null): HighlightToken[][] | null {
   if (!ext) return null;
@@ -88,7 +88,7 @@ export function resolveExtension(explicitExt: string | null, code: string): stri
   return detectLanguage(code);
 }
 
-// Extension for grammar selection from a file path. We only need the suffix —
+// Extension for grammar selection from a file path. We only need the suffix -
 // absolute vs relative paths are equivalent here.
 export function extensionFromPath(filePath: string | null | undefined): string | null {
   if (!filePath) return null;

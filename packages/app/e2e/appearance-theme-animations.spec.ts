@@ -10,7 +10,7 @@ import { readAppSettings } from "./helpers/visualizer";
 // after an animated transition and 0ms whenever the setting is off).
 //
 // All state touched here is device-local localStorage inside this test's own
-// browser context — nothing reaches the shared daemon — but each test still
+// browser context - nothing reaches the shared daemon - but each test still
 // restores the defaults it changed before finishing.
 
 interface Rgb {
@@ -20,7 +20,7 @@ interface Rgb {
 }
 
 /**
- * First non-transparent computed background inside the settings sidebar — the
+ * First non-transparent computed background inside the settings sidebar - the
  * themed surface under test (sidebarStyles.desktopContainer paints
  * theme.colors.surfaceSidebar, settings-screen.tsx).
  */
@@ -107,7 +107,7 @@ test.describe("Appearance: theme and animations", () => {
     await openSettingsSection(page, "appearance");
 
     try {
-      // Pin an explicit light scheme first — the default is "system", whose
+      // Pin an explicit light scheme first - the default is "system", whose
       // effective spectrum depends on the headless browser's own preference.
       await modeButton(page, "Light").click();
       await expectPersistedColorSchemeMode(page, "light");
@@ -150,7 +150,7 @@ test.describe("Appearance: theme and animations", () => {
   test("the Animations toggle disables the page-fade transition veil", async ({ page }) => {
     await gotoAppShell(page);
     // Entering settings is a route transition, so with animations on (the
-    // default) the app-level veil has just run — its inline transition style
+    // default) the app-level veil has just run - its inline transition style
     // retains PAGE_TRANSITION_DURATION_MS (300ms) after the reveal completes.
     await openSettings(page);
     await openSettingsSection(page, "appearance");
@@ -176,7 +176,7 @@ test.describe("Appearance: theme and animations", () => {
       expect(disabledDurations.length).toBeGreaterThan(0);
       expect(disabledDurations.every((duration) => duration === 0)).toBe(true);
 
-      // Turning it back on must NOT flash a veil over the current screen — the
+      // Turning it back on must NOT flash a veil over the current screen - the
       // veil is driven by key changes only, so without a navigation everything
       // stays instant/hidden.
       await animationsSwitch.click();

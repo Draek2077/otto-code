@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { MutableBrainConfig } from "@otto-code/protocol/messages";
 import { DEFAULT_MUTABLE_BRAIN_CONFIG } from "@otto-code/protocol/messages";
@@ -308,5 +308,110 @@ describe("BrainManager remote TLS trust", () => {
     const status = await manager.status();
     expect(status.running).toBe(true);
     expect(brainServer.requests[0]?.token).toBe("secret-token");
+  });
+});
+
+// The otto-brain agent provider has no URL or API-key setting of its own: it
+// asks the manager where the host is on every request. These cover the answers
+// that make the Providers row red and empty its model list.
+describe("BrainManager.getProviderEndpoint", () => {
+  let ottoHome: string;
+  let manager: BrainManager;
+
+  beforeEach(() => {
+    ottoHome = mkdtempSync(path.join(tmpdir(), "otto-brain-endpoint-test-"));
+    manager = new BrainManager({
+      logger: createTestLogger(),
+      managedProcesses: createRegistryStub(),
+      ottoHome,
+    });
+  });
+
+  afterEach(async () => {
+    await manager.shutdown();
+    rmSync(ottoHome, { recursive: true, force: true });
+  });
+
+  test("is unavailable before any settings have been applied", () => {
+    expect(manager.getProviderEndpoint()).toEqual({
+      state: "unavailable",
+      reason: expect.stringContaining("not loaded"),
+    });
+  });
+
+  test("reports the host as off when the brain is disabled", async () => {
+    await manager.applySettings({ ...DEFAULT_MUTABLE_BRAIN_CONFIG, enabled: false });
+    const endpoint = manager.getProviderEndpoint();
+    expect(endpoint.state).toBe("unavailable");
+    expect(endpoint).toMatchObject({ reason: expect.stringContaining("turned off") });
+  });
+
+  test("reports the host as not running when it is enabled but has no child", async () => {
+    await manager.applySettings({
+      ...DEFAULT_MUTABLE_BRAIN_CONFIG,
+      enabled: true,
+      autoStart: false,
+    });
+    const endpoint = manager.getProviderEndpoint();
+    expect(endpoint.state).toBe("unavailable");
+    expect(endpoint).toMatchObject({ reason: expect.stringContaining("not running") });
+  });
+
+  test("reports a remote brain with no host configured as unavailable", async () => {
+    await manager.applySettings(remoteConfig({ host: "" }));
+    const endpoint = manager.getProviderEndpoint();
+    expect(endpoint.state).toBe("unavailable");
+    expect(endpoint).toMatchObject({ reason: expect.stringContaining("No remote") });
+  });
+
+  test("derives the remote base URL, bearer token, and TLS trust from the settings", async () => {
+    await manager.applySettings(
+      remoteConfig({
+        host: "brain.example",
+        port: 4321,
+        secure: true,
+        authToken: "secret-token",
+        certFingerprint: TEST_CERT_FINGERPRINT,
+      }),
+    );
+
+    expect(manager.getProviderEndpoint()).toMatchObject({
+      state: "ready",
+      baseUrl: "https://brain.example:4321/v1",
+      apiKey: "secret-token",
+    });
+    // A pinned self-signed peer cannot be verified by the platform default, so
+    // the endpoint has to carry its own dispatcher.
+    const endpoint = manager.getProviderEndpoint();
+    expect(endpoint.state === "ready" && endpoint.dispatcher).toBeTruthy();
+  });
+
+  test("uses the platform default transport for a plain-HTTP remote", async () => {
+    await manager.applySettings(
+      remoteConfig({ host: "brain.example", port: 1234, secure: false, authToken: null }),
+    );
+
+    expect(manager.getProviderEndpoint()).toEqual({
+      state: "ready",
+      baseUrl: "http://brain.example:1234/v1",
+      apiKey: null,
+      dispatcher: null,
+    });
+  });
+
+  test("notifies listeners when applied settings change reachability", async () => {
+    const onReachabilityChanged = vi.fn();
+    const listening = new BrainManager({
+      logger: createTestLogger(),
+      managedProcesses: createRegistryStub(),
+      ottoHome,
+      onReachabilityChanged,
+    });
+    try {
+      await listening.applySettings(remoteConfig({ host: "brain.example" }));
+      expect(onReachabilityChanged).toHaveBeenCalled();
+    } finally {
+      await listening.shutdown();
+    }
   });
 });

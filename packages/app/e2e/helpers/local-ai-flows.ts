@@ -120,7 +120,7 @@ export function isToolCallItem(
  * Answers every permission prompt the agent raises with the same behavior
  * until the turn finishes. A single deny is usually enough, but a local model
  * may retry the gated tool (or reach for another gated one); answering in a
- * loop keeps the spec's contract — "denial means no side effect" — honest
+ * loop keeps the spec's contract - "denial means no side effect" - honest
  * without racing the model's retry policy.
  */
 export async function respondToPermissionsUntilFinish(input: {

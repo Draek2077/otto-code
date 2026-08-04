@@ -10,7 +10,7 @@ import { daylightTheme, darkTheme, blackTheme } from "./theme";
 // Seed content here is today's default pair (Daylight/Twilight).
 //
 // The third `black` key is never selected by mode switching or adaptive
-// themes — it exists solely for `ScopedTheme name="black"` around chat panes
+// themes - it exists solely for `ScopedTheme name="black"` around chat panes
 // when the "Black tab background" appearance setting is on. It mirrors the
 // user's dark-variant pick with pure-black chat surfaces and is repainted by
 // the same runtime patchers as the other two keys.

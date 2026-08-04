@@ -53,7 +53,7 @@ interface WorkspaceSetupStoreState {
   /**
    * Drop the "this workspace has no setup" answers so the next visit asks
    * again. Setup progress is push-driven, so a push emitted while the socket
-   * was down is gone for good — a reconnect is the one event that can make a
+   * was down is gone for good - a reconnect is the one event that can make a
    * cached negative stale.
    */
   clearResolvedEmpty: (serverId: string) => void;
@@ -125,8 +125,8 @@ export const useWorkspaceSetupStore = create<WorkspaceSetupStoreState>()((set, g
     //
     // emptyKeys is the other half of that guard, and the reason this is called once
     // per workspace instead of once per navigation: a *successful* response for the
-    // right workspace carrying no snapshot is a real answer — "this workspace has no
-    // setup" — not a failure to retry. Without it, every workspace with no setup
+    // right workspace carrying no snapshot is a real answer - "this workspace has no
+    // setup" - not a failure to retry. Without it, every workspace with no setup
     // commands re-asked on every route focus forever (38-47 responses across 12
     // workspace round-trips). It stays correct because the only thing that can change
     // the answer is a `workspace_setup_progress` push, which lands in upsertProgress

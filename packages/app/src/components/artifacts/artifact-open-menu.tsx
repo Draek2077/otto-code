@@ -81,7 +81,7 @@ export function ArtifactOpenMenu({
   const cwd = useWorkspaceDirectory(serverId, workspaceId);
   const projectId = useWorkspaceProjectId(serverId, workspaceId);
   // Fetch all artifacts on the host and match them to this workspace by path
-  // (repo root vs. worktree) with a legacy grouping-key fallback — see
+  // (repo root vs. worktree) with a legacy grouping-key fallback - see
   // artifactMatchesWorkspace.
   const { artifacts } = useArtifacts();
   const isCompact = useIsCompactFormFactor();
@@ -109,7 +109,7 @@ export function ArtifactOpenMenu({
   );
 
   // Open the tab as soon as the artifact record exists, without waiting for
-  // generation to finish — the tab shows a generating spinner and a link back
+  // generation to finish - the tab shows a generating spinner and a link back
   // to the agent session (see ArtifactPanel) until content is ready.
   const handleCreated = useCallback(
     (input: { artifact: { id: string } }) => {
@@ -127,7 +127,7 @@ export function ArtifactOpenMenu({
   }
 
   // Compact form factors get a bottom sheet instead of a dropdown anchored to
-  // a (possibly hidden zero-size) trigger — the header "..." menu item flips
+  // a (possibly hidden zero-size) trigger - the header "..." menu item flips
   // `open` on and the sheet slides up with the same artifact list + create row.
   if (isCompact) {
     return (
@@ -225,7 +225,7 @@ export function ArtifactOpenMenu({
   );
 }
 
-// Plain-press trigger for the compact sheet — ContextMenuTrigger only opens on
+// Plain-press trigger for the compact sheet - ContextMenuTrigger only opens on
 // long-press/right-click, but this toolbar button should open on tap.
 function ArtifactSheetTriggerButton(): ReactElement {
   const { open, setOpen } = useContextMenu();
@@ -264,7 +264,7 @@ function ArtifactSheetItem({
 }): ReactElement {
   // Every status is openable: generating shows a spinner and a link to the
   // generating agent session, and a failed generation shows the failure (or
-  // falls back to the last successful content, if any) — see ArtifactPanel.
+  // falls back to the last successful content, if any) - see ArtifactPanel.
   const handleSelect = useCallback(() => {
     onOpen(artifact.id);
   }, [artifact.id, onOpen]);
@@ -288,7 +288,7 @@ function ArtifactMenuItem({
 }): ReactElement {
   // Every status is openable: generating shows a spinner and a link to the
   // generating agent session, and a failed generation shows the failure (or
-  // falls back to the last successful content, if any) — see ArtifactPanel.
+  // falls back to the last successful content, if any) - see ArtifactPanel.
   const handleSelect = useCallback(() => {
     onOpen(artifact.id);
   }, [artifact.id, onOpen]);
@@ -311,12 +311,12 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     borderRadius: theme.borderRadius.md,
   },
-  // Matches `headerIconSlotStyle.slotHovered` — this trigger sits in the same
+  // Matches `headerIconSlotStyle.slotHovered` - this trigger sits in the same
   // header row as the toggles it borrows its chrome from.
   triggerHovered: {
     backgroundColor: theme.colors.surfaceToggleHover,
   },
-  // Zero-size anchor for the collapsed mode — exists only so the dropdown has
+  // Zero-size anchor for the collapsed mode - exists only so the dropdown has
   // a position to open from; must never take layout space or catch pointers.
   // `position: absolute` keeps it out of flex flow: a zero-size *flex item* still
   // consumes a `gap` slot on both sides, which would silently double the gap

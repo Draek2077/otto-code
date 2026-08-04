@@ -12,7 +12,7 @@ export type SheetSeamFadeEdge = "top" | "bottom";
 /**
  * Which dialog background the fade dissolves into. The desktop card paints
  * `surface1`; the mobile bottom sheet paints `surface0` (see
- * `adaptive-modal-sheet.tsx`). Unlike the chat pane there is no black scope —
+ * `adaptive-modal-sheet.tsx`). Unlike the chat pane there is no black scope -
  * dialogs only ever sit on the light/dark theme surfaces.
  */
 export type SheetSeamFadeSurface = "surface0" | "surface1";
@@ -46,22 +46,22 @@ const surface0Mapping = (theme: Theme) => ({ color: theme.colors.surface0 });
 const surface1Mapping = (theme: Theme) => ({ color: theme.colors.surface1 });
 
 /**
- * Inset fade along the top/bottom seam of a dialog's scroll region — the same
+ * Inset fade along the top/bottom seam of a dialog's scroll region - the same
  * three-stop gradient as the chat pane's seam fade (`chat-seam-fade.tsx`), so
  * content scrolling past the edge dissolves into the dialog background instead
  * of clipping hard.
  *
  * Render as a later sibling of the scroll view inside a relatively positioned
  * container, and before any web scrollbar overlay so the scrollbar keeps
- * painting above the fade (paint order, no zIndex — same as the chat fades).
+ * painting above the fade (paint order, no zIndex - same as the chat fades).
  *
  * `visible` cross-fades the strip rather than unmounting it, so an edge that
  * stops overflowing dissolves instead of popping. Pair it with
  * `useScrollEdgeFades` to hide each edge when there is nothing beyond it.
  *
  * `animated` gates the cross-fade. Pass the hook's `hasScrolled` so the strip
- * settles instantly while the scroll view is still measuring itself — bringing
- * a dialog or a tab up should not play an animation — and only animates once
+ * settles instantly while the scroll view is still measuring itself - bringing
+ * a dialog or a tab up should not play an animation - and only animates once
  * the user is driving the scroll.
  */
 export function SheetSeamFade({

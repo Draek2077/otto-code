@@ -1,229 +1,278 @@
-// Curated connector catalog — the "Browse connectors" directory the picker
-// renders. Each entry is tagged with an audience: "user" entries appear in both
-// User and Developer mode; "developer" entries appear in Developer mode only, so
-// non-coder surfaces never get peppered with engineering connectors.
+// The connector directory: integrations a user can turn on without knowing what
+// MCP is, what a transport is, or where a token goes.
 //
-// IMPORTANT: the `template` command/URL and `credential.envVar` here are
-// STARTING POINTS, not verified live values. The MCP connector ecosystem moves
-// fast and package names / endpoints / token env vars change. The picker
-// pre-fills these into an editable form; the user confirms them against the
-// connector's official MCP docs before adding. We deliberately do not assert
-// exact package identifiers here.
+// THE RULE THIS FILE EXISTS TO ENFORCE
+// Every entry is a real, working server. No placeholders, no "fill this in
+// yourself", no guessed package names or invented env vars. An entry carries
+// `verifiedOn` and `source` precisely so the next person can re-check it rather
+// than trust it. If you cannot cite a vendor doc for an endpoint, the entry does
+// not belong here - send the user to "Add custom connector" instead.
+//
+// This replaced a catalog of ~70 labels whose every command was the literal
+// string `npx -y <slug-mcp-server>`. It looked like a rich directory and was a
+// directory of homework: nothing in it could start. Breadth that does not run is
+// worse than a short list that does, because it costs the user the time to find
+// out. The list below is shorter on purpose.
+//
+// Re-verification: these are third-party endpoints and they do move. Treat
+// `verifiedOn` older than about six months as unverified and re-check it against
+// `source` before trusting it.
 //
 // i18n: English-only pending a translation pass (build-first, translate-last).
-import type { ConnectorTransport } from "./connectors-config";
 
 export type ConnectorAudience = "user" | "developer";
 
-export interface ConnectorCredentialSlot {
-  // Human label for the secret the connector needs (shown on the token field).
-  label: string;
-  // stdio: the env var the token is injected into. Absent for http/sse, where
-  // the token rides an Authorization: Bearer header instead.
-  envVar?: string;
-}
+/**
+ * How a connector authenticates, and therefore what the UI must ask of the user.
+ *
+ * - `oauth` asks for nothing: one Connect button, a browser login, done. This is
+ *   the shape the catalog prefers and the reason the daemon has an OAuth broker.
+ * - `token` asks for one pasted secret, with a link to the exact page that
+ *   issues it. Used only where the vendor offers no OAuth MCP endpoint.
+ * - `none` asks for nothing because the server needs no account at all.
+ */
+export type ConnectorSetup =
+  | {
+      kind: "oauth";
+      transport: "http" | "sse";
+      url: string;
+      /** Scopes to request, when the vendor requires them to be named. */
+      scope?: string;
+    }
+  | {
+      kind: "token";
+      transport: "stdio";
+      command: string;
+      args: string[];
+      credential: {
+        /** Shown on the field, e.g. "Personal access token". */
+        label: string;
+        /** The env var the server actually reads. Verified, not guessed. */
+        envVar: string;
+        /** Deep link to the page that issues this credential. */
+        issueUrl: string;
+      };
+    }
+  | { kind: "none"; transport: "http"; url: string }
+  | { kind: "none"; transport: "stdio"; command: string; args: string[] };
 
 export interface ConnectorCatalogEntry {
-  // Stable slug; becomes the connector id when added.
+  /** Stable slug; becomes the connector id when added. */
   id: string;
   label: string;
   category: string;
   audience: ConnectorAudience;
+  /** What the user gets, in their terms. Not a description of MCP. */
   description: string;
-  transport: ConnectorTransport;
-  // Starting-point command (stdio) or URL (http/sse) the picker pre-fills.
-  template: string;
-  // The credential the connector needs, if any. Presence reveals a token field.
-  credential?: ConnectorCredentialSlot;
-  // Vendor site, so the user can find the connector's official MCP setup docs.
+  setup: ConnectorSetup;
+  /** ISO date this entry's endpoint was last checked against `source`. */
+  verifiedOn: string;
+  /** The vendor doc the endpoint came from. Required: no citation, no entry. */
+  source: string;
   homepage?: string;
 }
 
-// A generic stdio starting point: an npx-run MCP server package the user fills
-// in. Kept as a visible placeholder so no fabricated package name is asserted.
-const STDIO = (slug: string): string => `npx -y <${slug}-mcp-server>`;
+const VERIFIED = "2026-08-03";
 
 export const CONNECTOR_CATALOG: ConnectorCatalogEntry[] = [
-  // ---- User (also shown in Developer mode) --------------------------------
-  // Docs & storage
+  // ---- Sign-in connectors (OAuth) -----------------------------------------
+  // These are the point of the whole subsystem: nothing to paste, nothing to
+  // configure. Click Connect, log in on the vendor's page, the daemon holds the
+  // token from then on.
   {
-    id: "google-drive",
-    label: "Google Drive",
-    category: "Docs & storage",
+    id: "notion",
+    label: "Notion",
+    category: "Docs & knowledge",
     audience: "user",
-    description: "Read and write files and Google Docs in your Drive.",
-    transport: "stdio",
-    template: STDIO("google-drive"),
-    credential: { label: "Google access token", envVar: "GOOGLE_ACCESS_TOKEN" },
-    homepage: "https://workspace.google.com",
+    description: "Search, read, and write pages and databases in your Notion workspace.",
+    setup: { kind: "oauth", transport: "http", url: "https://mcp.notion.com/mcp" },
+    verifiedOn: VERIFIED,
+    source: "https://developers.notion.com/docs/mcp",
+    homepage: "https://www.notion.so",
   },
   {
-    id: "onedrive",
-    label: "OneDrive / SharePoint",
-    category: "Docs & storage",
+    id: "atlassian",
+    label: "Jira & Confluence",
+    category: "Docs & knowledge",
     audience: "user",
-    description: "Microsoft 365 files and SharePoint document libraries.",
-    transport: "stdio",
-    template: STDIO("onedrive"),
-    credential: { label: "Microsoft access token", envVar: "MS_ACCESS_TOKEN" },
-    homepage: "https://www.microsoft.com/microsoft-365",
-  },
-  {
-    id: "dropbox",
-    label: "Dropbox",
-    category: "Docs & storage",
-    audience: "user",
-    description: "Files and shared folders in Dropbox.",
-    transport: "stdio",
-    template: STDIO("dropbox"),
-    credential: { label: "Dropbox access token", envVar: "DROPBOX_ACCESS_TOKEN" },
-    homepage: "https://www.dropbox.com",
+    description: "Issues, sprints, and boards in Jira, plus spaces and pages in Confluence.",
+    setup: { kind: "oauth", transport: "http", url: "https://mcp.atlassian.com/v1/mcp" },
+    verifiedOn: VERIFIED,
+    source: "https://www.atlassian.com/blog/announcements/remote-mcp-server",
+    homepage: "https://www.atlassian.com",
   },
   {
     id: "box",
     label: "Box",
-    category: "Docs & storage",
+    category: "Docs & knowledge",
     audience: "user",
-    description: "Enterprise file storage and shared content in Box.",
-    transport: "stdio",
-    template: STDIO("box"),
-    credential: { label: "Box access token", envVar: "BOX_ACCESS_TOKEN" },
+    description: "Enterprise files, folders, and shared content in Box.",
+    setup: { kind: "oauth", transport: "http", url: "https://mcp.box.com" },
+    verifiedOn: VERIFIED,
+    source: "https://developer.box.com/guides/box-mcp",
     homepage: "https://www.box.com",
   },
   {
-    id: "notion",
-    label: "Notion",
-    category: "Docs & storage",
+    id: "dropbox",
+    label: "Dropbox",
+    category: "Docs & knowledge",
     audience: "user",
-    description: "Pages, databases, and wikis in your Notion workspace.",
-    transport: "stdio",
-    template: STDIO("notion"),
-    credential: { label: "Notion integration token", envVar: "NOTION_TOKEN" },
-    homepage: "https://www.notion.so",
+    // Open beta since March 2026. Ships 23 file-centric tools.
+    description: "Files, shared folders, and revision history in Dropbox.",
+    setup: { kind: "oauth", transport: "http", url: "https://mcp.dropbox.com/mcp" },
+    verifiedOn: VERIFIED,
+    source: "https://help.dropbox.com/integrations/connect-dropbox-mcp-server",
+    homepage: "https://www.dropbox.com",
   },
-  {
-    id: "confluence",
-    label: "Confluence",
-    category: "Docs & storage",
-    audience: "user",
-    description: "Atlassian Confluence spaces and pages.",
-    transport: "stdio",
-    template: STDIO("confluence"),
-    credential: { label: "Atlassian API token", envVar: "ATLASSIAN_API_TOKEN" },
-    homepage: "https://www.atlassian.com/software/confluence",
-  },
-  // Communication
   {
     id: "slack",
     label: "Slack",
     category: "Communication",
     audience: "user",
-    description: "Post to and read from Slack channels and DMs.",
-    transport: "stdio",
-    template: STDIO("slack"),
-    credential: { label: "Slack bot token", envVar: "SLACK_BOT_TOKEN" },
+    description: "Search, read, and post messages across your Slack channels.",
+    setup: { kind: "oauth", transport: "http", url: "https://mcp.slack.com/mcp" },
+    verifiedOn: VERIFIED,
+    source: "https://docs.slack.dev/ai/slack-mcp-server/",
     homepage: "https://slack.com",
   },
   {
-    id: "gmail",
-    label: "Gmail",
-    category: "Communication",
+    id: "linear",
+    label: "Linear",
+    category: "Issues & projects",
     audience: "user",
-    description: "Read, search, and draft email in Gmail.",
-    transport: "stdio",
-    template: STDIO("gmail"),
-    credential: { label: "Google access token", envVar: "GOOGLE_ACCESS_TOKEN" },
-    homepage: "https://mail.google.com",
+    description: "Issues, projects, and cycles in Linear.",
+    setup: { kind: "oauth", transport: "http", url: "https://mcp.linear.app/mcp" },
+    verifiedOn: VERIFIED,
+    source: "https://linear.app/docs/mcp",
+    homepage: "https://linear.app",
   },
   {
-    id: "outlook",
-    label: "Outlook",
-    category: "Communication",
+    id: "monday",
+    label: "monday.com",
+    category: "Issues & projects",
     audience: "user",
-    description: "Microsoft Outlook mail and contacts.",
-    transport: "stdio",
-    template: STDIO("outlook"),
-    credential: { label: "Microsoft access token", envVar: "MS_ACCESS_TOKEN" },
-    homepage: "https://outlook.com",
+    description: "Boards, items, and workflows in monday.com.",
+    setup: { kind: "oauth", transport: "http", url: "https://mcp.monday.com/mcp" },
+    verifiedOn: VERIFIED,
+    source: "https://developer.monday.com/api-reference/docs/integrate-with-monday-mcp",
+    homepage: "https://monday.com",
   },
   {
-    id: "teams",
-    label: "Microsoft Teams",
-    category: "Communication",
+    id: "clickup",
+    label: "ClickUp",
+    category: "Issues & projects",
     audience: "user",
-    description: "Post and read messages in Microsoft Teams channels.",
-    transport: "stdio",
-    template: STDIO("teams"),
-    credential: { label: "Microsoft access token", envVar: "MS_ACCESS_TOKEN" },
-    homepage: "https://www.microsoft.com/microsoft-teams",
-  },
-  // Calendar & tasks
-  {
-    id: "google-calendar",
-    label: "Google Calendar",
-    category: "Calendar & tasks",
-    audience: "user",
-    description: "Read and create calendar events.",
-    transport: "stdio",
-    template: STDIO("google-calendar"),
-    credential: { label: "Google access token", envVar: "GOOGLE_ACCESS_TOKEN" },
-    homepage: "https://calendar.google.com",
-  },
-  {
-    id: "asana",
-    label: "Asana",
-    category: "Calendar & tasks",
-    audience: "user",
-    description: "Projects, tasks, and workloads in Asana.",
-    transport: "stdio",
-    template: STDIO("asana"),
-    credential: { label: "Asana access token", envVar: "ASANA_ACCESS_TOKEN" },
-    homepage: "https://asana.com",
-  },
-  {
-    id: "todoist",
-    label: "Todoist",
-    category: "Calendar & tasks",
-    audience: "user",
-    description: "Personal and shared task lists in Todoist.",
-    transport: "stdio",
-    template: STDIO("todoist"),
-    credential: { label: "Todoist API token", envVar: "TODOIST_API_TOKEN" },
-    homepage: "https://todoist.com",
+    description: "Tasks, docs, chat, and time tracking in ClickUp.",
+    setup: { kind: "oauth", transport: "http", url: "https://mcp.clickup.com/mcp" },
+    verifiedOn: VERIFIED,
+    source: "https://mcp.clickup.com",
+    homepage: "https://clickup.com",
   },
   {
     id: "trello",
     label: "Trello",
-    category: "Calendar & tasks",
+    category: "Issues & projects",
     audience: "user",
+    // Consent is workspace-scoped: the user picks which Trello workspace the
+    // assistant may touch, on Trello's own consent screen.
     description: "Boards, lists, and cards in Trello.",
-    transport: "stdio",
-    template: STDIO("trello"),
-    credential: { label: "Trello API token", envVar: "TRELLO_TOKEN" },
+    setup: { kind: "oauth", transport: "http", url: "https://mcp.trello.com/v1" },
+    verifiedOn: VERIFIED,
+    source: "https://github.com/atlassian/trello-mcp-server",
     homepage: "https://trello.com",
   },
   {
-    id: "monday",
-    label: "Monday.com",
-    category: "Calendar & tasks",
+    id: "asana",
+    label: "Asana",
+    category: "Issues & projects",
     audience: "user",
-    description: "Work-management boards in monday.com.",
-    transport: "stdio",
-    template: STDIO("monday"),
-    credential: { label: "monday.com API token", envVar: "MONDAY_API_TOKEN" },
-    homepage: "https://monday.com",
+    // SSE rather than streamable HTTP: Asana's published endpoint is an SSE one.
+    // Kept as the vendor documents it rather than guessing at an /mcp twin.
+    setup: { kind: "oauth", transport: "sse", url: "https://mcp.asana.com/sse" },
+    description: "Tasks, projects, and portfolios in Asana.",
+    verifiedOn: VERIFIED,
+    source: "https://developers.asana.com/docs/using-asanas-model-control-protocol-mcp-server",
+    homepage: "https://asana.com",
   },
-  // Data & spreadsheets
   {
-    id: "google-sheets",
-    label: "Google Sheets",
-    category: "Data & spreadsheets",
+    id: "canva",
+    label: "Canva",
+    category: "Design & content",
     audience: "user",
-    description: "Read and write spreadsheet data in Google Sheets.",
-    transport: "stdio",
-    template: STDIO("google-sheets"),
-    credential: { label: "Google access token", envVar: "GOOGLE_ACCESS_TOKEN" },
-    homepage: "https://sheets.google.com",
+    description: "Designs, brand assets, exports, and comments in Canva.",
+    setup: { kind: "oauth", transport: "http", url: "https://mcp.canva.com/mcp" },
+    verifiedOn: VERIFIED,
+    source: "https://www.canva.dev/docs/connect/mcp-server/",
+    homepage: "https://www.canva.com",
+  },
+  {
+    id: "figma",
+    label: "Figma",
+    category: "Design & content",
+    audience: "user",
+    description: "Design files, frames, components, and design tokens in Figma.",
+    setup: { kind: "oauth", transport: "http", url: "https://mcp.figma.com/mcp" },
+    verifiedOn: VERIFIED,
+    source: "https://developers.figma.com/docs/figma-mcp-server/remote-server-installation/",
+    homepage: "https://www.figma.com",
+  },
+  {
+    id: "webflow",
+    label: "Webflow",
+    category: "Design & content",
+    audience: "user",
+    description: "Sites, collections, and CMS items in Webflow.",
+    setup: { kind: "oauth", transport: "http", url: "https://mcp.webflow.com/" },
+    verifiedOn: VERIFIED,
+    source: "https://developers.webflow.com/data/docs/ai-tools",
+    homepage: "https://webflow.com",
+  },
+  {
+    id: "intercom",
+    label: "Intercom",
+    category: "Support & revenue",
+    audience: "user",
+    description: "Conversations, contacts, and help-center content in Intercom.",
+    setup: { kind: "oauth", transport: "http", url: "https://mcp.intercom.com/mcp" },
+    verifiedOn: VERIFIED,
+    source: "https://developers.intercom.com/docs/guides/mcp",
+    homepage: "https://www.intercom.com",
+  },
+  {
+    id: "hubspot",
+    label: "HubSpot",
+    category: "Support & revenue",
+    audience: "user",
+    description: "Contacts, deals, activity history, and marketing content in HubSpot.",
+    setup: { kind: "oauth", transport: "http", url: "https://mcp.hubspot.com" },
+    verifiedOn: VERIFIED,
+    source: "https://developers.hubspot.com/mcp",
+    homepage: "https://www.hubspot.com",
+  },
+  {
+    id: "stripe",
+    label: "Stripe",
+    category: "Support & revenue",
+    audience: "user",
+    description: "Payments, subscriptions, refunds, and revenue data in Stripe.",
+    setup: { kind: "oauth", transport: "http", url: "https://mcp.stripe.com" },
+    verifiedOn: VERIFIED,
+    source: "https://docs.stripe.com/mcp",
+    homepage: "https://stripe.com",
+  },
+  {
+    id: "square",
+    label: "Square",
+    category: "Support & revenue",
+    audience: "user",
+    // Beta, and gated to MCP clients Square has reviewed, so this can refuse
+    // Otto for reasons unrelated to the user's account. The verification gate
+    // reports whatever Square actually says.
+    description: "Payments, orders, customers, catalog, and invoices in Square.",
+    setup: { kind: "oauth", transport: "sse", url: "https://mcp.squareup.com/sse" },
+    verifiedOn: VERIFIED,
+    source: "https://developer.squareup.com/docs/mcp",
+    homepage: "https://squareup.com",
   },
   {
     id: "airtable",
@@ -231,569 +280,192 @@ export const CONNECTOR_CATALOG: ConnectorCatalogEntry[] = [
     category: "Data & spreadsheets",
     audience: "user",
     description: "Bases, tables, and records in Airtable.",
-    transport: "stdio",
-    template: STDIO("airtable"),
-    credential: { label: "Airtable API token", envVar: "AIRTABLE_API_KEY" },
+    setup: { kind: "oauth", transport: "http", url: "https://mcp.airtable.com/mcp" },
+    verifiedOn: VERIFIED,
+    source: "https://support.airtable.com/docs/using-the-airtable-mcp-server",
     homepage: "https://airtable.com",
   },
-  {
-    id: "excel-365",
-    label: "Microsoft Excel",
-    category: "Data & spreadsheets",
-    audience: "user",
-    description: "Workbooks and worksheets in Microsoft 365.",
-    transport: "stdio",
-    template: STDIO("excel"),
-    credential: { label: "Microsoft access token", envVar: "MS_ACCESS_TOKEN" },
-    homepage: "https://www.microsoft.com/microsoft-365/excel",
-  },
-  // CRM & support
-  {
-    id: "hubspot",
-    label: "HubSpot",
-    category: "CRM & support",
-    audience: "user",
-    description: "Contacts, deals, and CRM data in HubSpot.",
-    transport: "stdio",
-    template: STDIO("hubspot"),
-    credential: { label: "HubSpot private app token", envVar: "HUBSPOT_ACCESS_TOKEN" },
-    homepage: "https://www.hubspot.com",
-  },
-  {
-    id: "salesforce",
-    label: "Salesforce",
-    category: "CRM & support",
-    audience: "user",
-    description: "Accounts, opportunities, and reports in Salesforce.",
-    transport: "stdio",
-    template: STDIO("salesforce"),
-    credential: { label: "Salesforce access token", envVar: "SALESFORCE_ACCESS_TOKEN" },
-    homepage: "https://www.salesforce.com",
-  },
-  {
-    id: "zendesk",
-    label: "Zendesk",
-    category: "CRM & support",
-    audience: "user",
-    description: "Support tickets and help-center content in Zendesk.",
-    transport: "stdio",
-    template: STDIO("zendesk"),
-    credential: { label: "Zendesk API token", envVar: "ZENDESK_API_TOKEN" },
-    homepage: "https://www.zendesk.com",
-  },
-  {
-    id: "intercom",
-    label: "Intercom",
-    category: "CRM & support",
-    audience: "user",
-    description: "Conversations and customer data in Intercom.",
-    transport: "stdio",
-    template: STDIO("intercom"),
-    credential: { label: "Intercom access token", envVar: "INTERCOM_ACCESS_TOKEN" },
-    homepage: "https://www.intercom.com",
-  },
-  // Analytics & revenue
-  {
-    id: "google-analytics",
-    label: "Google Analytics",
-    category: "Analytics & revenue",
-    audience: "user",
-    description: "Traffic and engagement metrics for reporting.",
-    transport: "stdio",
-    template: STDIO("google-analytics"),
-    credential: { label: "Google access token", envVar: "GOOGLE_ACCESS_TOKEN" },
-    homepage: "https://analytics.google.com",
-  },
-  {
-    id: "stripe",
-    label: "Stripe",
-    category: "Analytics & revenue",
-    audience: "user",
-    description: "Revenue, subscriptions, and payout data for reports.",
-    transport: "stdio",
-    template: STDIO("stripe"),
-    credential: { label: "Stripe secret key", envVar: "STRIPE_API_KEY" },
-    homepage: "https://stripe.com",
-  },
-  // Visual deliverables
-  {
-    id: "canva",
-    label: "Canva",
-    category: "Visual deliverables",
-    audience: "user",
-    description: "Designs and brand assets in Canva.",
-    transport: "stdio",
-    template: STDIO("canva"),
-    credential: { label: "Canva access token", envVar: "CANVA_ACCESS_TOKEN" },
-    homepage: "https://www.canva.com",
-  },
-  {
-    id: "figma",
-    label: "Figma",
-    category: "Visual deliverables",
-    audience: "user",
-    description: "Design files, frames, and assets in Figma.",
-    transport: "stdio",
-    template: STDIO("figma"),
-    credential: { label: "Figma access token", envVar: "FIGMA_ACCESS_TOKEN" },
-    homepage: "https://www.figma.com",
-  },
-  // Office documents — PowerPoint is Microsoft 365 (cloud); Pages and PDF are
-  // local document tools that read/write those formats (no cloud account). Note:
-  // native generation/export of these deliverable formats is the User Mode
-  // charter's deliverables work, separate from these read/write connectors.
-  {
-    id: "powerpoint",
-    label: "Microsoft PowerPoint",
-    category: "Office documents",
-    audience: "user",
-    description: "Presentations in Microsoft 365.",
-    transport: "stdio",
-    template: STDIO("powerpoint"),
-    credential: { label: "Microsoft access token", envVar: "MS_ACCESS_TOKEN" },
-    homepage: "https://www.microsoft.com/microsoft-365/powerpoint",
-  },
-  {
-    id: "apple-pages",
-    label: "Apple Pages",
-    category: "Office documents",
-    audience: "user",
-    description: "Read and write Apple Pages documents on this machine.",
-    transport: "stdio",
-    template: STDIO("pages"),
-    homepage: "https://www.apple.com/pages",
-  },
-  {
-    id: "pdf-tools",
-    label: "PDF tools",
-    category: "Office documents",
-    audience: "user",
-    description: "Read, extract, fill, and assemble PDF files on this machine.",
-    transport: "stdio",
-    template: STDIO("pdf"),
-  },
-  // Ecommerce
-  {
-    id: "shopify",
-    label: "Shopify",
-    category: "Ecommerce",
-    audience: "user",
-    description: "Products, orders, and store data in Shopify.",
-    transport: "stdio",
-    template: STDIO("shopify"),
-    credential: { label: "Shopify access token", envVar: "SHOPIFY_ACCESS_TOKEN" },
-    homepage: "https://www.shopify.com",
-  },
-  // ClickUp joins the existing Calendar & tasks group.
-  {
-    id: "clickup",
-    label: "ClickUp",
-    category: "Calendar & tasks",
-    audience: "user",
-    description: "Tasks, docs, and projects in ClickUp.",
-    transport: "stdio",
-    template: STDIO("clickup"),
-    credential: { label: "ClickUp API token", envVar: "CLICKUP_API_TOKEN" },
-    homepage: "https://clickup.com",
-  },
-  // Marketing & SEO
   {
     id: "ahrefs",
     label: "Ahrefs",
     category: "Marketing & SEO",
     audience: "user",
     description: "Backlinks, keywords, and SEO metrics from Ahrefs.",
-    transport: "stdio",
-    template: STDIO("ahrefs"),
-    credential: { label: "Ahrefs API token", envVar: "AHREFS_API_TOKEN" },
+    setup: { kind: "oauth", transport: "http", url: "https://api.ahrefs.com/mcp/mcp" },
+    verifiedOn: VERIFIED,
+    source: "https://github.com/ahrefs/ahrefs-mcp-server",
     homepage: "https://ahrefs.com",
   },
-  {
-    id: "google-search-console",
-    label: "Google Search Console",
-    category: "Marketing & SEO",
-    audience: "user",
-    description: "Search queries, impressions, and indexing data.",
-    transport: "stdio",
-    template: STDIO("google-search-console"),
-    credential: { label: "Google access token", envVar: "GOOGLE_ACCESS_TOKEN" },
-    homepage: "https://search.google.com/search-console",
-  },
-  {
-    id: "google-business-profile",
-    label: "Google Business Profile",
-    category: "Marketing & SEO",
-    audience: "user",
-    description: "Local listings, reviews, and insights (formerly My Business).",
-    transport: "stdio",
-    template: STDIO("google-business-profile"),
-    credential: { label: "Google access token", envVar: "GOOGLE_ACCESS_TOKEN" },
-    homepage: "https://www.google.com/business",
-  },
-  // Advertising
-  {
-    id: "google-ads",
-    label: "Google Ads",
-    category: "Advertising",
-    audience: "user",
-    description: "Campaigns, spend, and performance in Google Ads.",
-    transport: "stdio",
-    template: STDIO("google-ads"),
-    credential: { label: "Google Ads access token", envVar: "GOOGLE_ADS_TOKEN" },
-    homepage: "https://ads.google.com",
-  },
-  {
-    id: "meta-ads",
-    label: "Meta Ads",
-    category: "Advertising",
-    audience: "user",
-    description: "Facebook and Instagram ad campaigns and metrics.",
-    transport: "stdio",
-    template: STDIO("meta-ads"),
-    credential: { label: "Meta access token", envVar: "META_ACCESS_TOKEN" },
-    homepage: "https://business.facebook.com",
-  },
-  {
-    id: "tiktok-ads",
-    label: "TikTok Ads",
-    category: "Advertising",
-    audience: "user",
-    description: "TikTok ad campaigns and performance.",
-    transport: "stdio",
-    template: STDIO("tiktok-ads"),
-    credential: { label: "TikTok access token", envVar: "TIKTOK_ACCESS_TOKEN" },
-    homepage: "https://ads.tiktok.com",
-  },
-  {
-    id: "pinterest-ads",
-    label: "Pinterest Ads",
-    category: "Advertising",
-    audience: "user",
-    description: "Pinterest ad campaigns and analytics.",
-    transport: "stdio",
-    template: STDIO("pinterest-ads"),
-    credential: { label: "Pinterest access token", envVar: "PINTEREST_ACCESS_TOKEN" },
-    homepage: "https://ads.pinterest.com",
-  },
-  {
-    id: "reddit-ads",
-    label: "Reddit Ads",
-    category: "Advertising",
-    audience: "user",
-    description: "Reddit ad campaigns and performance.",
-    transport: "stdio",
-    template: STDIO("reddit-ads"),
-    credential: { label: "Reddit access token", envVar: "REDDIT_ACCESS_TOKEN" },
-    homepage: "https://ads.reddit.com",
-  },
-  {
-    id: "stackadapt",
-    label: "StackAdapt",
-    category: "Advertising",
-    audience: "user",
-    description: "Programmatic ad campaigns and reporting in StackAdapt.",
-    transport: "stdio",
-    template: STDIO("stackadapt"),
-    credential: { label: "StackAdapt API token", envVar: "STACKADAPT_API_TOKEN" },
-    homepage: "https://www.stackadapt.com",
-  },
-  {
-    id: "linkedin-ads",
-    label: "LinkedIn Ads",
-    category: "Advertising",
-    audience: "user",
-    description: "LinkedIn ad campaigns and performance.",
-    transport: "stdio",
-    template: STDIO("linkedin-ads"),
-    credential: { label: "LinkedIn access token", envVar: "LINKEDIN_ACCESS_TOKEN" },
-    homepage: "https://business.linkedin.com/marketing-solutions/ads",
-  },
-  {
-    id: "microsoft-ads",
-    label: "Microsoft Advertising (Bing Ads)",
-    category: "Advertising",
-    audience: "user",
-    description: "Bing and Microsoft Search Network ad campaigns and performance.",
-    transport: "stdio",
-    template: STDIO("microsoft-ads"),
-    credential: { label: "Microsoft access token", envVar: "MS_ACCESS_TOKEN" },
-    homepage: "https://ads.microsoft.com",
-  },
-  // Social
-  {
-    id: "meta-business",
-    label: "Meta Business pages",
-    category: "Social",
-    audience: "user",
-    description: "Facebook and Instagram business pages, posts, and insights.",
-    transport: "stdio",
-    template: STDIO("meta-business"),
-    credential: { label: "Meta access token", envVar: "META_ACCESS_TOKEN" },
-    homepage: "https://business.facebook.com",
-  },
-  {
-    id: "linkedin-pages",
-    label: "LinkedIn Pages",
-    category: "Social",
-    audience: "user",
-    description: "Organic LinkedIn company pages, posts, and follower analytics.",
-    transport: "stdio",
-    template: STDIO("linkedin-pages"),
-    credential: { label: "LinkedIn access token", envVar: "LINKEDIN_ACCESS_TOKEN" },
-    homepage: "https://www.linkedin.com/company",
-  },
 
-  // ---- Developer only ------------------------------------------------------
-  // Code hosting
+  // ---- Developer, sign-in --------------------------------------------------
   {
     id: "github",
     label: "GitHub",
     category: "Code hosting",
     audience: "developer",
-    description: "Repositories, issues, and pull requests on GitHub.",
-    transport: "stdio",
-    template: STDIO("github"),
-    credential: { label: "GitHub token", envVar: "GITHUB_PERSONAL_ACCESS_TOKEN" },
+    description: "Repositories, issues, pull requests, and Actions runs on GitHub.",
+    setup: { kind: "oauth", transport: "http", url: "https://api.githubcopilot.com/mcp/" },
+    verifiedOn: VERIFIED,
+    source: "https://github.com/github/github-mcp-server",
     homepage: "https://github.com",
-  },
-  {
-    id: "gitlab",
-    label: "GitLab",
-    category: "Code hosting",
-    audience: "developer",
-    description: "Projects, issues, and merge requests on GitLab.",
-    transport: "stdio",
-    template: STDIO("gitlab"),
-    credential: { label: "GitLab token", envVar: "GITLAB_TOKEN" },
-    homepage: "https://gitlab.com",
-  },
-  {
-    id: "bitbucket",
-    label: "Bitbucket",
-    category: "Code hosting",
-    audience: "developer",
-    description: "Repositories and pull requests on Bitbucket Cloud.",
-    transport: "stdio",
-    template: STDIO("bitbucket"),
-    credential: { label: "Bitbucket app password", envVar: "BITBUCKET_TOKEN" },
-    homepage: "https://bitbucket.org",
-  },
-  // Dev issues & PM
-  {
-    id: "jira",
-    label: "Jira",
-    category: "Dev issues & PM",
-    audience: "developer",
-    description: "Issues, sprints, and boards in Jira.",
-    transport: "stdio",
-    template: STDIO("jira"),
-    credential: { label: "Atlassian API token", envVar: "ATLASSIAN_API_TOKEN" },
-    homepage: "https://www.atlassian.com/software/jira",
-  },
-  {
-    id: "linear",
-    label: "Linear",
-    category: "Dev issues & PM",
-    audience: "developer",
-    description: "Issues and projects in Linear.",
-    transport: "stdio",
-    template: STDIO("linear"),
-    credential: { label: "Linear API key", envVar: "LINEAR_API_KEY" },
-    homepage: "https://linear.app",
   },
   {
     id: "sentry",
     label: "Sentry",
-    category: "Dev issues & PM",
+    category: "Observability",
     audience: "developer",
     description: "Errors, issues, and releases in Sentry.",
-    transport: "stdio",
-    template: STDIO("sentry"),
-    credential: { label: "Sentry auth token", envVar: "SENTRY_AUTH_TOKEN" },
+    setup: { kind: "oauth", transport: "http", url: "https://mcp.sentry.dev/mcp" },
+    verifiedOn: VERIFIED,
+    source: "https://docs.sentry.io/product/sentry-mcp/",
     homepage: "https://sentry.io",
-  },
-  // Databases
-  {
-    id: "postgres",
-    label: "PostgreSQL",
-    category: "Databases",
-    audience: "developer",
-    description: "Query a PostgreSQL database.",
-    transport: "stdio",
-    template: STDIO("postgres"),
-    credential: { label: "Connection string", envVar: "DATABASE_URL" },
-    homepage: "https://www.postgresql.org",
-  },
-  {
-    id: "mysql",
-    label: "MySQL",
-    category: "Databases",
-    audience: "developer",
-    description: "Query a MySQL database.",
-    transport: "stdio",
-    template: STDIO("mysql"),
-    credential: { label: "Connection string", envVar: "DATABASE_URL" },
-    homepage: "https://www.mysql.com",
-  },
-  {
-    id: "sqlite",
-    label: "SQLite",
-    category: "Databases",
-    audience: "developer",
-    description: "Query a local SQLite database file.",
-    transport: "stdio",
-    template: STDIO("sqlite"),
-    homepage: "https://www.sqlite.org",
-  },
-  {
-    id: "mongodb",
-    label: "MongoDB",
-    category: "Databases",
-    audience: "developer",
-    description: "Query a MongoDB database.",
-    transport: "stdio",
-    template: STDIO("mongodb"),
-    credential: { label: "Connection string", envVar: "MONGODB_URI" },
-    homepage: "https://www.mongodb.com",
-  },
-  {
-    id: "redis",
-    label: "Redis",
-    category: "Databases",
-    audience: "developer",
-    description: "Inspect and query a Redis instance.",
-    transport: "stdio",
-    template: STDIO("redis"),
-    credential: { label: "Connection string", envVar: "REDIS_URL" },
-    homepage: "https://redis.io",
   },
   {
     id: "supabase",
     label: "Supabase",
-    category: "Databases",
+    category: "Databases & backend",
     audience: "developer",
-    description: "Postgres, auth, and storage on Supabase.",
-    transport: "stdio",
-    template: STDIO("supabase"),
-    credential: { label: "Supabase access token", envVar: "SUPABASE_ACCESS_TOKEN" },
+    description: "Postgres schema, data, edge functions, and branches on Supabase.",
+    setup: { kind: "oauth", transport: "http", url: "https://mcp.supabase.com/mcp" },
+    verifiedOn: VERIFIED,
+    source: "https://supabase.com/docs/guides/ai-tools/mcp",
     homepage: "https://supabase.com",
-  },
-  // Infra & cloud
-  {
-    id: "aws",
-    label: "AWS",
-    category: "Infra & cloud",
-    audience: "developer",
-    description: "Amazon Web Services resources and APIs.",
-    transport: "stdio",
-    template: STDIO("aws"),
-    credential: { label: "AWS access key", envVar: "AWS_ACCESS_KEY_ID" },
-    homepage: "https://aws.amazon.com",
   },
   {
     id: "cloudflare",
     label: "Cloudflare",
-    category: "Infra & cloud",
+    category: "Infrastructure",
     audience: "developer",
-    description: "DNS, Workers, and account resources on Cloudflare.",
-    transport: "stdio",
-    template: STDIO("cloudflare"),
-    credential: { label: "Cloudflare API token", envVar: "CLOUDFLARE_API_TOKEN" },
+    description: "DNS, Workers, R2, and the rest of the Cloudflare API.",
+    setup: { kind: "oauth", transport: "http", url: "https://mcp.cloudflare.com/mcp" },
+    verifiedOn: VERIFIED,
+    source: "https://developers.cloudflare.com/agents/model-context-protocol/",
     homepage: "https://www.cloudflare.com",
-  },
-  {
-    id: "docker",
-    label: "Docker",
-    category: "Infra & cloud",
-    audience: "developer",
-    description: "Inspect and manage local Docker containers and images.",
-    transport: "stdio",
-    template: STDIO("docker"),
-    homepage: "https://www.docker.com",
-  },
-  {
-    id: "kubernetes",
-    label: "Kubernetes",
-    category: "Infra & cloud",
-    audience: "developer",
-    description: "Inspect a Kubernetes cluster via kubeconfig.",
-    transport: "stdio",
-    template: STDIO("kubernetes"),
-    homepage: "https://kubernetes.io",
-  },
-  {
-    id: "vercel",
-    label: "Vercel",
-    category: "Infra & cloud",
-    audience: "developer",
-    description: "Deployments and projects on Vercel.",
-    transport: "stdio",
-    template: STDIO("vercel"),
-    credential: { label: "Vercel token", envVar: "VERCEL_TOKEN" },
-    homepage: "https://vercel.com",
   },
   {
     id: "netlify",
     label: "Netlify",
-    category: "Infra & cloud",
+    category: "Infrastructure",
     audience: "developer",
-    description: "Sites and deploys on Netlify.",
-    transport: "stdio",
-    template: STDIO("netlify"),
-    credential: { label: "Netlify token", envVar: "NETLIFY_AUTH_TOKEN" },
+    description: "Sites, deploys, and build logs on Netlify.",
+    setup: { kind: "oauth", transport: "http", url: "https://netlify-mcp.netlify.app/mcp" },
+    verifiedOn: VERIFIED,
+    source: "https://docs.netlify.com/build/build-with-ai/netlify-mcp-server/",
     homepage: "https://www.netlify.com",
   },
-  // Observability
   {
-    id: "datadog",
-    label: "Datadog",
+    id: "vercel",
+    label: "Vercel",
+    category: "Infrastructure",
+    audience: "developer",
+    // Vercel gates its MCP endpoint to clients it has reviewed, so this can
+    // legitimately refuse Otto with an authorization error that is nothing to do
+    // with the user's account. The add-time verification gate surfaces whatever
+    // Vercel actually says rather than us pretending it connected.
+    description: "Projects, deployments, logs, and Web Analytics on Vercel.",
+    setup: { kind: "oauth", transport: "http", url: "https://mcp.vercel.com" },
+    verifiedOn: VERIFIED,
+    source: "https://vercel.com/docs/agent-resources/vercel-mcp",
+    homepage: "https://vercel.com",
+  },
+
+  // ---- No account needed ---------------------------------------------------
+  {
+    id: "deepwiki",
+    label: "DeepWiki",
+    category: "Docs & knowledge",
+    audience: "developer",
+    description: "Ask questions about any public GitHub repository's documentation.",
+    setup: { kind: "none", transport: "http", url: "https://mcp.deepwiki.com/mcp" },
+    verifiedOn: VERIFIED,
+    source: "https://docs.devin.ai/work-with-devin/deepwiki-mcp",
+    homepage: "https://deepwiki.com",
+  },
+  {
+    id: "semgrep",
+    label: "Semgrep",
     category: "Observability",
     audience: "developer",
-    description: "Metrics, monitors, and logs in Datadog.",
-    transport: "stdio",
-    template: STDIO("datadog"),
-    credential: { label: "Datadog API key", envVar: "DD_API_KEY" },
-    homepage: "https://www.datadoghq.com",
+    description: "Scan code for security and correctness findings with Semgrep.",
+    setup: { kind: "none", transport: "http", url: "https://mcp.semgrep.ai/mcp" },
+    verifiedOn: VERIFIED,
+    source: "https://github.com/semgrep/mcp",
+    homepage: "https://semgrep.dev",
   },
   {
-    id: "grafana",
-    label: "Grafana",
-    category: "Observability",
+    id: "filesystem",
+    label: "Local files",
+    category: "Local tools",
     audience: "developer",
-    description: "Dashboards and data sources in Grafana.",
-    transport: "stdio",
-    template: STDIO("grafana"),
-    credential: { label: "Grafana API token", envVar: "GRAFANA_API_KEY" },
-    homepage: "https://grafana.com",
-  },
-  // CI/CD
-  {
-    id: "github-actions",
-    label: "GitHub Actions",
-    category: "CI/CD",
-    audience: "developer",
-    description: "Workflow runs and logs in GitHub Actions.",
-    transport: "stdio",
-    template: STDIO("github-actions"),
-    credential: { label: "GitHub token", envVar: "GITHUB_PERSONAL_ACCESS_TOKEN" },
-    homepage: "https://github.com/features/actions",
+    // Reference server, actively maintained. Args are supplied by the UI (the
+    // directories to expose), which is why this entry carries none.
+    description: "Read and write files in directories you choose on this machine.",
+    setup: {
+      kind: "none",
+      transport: "stdio",
+      command: "npx",
+      args: ["-y", "@modelcontextprotocol/server-filesystem"],
+    },
+    verifiedOn: VERIFIED,
+    source: "https://github.com/modelcontextprotocol/servers",
   },
   {
-    id: "circleci",
-    label: "CircleCI",
-    category: "CI/CD",
-    audience: "developer",
-    description: "Pipelines and build status on CircleCI.",
-    transport: "stdio",
-    template: STDIO("circleci"),
-    credential: { label: "CircleCI API token", envVar: "CIRCLECI_TOKEN" },
-    homepage: "https://circleci.com",
+    id: "memory",
+    label: "Persistent memory",
+    category: "Local tools",
+    audience: "user",
+    description: "A knowledge graph the assistant can remember things in between chats.",
+    setup: {
+      kind: "none",
+      transport: "stdio",
+      command: "npx",
+      args: ["-y", "@modelcontextprotocol/server-memory"],
+    },
+    verifiedOn: VERIFIED,
+    source: "https://github.com/modelcontextprotocol/servers",
   },
 ];
 
-// The catalog visible to a given mode. Developer sees everything; user sees only
-// user-audience entries. Absent audience (future callers) defaults to developer
-// so nothing is accidentally hidden from the full view.
+/**
+ * What is missing from this list, and why. Two different reasons, and conflating
+ * them is how this file went wrong twice.
+ *
+ * 1. BLOCKED ON A SETUP SHAPE WE HAVE NOT BUILT. These have real, verified,
+ *    official endpoints. They are absent only because `ConnectorSetup` cannot yet
+ *    express what they need:
+ *      - own OAuth client id + secret: all of Google Workspace (Gmail, Drive,
+ *        Docs, Sheets, Slides, Calendar, Chat, People)
+ *      - templated URL: Microsoft 365 (tenant), GitLab (host), Shopify (store),
+ *        Datadog (region), AWS (region), Salesforce (org), Microsoft Ads
+ *      - client-credentials grant: PayPal
+ *      - static API token: Bitbucket tools on the Atlassian endpoint
+ *    Endpoints for every one of these are recorded in
+ *    projects/connectors/connectors.md. Do not re-research them.
+ *
+ * 2. NO OFFICIAL SERVER EXISTS. Checked per vendor, not by a broad sweep:
+ *    Zendesk (they are an MCP client, not a server publisher), Todoist, Google
+ *    Search Console, Google Business Profile, LinkedIn Ads, Reddit Ads,
+ *    StackAdapt, CircleCI, Apple Pages. Pinterest Ads has one but it is a
+ *    partner-gated alpha.
+ *
+ * NEVER shipped, even though the package name looks right: the archived
+ * reference servers (@modelcontextprotocol/server-github, -slack, -postgres,
+ * -gdrive, -sqlite). The SQLite one carries an unpatched SQL injection flaw in a
+ * frozen repository.
+ *
+ * The mistake to avoid: an earlier pass moved vendors into category 2 because one
+ * broad search missed them. Slack, HubSpot, monday.com, Box, Airtable, Dropbox,
+ * ClickUp, Trello, Ahrefs, Netlify and Square all publish official endpoints and
+ * are in the list above. Check the vendor's own docs before declaring absence.
+ */
+export const KNOWN_ABSENT_NOTE =
+  "Not listed here? Use Add custom connector with the server's own setup docs.";
+
+/**
+ * The catalog visible to a given mode. Developer sees everything; user sees only
+ * user-audience entries, so non-coder surfaces are not peppered with
+ * engineering connectors.
+ */
 export function catalogForAudience(audience?: ConnectorAudience): ConnectorCatalogEntry[] {
   if (audience === "user") {
     return CONNECTOR_CATALOG.filter((entry) => entry.audience === "user");
@@ -801,7 +473,7 @@ export function catalogForAudience(audience?: ConnectorAudience): ConnectorCatal
   return CONNECTOR_CATALOG;
 }
 
-// Group catalog entries by category, preserving first-seen category order.
+/** Group catalog entries by category, preserving first-seen category order. */
 export function groupCatalogByCategory(
   entries: ConnectorCatalogEntry[],
 ): { category: string; entries: ConnectorCatalogEntry[] }[] {
@@ -817,4 +489,34 @@ export function groupCatalogByCategory(
     bucket.push(entry);
   }
   return groups;
+}
+
+/** True when connecting this entry means a browser login rather than a paste. */
+export function isOAuthEntry(entry: ConnectorCatalogEntry): boolean {
+  return entry.setup.kind === "oauth";
+}
+
+/**
+ * Free-text search over the catalog. Matches the fields a user would actually
+ * type: the name, what it does, and the category. Deliberately NOT the endpoint,
+ * because nobody searches for a hostname, and matching one would make a search
+ * for "mcp" return everything.
+ *
+ * An empty query returns the list unchanged, so callers can filter
+ * unconditionally.
+ */
+export function searchCatalog(
+  entries: ConnectorCatalogEntry[],
+  query: string,
+): ConnectorCatalogEntry[] {
+  const needle = query.trim().toLowerCase();
+  if (needle.length === 0) {
+    return entries;
+  }
+  return entries.filter(
+    (entry) =>
+      entry.label.toLowerCase().includes(needle) ||
+      entry.description.toLowerCase().includes(needle) ||
+      entry.category.toLowerCase().includes(needle),
+  );
 }

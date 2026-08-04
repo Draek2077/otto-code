@@ -43,7 +43,7 @@ interface ChangedPathsInput {
   workspaceId?: string | null;
   /**
    * The checkout root, passed through verbatim. Give it the SAME string the
-   * Changes pane gets as `cwd` — the diff query key is built from it, and a
+   * Changes pane gets as `cwd` - the diff query key is built from it, and a
    * differing spelling would open a second, redundant subscription instead of
    * sharing the one the Changes pane already holds.
    */
@@ -52,7 +52,7 @@ interface ChangedPathsInput {
 }
 
 /**
- * The set of file paths in the workspace's current diff — the same set the
+ * The set of file paths in the workspace's current diff - the same set the
  * Changes tab lists.
  *
  * "View changes" is only offered for a file the Changes tab can actually show,
@@ -60,7 +60,7 @@ interface ChangedPathsInput {
  * the changed-file list before the user asks. There is no lighter RPC for it:
  * the daemon serves the diff or nothing. So this mounts the very same
  * `useCheckoutDiffQuery` the Changes pane mounts, deriving every parameter the
- * same way, so the two resolve to one query key — one cache entry, and one
+ * same way, so the two resolve to one query key - one cache entry, and one
  * daemon subscription no matter how many of these are mounted (the push router
  * dedupes by subscription id, which is derived from the key).
  *
@@ -118,7 +118,7 @@ export function useChangedFilePaths({
 /**
  * Send the user to this file's diff: stash the reveal, then switch the explorer
  * to Changes. Same shape as the Changes view's "Find in files" going the other
- * way — the destination pane consumes the request on mount, so this works
+ * way - the destination pane consumes the request on mount, so this works
  * whether or not the Changes tab is currently rendered.
  *
  * `isGit: true` is safe to assert: every caller reached this through a path that

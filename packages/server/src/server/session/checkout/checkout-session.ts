@@ -526,7 +526,7 @@ export class CheckoutSession {
       // Branch is a git fact derived per-descriptor from each workspace's own
       // live git snapshot (id → cwd); the reconciliation pass re-persists the
       // `branch` field per workspace from its own cwd. No cwd → ids fan-out here.
-      // TODO(K10): PR-binding on branch rename is deferred — see plan K10.
+      // TODO(K10): PR-binding on branch rename is deferred - see plan K10.
 
       // Push a workspace_update immediately so the sidebar/header reflect
       // the new branch name without waiting for the background git watcher.
@@ -799,7 +799,7 @@ export class CheckoutSession {
   ): Promise<void> {
     const { cwd, requestId } = msg;
     try {
-      // Rollback discards uncommitted edits, so — like commit — refuse while an
+      // Rollback discards uncommitted edits, so - like commit - refuse while an
       // agent is working in this cwd unless the client confirmed the override.
       if (!msg.allowWithRunningAgents) {
         const busyAgents = this.listBusyAgentsForCwd(cwd);
@@ -888,7 +888,7 @@ export class CheckoutSession {
   // ── Git file investigation ────────────────────────────────────────────────
   // Four read-only local-git queries over one file (or a line range in it):
   // history, per-commit diff, blame, and the commit that created it. They touch
-  // no hosting provider and need no remote, and — unusually for this repo —
+  // no hosting provider and need no remote, and - unusually for this repo -
   // there is no per-provider rollout, because git is the same for every agent
   // provider. See utils/git-file-history.ts.
 
@@ -1457,7 +1457,7 @@ export class CheckoutSession {
       return;
     }
 
-    // Treat missing CLI/credentials as features-off, not a thrown failure —
+    // Treat missing CLI/credentials as features-off, not a thrown failure -
     // the router surfaces GitHostingCredentialsMissingError for providers
     // whose project has no token configured yet.
     const githubFeaturesEnabled = await this.github.isAuthenticated({ cwd }).catch(() => false);
@@ -1531,8 +1531,8 @@ export class CheckoutSession {
     const { cwd, repoOwner, repoName, checkRunId, workflowRunId, requestId } = msg;
     // One handler serves both the namespaced RPC and its legacy github twin, so
     // the response type has to follow the request type. Answering the forge
-    // request on the github channel leaves the client — which is on the forge
-    // path because websocket-server advertises `forgeCheckDetails` — waiting for
+    // request on the github channel leaves the client - which is on the forge
+    // path because websocket-server advertises `forgeCheckDetails` - waiting for
     // a message that never arrives.
     const responseType =
       msg.type === "checkout.forge.get_check_details.request"
@@ -1580,7 +1580,7 @@ export class CheckoutSession {
     const { cwd, query, limit, kinds, requestId } = msg;
     // COMPAT(githubSearchRpc): added in v0.1.106, remove after 2026-12-28.
     // One handler serves the namespaced RPC and its legacy github twin, so the
-    // response type follows the request type — the client is on the forge path
+    // response type follows the request type - the client is on the forge path
     // whenever websocket-server advertises `forgeSearch`, and answering on the
     // github channel leaves it waiting until timeout. The legacy channel also
     // needs the change_request kind mapped back to "pr": old clients parse items

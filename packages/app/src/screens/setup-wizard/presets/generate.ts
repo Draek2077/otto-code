@@ -9,7 +9,7 @@
  *   - tier → model: each model's tier is the daemon-stamped `model.tier`
  *     (override or shipped catalog; Unknown otherwise). The largest-context
  *     model per tier is picked, with a context-window heuristic filling any tier
- *     no known model claimed — so an LM Studio team of Unknown models still binds.
+ *     no known model claimed - so an LM Studio team of Unknown models still binds.
  *   - preferred modes → the first the provider advertises, else mode-unset.
  *
  * Randomness is injected (`random`, default Math.random) so tests are
@@ -34,7 +34,7 @@ export type ModelTierTags = Readonly<Record<string, Tier>>;
  * Classify a single model into a tier, or null ("Unknown") when we don't know:
  *   1. the daemon-stamped `model.tier` (already folds in the user's override),
  *   2. an app-provided tag (only used against pre-tier daemons / in tests),
- *   3. the shipped catalog (known official ids only — no name guessing).
+ *   3. the shipped catalog (known official ids only - no name guessing).
  * The context-window heuristic is a whole-list fallback (resolveTierModels), not
  * a per-model signal, so it isn't consulted here.
  */
@@ -178,7 +178,7 @@ function buildPersonality(input: {
 
 /**
  * Generate an installable team from a blueprint against a provider's snapshot.
- * Returns null when the provider advertises no models (nothing to bind to) — the
+ * Returns null when the provider advertises no models (nothing to bind to) - the
  * caller should surface "provider not ready" rather than install a broken team.
  */
 export function generateTeam(input: GenerateTeamInput): GeneratedTeam | null {

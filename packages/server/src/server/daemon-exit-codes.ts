@@ -1,6 +1,6 @@
 // Exit codes the daemon worker uses to tell the supervisor how to react.
 //
-// A normal non-zero exit (e.g. 1) means "crashed — try restarting", and the
+// A normal non-zero exit (e.g. 1) means "crashed - try restarting", and the
 // supervisor relaunches the worker. But some failures are permanent for the
 // current launch and restarting only spins forever. The canonical case is
 // EADDRINUSE: a stale daemon already holds the listen port, so every restart

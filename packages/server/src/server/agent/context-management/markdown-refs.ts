@@ -2,8 +2,8 @@
  * Extracts the two kinds of outbound reference a context file can carry
  * (charter §2.1):
  *
- * - **import** — `@docs/foo.md`. Inlined into the request, recursively.
- * - **reference** — `[foo](docs/foo.md)`. Costs only the link text; the model
+ * - **import** - `@docs/foo.md`. Inlined into the request, recursively.
+ * - **reference** - `[foo](docs/foo.md)`. Costs only the link text; the model
  *   may or may not read it.
  *
  * Both carry the byte range of the whole token, which is what lets the UI
@@ -58,7 +58,7 @@ function isExternalTarget(target: string): boolean {
 /**
  * A bare `@` mention only counts as an import when it looks like a path: it has
  * a separator, a home prefix, or a file extension. `@otto-code/protocol` still
- * slips through this net by design — the scanner filters candidates by
+ * slips through this net by design - the scanner filters candidates by
  * existence, which is the only reliable test (charter §2.4: resolution decides).
  */
 function looksLikePath(target: string): boolean {

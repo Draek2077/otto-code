@@ -79,7 +79,7 @@ const MAX_PARENT_WALK_DEPTH = 8;
  * or a nested observed subagent reached by walking up THROUGH observed rows
  * only (a subagent's own fan-out parents to its spawning subagent's row, and
  * that whole tree is this chat's doing). An ATTENDED intermediate breaks the
- * chain on purpose — an attended child is its own chat with its own track,
+ * chain on purpose - an attended child is its own chat with its own track,
  * and its children are not this chat's rows.
  */
 export function isTrackDescendantOf(
@@ -103,7 +103,7 @@ export function isTrackDescendantOf(
 
 /**
  * True when at least one OBSERVED sub-agent in `parentAgentId`'s track is still
- * running — i.e. the parent's own turn may be over, but the fan-out it spawned
+ * running - i.e. the parent's own turn may be over, but the fan-out it spawned
  * is not. Attended children are excluded on purpose: they are their own chats
  * the user drives, not work this chat is waiting on. Used by the Visualizer's
  * "waiting" voice cue (see docs/visualizer.md "Voice cues").

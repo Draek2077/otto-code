@@ -32,7 +32,7 @@ export function buildEnv(
 /**
  * Translate a profile into llama-server arguments.
  *
- * Only settings that demonstrably matter for stable local inference are emitted —
+ * Only settings that demonstrably matter for stable local inference are emitted -
  * no experimental sampler knobs.
  */
 export function buildArgs(profile: Profile, { port, host = "127.0.0.1" }: ServeTarget): string[] {

@@ -5,7 +5,7 @@
 // precision the lookup on the other end cannot honour.
 //
 // This module is imported by editor-core.ts, which is bundled into the native
-// webview — keep it free of React, React Native, and app-store imports.
+// webview - keep it free of React, React Native, and app-store imports.
 
 /**
  * `$` and `_` are word characters in every language we index; `-` deliberately
@@ -19,7 +19,7 @@ function isWordChar(char: string | undefined): boolean {
 /**
  * The identifier at a caret position, or `""` when the caret is not in one.
  *
- * `column` is 1-based and counted in UTF-16 code units — the same unit CM6 uses
+ * `column` is 1-based and counted in UTF-16 code units - the same unit CM6 uses
  * for offsets (see `EditorCursorPosition`), so the caret sits *before* the
  * character at index `column - 1`.
  *

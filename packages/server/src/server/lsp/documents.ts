@@ -12,7 +12,7 @@ import { documentKey, toFileUri } from "./uri.js";
  * Three properties make this correct rather than approximately correct:
  *
  * **Answers come from the draft, not the disk.** A definition resolved against saved
- * content is a subtly wrong answer whenever there are unsaved edits — which, in an
+ * content is a subtly wrong answer whenever there are unsaved edits - which, in an
  * editor, is most of the time.
  *
  * **A server that starts late still sees the document.** Servers spawn lazily on the
@@ -25,7 +25,7 @@ import { documentKey, toFileUri } from "./uri.js";
  * **A query never depends on some other tab being open.** When a position query names a
  * file no editor is mirroring, the file is loaded from disk and opened before the query
  * goes out. Without this, a language server that was never sent `didOpen` for the URI
- * answers *empty* — not an error, just nothing — and the caller reports "no references"
+ * answers *empty* - not an error, just nothing - and the caller reports "no references"
  * about a symbol that plainly has them. That is what a References tab restored after a
  * client reload used to show: its own tab came back, the file's editor tab did not mount,
  * so nothing mirrored the buffer and re-asking could never fix it.
@@ -87,7 +87,7 @@ export class LspDocuments {
    * The open document with this canonical identity, or null.
    *
    * Diagnostics arrive addressed by the server's own URI spelling, and what the client
-   * needs back is the path *it* opened — those differ by drive-letter case, by `/` vs `\`,
+   * needs back is the path *it* opened - those differ by drive-letter case, by `/` vs `\`,
    * and by percent-encoding. Echoing the server's spelling would produce a document the
    * client cannot match to any open tab.
    */
@@ -130,7 +130,7 @@ export class LspDocuments {
 
   /**
    * Every server bound to this document, each guaranteed to have seen it. This is the
-   * entry point for a query — it is what makes a lazily-spawned server usable.
+   * entry point for a query - it is what makes a lazily-spawned server usable.
    */
   async serversFor(rootPath: string, filePath: string): Promise<BoundServer[]> {
     const bound = await this.pool.serversForDocument(rootPath, filePath);
@@ -162,7 +162,7 @@ export class LspDocuments {
    * tab had mirrored it from the start.
    *
    * Best-effort by design. A file that is gone, unreadable, or oversized simply leaves the
-   * servers unopened — the same state as before, which the caller already handles.
+   * servers unopened - the same state as before, which the caller already handles.
    */
   private async loadFromDisk(rootPath: string, filePath: string): Promise<OpenDocument | null> {
     try {

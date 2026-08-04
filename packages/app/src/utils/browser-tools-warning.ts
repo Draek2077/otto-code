@@ -1,13 +1,13 @@
 // The two heads-ups shown when a host's "Browser tools" master is off.
 //
 // Browser tools are a deliberate opt-in (they drive real Otto tabs carrying the
-// user's logged-in sessions — see docs/preview.md), so off is a normal state,
+// user's logged-in sessions - see docs/preview.md), so off is a normal state,
 // not a misconfiguration. What is NOT acceptable is letting a user reach for a
 // feature and get silence. These two gates differ on purpose:
 //
 // - **Preview is hard-gated.** Without browser tools the agent has no
-//   preview_*/browser_* tools at all, so the point of preview — the agent
-//   starting the server and checking the result — cannot happen. The dialog is
+//   preview_*/browser_* tools at all, so the point of preview - the agent
+//   starting the server and checking the result - cannot happen. The dialog is
 //   a fork in the road (go to settings, or don't preview) and is deliberately
 //   NOT suppressible: suppressing it would leave a button that silently does
 //   nothing useful.
@@ -16,7 +16,7 @@
 //   either way, and carries a "Don't show this again" checkbox.
 //
 // Both live here rather than at each call site so the copy and the suppression
-// rule stay in one place — "New browser" has several entry points.
+// rule stay in one place - "New browser" has several entry points.
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useRouter, type Href } from "expo-router";
@@ -63,7 +63,7 @@ export function useOpenBrowserToolsSettings(serverId: string): () => void {
 }
 
 /**
- * The single read of the master. An absent value is off — browser tools are an
+ * The single read of the master. An absent value is off - browser tools are an
  * opt-in, so anything short of an explicit `true` must not read as enabled.
  */
 export function isBrowserToolsEnabled(config: MutableDaemonConfig | null | undefined): boolean {
@@ -108,8 +108,8 @@ export interface BrowserGateInput {
 
 /**
  * Heads-up before opening a browser tab that agents won't be able to use. Same
- * shape as the preview gate — "Open settings" navigates and stops here, "Not
- * now" proceeds — because the tab is still useful to the human on its own.
+ * shape as the preview gate - "Open settings" navigates and stops here, "Not
+ * now" proceeds - because the tab is still useful to the human on its own.
  * Ticking the checkbox persists the suppression before returning, so the answer
  * sticks whichever branch the user takes.
  */

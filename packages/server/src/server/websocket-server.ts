@@ -23,6 +23,14 @@ import type { PromptTemplateStore } from "./orchestration/prompt-template-store.
 import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
 import { redactDaemonConfigForClient } from "./daemon-config-store.js";
 import type { DaemonConfigStore, MutableDaemonConfig } from "./daemon-config-store.js";
+import type { ConnectorOAuthBroker } from "./connectors/connector-oauth.js";
+
+// Normalize an optional constructor dependency to null. A function rather than
+// an inline `?? null` per field: this constructor takes forty-odd positional
+// parameters and each inline default counts against its complexity budget.
+function orNull<T>(value: T | null | undefined): T | null {
+  return value ?? null;
+}
 import {
   type ServerInfoStatusPayload,
   type SessionOutboundMessage,
@@ -492,8 +500,8 @@ const WS_PROTOCOL_VERSION = 1;
 const WS_RUNTIME_METRICS_FLUSH_MS = 30_000;
 /**
  * How often idle language servers are checked for expiry. The pool deliberately holds no
- * timers — every decision reads an injected clock so the lifecycle is testable without
- * waiting on wall time — so the daemon owns the tick. Well under the shortest allowance
+ * timers - every decision reads an injected clock so the lifecycle is testable without
+ * waiting on wall time - so the daemon owns the tick. Well under the shortest allowance
  * (the 2-minute background idle) so the setting means roughly what it says.
  */
 const LSP_IDLE_REAP_INTERVAL_MS = 30_000;
@@ -592,6 +600,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly ottoHome: string;
   private readonly worktreesRoot: string | undefined;
   private readonly daemonConfigStore: DaemonConfigStore;
+  private readonly connectorOAuthBroker: ConnectorOAuthBroker | null;
   private readonly pushTokenStore: PushTokenStore;
   private readonly pushNotificationSender: PushNotificationSender;
   private readonly mcpBaseUrl: string | null;
@@ -696,6 +705,7 @@ export class VoiceAssistantWebSocketServer {
     resetActivityStats?: () => Promise<void>,
     graphStore?: GraphStore | null,
     hubRelationships?: HubRelationshipManagement | null,
+    connectorOAuthBroker?: ConnectorOAuthBroker | null,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -704,9 +714,9 @@ export class VoiceAssistantWebSocketServer {
     }
     this.daemonVersion = daemonVersion.trim();
     this.daemonRuntimeConfig = daemonRuntimeConfig;
-    this.browserToolsBroker = browserToolsBroker ?? null;
-    this.previewDevServers = previewDevServers ?? null;
-    this.hubRelationships = hubRelationships ?? null;
+    this.browserToolsBroker = orNull(browserToolsBroker);
+    this.previewDevServers = orNull(previewDevServers);
+    this.hubRelationships = orNull(hubRelationships);
     this.agentManager = agentManager;
     this.agentStorage = agentStorage;
     this.projectRegistry = projectRegistry ?? createNoopProjectRegistry();
@@ -767,7 +777,7 @@ export class VoiceAssistantWebSocketServer {
     });
     // Daemon-scoped for the same reason the language-server pool is: the sidecar holds an MSBuild
     // project model keyed by solution, so every client session shares one rather than spawning
-    // its own. Constructed unconditionally and cheaply — nothing happens inside it until the
+    // its own. Constructed unconditionally and cheaply - nothing happens inside it until the
     // switch is on, and `applySettings` below is what turns it on.
     this.solutionService = new SolutionService({ logger: this.logger });
     void this.solutionService
@@ -778,6 +788,7 @@ export class VoiceAssistantWebSocketServer {
     this.ottoHome = ottoHome;
     this.worktreesRoot = daemonRuntimeConfig?.worktreesRoot;
     this.daemonConfigStore = daemonConfigStore;
+    this.connectorOAuthBroker = orNull(connectorOAuthBroker);
     this.mcpBaseUrl = mcpBaseUrl;
     this.assignOptionalServices({
       speech,
@@ -886,7 +897,7 @@ export class VoiceAssistantWebSocketServer {
   /**
    * Provide the personality-memory service. Wired from bootstrap; when absent the
    * daemon does not advertise `features.personalityMemory` and the client hides
-   * the whole feature — there is no client-side substitute for daemon storage.
+   * the whole feature - there is no client-side substitute for daemon storage.
    */
   public setPersonalityMemoryService(service: PersonalityMemoryService | null): void {
     this.personalityMemoryService = service;
@@ -1010,7 +1021,7 @@ export class VoiceAssistantWebSocketServer {
         this.logger.warn({ err }, "Failed to reap idle language servers");
       });
       // The solution sidecar rides the same tick. Its own reap is a no-op while the feature is
-      // off, and giving it a second interval would mean a second thing to forget to wire — which
+      // off, and giving it a second interval would mean a second thing to forget to wire - which
       // is exactly how the language-server reap ended up with no caller at all.
       void this.solutionService.reapIdle().catch((err: unknown) => {
         this.logger.warn({ err }, "Failed to reap idle solution sidecars");
@@ -1613,6 +1624,7 @@ export class VoiceAssistantWebSocketServer {
       workspaceAutoName: this.workspaceAutoName,
       ...(this.agentAutoTitle ? { agentAutoTitle: this.agentAutoTitle } : {}),
       daemonConfigStore: this.daemonConfigStore,
+      connectorOAuthBroker: this.connectorOAuthBroker,
       mcpBaseUrl: this.mcpBaseUrl,
       stt: () => this.speech?.resolveStt() ?? null,
       sttLanguage: this.speech?.resolveSttLanguage() ?? "en",
@@ -1975,6 +1987,8 @@ export class VoiceAssistantWebSocketServer {
         mcpToolGroups: true,
         // COMPAT(connectors): added in v0.7.5, drop the gate when daemon floor >= v0.7.5.
         connectors: true,
+        // COMPAT(connectorOauth): added in v0.7.7, drop the gate when daemon floor >= v0.7.7.
+        connectorOauth: true,
         // COMPAT(agentBehaviorToggles): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
         agentBehaviorToggles: true,
         // COMPAT(todoReminders): added in v0.7.5, drop the gate when daemon floor >= v0.7.5.
@@ -1982,7 +1996,7 @@ export class VoiceAssistantWebSocketServer {
         // COMPAT(metadataGenerationEnabled): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
         metadataGenerationEnabled: true,
         // COMPAT(usageCostCategories): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
-        // Gated on the same store the rollups come from — a daemon that can serve
+        // Gated on the same store the rollups come from - a daemon that can serve
         // activity rollups at this version also populates the per-category counters.
         usageCostCategories: this.getActivityRollups !== undefined,
         // COMPAT(usageLog): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
@@ -1992,7 +2006,7 @@ export class VoiceAssistantWebSocketServer {
         // Set when the daemon handles stats.activity.reset (wipe counters + ledger).
         statsReset: this.resetActivityStats !== undefined,
         // COMPAT(historyDelete): added in v0.7.0, drop the gate when daemon floor >= v0.7.0.
-        // Hard delete for chat records — per-row `delete_agent_request` (which has
+        // Hard delete for chat records - per-row `delete_agent_request` (which has
         // always existed) plus the bulk `history.agents.clear_archived` sweep.
         // Unconditionally true: both handlers hang off agentStorage/agentManager,
         // which every daemon wires, so there is nothing to derive from.
@@ -2033,6 +2047,16 @@ export class VoiceAssistantWebSocketServer {
         // point at a brain on another Otto host and proxy its status/evals
         // instead of spawning a local child.
         brainRemote: true,
+        // COMPAT(brainConsole): added in v0.7.7, drop the gate when daemon floor
+        // >= v0.7.7. Daemon proxies the brain's own /__host/* management API:
+        // brain.models.inventory, brain.model.profile.get/set,
+        // brain.model.budget.get, brain.model.load/unload/delete, brain.logs.tail.
+        // Unlike brainManage (which shells out to the CLI and is therefore
+        // local-only) these work against a remote brain too, because they go
+        // through BrainManager's mode-resolved endpoint. Whether the brain on the
+        // far side serves them is answered separately by `capabilities` on
+        // brain.host.status.
+        brainConsole: true,
         // COMPAT(brainManage): added in v0.7.5, remove gate after 2026-07-30
         // once daemon floor >= v0.7.5. Daemon drives the brain's model/runtime
         // verbs (scan/catalog/runtime list) and long jobs (pull/runtime
@@ -2247,7 +2271,7 @@ export class VoiceAssistantWebSocketServer {
    * `setActiveWorkspace` is only ever called from a client focus signal and is
    * deliberately sticky, so without this it would survive every disconnect and
    * keep the git service's 60 s self-heal and 180 s background `git fetch`
-   * running against a daemon nobody is attached to — overnight network fetches
+   * running against a daemon nobody is attached to - overnight network fetches
    * with zero clients. The next heartbeat after a client returns re-derives the
    * active workspace from its focus (`Session.syncActiveWorkspaceFromActivity`),
    * so this is a pause, not a loss.

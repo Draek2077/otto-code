@@ -31,8 +31,8 @@ import {
 } from "@/components/image-zoom";
 
 // The read-only image view inside a file tab. There is no editor and no split
-// mode for an image — `file-tab-pane` withholds the whole mode bar for a
-// non-text file — so this component owns the entire pane and can spend the
+// mode for an image - `file-tab-pane` withholds the whole mode bar for a
+// non-text file - so this component owns the entire pane and can spend the
 // bottom-right corner on its own controls.
 //
 // Panning is scrolling. Both platforms already have a tuned, momentum-carrying,
@@ -64,7 +64,7 @@ const ThemedFitScreen = withUnistyles(FitScreen);
  * The transparency checker behind the image.
  *
  * A leaf wrapped with `withUnistyles` rather than a themed stylesheet, because
- * `fill` is an SVG presentation attribute, not a React Native style — the
+ * `fill` is an SVG presentation attribute, not a React Native style - the
  * sanctioned route for a theme-reactive non-`style` prop (see
  * docs/unistyles.md). Only this node re-renders on a theme change.
  */
@@ -255,7 +255,7 @@ export function ImagePreview({
   const { t } = useTranslation();
   const [failed, setFailed] = useState(false);
   const [layout, setLayout] = useState({ width: 0, height: 0 });
-  /** Null means "fit" — a mode, not a number, so it survives a pane resize. */
+  /** Null means "fit" - a mode, not a number, so it survives a pane resize. */
   const [zoom, setZoom] = useState<number | null>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -332,7 +332,7 @@ export function ImagePreview({
   const handleError = useCallback(() => setFailed(true), []);
 
   // Ctrl/Cmd + wheel is the zoom gesture everywhere a pointer exists, and it is
-  // also what a trackpad pinch reports — so this one listener covers both. It
+  // also what a trackpad pinch reports - so this one listener covers both. It
   // has to be a real DOM listener registered non-passively: `preventDefault` is
   // what stops the browser zooming the whole app instead, and React Native has
   // no wheel prop to hang it on. Native has no equivalent; the buttons are the
@@ -430,7 +430,7 @@ export function ImagePreview({
 
   // No measured size: no ratio, so no zoom, no pan, and nothing for the
   // scrollers to scroll. Skipping them entirely also skips the question of what
-  // a percentage height resolves to inside a nested scroll view — this branch
+  // a percentage height resolves to inside a nested scroll view - this branch
   // is exactly the pre-viewer behaviour, kept as the graceful degradation.
   if (!canZoom) {
     return (

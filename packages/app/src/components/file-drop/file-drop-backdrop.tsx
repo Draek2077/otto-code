@@ -12,7 +12,7 @@ const primaryIconColorMapping = (theme: Theme) => ({ color: theme.colors.primary
 
 /**
  * Drop overlay rendered by FileDropZone. Reads `isDragging` on the UI thread so the dim
- * only ever repaints the backdrop — never the surrounding tree.
+ * only ever repaints the backdrop - never the surrounding tree.
  */
 export function FileDropBackdrop() {
   const { t } = useTranslation();
@@ -32,7 +32,7 @@ export function FileDropBackdrop() {
 
   // Animated.View keeps only plain-RN positioning; theme-dependent paint lives on the
   // non-animated children (applying themed Unistyles styles to an Animated.View crashes
-  // on theme change — see docs/unistyles.md).
+  // on theme change - see docs/unistyles.md).
   return (
     <Animated.View style={overlayStyle} pointerEvents="none">
       <View style={styles.backdrop} />

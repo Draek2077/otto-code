@@ -164,7 +164,7 @@ const ThemedAttachmentMousePointer = withUnistyles(MousePointer2);
 
 // `size` is folded into uniProps (not a static prop) so it repaints from the live,
 // compact-doubled `theme.iconSize` the same way `color` already does. Safe here even
-// though these icons are module-level consts (not components) — uniProps re-runs on
+// though these icons are module-level consts (not components) - uniProps re-runs on
 // the wrapped leaf regardless of where the element was constructed.
 const iconForegroundMutedMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,

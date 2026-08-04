@@ -6,7 +6,7 @@ describe("formatPrTabLabel", () => {
     expect(formatPrTabLabel(42)).toBe("42");
   });
 
-  it("returns the — fallback when the pull request number is null", () => {
-    expect(formatPrTabLabel(null)).toBe("—");
+  it("returns the - fallback when the pull request number is null", () => {
+    expect(formatPrTabLabel(null)).toBe("-");
   });
 });

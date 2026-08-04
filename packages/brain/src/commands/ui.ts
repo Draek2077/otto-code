@@ -1,5 +1,5 @@
 /**
- * `otto brain ui` (and the bare `otto brain`) — the full-screen interactive TUI,
+ * `otto brain ui` (and the bare `otto brain`) - the full-screen interactive TUI,
  * the tool's signature experience. Gated on a TTY; falls back with guidance when
  * piped. Bypasses the output layer since it owns the whole screen.
  */

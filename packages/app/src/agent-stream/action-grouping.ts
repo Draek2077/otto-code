@@ -8,11 +8,11 @@ import type { ActionGroupItem, ActionGroupMemberItem, StreamItem } from "@/types
 
 // Only settled actions ever group: live (running) actions stay visible
 // outside, below the group, and collapse in when they complete. A group
-// always holds 2+ settled actions — a lone settled action renders on its own.
+// always holds 2+ settled actions - a lone settled action renders on its own.
 const MIN_GROUP_SIZE = 2;
 
 function isSpeakMessageToolCall(item: Extract<StreamItem, { kind: "tool_call" }>): boolean {
-  // Mirrors the SpeakMessage branch in agent-stream/view.tsx — those render as
+  // Mirrors the SpeakMessage branch in agent-stream/view.tsx - those render as
   // chat bubbles, not action rows, so they must not join an action group.
   return (
     item.payload.source === "agent" &&
@@ -34,7 +34,7 @@ export function isGroupableActionItem(item: StreamItem): item is ActionGroupMemb
     return false;
   }
   // Plans render as a full PlanCard, which reads as content rather than an
-  // action row — keep them out of groups so they stay prominent.
+  // action row - keep them out of groups so they stay prominent.
   if (item.payload.source === "agent" && item.payload.data.detail.type === "plan") {
     return false;
   }
@@ -118,7 +118,7 @@ const TOOL_NAME_CATEGORIES: Record<string, ActionGroupCategory> = {
 
 function categorizeByToolName(toolName: string): ActionGroupCategory {
   // Otto's daemon-hosted tools can arrive MCP-namespaced (mcp__otto__browser_click)
-  // or dot-namespaced (otto.browser_click) depending on transport — strip the
+  // or dot-namespaced (otto.browser_click) depending on transport - strip the
   // namespace so they categorize the same everywhere.
   const leafName = getOttoToolLeafName(toolName) ?? normalizeToolName(toolName);
   if (leafName.startsWith("browser_")) {
@@ -208,8 +208,8 @@ function createActionGroupItem(
   const last = members[members.length - 1];
   return {
     kind: "action_group",
-    // Keyed off the run's first member — which may itself still be live and
-    // outside the group — so the id stays stable while members settle into
+    // Keyed off the run's first member - which may itself still be live and
+    // outside the group - so the id stays stable while members settle into
     // the group and expansion state survives.
     id: `action_group_${runAnchor.id}`,
     timestamp: last.timestamp,

@@ -3,7 +3,7 @@
 // leaves it there.
 //
 // This is the half of the corpus you open by hand. The soak measures numbers; this
-// one exists so the slowness can be *felt* — several projects in the sidebar, each
+// one exists so the slowness can be *felt* - several projects in the sidebar, each
 // with worktree workspaces, each holding a dozen chats hundreds of messages long,
 // which is the shape users describe when they say Otto gets slow with a lot open.
 //
@@ -13,7 +13,7 @@
 //   node scripts/seed-perf-corpus.mjs --clean         # remove a previous corpus first
 //   OTTO_CORPUS_CHATS=4 node scripts/seed-perf-corpus.mjs
 //
-// Port: OTTO_DAEMON_PORT, else OTTO_DEV_DAEMON_PORT, else 6788. Never 6868 — that
+// Port: OTTO_DAEMON_PORT, else OTTO_DEV_DAEMON_PORT, else 6788. Never 6868 - that
 // is the installed app's daemon over ~/.otto, and seeding hundreds of synthetic
 // chats into the daemon that manages someone's real agents is not recoverable by
 // undo. The guard below refuses it outright rather than warning.

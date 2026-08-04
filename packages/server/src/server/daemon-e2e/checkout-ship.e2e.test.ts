@@ -107,7 +107,7 @@ async function waitForCheckoutStatus(options: {
   }
   // Returning the last candidate on timeout made every caller fail on its own
   // follow-up assertion instead, which reported "expected 'ship-loop' to be
-  // 'ship-loop-ready'" — a branch-rename bug — when the actual fault was that
+  // 'ship-loop-ready'" - a branch-rename bug - when the actual fault was that
   // the daemon never invalidated its cached git snapshot inside the window.
   if (!options.predicate(latest)) {
     throw new Error(

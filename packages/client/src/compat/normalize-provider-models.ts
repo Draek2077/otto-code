@@ -13,7 +13,7 @@ type ProvidersSnapshotUpdatePayload = Extract<
   { type: "providers_snapshot_update" }
 >["payload"];
 
-// COMPAT(model-normalize): daemon normalizes at source (provider-registry) — shim covers older daemons; drop when floor >= v0.1.104
+// COMPAT(model-normalize): daemon normalizes at source (provider-registry) - shim covers older daemons; drop when floor >= v0.1.104
 function normalizeAgentModels(
   models: AgentModelDefinition[] | undefined,
 ): AgentModelDefinition[] | undefined {

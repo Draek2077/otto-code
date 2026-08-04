@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { Dispatcher } from "undici";
 import type { Logger } from "pino";
 import type {
   AgentBareCompletionOptions,
@@ -66,6 +67,7 @@ import {
   resolveEnabledConnectors,
   type McpToolBinding,
 } from "./openai-compat-mcp.js";
+import { getConnectorAuthStore } from "../../connectors/connector-auth-store.js";
 import { renderPromptAttachmentAsText } from "../prompt-attachments.js";
 import { ottoToolPermissionKind } from "./openai-compat-otto-tool-permissions.js";
 import { PreviewStartGate, type PreviewStartCheck } from "./openai-compat-preview-start-gate.js";
@@ -81,7 +83,7 @@ import type {
 /**
  * Native provider for OpenAI-compatible HTTP endpoints (LM Studio, Ollama,
  * vLLM, llama.cpp server, gateways). The daemon talks to the endpoint
- * directly — model discovery via GET {base}/models, streaming chat via
+ * directly - model discovery via GET {base}/models, streaming chat via
  * POST {base}/chat/completions. No external agent binary is involved, so
  * availability means "the server is reachable", not "a CLI is installed".
  *
@@ -111,7 +113,7 @@ function resolveMaxToolRounds(value: number | null | undefined): number {
 
 /**
  * Per-tool-result budget for the compaction payload. Large results keep their
- * head and tail — truncating harder starves the summarizer of the material
+ * head and tail - truncating harder starves the summarizer of the material
  * (file contents, diffs, command output) the summary is supposed to preserve.
  */
 const TOOL_RESULT_HEAD_CHARS = 3000;
@@ -143,7 +145,7 @@ function truncateHeadTail(text: string, headChars: number, tailChars: number): s
 /**
  * `.int()` in Zod v4 clamps to the safe-integer range, so `z.toJSONSchema`
  * emits `minimum: -9007199254740991` / `maximum: 9007199254740991` on every
- * integer field — pure serialization noise the model re-reads on every request.
+ * integer field - pure serialization noise the model re-reads on every request.
  * Strip only those sentinel bounds (real `.min()`/`.max()` constraints differ
  * from the safe-integer limits and are preserved), keeping `.int()` validation.
  */
@@ -176,7 +178,7 @@ function stripSafeIntegerBounds(node: unknown): void {
  * summarizes the older history before it. Summarization is lossy, so we confine
  * it to the distant past where the loss is cheap; recent turns (the files just
  * read, the diff just applied, the error being debugged) stay intact.
- * Default only — tunable per provider via `compaction.keepRecentTokens`.
+ * Default only - tunable per provider via `compaction.keepRecentTokens`.
  */
 const COMPACTION_KEEP_RECENT_TOKENS = 20_000;
 
@@ -222,7 +224,7 @@ const UNEVENTFUL_RESULT_PLACEHOLDER = "[Uneventful result elided]";
  * How many of the most recent image-bearing user messages keep their base64
  * `image_url` parts through pruning. Older images are dropped (replaced with a
  * text marker) so a growing conversation stops re-uploading every screenshot
- * on every round — base64 images are among the largest things in the payload.
+ * on every round - base64 images are among the largest things in the payload.
  */
 const PRUNE_PROTECT_RECENT_IMAGE_MESSAGES = 2;
 const PRUNED_IMAGE_PLACEHOLDER = "[Earlier image removed to save context]";
@@ -232,14 +234,14 @@ const PRUNED_IMAGE_PLACEHOLDER = "[Earlier image removed to save context]";
  * server reports no context length (`resolveContextWindowMaxTokens()` is null).
  * Without a denominator there is no percentage, so history would otherwise grow
  * unbounded until the endpoint errors. This is a fallback for the compaction
- * math only — it is never reported to the client as a real window, so the
+ * math only - it is never reported to the client as a real window, so the
  * context ring still stays hidden for windowless endpoints.
  */
 const AUTO_COMPACT_FALLBACK_CONTEXT_TOKENS = 8_192;
 
 /**
  * Once auto-compaction disarms (a compaction failed or reclaimed too little),
- * re-arm after context grows by at least this much beyond the disarm point —
+ * re-arm after context grows by at least this much beyond the disarm point -
  * enough fresh material has accumulated that a retry has something new to
  * summarize. Prevents a single bad compaction from disarming the trigger
  * forever while still avoiding a re-summarize-every-round storm.
@@ -247,7 +249,7 @@ const AUTO_COMPACT_FALLBACK_CONTEXT_TOKENS = 8_192;
 const AUTO_COMPACT_REARM_GROWTH_TOKENS = 8_000;
 
 /**
- * True when a tool result carries no signal worth keeping in context — empty
+ * True when a tool result carries no signal worth keeping in context - empty
  * output, zero-match searches, or a bare timeout/no-op acknowledgement. These
  * are elided wholesale during pruning. Kept conservative on purpose: anything
  * ambiguous is left intact for the summarizer to judge.
@@ -326,7 +328,7 @@ export const OPENAI_COMPAT_MODES: AgentMode[] = [
   {
     id: "plan",
     label: "Read Only",
-    description: "Only read tools are available — no edits or commands; web fetches still ask",
+    description: "Only read tools are available - no edits or commands; web fetches still ask",
     icon: "ShieldToggle",
     colorTier: "planning",
   },
@@ -336,8 +338,8 @@ export const OPENAI_COMPAT_MODES: AgentMode[] = [
     // Guardrail-bearing description, mirroring the Claude provider's dontAsk
     // (docs/safe-unattended.md): the mode never prompts, but a call that would
     // have prompted is DENIED with a tool error instead of run. Listed before
-    // bypassPermissions so resolveDefaultAgentCreateConfig picks it — not
-    // bypass — as the coercion target for unattended runs (schedules, loops,
+    // bypassPermissions so resolveDefaultAgentCreateConfig picks it - not
+    // bypass - as the coercion target for unattended runs (schedules, loops,
     // artifacts, unattended-parent spawns). An explicitly requested bypass is
     // still honored: both modes are isUnattended, and the resolver keeps an
     // already-unattended request instead of coercing it.
@@ -392,7 +394,7 @@ interface ToolCallPayload {
 /**
  * A base64-encoded image attached to a user message. Sent to the model as an
  * OpenAI-vision `image_url` content part (a `data:` URL), and persisted with
- * the conversation so the image stays in context across resume — vision APIs
+ * the conversation so the image stays in context across resume - vision APIs
  * keep the image in the running conversation, not just the turn it arrived on.
  */
 interface PromptImage {
@@ -405,7 +407,7 @@ type ChatMessage =
    * messageId is provider-internal bookkeeping for user messages: it ties the
    * persisted conversation to the durable timeline's user_message items so
    * revertConversation can find its truncation point. Stripped from the wire
-   * payload before requests — strict servers reject unknown message fields.
+   * payload before requests - strict servers reject unknown message fields.
    *
    * images carries attached pictures; on a user message these are the user's
    * attachments, on a tool message they are image content parts a tool returned
@@ -420,7 +422,7 @@ type ChatMessage =
       images?: PromptImage[];
     }
   // reasoning is the round's accumulated thinking text, kept only so a
-  // resumed session can redisplay it — never sent back to the model (most
+  // resumed session can redisplay it - never sent back to the model (most
   // reasoning APIs don't want their own thinking echoed back as input, and
   // strict servers reject unknown message fields). Stripped in toWireMessage.
   | { role: "assistant"; content: string; tool_calls?: ToolCallPayload[]; reasoning?: string }
@@ -479,7 +481,7 @@ function toWireMessage(message: ChatMessage): Record<string, unknown> {
   }
   if (message.role === "tool" && message.images && message.images.length > 0) {
     // A tool that returned image content parts (e.g. browser_screenshot) rides
-    // back as OpenAI vision content parts, exactly like a user-attached image —
+    // back as OpenAI vision content parts, exactly like a user-attached image -
     // a screenshot the model can actually see instead of a dropped part. The
     // text summary stays its own part; the image is never also inlined as text,
     // so we don't pay for the same pixels twice (docs/preview.md token economy).
@@ -504,7 +506,7 @@ function toWireMessage(message: ChatMessage): Record<string, unknown> {
 /**
  * Fold a reconstructed tool result's raw text into whichever field the
  * preview detail's type uses for it. Only the flat result text survives
- * persistence — structured metadata that a live run attaches (numMatches,
+ * persistence - structured metadata that a live run attaches (numMatches,
  * webResults, exitCode, ...) isn't recoverable from a bare
  * { name, arguments, result-text } tuple, so callers only get the text back.
  */
@@ -544,7 +546,7 @@ function buildReconstructedToolCallItem(
       args = parsed as Record<string, unknown>;
     }
   } catch {
-    // Malformed persisted arguments shouldn't block reload — fall back to {}.
+    // Malformed persisted arguments shouldn't block reload - fall back to {}.
   }
   const baseDetail = buildCompatToolPreviewDetail(call.function.name, args, cwd);
   return {
@@ -585,11 +587,30 @@ export interface OpenAICompatAgentClientOptions {
   /** Max tool rounds per turn; undefined/null = the built-in default. */
   maxToolRounds?: number | null;
   managedProcesses?: ManagedProcessRegistry | null;
+  /**
+   * Endpoint source for providers the daemon configures itself (otto-brain),
+   * replacing the OPENAI_BASE_URL/OPENAI_API_KEY env pair. Called per request so
+   * a host that just stopped is reported immediately; it throws with an
+   * operator-facing reason when the endpoint is unavailable, which surfaces as
+   * the provider's error state.
+   */
+  resolveEndpoint?: () => ResolvedEndpoint;
 }
 
-interface ResolvedEndpoint {
+export interface ResolvedEndpoint {
   baseUrl: string;
   apiKey: string | null;
+  /** Transport override (custom TLS trust). Absent = the platform default. */
+  dispatcher?: Dispatcher | null;
+}
+
+/**
+ * Fetch init additions for an endpoint's transport. `dispatcher` is undici's
+ * (and therefore Node's) documented RequestInit extension; it is absent from
+ * the DOM lib types, hence the cast.
+ */
+function endpointRequestInit(endpoint: ResolvedEndpoint): RequestInit {
+  return endpoint.dispatcher ? ({ dispatcher: endpoint.dispatcher } as RequestInit) : {};
 }
 
 export function normalizeOpenAICompatBaseUrl(value: string): string {
@@ -627,7 +648,7 @@ function unreachableError(label: string, endpoint: ResolvedEndpoint, cause: unkn
 }
 
 // Pull the assistant text out of a non-streaming /chat/completions response.
-// Best-effort and defensive — a server that returns an unexpected shape yields
+// Best-effort and defensive - a server that returns an unexpected shape yields
 // "" so the structured-generation retry loop reports a clean validation failure
 // rather than throwing on a property access.
 function extractOpenAICompletionText(payload: unknown): string {
@@ -649,13 +670,13 @@ function extractOpenAICompletionText(payload: unknown): string {
 /**
  * Flatten a structured prompt to the text this provider sends.
  *
- * Image blocks are skipped here — they ride along as `image_url` parts (see
+ * Image blocks are skipped here - they ride along as `image_url` parts (see
  * promptToImages). EVERY other block is an attachment and must be rendered into
  * the text, exactly as claude, acp, codex, omp, opencode and pi already do.
  * Dropping them silently was a provider-parity hole: an uploaded file, a PR, or
  * a review attached to a prompt reached this provider and vanished, so the model
  * answered about content it had never been shown. Attachments in, attachments
- * out — for every provider, not just the frontier ones.
+ * out - for every provider, not just the frontier ones.
  */
 function promptToText(prompt: AgentPromptInput): string {
   if (typeof prompt === "string") {
@@ -675,7 +696,7 @@ function promptToText(prompt: AgentPromptInput): string {
 
 /**
  * Pull image attachments out of a structured prompt so they can ride along as
- * OpenAI-vision `image_url` parts. Non-image mime types are dropped — a `data:`
+ * OpenAI-vision `image_url` parts. Non-image mime types are dropped - a `data:`
  * URL with a non-image type wouldn't be interpreted as an image by the server.
  */
 function promptToImages(prompt: AgentPromptInput): PromptImage[] {
@@ -715,9 +736,9 @@ interface StreamToolCallDelta {
 }
 
 interface RoundUsage {
-  /** OpenAI `prompt_tokens` — total input incl. any cached prefix. */
+  /** OpenAI `prompt_tokens` - total input incl. any cached prefix. */
   inputTokens?: number;
-  /** `prompt_tokens_details.cached_tokens` — the cache-read portion of input. */
+  /** `prompt_tokens_details.cached_tokens` - the cache-read portion of input. */
   cachedInputTokens?: number;
   outputTokens?: number;
 }
@@ -823,7 +844,7 @@ function parseStreamUsage(usage: unknown): RoundUsage | null {
  * Map a non-streaming `/chat/completions` response's `usage` onto AgentUsage for
  * the metadata-generation ledger (WP-G). Splits `prompt_tokens` into non-cached
  * input + cache-read so the input categories stay disjoint (same rule as the
- * streaming turn's accumulateBilledUsage). Token-only — openai-compat reports no
+ * streaming turn's accumulateBilledUsage). Token-only - openai-compat reports no
  * dollar cost.
  */
 function parseBareCompletionUsage(payload: unknown): AgentUsage | undefined {
@@ -918,7 +939,7 @@ type ModelVisionCapability = "vision" | "text" | "unknown";
 /**
  * Text fed back in place of a dropped tool-result image when the loaded model
  * has no vision capability. It both explains the omission and steers the model
- * toward the text-first browser tools — the token economy in docs/preview.md
+ * toward the text-first browser tools - the token economy in docs/preview.md
  * says never send a screenshot a model can't read, and browser_snapshot /
  * browser_page_text carry the same information as text.
  */
@@ -929,7 +950,7 @@ const NON_VISION_IMAGE_PLACEHOLDER =
  * Parse a per-model vision-capability signal from a /models listing. Both the
  * brain (`describeModel` in packages/brain/src/service/router.ts) and LM
  * Studio's native /api/v0/models listing tag each entry `type: "vlm" | "llm"`
- * — the one machine-readable vision signal available before a request is sent.
+ * - the one machine-readable vision signal available before a request is sent.
  * A standard OpenAI /v1/models listing carries no such field, so those models
  * stay absent from the map and resolve to "unknown"; the caller then sends the
  * image anyway (see resolveModelVisionCapability) so a hosted OpenAI-compatible
@@ -1114,6 +1135,7 @@ export class OpenAICompatAgentClient implements AgentClient {
   private readonly compaction: ProviderCompactionConfig | null;
   private readonly maxToolRounds: number | null;
   private readonly managedProcesses: ManagedProcessRegistry | null;
+  private readonly endpointResolver: (() => ResolvedEndpoint) | null;
 
   constructor(options: OpenAICompatAgentClientOptions) {
     this.provider = options.providerId;
@@ -1127,21 +1149,31 @@ export class OpenAICompatAgentClient implements AgentClient {
     this.compaction = options.compaction ?? null;
     this.maxToolRounds = options.maxToolRounds ?? null;
     this.managedProcesses = options.managedProcesses ?? null;
+    this.endpointResolver = options.resolveEndpoint ?? null;
+  }
+
+  /**
+   * This client's endpoint: the daemon-owned resolver when one was injected
+   * (otto-brain), otherwise the configured OPENAI_BASE_URL/OPENAI_API_KEY pair.
+   */
+  private endpoint(): ResolvedEndpoint {
+    return this.endpointResolver ? this.endpointResolver() : resolveEndpoint(this.env, this.label);
   }
 
   async isAvailable(): Promise<boolean> {
-    // Nothing to install — availability is endpoint reachability, surfaced
+    // Nothing to install - availability is endpoint reachability, surfaced
     // through fetchCatalog so the UI shows a configuration error, not
     // "not installed".
     return true;
   }
 
   async fetchCatalog(options: FetchCatalogOptions): Promise<ProviderCatalog> {
-    const endpoint = resolveEndpoint(this.env, this.label);
+    const endpoint = this.endpoint();
     const timeoutMs = options.timeoutMs ?? DEFAULT_CATALOG_TIMEOUT_MS;
     let response: Response;
     try {
       response = await fetch(`${endpoint.baseUrl}/models`, {
+        ...endpointRequestInit(endpoint),
         headers: buildHeaders(endpoint),
         signal: AbortSignal.timeout(timeoutMs),
       });
@@ -1180,14 +1212,14 @@ export class OpenAICompatAgentClient implements AgentClient {
   /**
    * Tool-less one-shot completion for internal metadata generation. A plain
    * POST to /chat/completions with only system+user text and NO `tools` payload
-   * — no Otto tool catalog, no MCP, no daemon tool loop. Everything the model
+   * - no Otto tool catalog, no MCP, no daemon tool loop. Everything the model
    * needs is in the self-contained prompt, so this is a single cheap request
    * instead of a full session spawn.
    */
   async generateBareCompletion(
     options: AgentBareCompletionOptions,
   ): Promise<AgentBareCompletionResult> {
-    const endpoint = resolveEndpoint(this.env, this.label);
+    const endpoint = this.endpoint();
     const model = options.model?.trim() || (await this.resolveDefaultModelId(endpoint));
     if (!model) {
       throw new Error(`${this.label} has no model available for metadata generation.`);
@@ -1203,6 +1235,7 @@ export class OpenAICompatAgentClient implements AgentClient {
     try {
       response = await fetch(`${endpoint.baseUrl}/chat/completions`, {
         method: "POST",
+        ...endpointRequestInit(endpoint),
         headers: buildHeaders(endpoint),
         ...(options.signal ? { signal: options.signal } : {}),
         body: JSON.stringify({
@@ -1237,6 +1270,7 @@ export class OpenAICompatAgentClient implements AgentClient {
     let response: Response;
     try {
       response = await fetch(`${endpoint.baseUrl}/models`, {
+        ...endpointRequestInit(endpoint),
         headers: buildHeaders(endpoint),
         signal: AbortSignal.timeout(DEFAULT_CATALOG_TIMEOUT_MS),
       });
@@ -1252,7 +1286,7 @@ export class OpenAICompatAgentClient implements AgentClient {
   async getDiagnostic(): Promise<{ diagnostic: string }> {
     let endpoint: ResolvedEndpoint;
     try {
-      endpoint = resolveEndpoint(this.env, this.label);
+      endpoint = this.endpoint();
     } catch (error) {
       return { diagnostic: error instanceof Error ? error.message : String(error) };
     }
@@ -1302,6 +1336,7 @@ export class OpenAICompatAgentClient implements AgentClient {
       providerId: this.provider,
       label: this.label,
       env: this.env,
+      ...(this.endpointResolver ? { resolveEndpoint: this.endpointResolver } : {}),
       config,
       sessionId: randomUUID(),
       messages: [],
@@ -1329,6 +1364,7 @@ export class OpenAICompatAgentClient implements AgentClient {
       providerId: this.provider,
       label: this.label,
       env: this.env,
+      ...(this.endpointResolver ? { resolveEndpoint: this.endpointResolver } : {}),
       config: {
         provider: this.provider,
         cwd: overrides?.cwd ?? process.cwd(),
@@ -1370,10 +1406,10 @@ interface ActiveTurn {
   pendingToolCalls: Map<number, AccumulatedToolCall>;
   finishReason: string | null;
   /**
-   * Latest round's server-measured usage — the current context-window
+   * Latest round's server-measured usage - the current context-window
    * occupancy. Replaced each round (the last round's prompt already holds the
    * whole conversation), so it drives the context ring / auto-compact
-   * threshold. NOT the turn's billed cost — see `billedUsage`.
+   * threshold. NOT the turn's billed cost - see `billedUsage`.
    */
   usage: { inputTokens?: number; outputTokens?: number } | null;
   /**
@@ -1428,7 +1464,7 @@ function ottoToolParameters(tool: OttoToolDefinition): Record<string, unknown> {
 /** Flatten an Otto tool result into the text fed back to the model. */
 /**
  * Prompt copy for a gated Otto tool. For preview_start with a resolved launch
- * entry, name the command that will actually run — the user approving a server
+ * entry, name the command that will actually run - the user approving a server
  * start could not previously see what launch.json would execute.
  */
 function ottoToolPermissionDescription(
@@ -1496,6 +1532,7 @@ export class OpenAICompatAgentSession implements AgentSession {
 
   private readonly label: string;
   private readonly env?: Record<string, string>;
+  private readonly endpointResolver: (() => ResolvedEndpoint) | null;
   private readonly logger?: Logger;
   private readonly cwd: string;
   private readonly listeners = new Set<(event: AgentStreamEvent) => void>();
@@ -1539,7 +1576,7 @@ export class OpenAICompatAgentSession implements AgentSession {
   private autoCompactDisarmed = false;
   /**
    * Measured context size at the moment auto-compaction disarmed. The trigger
-   * re-arms once usage grows AUTO_COMPACT_REARM_GROWTH_TOKENS beyond this — a
+   * re-arms once usage grows AUTO_COMPACT_REARM_GROWTH_TOKENS beyond this - a
    * fresh summarizable region has accumulated, so a single bad compaction can't
    * disarm the trigger permanently. Null whenever armed.
    */
@@ -1562,6 +1599,11 @@ export class OpenAICompatAgentSession implements AgentSession {
   /** Session config stored so the system prompt can be rebuilt after compaction. */
   private readonly config: AgentSessionConfig;
 
+  /** This session's endpoint; see OpenAICompatAgentClient.endpoint. */
+  private endpoint(): ResolvedEndpoint {
+    return this.endpointResolver ? this.endpointResolver() : resolveEndpoint(this.env, this.label);
+  }
+
   constructor(options: {
     providerId: string;
     label: string;
@@ -1578,10 +1620,13 @@ export class OpenAICompatAgentSession implements AgentSession {
     compaction?: ProviderCompactionConfig | null;
     maxToolRounds?: number | null;
     managedProcesses?: ManagedProcessRegistry | null;
+    /** See OpenAICompatAgentClientOptions.resolveEndpoint. */
+    resolveEndpoint?: () => ResolvedEndpoint;
   }) {
     this.provider = options.providerId;
     this.label = options.label;
     this.env = options.env;
+    this.endpointResolver = options.resolveEndpoint ?? null;
     this.logger = options.logger;
     this.id = options.sessionId;
     this.cwd = options.config.cwd;
@@ -1597,10 +1642,13 @@ export class OpenAICompatAgentSession implements AgentSession {
     // < provider-level servers < per-agent config. Per-agent still wins a name
     // collision. Disabled connectors and disabled tools are already filtered out
     // by resolveEnabledConnectors. The daemon-injected internal "otto" MCP server
-    // is stripped — this provider receives Otto tools natively, and connecting to
+    // is stripped - this provider receives Otto tools natively, and connecting to
     // it over MCP as well would double them.
-    const { servers: connectorServers, disabledTools: connectorDisabledTools } =
-      resolveEnabledConnectors(options.connectors);
+    const {
+      servers: connectorServers,
+      disabledTools: connectorDisabledTools,
+      authProviders: connectorAuthProviders,
+    } = resolveEnabledConnectors(options.connectors, getConnectorAuthStore());
     const perAgentServers = stripInternalOttoMcpServer(options.config).mcpServers;
     const mergedServers: Record<string, McpServerConfig> = {
       ...connectorServers,
@@ -1616,6 +1664,7 @@ export class OpenAICompatAgentSession implements AgentSession {
             logger: options.logger,
             managedProcesses: options.managedProcesses ?? null,
             disabledTools: connectorDisabledTools,
+            authProviders: connectorAuthProviders,
           })
         : null;
     this.modelId = options.config.model ?? null;
@@ -1624,7 +1673,7 @@ export class OpenAICompatAgentSession implements AgentSession {
         ? options.config.modeId
         : "default";
     // Effort comes from the model-level thinking option like every other
-    // provider. COMPAT(openaiCompatReasoningFeature): added in v0.4.5 — agents
+    // provider. COMPAT(openaiCompatReasoningFeature): added in v0.4.5 - agents
     // created before the unification persisted the value as the
     // featureValues.reasoning_effort select instead; drop the fallback when
     // floor >= v0.4.5 (target 2027-01).
@@ -1653,7 +1702,7 @@ export class OpenAICompatAgentSession implements AgentSession {
   /**
    * Rebuild replayable history from the current conversation so a resumed or
    * rewound session still backfills its transcript, tool calls included.
-   * There is no separate durable store for tool traffic — `this.messages` is
+   * There is no separate durable store for tool traffic - `this.messages` is
    * the only record that survives a resume, so tool_call items are
    * reconstructed from each assistant message's `tool_calls` plus the
    * matching "tool" result message. User messages keep their persisted
@@ -1736,7 +1785,7 @@ export class OpenAICompatAgentSession implements AgentSession {
     this.config.daemonAppendSystemPrompt = update.daemonAppendSystemPrompt;
     // The daemon owns this conversation: the system prompt is just messages[0],
     // re-sent wholesale on every request, so rebuilding it in place applies the
-    // new personality prompt from the very next turn — no session restart.
+    // new personality prompt from the very next turn - no session restart.
     const rebuilt = { role: "system" as const, content: this.buildSystemPrompt(this.config) };
     if (this.messages[0]?.role === "system") {
       this.messages[0] = rebuilt;
@@ -1746,7 +1795,7 @@ export class OpenAICompatAgentSession implements AgentSession {
   }
 
   async setFeature(featureId: string, value: unknown): Promise<void> {
-    // COMPAT(openaiCompatReasoningFeature): added in v0.4.5 — effort is no
+    // COMPAT(openaiCompatReasoningFeature): added in v0.4.5 - effort is no
     // longer advertised as a feature, but old clients may still send the
     // reasoning_effort select; drop when floor >= v0.4.5 (target 2027-01).
     if (featureId === "reasoning_effort") {
@@ -1761,7 +1810,7 @@ export class OpenAICompatAgentSession implements AgentSession {
         throw new Error(`Invalid auto-compact value: ${String(value)}`);
       }
       this.autoCompact = value as OpenAICompatAutoCompact;
-      // A deliberate setting change is a fresh mandate — retry even if a
+      // A deliberate setting change is a fresh mandate - retry even if a
       // previous auto-compaction was paused for lack of gain.
       this.armAutoCompact();
       return;
@@ -1849,13 +1898,13 @@ export class OpenAICompatAgentSession implements AgentSession {
     const lines = ["## Verifying changes in the browser"];
     if (hasPreview) {
       lines.push(
-        "- Start dev servers with preview_start — never with run_command or other shell commands. It manages the process, its logs (preview_logs), and its preview tab.",
+        "- Start dev servers with preview_start - never with run_command or other shell commands. It manages the process, its logs (preview_logs), and its preview tab.",
       );
     }
     if (hasPreview && hasBrowser) {
       lines.push(
         "- preview_start returns browser.browserId: the server's designated preview tab, the same tab the user watches. Verify your changes against that browserId with browser_snapshot, browser_inspect, browser_logs, browser_click, and browser_screenshot.",
-        "- Never open a dev server URL with browser_new_tab or in another tab — the daemon rejects it. browser_new_tab is only for external sites and general browsing.",
+        "- Never open a dev server URL with browser_new_tab or in another tab - the daemon rejects it. browser_new_tab is only for external sites and general browsing.",
       );
     }
     if (hasBrowser) {
@@ -1875,7 +1924,7 @@ export class OpenAICompatAgentSession implements AgentSession {
     const access = resolveWorkspaceAccess(this.config.workspaceAccess);
     return COMPAT_TOOL_SPECS.filter((spec) => {
       if (access !== "write" && spec.kind === "edit") return false;
-      // "none" means no workspace at all — reading and running commands go too.
+      // "none" means no workspace at all - reading and running commands go too.
       // Web access is a separate axis and stays governed by its tool group.
       if (access === "none" && (spec.kind === "read" || spec.kind === "execute")) return false;
       // Read-only "plan" mode offers no actions against the local machine.
@@ -1900,7 +1949,7 @@ export class OpenAICompatAgentSession implements AgentSession {
       const target = args["path"];
       return typeof target !== "string" || !isPathInsideWorkspace(this.cwd, target);
     }
-    // Everything else that can act — execute always, and network because an
+    // Everything else that can act - execute always, and network because an
     // unprompted web_fetch is an exfiltration channel for unprompted reads.
     return true;
   }
@@ -1919,7 +1968,7 @@ export class OpenAICompatAgentSession implements AgentSession {
 
   /**
    * Connect the configured MCP servers before the first model round. A server
-   * that fails to connect is skipped — surfaced once as a timeline warning,
+   * that fails to connect is skipped - surfaced once as a timeline warning,
    * never fatal to the session.
    */
   private async ensureMcpReady(turn: ActiveTurn): Promise<void> {
@@ -1963,7 +2012,7 @@ export class OpenAICompatAgentSession implements AgentSession {
   /**
    * Handle `/compact [instruction]` by summarizing the older conversation
    * history while keeping the most recent slice verbatim, then splicing the
-   * summary in ahead of the retained tail. Runs entirely in-process — no
+   * summary in ahead of the retained tail. Runs entirely in-process - no
    * external compaction service. Returns the turn's usage so the caller can
    * attach it to turn_completed.
    *
@@ -2037,7 +2086,7 @@ export class OpenAICompatAgentSession implements AgentSession {
         : summarizeRegion;
     const conversationText = this.serializeConversationForCompaction(messagesToSummarize);
 
-    const endpoint = resolveEndpoint(this.env, this.label);
+    const endpoint = this.endpoint();
     const model = await this.resolveModel(endpoint);
 
     const systemPrompt =
@@ -2074,7 +2123,7 @@ export class OpenAICompatAgentSession implements AgentSession {
     this.messages.push(...keptRegion);
 
     // Post-compaction context size. Must count the rebuilt system prompt and
-    // the tool schemas — both are re-sent with every request — or the ring
+    // the tool schemas - both are re-sent with every request - or the ring
     // reads near-zero here and jumps back up on the next real turn.
     const postTokens = this.estimateFullContextTokens();
     this.lastContextTokens = postTokens;
@@ -2130,7 +2179,7 @@ export class OpenAICompatAgentSession implements AgentSession {
   /**
    * Auto-compaction check, run at turn start (before the new user message
    * joins the conversation, so it always survives verbatim) and before every
-   * subsequent model round. Uses the freshest server-measured context size —
+   * subsequent model round. Uses the freshest server-measured context size -
    * the active turn's last round, falling back to the previous turn's final
    * figure. Endpoints that report no context length fall back to an assumed
    * window (AUTO_COMPACT_FALLBACK_CONTEXT_TOKENS) for the threshold math so
@@ -2143,9 +2192,9 @@ export class OpenAICompatAgentSession implements AgentSession {
    * re-arms once measured usage drops below the threshold, once the user
    * changes the auto-compact setting, OR once context grows
    * AUTO_COMPACT_REARM_GROWTH_TOKENS past the disarm point (fresh material
-   * worth retrying) — so a single bad compaction can't disarm forever.
+   * worth retrying) - so a single bad compaction can't disarm forever.
    *
-   * Auto-compaction failures never fail the user's turn — the turn proceeds
+   * Auto-compaction failures never fail the user's turn - the turn proceeds
    * with the uncompacted conversation (interrupts still propagate).
    */
   private async maybeAutoCompact(turn: ActiveTurn): Promise<void> {
@@ -2155,7 +2204,7 @@ export class OpenAICompatAgentSession implements AgentSession {
     const maxTokens = await this.resolveContextWindowMaxTokens();
     // Windowless endpoints report no context length. Rather than skip
     // auto-compaction entirely (letting history grow until the server errors),
-    // fall back to an assumed window for the threshold math only — the real
+    // fall back to an assumed window for the threshold math only - the real
     // (null) max is still what the client sees, so no fabricated ring.
     const effectiveMax = maxTokens ?? AUTO_COMPACT_FALLBACK_CONTEXT_TOKENS;
     const threshold = Math.floor((Number(this.autoCompact) / 100) * effectiveMax);
@@ -2203,7 +2252,7 @@ export class OpenAICompatAgentSession implements AgentSession {
         turnId: turn.turnId,
         item: {
           type: "error",
-          message: `Auto-compaction failed: ${message}. Auto-compaction is paused until context usage drops below the threshold — run /compact to retry manually.`,
+          message: `Auto-compaction failed: ${message}. Auto-compaction is paused until context usage drops below the threshold - run /compact to retry manually.`,
         },
       });
       return;
@@ -2224,7 +2273,7 @@ export class OpenAICompatAgentSession implements AgentSession {
           message:
             `Auto-compaction reclaimed too little space (still ~${postTokens} of ` +
             `${effectiveMax} tokens). Auto-compaction is paused until enough new ` +
-            `context accumulates to retry — run /compact with an instruction, ` +
+            `context accumulates to retry - run /compact with an instruction, ` +
             `rewind, or start a fresh agent.`,
         },
       });
@@ -2233,7 +2282,7 @@ export class OpenAICompatAgentSession implements AgentSession {
 
   /**
    * Fold a mid-turn compaction summarizer call's spend into the turn's billed
-   * total (so the cost ledger sees it — WP-D) and, separately, into the
+   * total (so the cost ledger sees it - WP-D) and, separately, into the
    * compaction accumulator (so WP-G can break it out as its own category and back
    * it out of main chat without double-counting).
    */
@@ -2282,10 +2331,10 @@ export class OpenAICompatAgentSession implements AgentSession {
 
   /**
    * Drop base64 `image_url` parts from all but the most recent
-   * PRUNE_PROTECT_RECENT_IMAGE_MESSAGES image-bearing messages — user
+   * PRUNE_PROTECT_RECENT_IMAGE_MESSAGES image-bearing messages - user
    * attachments and tool-result images (e.g. browser_screenshot) alike, under
    * one shared recency budget. Without this, every attached or captured
-   * screenshot is re-uploaded on every subsequent round — base64 images dwarf
+   * screenshot is re-uploaded on every subsequent round - base64 images dwarf
    * the text payload. The stripped message keeps a text marker so the model
    * still knows an image was there; the recent images the live work depends on
    * are untouched. Mirrors pruneToolOutputs' recency rule.
@@ -2355,6 +2404,7 @@ export class OpenAICompatAgentSession implements AgentSession {
   }): Promise<{ content: string; usage?: Record<string, unknown> }> {
     const response = await fetch(`${options.endpoint.baseUrl}/chat/completions`, {
       method: "POST",
+      ...endpointRequestInit(options.endpoint),
       headers: buildHeaders(options.endpoint),
       signal: options.signal,
       body: JSON.stringify({
@@ -2400,7 +2450,7 @@ export class OpenAICompatAgentSession implements AgentSession {
   /**
    * Local estimate of the full next-request context: conversation messages
    * (including the system prompt) plus the tool schemas that are re-sent with
-   * every request. Char-based, so it's approximate — the next real turn's
+   * every request. Char-based, so it's approximate - the next real turn's
    * server-measured usage replaces it.
    */
   private estimateFullContextTokens(): number {
@@ -2470,11 +2520,11 @@ export class OpenAICompatAgentSession implements AgentSession {
   /**
    * System prompt for a fresh compaction summary. The older conversation is
    * summarized while recent messages are kept verbatim, so this summary becomes
-   * the model's memory of the distant past — it must preserve exact references,
+   * the model's memory of the distant past - it must preserve exact references,
    * not paraphrase them away. Modeled on oh-my-pi's structured handoff format.
    */
   private buildCompactionSystemPrompt(instruction: string | null): string {
-    const base = `You summarize a coding-agent conversation into a structured handoff summary so another LLM can resume the task. Only the older part of the conversation is being summarized; recent messages are retained verbatim after your summary. Preserve detail — a thorough summary is expected. Do NOT aim for brevity.
+    const base = `You summarize a coding-agent conversation into a structured handoff summary so another LLM can resume the task. Only the older part of the conversation is being summarized; recent messages are retained verbatim after your summary. Preserve detail - a thorough summary is expected. Do NOT aim for brevity.
 
 NEVER continue the conversation. NEVER answer questions found in it. Output ONLY the structured summary below.
 
@@ -2500,7 +2550,7 @@ Use this format (omit a section only if it truly does not apply):
 - **[Decision]**: [Brief rationale]
 
 ## Files & Changes
-- [Exact path — what was read/created/modified and why it matters; include the important code snippets verbatim]
+- [Exact path - what was read/created/modified and why it matters; include the important code snippets verbatim]
 
 ## Next Steps
 1. [Ordered next actions, aligned with the user's most recent request]
@@ -2514,7 +2564,7 @@ Use this format (omit a section only if it truly does not apply):
 You MUST preserve exact file paths, function names, error messages, and relevant tool outputs or command results.`;
 
     const instructionPart = instruction
-      ? `\n\nAdditional user instruction — follow it for emphasis and focus, on top of the format above:\n<user-instruction>${instruction}</user-instruction>`
+      ? `\n\nAdditional user instruction - follow it for emphasis and focus, on top of the format above:\n<user-instruction>${instruction}</user-instruction>`
       : "";
 
     return base + instructionPart;
@@ -2542,7 +2592,7 @@ Rules:
 Keep the same section format as the previous summary (## Goal, ## Constraints & Preferences, ## Progress with Done/In Progress/Blocked, ## Key Decisions, ## Files & Changes, ## Next Steps, ## Critical Context, ## Additional Notes).`;
 
     const instructionPart = instruction
-      ? `\n\nAdditional user instruction — follow it for emphasis and focus:\n<user-instruction>${instruction}</user-instruction>`
+      ? `\n\nAdditional user instruction - follow it for emphasis and focus:\n<user-instruction>${instruction}</user-instruction>`
       : "";
 
     return base + instructionPart;
@@ -2582,7 +2632,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
 
   /**
    * MCP tools rendered as OpenAI function specs under namespaced
-   * mcp_{server}_{tool} names. Hard-excluded in read-only "plan" mode — MCP
+   * mcp_{server}_{tool} names. Hard-excluded in read-only "plan" mode - MCP
    * tools are opaque and may take actions regardless of what they claim.
    */
   private buildMcpToolPayload(): unknown[] {
@@ -2645,7 +2695,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       reject = promiseReject;
     });
     // startTurn callers observe failure via turn_failed events, not this
-    // promise — swallow to avoid unhandled rejections. run() awaits the same
+    // promise - swallow to avoid unhandled rejections. run() awaits the same
     // promise and still sees the rejection.
     completed.catch(() => {});
 
@@ -2702,7 +2752,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       try {
         usage = await this.handleCompact(turn, slashCommand.args, "manual");
       } catch (error) {
-        // Settle the "loading" compaction row — without this it spins
+        // Settle the "loading" compaction row - without this it spins
         // forever. Clients that predate the "failed" status drop this event
         // and keep the spinning row, which matches their pre-fix behavior.
         this.emit({
@@ -2718,7 +2768,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
         return;
       }
       this.activeTurn = null;
-      // turn_completed is the manager's terminal signal — without it the
+      // turn_completed is the manager's terminal signal - without it the
       // foreground turn stream never ends and the agent stays "running".
       this.emit({
         type: "turn_completed",
@@ -2818,7 +2868,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       if (turn.roundText) {
         turn.finalTextParts.push(turn.roundText);
       }
-      // Consumed — settleTurnFailure must not re-append these if a later
+      // Consumed - settleTurnFailure must not re-append these if a later
       // tool round gets interrupted.
       turn.roundText = "";
       turn.roundReasoning = "";
@@ -2915,7 +2965,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     if (this.toolNeedsApproval(spec, args)) {
       // dontAsk mirrors the Claude provider's mode of the same name
       // (docs/safe-unattended.md): a call that would have prompted is denied
-      // with a tool error the model can react to — never approved (that is
+      // with a tool error the model can react to - never approved (that is
       // bypassPermissions) and never parked on a prompt (an unattended run has
       // nobody to answer, and would stall). No permission_requested is
       // emitted, so the daemon's unattended deny-responder stays the backstop.
@@ -2966,12 +3016,12 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
   }
 
   /**
-   * MCP tools are opaque — the daemon cannot know whether one is destructive.
+   * MCP tools are opaque - the daemon cannot know whether one is destructive.
    * default mode always asks; acceptEdits asks unless the provider opted into
    * "trust-read-only" AND the server self-declares readOnlyHint (that
    * annotation is untrusted, so it never skips prompts in default mode);
    * bypassPermissions auto-approves like everything else. Plan mode never
-   * reaches here — MCP tools are excluded from the payload entirely. In
+   * reaches here - MCP tools are excluded from the payload entirely. In
    * dontAsk, "needs approval" means denied: the call site returns a tool
    * error instead of prompting.
    */
@@ -3040,7 +3090,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
    * are auto-approved in acceptEdits like file edits, and "execute" tools
    * always prompt outside bypassPermissions (in dontAsk the call site denies
    * instead of prompting). CLI providers get this gating from their own
-   * permission system in front of the MCP client — here the daemon is the
+   * permission system in front of the MCP client - here the daemon is the
    * runtime, so it prompts itself.
    * See openai-compat-otto-tool-permissions.ts.
    */
@@ -3097,7 +3147,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
             : "The user declined this tool call.",
         };
       }
-      // The user saw the resolved command and allowed it — stop prompting for
+      // The user saw the resolved command and allowed it - stop prompting for
       // this exact command on later starts.
       previewCheck?.approve();
     }
@@ -3136,7 +3186,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
    * model (brain/LM Studio "vlm", or a capability we couldn't determine and so
    * optimistically treat as vision) gets the images as OpenAI image_url parts. A
    * model the server reports as text-only can't see them, so we drop the pixels
-   * — token economy, docs/preview.md — and append a placeholder steering it to
+   * - token economy, docs/preview.md - and append a placeholder steering it to
    * the text-first browser tools instead of leaving it a screenshot it can't
    * read.
    */
@@ -3214,7 +3264,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
   }
 
   private async streamCompletion(turn: ActiveTurn): Promise<void> {
-    const endpoint = resolveEndpoint(this.env, this.label);
+    const endpoint = this.endpoint();
     const model = await this.resolveModel(endpoint);
     turn.assistantMessageId = randomUUID();
     turn.roundText = "";
@@ -3230,6 +3280,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     ];
     const response = await fetch(`${endpoint.baseUrl}/chat/completions`, {
       method: "POST",
+      ...endpointRequestInit(endpoint),
       headers: buildHeaders(endpoint),
       signal: turn.abort.signal,
       body: JSON.stringify({
@@ -3238,8 +3289,8 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
         stream: true,
         stream_options: { include_usage: true },
         // Stable per-session key so servers that support prompt caching (OpenAI
-        // and compatible gateways) can reuse the large shared prefix — the
-        // system prompt + ~10-15K-token tool catalog + history — across rounds
+        // and compatible gateways) can reuse the large shared prefix - the
+        // system prompt + ~10-15K-token tool catalog + history - across rounds
         // instead of re-billing it every round. A standard Chat Completions
         // field; servers that don't support it ignore it. Cache hits come back
         // as prompt_tokens_details.cached_tokens (see parseStreamChunk).
@@ -3350,7 +3401,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
    *
    * resolveContextWindowMaxTokens() is async (it may probe the endpoint) and
    * this runs on the hot streaming path, so only the already-cached value is
-   * included. The event is always emitted regardless — the client and agent
+   * included. The event is always emitted regardless - the client and agent
    * manager handle partial usage snapshots correctly.
    */
   private emitStreamUsageUpdated(turn: ActiveTurn): void {
@@ -3374,7 +3425,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
 
   /**
    * A turn can end (interrupt or failure) between an assistant message's
-   * tool_calls and their tool results — e.g. the user interrupts during call
+   * tool_calls and their tool results - e.g. the user interrupts during call
    * #1 of 3. Strict OpenAI-compatible servers reject the next request over
    * such a conversation with a 400, so append synthetic results for the
    * unanswered calls. Resume gets the equivalent repair from
@@ -3412,7 +3463,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
   /**
    * Synchronous billed-usage snapshot for the failed/canceled paths: the tokens
    * already spent across this turn's rounds (plus any mid-turn compaction). No
-   * async context-window probe — this runs on the error/interrupt path. Fed
+   * async context-window probe - this runs on the error/interrupt path. Fed
    * into the same accounting as a completed turn so retry storms and interrupted
    * long turns aren't invisible to the cost ledger. (WP-D)
    */
@@ -3501,6 +3552,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     let response: Response;
     try {
       response = await fetch(`${endpoint.baseUrl}/models`, {
+        ...endpointRequestInit(endpoint),
         headers: buildHeaders(endpoint),
         signal: AbortSignal.timeout(DEFAULT_CATALOG_TIMEOUT_MS),
       });
@@ -3523,7 +3575,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
    * standard /v1/models listing for extended context-length fields first,
    * then LM Studio's native /api/v0/models listing (same host, /v1 stripped),
    * which reports the loaded instance's actual window. Servers that expose
-   * neither leave the meter without a max — never an error.
+   * neither leave the meter without a max - never an error.
    */
   private async resolveContextWindowMaxTokens(): Promise<number | null> {
     const model = this.modelId;
@@ -3535,7 +3587,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     }
     let endpoint: ResolvedEndpoint;
     try {
-      endpoint = resolveEndpoint(this.env, this.label);
+      endpoint = this.endpoint();
     } catch {
       return null;
     }
@@ -3547,6 +3599,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     for (const url of candidateUrls) {
       try {
         const response = await fetch(url, {
+          ...endpointRequestInit(endpoint),
           headers: buildHeaders(endpoint),
           signal: AbortSignal.timeout(DEFAULT_CATALOG_TIMEOUT_MS),
         });
@@ -3571,7 +3624,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
    * listing attach to each model (see parseModelVisionCapabilities), probing the
    * same standard and native /models endpoints as the context-window discovery.
    * A server that exposes no such tag (a plain OpenAI /v1/models) resolves to
-   * "unknown" — the caller then sends the image anyway, so a hosted vision
+   * "unknown" - the caller then sends the image anyway, so a hosted vision
    * endpoint that can't be introspected keeps working rather than losing every
    * screenshot to a false negative.
    */
@@ -3585,7 +3638,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     }
     let endpoint: ResolvedEndpoint;
     try {
-      endpoint = resolveEndpoint(this.env, this.label);
+      endpoint = this.endpoint();
     } catch {
       return "unknown";
     }
@@ -3597,6 +3650,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     for (const url of candidateUrls) {
       try {
         const response = await fetch(url, {
+          ...endpointRequestInit(endpoint),
           headers: buildHeaders(endpoint),
           signal: AbortSignal.timeout(DEFAULT_CATALOG_TIMEOUT_MS),
         });
@@ -3623,7 +3677,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
    *   50 rounds' spend rather than only the last. Fed into the cost ledger.
    * - **Context occupancy** (`contextWindowUsedTokens`): the *last* round's
    *   prompt (+ its output), because the final round's prompt already contains
-   *   the whole conversation. Drives the context ring — must not be the billed
+   *   the whole conversation. Drives the context ring - must not be the billed
    *   sum, which would balloon past the window after a few rounds. (WP-D)
    */
   private async buildTurnUsage(turn: ActiveTurn): Promise<AgentUsage | undefined> {
@@ -3644,7 +3698,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       usage.outputTokens = billed.outputTokens;
     }
     // Report the compaction slice of the billed total (WP-G) so the manager can
-    // split it into its own cost category. Server-internal — sanitizeUsage drops
+    // split it into its own cost category. Server-internal - sanitizeUsage drops
     // it before the wire.
     if (turn.compactionUsage.inputTokens > 0) {
       usage.compactionInputTokens = turn.compactionUsage.inputTokens;
@@ -3795,7 +3849,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
   /**
    * Rewind the daemon-owned conversation to just before the given user
    * message. The full conversation persists (no message cap), so any
-   * previous user message is a valid rewind target — the not-found error
+   * previous user message is a valid rewind target - the not-found error
    * below only fires for a truly unknown messageId.
    */
   async revertConversation(input: { messageId: string }): Promise<void> {
@@ -3807,7 +3861,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     );
     if (index === -1) {
       throw new Error(
-        "Message not found in this session's conversation — it may predate rewind support or was trimmed from persisted history.",
+        "Message not found in this session's conversation - it may predate rewind support or was trimmed from persisted history.",
       );
     }
     const retained = sanitizeRestoredMessages(this.messages.slice(0, index));
@@ -3823,7 +3877,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       return;
     }
     turn.abort.abort();
-    // A turn parked on a permission prompt has no in-flight fetch to abort —
+    // A turn parked on a permission prompt has no in-flight fetch to abort -
     // deny the prompt so the loop unwinds and settles as canceled.
     this.failPendingPermissions();
   }

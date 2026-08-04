@@ -142,7 +142,7 @@ export class SherpaOnnxTTS implements TextToSpeechProvider {
 
   // A personality voice only resolves to a speaker on THIS model. A voice bound
   // to a different model (or an unknown name) silently falls back to the host
-  // default — the personality voice is a soft binding, never a hard failure.
+  // default - the personality voice is a soft binding, never a hard failure.
   private resolveSpeakerId(voice?: SpeechVoiceOverride): number {
     if (!voice || (voice.model && voice.model !== this.preset)) {
       return this.speakerId;

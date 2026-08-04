@@ -6,20 +6,20 @@ whatever screen you happen to be near.
 
 Golden example files:
 
-- `packages/app/src/schedules/schedule-form-model.ts` (+ `.test.ts`) — the model
-- `packages/app/src/schedules/use-schedule-form-model.ts` — model lifetime adapter
-- `packages/app/src/schedules/use-schedule-form-provider-snapshot.ts` — async input adapter
-- `packages/app/src/components/schedules/schedule-form-sheet.tsx` — render + intent dispatch
-- `packages/app/src/schedules/aggregated-schedules.ts` / `hooks/use-schedules.ts` — load-state gating
-- `packages/app/e2e/schedules-*.spec.ts` — the behavioral contract
+- `packages/app/src/schedules/schedule-form-model.ts` (+ `.test.ts`) - the model
+- `packages/app/src/schedules/use-schedule-form-model.ts` - model lifetime adapter
+- `packages/app/src/schedules/use-schedule-form-provider-snapshot.ts` - async input adapter
+- `packages/app/src/components/schedules/schedule-form-sheet.tsx` - render + intent dispatch
+- `packages/app/src/schedules/aggregated-schedules.ts` / `hooks/use-schedules.ts` - load-state gating
+- `packages/app/e2e/schedules-*.spec.ts` - the behavioral contract
 
 ## The form model
 
-Every non-trivial form gets a **plain TypeScript model** — zero React imports:
+Every non-trivial form gets a **plain TypeScript model** - zero React imports:
 
 - `openXxxForm(snapshot)` **constructs** a fresh instance from declared inputs
   (mode, the record being edited, hosts, defaults). Edit mode seeds every value
-  AND display from the snapshot — never from a previous instance.
+  AND display from the snapshot - never from a previous instance.
 - **Commands** mutate (`setHost`, `setProject(value, display)`, `setModel`, …).
   Derived state (disclosure, canSubmit, displays) is recomputed inside the
   model on every publish.
@@ -34,22 +34,22 @@ The component renders state and dispatches intent. That is all it does.
    mounts the open form with a `key` derived from mode + record identity.
    A long-lived component instance shared across create/edit is how edit
    contaminated create.
-2. **Construct the model ONCE per mount** — `useState(() => openXxxForm(snapshot))`.
+2. **Construct the model ONCE per mount** - `useState(() => openXxxForm(snapshot))`.
    NEVER `useMemo(() => open(...), [snapshot])`: the snapshot's identity depends
-   on live data (projects, hosts, preferences), and any background churn — e.g.
-   a scheduled run creating a workspace — would reconstruct the model and wipe
+   on live data (projects, hosts, preferences), and any background churn - e.g.
+   a scheduled run creating a workspace - would reconstruct the model and wipe
    the user's in-progress input.
 3. **Late data is an explicit model input, not a reconstruction.**
    `applyProviderSnapshot(serverId, …)`, `applyProjectTargets(…)`,
    `applyHosts(…)`. Adapters pipe identity changes into these with mechanical
-   effects. Input plumbing is fine; orchestration effects are not — the sheet
+   effects. Input plumbing is fine; orchestration effects are not - the sheet
    itself has zero `useEffect`/`useRef`, and that is the target for every form.
 4. **Resolution is explicit model state, per host** (`idle | pending |
 complete`), keyed off the opened snapshot's serverId. Waiting for data is a
    state you can render, not an effect race.
 5. **Displays are owned state.** The selected option's label is captured at
    selection/seed time (`setProject(value, display)`), never re-derived from a
-   live options list — list churn must not flicker or blank a selection.
+   live options list - list churn must not flicker or blank a selection.
 6. **Disclosure is derived in the model** from user intent
    (host → project → model → thinking/mode), so fields cannot pop in from
    cache timing.
@@ -58,24 +58,24 @@ complete`), keyed off the opened snapshot's serverId. Waiting for data is a
 
 - Compose `Field` / `SelectField` / `FormTextInput` / `SegmentedControl` /
   `Switch` from `components/ui/`. Geometry (heights, padding, radii, focus/hover
-  states) is owned by `components/ui/control-geometry.ts` — controls never
+  states) is owned by `components/ui/control-geometry.ts` - controls never
   declare their own, and screens never nudge global component styles to align
   a row.
 - The form declares one size for all fields: `sm` on desktop, `md` compact
   (`useIsCompactFormFactor`).
 - Availability hierarchy: a field whose capability doesn't apply is **hidden**
-  (isolation on a non-git project — same gating as New Workspace), not rendered
+  (isolation on a non-git project - same gating as New Workspace), not rendered
   disabled with an explanation. Disabled-with-a-reason `hint` is only for
   transient states the user can resolve.
 - Copy is opt-in and rare. No hint/subtext unless the maintainer approved the
   exact string; validation errors are the exception. State a fact (like the
-  timezone) once — never in a preview line AND a helper line.
+  timezone) once - never in a preview line AND a helper line.
 - `useUnistyles` is banned (see docs/unistyles.md); lint enforces.
 
 ## Dialog chrome
 
 Every dialog is an `AdaptiveModalSheet` (or `TabbedModalSheet` for a tabbed
-body). The chrome is the primitive's job, not the screen's — a dialog that
+body). The chrome is the primitive's job, not the screen's - a dialog that
 hand-rolls any of the below is a bug:
 
 - **Actions are pinned, never scrolled.** Cancel/Save/OK go in the `footer`
@@ -83,7 +83,7 @@ hand-rolls any of the below is a bug:
   pass declares only `{ flex: 1, flexDirection: "row", alignItems: "center",
 gap: spacing[3] }`; re-adding padding or a border double-counts it. Buttons
   that split the bar carry `flex: 1`. Action buttons rendered inside `children`
-  scroll out of reach the moment the body grows — that is the bug this replaces.
+  scroll out of reach the moment the body grows - that is the bug this replaces.
 - **Scroll regions get the full treatment.** `useSheetScrollRegion` bundles the
   top/bottom seam fades and the app's hover-hiding overlay scrollbar; the sheet
   and `TabScrollView` both go through it, so no dialog wires
@@ -96,7 +96,7 @@ gap: spacing[3] }`; re-adding padding or a border double-counts it. Buttons
   `contentContainerStyle` instead. Padding on a wrapper _outside_ the scroller
   means every field runs flush to the scroll box, and `overflow: hidden` slices
   the focus ring off both sides. `contentPadding={false}` drops the wrapper's
-  inter-child gap too — those children pad themselves off whatever sits above,
+  inter-child gap too - those children pad themselves off whatever sits above,
   so a wrapper gap would stack on top and the spacing would stop being uniform.
 - **Multi-line fields use `TextArea`** (or wrap a specialised input in
   `TextAreaScrollFrame`). A raw `<textarea>` that overflows paints the browser's
@@ -115,7 +115,7 @@ type AggregateLoadState<T> =
   | { status: "loaded"; data: T[] };
 ```
 
-Empty states are only typeable inside `loaded` — a fetch that "succeeded"
+Empty states are only typeable inside `loaded` - a fetch that "succeeded"
 before hosts connected is `connecting`, not empty. Query keys carry real fetch
 inputs (host set, connection statuses), never synthetic version counters.
 

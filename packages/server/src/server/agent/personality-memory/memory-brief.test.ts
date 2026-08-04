@@ -92,7 +92,7 @@ describe("composeMemoryBrief", () => {
 describe("containment of model-authored lesson text", () => {
   // Lesson text arrives via remember_lesson and may relay whatever a summarized
   // page told the model to record. Whatever it contains, it must render as
-  // exactly one numbered list item — never as top-level prompt structure. The
+  // exactly one numbered list item - never as top-level prompt structure. The
   // store normalizes at write time too; this layer must hold on its own for
   // entries written before that normalization existed.
   function numberedLines(text: string): string[] {
@@ -147,7 +147,7 @@ describe("containment of model-authored lesson text", () => {
     expect(items).toHaveLength(1);
     expect(items[0]).toContain("line 0 of a sprawling lesson");
     expect(items[0]).toContain("line 59 of a sprawling lesson");
-    // The item is the last line of the brief — nothing after it escaped.
+    // The item is the last line of the brief - nothing after it escaped.
     expect(brief.text.trimEnd().split("\n").at(-1)).toBe(items[0]);
   });
 

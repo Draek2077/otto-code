@@ -5,7 +5,7 @@ import type { ContextReport } from "@otto-code/protocol/messages";
  * Client-side state for Context Management.
  *
  * Reports are keyed by `serverId:workspaceId` because context health is a
- * property of the workspace and its provider, not of a chat — every tab in a
+ * property of the workspace and its provider, not of a chat - every tab in a
  * project sees the same answer, and dismissing it once must silence all of
  * them.
  *
@@ -61,7 +61,7 @@ export function contextDismissKey(report: ContextReport): string {
 /**
  * How many what-if answers one server keeps. Re-opening a tab must paint
  * instantly, and a user revisits a handful of provider/window/personality
- * combinations per workspace — but a report is a whole context graph, and the
+ * combinations per workspace - but a report is a whole context graph, and the
  * key space is a product of five dimensions, so "every answer ever computed"
  * grows without bound over a long session. Recent keys keep the documented
  * behavior; the tail is re-scanned like a first open.
@@ -73,7 +73,7 @@ interface ContextManagementState {
   /**
    * Last answer per what-if query, kept beyond the tab's life so re-opening it
    * paints immediately instead of showing an empty shell for the length of a
-   * filesystem scan. Always revalidated in the background — this is a seed, not
+   * filesystem scan. Always revalidated in the background - this is a seed, not
    * a source of truth. Capped per server, least-recently-written out first.
    */
   queryReports: Record<string, ContextReport | null>;
@@ -147,7 +147,7 @@ export const useContextManagementStore = create<ContextManagementState>((set) =>
 }));
 
 /**
- * Computed against `Date.now()` at call time — callers must re-render at
+ * Computed against `Date.now()` at call time - callers must re-render at
  * `mutedUntil` themselves, since nothing else will wake them.
  */
 export function isContextWarningMuted(

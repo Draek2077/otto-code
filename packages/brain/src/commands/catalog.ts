@@ -1,5 +1,5 @@
 /**
- * `otto brain catalog` — list the downloadable model catalog, each entry
+ * `otto brain catalog` - list the downloadable model catalog, each entry
  * annotated with whether it is already installed. The installed flag reuses the
  * authoritative catalog↔model join (enrichWithCatalog sets `catalogId` back-
  * references on scanned models), so it agrees with `scan`/`pull` and works with

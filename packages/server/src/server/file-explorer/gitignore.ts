@@ -2,9 +2,9 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 // Pure-JS gitignore matching for the project-search walker. Covers the
-// patterns that matter in practice — blank/comment lines, `!` negation,
+// patterns that matter in practice - blank/comment lines, `!` negation,
 // trailing `/` (directory-only), leading `/` (anchored), `*`, `?`, `**`, and
-// basename matching for slash-less patterns — with git's last-match-wins
+// basename matching for slash-less patterns - with git's last-match-wins
 // precedence. Exotic corners (character-class ranges with escapes, re-include
 // inside excluded directories) are intentionally out of scope; nothing is
 // spawned and no dependency is added.

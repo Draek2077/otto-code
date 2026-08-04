@@ -5,14 +5,14 @@
  * There is deliberately no per-RID matrix here and no NuGet restore at run time: the output is
  * IL, so the same handful of files runs on Windows, macOS and Linux, and a machine that is
  * offline or locked down never has to fetch anything to use the feature. That is the whole
- * shipping decision — build once, ship everywhere.
+ * shipping decision - build once, ship everywhere.
  *
  * `dotnet` is required to *build* the payload, not to consume it. `build:server` and
  * `build:server:clean` both end by running this script, because they wipe the directory the
  * payload is copied into and nothing else puts it back. A contributor without the .NET SDK still
  * gets a working repo: the SDK probe below exits 0, they simply have no Solution view, and the
  * daemon reports the payload as absent so the switcher never appears. Pass `--required` to turn a
- * missing SDK into a failure instead — for a release runner that must not ship without the
+ * missing SDK into a failure instead - for a release runner that must not ship without the
  * sidecar. Nothing passes it today.
  */
 import { spawnSync } from "node:child_process";
@@ -50,7 +50,7 @@ function fail(message) {
 const probe = spawnSync("dotnet", ["--version"], { encoding: "utf8" });
 if (probe.status !== 0) {
   fail(
-    "no .NET SDK on PATH — skipping the solution sidecar (the Solution view will be unavailable)",
+    "no .NET SDK on PATH - skipping the solution sidecar (the Solution view will be unavailable)",
   );
 }
 

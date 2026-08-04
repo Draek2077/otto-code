@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Builds the architecture docs site: archdocs/pages/*.adoc -> archdocs/dist/*.html
 // Diagrams are authored as [mermaid] listing blocks and rendered client-side by
-// mermaid.min.js (vendored from node_modules at build time — no network needed).
+// mermaid.min.js (vendored from node_modules at build time - no network needed).
 import { Extensions, load } from "@asciidoctor/core";
 import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -56,7 +56,7 @@ for (const file of pageFiles) {
   });
 }
 
-// Titles from getDoctitle() are already HTML-escaped by asciidoctor — do not re-escape.
+// Titles from getDoctitle() are already HTML-escaped by asciidoctor - do not re-escape.
 const nav = (active) =>
   pages
     .map((p) => `<a href="${p.href}"${p.href === active ? ' class="active"' : ""}>${p.title}</a>`)

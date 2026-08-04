@@ -1,17 +1,17 @@
 // Which assistant segments the model has FINISHED, straight from the stream
-// buffers — the pure half of auto-speech's producer (see auto-speech-source.tsx
+// buffers - the pure half of auto-speech's producer (see auto-speech-source.tsx
 // for who calls it and why it does not live on the message row).
 //
 // "Finished" is one rule: every assistant segment of the CURRENT turn except the
 // one the model is still appending to. Blocks are promoted out of the live item
 // as they complete, so this yields a reply paragraph by paragraph rather than
-// all at once when the turn ends — and when the turn does end, the last
+// all at once when the turn ends - and when the turn does end, the last
 // paragraph becomes finished with it.
 //
 // Scoped to the current turn, never the whole buffer, and the turn's key comes
 // back with the segments so the caller can tell one turn from the next. That is
-// what keeps a bulk timeline arrival — opening a chat, a reconnect, a history
-// page — from looking like a hundred replies that just finished.
+// what keeps a bulk timeline arrival - opening a chat, a reconnect, a history
+// page - from looking like a hundred replies that just finished.
 import {
   computeLiveTurnReveal,
   findTurnBoundary,
@@ -27,7 +27,7 @@ export interface FinishedSegment {
    * what that rewrite leaves alone.
    */
   key: string;
-  /** The visual bubble — what the UI marks as speaking. */
+  /** The visual bubble - what the UI marks as speaking. */
   groupId: string;
   text: string;
 }
@@ -43,7 +43,7 @@ function segmentOf(item: StreamItem): FinishedSegment | null {
   };
 }
 
-/** The growing end of the live turn — the last item the reveal spans cover. */
+/** The growing end of the live turn - the last item the reveal spans cover. */
 function growingTailItemId(reveal: LiveTurnReveal): string | undefined {
   let last: string | undefined;
   for (const itemId of reveal.spans.keys()) {
@@ -58,7 +58,7 @@ export function finishedAssistantSegments(input: {
   running: boolean;
   /**
    * The turn that already finished, latched by the caller while the agent is
-   * idle — pass back what this function returned last time.
+   * idle - pass back what this function returned last time.
    *
    * Sending a message flips the agent to running a beat before the daemon echoes
    * the user row back, and for that beat the turn search lands on the PREVIOUS

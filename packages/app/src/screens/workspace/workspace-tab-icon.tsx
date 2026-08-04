@@ -19,14 +19,14 @@ export interface WorkspaceTabPresentation {
   statusBucket: SidebarStateBucket | null;
   /** Personality spinner colors for the busy loader; null ⇒ theme spinner. */
   personalitySpinner?: { glowA: string; glowB: string } | null;
-  /** Provider id — fills the non-loading agent glyph with the personality gradient. */
+  /** Provider id - fills the non-loading agent glyph with the personality gradient. */
   provider?: string;
 }
 
 interface WorkspaceTabIconProps {
   presentation: WorkspaceTabPresentation;
   active?: boolean;
-  /** Accent-colored icon — marks the selected tab in the desktop tabs row. */
+  /** Accent-colored icon - marks the selected tab in the desktop tabs row. */
   accent?: boolean;
   size?: number;
 }
@@ -66,8 +66,8 @@ export function WorkspaceTabIcon({
     );
   }
 
-  // Actionable states swap the whole glyph for the shared attention badge —
-  // the same icon the sidebar workspace rows show for this bucket — instead
+  // Actionable states swap the whole glyph for the shared attention badge -
+  // the same icon the sidebar workspace rows show for this bucket - instead
   // of overlaying a tiny dot. The wrapper keeps the tab's icon box size, so
   // the swap causes no layout shift; the normal icon returns when the bucket
   // clears.

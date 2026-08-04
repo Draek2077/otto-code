@@ -44,7 +44,7 @@ export interface PinnedTaskListOverlayProps {
  * checkable body as the transcript card (components/todo-task-list); the user
  * closes it with the title-bar X, or it self-closes once every task is done when
  * "auto-dismiss" is on (General → Chats). Mounted inside the chat content
- * container (not a Portal) so Android hit-testing stays in bounds — see
+ * container (not a Portal) so Android hit-testing stays in bounds - see
  * docs/floating-panels.md, same as the suggested-tasks overlay.
  */
 export function PinnedTaskListOverlay({
@@ -167,7 +167,7 @@ const styles = StyleSheet.create((theme) => ({
     width: "100%",
     maxWidth: 460,
     // A green (success-tone) ring at the same 1px weight as the usage-alert
-    // FlyoutBand, so this reads as the progress/tasks surface — matching the
+    // FlyoutBand, so this reads as the progress/tasks surface - matching the
     // green progress bar inside. surface2 is the opaque float base so chat text
     // never shows through.
     backgroundColor: theme.colors.surface2,

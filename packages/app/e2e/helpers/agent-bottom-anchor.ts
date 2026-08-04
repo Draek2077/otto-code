@@ -206,8 +206,8 @@ export async function clickToolCallBesideScrollToBottomButton(page: Page): Promi
   // A settled transcript folds a run of tool calls into one action group, so a
   // finished stream has `action-group-badge` rows where a live one has
   // `tool-call-badge` rows. Both are tool-call rows for the purpose of this
-  // check — it is about the scroll button's hit area, not about which row kind
-  // happens to be beside it — and matching only the ungrouped kind is why this
+  // check - it is about the scroll button's hit area, not about which row kind
+  // happens to be beside it - and matching only the ungrouped kind is why this
   // found zero candidates on a stream the test had already waited to finish.
   const toolCalls = page.locator(
     '[data-testid="tool-call-badge"] [role="button"], [data-testid="action-group-badge"] [role="button"]',

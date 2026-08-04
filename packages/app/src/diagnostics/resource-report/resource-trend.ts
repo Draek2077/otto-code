@@ -1,6 +1,6 @@
 // Trend analysis over a series of resource samples.
 //
-// A single snapshot cannot find a leak — "3,412 cached queries" is only alarming
+// A single snapshot cannot find a leak - "3,412 cached queries" is only alarming
 // once you know it was 180 an hour ago. This module turns the monitor's ring
 // buffer into a ranked answer to "what is growing?", which is the whole point of
 // the instrument: it names the suspect instead of leaving you to guess.
@@ -13,7 +13,7 @@
 export interface ResourceSample {
   /** Epoch ms. */
   at: number;
-  /** Ms since the monitor started — the regression's x axis. */
+  /** Ms since the monitor started - the regression's x axis. */
   uptimeMs: number;
   metrics: Readonly<Record<string, number>>;
 }
@@ -28,11 +28,11 @@ export interface MetricTrend {
   delta: number;
   /** Least-squares slope in units per hour. */
   slopePerHour: number;
-  /** slopePerHour / max(|first|, 1) — dimensionless, comparable across metrics. */
+  /** slopePerHour / max(|first|, 1) - dimensionless, comparable across metrics. */
   relativeGrowthPerHour: number;
   /**
    * Fraction of consecutive steps that did not decrease. 1 means the metric only
-   * ever climbed — the signature of something never released.
+   * ever climbed - the signature of something never released.
    */
   monotonicity: number;
 }
@@ -40,7 +40,7 @@ export interface MetricTrend {
 export interface ResourceTrendReport {
   samples: number;
   elapsedMs: number;
-  /** Monotonic climbers, worst first — the leak candidates. */
+  /** Monotonic climbers, worst first - the leak candidates. */
   growing: MetricTrend[];
   /** Every metric, for the full table. */
   all: MetricTrend[];
@@ -168,6 +168,6 @@ function leastSquaresSlope(points: Array<{ hours: number; value: number }>): num
     variance += dx * dx;
   }
 
-  // All samples landed in the same instant — no line to fit.
+  // All samples landed in the same instant - no line to fit.
   return variance === 0 ? 0 : covariance / variance;
 }

@@ -289,7 +289,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
       listAgents: vi.fn(() => []),
       subscribe: vi.fn(() => () => {}),
       // `listAgentPayloads` calls this on every fetch_agents_request. Left unstubbed it throws,
-      // and the throw is swallowed by handleFetchAgents' catch — which clears the subscription,
+      // and the throw is swallowed by handleFetchAgents' catch - which clears the subscription,
       // so every later agent_update is dropped and the test fails somewhere far away with no
       // mention of this method. Default it here rather than per-test for that reason.
       listObservedSubagentPayloads: vi.fn(() => []),
@@ -4475,11 +4475,11 @@ describe("session pull request timeline handling", () => {
 describe("chat/schedule/loop dispatch routing (behavior preservation)", () => {
   // Each chat/*, loop/*, and schedule/* type must reach its domain handler. The
   // injected service stubs are unstubbed, so every handler's own try/catch fires
-  // and emits its domain rpc_error code — proving the message routed (a dropped
+  // and emits its domain rpc_error code - proving the message routed (a dropped
   // case would silently no-op and emit nothing). schedule/* historically routed
   // via the chat dispatcher's fall-through arm; this guards that path explicitly.
   // handleMessage receives already-parsed messages, so these fixtures only need to
-  // satisfy the TS union here — zod parsing happens upstream at the transport.
+  // satisfy the TS union here - zod parsing happens upstream at the transport.
   const routingCases: Array<{ msg: SessionInboundMessage; code: string }> = [
     {
       msg: { type: "chat/create", requestId: "rt-chat-create", name: "room" },

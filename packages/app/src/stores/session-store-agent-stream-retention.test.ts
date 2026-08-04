@@ -101,7 +101,7 @@ describe("agent stream retention in the session store", () => {
 
     expect(bufferedAgentIds()).toContain("pinned");
 
-    // ...and once it unmounts it is just another cached agent — the oldest
+    // ...and once it unmounts it is just another cached agent - the oldest
     // one, so the next agent to start streaming takes its slot.
     release();
     bufferAgent("newcomer");
@@ -151,7 +151,7 @@ describe("agent stream retention in the session store", () => {
     bufferAgent("closed-chat");
     const release = useSessionStore.getState().retainAgentStream(SERVER_ID, "closed-chat");
 
-    // Never entered `agents` — an archived or deleted chat, not a live one.
+    // Never entered `agents` - an archived or deleted chat, not a live one.
     release();
 
     expect(bufferedAgentIds()).toEqual([]);

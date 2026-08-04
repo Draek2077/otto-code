@@ -116,7 +116,9 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[3],
-    backgroundColor: theme.colors.surface2,
+    // surface1, not surface2: `border` is nearly identical to surface2 on this
+    // theme, which swallows the toast's own outline.
+    backgroundColor: theme.colors.surface1,
     borderRadius: theme.borderRadius.lg,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,

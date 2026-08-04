@@ -43,7 +43,7 @@ describe("sanitizeWidgetFragment", () => {
     const oversized = `<div>${"x".repeat(WIDGET_MAX_CODE_CHARS * 2)}</div>`;
     const result = sanitizeWidgetFragment(oversized);
     expect(result.truncated).toBe(true);
-    // Cut to the cap, and the cut is stated in the document — a fragment
+    // Cut to the cap, and the cut is stated in the document - a fragment
     // sliced mid-tag renders broken, so it must not fail silently.
     expect(result.code.startsWith(oversized.slice(0, WIDGET_MAX_CODE_CHARS))).toBe(true);
     expect(result.code).toContain("truncated");

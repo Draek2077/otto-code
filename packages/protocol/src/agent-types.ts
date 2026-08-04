@@ -198,18 +198,18 @@ export interface AgentRunOptions {
  * origin. Powers the visualizer's context ring/bar colored segments (the same
  * five categories the vendored render layer draws). Every field is optional and
  * a token count: a provider fills as many categories as it can attribute and
- * omits the rest, so richness degrades gracefully per provider — Claude
+ * omits the rest, so richness degrades gracefully per provider - Claude
  * attributes the most; a provider that can attribute nothing omits the whole
  * object and consumers fall back to occupancy-only (no colored segments, the
  * pre-composition behavior). Counts are best-effort estimates, not billed usage;
  * they need not sum exactly to `contextWindowUsedTokens` (the consumer scales).
  */
 export interface ContextComposition {
-  /** System prompt + tool/function definitions — the fixed base cost. */
+  /** System prompt + tool/function definitions - the fixed base cost. */
   systemPrompt?: number;
   /** User-authored input messages. */
   userMessages?: number;
-  /** Tool results — file contents, search output, command output (usually the
+  /** Tool results - file contents, search output, command output (usually the
    * largest and most volatile category). */
   toolResults?: number;
   /** The agent's own reasoning / thinking blocks. */
@@ -220,14 +220,14 @@ export interface ContextComposition {
 
 /**
  * One provider-reported context-window category. `name` is a provider-supplied
- * *display label* ("Messages", "System prompt", "MCP tools") — deliberately an
+ * *display label* ("Messages", "System prompt", "MCP tools") - deliberately an
  * OPEN-ENDED string and not an enum, so each provider reports the split it
  * actually has instead of being squeezed into categories it can't populate.
  *
  * Structurally identical to `AgentContextUsageCategory` on the pull path
  * (`agent.context.get_usage`, see messages.ts) *by design*: the two carry the
  * same accounting, one pushed on the agent snapshot and one pulled on demand.
- * Keep them in sync — a divergence here is how the context meter and the
+ * Keep them in sync - a divergence here is how the context meter and the
  * visualizer would start disagreeing about the same agent.
  */
 export interface AgentContextCategory {
@@ -241,7 +241,7 @@ export interface AgentUsage {
   inputTokens?: number;
   cachedInputTokens?: number;
   /**
-   * Prompt tokens spent writing (not reading) the prompt cache this turn —
+   * Prompt tokens spent writing (not reading) the prompt cache this turn -
    * Anthropic's `cache_creation_input_tokens`, billed above normal input.
    * Disjoint from `inputTokens`/`cachedInputTokens`. Claude-specific today;
    * other providers omit it. Optional/additive.
@@ -258,7 +258,7 @@ export interface AgentUsage {
    */
   contextComposition?: ContextComposition;
   /**
-   * The provider's OWN context-window split, with its own labels — the same
+   * The provider's OWN context-window split, with its own labels - the same
    * accounting the `agent.context.get_usage` RPC returns, pushed here on the
    * agent snapshot so stream/backfill consumers (the visualizer) read the very
    * numbers the context meter shows rather than a parallel estimate.
@@ -508,7 +508,7 @@ export type AgentStreamEvent =
       timestamp?: string;
     }
   // A background shell task launched by the provider's own Bash tool (Claude:
-  // run_in_background) changed lifecycle state. Not an AI subagent — a plain
+  // run_in_background) changed lifecycle state. Not an AI subagent - a plain
   // shell process the daemon tracks for the Background Tasks track.
   | {
       type: "background_shell_task_updated";
@@ -538,7 +538,7 @@ export interface ObservedSubagentUpdate {
   requiresAttention?: boolean;
   usage?: AgentUsage;
   /**
-   * True once this run is known to outlive an interrupt of the parent's turn —
+   * True once this run is known to outlive an interrupt of the parent's turn -
    * the provider backgrounded it, so the parent's teardown does not take it
    * down. Sticky: the daemon keeps it set for the row's whole life, and
    * propagates it to nested rows (a child of a backgrounded run survives too).
@@ -557,7 +557,7 @@ export interface ObservedSubagentUpdate {
    */
   toolUseCount?: number;
   /**
-   * The tool this subagent is running (or ran last) — the "spinning _on a 90s
+   * The tool this subagent is running (or ran last) - the "spinning _on a 90s
    * Bash_" signal. Neutral field any provider can set; unlike the counters it is
    * NOT monotonic (latest wins) and the daemon drops it once the row goes
    * terminal. Claude reads it from `task_progress.last_tool_name`. Absent ⇒ the
@@ -570,7 +570,7 @@ export interface ObservedSubagentUpdate {
  * A background shell task reported by a provider's own Bash tool (Claude:
  * `run_in_background`). `key` is a provider-local stable identifier (Claude:
  * the Bash tool_use id); the daemon namespaces it under the owning agent.
- * Unlike {@link ObservedSubagentUpdate} this has no transcript/pane — it's a
+ * Unlike {@link ObservedSubagentUpdate} this has no transcript/pane - it's a
  * plain status row (command, status, elapsed) in the Background Tasks track.
  */
 export interface BackgroundShellTaskUpdate {
@@ -639,7 +639,7 @@ export interface AgentRunResult {
 // accept the setting and ignore it.
 //
 // This is a *boundary*, not an instruction. "read" means the write tools are
-// not offered, so there is no write to make — never a line of prompt asking the
+// not offered, so there is no write to make - never a line of prompt asking the
 // model to behave. A control a user relies on when deciding to run something
 // unattended has to be true in exactly the cases where the model is confused.
 export const WORKSPACE_ACCESS_LEVELS = ["none", "read", "write"] as const;

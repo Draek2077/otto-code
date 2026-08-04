@@ -23,7 +23,7 @@ export interface PaneFocusContextValue {
   /** The pane's content is actually on screen and rendering: the workspace
    * route is focused AND this tab is the frontmost tab in its pane. Unlike
    * `isInteractive`/`isPaneFocused`, this does NOT require the pane to hold
-   * focus — a companion view in an unfocused split (e.g. the Visualizer next
+   * focus - a companion view in an unfocused split (e.g. the Visualizer next
    * to the chat you're typing in) is visible but not focused. Consumers that
    * should keep running whenever they're watchable (not just when clicked
    * into) gate on this. */

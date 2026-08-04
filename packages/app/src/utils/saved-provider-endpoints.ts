@@ -1,7 +1,7 @@
 import type { SavedProviderEndpoint } from "@otto-code/protocol/messages";
 
 /**
- * Remembered provider endpoints — the base URL + credential pairs a host has
+ * Remembered provider endpoints - the base URL + credential pairs a host has
  * saved in the provider settings sheet, so pointing a provider back at a
  * previous endpoint is one pick instead of re-typing the key.
  *
@@ -20,7 +20,7 @@ import type { SavedProviderEndpoint } from "@otto-code/protocol/messages";
  */
 export const SAVED_PROVIDER_ENDPOINT_LIMIT = 12;
 
-/** Stable identity for an endpoint — re-saving the same URL updates in place. */
+/** Stable identity for an endpoint - re-saving the same URL updates in place. */
 export function savedProviderEndpointId(baseUrlKey: string, baseUrl: string): string {
   return `${baseUrlKey}::${baseUrl}`;
 }

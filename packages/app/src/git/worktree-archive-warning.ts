@@ -157,7 +157,7 @@ function buildBranchContextLine(
 export interface WorktreeArchiveBranchDialogContent {
   message: string;
   checkboxLabel: string;
-  // Merged branches default to "delete" — the leftover is safe to remove; every
+  // Merged branches default to "delete" - the leftover is safe to remove; every
   // other state defaults to "keep" so commits are never discarded by inertia.
   checkboxDefaultChecked: boolean;
 }

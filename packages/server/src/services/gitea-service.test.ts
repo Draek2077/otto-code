@@ -654,7 +654,7 @@ describe("createGiteaService", () => {
     });
 
     // The commit-status combined state is "success", but a failed Actions run
-    // must pull the aggregate to failure — never green on a failing PR.
+    // must pull the aggregate to failure - never green on a failing PR.
     expect(status?.checksStatus).toBe("failure");
     expect(status?.checks.map((check) => check.status)).toContain("failure");
   });
@@ -910,7 +910,7 @@ describe("createGiteaService", () => {
     });
 
     // Gitea's "warning" is terminal and non-passing (IsSuccess()===false, blocks
-    // merge). Our enum has no yellow bucket, so it surfaces as failure — never
+    // merge). Our enum has no yellow bucket, so it surfaces as failure - never
     // green success, never a never-resolving pending.
     expect(status?.checks[0]?.status).toBe("failure");
     expect(status?.checksStatus).toBe("failure");
@@ -1145,7 +1145,7 @@ describe("createGiteaService", () => {
       { resolveCurrentBranch: async () => "feat/sample-change" },
     );
 
-    // No checkRunId — only the Actions workflowRunId, as the PR pane sends for a
+    // No checkRunId - only the Actions workflowRunId, as the PR pane sends for a
     // Gitea Actions row. It must still resolve instead of throwing.
     const details = await service.getCheckDetails({
       cwd: "/repo",

@@ -1,10 +1,10 @@
-// Where auto-speech gets its material — and why it is NOT the message row.
+// Where auto-speech gets its material - and why it is NOT the message row.
 //
 // It used to be: every assistant bubble offered itself to the queue as its
 // typewriter reveal caught up. That reads well and is completely wrong about
 // lifetime. A message row exists only while its chat is on screen, so switching
 // to another chat tore down the only thing that could feed the queue and the
-// chat you walked away from went silent mid-reply — the one moment the feature
+// chat you walked away from went silent mid-reply - the one moment the feature
 // is supposed to earn its keep. Nothing about "read this agent aloud" is a
 // property of what happens to be rendered.
 //
@@ -21,16 +21,16 @@
 //     let its own source be reclaimed would be a slower version of the same bug.
 //   * "Read what you WATCHED being written, never history" is now a turn latch
 //     rather than a render-time one. A turn is adopted only if this producer sees
-//     it RUNNING; anything else that lands in the buffers — the history page
+//     it RUNNING; anything else that lands in the buffers - the history page
 //     fetched when you open the chat, a reconnect replaying the timeline, a
-//     catch-up after eviction — belongs to some other turn and is never spoken.
+//     catch-up after eviction - belongs to some other turn and is never spoken.
 //     Adopting also marks whatever that turn had already written as handled, so
 //     arming the mode mid-reply reads from the next paragraph on, not from the
 //     top. Without this, mounting against empty buffers and then loading history
 //     would have read the whole chat aloud.
 //
 // What it no longer waits for is the typewriter. A segment is speakable when the
-// model has moved past it, not when the reveal has finished drawing it — there is
+// model has moved past it, not when the reveal has finished drawing it - there is
 // no reveal at all for a chat that is not on screen. The two never visibly
 // diverge: the reveal paces in the thousands of characters per second while
 // synthesis answers in fractions of one, so the text is always already there by
@@ -74,7 +74,7 @@ export function ChatAutoSpeechSource({ serverId, agentId }: { serverId: string; 
         // replaying, a catch-up after eviction. Not ours to read.
         return;
       }
-      // Adopt it — and everything it had already written before we looked was
+      // Adopt it - and everything it had already written before we looked was
       // written before the mode applied to it.
       watchedTurnRef.current = turnKey;
       handledRef.current = new Set(segments.map((segment) => segment.key));

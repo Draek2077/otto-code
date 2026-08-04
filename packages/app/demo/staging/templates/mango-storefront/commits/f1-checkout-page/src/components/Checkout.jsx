@@ -1,6 +1,6 @@
 import "./checkout.css";
 
-/** Checkout page stub — not routed into the app yet. */
+/** Checkout page stub - not routed into the app yet. */
 export default function Checkout({ cartCount }) {
   return (
     <section className="checkout">

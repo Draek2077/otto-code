@@ -19,10 +19,10 @@ export type AgentRunController = Pick<
  * How a prompt reaches a BUSY agent. Against an idle agent both modes are the
  * same thing: run it now.
  *
- * - `interrupt` — cancel the in-flight turn and run this instead, in the same
+ * - `interrupt` - cancel the in-flight turn and run this instead, in the same
  *   provider session. Today's behavior, and still the default so no existing
  *   caller changes.
- * - `queue` — let the turn finish, then run this as the next turn.
+ * - `queue` - let the turn finish, then run this as the next turn.
  *
  * Lives in the turn lifecycle, above every provider adapter, so it behaves
  * identically for every provider.
@@ -97,7 +97,7 @@ export function startAgentRun(
     "agent.session.start_stream.request",
   );
   // Out-of-band commands (e.g. /goal pause) must run WITHOUT canceling an
-  // in-flight turn — replaceAgentRun would interrupt the running turn. The
+  // in-flight turn - replaceAgentRun would interrupt the running turn. The
   // intercept lives at this layer so it covers every prompt entrypoint.
   if (agentManager.tryRunOutOfBand(agentId, prompt)) {
     return { outOfBand: true, queued: false };
@@ -176,7 +176,7 @@ export async function unarchiveAgentState(
 
 /**
  * Wrap a body in <otto-system>…</otto-system> so the receiving agent
- * recognizes the prompt as system-injected context — not a user turn.
+ * recognizes the prompt as system-injected context - not a user turn.
  * Used by chat mentions, schedule fires, and notify-on-finish.
  */
 export function formatSystemNotificationPrompt(reason: string): string {
@@ -206,7 +206,7 @@ export interface SendPromptToAgentParams {
    */
   unarchive?: boolean;
   /**
-   * How to reach a busy agent. Defaults to `interrupt` — today's behavior for
+   * How to reach a busy agent. Defaults to `interrupt` - today's behavior for
    * every caller. See AgentPromptDelivery.
    */
   delivery?: AgentPromptDelivery;
@@ -253,7 +253,7 @@ export async function waitForAgentRunStartWithTimeout(
  * drift between them.
  *
  * When `unarchive` is false and the agent is archived, the call is a silent
- * no-op (returns `{ outOfBand: false }`) — the agent is not run.
+ * no-op (returns `{ outOfBand: false }`) - the agent is not run.
  */
 export async function sendPromptToAgent(
   params: SendPromptToAgentParams,
@@ -395,7 +395,7 @@ export function setupFinishNotification(params: SetupFinishNotificationParams): 
       unarchive: false,
       // "Your child finished" is a report, not a correction. Interrupting the
       // parent destroyed the turn it was running while the child worked, and a
-      // fan-out of N children interrupted it N times in a row — it could never
+      // fan-out of N children interrupted it N times in a row - it could never
       // finish a turn. Queued, each report still lands as its own turn (system
       // entries never merge), in completion order. See docs/chat-lifecycle.md.
       delivery: "queue",
@@ -440,7 +440,7 @@ export function setupFinishNotification(params: SetupFinishNotificationParams): 
 
   // Check if the child is already running (catches the case where
   // the lifecycle flipped before our subscribe call was processed).
-  // Do NOT treat an immediate "idle" as "finished" — the agent may
+  // Do NOT treat an immediate "idle" as "finished" - the agent may
   // not have started yet (streamAgent sets a pending run before
   // transitioning to "running").
   const childSnapshot = agentManager.getAgent(childAgentId);

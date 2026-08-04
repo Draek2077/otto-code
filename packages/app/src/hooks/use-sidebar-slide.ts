@@ -18,11 +18,11 @@ import { useAnimationsEnabled } from "@/hooks/use-animations-enabled";
  * pre-animation behavior (immediate unmount on close).
  *
  * Returns:
- *  - `rendered`: true while the sidebar should be in the tree — whenever open,
+ *  - `rendered`: true while the sidebar should be in the tree - whenever open,
  *    and during the close animation so the exit can play before it unmounts.
  *    Gate the component's `return null` on this instead of `isOpen`.
  *  - `slideStyle`: the Reanimated style for the sidebar's outer Animated.View
- *    (animated width + opacity). Only the outer container is animated — inner
+ *    (animated width + opacity). Only the outer container is animated - inner
  *    content stays on Unistyles styles, per the "Animated.Views must not use
  *    Unistyles dynamic theme" crash gotcha. The return type is inferred (not
  *    annotated) so it stays the concrete `useAnimatedStyle` result and composes
@@ -48,7 +48,7 @@ export function useSidebarSlide({
       return;
     }
     if (!animationsEnabled) {
-      // Snap shut and unmount immediately — matches the original `!isOpen`
+      // Snap shut and unmount immediately - matches the original `!isOpen`
       // return-null behavior when the setting is off.
       openProgress.value = 0;
       setRendered(false);

@@ -114,7 +114,7 @@ describe.skipIf(isPlatform("win32"))("service POSIX-only", () => {
 
   // The three specs below are why mutations resolve the *parent* rather than the
   // target: a read may follow a symlink to what it points at, but a delete that
-  // did so would destroy the target instead of the link — and a symlinked parent
+  // did so would destroy the target instead of the link - and a symlinked parent
   // directory is a traversal the lexical `..` check cannot see.
   it("deletes a symlink itself, leaving its target alone", async () => {
     const root = await createTempDir("otto-file-explorer-");
@@ -161,7 +161,7 @@ describe.skipIf(isPlatform("win32"))("service POSIX-only", () => {
       await writeFile(path.join(outsideRoot, "keep.txt"), "keep\n", "utf-8");
       await symlink(outsideRoot, path.join(root, "linked-dir"));
 
-      // lstat sees a link, not a directory, so this is an unlink — no `recursive`
+      // lstat sees a link, not a directory, so this is an unlink - no `recursive`
       // needed and nothing inside the target is touched.
       const result = await deleteExplorerEntry({ root, relativePath: "linked-dir" });
 

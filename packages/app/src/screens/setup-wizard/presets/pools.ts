@@ -6,7 +6,7 @@
  *
  * Names are drawn *without replacement* within a team (no two members share a
  * name). Colors are drawn spread around the hue wheel so members stay visually
- * distinct. Voices are a soft binding — an unavailable voice degrades to the
+ * distinct. Voices are a soft binding - an unavailable voice degrades to the
  * host default at playback, it never takes a personality out of commission.
  */
 

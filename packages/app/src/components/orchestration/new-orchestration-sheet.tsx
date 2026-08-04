@@ -9,7 +9,13 @@ import {
 } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { Brain, ChevronDown, Folder, GitBranch, Schema } from "@/components/icons/material-icons";
+import {
+  ChevronDown,
+  Folder,
+  GitBranch,
+  Psychology,
+  Schema,
+} from "@/components/icons/material-icons";
 import type { AgentModelDefinition } from "@otto-code/protocol/agent-types";
 import type { OrchestrationGraph } from "@otto-code/protocol/orchestration";
 import {
@@ -58,11 +64,11 @@ import { normalizeWorkspacePath } from "@/utils/workspace-identity";
 import { toErrorMessage } from "@/utils/error-messages";
 import type { ProjectSummary } from "@/utils/projects";
 
-// The New Orchestration dialog (projects/orchestration-graphs) — the same form
+// The New Orchestration dialog (projects/orchestration-graphs) - the same form
 // idiom as the New Artifact / New Schedule sheets: Name, a multiline
 // description, the shared project-target picker, RoleModelSelector for the
 // orchestrator seat ("Team's Orchestrator" entry when a team is active), an
-// Effort picker while no personality is bound, then the flavor payload —
+// Effort picker while no personality is bound, then the flavor payload -
 // Prompt (AI) or graph + its declared inputs (Graph).
 
 export interface NewOrchestrationPrefill {
@@ -72,7 +78,7 @@ export interface NewOrchestrationPrefill {
   graphId: string;
   runId?: string;
   /**
-   * Edit mode — the dialog reopens on an existing Draft orchestration and is
+   * Edit mode - the dialog reopens on an existing Draft orchestration and is
    * seeded from that record (not from the graph). Save writes the draft back in
    * place; Run executes it. Only drafts are editable, so this always rides with
    * a `runId`.
@@ -93,7 +99,7 @@ export interface NewOrchestrationSheetProps {
 }
 
 type OrchestrationFlavor = "ai" | "graph";
-/** Which footer button was pressed — "save-draft" exists only in edit mode. */
+/** Which footer button was pressed - "save-draft" exists only in edit mode. */
 type SubmitIntent = "run" | "save-draft";
 
 function resolveSheetTitle(isEditingDraft: boolean): string {
@@ -145,7 +151,7 @@ function buildOrchestrationProjectOptions(
 }
 
 // The selected cwd is a *workspace* directory, which may be a worktree under
-// the project root — match by normalized containment, preferring the most
+// the project root - match by normalized containment, preferring the most
 // specific root.
 function resolveProjectTargetForCwd(input: {
   targets: readonly ScheduleProjectTarget[];
@@ -208,7 +214,7 @@ function resolveSelectedProjectTarget(input: {
   });
 }
 
-/** The host whose workspaces the form reads — the picked one, else the prefill's. */
+/** The host whose workspaces the form reads - the picked one, else the prefill's. */
 function resolveSessionServerId(
   selectedServerId: string | null,
   prefillServerId: string | undefined,
@@ -231,7 +237,7 @@ function resolveEffectiveCwd(input: {
 /**
  * The workspace the designer tab should open in for a project target: the
  * workspace whose directory (or project root) matches the target cwd. Needed
- * only by the "Create & design" flow — executing flows get the workspace back
+ * only by the "Create & design" flow - executing flows get the workspace back
  * from the daemon in runs.start.response.
  */
 function resolveWorkspaceIdForCwd(
@@ -330,7 +336,7 @@ function resolveInitialSelection(
   });
   return {
     serverId: target?.serverId ?? prefill.serverId,
-    // The designer tab's own workspace, not the project root — the run should
+    // The designer tab's own workspace, not the project root - the run should
     // land back where it was designed.
     cwd: prefill.projectCwd || (target?.cwd ?? ""),
     projectOptionId: target?.optionId ?? "",
@@ -356,7 +362,7 @@ function openKey(props: NewOrchestrationSheetProps): string {
   return `${mode}:${props.prefill?.serverId ?? ""}:${props.prefill?.graphId ?? ""}:${props.prefill?.runId ?? ""}`;
 }
 
-/** Mount gate — same shape as ArtifactCreateSheet / ScheduleFormSheet, so a
+/** Mount gate - same shape as ArtifactCreateSheet / ScheduleFormSheet, so a
  * cancelled form never leaks its state into the next open. */
 export function NewOrchestrationSheet(props: NewOrchestrationSheetProps): ReactElement | null {
   const [renderedProps, setRenderedProps] = useState<NewOrchestrationSheetProps | null>(() =>
@@ -641,7 +647,7 @@ function OpenNewOrchestrationSheet({
   // loads (editable before running).
   const prefillSeededRef = useRef(false);
   useEffect(() => {
-    // Edit mode already carries the draft's own Name/Description — the graph's
+    // Edit mode already carries the draft's own Name/Description - the graph's
     // identity must not overwrite what the user named this orchestration.
     if (!prefill || draftSeed || !selectedGraph || prefillSeededRef.current) {
       return;
@@ -808,7 +814,7 @@ function OpenNewOrchestrationSheet({
       webScrollbar
       testID="new-orchestration-sheet"
     >
-      {/* A draft is always a graph orchestration — editing one can't change
+      {/* A draft is always a graph orchestration - editing one can't change
           that, so the flavor switch is a create-time control only. */}
       <FlavorField hidden={isEditingDraft} value={flavor} onChange={setFlavor} />
 
@@ -847,7 +853,7 @@ function OpenNewOrchestrationSheet({
 
       <View style={styles.field}>
         <Text style={styles.label}>Project</Text>
-        {/* A draft belongs to the project it was created in — moving it there
+        {/* A draft belongs to the project it was created in - moving it there
             would orphan its graph and its workspace, so editing shows the
             project rather than offering it. The Workspace picker below still
             moves the run between that project's worktrees. */}
@@ -932,7 +938,7 @@ function OpenNewOrchestrationSheet({
   );
 }
 
-/** AI vs Graph. Hidden while editing a draft — a draft is always a graph
+/** AI vs Graph. Hidden while editing a draft - a draft is always a graph
  * orchestration, so the flavor switch is a create-time control only. */
 function FlavorField({
   hidden,
@@ -961,7 +967,7 @@ function FlavorField({
 }
 
 /** Cancel + submit, plus the edit-mode-only Save Draft between them. Saving is
- * the non-committal action; running stays primary — a draft exists to be run. */
+ * the non-committal action; running stays primary - a draft exists to be run. */
 function OrchestrationSheetFooter({
   isEditingDraft,
   canSubmit,
@@ -1022,7 +1028,7 @@ async function submitOrchestrationForm(input: {
   intent: SubmitIntent;
   flavor: OrchestrationFlavor;
   target: ScheduleProjectTarget;
-  /** The selected workspace directory — the project root when none was picked. */
+  /** The selected workspace directory - the project root when none was picked. */
   cwd: string;
   name: string;
   description: string;
@@ -1095,7 +1101,7 @@ async function submitOrchestrationForm(input: {
   }
 
   // Save Draft (edit mode only): the daemon rewrites that draft record in place
-  // — same id, no execution, no navigation.
+  // - same id, no execution, no navigation.
   if (input.intent === "save-draft" && input.prefillRunId) {
     await input.start({
       flavor: "graph",
@@ -1523,7 +1529,7 @@ function WorkspaceOptionItem({
   );
 }
 
-/** The project as a statement of fact — same row shape as the picker trigger,
+/** The project as a statement of fact - same row shape as the picker trigger,
  * minus the chevron and the press target, so edit mode reads as "this is where
  * it lives" instead of a control that refuses to do anything. */
 function ReadOnlyProjectField({
@@ -1534,7 +1540,7 @@ function ReadOnlyProjectField({
   fallbackCwd: string;
 }): ReactElement {
   const storedPath = fallbackCwd.trim();
-  const displayValue = selectedTarget?.projectName ?? (storedPath ? shortenPath(storedPath) : "—");
+  const displayValue = selectedTarget?.projectName ?? (storedPath ? shortenPath(storedPath) : "-");
   const description = selectedTarget
     ? `${selectedTarget.serverName} - ${shortenPath(selectedTarget.cwd)}`
     : null;
@@ -1652,7 +1658,7 @@ function ProjectField({
 }
 
 // A personality already fixes its own effort, so the picker hides while one
-// is selected — the whole point is not having to choose it.
+// is selected - the whole point is not having to choose it.
 function EffortFieldSection({
   personalitySelected,
   model,
@@ -1789,7 +1795,7 @@ function ThinkingOptionItem({
   const leadingSlot = useMemo(
     () => (
       <View style={styles.optionIconBox}>
-        <Brain size={16} color={styles.chevron.color} />
+        <Psychology size={16} color={styles.chevron.color} />
       </View>
     ),
     [],
@@ -1960,7 +1966,7 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.borderAccent,
   },
   // The picker row minus its affordances: no chevron, no hover/active border,
-  // no press target — a value the form states rather than asks for.
+  // no press target - a value the form states rather than asks for.
   readOnlyValue: {
     flexDirection: "row",
     alignItems: "center",

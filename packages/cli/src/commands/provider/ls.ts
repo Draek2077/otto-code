@@ -13,7 +13,7 @@ export interface ProviderListItem {
   modes: string;
 }
 
-/** Derive provider list from the manifest — single source of truth */
+/** Derive provider list from the manifest - single source of truth */
 const PROVIDERS: ProviderListItem[] = AGENT_PROVIDER_DEFINITIONS.map((def) => ({
   provider: def.id,
   label: def.label,

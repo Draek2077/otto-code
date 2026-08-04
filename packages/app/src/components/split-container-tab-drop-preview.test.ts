@@ -75,7 +75,7 @@ describe("computeTabDropPreview", () => {
   });
 
   // Every chip in a vertical rail shares one left/width, so the horizontal
-  // math is degenerate there — these cover the Y-axis branch.
+  // math is degenerate there - these cover the Y-axis branch.
   it("returns a before-target insertion index for vertical drops on the top half", () => {
     expect(
       computeTabDropPreview({

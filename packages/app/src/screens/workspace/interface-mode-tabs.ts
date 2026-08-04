@@ -3,7 +3,7 @@ import type { WorkspaceTab, WorkspaceTabTarget } from "@/stores/workspace-tabs-s
 /**
  * Tab kinds that only belong to the Developer interface mode. In User mode the
  * tab strip and pane content filter these out so the workspace reads chat-first
- * (agents, browsers, artifacts) — see the surface inventory (#4) in
+ * (agents, browsers, artifacts) - see the surface inventory (#4) in
  * projects/first-time-wizard/interface-modes.md.
  *
  * This is a *render* filter only: it never mutates the tab/layout stores. The

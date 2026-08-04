@@ -34,7 +34,7 @@ describe("releaseCleanEditorBuffer", () => {
     expect(useEditorBufferStore.getState().buffers[key]).toBeUndefined();
   });
 
-  test("retains a dirty buffer — a non-interactive close must not discard edits", () => {
+  test("retains a dirty buffer - a non-interactive close must not discard edits", () => {
     loadReadyBuffer();
     useEditorBufferStore.getState().setDirty(key, true);
     useEditorBufferStore.getState().setDraft(key, "alpha edited\n");

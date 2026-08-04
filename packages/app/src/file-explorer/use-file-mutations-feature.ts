@@ -1,7 +1,7 @@
 import { useSessionStore } from "@/stores/session-store";
 
 /**
- * The single detection point for the file-mutation capability — create, delete,
+ * The single detection point for the file-mutation capability - create, delete,
  * rename/move. There is no client-side substitute (the client never touches the
  * filesystem), so callers omit the affordance entirely rather than offering a
  * degraded one.

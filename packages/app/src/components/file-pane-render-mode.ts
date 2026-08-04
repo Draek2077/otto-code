@@ -12,7 +12,7 @@ export function isRenderedMermaidFile(filePath: string): boolean {
 }
 
 /**
- * An AsciiDoc document. `.asc` is deliberately excluded — it collides with PGP
+ * An AsciiDoc document. `.asc` is deliberately excluded - it collides with PGP
  * armored files, and `.adoc`/`.asciidoc` are what the highlight package already
  * names (packages/highlight/src/language-names.ts).
  */
@@ -89,7 +89,7 @@ const PREVIEW_FIRST_EXTENSIONS = new Set([
   "mov",
   "avi",
   "mkv",
-  // Documents and archives — binary; the editor could never open them.
+  // Documents and archives - binary; the editor could never open them.
   "pdf",
   "zip",
   "gz",

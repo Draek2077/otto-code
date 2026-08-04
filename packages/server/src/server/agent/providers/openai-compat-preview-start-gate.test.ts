@@ -121,7 +121,7 @@ describe("PreviewStartGate", () => {
     expect(check.changed).toBe(true);
   });
 
-  test("a missing config or unknown entry gates nothing — the tool fails on its own", async () => {
+  test("a missing config or unknown entry gates nothing - the tool fails on its own", async () => {
     const cwd = await makeWorkspace();
     const gate = new PreviewStartGate(cwd);
     const missing = await gate.check("web");
@@ -144,7 +144,7 @@ describe("PreviewStartGate", () => {
 
   test("the baseline vouches for the duplicate-name entry that would actually run", async () => {
     // findLaunchConfiguration resolves the FIRST entry with a name, so the
-    // snapshot must too — otherwise a duplicate name at session start would
+    // snapshot must too - otherwise a duplicate name at session start would
     // leave the runnable entry permanently "changed".
     const cwd = await makeWorkspace(
       configWith(webEntry(), webEntry({ runtimeExecutable: "yarn" })),

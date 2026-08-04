@@ -4,7 +4,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 // How a workspace file tab presents its content. One tab per file; this store
 // remembers which of the three views (editable buffer, editor+preview split,
-// read-only preview) the user last picked for it. The split ratio is global —
+// read-only preview) the user last picked for it. The split ratio is global -
 // a user who drags the divider wants that proportion everywhere.
 
 export type FileViewMode = "editor" | "split" | "preview";

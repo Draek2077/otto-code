@@ -57,7 +57,7 @@ const ThemedFormatAlignCenter = withUnistyles(FormatAlignCenter);
 // On a phone this is not a convenience, it is the ONLY affordance: there are no
 // chords on a touch keyboard, so every command that has a key on desktop must
 // also have a button here. That is why the strip scrolls horizontally rather
-// than collapsing into an overflow menu — a menu would bury the two or three
+// than collapsing into an overflow menu - a menu would bury the two or three
 // buttons people actually reach for behind a tap.
 
 type ToolbarIcon = typeof ThemedFormatBold;

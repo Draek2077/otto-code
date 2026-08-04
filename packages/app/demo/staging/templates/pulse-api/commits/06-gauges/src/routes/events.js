@@ -1,6 +1,6 @@
 import { readJsonBody, sendJson } from "../http.js";
 
-/** POST /events — ingest one telemetry event into the ring buffer. */
+/** POST /events - ingest one telemetry event into the ring buffer. */
 export async function handleIngest(req, res, store) {
   const event = await readJsonBody(req);
   const record = {
@@ -17,7 +17,7 @@ export async function handleIngest(req, res, store) {
   sendJson(res, 202, { accepted: true, buffered: store.size });
 }
 
-/** GET /events/recent — newest-first slice of the buffer. */
+/** GET /events/recent - newest-first slice of the buffer. */
 export function handleRecent(req, res, store) {
   const url = new URL(req.url ?? "/", "http://localhost");
   const limit = Number(url.searchParams.get("limit") ?? "50");

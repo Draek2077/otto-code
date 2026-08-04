@@ -92,7 +92,7 @@ export interface ScheduleFormState {
   selectedProvider: AgentProvider | null;
   selectedModel: string;
   /**
-   * Internal only — no mode field is rendered and modeId is never submitted:
+   * Internal only - no mode field is rendered and modeId is never submitted:
    * schedule runs are unattended, so a mode picker would be a trap (an
    * attended mode fails the run at its first approval prompt). The value
    * still rides along the shared provider-selection resolution so the user's
@@ -502,7 +502,7 @@ function resolveDisclosure(state: ScheduleFormState): ScheduleDisclosureState {
     };
   }
 
-  // Project and model are always offered — models come from the host (a
+  // Project and model are always offered - models come from the host (a
   // project only re-scopes provider config), so neither field waits on the
   // other. The remaining flags are capability gates, not disclosure steps:
   // effort exists per model, worktrees per git project, archive-on-finish per
@@ -956,7 +956,7 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
         projectDisplay: display,
         selectedProjectOptionId: target.optionId,
       };
-      // A same-host project change keeps the user's provider/model choice —
+      // A same-host project change keeps the user's provider/model choice -
       // the re-scoped snapshot re-validates it on arrival. Only a host change
       // resets the selection.
       publish(serverChanged ? clearProviderSelection(nextState) : nextState);

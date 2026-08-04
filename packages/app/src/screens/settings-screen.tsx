@@ -25,7 +25,7 @@ import {
   Palette,
   Server,
   Network,
-  Neurology,
+  Brain,
   Bot,
   Boxes,
   DataObject,
@@ -179,7 +179,7 @@ export type SettingsView =
 // groups (app section ↔ host section ↔ projects) replaces one SettingsScreen
 // with another; the incoming screen's first render happens while the outgoing
 // one is still mounted, so a nonzero count at first render means "arrived from
-// inside settings" — the desktop content pane should run its fade even though
+// inside settings" - the desktop content pane should run its fade even though
 // it just mounted. A fresh entry from outside settings sees zero and skips it
 // (the app-wide route fade already covers that transition).
 let mountedSettingsScreens = 0;
@@ -212,7 +212,7 @@ const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
   { id: "general", labelKey: "settings.sections.general", icon: Settings },
   { id: "appearance", labelKey: "settings.sections.appearance", icon: Palette },
   // Reuses the (pre-move) Appearance-subsection title key so every locale
-  // already has it — the rows themselves moved to visualizer-section.tsx.
+  // already has it - the rows themselves moved to visualizer-section.tsx.
   {
     id: "visualizer",
     labelKey: "settings.appearance.visualizer.title",
@@ -240,7 +240,7 @@ interface HostSectionItem {
   id: HostSectionSlug;
   labelKey: string;
   icon: ComponentType<{ size: number; color: string }>;
-  // Developer-only host sections — hidden from the sidebar and their content
+  // Developer-only host sections - hidden from the sidebar and their content
   // gated to null in User mode (see renderHostSettingsContent).
   developerOnly?: boolean;
 }
@@ -252,8 +252,8 @@ const HOST_SECTION_ITEMS: HostSectionItem[] = [
   { id: "teams", labelKey: "settings.hostSections.teams", icon: Groups },
   { id: "tools", labelKey: "settings.hostSections.tools", icon: Wrench },
   { id: "code", labelKey: "settings.hostSections.code", icon: DataObject },
-  { id: "brain", labelKey: "settings.hostSections.brain", icon: Neurology },
-  // Git-provider settings are collapsed into "Workspaces" as a "Git" panel — too
+  { id: "brain", labelKey: "settings.hostSections.brain", icon: Brain },
+  // Git-provider settings are collapsed into "Workspaces" as a "Git" panel - too
   // few options to warrant its own sidebar category. See HostWorkspacesPage.
   // Everything in that page (PR auto-archive, Git providers) is developer-only,
   // so the whole category is developer-only too.
@@ -368,7 +368,7 @@ const APP_START_SCREEN_DESCRIPTION_KEYS = {
   dashboard: "settings.general.appStartScreen.descriptions.dashboard",
 } as const satisfies Record<AppStartScreen, string>;
 
-// Suggested-task default action. English-only for now — the whole suggested-task
+// Suggested-task default action. English-only for now - the whole suggested-task
 // feature is unlocalized pending verification (see build-first-translate-last).
 const SUGGESTED_TASKS_DEFAULT_MODE_OPTIONS: {
   value: SuggestedTasksDefaultMode;
@@ -614,7 +614,7 @@ function GeneralSection({
   }, [settings.mountedWorkspaceLimit]);
 
   // `null` means "match this device", and an empty field is how the user says
-  // that — so the field is blank rather than showing a number they did not pick.
+  // that - so the field is blank rather than showing a number they did not pick.
   const isCompactFormFactor = useIsCompactFormFactor();
   const autoMountedTabLimit = resolveMountedTabLimit({
     setting: null,
@@ -1129,7 +1129,7 @@ function DiagnosticsSection({
             <Text style={settingsStyles.rowTitle}>Performance monitoring</Text>
             <Text style={settingsStyles.rowHint}>
               Record frame timing, retained state and daemon traffic so the app diagnostic can show
-              what grows over a long session. Local only — nothing is sent anywhere. Turn it off to
+              what grows over a long session. Local only - nothing is sent anywhere. Turn it off to
               stop the sampling.
             </Text>
           </View>
@@ -1209,8 +1209,8 @@ function AboutSection({ appVersion, appVersionText, isDesktopApp }: AboutSection
   );
 }
 
-// Re-enters the first-run setup wizard from About. The wizard is idempotent —
-// it loads the current mode/roster/teams and only ever adds — so this "resets"
+// Re-enters the first-run setup wizard from About. The wizard is idempotent -
+// it loads the current mode/roster/teams and only ever adds - so this "resets"
 // the intro, never any data. The completion flag stays true.
 function SetupWizardRerunRow() {
   const { t } = useTranslation();
@@ -1319,7 +1319,7 @@ function HostVersionRow({
   } else if (normalizedHost) {
     valueText = formatVersionWithPrefix(normalizedHost);
   } else {
-    valueText = "—";
+    valueText = "-";
   }
 
   const valueStyle = useMemo(
@@ -1406,7 +1406,7 @@ function DesktopAppUpdateRow() {
       return;
     }
 
-    // No confirmation — the button already says what happens, so just restart
+    // No confirmation - the button already says what happens, so just restart
     // into the update (user-locked; matches the sidebar callout's install path).
     void installUpdate();
   }, [installUpdate, isDesktopApp]);
@@ -1615,7 +1615,7 @@ interface HostPickerProps {
  * Scopes the four host sections to a host. Reuses the canonical sidebar host
  * switcher pattern (left-sidebar.tsx): a quiet row-styled trigger opening a
  * <Combobox>. The local host is listed first, each row shows the connection it
- * is using right now; an "Add host" row is always reachable from the list —
+ * is using right now; an "Add host" row is always reachable from the list -
  * even with a single host.
  */
 function HostPicker({
@@ -1728,7 +1728,7 @@ function SettingsSidebar({
     (item) => (!item.desktopOnly || isDesktopApp) && (!item.developerOnly || isDeveloperMode),
   );
   // Projects renders right after Visualizer. Visualizer is developer-only, so in
-  // User mode it's filtered out — fall back to Appearance (always present, and
+  // User mode it's filtered out - fall back to Appearance (always present, and
   // the item just before Visualizer) so Projects never disappears.
   const projectsAnchorId: SettingsSectionSlug = items.some((item) => item.id === "visualizer")
     ? "visualizer"
@@ -1810,8 +1810,9 @@ function SettingsSidebar({
     () => ({
       home: t("sidebar.actions.home"),
       settings: t("sidebar.actions.settings"),
-      // Temporary label (English-only) — mirrors the workspace sidebar footer.
+      // Temporary label (English-only) - mirrors the workspace sidebar footer.
       stats: "Metrics",
+      brain: "Brain",
     }),
     [t],
   );
@@ -1913,7 +1914,7 @@ function SettingsSidebar({
         </View>
         {/* Every settings section is its own route, so picking one replaces the
             whole SettingsScreen (see mountedSettingsScreens) and this list
-            remounts at the top — scrolling the menu away from the row that was
+            remounts at the top - scrolling the menu away from the row that was
             just clicked whenever it is taller than the pane. Retain the offset
             across that remount. */}
         <ScrollView
@@ -1980,7 +1981,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   const insets = useSafeAreaInsets();
   const insetBottomStyle = useMemo(() => ({ paddingBottom: insets.bottom }), [insets.bottom]);
   // The themed, auto-hiding overlay scrollbar replaces the native scrollbar on
-  // web for every settings ScrollView — including narrow desktop windows that
+  // web for every settings ScrollView - including narrow desktop windows that
   // fall into the compact layout branch. Native keeps its platform scrollbars.
   // Only one of the three ScrollViews below is ever mounted at a time, so a
   // single ref + hook serves whichever branch renders.
@@ -2006,7 +2007,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   // The cached local-daemon serverId can outlive the daemon identity it points at
   // (e.g. the WSL daemon restarts with a new serverId): the ["desktop-daemon-server-id"]
   // query never refetches, so it keeps serving a stale id that is absent from the live
-  // host registry. Validate it against `hosts` — same as the selected id above — so we
+  // host registry. Validate it against `hosts` - same as the selected id above - so we
   // fall through to a real host instead of scoping every section to a ghost host
   // ("Host not found").
   const knownLocalServerId = useMemo(() => {
@@ -2381,7 +2382,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     });
   }, [guardProjectSettingsExit, router]);
 
-  // Sidebar footer nav — leaves settings entirely, mirroring the workspace
+  // Sidebar footer nav - leaves settings entirely, mirroring the workspace
   // sidebar's Home and Metrics buttons.
   const handleNavigateHome = useCallback(() => {
     guardProjectSettingsExit(() => {
@@ -2621,7 +2622,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     );
   }
 
-  // Desktop split view — mirrors AppContainer: sidebar owns the titlebar drag
+  // Desktop split view - mirrors AppContainer: sidebar owns the titlebar drag
   // region + traffic-light padding; detail pane renders whatever header the
   // selected section provides.
   const detailHeaderLeft = detailHeader ? (
@@ -2806,7 +2807,7 @@ const desktopStyles = StyleSheet.create((theme) => ({
   },
 }));
 
-// Static styles for Animated.Views — must NOT use Unistyles dynamic theme to
+// Static styles for Animated.Views - must NOT use Unistyles dynamic theme to
 // avoid the "Unable to find node on an unmounted component" crash when Unistyles
 // tries to patch the native node that Reanimated also manages.
 const staticSidebarStyles = RNStyleSheet.create({

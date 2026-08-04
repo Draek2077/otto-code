@@ -8,7 +8,7 @@ export const WORKSPACE_DIRECTORY_OCCUPIED_CODE = "workspace_directory_occupied";
  * directory is occupied, so the submit handler can offer a way forward rather
  * than surfacing a dead-end toast. Carries the directory because the occupying
  * workspace is resolved client-side (it is visible, so it is already in the
- * sidebar list) — the daemon does not send its id.
+ * sidebar list) - the daemon does not send its id.
  */
 export class WorkspaceDirectoryOccupiedClientError extends Error {
   readonly sourceDirectory: string;
@@ -60,7 +60,7 @@ export type OccupiedDirectorySteerOutcome =
 
 /**
  * One directory is one live workspace, so the daemon refuses a second visible
- * workspace on an occupied one. Refusing is right; refusing *silently* is not —
+ * workspace on an occupied one. Refusing is right; refusing *silently* is not -
  * without this the user gets the daemon's message and no way to act on it, which
  * is why every internal caller grew its own reuse workaround instead.
  *

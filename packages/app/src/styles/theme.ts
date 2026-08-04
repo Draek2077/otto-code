@@ -4,7 +4,7 @@
 // `daylight`/`evergreen`/`cyberpunk`/`pastel`, plus
 // `meadow`/`terracotta`/`horizon`/`powder`) were created in Otto. During
 // upstream merges, resolve
-// conflicts in this file in favor of the Otto side — do not pull theme changes
+// conflicts in this file in favor of the Otto side - do not pull theme changes
 // from Paseo.
 //
 // Resolving THIS file to ours is only half the job. Anything that styles
@@ -124,7 +124,7 @@ export const baseColors = {
 } as const;
 
 // Light spectrum: the neutral default (Daylight, first) plus tinted variants.
-// The plain neutral "Light" theme was retired — Daylight is now the sole
+// The plain neutral "Light" theme was retired - Daylight is now the sole
 // neutral light theme and the light half of the System pair.
 export type LightThemeName = "daylight" | "meadow" | "terracotta" | "horizon" | "powder" | "pastel";
 
@@ -143,9 +143,9 @@ export type DarkThemeName =
 // lookups that operate across both spectrums.
 export type ThemeVariantName = LightThemeName | DarkThemeName;
 
-// Diff stat colors — light uses muted tones, dark uses the brighter palette values
+// Diff stat colors - light uses muted tones, dark uses the brighter palette values
 const lightDiffColors = {
-  diffAddition: "#15803d", // green-700 — readable on white without screaming
+  diffAddition: "#15803d", // green-700 - readable on white without screaming
   diffDeletion: "#b91c1c", // red-700
 };
 
@@ -154,7 +154,7 @@ const darkDiffColors = {
   diffDeletion: "#ef4444", // red-500
 };
 
-// Status colors — semantic signals for success/danger/warning/info/merged.
+// Status colors - semantic signals for success/danger/warning/info/merged.
 // Used by check statuses, PR states, review decisions, and agent mode tiers.
 // Kept a step darker than the raw palette so they read as signals, not neon.
 const lightStatusColors = {
@@ -162,11 +162,11 @@ const lightStatusColors = {
   statusDanger: "#b91c1c", // red-700
   statusWarning: "#d97706", // amber-600
   // The amber emphasis pair, for text that must read as muted vs. emphasized
-  // while staying amber — the counterpart of foregroundMuted → foreground.
+  // while staying amber - the counterpart of foregroundMuted → foreground.
   // On a LIGHT surface, emphasis means DARKER: amber is already pale, so going
   // lighter would drop the contrast off a cliff (amber-500 is ~2:1 on white).
-  statusWarningMuted: "#d97706", // amber-600 — ~3:1 on white
-  statusWarningStrong: "#b45309", // amber-700 — ~5:1 on white
+  statusWarningMuted: "#d97706", // amber-600 - ~3:1 on white
+  statusWarningStrong: "#b45309", // amber-700 - ~5:1 on white
   // Amber fills for hover/selected chrome. Alpha, not opaque hex, because these
   // sit on whichever surface the active tint provides (Daylight, Sherbet,
   // Meadow, …) and must tint it rather than replace it. Light surfaces need
@@ -174,7 +174,7 @@ const lightStatusColors = {
   statusWarningSurface: "rgba(217, 119, 6, 0.14)",
   statusWarningSurfaceStrong: "rgba(217, 119, 6, 0.24)",
   // Tinted chrome for every status tone, same recipe as the amber pair above:
-  // one fill per tone, calibrated per theme. Light stays lighter — a heavy wash
+  // one fill per tone, calibrated per theme. Light stays lighter - a heavy wash
   // on near-white shouts.
   statusDangerSurface: "rgba(185, 28, 28, 0.14)",
   statusSuccessSurface: "rgba(21, 128, 61, 0.14)",
@@ -189,7 +189,7 @@ const darkStatusColors = {
   statusDanger: "#dc2626", // red-600
   statusWarning: "#f59e0b", // amber-500
   // Mirror of the light pair, pushed the other way: on a dark surface emphasis
-  // means LIGHTER. Same muted shade as light — amber-600 is the mid-contrast
+  // means LIGHTER. Same muted shade as light - amber-600 is the mid-contrast
   // step against either background. Never express these as alpha: amber at 70%
   // over a dark surface composites to muddy brown and reads as black.
   statusWarningMuted: "#d97706", // amber-600
@@ -204,19 +204,19 @@ const darkStatusColors = {
   statusSuccessSurface: "rgba(22, 163, 74, 0.20)",
   statusInfoSurface: "rgba(56, 189, 248, 0.20)",
   statusMergedSurface: "rgba(147, 51, 234, 0.20)",
-  statusInfo: "#38bdf8", // sky-400 — light blue that holds on dark surfaces
+  statusInfo: "#38bdf8", // sky-400 - light blue that holds on dark surfaces
   statusMerged: "#9333ea", // purple-600
 };
 
-// Usage-ledger figure tints — input tokens, output tokens, and cost in the
+// Usage-ledger figure tints - input tokens, output tokens, and cost in the
 // Metrics log. Deliberately desaturated: these sit at 12px next to muted text,
 // so they only need enough hue to separate the three columns at a glance. A
 // full-saturation blue/yellow/green would read as a status signal instead of a
-// number. Cached tokens stay `foregroundMuted` — they are the cheap half of the
+// number. Cached tokens stay `foregroundMuted` - they are the cheap half of the
 // input figure and should not compete with the fresh (full-rate) send.
 const lightUsageColors = {
   usageIn: "#3f6fa8", // muted blue, darkened to hold on white
-  usageOut: "#8a6a15", // ochre — a legible yellow needs this much darkening on light
+  usageOut: "#8a6a15", // ochre - a legible yellow needs this much darkening on light
   usageCost: "#3d7a53", // muted green
 };
 
@@ -227,7 +227,7 @@ const darkUsageColors = {
 };
 
 // ---------------------------------------------------------------------------
-// Light theme variant builder — mirrors the dark builder below so multiple
+// Light theme variant builder - mirrors the dark builder below so multiple
 // light themes (Daylight, Sherbet, Meadow, Terracotta, Horizon, Powder) share
 // one semantic-color shape.
 // ---------------------------------------------------------------------------
@@ -270,7 +270,7 @@ const lightTerminalAnsi = {
 } as const;
 
 // Mixes a #rrggbb color toward white by `amount` (0..1). For deriving tokens
-// inside the theme builders only — stylesheets read theme colors as CSS vars
+// inside the theme builders only - stylesheets read theme colors as CSS vars
 // on web, so color math there is impossible (see the surfaceUserBubble note).
 function lightenHex(hex: string, amount: number): string {
   const value = Number.parseInt(hex.slice(1, 7), 16);
@@ -285,7 +285,7 @@ function lightenHex(hex: string, amount: number): string {
 // token below `surface0` (it is the base of the elevation scale, and going
 // deeper means opposite directions in light vs dark), so the well is derived
 // from `surface0` itself: scaled toward black, which preserves hue so a tinted
-// palette stays on-tint. The amount is luminance-aware — near-black dark
+// palette stays on-tint. The amount is luminance-aware - near-black dark
 // surfaces barely move under a small fraction, while a white light surface
 // would over-darken, so dark themes deepen far more than light ones. The result
 // is "the same surface, deeper" in every theme: a subtle grey on the white
@@ -306,20 +306,20 @@ function deepenHex(hex: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Font contrast — the reading-ink strength control (Appearance → Fonts)
+// Font contrast - the reading-ink strength control (Appearance → Fonts)
 // ---------------------------------------------------------------------------
 
 // The identity point of the slider: gain 1, every ink exactly as the theme
 // authored it. Deliberately the MIDDLE of the range rather than an end, because
 // the authored palettes are already tuned (dark primary is an off-white
-// #ededee, not #ffffff) — the control exists to move in both directions from
+// #ededee, not #ffffff) - the control exists to move in both directions from
 // that tuning, not to walk down from a maximum nobody actually wants.
 export const DEFAULT_FONT_CONTRAST = 0.5;
 
 // Gain at the two ends. MAX sits just past the point where the brightest
 // authored ink saturates (dark #ededee over #1e1e22 needs ~1.09 to reach
 // #ffffff), so slider 1.0 really does mean pure-white / pure-black primary
-// text. MIN stops well short of 0: this softens text, it never erases it —
+// text. MIN stops well short of 0: this softens text, it never erases it -
 // dark primary bottoms out near 6:1 against its surface, still readable.
 const MAX_FONT_CONTRAST_GAIN = 1.1;
 const MIN_FONT_CONTRAST_GAIN = 0.55;
@@ -387,12 +387,12 @@ export interface InkOverrides {
  * (`ink' = bg + (ink - bg) * gain`), not as a mix toward white/black. That
  * choice is the whole design: a gain preserves the sign and the ORDER of every
  * ink relative to the backdrop, so primary text can never cross muted text at
- * either end of the slider — the type hierarchy survives the full range, which
+ * either end of the slider - the type hierarchy survives the full range, which
  * mixing toward a shared extreme does not (both inks converge on it, and on the
  * soft end they actually invert).
  *
  * Applied to a fully-BUILT palette, after the semantic builders have flattened
- * `foreground`/`foregroundMuted` into their aliases — hence the aliases are
+ * `foreground`/`foregroundMuted` into their aliases - hence the aliases are
  * restated here rather than following automatically. Both builders define them
  * as those two tokens verbatim; if that ever stops being true, this list is the
  * place it has to be reconciled.
@@ -415,7 +415,7 @@ export function resolveInkOverrides(source: InkSource, contrast: number): InkOve
       mutedForeground: foregroundMuted,
     },
     // Terminal body text, caret, and selected text are reading ink too. The
-    // ANSI slots (including `terminal.black`) are NOT — those are color
+    // ANSI slots (including `terminal.black`) are NOT - those are color
     // channels a program addresses by name, not the user's text brightness.
     terminal: {
       foreground,
@@ -427,14 +427,14 @@ export function resolveInkOverrides(source: InkSource, contrast: number): InkOve
 
 // Ink for text/glyphs sitting on a solid accent *fill* (e.g. the "Active" team
 // pill). Deliberately NOT accentForeground: that token maximizes contrast, so
-// on the light gold/blue accents it lands dark — legible, but the dark glyphs
+// on the light gold/blue accents it lands dark - legible, but the dark glyphs
 // read heavy and "thick" on a bright chip. This instead prefers white and only
 // flips to dark ink once the accent is pale enough (perceived luminance) that
-// white would wash out — the Graphite/Powder near-white accents. Net effect:
+// white would wash out - the Graphite/Powder near-white accents. Net effect:
 // accent pills read as bright chips in most themes and invert on pale accents,
 // matching how a chip "should" look at each end.
 //
-// Exported as the design system's single ink-on-fill formula — other colored
+// Exported as the design system's single ink-on-fill formula - other colored
 // fills (avatar badges via `readableTextColor`) delegate here so they never
 // disagree with accent chips about black-vs-white ink on the same color.
 // Expects a normalized "#rrggbb" string.
@@ -462,14 +462,14 @@ function buildLightSemanticColors(tint: LightThemeConfig) {
     // The recessed well behind a segmented control's thumbs. Derived per mode
     // rather than pinned to one surface step, because the two ramps are not
     // symmetric: light is compressed at the top (#ffffff / #fafafa / #f4f4f5 sit
-    // within 4% of each other), so `surface2` — correct on dark — paints a track
+    // within 4% of each other), so `surface2` - correct on dark - paints a track
     // indistinguishable from the page. The sidebar's hover step is the shallowest
     // light fill that still reads as a recess against white.
     surfaceControlTrack: tint.surfaceSidebarHover,
     // The header toggles' two-rung ladder. `surfaceToggleSelected` is the
     // explorer sidebar's selected-tab fill, so a toggled-on title-bar button and
     // a selected tab are the same shade; `surfaceToggleHover` is ONE step past
-    // it, in whichever direction the mode moves — down toward ink on light, up
+    // it, in whichever direction the mode moves - down toward ink on light, up
     // toward light on dark. Both rungs come from the tint's own ramp rather than
     // computed alpha, so every theme's author picked them.
     surfaceToggleSelected: tint.surfaceSidebarHover,
@@ -478,7 +478,7 @@ function buildLightSemanticColors(tint: LightThemeConfig) {
     // so the same token reads identically on any surface, base or elevated.
     surfaceHover: "rgba(0, 0, 0, 0.06)",
     // Chat speech bubbles: surface fills at partial alpha so the chat
-    // background tints through. Derived here, not in components — web CSSVars
+    // background tints through. Derived here, not in components - web CSSVars
     // mode emits var(--...) for theme color reads inside stylesheets, so string
     // math there produces invalid CSS.
     //
@@ -490,7 +490,7 @@ function buildLightSemanticColors(tint: LightThemeConfig) {
     //
     // The assistant fill is `surface2` DEEPENED, and alpha is not what fixes it.
     // On the neutral light theme raw `surface2` (#f4f4f5) sits 11 levels off a
-    // #ffffff canvas — invisible even at full opacity, and any alpha only pulls
+    // #ffffff canvas - invisible even at full opacity, and any alpha only pulls
     // it further toward the canvas. `surface3` already carries a hand-deepened
     // value for this same reason (see the light tint below); `surface2` cannot
     // be deepened at the tint, because badges, inputs and sheets all read it and
@@ -502,7 +502,7 @@ function buildLightSemanticColors(tint: LightThemeConfig) {
     surfaceAssistantBubble: deepenHex(tint.surface2),
     // In-place busy scrim (e.g. the workspace-archiving overlay): 80%-alpha
     // app background so the content underneath dims through. Same rule as the
-    // bubbles above — derived here, never `${surface0}cc` in a stylesheet.
+    // bubbles above - derived here, never `${surface0}cc` in a stylesheet.
     surfaceScrim: `${tint.surface0}cc`,
     // The one background for every surface that shows code: the editor's code
     // well, markdown fences, and the tool-call code/terminal blocks. A code
@@ -535,7 +535,7 @@ function buildLightSemanticColors(tint: LightThemeConfig) {
     accentFillInk: accentFillInk(tint.accent),
     // ON-state switch knob. Distinct from accentForeground (glyph ink): light
     // accents are always mid-dark saturated colors (they must hold on white),
-    // so a white knob always contrasts — even where glyphs use dark ink.
+    // so a white knob always contrasts - even where glyphs use dark ink.
     switchThumbOn: "#ffffff",
 
     // Semantic
@@ -544,7 +544,7 @@ function buildLightSemanticColors(tint: LightThemeConfig) {
     success: tint.accent,
     successForeground: "#ffffff",
 
-    // Working-indicator (BlobLoader) glow pair — two distinct hues per theme,
+    // Working-indicator (BlobLoader) glow pair - two distinct hues per theme,
     // always including the theme's namesake color.
     spinnerPrimary: tint.spinnerPrimary,
     spinnerSecondary: tint.spinnerSecondary,
@@ -583,39 +583,39 @@ function buildLightSemanticColors(tint: LightThemeConfig) {
   };
 }
 
-// Daylight — the neutral default light theme, crisp and high-contrast:
+// Daylight - the neutral default light theme, crisp and high-contrast:
 // deliberately non-flashy, this is the theme people who "just want light
 // mode" get, and the light half of the System (auto) pair. Muted text and
 // borders are a step darker than a plain white/zinc bg so secondary text
 // clears WCAG AA (foregroundMuted #62626b on #ffffff ≈ 5.6:1) and panel edges
 // read clearly. The accent is the one deliberate exception: matched to
 // Twilight's blue for salience, it sits at the sRGB gamut edge for chroma and
-// trades small-text AA for vibrancy (a 4.5:1 yellow is physically olive) —
+// trades small-text AA for vibrancy (a 4.5:1 yellow is physically olive) -
 // mirroring Twilight, which ships white-on-accent fills at ~2.5:1. Accent
 // fills therefore carry a dark warm ink (accentForeground) instead of white.
 const daylightColors = buildLightSemanticColors({
   surface0: "#ffffff",
   surface1: "#fafafa",
   surface2: "#f4f4f5",
-  surface3: "#dcdce1", // was #e4e4e7 — deepened so elevated layers separate from the white base
-  surface4: "#c3c3ca", // was #d4d4d8 — the bottom of the light ramp, pushed down for range
+  surface3: "#dcdce1", // was #e4e4e7 - deepened so elevated layers separate from the white base
+  surface4: "#c3c3ca", // was #d4d4d8 - the bottom of the light ramp, pushed down for range
   surfaceDiffEmpty: "#f6f6f6",
   surfaceSidebar: "#f4f4f5",
   surfaceSidebarHover: "#e9e9ec",
-  foreground: "#26262b", // was #37373c — charcoal pushed back toward ink for range; still off pure black
-  foregroundMuted: "#55555e", // was #62626b — stronger secondary text
+  foreground: "#26262b", // was #37373c - charcoal pushed back toward ink for range; still off pure black
+  foregroundMuted: "#55555e", // was #62626b - stronger secondary text
   scrollbarHandle: "#2f2f36",
-  border: "#d1d1d8", // was #dcdce0 — clearer panel separation
+  border: "#d1d1d8", // was #dcdce0 - clearer panel separation
   borderAccent: "#e3e3ea",
   accent: "#c69700", // golden sun (hue ~46°, yellow not orange), chroma pushed a step past #b98d00; shared with spinnerPrimary
   accentBright: "#d1a000", // brighter step (links, selected-tab icons)
-  accentForeground: "#181300", // deep warm ink on gold fills — ~6.1:1 (white on gold washes out)
-  destructive: "#b04138", // dark warm red on white — calm but unambiguously red
-  spinnerPrimary: "#c69700", // namesake gold — the daylight sun, held just dark enough for white
-  spinnerSecondary: "#0d8ede", // clear azure — the daytime sky behind it
+  accentForeground: "#181300", // deep warm ink on gold fills - ~6.1:1 (white on gold washes out)
+  destructive: "#b04138", // dark warm red on white - calm but unambiguously red
+  spinnerPrimary: "#c69700", // namesake gold - the daylight sun, held just dark enough for white
+  spinnerSecondary: "#0d8ede", // clear azure - the daytime sky behind it
 });
 
-// Sherbet — soft pastel peach surfaces with a saturated raspberry accent and
+// Sherbet - soft pastel peach surfaces with a saturated raspberry accent and
 // dark plum text. Deliberately NOT washed out: body text ≈13:1 on surface0,
 // muted text ≈5:1 on the elevated surface, accent on white ≈5.5:1.
 const sherbetColors = buildLightSemanticColors({
@@ -639,7 +639,7 @@ const sherbetColors = buildLightSemanticColors({
   spinnerSecondary: "#e87410", // tangerine scoop
 });
 
-// Meadow — sage-tinted light variant of the brand green, mirroring dark
+// Meadow - sage-tinted light variant of the brand green, mirroring dark
 // Evergreen: same accent hue as neutral Light, surfaces lifted with a soft
 // green undertone instead of pure white/zinc.
 const meadowColors = buildLightSemanticColors({
@@ -656,14 +656,14 @@ const meadowColors = buildLightSemanticColors({
   scrollbarHandle: "#2f3d36",
   border: "#cadcd2",
   borderAccent: "#d8e7dd",
-  accent: "#0b9354", // brand green with the chroma opened up — the old #20744A sank into the sage surfaces
+  accent: "#0b9354", // brand green with the chroma opened up - the old #20744A sank into the sage surfaces
   accentBright: "#0aa85f",
   destructive: "#b04138",
   spinnerPrimary: "#1a9155", // namesake meadow green, deep and saturated
   spinnerSecondary: "#ca8a04", // buttercup gold
 });
 
-// Terracotta — warm clay-tinted light variant, mirroring dark Ember. Cream
+// Terracotta - warm clay-tinted light variant, mirroring dark Ember. Cream
 // surfaces with a burnt-orange accent darkened enough to read on white.
 const terracottaColors = buildLightSemanticColors({
   surface0: "#fdf8f5",
@@ -686,7 +686,7 @@ const terracottaColors = buildLightSemanticColors({
   spinnerSecondary: "#d97706", // warm amber gold
 });
 
-// Horizon — crisp blue-tinted light variant, mirroring dark Nightfall. Pale
+// Horizon - crisp blue-tinted light variant, mirroring dark Nightfall. Pale
 // sky-blue surfaces with a saturated, high-contrast blue accent.
 const horizonColors = buildLightSemanticColors({
   surface0: "#f6f9fd",
@@ -702,14 +702,14 @@ const horizonColors = buildLightSemanticColors({
   scrollbarHandle: "#2f3d53",
   border: "#c7d9ee",
   borderAccent: "#d5e4f4",
-  accent: "#0d5ce8", // azure taken to full chroma — #2159c9 was only a step off the sky-blue surfaces
+  accent: "#0d5ce8", // azure taken to full chroma - #2159c9 was only a step off the sky-blue surfaces
   accentBright: "#0b4cc4",
   destructive: "#b04138",
   spinnerPrimary: "#2563eb", // namesake horizon blue, deep and saturated
   spinnerSecondary: "#ea580c", // sunrise orange on the horizon line
 });
 
-// Powder — muted blue-grey light variant, mirroring dark Slate. Foggier and
+// Powder - muted blue-grey light variant, mirroring dark Slate. Foggier and
 // greyer than Horizon: the *surfaces* stay desaturated, but the accent leans
 // periwinkle at full chroma so it can't be mistaken for another grey step (and
 // so it stays distinguishable from Horizon's pure azure).
@@ -727,7 +727,7 @@ const powderColors = buildLightSemanticColors({
   scrollbarHandle: "#353e4f",
   border: "#ced4e0",
   borderAccent: "#d8dde8",
-  accent: "#4a5fd0", // periwinkle — the old #4a6fa5 was a saturated-grey, indistinguishable from the surfaces
+  accent: "#4a5fd0", // periwinkle - the old #4a6fa5 was a saturated-grey, indistinguishable from the surfaces
   accentBright: "#3a4dba",
   destructive: "#b04138",
   spinnerPrimary: "#3e6db8", // namesake powder blue, deepened to hold on white
@@ -760,7 +760,7 @@ interface DarkThemeConfig {
 }
 
 // Primary text ink for every dark variant. A neutral off-white rather than
-// pure #fafafa — a couple of points darker so long reading sessions on dark
+// pure #fafafa - a couple of points darker so long reading sessions on dark
 // surfaces don't glare, but zero saturation so it can't clash with any
 // theme's tint (the earlier warm eggshell read yellow on cool themes).
 // Shared across foreground, its legacy aliases, and the terminal so all
@@ -797,11 +797,11 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     surfaceSidebar: tint.surfaceSidebar,
     surfaceSidebarHover: tint.surfaceSidebarHover,
     surfaceWorkspace: tint.surface1,
-    // Segmented-control well — see the light builder's note for why this is
+    // Segmented-control well - see the light builder's note for why this is
     // derived per mode. Dark has room in its ramp, so the elevated step is the
     // recess: `surfaceSidebarHover` here would sit within a hair of the page.
     surfaceControlTrack: tint.surface2,
-    // Header toggle ladder — see the light builder's note. The selected rung is
+    // Header toggle ladder - see the light builder's note. The selected rung is
     // the same token in both modes; only the step off it flips, and on dark that
     // is `surface2` rather than `surface3`, which is a lifted mid-grey and would
     // read as a hard highlight rather than a nudge.
@@ -810,14 +810,14 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     // Hover/press chrome for icon buttons and compact triggers. Translucent
     // so the same token reads identically on any surface, base or elevated.
     surfaceHover: "rgba(255, 255, 255, 0.07)",
-    // Chat speech bubbles — see the light builder's note; must stay derived
+    // Chat speech bubbles - see the light builder's note; must stay derived
     // inside the theme builders, never via string math in stylesheets. Dark
     // runs 50% where light runs 75%; the alphas are tuned per mode, not shared.
     surfaceUserBubble: `${tint.surface3}80`,
     surfaceAssistantBubble: `${tint.surface2}80`,
-    // In-place busy scrim — see the light builder's note.
+    // In-place busy scrim - see the light builder's note.
     surfaceScrim: `${tint.surface0}cc`,
-    // Code-showing surfaces — see the light builder's note.
+    // Code-showing surfaces - see the light builder's note.
     surfaceCode: deepenHex(tint.surface0),
 
     foreground: darkForeground,
@@ -827,9 +827,9 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
 
     border: tint.border,
     borderAccent: tint.borderAccent,
-    // Active desktop-tab outline — see the light builder's note.
+    // Active desktop-tab outline - see the light builder's note.
     borderTabActive: `${tint.accent}80`,
-    // Inner active-tab highlight ring — see the light builder's note.
+    // Inner active-tab highlight ring - see the light builder's note.
     borderTabActiveInner: `${lightenHex(tint.accent, 0.25)}40`,
 
     accent: tint.accent,
@@ -837,7 +837,7 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     accentForeground: tint.accentForeground ?? "#ffffff",
     accentFillInk: accentFillInk(tint.accent),
     // ON-state switch knob. Follows accentForeground here because dark themes
-    // only override it when the accent is near-white (Graphite, Midnight) —
+    // only override it when the accent is near-white (Graphite, Midnight) -
     // exactly the case where a white knob would vanish into the track.
     switchThumbOn: tint.accentForeground ?? "#ffffff",
 
@@ -846,7 +846,7 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     success: tint.accent,
     successForeground: "#ffffff",
 
-    // Working-indicator (BlobLoader) glow pair — two distinct hues per theme,
+    // Working-indicator (BlobLoader) glow pair - two distinct hues per theme,
     // always including the theme's namesake color.
     spinnerPrimary: tint.spinnerPrimary,
     spinnerSecondary: tint.spinnerSecondary,
@@ -887,16 +887,16 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
 // Dark tint definitions
 // ---------------------------------------------------------------------------
 
-// Dark (displayed as "Twilight") — the neutral default dark theme. Untinted
+// Dark (displayed as "Twilight") - the neutral default dark theme. Untinted
 // zinc surfaces with a pale blue kept only as the accent, deliberately
 // non-flashy: this is the theme people who "just want dark mode" get, and the
 // dark half of the System (auto) pair. Distinct from Graphite, which deepens
 // the base and goes monochrome (near-white accent).
 const neutralDarkColors = buildDarkSemanticColors({
-  surface0: "#1e1e22", // was #18181b — all dark surfaces lifted +2.5 L pts
+  surface0: "#1e1e22", // was #18181b - all dark surfaces lifted +2.5 L pts
   surface1: "#252529",
   surface2: "#323238",
-  surface3: "#52525c", // lifted from #45454d — the dark ramp widens upward, not downward
+  surface3: "#52525c", // lifted from #45454d - the dark ramp widens upward, not downward
   surface4: "#6e6e7a", // lifted from #585862
   surfaceDiffEmpty: "#2e2e33",
   surfaceSidebar: "#19191d",
@@ -905,69 +905,69 @@ const neutralDarkColors = buildDarkSemanticColors({
   scrollbarHandle: "#8b8b95",
   border: "#33333a",
   borderAccent: "#414149",
-  accent: "#5aa0ee", // was #7ea6d9 — same azure, chroma opened up so it reads as a colour, not a grey-blue
+  accent: "#5aa0ee", // was #7ea6d9 - same azure, chroma opened up so it reads as a colour, not a grey-blue
   accentBright: "#a9d0ff",
-  destructive: "#c44a4a", // neutral red, hue 0 — clearly red without screaming
+  destructive: "#c44a4a", // neutral red, hue 0 - clearly red without screaming
   spinnerPrimary: "#79b3f2", // namesake twilight blue, lifted to glow on dark
-  spinnerSecondary: "#f591b5", // Belt-of-Venus rose — the pink dusk band opposite the sunset
+  spinnerSecondary: "#f591b5", // Belt-of-Venus rose - the pink dusk band opposite the sunset
 });
 
-// Evergreen — Otto's teal-green identity. Muted text, borders, and the bright
+// Evergreen - Otto's teal-green identity. Muted text, borders, and the bright
 // accent all lifted a step so panels separate and secondary text clears WCAG
 // AA against the elevated surface.
 const evergreenDarkColors = buildDarkSemanticColors({
-  surface0: "#1e2221", // was #181B1A — all dark surfaces lifted +2.5 L pts
+  surface0: "#1e2221", // was #181B1A - all dark surfaces lifted +2.5 L pts
   surface1: "#242826",
   surface2: "#333835",
-  surface3: "#545b58", // lifted from #494d4b — widen the ramp upward
+  surface3: "#545b58", // lifted from #494d4b - widen the ramp upward
   surface4: "#737a77", // lifted from #5f6161
   surfaceDiffEmpty: "#2f3432",
   surfaceSidebar: "#1a1e1d",
   surfaceSidebarHover: "#222624",
   foregroundMuted: "#b6bebb", // was #aab0ae
   scrollbarHandle: "#8d9491",
-  border: "#343d3a", // was #2c3331 — clearer panel separation
+  border: "#343d3a", // was #2c3331 - clearer panel separation
   borderAccent: "#454f4c",
-  accent: "#149159", // was #20744A — the brand green was near-identical to the tinted surfaces; same hue, real chroma
-  accentBright: "#6ef0b0", // was #8ce0af — brighter accent text on dark surfaces
-  destructive: "#c64f43", // warm red, hue ~7 — reads as red (not pink) against the green tint
+  accent: "#149159", // was #20744A - the brand green was near-identical to the tinted surfaces; same hue, real chroma
+  accentBright: "#6ef0b0", // was #8ce0af - brighter accent text on dark surfaces
+  destructive: "#c64f43", // warm red, hue ~7 - reads as red (not pink) against the green tint
   spinnerPrimary: "#5ee8a4", // namesake evergreen, lifted to glow on dark
-  spinnerSecondary: "#f5d06b", // warm gold — sunlight through the canopy
+  spinnerSecondary: "#f5d06b", // warm gold - sunlight through the canopy
 });
 
-// Graphite — monochrome *surfaces*, one coloured accent. The near-white accent
-// this shipped with was indistinguishable from the theme's own light tones —
-// the CTA looked like any other bright text — so the accent is now an icy cyan:
+// Graphite - monochrome *surfaces*, one coloured accent. The near-white accent
+// this shipped with was indistinguishable from the theme's own light tones -
+// the CTA looked like any other bright text - so the accent is now an icy cyan:
 // the only hue in the theme, which is exactly what an accent is for. Surfaces,
 // text, and borders stay strictly grey, so nothing else competes with it.
 const graphiteDarkColors = buildDarkSemanticColors({
-  surface0: "#1a1a1e", // was #141417 — all dark surfaces lifted +2.5 L pts
+  surface0: "#1a1a1e", // was #141417 - all dark surfaces lifted +2.5 L pts
   surface1: "#222226",
   surface2: "#323236",
-  surface3: "#525259", // lifted from #45454d — widen the ramp upward
+  surface3: "#525259", // lifted from #45454d - widen the ramp upward
   surface4: "#6e6e78", // lifted from #585862
   surfaceDiffEmpty: "#2b2b30",
   surfaceSidebar: "#151518",
   surfaceSidebarHover: "#1d1d21",
   foregroundMuted: "#bcbcc4", // was #b0b0b8
   scrollbarHandle: "#93939d",
-  border: "#37373d", // was #2e2e33 — no longer identical to surface2
+  border: "#37373d", // was #2e2e33 - no longer identical to surface2
   borderAccent: "#45454d",
-  accent: "#35c8e0", // icy cyan — the graphite-steel hue, and the only colour in the theme
+  accent: "#35c8e0", // icy cyan - the graphite-steel hue, and the only colour in the theme
   accentBright: "#7fe4f5",
-  accentForeground: "#0d1416", // bright cyan fill — needs dark text
-  destructive: "#c44a4a", // neutral red, hue 0 — clearly red without screaming
-  spinnerPrimary: "#f5f6fa", // namesake graphite silver — stays monochrome
+  accentForeground: "#0d1416", // bright cyan fill - needs dark text
+  destructive: "#c44a4a", // neutral red, hue 0 - clearly red without screaming
+  spinnerPrimary: "#f5f6fa", // namesake graphite silver - stays monochrome
   spinnerSecondary: "#4fd8ee", // the accent cyan, so the glow carries the theme's one hue
 });
 
-// Nightfall — deep blue night. Base surfaces deepened and the accent blue
+// Nightfall - deep blue night. Base surfaces deepened and the accent blue
 // brightened so the blue tint reads as intentional, not haze.
 const nightfallDarkColors = buildDarkSemanticColors({
-  surface0: "#171925", // was #12141d — all dark surfaces lifted +2.5 L pts
+  surface0: "#171925", // was #12141d - all dark surfaces lifted +2.5 L pts
   surface1: "#1d202c",
   surface2: "#2f3340",
-  surface3: "#4d5163", // lifted from #424453 — widen the ramp upward
+  surface3: "#4d5163", // lifted from #424453 - widen the ramp upward
   surface4: "#6a6e84", // lifted from #595b6b
   surfaceDiffEmpty: "#292d3a",
   surfaceSidebar: "#121522",
@@ -976,20 +976,20 @@ const nightfallDarkColors = buildDarkSemanticColors({
   scrollbarHandle: "#888ca4",
   border: "#333648", // was #2a2c3f
   borderAccent: "#43465e",
-  accent: "#2f7ff0", // was #3b6fcf — electric blue, so the accent clears the navy surfaces it sits on
+  accent: "#2f7ff0", // was #3b6fcf - electric blue, so the accent clears the navy surfaces it sits on
   accentBright: "#a5c9ff", // was #92bcff
   destructive: "#c44a52", // red with a hint of cool lean against the blue tint
   spinnerPrimary: "#7fb3ff", // namesake nightfall blue, lifted to glow on dark
   spinnerSecondary: "#b79cff", // dusk violet
 });
 
-// Ember — warm charcoal with a saturated orange-red accent. Saturation and
+// Ember - warm charcoal with a saturated orange-red accent. Saturation and
 // muted-text brightness boosted over the old washed-tan look.
 const emberDarkColors = buildDarkSemanticColors({
-  surface0: "#232120", // was #1c1b1a — all dark surfaces lifted +2.5 L pts
+  surface0: "#232120", // was #1c1b1a - all dark surfaces lifted +2.5 L pts
   surface1: "#2b2826",
   surface2: "#3b3835",
-  surface3: "#5c5754", // lifted from #514d4b — widen the ramp upward
+  surface3: "#5c5754", // lifted from #514d4b - widen the ramp upward
   surface4: "#7b7572", // lifted from #676361
   surfaceDiffEmpty: "#353230",
   surfaceSidebar: "#1d1b1a",
@@ -998,21 +998,21 @@ const emberDarkColors = buildDarkSemanticColors({
   scrollbarHandle: "#948e88",
   border: "#3e3a36", // was #35322e
   borderAccent: "#4d4842",
-  accent: "#f2662f", // was #d96b45 — the ember burns hotter, clear of the warm-charcoal surfaces
+  accent: "#f2662f", // was #d96b45 - the ember burns hotter, clear of the warm-charcoal surfaces
   accentBright: "#ffb495", // was #ffab88
-  destructive: "#cf513e", // warm orange-red, hue ~10 — sits with the ember accent
+  destructive: "#cf513e", // warm orange-red, hue ~10 - sits with the ember accent
   spinnerPrimary: "#ff9866", // namesake ember orange, lifted to glow on dark
   spinnerSecondary: "#ffd07e", // glowing coal gold
 });
 
-// Slate — blue-grey terminal look (Ghostty-default lineage). Sidebar
+// Slate - blue-grey terminal look (Ghostty-default lineage). Sidebar
 // deepened and borders lifted so the panes actually separate; the light blue
 // accent gets dark text instead of unreadable white.
 const slateDarkColors = buildDarkSemanticColors({
-  surface0: "#2e323b", // was #282c34 — all dark surfaces lifted +2.5 L pts
+  surface0: "#2e323b", // was #282c34 - all dark surfaces lifted +2.5 L pts
   surface1: "#353944",
   surface2: "#444956",
-  surface3: "#5b6172", // lifted from #505565 — widen the ramp upward
+  surface3: "#5b6172", // lifted from #505565 - widen the ramp upward
   surface4: "#737a90", // lifted from #61677c
   surfaceDiffEmpty: "#3b4150",
   surfaceSidebar: "#232831", // was #1e222a
@@ -1021,23 +1021,23 @@ const slateDarkColors = buildDarkSemanticColors({
   scrollbarHandle: "#aeb2c0",
   border: "#454c5c", // was #3d4352
   borderAccent: "#545b6e",
-  accent: "#6ba6ff", // was #89b4fa — same lineage blue with the grey squeezed out, so it separates from the blue-grey surfaces
+  accent: "#6ba6ff", // was #89b4fa - same lineage blue with the grey squeezed out, so it separates from the blue-grey surfaces
   accentBright: "#b3d0ff",
-  accentForeground: "#0f1622", // light blue accent — needs dark text (white was ~2:1)
+  accentForeground: "#0f1622", // light blue accent - needs dark text (white was ~2:1)
   destructive: "#c44a55", // red with slight cool lean against the slate-blue surfaces
   spinnerPrimary: "#6ba6ff", // namesake slate-blue accent
   spinnerSecondary: "#cba6f7", // soft mauve
 });
 
-// Neotokyo — deep violet surfaces with neon magenta accents. The base keeps a
+// Neotokyo - deep violet surfaces with neon magenta accents. The base keeps a
 // visible violet cast (lifted off the old near-black), borders are visibly
 // violet, and the accent pair is a deep magenta (white text ≈5.5:1) with a
 // neon bright.
 const neotokyoDarkColors = buildDarkSemanticColors({
-  surface0: "#151522", // was #0b0b12 — lifted +5 L pts, off the near-black base
+  surface0: "#151522", // was #0b0b12 - lifted +5 L pts, off the near-black base
   surface1: "#1c1c2a",
   surface2: "#29293d",
-  surface3: "#434360", // lifted from #38384f — widen the ramp upward
+  surface3: "#434360", // lifted from #38384f - widen the ramp upward
   surface4: "#5a5a7d", // lifted from #4a4a67
   surfaceDiffEmpty: "#252534",
   surfaceSidebar: "#10101c",
@@ -1046,7 +1046,7 @@ const neotokyoDarkColors = buildDarkSemanticColors({
   scrollbarHandle: "#8488b2",
   border: "#2b2b46",
   borderAccent: "#39395c",
-  accent: "#c2188f", // left alone — this is the accent the rest of the set was retuned toward
+  accent: "#c2188f", // left alone - this is the accent the rest of the set was retuned toward
   accentBright: "#ff5ad1",
   destructive: "#d94848", // clearly red so errors never blur into the magenta accent
   spinnerPrimary: "#ff5ad1", // namesake neon magenta
@@ -1093,10 +1093,10 @@ export const ICON_SIZE = {
 } as const;
 
 // Breakpoint-shaped value for a geometry style property (padding, minHeight, gap, ...)
-// that should scale up (2x by default) on compact form factors (`xs`/`sm` breakpoints —
+// that should scale up (2x by default) on compact form factors (`xs`/`sm` breakpoints -
 // see `useIsCompactFormFactor`). For use inside `StyleSheet.create` factories, where
 // Unistyles resolves per-breakpoint object literals regardless of where the value
-// came from. Not for `theme.iconSize`/`theme.fontSize` reads — those are patched
+// came from. Not for `theme.iconSize`/`theme.fontSize` reads - those are patched
 // globally at runtime by `applyAppearance` instead.
 export function compactUp(
   value: number,
@@ -1108,7 +1108,7 @@ export function compactUp(
 
 // Breakpoint-shaped value for a `fontSize`/`lineHeight` that should read a couple
 // of points larger on compact form factors. This bump is deliberately *on top of*
-// the ambient size patch `applyAppearance` applies — the ambient patch keeps the
+// the ambient size patch `applyAppearance` applies - the ambient patch keeps the
 // whole app legible, this puts dense panel text (tables, gutters, metadata rows)
 // back to a comfortable reading size on a phone. `sm` is omitted so it inherits
 // `xs`, matching `useIsCompactFormFactor`'s xs+sm definition of "compact".
@@ -1128,11 +1128,11 @@ function scaleIconSizes(scale: number): Record<keyof typeof ICON_SIZE, number> {
 const ICON_SIZE_COMPACT = scaleIconSizes(2);
 
 /**
- * Icon size tokens, scaled on compact form factors (doubled by default — pass
+ * Icon size tokens, scaled on compact form factors (doubled by default - pass
  * `compactScale` for a different multiplier, e.g. `1.5` for controls that sit next
  * to a fixed-chrome sibling and shouldn't double as aggressively). For callers that
  * read `ICON_SIZE` as a static import (a plain `size` prop, not a `StyleSheet.create`
- * value) rather than through the live theme — those never see the runtime
+ * value) rather than through the live theme - those never see the runtime
  * `theme.iconSize` patch `applyAppearance` applies, so they need this hook instead.
  * Mirrors `useIsCompactFormFactor`'s pattern rather than calling `useUnistyles()` directly.
  */
@@ -1172,8 +1172,8 @@ export const OPACITY = {
   100: 1,
 } as const;
 
-// Default font stacks. Otto bundles Inter (ui) and JetBrains Mono (mono) — both
-// OFL-licensed, free for commercial use — via @expo-google-fonts and loads them
+// Default font stacks. Otto bundles Inter (ui) and JetBrains Mono (mono) - both
+// OFL-licensed, free for commercial use - via @expo-google-fonts and loads them
 // with `useFonts` in `app/_layout.tsx`, so the family name below is registered on
 // every platform (native and web) before first render. Web keeps a CSS fallback
 // chain in case the webfont fails to load; native fontFamily takes a single name,
@@ -1221,7 +1221,7 @@ const commonTheme: CommonTheme = {
   layout: { chatMaxWidth: resolveChatMaxWidth("default") },
 };
 
-// The elevation scale. `md` is the popup step — tooltips, dropdown and context
+// The elevation scale. `md` is the popup step - tooltips, dropdown and context
 // menus, comboboxes, autocompletes, hover cards and toasts all spread it, so
 // these numbers are what separates a floating surface from the canvas.
 //
@@ -1349,12 +1349,12 @@ export const horizonTheme = buildLightTheme(horizonColors);
 export const powderTheme = buildLightTheme(powderColors);
 
 // ---------------------------------------------------------------------------
-// Black tab background — per-variant palettes on pure black
+// Black tab background - per-variant palettes on pure black
 // ---------------------------------------------------------------------------
 
 // Each dark variant gets its own hand-tuned palette for the "Black tab
 // background" appearance setting. A variant's normal colors are tuned against
-// its own base surface (~#18-ish), not against #000000 — reused verbatim on
+// its own base surface (~#18-ish), not against #000000 - reused verbatim on
 // black, the elevated surfaces barely separate and muted text/borders sink
 // into the void, so every theme collapses into the same generic look. These
 // tints keep each theme's hue but re-step the neutrals for a pure-black
@@ -1390,13 +1390,13 @@ function buildBlackVariantColors(tint: BlackVariantTint) {
     // Re-derived from this variant's lifted surface2, same as the dark builder:
     // inherited unchanged, these would keep the dark variant's un-lifted fills
     // and read as grey slabs on the black canvas. `surfaceToggleSelected` is not
-    // re-derived — it tracks `surfaceSidebarHover`, which this variant also
+    // re-derived - it tracks `surfaceSidebarHover`, which this variant also
     // leaves to the base theme, so the two stay in step.
     surfaceControlTrack: tint.surface2,
     surfaceToggleHover: tint.surface2,
     // Re-derive the bubble fills from this variant's lifted surfaces so the
     // black scope doesn't inherit the dark variant's tint through the merge.
-    // Same 50% alpha as dark — the black canvas is the extreme case the dark
+    // Same 50% alpha as dark - the black canvas is the extreme case the dark
     // figure was picked for.
     surfaceUserBubble: `${tint.surface3}80`,
     surfaceAssistantBubble: `${tint.surface2}80`,
@@ -1405,7 +1405,7 @@ function buildBlackVariantColors(tint: BlackVariantTint) {
     // The code well inverts on black. Everywhere else it is surface0 scaled
     // toward black; against a #000000 canvas there is nothing deeper to scale
     // to, and a code block that renders pure black on pure black is invisible.
-    // The variant's first lifted step is the same read — "not the canvas" —
+    // The variant's first lifted step is the same read - "not the canvas" -
     // taken in the only direction black leaves open.
     surfaceCode: tint.surface1,
     surfaceDiffEmpty: tint.surfaceDiffEmpty,
@@ -1424,14 +1424,14 @@ function buildBlackVariantColors(tint: BlackVariantTint) {
 }
 
 // The `black` theme key is only ever consumed through `ScopedTheme
-// name="black"` around chat panes — adaptive mode never selects it. Each
+// name="black"` around chat panes - adaptive mode never selects it. Each
 // entry keys off the dark variant it accompanies; comments name the display
 // label where it differs from the key.
 export const BLACK_VARIANT_OVERRIDES: Record<
   DarkThemeName,
   ReturnType<typeof buildBlackVariantColors>
 > = {
-  // Twilight — neutral zinc, kept cool and untinted.
+  // Twilight - neutral zinc, kept cool and untinted.
   dark: buildBlackVariantColors({
     surface1: "#161619",
     surface2: "#202024",
@@ -1443,7 +1443,7 @@ export const BLACK_VARIANT_OVERRIDES: Record<
     foregroundMuted: "#b8b8c1",
     scrollbarHandle: "#8a8a93",
   }),
-  // Evergreen — teal-green cast on the elevated steps.
+  // Evergreen - teal-green cast on the elevated steps.
   evergreen: buildBlackVariantColors({
     surface1: "#121715",
     surface2: "#1c211f",
@@ -1455,7 +1455,7 @@ export const BLACK_VARIANT_OVERRIDES: Record<
     foregroundMuted: "#b9c2bd",
     scrollbarHandle: "#8b938f",
   }),
-  // Graphite — strictly monochrome; separation comes from the border lift.
+  // Graphite - strictly monochrome; separation comes from the border lift.
   zinc: buildBlackVariantColors({
     surface1: "#151516",
     surface2: "#1f1f21",
@@ -1467,7 +1467,7 @@ export const BLACK_VARIANT_OVERRIDES: Record<
     foregroundMuted: "#c2c2c9",
     scrollbarHandle: "#929299",
   }),
-  // Nightfall — deep blue night; the blue reads in the cards and borders.
+  // Nightfall - deep blue night; the blue reads in the cards and borders.
   midnight: buildBlackVariantColors({
     surface1: "#10131e",
     surface2: "#1a1d2b",
@@ -1479,7 +1479,7 @@ export const BLACK_VARIANT_OVERRIDES: Record<
     foregroundMuted: "#b5bad3",
     scrollbarHandle: "#878ca6",
   }),
-  // Ember — warm charcoal; browns stay warm instead of going grey on black.
+  // Ember - warm charcoal; browns stay warm instead of going grey on black.
   claude: buildBlackVariantColors({
     surface1: "#171412",
     surface2: "#211e1b",
@@ -1491,7 +1491,7 @@ export const BLACK_VARIANT_OVERRIDES: Record<
     foregroundMuted: "#c6c0b9",
     scrollbarHandle: "#958f88",
   }),
-  // Slate — blue-grey; steps re-anchored from its lighter #2e323b base.
+  // Slate - blue-grey; steps re-anchored from its lighter #2e323b base.
   ghostty: buildBlackVariantColors({
     surface1: "#14171e",
     surface2: "#20242d",
@@ -1503,7 +1503,7 @@ export const BLACK_VARIANT_OVERRIDES: Record<
     foregroundMuted: "#d0d4e0",
     scrollbarHandle: "#a6aab8",
   }),
-  // Neotokyo — violet near-black; borders stay visibly violet on true black.
+  // Neotokyo - violet near-black; borders stay visibly violet on true black.
   cyberpunk: buildBlackVariantColors({
     surface1: "#0f0f18",
     surface2: "#171722",
@@ -1520,7 +1520,7 @@ export const BLACK_VARIANT_OVERRIDES: Record<
 // When the app is in a LIGHT theme with Black tab background on, the chat
 // pane can't reuse the light variant's colors (dark plum text on pure black
 // is unreadable) and shouldn't fall back to the user's dark-variant pick
-// either — Sherbet in light mode should get a "dark Sherbet" chat pane, not
+// either - Sherbet in light mode should get a "dark Sherbet" chat pane, not
 // Twilight. Each light variant therefore gets a full dark counterpart built
 // on pure black through `buildDarkSemanticColors`, so foreground, diff,
 // status, and terminal tokens are all dark-scheme correct while the hues and
@@ -1535,7 +1535,7 @@ export const BLACK_LIGHT_VARIANT_COLORS: Record<
   LightThemeName,
   ReturnType<typeof buildBlackFromLightColors>
 > = {
-  // Daylight — neutral zinc counterpart; same steps as Twilight-on-black with
+  // Daylight - neutral zinc counterpart; same steps as Twilight-on-black with
   // Daylight's vibrant gold and its sun/sky spinner pair lifted for dark.
   daylight: buildBlackFromLightColors({
     surface0: "#000000",
@@ -1557,7 +1557,7 @@ export const BLACK_LIGHT_VARIANT_COLORS: Record<
     spinnerPrimary: "#ffc933", // namesake gold sun, lifted to glow on black
     spinnerSecondary: "#5bb8f5", // daytime sky, lifted
   }),
-  // Sherbet — warm plum-peach cast with the raspberry accent lifted to glow.
+  // Sherbet - warm plum-peach cast with the raspberry accent lifted to glow.
   pastel: buildBlackFromLightColors({
     surface0: "#000000",
     surface1: "#191316",
@@ -1577,7 +1577,7 @@ export const BLACK_LIGHT_VARIANT_COLORS: Record<
     spinnerPrimary: "#ff5aa8", // namesake raspberry, lifted for black
     spinnerSecondary: "#ffab5e", // tangerine scoop, lifted
   }),
-  // Meadow — sage green cast; brand green accent, meadow/buttercup spinners.
+  // Meadow - sage green cast; brand green accent, meadow/buttercup spinners.
   meadow: buildBlackFromLightColors({
     surface0: "#000000",
     surface1: "#121714",
@@ -1597,7 +1597,7 @@ export const BLACK_LIGHT_VARIANT_COLORS: Record<
     spinnerPrimary: "#4fd68a", // namesake meadow green, lifted
     spinnerSecondary: "#e8be55", // buttercup gold, lifted
   }),
-  // Terracotta — warm clay cast; burnt orange brightened for black.
+  // Terracotta - warm clay cast; burnt orange brightened for black.
   terracotta: buildBlackFromLightColors({
     surface0: "#000000",
     surface1: "#181310",
@@ -1617,7 +1617,7 @@ export const BLACK_LIGHT_VARIANT_COLORS: Record<
     spinnerPrimary: "#ff8a50", // namesake clay, lifted
     spinnerSecondary: "#ffc46e", // amber gold, lifted
   }),
-  // Horizon — sky blue cast; the saturated blue accent lifted for black.
+  // Horizon - sky blue cast; the saturated blue accent lifted for black.
   horizon: buildBlackFromLightColors({
     surface0: "#000000",
     surface1: "#101420",
@@ -1637,7 +1637,7 @@ export const BLACK_LIGHT_VARIANT_COLORS: Record<
     spinnerPrimary: "#6ea3ff", // namesake horizon blue, lifted
     spinnerSecondary: "#ff8a4d", // sunrise orange, lifted
   }),
-  // Powder — foggy slate-blue cast; the periwinkle accent goes light enough on
+  // Powder - foggy slate-blue cast; the periwinkle accent goes light enough on
   // black that it needs dark text, like Slate's.
   powder: buildBlackFromLightColors({
     surface0: "#000000",
@@ -1678,7 +1678,7 @@ export const theme = darkTheme;
 export type Theme = typeof darkTheme | typeof daylightTheme;
 
 // Only two Unistyles theme keys are ever registered (`light`/`dark`, see
-// `styles/unistyles.ts`) — Unistyles' adaptive-theme mechanism hardcodes
+// `styles/unistyles.ts`) - Unistyles' adaptive-theme mechanism hardcodes
 // switching between those two literal keys and cannot be pointed at an
 // arbitrary named theme. Every variant below (including the neutral
 // Daylight/Twilight pair) is exported here as plain data only; nothing but
@@ -1687,13 +1687,13 @@ export type Theme = typeof darkTheme | typeof daylightTheme;
 // whichever variant is the user's current per-spectrum preference, for both
 // explicit Light/Dark mode and System (adaptive) mode alike.
 export const THEME_SWATCHES: Record<ThemeVariantName, string> = {
-  daylight: "#f4f4f5", // the neutral light surface — Daylight is picked for being untinted
+  daylight: "#f4f4f5", // the neutral light surface - Daylight is picked for being untinted
   pastel: "#e86bb0",
   meadow: "#0f9c5b",
   terracotta: "#dd5b25",
   horizon: "#1a63e6",
   powder: "#6d7ed8",
-  dark: "#3f3f46", // the neutral dark surface — Twilight is picked for being untinted
+  dark: "#3f3f46", // the neutral dark surface - Twilight is picked for being untinted
   evergreen: "#16a066",
   zinc: "#808080", // Graphite's swatch stays grey: the theme is monochrome, the cyan is only its accent
   midnight: "#3d7fe0",

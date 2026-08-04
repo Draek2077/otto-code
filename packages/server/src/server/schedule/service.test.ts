@@ -315,7 +315,7 @@ function buildOutcomeRecordingScheduleService(params: {
       ? { status: "error", permission: null, lastMessage: "boom" }
       : { status: "idle", permission: null, lastMessage: "ok" };
   // The stubbed createAgent never registers the agent in this manager, so the
-  // real capture path can't read a timeline — stub the outcome directly.
+  // real capture path can't read a timeline - stub the outcome directly.
   manager.captureRetainedTranscript = async () => ({ hasContent: params.hasContent ?? false });
   const createAgentInputs: Parameters<ScheduleServiceOptions["createAgent"]>[0][] = [];
   const workspaceCreateInputs: Parameters<
@@ -941,7 +941,7 @@ describe("ScheduleService", () => {
     ).rejects.toThrow("provider misconfigured");
 
     // The run failed before an agent (and any transcript) ever existed, so there
-    // is nothing to see — archive the hidden workspace instead of revealing an
+    // is nothing to see - archive the hidden workspace instead of revealing an
     // empty shell into the sidebar. The failure still surfaces on the schedule
     // card (lastRunError). See docs/safe-unattended.md.
     expect(archiveCalls).toHaveLength(1);
@@ -971,7 +971,7 @@ describe("ScheduleService", () => {
     await service.tick();
 
     expect((await service.inspect(created.id)).runs[0]?.status).toBe("succeeded");
-    // (a) the workspace is created hidden — it never flashes into the sidebar.
+    // (a) the workspace is created hidden - it never flashes into the sidebar.
     expect(workspaceCreateInputs).toHaveLength(1);
     expect(workspaceCreateInputs[0].hidden).toBe(true);
     // (e) the agent is internal (no attention broadcasts, clean run fully
@@ -1011,7 +1011,7 @@ describe("ScheduleService", () => {
 
     expect((await service.inspect(created.id)).runs[0]?.status).toBe("succeeded");
     expect(workspaceCreateInputs[0].hidden).toBe(true);
-    // (b) archived while still hidden — the user never sees the transient row.
+    // (b) archived while still hidden - the user never sees the transient row.
     expect(archiveCalls).toHaveLength(1);
     expect(revealCalls).toEqual([]);
   });
@@ -1063,7 +1063,7 @@ describe("ScheduleService", () => {
 
     const inspected = await service.inspect(created.id);
     // The run failed but produced no transcript content, so revealing its
-    // workspace would leave an empty shell in the sidebar — archive it instead.
+    // workspace would leave an empty shell in the sidebar - archive it instead.
     // The failure still surfaces on the schedule card. See docs/safe-unattended.md.
     expect(inspected.runs[0]).toMatchObject({
       status: "failed",
@@ -1095,7 +1095,7 @@ describe("ScheduleService", () => {
 
     const inspected = await service.inspect(created.id);
     // The run did real work before failing, so its workspace has substance to
-    // inspect — promote it to the sidebar (revealed) and never archive, even
+    // inspect - promote it to the sidebar (revealed) and never archive, even
     // though archiveOnFinish would archive a clean run.
     expect(inspected.runs[0]).toMatchObject({
       status: "failed",
@@ -1443,7 +1443,7 @@ describe("ScheduleService", () => {
     manager.runAgent = async () => {
       throw new Error("run exploded");
     };
-    // The run did work before throwing, so its workspace is worth revealing —
+    // The run did work before throwing, so its workspace is worth revealing -
     // which lets this test exercise the reveal-failure path below.
     manager.captureRetainedTranscript = async () => ({ hasContent: true });
     const agentId = "00000000-0000-0000-0000-000000000326";
@@ -1498,7 +1498,7 @@ describe("ScheduleService", () => {
       error: "run exploded",
       agentId,
     });
-    // An errored run must never archive — that would hide the problem.
+    // An errored run must never archive - that would hide the problem.
     expect(archiveCalls).toEqual([]);
     expect(warn).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1875,7 +1875,7 @@ describe("ScheduleService", () => {
     expect(agentId).toBeTruthy();
     expect(client.sessions).toHaveLength(1);
     // The internal schedule agent is torn down (session closed, removed from the
-    // manager) and — being internal — was never persisted.
+    // manager) and - being internal - was never persisted.
     expect(client.sessions[0]?.closed).toBe(true);
     expect(manager.getAgent(agentId!)).toBeNull();
     expect(await agentStorage.get(agentId!)).toBeNull();
@@ -3949,7 +3949,7 @@ describe("ScheduleService", () => {
 
     const inspected = await service.inspect(created.id);
     // Completion counts the retained array, so retention never prunes below
-    // maxRuns — otherwise this schedule would run forever.
+    // maxRuns - otherwise this schedule would run forever.
     expect(inspected.runs).toHaveLength(55);
     expect(inspected.status).toBe("completed");
   });

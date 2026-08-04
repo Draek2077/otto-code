@@ -1851,7 +1851,7 @@ describe("HostRuntimeStore", () => {
     });
 
     // upsertDirectConnection goes through setHostsAndSync, which both sets
-    // this.hosts and syncs controllers — matching the real init path.
+    // this.hosts and syncs controllers - matching the real init path.
     await store.upsertDirectConnection({
       serverId: "srv_rename",
       endpoint: "lan:6868",

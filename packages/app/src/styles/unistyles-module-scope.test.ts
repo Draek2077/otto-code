@@ -71,7 +71,7 @@ function findEagerModuleStyleReads(filePath: string): string[] {
 
 // Files that already read a style proxy at module scope when this guard arrived
 // with the Paseo v0.2.5 merge. The rule is real and documented (docs/unistyles.md
-// — a module-level read can bake in the pre-theme value, which is how settings
+// - a module-level read can bake in the pre-theme value, which is how settings
 // dividers once rendered light inside a dark card), but 42 files predate the
 // guard. The baseline is a ratchet, not an exemption: it may only shrink, and a
 // file that no longer offends must leave it. Draining it is tracked in
@@ -94,7 +94,7 @@ describe("Unistyles module scope", () => {
     const violations = listSourceFiles(SOURCE_ROOT).flatMap(findEagerModuleStyleReads);
     const offendingFiles = new Set(violations.map((violation) => violation.split(":")[0]));
 
-    // A baseline entry that no longer offends has been fixed — drop it, so the
+    // A baseline entry that no longer offends has been fixed - drop it, so the
     // ratchet tightens instead of quietly permitting a future regression.
     const stale = BASELINE.filter((file) => !offendingFiles.has(file));
     expect(stale).toEqual([]);

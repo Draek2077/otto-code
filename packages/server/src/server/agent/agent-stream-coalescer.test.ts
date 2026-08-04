@@ -342,14 +342,14 @@ describe("AgentStreamCoalescer", () => {
 
   test("reconstructs bytes exactly for fragmented text", async () => {
     const { coalescer, flushes } = createHarness();
-    const text = "Hello, 世界.\nPunctuation: ,.!?;: — but JS strings stay intact.\n";
+    const text = "Hello, 世界.\nPunctuation: ,.!?;: - but JS strings stay intact.\n";
     const chunks = [
       "Hello",
       ", ",
       "世界",
       ".\n",
       "Punctuation: ,.!?;: ",
-      "—",
+      "-",
       " but JS strings stay intact.\n",
     ];
 

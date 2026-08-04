@@ -83,7 +83,7 @@ export function getFileNameFromPath(path: string | null | undefined): string | n
 }
 
 /**
- * Mints the id for a preview attachment — a UI-owned copy of an image that
+ * Mints the id for a preview attachment - a UI-owned copy of an image that
  * lives on the daemon, keyed by identity so re-reading the same file reuses the
  * same stored copy. Minting pins the id: preview attachments hang off no draft,
  * so without a pin the attachment GC deletes the file as soon as anything

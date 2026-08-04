@@ -18,8 +18,8 @@ import {
 
 /**
  * The commit list, as a table: sha, date, author, subject in fixed columns
- * under a pinned header. A developer scans this vertically — down the author
- * column to find their own commits, down the date column to find last Tuesday —
+ * under a pinned header. A developer scans this vertically - down the author
+ * column to find their own commits, down the date column to find last Tuesday -
  * which only works if the columns hold their edges.
  */
 

@@ -27,6 +27,9 @@ import Animated, { runOnJS, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
+import { BRAIN_STATE_LABELS } from "@/components/brain/brain-state";
+import { createBrainStateIcon } from "@/components/brain/brain-state-icon";
+import { useBrainRailState } from "@/components/brain/use-brain-rail-state";
 import { HostPicker } from "@/components/hosts/host-picker";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
 import {
@@ -70,6 +73,7 @@ import { MobilePanelOverlay } from "@/mobile-panels/presentation";
 import {
   buildOpenProjectRoute,
   buildArtifactsRoute,
+  buildBrainRoute,
   buildNewWorkspaceRoute,
   buildRunsRoute,
   buildSchedulesRoute,
@@ -115,6 +119,7 @@ interface SidebarSharedProps {
   handleHome: () => void;
   handleSettings: () => void;
   handleStats: () => void;
+  handleBrain: () => void;
   labels: SidebarLabels;
   newWorkspaceKeys: ShortcutKey[][] | null;
   handleAddHost: () => void;
@@ -127,6 +132,7 @@ interface SidebarLabels {
   home: string;
   settings: string;
   stats: string;
+  brain: string;
   switchHost: string;
   searchHosts: string;
   sessions: string;
@@ -256,6 +262,15 @@ export const LeftSidebar = memo(function LeftSidebar() {
     router.push(buildStatsRoute());
   }, []);
 
+  const handleBrainMobile = useCallback(() => {
+    showMobileAgent();
+    router.push(buildBrainRoute());
+  }, [showMobileAgent]);
+
+  const handleBrainDesktop = useCallback(() => {
+    router.push(buildBrainRoute());
+  }, []);
+
   const handleViewMoreNavigate = useCallback(() => {
     router.push(buildSessionsRoute());
   }, []);
@@ -281,6 +296,7 @@ export const LeftSidebar = memo(function LeftSidebar() {
       settings: t("sidebar.actions.settings"),
       // Temporary label (English-only), same rationale as `runs` below.
       stats: "Metrics",
+      brain: "Brain",
       switchHost: t("sidebar.host.switchTitle"),
       searchHosts: t("sidebar.host.searchPlaceholder"),
       sessions: t("sidebar.sections.sessions"),
@@ -324,6 +340,7 @@ export const LeftSidebar = memo(function LeftSidebar() {
           handleHome={handleHomeMobile}
           handleSettings={handleSettingsMobile}
           handleStats={handleStatsMobile}
+          handleBrain={handleBrainMobile}
           handleAddHost={handleAddHostMobile}
           handleOpenHostSettings={handleOpenHostSettingsMobile}
           handleViewMoreNavigate={handleViewMoreNavigate}
@@ -345,6 +362,7 @@ export const LeftSidebar = memo(function LeftSidebar() {
         handleHome={handleHomeDesktop}
         handleSettings={handleSettingsDesktop}
         handleStats={handleStatsDesktop}
+        handleBrain={handleBrainDesktop}
         handleAddHost={handleAddHostDesktop}
         handleOpenHostSettings={handleOpenHostSettingsDesktop}
         handleViewMore={handleViewMoreNavigate}
@@ -509,35 +527,42 @@ const SidebarNewWorkspaceHeaderRow = memo(function SidebarNewWorkspaceHeaderRow(
 
 function SidebarFooter({
   theme,
-  handleOpenProject,
   handleHome,
   handleSettings,
   handleStats,
+  handleBrain,
   labels,
   handleAddHost,
   handleOpenHostSettings,
 }: {
   theme: SidebarTheme;
-  handleOpenProject: () => void;
   handleHome: () => void;
   handleSettings: () => void;
   handleStats: () => void;
+  handleBrain: () => void;
   labels: {
-    addProject: string;
     home: string;
     settings: string;
     stats: string;
+    brain: string;
     switchHost: string;
     searchHosts: string;
   };
   handleAddHost: () => void;
   handleOpenHostSettings: (serverId: string) => void;
 }) {
-  const newAgentKeys = useShortcutKeys("new-agent");
   const settingsAnchorRef = useTutorialAnchor("settings");
   // Home and Metrics mark themselves the same way Settings already does on its
   // own screen (which renders its own footer row and hardcodes "settings").
   const activeFooterItem = resolveSidebarFooterActiveItem(usePathname());
+  // The Brain button reports the local AI host's state rather than being a
+  // static glyph - see createBrainStateIcon's docstring. It lives here, in the
+  // spot the Create Project icon used to occupy, rather than in
+  // SidebarFooterNavRow: that row is shared with the Settings sidebar footer,
+  // which has no second row to put it in.
+  const brainState = useBrainRailState();
+  const brainIcon = useMemo(() => createBrainStateIcon(brainState, theme), [brainState, theme]);
+  const brainLabel = brainState === "idle" ? labels.brain : BRAIN_STATE_LABELS[brainState];
 
   return (
     <View style={styles.sidebarFooter}>
@@ -554,15 +579,16 @@ function SidebarFooter({
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild triggerRefProp="buttonRef">
             <FooterIconButton
-              onPress={handleOpenProject}
-              testID="sidebar-add-project"
-              accessibilityLabel={labels.addProject}
-              icon={FolderPlus}
+              onPress={handleBrain}
+              testID="sidebar-brain"
+              accessibilityLabel={brainLabel}
+              icon={brainIcon}
               theme={theme}
+              active={activeFooterItem === "brain"}
             />
           </TooltipTrigger>
           <TooltipContent side="top" align="center" offset={8}>
-            <AddProjectTooltipContent newAgentKeys={newAgentKeys} label={labels.addProject} />
+            <HeaderIconTooltipContent label={brainLabel} />
           </TooltipContent>
         </Tooltip>
         <SidebarHostPicker
@@ -595,6 +621,7 @@ function MobileSidebar({
   handleHome,
   handleSettings,
   handleStats,
+  handleBrain,
   labels,
   handleAddHost,
   handleOpenHostSettings,
@@ -695,7 +722,10 @@ function MobileSidebar({
             variant="compact"
           />
         </View>
-        <WorkspacesSectionHeader />
+        <WorkspacesSectionHeader
+          onAddProject={handleOpenProject}
+          addProjectLabel={labels.addProject}
+        />
         <Pressable
           style={styles.mobileCloseButton}
           onPress={closeSidebar}
@@ -736,10 +766,10 @@ function MobileSidebar({
 
         <SidebarFooter
           theme={theme}
-          handleOpenProject={handleOpenProject}
           handleHome={handleHome}
           handleSettings={handleSettings}
           handleStats={handleStats}
+          handleBrain={handleBrain}
           labels={labels}
           handleAddHost={handleAddHost}
           handleOpenHostSettings={handleOpenHostSettings}
@@ -768,6 +798,7 @@ function DesktopSidebar({
   handleHome,
   handleSettings,
   handleStats,
+  handleBrain,
   labels,
   handleAddHost,
   handleOpenHostSettings,
@@ -918,7 +949,10 @@ function DesktopSidebar({
             />
           </View>
         </View>
-        <WorkspacesSectionHeader />
+        <WorkspacesSectionHeader
+          onAddProject={handleOpenProject}
+          addProjectLabel={labels.addProject}
+        />
 
         {isInitialLoad ? (
           <SidebarAgentListSkeleton />
@@ -944,10 +978,10 @@ function DesktopSidebar({
 
         <SidebarFooter
           theme={theme}
-          handleOpenProject={handleOpenProject}
           handleHome={handleHome}
           handleSettings={handleSettings}
           handleStats={handleStats}
+          handleBrain={handleBrain}
           labels={labels}
           handleAddHost={handleAddHost}
           handleOpenHostSettings={handleOpenHostSettings}
@@ -964,16 +998,23 @@ function DesktopSidebar({
   );
 }
 
-function WorkspacesSectionHeader() {
+function WorkspacesSectionHeader({
+  onAddProject,
+  addProjectLabel,
+}: {
+  onAddProject: () => void;
+  addProjectLabel: string;
+}) {
   const { theme } = useUnistyles();
   const workspacesAnchorRef = useTutorialAnchor("workspaces");
-  // useIconSize (not theme.iconSize props) — the runtime theme patch doesn't
+  // useIconSize (not theme.iconSize props) - the runtime theme patch doesn't
   // reliably reach icon size props; the hook scales with the breakpoint.
   const iconSize = useIconSize();
   const setCommandCenterOpen = useKeyboardShortcutsStore((state) => state.setCommandCenterOpen);
   const commandCenterKeys = useShortcutKeys("toggle-command-center");
+  const newAgentKeys = useShortcutKeys("new-agent");
   const handleSearchPress = useCallback(() => setCommandCenterOpen(true), [setCommandCenterOpen]);
-  const searchButtonStyle = useCallback(
+  const headerIconButtonStyle = useCallback(
     ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.workspacesHeaderIconButton,
       (hovered || pressed) && styles.workspacesHeaderIconButtonHovered,
@@ -989,9 +1030,32 @@ function WorkspacesSectionHeader() {
           <TooltipTrigger asChild>
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel={addProjectLabel}
+              testID="sidebar-add-project"
+              style={headerIconButtonStyle}
+              onPress={onAddProject}
+            >
+              {({ hovered, pressed }) => (
+                <FolderPlus
+                  size={iconSize.sm}
+                  color={
+                    hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
+                  }
+                />
+              )}
+            </Pressable>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="center" offset={8}>
+            <AddProjectTooltipContent newAgentKeys={newAgentKeys} label={addProjectLabel} />
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <Pressable
+              accessibilityRole="button"
               accessibilityLabel="Open command center"
               testID="sidebar-command-center-search"
-              style={searchButtonStyle}
+              style={headerIconButtonStyle}
               onPress={handleSearchPress}
             >
               {({ hovered, pressed }) => (
@@ -1023,7 +1087,7 @@ function WorkspacesSectionHeader() {
   );
 }
 
-// Static styles for Animated.Views — must NOT use Unistyles dynamic theme to
+// Static styles for Animated.Views - must NOT use Unistyles dynamic theme to
 // avoid the "Unable to find node on an unmounted component" crash when Unistyles
 // tries to patch the native node that Reanimated also manages.
 const staticStyles = RNStyleSheet.create({

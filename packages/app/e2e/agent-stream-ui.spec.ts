@@ -27,7 +27,7 @@ const SCROLL_AWAY_MIN_SCROLLABLE_DISTANCE = 360;
 // Action grouping (default on) keeps reabsorbing the mock stream's completed
 // tool calls into one collapsed row, so the transcript's rendered height
 // plateaus and the scroll-away tests can never accumulate enough scrollable
-// distance. These tests assert scroll anchoring, not grouping — seed the
+// distance. These tests assert scroll anchoring, not grouping - seed the
 // setting off so every action renders as its own row again.
 async function disableActionGrouping(page: Page): Promise<void> {
   // Merge rather than replace: writing a bare blob here used to drop
@@ -215,7 +215,7 @@ test.describe("Agent stream UI", () => {
       timeout: 30_000,
     });
     await awaitAssistantMessage(page);
-    // See the scroll-away test above — height accumulates more slowly with
+    // See the scroll-away test above - height accumulates more slowly with
     // the tighter chat typography, so allow the stream more time.
     await waitForScrollableChat(page, {
       minScrollableDistance: SCROLL_AWAY_MIN_SCROLLABLE_DISTANCE,

@@ -3,7 +3,7 @@ import type { AgentPersonality, AgentTeam, PersonalityRole } from "./messages.js
 
 // Pure, dependency-free team helpers shared by the daemon (spawn-time active
 // team resolution, list_personalities scoping) and the app (team cards,
-// pickers, the Active Team switcher). Availability is deliberately NOT here —
+// pickers, the Active Team switcher). Availability is deliberately NOT here -
 // a team is never "out of commission"; its members are individually available
 // or not, judged by checkPersonalityAvailability per member.
 
@@ -11,7 +11,7 @@ import type { AgentPersonality, AgentTeam, PersonalityRole } from "./messages.js
  * The dynamic "Team's Scheduler" schedule binding. Stored in the schedule's
  * `personality` field in place of a personality name; resolved at RUN time to
  * the active team's first available member carrying the Scheduler role
- * (member order). Deliberately contains "@" — personality names are sanitized
+ * (member order). Deliberately contains "@" - personality names are sanitized
  * to [A-Za-z0-9_-] at the authoring surface, so the sentinel can never collide
  * with a real name. No active team, or no available Scheduler member, is a
  * hard run failure with a named error (same loudness as a bound personality
@@ -39,7 +39,7 @@ export function findAgentTeam(
 
 /**
  * Resolve the host's active team. A dangling `activeTeamId` (team deleted, or
- * a patch raced a delete) reads as "no team active" — teamlessness is a valid
+ * a patch raced a delete) reads as "no team active" - teamlessness is a valid
  * state and must never error. The daemon additionally heals a dangling id back
  * to null on the next config patch; this helper is the read-side tolerance.
  */
@@ -115,7 +115,7 @@ export function pruneTeamMemberIds(
  * team at all, so the delete confirm can offer to clean them up. Dangling member
  * ids resolve to nothing and drop out, same as everywhere else.
  *
- * Pass the teams that will REMAIN after the delete — the caller owns the filter,
+ * Pass the teams that will REMAIN after the delete - the caller owns the filter,
  * so this stays a pure set operation with no notion of "the team being deleted".
  */
 export function resolveExclusiveTeamMembers(
@@ -136,7 +136,7 @@ export function resolveExclusiveTeamMembers(
 
 /**
  * The union of all members' roles, normalized and returned in canonical
- * `PERSONALITY_ROLES` order — the team card's role-pill strip.
+ * `PERSONALITY_ROLES` order - the team card's role-pill strip.
  */
 export function teamRoleUnion(
   team: Pick<AgentTeam, "memberIds"> | null | undefined,

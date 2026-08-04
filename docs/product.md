@@ -12,12 +12,12 @@ The development workflow is shifting from manually editing files to orchestratin
 
 Freedom and flexibility. Every design decision follows from this:
 
-- **Multi-provider** — Use any coding agent harness. Pick the right model for each job, switch freely as the landscape shifts. No vendor-lock in.
-- **Cross-device** — Desktop, mobile, web, CLI. Start work at your desk, check progress from your phone, script from the terminal.
-- **Self-hosted** — The daemon runs on your machine. Your code, your keys, your environment. No inference markup, no cloud dependency.
+- **Multi-provider** - Use any coding agent harness. Pick the right model for each job, switch freely as the landscape shifts. No vendor-lock in.
+- **Cross-device** - Desktop, mobile, web, CLI. Start work at your desk, check progress from your phone, script from the terminal.
+- **Self-hosted** - The daemon runs on your machine. Your code, your keys, your environment. No inference markup, no cloud dependency.
 - **Respectful** - No telemetry, no forced cloud, no forced accounts
-- **Open source** — AGPL-3.0. Users can inspect, fork, and contribute.
-- **BYOK** — Bring your own keys. Use your subsidized plans and first-party provider pricing. Otto adds zero cost on top.
+- **Open source** - AGPL-3.0. Users can inspect, fork, and contribute.
+- **BYOK** - Bring your own keys. Use your subsidized plans and first-party provider pricing. Otto adds zero cost on top.
 
 ## How it works
 
@@ -37,7 +37,7 @@ A workspace is a flexible canvas:
 
 ### The daemon
 
-Otto is a client-server system. The daemon (Node.js) runs on your machine, manages agent processes, and streams output in real time over WebSocket. Clients connect to the daemon — locally or remotely.
+Otto is a client-server system. The daemon (Node.js) runs on your machine, manages agent processes, and streams output in real time over WebSocket. Clients connect to the daemon - locally or remotely.
 
 This architecture means:
 
@@ -56,13 +56,13 @@ Anyone who builds software:
 
 ## What compounds over time
 
-- **Trust** — Showing up daily, shipping in public, being open source. Earned slowly, lost quickly.
-- **Community contributions** — Code, packaging, skills, agent configs. Contributors become advocates.
-- **Ecosystem** — Skills, integrations, shared configs. Community-built content that makes the platform more valuable.
+- **Trust** - Showing up daily, shipping in public, being open source. Earned slowly, lost quickly.
+- **Community contributions** - Code, packaging, skills, agent configs. Contributors become advocates.
+- **Ecosystem** - Skills, integrations, shared configs. Community-built content that makes the platform more valuable.
 
 ## Strategic bets
 
-1. **Models commoditize.** Value moves to the orchestration layer. The best model changes monthly — the workflow layer stays.
+1. **Models commoditize.** Value moves to the orchestration layer. The best model changes monthly - the workflow layer stays.
 2. **Multi-provider wins.** No single provider stays on top. Developers want the best model for each task.
 3. **The daemon as infrastructure.** Server/client architecture enables deployment anywhere.
 4. **Open source outlasts funding.** Open source communities are resilient. Contributors become advocates.
@@ -70,11 +70,11 @@ Anyone who builds software:
 ## Current state (July 2026)
 
 - Desktop (Electron), mobile (iOS/Android), web, CLI
-- Built-in providers: Claude Code (Agent SDK), Codex (app-server), GitHub Copilot (ACP), OpenCode, Pi, OMP — plus custom OpenAI-compatible endpoints (LM Studio, Ollama, proxies)
-- One-click ACP provider catalog: CodeWhale, Cursor, Hermes, Qwen Coder, Kimi Code, and others — plus custom ACP providers
-- Preview: agents start project dev servers from `.claude/launch.json` and verify rendered changes in a real Otto browser tab (snapshots, DOM inspection, console/network, interaction) — see [preview.md](preview.md)
+- Built-in providers: Claude Code (Agent SDK), Codex (app-server), GitHub Copilot (ACP), OpenCode, Pi, OMP - plus custom OpenAI-compatible endpoints (LM Studio, Ollama, proxies)
+- One-click ACP provider catalog: CodeWhale, Cursor, Hermes, Qwen Coder, Kimi Code, and others - plus custom ACP providers
+- Preview: agents start project dev servers from `.claude/launch.json` and verify rendered changes in a real Otto browser tab (snapshots, DOM inspection, console/network, interaction) - see [preview.md](preview.md)
 - Artifacts: agents generate self-contained HTML artifacts stored with the project
-- Agent personalities: named, reusable per-host agent templates (provider→model, effort, mode, prompt, roles, and a name/spinner/voice identity) — the ergonomic "who does the work" pick shown atop every model picker, spawnable by orchestrating agents; see [agent-personalities.md](agent-personalities.md)
+- Agent personalities: named, reusable per-host agent templates (provider→model, effort, mode, prompt, roles, and a name/spinner/voice identity) - the ergonomic "who does the work" pick shown atop every model picker, spawnable by orchestrating agents; see [agent-personalities.md](agent-personalities.md)
 - Voice mode: dictate prompts or talk through problems hands-free
 - MCP server exposes the daemon to other agents (create_agent by personality, list_personalities, send_agent_prompt, schedules, terminals, worktrees, workspace renaming)
 - Scheduled agents (cron-style triggers) via app, CLI, and MCP

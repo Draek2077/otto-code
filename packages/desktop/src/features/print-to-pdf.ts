@@ -5,8 +5,8 @@ import { BrowserWindow, ipcMain } from "electron";
  *
  * Desktop only, because `webContents.printToPDF` is the whole implementation:
  * there is no browser or native equivalent worth shipping a second renderer
- * for. The caller passes HTML it already produced — the app's markdown export
- * produces exactly the document the user would get from "Export as HTML" — so
+ * for. The caller passes HTML it already produced - the app's markdown export
+ * produces exactly the document the user would get from "Export as HTML" - so
  * the PDF and the HTML cannot drift: one converter, one stylesheet, two
  * containers.
  *
@@ -36,7 +36,7 @@ const PAGE_MARGIN_INCHES = 0.75;
  * and KaTeX math ships as MathML, which lays out natively. Nothing in the
  * document needs a script, so nothing in the document gets one.
  *
- * Relative images do not resolve — the document loads from a `data:` URL with
+ * Relative images do not resolve - the document loads from a `data:` URL with
  * no directory to be relative to, and for a remote workspace main could not
  * read them anyway. They fall back to alt text, which is the same limitation
  * the HTML export documents for a file opened away from its own folder.

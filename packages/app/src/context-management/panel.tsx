@@ -61,7 +61,7 @@ import { useContextReportQuery } from "./use-context-report";
 const DEFAULT_WINDOW_TOKENS = 200_000;
 
 // The file pane is the point of the tab, so the splitter never squeezes it below
-// a width where the editor stops being readable — mirrors MIN_CHAT_WIDTH.
+// a width where the editor stops being readable - mirrors MIN_CHAT_WIDTH.
 const MIN_CONTEXT_FILE_WIDTH = 360;
 
 // Anchors the absolutely-positioned resize handle that hangs off the shell's edge.
@@ -78,7 +78,7 @@ const ThemedX = withUnistyles(X);
 const CONTEXT_EDIT_GATE = { kind: "free" } as const;
 
 /**
- * Context Management — one tab, three parts, no sub-tabs:
+ * Context Management - one tab, three parts, no sub-tabs:
  * health summary and pickers, the load graph, and the file being worked on.
  *
  * On a phone three panes cannot coexist, so the same three parts become a
@@ -91,7 +91,7 @@ export function ContextManagementPanel(): ReactElement {
   const { serverId, workspaceId } = usePaneContext();
   const isCompact = useIsCompactFormFactor();
   // The back chevron carries a label, so it takes the gentler 1.5x compact bump
-  // rather than the ×2 an icon-only control gets — the label only grows by +2.
+  // rather than the ×2 an icon-only control gets - the label only grows by +2.
   const backIconSize = useIconSize(1.5);
 
   // The picker is a viewing preference, so it persists device-locally and the
@@ -104,7 +104,7 @@ export function ContextManagementPanel(): ReactElement {
     },
     [updateSettings],
   );
-  // Which personality this tab is evaluating context FOR — resolved above the
+  // Which personality this tab is evaluating context FOR - resolved above the
   // report query because it is one of the query's inputs. Context stopped being
   // a property of the workspace alone once personalities started accruing
   // memory: two personalities here send different things.
@@ -157,7 +157,7 @@ export function ContextManagementPanel(): ReactElement {
   });
 
   // The compact layout puts the whole page in one scroll, so the page itself
-  // needs the overlay bar too — not just the lists inside it.
+  // needs the overlay bar too - not just the lists inside it.
   const compactScrollRef = useRef<ScrollView>(null);
   const compactScrollbar = useWebScrollViewScrollbar(compactScrollRef, { enabled: isWeb });
 
@@ -259,7 +259,7 @@ export function ContextManagementPanel(): ReactElement {
           resizeWidth.value = contextSidebarWidth;
         })
         .onUpdate((event) => {
-          // This sidebar is on the left, so dragging right widens it — the
+          // This sidebar is on the left, so dragging right widens it - the
           // opposite sign from the workspace explorer's right-hand sidebar.
           const next = startWidthRef.current + event.translationX;
           resizeWidth.value = Math.max(MIN_CONTEXT_SIDEBAR_WIDTH, Math.min(maxSidebarWidth, next));
@@ -282,11 +282,11 @@ export function ContextManagementPanel(): ReactElement {
   );
 
   // Converting rewrites the parent file, so the report must be re-read
-  // afterwards — the daemon also pushes a fresh one, this just closes the gap.
+  // afterwards - the daemon also pushes a fresh one, this just closes the gap.
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
 
   // "Fix all" targets every finding the scan already proved has a safe
-  // mechanical answer (`fixable`) — the daemon computed that per kind, this
+  // mechanical answer (`fixable`) - the daemon computed that per kind, this
   // just resolves each one's node back to the file path the fix RPC needs.
   const fixableFindings = useMemo(() => {
     if (!report) return [];
@@ -329,7 +329,7 @@ export function ContextManagementPanel(): ReactElement {
     })();
   }, [client, fixableFindings, refresh, t, toast, workspaceId]);
 
-  // One tabbed body, rendered identically in both layouts — only its container
+  // One tabbed body, rendered identically in both layouts - only its container
   // differs (a fixed sidebar column vs. a block in the phone's scroll).
   const sidebarBody = (
     <ContextSidebarBody
@@ -396,7 +396,7 @@ export function ContextManagementPanel(): ReactElement {
 
   // How this file is LOADED (link vs always) rides in the file toolbar, with
   // the rest of the file's own tools. Compaction does NOT: it opens a job
-  // carrying the whole context graph, so it belongs with the graph — see the
+  // carrying the whole context graph, so it belongs with the graph - see the
   // sidebar tabs below.
   const loadModeControl = useMemo(
     () =>
@@ -438,7 +438,7 @@ export function ContextManagementPanel(): ReactElement {
       return <ContextFilePlaceholder isLoading={isLoading} isEmptyReport={isEmptyReport} />;
     }
     // Desktop: the load-mode switch rides in the file toolbar rather than above
-    // it — a second full-width bar spent a whole row saying two words. A phone
+    // it - a second full-width bar spent a whole row saying two words. A phone
     // toolbar has no width to lend, so there it goes back to its own strip.
     const banner = activeReveal ? (
       <FindingBanner
@@ -584,7 +584,7 @@ type GraphTreeProps = ComponentProps<typeof ContextGraphTree>;
  * one branch in there that is pure dispatch: three arms that share `report` and
  * nothing else, each reading only the props its own tab needs. The props stay
  * flat rather than bundled per tab because a bundle would be an object built in
- * the panel's render — exactly what react-perf's new-object-as-prop rule is for.
+ * the panel's render - exactly what react-perf's new-object-as-prop rule is for.
  */
 function ContextSidebarBody({
   tab,
@@ -676,7 +676,7 @@ function ContextSidebarBody({
 
 /**
  * The phone's drill-down header. Three panes cannot coexist at that width, so
- * the pane takes the screen and this is the way back — titled with whatever the
+ * the pane takes the screen and this is the way back - titled with whatever the
  * pane is showing, a file's path or a prompt section's name.
  */
 function CompactPaneHeader({
@@ -712,7 +712,7 @@ function CompactPaneHeader({
 
 /**
  * The pane before anything is picked. Before the first scan lands there is
- * nothing to pick yet, so "Pick a file" reads as a broken tab — say what is
+ * nothing to pick yet, so "Pick a file" reads as a broken tab - say what is
  * actually happening instead. And a project that loads nothing is a clean slate
  * rather than an error, which is a different sentence again.
  */
@@ -754,7 +754,7 @@ interface RevealedFinding {
 
 /**
  * Restates the finding over the file it sent you to. Without it the jump lands
- * on a line with no explanation — the fix list is one tab away, and the whole
+ * on a line with no explanation - the fix list is one tab away, and the whole
  * point of the arrow was not having to hold the sentence in your head.
  */
 function FindingBanner({

@@ -308,7 +308,7 @@ const EMPTY_STREAM_HEAD: StreamItem[] = [];
 /**
  * Subscribes one assistant item to the shared reveal ticker. The snapshot is
  * the item's own clamped budget, so a 32ms tick re-renders ONLY the item the
- * reveal boundary is currently crossing — fully revealed and not-yet-reached
+ * reveal boundary is currently crossing - fully revealed and not-yet-reached
  * items bail on an unchanged snapshot.
  *
  * Items outside the live turn (`span` undefined) subscribe too, and that is
@@ -316,7 +316,7 @@ const EMPTY_STREAM_HEAD: StreamItem[] = [];
  * on a tick, and keeping ONE component type for every assistant row means a
  * turn ending does not swap the element type out from under the row. It used
  * to, and the remount that followed wiped the row's state at exactly the wrong
- * moment — the bubble the model had just finished lost the "I watched this
+ * moment - the bubble the model had just finished lost the "I watched this
  * being written" latch auto-speech reads, so a reply's last paragraph went
  * unspoken.
  */
@@ -400,7 +400,7 @@ interface ResolvedHistoryPagination {
 /**
  * History paging is normally this view's own business, but a surface that owns
  * its stream (a read-only provider-subagent transcript) supplies its own. The
- * built-in hook still runs either way — hooks cannot be conditional — it is
+ * built-in hook still runs either way - hooks cannot be conditional - it is
  * simply ignored when an override is present.
  */
 function useResolvedHistoryPagination(input: {
@@ -467,7 +467,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     // scroll position however few pixels they moved it, freeze the boundary between
     // mounted and virtualized history. Left free, it advances on its own
     // as the agent streams, and the turn it hands to the virtualizer collapses
-    // from measured heights to estimates in one frame — which clamps scrollTop
+    // from measured heights to estimates in one frame - which clamps scrollTop
     // and throws the reader back toward the top of the chat. Pin it at whatever
     // it was when they scrolled away; release when they come back to the bottom,
     // where the same collapse happens off screen. See findMountedWindowStart.
@@ -689,9 +689,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const deferredStreamHead = useDeferredValue(effectiveStreamHead);
 
     // The tool-call detail projection reads the SAME deferred pair the render
-    // model does, for two reasons. Deferral has to stay intact — feeding the
+    // model does, for two reasons. Deferral has to stay intact - feeding the
     // model undeferred items would put the whole rebuild back on the urgent
-    // path — and the reveal spans below are computed from the same pair, so a
+    // path - and the reveal spans below are computed from the same pair, so a
     // split would drift the two apart. In "detailed" both calls are pass-through.
     //
     // The prepare memo depends on the tail alone, which is the point: retained
@@ -873,7 +873,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     // cover, which is the one the model is still appending to (block promotion
     // always adds the new segment last). Undefined when nothing is running, so
     // every item then counts as finished. Consumers that treat a message as a
-    // complete thing — the playback button, the auto-speech queue — key off it.
+    // complete thing - the playback button, the auto-speech queue - key off it.
     const liveTurnTailItemId = useMemo(() => {
       let tailId: string | undefined;
       for (const itemId of liveTurnReveal.spans.keys()) {
@@ -1312,7 +1312,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               </MessageOuterSpacingProvider>
               {/* Seam fades. Both live INSIDE the stream view (not at panel level)
               so they share a stacking context with the desktop web scrollbar
-              overlay (zIndex 10, rendered by the web strategy) — the scrollbar
+              overlay (zIndex 10, rendered by the web strategy) - the scrollbar
               stays visible over the fades. Must stay rendered BEFORE the
               scroll-to-bottom overlay: neither fade carries a zIndex, so
               later-sibling paint order is what keeps the button above them. */}
@@ -1326,7 +1326,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                   // Prop, not style: unistyles emits style pointerEvents as literal
                   // (invalid) CSS on web, so only the prop actually stops this strip
                   // from eating clicks. RNW's box-none sets direct children back to
-                  // auto, so the button must be the direct child — no full-width
+                  // auto, so the button must be the direct child - no full-width
                   // wrapper in between.
                   pointerEvents="box-none"
                 >

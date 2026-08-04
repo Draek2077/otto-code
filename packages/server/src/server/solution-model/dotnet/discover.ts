@@ -8,7 +8,7 @@ import { toPosixAbsolute } from "../paths.js";
  * Finding the solutions in a workspace.
  *
  * **Deliberately in Node, not in the sidecar.** This answer decides whether the view switcher
- * appears at all, so it runs for every workspace the user opens — and the overwhelmingly common
+ * appears at all, so it runs for every workspace the user opens - and the overwhelmingly common
  * answer is "none". Spawning a .NET process to glob for `*.sln` would make it the single most
  * expensive thing in the feature, paid mostly by workspaces that will never show it. The sidecar
  * is reached only once a tree is actually requested.
@@ -102,7 +102,7 @@ export async function discoverSolutions(
 /**
  * `dotnet sln migrate` leaves the classic `.sln` beside the new `.slnx`, so a migrated repository
  * has two files describing one solution. Showing both would put two identical entries in the
- * picker and let the user pick the stale one. `.slnx` wins — it is the format the toolchain is
+ * picker and let the user pick the stale one. `.slnx` wins - it is the format the toolchain is
  * moving to, and the one `migrate` just wrote.
  */
 function dedupeSlnxOverSln(found: readonly SolutionRefAbsolute[]): SolutionRefAbsolute[] {

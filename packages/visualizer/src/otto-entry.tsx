@@ -2,10 +2,10 @@ import { createRoot } from "react-dom/client";
 import { AgentVisualizer } from "@/components/agent-visualizer";
 import { vscodeBridge } from "@/lib/vscode-bridge";
 // Wraps the vendor globals.css with an @source directive so Tailwind scans
-// the vendor tree for utility classes — see otto-globals.css for why.
+// the vendor tree for utility classes - see otto-globals.css for why.
 import "./otto-globals.css";
 
-// Otto embed entry — replaces vendor/agent-flow/web/webview-entry.tsx (which binds
+// Otto embed entry - replaces vendor/agent-flow/web/webview-entry.tsx (which binds
 // to acquireVsCodeApi). Binds the vendor bridge to whichever Otto host transport
 // this page is running inside. Host -> page is uniform everywhere: a `message`
 // event on window, which the vendor bridge already listens to. Page -> host varies:
@@ -28,7 +28,7 @@ function postToHost(message: Record<string, unknown>): void {
     return;
   }
   if (window.ReactNativeWebView) {
-    // react-native-webview's bridge takes a single string argument — this is not Window.postMessage.
+    // react-native-webview's bridge takes a single string argument - this is not Window.postMessage.
     // eslint-disable-next-line unicorn/require-post-message-target-origin
     window.ReactNativeWebView.postMessage(JSON.stringify(message));
     return;

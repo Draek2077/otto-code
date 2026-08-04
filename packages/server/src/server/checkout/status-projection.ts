@@ -14,7 +14,7 @@ type CheckoutPrStatusPayload = Extract<
 >["payload"];
 /**
  * Producer-side shapes. `forge` carries `.default("github")` on the wire, which
- * makes it required in the parsed (output) type but optional to send — and a
+ * makes it required in the parsed (output) type but optional to send - and a
  * daemon that has not resolved a forge must send nothing rather than assert
  * GitHub. These aliases say that: omit the defaulted field, let the schema fill
  * it in on parse.
@@ -35,7 +35,7 @@ type CheckoutPrStatusEmittedPayload = Omit<
  * The one place the producer shape meets the parsed shape.
  *
  * `forge` is `.optional().default("github")` on the wire, so it is optional to
- * send and required once parsed — the default exists so an *old* daemon's
+ * send and required once parsed - the default exists so an *old* daemon's
  * omission still reads as GitHub, and it stays until the floor reaches v0.1.106.
  * A new daemon that resolved no forge must send nothing rather than assert
  * GitHub, so omitting it here is correct even though the parsed type says
@@ -57,7 +57,7 @@ export function buildCheckoutStatusPayloadFromSnapshot(params: {
   const gitStateAt = params.snapshot.gitLoadedAtMs;
   // Stamp when the git-tracking fields were measured so a client can tell an
   // out-of-order push from fresh news. Omitted when the snapshot predates any
-  // measurement — an absent stamp reads as "unknown", not "oldest".
+  // measurement - an absent stamp reads as "unknown", not "oldest".
   return gitStateAt == null ? payload : { ...payload, gitStateAt };
 }
 
@@ -142,7 +142,7 @@ function buildCheckoutStatusFields({
  * Says where the base came from and whether the client may change it.
  *
  * `isBaseEditable` is answered here rather than re-derived on the client: this daemon stores the
- * base per branch, so any git checkout can be repointed — the old rule of "Otto worktrees only"
+ * base per branch, so any git checkout can be repointed - the old rule of "Otto worktrees only"
  * was a storage limitation, not a product one, and the client has no way to know which it is.
  */
 function buildBaseProvenanceFields(snapshot: WorkspaceGitRuntimeSnapshot): {
@@ -201,8 +201,8 @@ export function buildCheckoutPrStatusPayloadFromSnapshot({
  * and it is deliberately not derived from `forgeSpecific.forge`. Those are two
  * different things: a Codeberg workspace resolves to the Forgejo brand while its
  * facts are tagged with the `gitea` family they follow. Promoting the family tag
- * would label Codeberg as Gitea, and defaulting it to `github` — which this used
- * to do — labels every unresolved forge as GitHub and makes the client render
+ * would label Codeberg as Gitea, and defaulting it to `github` - which this used
+ * to do - labels every unresolved forge as GitHub and makes the client render
  * GitHub affordances against a GitLab merge request.
  */
 export function normalizeCheckoutPrStatusPayload(

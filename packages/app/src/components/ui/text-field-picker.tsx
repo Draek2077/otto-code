@@ -17,7 +17,7 @@ interface TextFieldPickerProps {
 /**
  * A settings-form text field that offers a list of known-good values (e.g. a
  * base URL, model ID, or shell command) while still accepting any freeform
- * value via the Combobox's `allowCustomValue` option — so a documented preset
+ * value via the Combobox's `allowCustomValue` option - so a documented preset
  * doesn't lock the user out of an undocumented one.
  */
 export function TextFieldPicker({

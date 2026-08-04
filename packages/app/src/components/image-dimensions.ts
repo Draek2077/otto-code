@@ -4,12 +4,12 @@
 // percentage and the status-bar readout are all ratios against the natural
 // size, and there is no cross-platform way to ask for it. `Image.getSize` is
 // asynchronous, unavailable for the raw SVG branch, and would make the first
-// frame guess — so the size is parsed from the container headers instead, which
+// frame guess - so the size is parsed from the container headers instead, which
 // costs a few dozen bytes of reading and is done by the time the pane renders.
 //
 // Every parser here reads a header and nothing more: no pixel data is decoded,
 // so cost is independent of file size. A format we cannot read returns null,
-// and the viewer degrades to the plain contain-fit it had before — an unknown
+// and the viewer degrades to the plain contain-fit it had before - an unknown
 // size is an ordinary answer, never an error.
 
 export interface ImageDimensions {
@@ -85,7 +85,7 @@ function gifDimensions(bytes: Uint8Array): ImageDimensions | null {
   if (bytes.length < 10) {
     return null;
   }
-  // The logical screen descriptor, not the first frame — an animation's frames
+  // The logical screen descriptor, not the first frame - an animation's frames
   // may be smaller than the canvas they compose onto.
   return validate(u16le(bytes, 6), u16le(bytes, 8));
 }
@@ -100,7 +100,7 @@ function bmpDimensions(bytes: Uint8Array): ImageDimensions | null {
 }
 
 /**
- * SOF0–SOF15 carry the frame size. `c4`/`c8`/`cc` are DHT/JPG/DAC — same
+ * SOF0–SOF15 carry the frame size. `c4`/`c8`/`cc` are DHT/JPG/DAC - same
  * numeric range, not frame headers, and reading them as one yields garbage.
  */
 function isStartOfFrame(marker: number): boolean {
@@ -193,7 +193,7 @@ function icoDimensions(bytes: Uint8Array): ImageDimensions | null {
   if (u16le(bytes, 4) < 1) {
     return null;
   }
-  // One byte per axis, where 0 means 256 — the format's way of fitting the
+  // One byte per axis, where 0 means 256 - the format's way of fitting the
   // largest legal icon into a byte.
   return validate((bytes[6] ?? 0) || 256, (bytes[7] ?? 0) || 256);
 }
@@ -259,7 +259,7 @@ function looksLikeSvg(bytes: Uint8Array, mime: string | undefined): boolean {
 /**
  * The natural size of an image, or null when the format is one we do not parse
  * (or the bytes are truncated). Sniffs the container rather than trusting the
- * MIME type, which the daemon derives from the extension — a `.png` holding a
+ * MIME type, which the daemon derives from the extension - a `.png` holding a
  * JPEG should still measure correctly. `mime` is consulted only for SVG, which
  * has no magic number of its own.
  */

@@ -2,7 +2,7 @@
 # via `runFlow`. Keep this aligned with the dev build application id.
 #
 # The host below is the repo DEV daemon (6788), not the installed app's daemon
-# (6868) — see docs/development.md. Point it at 6868 only when you deliberately
+# (6868) - see docs/development.md. Point it at 6868 only when you deliberately
 # want the simulator driving your real `~/.otto` agents.
 appId: ai.ottocode
 ---

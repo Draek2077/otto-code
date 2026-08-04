@@ -157,8 +157,8 @@ async function runAttachmentGc(): Promise<void> {
     collectStreamUserImageIds(session.agentStreamHead, referencedIds);
   }
 
-  // Preview attachments — the local copies behind assistant markdown images and
-  // file-tab image previews — hang off no draft at all, so they are referenced
+  // Preview attachments - the local copies behind assistant markdown images and
+  // file-tab image previews - hang off no draft at all, so they are referenced
   // only by their pins. Without this the GC deleted every browser screenshot in
   // the transcript on the next keystroke. See attachments/preview-pins.ts.
   collectPinnedPreviewAttachmentIds(referencedIds);

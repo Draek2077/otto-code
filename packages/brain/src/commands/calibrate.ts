@@ -1,5 +1,5 @@
 /**
- * `otto brain calibrate` — measure real KV bytes/token for a model and persist it,
+ * `otto brain calibrate` - measure real KV bytes/token for a model and persist it,
  * so the VRAM budget uses a measured figure instead of the (over-estimating)
  * theoretical formula.
  */
@@ -19,6 +19,7 @@ import type { AnyCommandResult, OutputSchema } from "../output/index.js";
 import { CommandError } from "../output/types.js";
 import { calibrate } from "../ops/calibrate.js";
 import { resolveRuntime } from "../runtime/index.js";
+import { withActivity } from "../service/activity.js";
 import * as vram from "../vram.js";
 
 export interface CalibrateRow {
@@ -65,18 +66,22 @@ export async function runCalibrateCommand(
   const model = pickModel(catalog, options.model ?? store.lastModelId ?? undefined);
   const profile = forModel(store, model, config.defaults);
 
-  const measurement = await calibrate({
-    runtime,
-    model,
-    profile,
-    onProgress: (p) => {
-      if (p.phase === "loading")
-        process.stderr.write(`  loading at ${p.contextSize?.toLocaleString()} ctx…\n`);
-      if (p.phase === "measured")
-        process.stderr.write(`    used ${vram.formatGiB(p.deltaBytes ?? 0)}\n`);
-      if (p.phase === "skip") process.stderr.write(`  skipped ${p.contextSize}: ${p.reason}\n`);
-    },
-  });
+  // Announced so the Brain rail can show the host as busy: a calibrate loads the
+  // model at several context sizes and will make anything else queue behind it.
+  const measurement = await withActivity("calibrate", { target: model.displayName }, () =>
+    calibrate({
+      runtime,
+      model,
+      profile,
+      onProgress: (p) => {
+        if (p.phase === "loading")
+          process.stderr.write(`  loading at ${p.contextSize?.toLocaleString()} ctx…\n`);
+        if (p.phase === "measured")
+          process.stderr.write(`    used ${vram.formatGiB(p.deltaBytes ?? 0)}\n`);
+        if (p.phase === "skip") process.stderr.write(`  skipped ${p.contextSize}: ${p.reason}\n`);
+      },
+    }),
+  );
 
   putCalibration(store, model, profile, measurement);
   saveProfilesStore(store);

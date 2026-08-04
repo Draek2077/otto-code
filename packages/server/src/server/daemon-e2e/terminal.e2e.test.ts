@@ -934,7 +934,7 @@ test("subscribe response is sent before the initial snapshot frame", async () =>
 
   try {
     // This test is about frame ORDER, so the marker has to already be in the
-    // grid before the ordering window opens — otherwise a snapshot that simply
+    // grid before the ordering window opens - otherwise a snapshot that simply
     // has not caught up yet reads as an ordering failure.
     //
     // Two Windows problems were folded into the old `printf` + 300ms sleep:

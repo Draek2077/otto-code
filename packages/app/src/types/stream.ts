@@ -123,7 +123,7 @@ export interface AssistantMessageItem {
    * Per-turn token usage stamped onto the turn's last assistant message when a
    * live turn_completed event carries usage. Canonical timeline backfill has no
    * usage, so turns hydrated from history (and tails rebuilt by a canonical
-   * replace) simply lack this field — the footer omits the token segment then.
+   * replace) simply lack this field - the footer omits the token segment then.
    */
   turnUsage?: AgentUsage;
 }
@@ -185,7 +185,7 @@ export type ActionGroupMemberItem = ToolCallItem | ThoughtItem;
 /**
  * Render-only synthetic item: a run of consecutive actions folded into one
  * collapsed, expandable row. Never produced by the stream reducers and never
- * persisted — see agent-stream/action-grouping.ts.
+ * persisted - see agent-stream/action-grouping.ts.
  */
 export interface ActionGroupItem {
   kind: "action_group";
@@ -233,7 +233,7 @@ export interface TodoEntry {
   /**
    * Three-state progress mirroring the provider's own task status. `completed`
    * is kept as a derived convenience (`status === "completed"`); `in_progress`
-   * is what lets the UI highlight the task the agent is actively working on —
+   * is what lets the UI highlight the task the agent is actively working on -
    * the signal that makes the list read as live progress. Providers that only
    * report done/not-done (the wire `todo` timeline item) collapse to
    * pending/completed.
@@ -754,7 +754,7 @@ function appendActivityLog(state: StreamItem[], entry: ActivityLogItem): StreamI
 }
 
 // Items that a provider interleaves between successive todo writes within a
-// single working phase — the agent re-emits its whole task list each turn, so
+// single working phase - the agent re-emits its whole task list each turn, so
 // these never mark a new logical plan. Scanning past them lets one card evolve
 // (checking itself off in place) instead of spawning a near-duplicate snapshot
 // on every update. An assistant/user message, compaction, or error DOES break
@@ -819,8 +819,8 @@ function appendTodoList(
   return [...state, entry];
 }
 
-// The running checklist spans the whole assistant turn — narration and other
-// tool calls sit between task ops — so we accumulate across everything back to
+// The running checklist spans the whole assistant turn - narration and other
+// tool calls sit between task ops - so we accumulate across everything back to
 // the last user message, which marks where a new checklist would begin. (This
 // is looser than findMergeableTodoIndex, which the full-snapshot tools use to
 // stay within one contiguous tool run.)
@@ -842,7 +842,7 @@ function findActiveChecklistIndex(state: StreamItem[], provider: AgentProvider):
 
 function applyChecklistOp(items: TodoEntry[], op: TaskListOperation): TodoEntry[] {
   if (op.kind === "sync") {
-    // TaskList is authoritative — rebuild the set from the snapshot.
+    // TaskList is authoritative - rebuild the set from the snapshot.
     return op.tasks.map((task) => ({
       id: task.id,
       text: task.text,

@@ -12,14 +12,14 @@ export const WORKSPACE_SECONDARY_HEADER_HEIGHT = 36;
 export const HEADER_TOP_PADDING_MOBILE = 8;
 // A pane's vertical tab rail (left edge) sizes itself to its widest current
 // tab label, clamped between this floor and WORKSPACE_TABS_RAIL_MAX_WIDTH (see
-// computeWorkspaceTabRailWidth in workspace-tab-layout.ts) — every tab in the
+// computeWorkspaceTabRailWidth in workspace-tab-layout.ts) - every tab in the
 // rail shares that one computed width. Dragging the rail's splitter replaces
 // that content-driven width outright with a saved one (AppSettings
 // `verticalTabRailWidth`, one width for every rail on the device), clamped to
-// the same two bounds — see workspace-desktop-tabs-rail.tsx.
+// the same two bounds - see workspace-desktop-tabs-rail.tsx.
 export const WORKSPACE_TABS_RAIL_MIN_WIDTH = 180;
 // The rail trades horizontal room for label space (labels are all it shows), so
-// its ceiling is deliberately wider than a horizontal tab's TAB_MAX_WIDTH —
+// its ceiling is deliberately wider than a horizontal tab's TAB_MAX_WIDTH -
 // 2.25x it. Re-exported as RAIL_TAB_MAX_WIDTH from workspace-tab-layout.ts,
 // where the rest of the tab metrics live; it is defined here because the
 // settings layer (use-settings/storage.ts) clamps the saved user width to it
@@ -28,14 +28,14 @@ export const WORKSPACE_TABS_RAIL_MAX_WIDTH = 450;
 
 // Max width for chat content (stream view, input area, new agent form)
 export const MAX_CONTENT_WIDTH = 820;
-// "Wide" chat width option — a wider fixed cap than default, but still a cap:
+// "Wide" chat width option - a wider fixed cap than default, but still a cap:
 // on an ultra-wide monitor it stops growing here instead of tracking the
 // window. Only "full" (see resolveChatMaxWidth) is meant to track the window.
 export const WIDE_CONTENT_WIDTH = 1200;
 export const COMPACT_FORM_FACTOR_WIDTH = 500;
 
 // Stacking order for absolutely-positioned overlays that share the chat
-// content container (siblings of the stream, inside the pane — not the web
+// content container (siblings of the stream, inside the pane - not the web
 // portal root, which has its own scale in lib/overlay-root.ts). Anything that
 // floats over the conversation claims a slot here rather than picking a bare
 // number, so the ordering is stated in one place instead of inferred from
@@ -46,7 +46,7 @@ export const CHAT_PANE_OVERLAY_Z = {
   // One slot, not one per card. The suggested-task card and the pinned task
   // checklist both want the top of the chat, and when each owned its own
   // absolute wrap at `top: 0` the winner of the z-fight covered the loser
-  // outright — the higher number did not order them, it hid one. They now share
+  // outright - the higher number did not order them, it hid one. They now share
   // a single absolutely-positioned column (panels/chat-top-overlay-stack.tsx)
   // that lays them out one under the other, so "which is on top" is a matter of
   // order in the column: the offer the user must answer comes before the
@@ -57,7 +57,7 @@ export const CHAT_PANE_OVERLAY_Z = {
 export type ChatWidth = "default" | "wide" | "full";
 
 // "full" returns undefined (no maxWidth at all) rather than a very large
-// number — the chat surface already renders at `width: "100%"`, so removing
+// number - the chat surface already renders at `width: "100%"`, so removing
 // the cap entirely is what actually fills the window, with no ambiguity.
 export function resolveChatMaxWidth(chatWidth: ChatWidth): number | undefined {
   switch (chatWidth) {
@@ -81,7 +81,7 @@ export const SETTINGS_DESKTOP_SPLIT_MIN_WIDTH =
 export const DESKTOP_TRAFFIC_LIGHT_WIDTH = 78;
 export const DESKTOP_TRAFFIC_LIGHT_HEIGHT = 45;
 
-// Windows/Linux window controls (minimize/maximize/close) — top-right
+// Windows/Linux window controls (minimize/maximize/close) - top-right
 export const DESKTOP_WINDOW_CONTROLS_WIDTH = 140;
 export const DESKTOP_WINDOW_CONTROLS_HEIGHT = 48;
 
@@ -91,7 +91,7 @@ export {
 } from "./platform";
 
 /**
- * Reactive hook — re-renders the component when the breakpoint changes.
+ * Reactive hook - re-renders the component when the breakpoint changes.
  * Always use this instead of reading UnistylesRuntime.breakpoint directly.
  */
 export function useIsCompactFormFactor(): boolean {
@@ -100,7 +100,7 @@ export function useIsCompactFormFactor(): boolean {
 }
 
 /**
- * True only at the narrowest breakpoint (`xs`, below `sm` ≈ <576px) — the point
+ * True only at the narrowest breakpoint (`xs`, below `sm` ≈ <576px) - the point
  * at which settings rows stack their controls below the label. Narrower than
  * {@link useIsCompactFormFactor}, which also includes `sm`. Reactive.
  */

@@ -52,7 +52,7 @@ interface MarkdownParagraphViewProps {
 
 const MARKDOWN_PARAGRAPH_RESET: ViewStyle = {};
 
-// Same shape as Android — paragraph is a View so block-level children (images)
+// Same shape as Android - paragraph is a View so block-level children (images)
 // keep their natural layout. Web text selection already spans nested inline
 // elements via CSS user-select, so no UITextView equivalent is needed.
 export function MarkdownParagraphView({ paragraphStyle, children }: MarkdownParagraphViewProps) {

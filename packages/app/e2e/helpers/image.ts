@@ -10,7 +10,7 @@ export interface ImageSize {
  * Normalizes a captured PNG to an exact target resolution. Real OS window
  * captures (Electron's desktopCapturer, or a CDP page.screenshot() of a
  * native Electron window) reflect the capturing machine's actual display
- * scale factor — a window whose content area was set to WxH can come back
+ * scale factor - a window whose content area was set to WxH can come back
  * 2x, 1.5x, or whatever that machine's DPI setting is, not the logical size
  * (unlike a Playwright-driven browser context, which always renders at
  * exactly its configured viewport regardless of the host's display scaling).

@@ -19,7 +19,7 @@ function item(id: string, overrides: Partial<AutoSpeechItem> = {}): AutoSpeechIt
 }
 
 /**
- * A speaker whose utterances only finish when the test says so — the queue's
+ * A speaker whose utterances only finish when the test says so - the queue's
  * whole contract is what happens *during* an utterance.
  *
  * `stop()` deliberately does NOT settle the in-flight promise. A real speaker
@@ -142,7 +142,7 @@ describe("auto-speech queue", () => {
     autoSpeechQueue.enqueue(item("a", { serverId: "host-2" }));
     await harness.settle();
 
-    // Identical text from a different host is a different message — but there
+    // Identical text from a different host is a different message - but there
     // is still only one speaker on the device, so it waits its turn.
     expect(harness.spoken).toEqual(["a"]);
     expect(autoSpeechQueue.getPendingCount()).toBe(1);
@@ -345,7 +345,7 @@ describe("auto-speech queue", () => {
 
     expect(harness1.spoken).toEqual(["a"]);
 
-    // Turn off agent-1 only — agent-2's items should still play.
+    // Turn off agent-1 only - agent-2's items should still play.
     autoSpeechQueue.setAgentEnabled(SERVER, AGENT, false);
     expect(harness1.stop).toHaveBeenCalledTimes(1);
     await harness1.settle();
@@ -369,7 +369,7 @@ describe("auto-speech queue", () => {
     expect(harness.spoken).toEqual(["a"]);
 
     // Turning the chat off DELETES its key rather than storing false, so the
-    // reconcile has to read an absent key as off — a per-key loop never would.
+    // reconcile has to read an absent key as off - a per-key loop never would.
     autoSpeechQueue.syncEnabledAgents({});
     autoSpeechQueue.enqueue(item("b"));
     await harness.settle();

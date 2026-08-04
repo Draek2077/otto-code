@@ -2,7 +2,7 @@ import { StyleSheet } from "react-native-unistyles";
 
 // Per-token color styles for syntax-highlighted code. Each value reads a
 // theme path so the Unistyles Babel plugin tracks the dependency and updates
-// native style values on theme changes — no React re-render of consumers.
+// native style values on theme changes - no React re-render of consumers.
 // Used by message code blocks (hot path), file preview, and the diff viewer.
 export const syntaxTokenStyles = StyleSheet.create((theme) => ({
   base: { color: theme.colors.foreground },

@@ -2,7 +2,7 @@ import type { HighlightToken } from "@otto-code/highlight";
 
 // Find-in-file for the read-only preview. The preview renders plain data (a
 // token stream per line, or rendered markdown), so search runs here as a pure
-// text scan over the file contents — no CodeMirror involved. Matching mirrors
+// text scan over the file contents - no CodeMirror involved. Matching mirrors
 // the editor's semantics (case toggle, whole word, regexp) so the same query
 // finds the same things in both views.
 

@@ -7,8 +7,8 @@ import { DotnetProbe, ProbeUnavailableError } from "./probe.js";
 /**
  * Live sidecars, keyed by (workspace × solution).
  *
- * The lifecycle deliberately mirrors `lsp/pool.ts` — lazy spawn, idle reap, a hard cap, capped
- * backoff after a crash — because the cost profile is the same: a process holding an MSBuild
+ * The lifecycle deliberately mirrors `lsp/pool.ts` - lazy spawn, idle reap, a hard cap, capped
+ * backoff after a crash - because the cost profile is the same: a process holding an MSBuild
  * project model, on the same machine as the agents. What it does **not** mirror is that
  * subsystem's defect, where the reaping methods existed with no production caller and idle
  * servers therefore never exited. `SolutionService.reapIdle` is called on an interval by the
@@ -52,7 +52,7 @@ export interface DotnetProbePoolOptions {
 
 export interface ProbeKey {
   /**
-   * Workspace root — what `stopWorkspace` matches on. Deliberately not derived from the
+   * Workspace root - what `stopWorkspace` matches on. Deliberately not derived from the
    * solution's directory: a solution can live in a subdirectory, and a closed workspace must not
    * be left holding a live process because the two paths did not compare equal.
    */
@@ -192,7 +192,7 @@ export class DotnetProbePool {
 
     const bootstrap = await resolveDotnetRuntime();
     if (bootstrap.status === "unavailable") {
-      // Absence is a fact about this machine, not a failure to back off from — there is nothing
+      // Absence is a fact about this machine, not a failure to back off from - there is nothing
       // to retry, and a backoff entry would only delay the same answer.
       this.entries.delete(mapKey);
       throw new ProbeUnavailableError(bootstrap.reason);

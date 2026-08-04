@@ -10,8 +10,8 @@ The Otto daemon can run anywhere you want to execute agents: your laptop, a Mac 
 
 Clients connect to the daemon over WebSocket. There are two ways to establish this connection:
 
-- **Relay connection** — The daemon connects outbound to our relay server, and clients meet it there. No open ports required.
-- **Direct connection** — The daemon listens on a network address and clients connect directly.
+- **Relay connection** - The daemon connects outbound to our relay server, and clients meet it there. No open ports required.
+- **Direct connection** - The daemon listens on a network address and clients connect directly.
 
 ## Relay threat model
 
@@ -32,19 +32,19 @@ The relay sees only: IP addresses, timing, message sizes, session IDs, and the p
 
 The daemon requires a valid cryptographic handshake before processing any commands. A compromised relay cannot:
 
-- **Impersonate the daemon to your phone** — Without the daemon's secret key, it cannot derive the shared key, so any traffic it injects fails authenticated decryption on the phone
-- **Send commands as you** — The daemon only accepts traffic that decrypts and authenticates under a shared key derived with its own secret key. The phone's keypair is ephemeral per connection, so there is no persistent phone-side secret to steal; protection comes from the daemon's secret key never leaving the daemon.
-- **Read your traffic** — All messages are encrypted with XSalsa20-Poly1305 (NaCl box) after the handshake
-- **Forge messages** — NaCl box provides authenticated encryption; tampered messages are rejected
-- **Replay old messages across sessions** — Each session derives fresh encryption keys, so ciphertext from one session cannot be replayed into another session. Within a live session, replay protection is not yet implemented; the protocol uses random nonces and does not track nonce reuse or message counters.
+- **Impersonate the daemon to your phone** - Without the daemon's secret key, it cannot derive the shared key, so any traffic it injects fails authenticated decryption on the phone
+- **Send commands as you** - The daemon only accepts traffic that decrypts and authenticates under a shared key derived with its own secret key. The phone's keypair is ephemeral per connection, so there is no persistent phone-side secret to steal; protection comes from the daemon's secret key never leaving the daemon.
+- **Read your traffic** - All messages are encrypted with XSalsa20-Poly1305 (NaCl box) after the handshake
+- **Forge messages** - NaCl box provides authenticated encryption; tampered messages are rejected
+- **Replay old messages across sessions** - Each session derives fresh encryption keys, so ciphertext from one session cannot be replayed into another session. Within a live session, replay protection is not yet implemented; the protocol uses random nonces and does not track nonce reuse or message counters.
 
 ### Trust model
 
-The QR code or pairing link is the trust anchor. It contains the daemon's public key, which is required to establish the encrypted connection. Treat it like a password — don't share it publicly.
+The QR code or pairing link is the trust anchor. It contains the daemon's public key, which is required to establish the encrypted connection. Treat it like a password - don't share it publicly.
 
 ## Local daemon trust boundary
 
-By default, the daemon binds to `127.0.0.1`. With no password configured, the local control plane is trusted by network reachability — anything that can reach the daemon socket can control the daemon. This is the same security model Docker documents for its daemon: the security boundary is access to the socket or listening address.
+By default, the daemon binds to `127.0.0.1`. With no password configured, the local control plane is trusted by network reachability - anything that can reach the daemon socket can control the daemon. This is the same security model Docker documents for its daemon: the security boundary is access to the socket or listening address.
 
 The daemon also supports an optional shared-secret password (set via `auth.password` in `config.json` or the `OTTO_PASSWORD` env var; stored bcrypt-hashed). When configured, every HTTP request must carry `Authorization: Bearer <password>` and every WebSocket upgrade must include a `Sec-WebSocket-Protocol: otto.bearer.<password>` subprotocol. Browser WebSocket cannot set custom headers, which is why the token rides in the subprotocol. Health (`GET /api/health`) and CORS preflight (`OPTIONS`) are exempt. The password is intended for direct-TCP exposure (e.g. `tcp://host:port?ssl=true&password=...`); it is **not** a substitute for the relay's E2E encryption when traversing untrusted networks.
 

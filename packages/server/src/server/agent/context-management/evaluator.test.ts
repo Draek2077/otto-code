@@ -128,7 +128,7 @@ describe("evaluateContext", () => {
 
   it("escalates the aggregate when one category is worse than the total share", () => {
     // Aggregate share is 30% (warn), but skills alone are 50% of nothing useful
-    // — the worst category must not be hidden by a healthier average.
+    // - the worst category must not be hidden by a healthier average.
     const report = evaluate(
       [node("CLAUDE.md", 5_000), node("skills", 25_000, "fixed", "skills_roster")],
       50_000,
@@ -142,8 +142,8 @@ describe("evaluateContext", () => {
 });
 
 /**
- * Zero tokens means two different things — "there is none" and "we cannot see
- * it" — and only one of them should reach the user as a row.
+ * Zero tokens means two different things - "there is none" and "we cannot see
+ * it" - and only one of them should reach the user as a row.
  */
 describe("evaluateContext category visibility", () => {
   function evaluateWithVisibility(

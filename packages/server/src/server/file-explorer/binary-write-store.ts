@@ -17,10 +17,10 @@ import { writeExplorerBinaryFile } from "./service.js";
  * That is why nothing here opens a file itself. **The whole payload is buffered
  * in memory and handed to `writeExplorerBinaryFile` in one call at FileEnd.**
  * Streaming to disk would be cheaper, but every guarantee that function carries
- * — resolving through `resolveMutationPath` so a symlinked parent cannot walk
+ * - resolving through `resolveMutationPath` so a symlinked parent cannot walk
  * the bytes out of the workspace, creating parent directories one re-checked
  * segment at a time, and the exclusive `open(…, "wx")` that makes "does not
- * exist" and "create it" a single operation — lives at its open, and a
+ * exist" and "create it" a single operation - lives at its open, and a
  * streaming writer would have to reimplement all of it at a second open. One
  * buffered file is the cheaper thing to be right about; these are printed PDFs
  * and pasted images, not archives, and `maxBinaryWriteBytes` caps what a
@@ -45,9 +45,9 @@ export interface BinaryWriteBegin {
   /**
    * The caller's workspace-boundary check, already in flight.
    *
-   * Registration has to be synchronous — the frames are behind this request in
+   * Registration has to be synchronous - the frames are behind this request in
    * the socket and a transfer the store does not know about yet is a transfer
-   * that gets routed to the upload store and lost — so the check cannot be
+   * that gets routed to the upload store and lost - so the check cannot be
    * awaited before `begin`. It is awaited here instead, before a single byte
    * reaches `writeExplorerBinaryFile`, and a rejection drops the buffer the
    * moment it settles rather than at FileEnd.
@@ -234,7 +234,7 @@ export class WorkspaceBinaryWriteStore {
 
   /**
    * Mark a transfer doomed and release what it has buffered. The record stays
-   * so the frames still in flight keep being routed here — and discarded —
+   * so the frames still in flight keep being routed here - and discarded -
    * rather than falling through to the upload store, and so FileEnd still has
    * a reason to report.
    */

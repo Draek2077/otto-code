@@ -32,10 +32,10 @@ import { mergeLastPersonality } from "@/create-agent-preferences/preferences";
 export type { SelectorPersonality, SelectorPersonalityGroupSection };
 
 /**
- * A provider that is broken right now — absent from the snapshot, disabled, or
+ * A provider that is broken right now - absent from the snapshot, disabled, or
  * in an error/unavailable state (auth failed, binary missing, unreachable).
  * Personalities bound to a broken provider are HIDDEN from pickers entirely
- * (not just grayed) — the provider itself is hidden too, so showing its
+ * (not just grayed) - the provider itself is hidden too, so showing its
  * personalities would dead-end. A provider still loading is NOT broken; its
  * personalities stay visible (grayed "not ready") instead of flashing away.
  */
@@ -49,7 +49,7 @@ function isBrokenProviderEntry(entry: ProviderSnapshotEntry | undefined): boolea
 /**
  * The picker surface's current provider/model/effort (and, for attended
  * surfaces, mode). Used only to decide whether a remembered personality still
- * matches what the form landed on — memory re-selects a personality without ever
+ * matches what the form landed on - memory re-selects a personality without ever
  * re-applying its values, so it must never claim a personality that the form has
  * since drifted away from. Omit `modeId` on unattended surfaces (artifacts,
  * schedules) so mode is excluded from the match.
@@ -63,7 +63,7 @@ export interface PersonalityCurrentSelection {
 
 export interface UsePersonalitySelectionInput {
   serverId: string | null;
-  /** Which surface this picker is — only personalities tagged with this role show. */
+  /** Which surface this picker is - only personalities tagged with this role show. */
   role: PersonalityRole;
   entries: readonly ProviderSnapshotEntry[];
   /**
@@ -79,7 +79,7 @@ export interface UsePersonalitySelectionInput {
   currentSelection?: PersonalityCurrentSelection;
   /**
    * A personality id that stays selectable even when the active team's strict
-   * member filter would hide it — the schedule form's already-bound off-team
+   * member filter would hide it - the schedule form's already-bound off-team
    * personality (it was valid when authored; the form must not break). Never
    * pass a speculative id here.
    */
@@ -97,7 +97,7 @@ export interface UsePersonalitySelectionInput {
    * mount, and treated as an explicit pick: it suppresses the remembered
    * preselect and survives `preselectRemembered` flipping to false, because
    * inheriting from a specific agent is a stronger signal than either device
-   * memory or the active team's default. Values are NOT re-applied — the fork's
+   * memory or the active team's default. Values are NOT re-applied - the fork's
    * provider/model already arrive through the form's initialValues, and
    * deviation keeps identity.
    */
@@ -108,13 +108,13 @@ export interface UsePersonalitySelectionInput {
  * Where the device-local remembered-personality preselect stands, computed
  * synchronously from the same inputs its effect reads.
  *
- * - `pending` — preferences or the form's provider haven't loaded; undecided.
- * - `applies` — a remembered personality is available and matches; it will win.
- * - `none` — nothing remembered, or it no longer matches.
+ * - `pending` - preferences or the form's provider haven't loaded; undecided.
+ * - `applies` - a remembered personality is available and matches; it will win.
+ * - `none` - nothing remembered, or it no longer matches.
  *
  * Internal: no surface arbitrates against this state any more. A surface that
  * owns the default suppresses the preselect outright via `preselectRemembered`
- * rather than racing it — see the team rule in `useFormRolePersonality`.
+ * rather than racing it - see the team rule in `useFormRolePersonality`.
  */
 type RememberedPreselectState = "pending" | "applies" | "none";
 
@@ -122,7 +122,7 @@ export interface UsePersonalitySelectionResult {
   personalities: SelectorPersonality[];
   /**
    * The full roster organized for browsing: active team first (roles →
-   * members), then the remaining personalities by role — or a single
+   * members), then the remaining personalities by role - or a single
    * "All personalities" section when no team is active. Every entry here is
    * selectable through selectPersonality, regardless of the surface role.
    */
@@ -130,7 +130,7 @@ export interface UsePersonalitySelectionResult {
   selectedPersonalityId: string | null;
   /**
    * Apply a personality. `persist: false` marks the pick as machine-made (a
-   * surface's tier-2 default resolving) so it does NOT overwrite device memory —
+   * surface's tier-2 default resolving) so it does NOT overwrite device memory -
    * `lastPersonalityByRole` must keep meaning "what the user chose", or an
    * auto-pick of "first available" would freeze itself in place the moment the
    * roster order changes.
@@ -138,13 +138,13 @@ export interface UsePersonalitySelectionResult {
   selectPersonality: (id: string, options?: { persist?: boolean }) => void;
   clearPersonality: () => void;
   /**
-   * Device-local last-used personality for this role — tier 2's memory, read by
+   * Device-local last-used personality for this role - tier 2's memory, read by
    * surfaces that impose their own default (see `useFormRolePersonality`). Null
    * when nothing is remembered; the id is returned as stored, so callers must
    * still check it against their own role/availability filter.
    */
   rememberedPersonalityId: string | null;
-  /** Preferences are still loading — a default must wait rather than pick blind. */
+  /** Preferences are still loading - a default must wait rather than pick blind. */
   isPreferencesLoading: boolean;
 }
 
@@ -161,7 +161,7 @@ function selectionMatches(
   if ((current.thinkingOptionId ?? "") !== (values.thinkingOptionId ?? "")) {
     return false;
   }
-  // Unattended surfaces omit modeId — mode is not part of their identity.
+  // Unattended surfaces omit modeId - mode is not part of their identity.
   if (current.modeId !== undefined && current.modeId !== values.modeId) {
     return false;
   }
@@ -172,7 +172,7 @@ function selectionMatches(
  * Bridges the host's personality roster into a model picker: filters by role,
  * computes availability against the live provider snapshot, and on select
  * resolves + applies the personality's provider/model/mode/effort to the form.
- * The selected id is the personality identity — it survives manual field edits
+ * The selected id is the personality identity - it survives manual field edits
  * (deviation keeps identity) and only clears on an explicit clear or a switch to
  * another personality.
  *
@@ -193,7 +193,7 @@ export function usePersonalitySelection(
   const [selectedPersonalityId, setSelectedPersonalityId] = useState<string | null>(
     initialSelectedPersonalityId,
   );
-  // Set once the user explicitly picks or clears — freezes auto-preselection so
+  // Set once the user explicitly picks or clears - freezes auto-preselection so
   // clearing can't immediately re-select the still-matching personality. An
   // inherited seed counts as explicit for the same reason (see
   // `initialSelectedPersonalityId`).
@@ -201,12 +201,12 @@ export function usePersonalitySelection(
 
   // Un-latch. `preselectRemembered` used to gate only NEW preselects, so a
   // single render where it was still true (its inputs load from different
-  // sources — the daemon config via react-query, the teams feature flag via the
-  // session store — so a warm cache can produce one) latched the remembered
+  // sources - the daemon config via react-query, the teams feature flag via the
+  // session store - so a warm cache can produce one) latched the remembered
   // personality forever: flipping the flag false afterwards left the id set,
   // and every surface default then bailed out because a selection already
   // existed. Computed during render rather than dropped in an effect, so the
-  // suppression is visible in the SAME render the flag flips — an effect leaves
+  // suppression is visible in the SAME render the flag flips - an effect leaves
   // one render where the stale id is still returned, and a surface default
   // reading it there settles on "already picked" and never retries.
   // interactedRef covers explicit picks AND an inherited seed; those are the
@@ -214,7 +214,7 @@ export function usePersonalitySelection(
   const latchedPersonalityId =
     !preselectRemembered && !interactedRef.current ? null : selectedPersonalityId;
 
-  // Depend on the roster slice, not the whole config — unrelated daemon-config
+  // Depend on the roster slice, not the whole config - unrelated daemon-config
   // changes must not rebuild the roster → resolutions → personalities chain.
   const rosterSource = config?.agentPersonalities?.personalities;
   const fullRoster = useMemo(() => rosterSource ?? [], [rosterSource]);
@@ -243,14 +243,14 @@ export function usePersonalitySelection(
     [fullRoster, role, activeTeam, alwaysIncludePersonalityId],
   );
 
-  // Resolutions cover the FULL roster (not just the surface role) — the
+  // Resolutions cover the FULL roster (not just the surface role) - the
   // grouped browse section makes every personality selectable here.
   const resolutions = useMemo(
     () => new Map(fullRoster.map((p) => [p.id, resolvePersonalityForForm(p, entries)] as const)),
     [fullRoster, entries],
   );
 
-  // Providers that are broken right now — their personalities are hidden from
+  // Providers that are broken right now - their personalities are hidden from
   // the picker (the provider itself is hidden too). Exceptions below keep the
   // CURRENT selection (and a schedule's already-stored binding) rendering with
   // an unavailable marker instead of vanishing out from under the trigger.
@@ -309,7 +309,7 @@ export function usePersonalitySelection(
     [roster, isHiddenPersonality, buildSelectorPersonality],
   );
 
-  // The grouped browse structure: with a team active, ONE group — the active
+  // The grouped browse structure: with a team active, ONE group - the active
   // team's members by role (strict active-team scoping, same as the up-front
   // section); with no team, one "All personalities" group over the full
   // roster. A multi-role personality appears under each role it carries;
@@ -445,7 +445,7 @@ export function usePersonalitySelection(
   }, [rememberedPreselect, rememberedId, selectedPersonalityId]);
 
   // A selection whose personality has since left the roster (deleted remotely)
-  // reads as no selection — the draft must not spawn with a stale id the
+  // reads as no selection - the draft must not spawn with a stale id the
   // daemon would soft-skip (spinner shown, prompt silently absent). Checked
   // against the FULL roster: any personality is selectable via the grouped
   // browse section, so a role change alone must not drop the selection.

@@ -17,7 +17,7 @@ import { FONT_SIZE, SPACING } from "@/styles/theme";
 export type ResourceLabelMode = "full" | "short";
 
 export interface ResourceFieldDef {
-  /** Stable id — the component maps this to a formatted metric value. */
+  /** Stable id - the component maps this to a formatted metric value. */
   id: string;
   label: string;
   /** Acronym used once the strip has to economize. */
@@ -25,7 +25,7 @@ export interface ResourceFieldDef {
   /**
    * Nominal rendered length of the VALUE, in characters, for width estimation.
    * Defaults to `NOMINAL_VALUE_CHARS`. Override only where a field is known to
-   * run long ("sessions.length +1.2k/h") — using the live value here instead
+   * run long ("sessions.length +1.2k/h") - using the live value here instead
    * would make the tier flap every time a number crossed a digit boundary.
    */
   valueChars?: number;
@@ -62,7 +62,7 @@ const FIELDS = {
   growth: { id: "growth", label: "fastest growth", short: "growth", valueChars: 20 },
 } as const satisfies Record<string, ResourceFieldDef>;
 
-// Left-to-right IS the diagnosis order — how smooth is it, how much is retained,
+// Left-to-right IS the diagnosis order - how smooth is it, how much is retained,
 // how loud is the daemon connection, and finally what is growing fastest. Groups
 // are dropped from this list, never reordered.
 export const RESOURCE_GROUPS: ResourceGroupDef[] = [
@@ -126,7 +126,7 @@ export const COMPACT_RESOURCE_GROUP: ResourceGroupDef = {
 // dropped, so it is absent from this list.
 const DROP_ORDER: readonly string[] = ["timers", "cache", "chat", "traffic", "session", "memory"];
 
-// Width estimation. Approximate on purpose — measuring text in React Native means
+// Width estimation. Approximate on purpose - measuring text in React Native means
 // a second layout pass, and the cost of being wrong here is a strip that scrolls
 // (which it already did). Character widths are ratios of the BASE font sizes;
 // `applyAppearance` can scale the live theme up, which makes the estimate
@@ -170,7 +170,7 @@ export interface ResourceBarLayout {
 /**
  * What the strip shows at this width. `availableWidth` is the bar's measured
  * inner width (already net of its horizontal padding); pass 0 before the first
- * layout, which yields the full strip — the same thing the bar rendered before
+ * layout, which yields the full strip - the same thing the bar rendered before
  * it measured anything, so the first frame never flashes a degraded version.
  */
 export function resolveResourceBarLayout(input: {

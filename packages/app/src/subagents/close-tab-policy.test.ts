@@ -16,7 +16,7 @@ describe("resolveCloseAgentTabPolicy", () => {
 
   it("keeps native subagent tab close layout-only regardless of running state", () => {
     // A native create_agent subagent: closing its tab must never stop or
-    // archive it — Item 5 of the subagents-cleanup charter.
+    // archive it - Item 5 of the subagents-cleanup charter.
     expect(resolveCloseAgentTabPolicy({ parentAgentId: "parent-agent" })).toEqual({
       kind: "layout-only",
     });

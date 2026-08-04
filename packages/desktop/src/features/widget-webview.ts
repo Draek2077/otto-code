@@ -16,7 +16,7 @@ export const WIDGET_WEBVIEW_PARTITION = "otto-widget-preview";
  *
  * They differ from artifact guests in exactly one capability: a preload. A
  * widget's height is content-driven, and the only way a host can size a frame
- * to content it cannot measure is for the guest to report it — which needs a
+ * to content it cannot measure is for the guest to report it - which needs a
  * channel. `sendPrompt`/`openLink` ride the same one. Everything else is locked
  * down identically: no node, no navigation, no window opening, no permissions.
  */
@@ -30,14 +30,14 @@ export function isWidgetWebviewAttach(input: { src?: string; partition?: string 
  * The `..` is load-bearing. This module compiles to `dist/features/`, one level
  * BELOW the bundle root where `src/widget-preload.ts` is emitted as
  * `dist/widget-preload.js`. Joining against `__dirname` alone points at a file
- * that does not exist — and Electron ignores a missing preload SILENTLY: the
+ * that does not exist - and Electron ignores a missing preload SILENTLY: the
  * guest still loads, still runs its own scripts, still renders. The only
  * symptom is a widget frozen at the host's initial height forever, because
  * `__ottoWidgetHost` is undefined and its measured height has nowhere to go.
  *
  * The path is computed here and never taken from the renderer. A renderer-
  * supplied `preload`/`preloadURL` is deleted by the caller before this runs, so
- * a compromised renderer cannot point a guest at arbitrary code — the main
+ * a compromised renderer cannot point a guest at arbitrary code - the main
  * process decides what, if anything, gets injected.
  */
 export function getWidgetPreloadPath(): string {
@@ -64,14 +64,14 @@ export function hardenWidgetWebviewPreferences(webPreferences: WebPreferences): 
   if (!hasWarnedAboutMissingPreload && !existsSync(preloadPath)) {
     hasWarnedAboutMissingPreload = true;
     log.error(
-      `[widget] preload missing at ${preloadPath} — widgets cannot report their height and will stay at the host's initial size`,
+      `[widget] preload missing at ${preloadPath} - widgets cannot report their height and will stay at the host's initial size`,
     );
   }
   webPreferences.preload = preloadPath;
 }
 
 /** Deny every permission request (camera, mic, geolocation, clipboard, USB, …)
- * on the widget partition. Idempotent — safe to call on every attach. */
+ * on the widget partition. Idempotent - safe to call on every attach. */
 export function registerWidgetWebviewSessionGuards(): void {
   const widgetSession = session.fromPartition(WIDGET_WEBVIEW_PARTITION);
   widgetSession.setPermissionRequestHandler((_webContents, _permission, callback) => {

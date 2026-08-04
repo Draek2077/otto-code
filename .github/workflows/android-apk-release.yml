@@ -5,7 +5,7 @@ name: Android APK Release
 #
 # It used to shell out to `eas build --profile production-apk`. EAS's free tier
 # allows 15 Android builds a month shared across every Android workflow, and the
-# budget was exhausted on 2026-07-12 — 0.5.2 through 0.7.1 shipped with no
+# budget was exhausted on 2026-07-12 - 0.5.2 through 0.7.1 shipped with no
 # Android artifact at all, and a quota-refused run still burns a versionCode.
 # Building here is unlimited and removes the need to ration releases.
 #
@@ -14,7 +14,7 @@ name: Android APK Release
 # different signatures.
 #
 # Requires four repo secrets (the same keystore EAS uses, so this APK installs
-# as a drop-in update over an EAS-built Otto — a different key would force
+# as a drop-in update over an EAS-built Otto - a different key would force
 # users to uninstall first):
 #   - ANDROID_KEYSTORE_BASE64      base64 of the .jks from `eas credentials`
 #   - ANDROID_KEYSTORE_PASSWORD    keystore password
@@ -172,37 +172,26 @@ jobs:
         run: npx expo prebuild --platform android --clean --non-interactive
         working-directory: packages/app
 
-      # `--clean` regenerates android/ from scratch every run, so anything set
-      # here has to be written after prebuild, not committed. Expo's default is
-      # -Xmx2048m, which leaves R8 and the Kotlin daemon fighting over one small
-      # heap on a build this size. The daemon is disabled outright: it survives
-      # the task that starts it, and a second JVM sitting on the runner is
-      # exactly the memory this build cannot spare.
-      - name: Give Gradle room for the release build
+      # The generated gradle.properties is deliberately left ALONE. Two attempts
+      # to raise org.gradle.jvmargs here cost two builds: the file ends without
+      # a trailing newline, so appending welded the new key onto the last
+      # existing one and Gradle read the Kotlin version as
+      # `2.1.20org.gradle.jvmargs=-Xmx5g...`, and the guard added to catch that
+      # then asserted a `kotlinVersion=` line this file does not actually carry.
+      #
+      # Beyond being fragile, it was aimed at the wrong thing. The peak that
+      # kills this build is native ABI compilation and the Hermes pass, which
+      # are separate processes: a bigger JVM heap takes memory AWAY from them.
+      # Headroom belongs on the runner (see "Make room for the native build"),
+      # not in the JVM. Print the file so a future failure has the evidence
+      # neither of those attempts had.
+      - name: Show the generated Gradle configuration
         shell: bash
         working-directory: packages/app/android
-        run: |
-          set -euo pipefail
-          # The generated file ends WITHOUT a trailing newline, so appending
-          # straight onto it welds the first key to the last existing one and
-          # Gradle reads `kotlinVersion=2.1.20org.gradle.jvmargs=-Xmx5g...` as
-          # the Kotlin version. Open with a newline; a blank line costs nothing.
-          {
-            printf '\n'
-            echo "org.gradle.jvmargs=-Xmx5g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
-            echo "kotlin.compiler.execution.strategy=in-process"
-            echo "kotlin.daemon.jvmargs=-Xmx2g"
-          } >> gradle.properties
-
-          # Prove the keys stand alone before handing the file to Gradle: this
-          # exact welding shipped once and only surfaced two minutes into the
-          # build, as an unsupported-Kotlin-version error naming neither file.
-          grep -qE "^kotlinVersion=[0-9.]+$" gradle.properties
-          grep -qE "^org\.gradle\.jvmargs=-Xmx5g" gradle.properties
-          tail -6 gradle.properties
+        run: cat gradle.properties
 
       # `-Pandroid.injected.version.code` is a NO-OP for assembleRelease under
-      # AGP 8 — it silently yields versionCode 1, which Android refuses to
+      # AGP 8 - it silently yields versionCode 1, which Android refuses to
       # install over an existing Otto. Write it into the generated build.gradle
       # instead. The file is gitignored (prebuild regenerates it), so nothing
       # tracked changes here.

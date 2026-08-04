@@ -1,5 +1,5 @@
 /**
- * `otto brain config show|set` — inspect and edit the persisted config at
+ * `otto brain config show|set` - inspect and edit the persisted config at
  * $OTTO_HOME/otto-brain/config.json. Opt-in flags (`enabled`, `autoStart`) live
  * here; the Otto daemon reads them to decide whether to manage the brain.
  */

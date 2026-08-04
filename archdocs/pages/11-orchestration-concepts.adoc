@@ -1,4 +1,4 @@
-= Orchestration — Concepts & Domain Model
+= Orchestration - Concepts & Domain Model
 :description: The vocabulary, actors and lifecycles of the orchestration system, and the test for when an orchestration is worth its cost.
 
 == The nouns
@@ -13,7 +13,7 @@ different words for the same thing, and `docs/glossary.md` binds the UI labels.
 |*Orchestration*
 |`run`
 |One execution instance. The Orchestrations page lists these. No user-facing surface ever
-says "Run" — the short name is frozen in the protocol for length, not for display.
+says "Run" - the short name is frozen in the protocol for length, not for display.
 
 |*Graph*
 |`OrchestrationGraph`
@@ -29,7 +29,7 @@ executed by the daemon itself and never spawn anything.
 |`fromPort`/`toPort`
 |A named connection point on a node. Multi-port is what makes branching legible: a gate
 has `approved`/`rejected`, a check has `pass`/`fail`. _Reserved in the schema, unused by the
-engine — lands with the gate node
+engine - lands with the gate node
 (link:12-orchestration-data-model.html[Data Model] §"Decided, not built")._
 
 |*Answers*
@@ -49,11 +49,11 @@ declared inputs.
 |*Prompt template*
 |`PromptTemplate` (`runs.templates.*`)
 |Reusable EJS prompt text, stored host-level, bound to a node via `promptTemplate`. Not a
-graph — a piece of text a node's prompt renders from.
+graph - a piece of text a node's prompt renders from.
 
 |*Snippet*
 |`PromptTemplate` with `snippet: true`
-|A prompt template meant to be `include()`d by others — shared behavioural rules written once
+|A prompt template meant to be `include()`d by others - shared behavioural rules written once
 instead of paid for in every node's prompt.
 |===
 
@@ -61,10 +61,10 @@ Forbidden as UI labels: "workflow", "blueprint", "pipeline", "template" (as a no
 graph), and "Run" as a heading.
 
 *"Template" means two different things, and only one is ever a UI word.* In engineering docs
-and the wire, *template* is a **prompt template** — reusable prompt text. The reusable thing
+and the wire, *template* is a **prompt template** - reusable prompt text. The reusable thing
 you execute is just a **Graph**: it *is* the blueprint (saved host-level, parameterized by
 declared inputs, `builtIn` starters copied on edit), and the UI never calls it a template or a
-blueprint. When `projects/graph-templates/` says "template", it means a starter graph — a Graph
+blueprint. When `projects/graph-templates/` says "template", it means a starter graph - a Graph
 shipped as a `builtIn`. If a sentence is ambiguous between the two, say "prompt template" or
 "starter graph"; never bare "template".
 
@@ -72,17 +72,17 @@ shipped as a `builtIn`. If a sentence is ambiguous between the two, say "prompt 
 
 Both produce an orchestration; they differ only in who decides the shape.
 
-*AI orchestration* — the user supplies a prompt and parameters; a conductor agent
+*AI orchestration* - the user supplies a prompt and parameters; a conductor agent
 declares a phase plan through `start_run` and the daemon executes it. Non-deterministic
 in structure, good when the subtasks genuinely cannot be predicted.
 
-*User orchestration* — the user draws a graph; the daemon executes it exactly as drawn.
+*User orchestration* - the user draws a graph; the daemon executes it exactly as drawn.
 Deterministic in structure, and the subject of this document set.
 
 The long-term convergence is now a recorded decision, in two halves
 (link:12-orchestration-data-model.html[Data Model] §"Decided, not built"): phase runs become a
 *preset graph template* once the graph engine gains a gate node and candidate fan-out; and the
-conductor eventually **emits graphs rather than phase plans** — MCP graph-authoring tools let
+conductor eventually **emits graphs rather than phase plans** - MCP graph-authoring tools let
 an agent generate, save and start its own templates, made safe by construction because an
 AI-authored graph passes the same shared validation gate as a human-drawn one.
 
@@ -92,13 +92,13 @@ The value of this system is entirely in what a person can fix *before* the work 
 There are five such decisions, and every subsystem in this set exists to serve one of
 them:
 
-. *Decomposition* — which subproblems exist and where their boundaries are. A single
+. *Decomposition* - which subproblems exist and where their boundaries are. A single
   agent re-derives this per run, differently each time.
-. *Isolation* — which work gets a clean context. A node is how a user says "this
+. *Isolation* - which work gets a clean context. A node is how a user says "this
   exploration must not pollute the main thread".
-. *Sequencing* — what must be true before the next thing starts.
-. *Verification* — what "done" means, judged by something that is not the author.
-. *Authority* — where a human must approve, and what each participant may touch.
+. *Sequencing* - what must be true before the next thing starts.
+. *Verification* - what "done" means, judged by something that is not the author.
+. *Authority* - where a human must approve, and what each participant may touch.
 
 Parallelism is _not_ on that list. It is a consequence, not a goal.
 
@@ -123,7 +123,7 @@ link:19-orchestration-rollout.html[Rollout & Testing].
 
 == The safety rule that shapes the engine
 
-Read-heavy work parallelises safely. Write-heavy work does not — not because of file
+Read-heavy work parallelises safely. Write-heavy work does not - not because of file
 collisions alone (worktrees fix those) but because *every action an agent takes encodes
 an implicit decision*, and parallel agents cannot see each other's. Two agents told to
 build the same feature will disagree about things nobody specified, and the disagreement
@@ -152,14 +152,14 @@ flowchart LR
     D --> E["Compiled:<br/>seats snapshotted,<br/>run projected"]
     E --> F["Running"]
     F --> G{"Gate?"}
-    G -->|"yes"| H["Paused —<br/>awaiting a human"]
+    G -->|"yes"| H["Paused -<br/>awaiting a human"]
     H --> F
     G -->|"no"| I["Done / failed /<br/>canceled"]
   end
 ----
 
 Two properties of that picture matter downstream. *Saving is never blocked by validation*
-— a half-built graph is a normal thing to save; validation only gates execution. And
+- a half-built graph is a normal thing to save; validation only gates execution. And
 *compilation happens once, at start*: seat resolution is frozen there, so editing a team
 mid-run cannot shear a running orchestration.
 
@@ -176,10 +176,10 @@ Otto agent, which is why the expensive parts came free:
 |Spawn, supervision, whole-subtree settle detection, cancellation
 
 |Personalities & teams
-|Seat resolution — a node names a _role_, the active team names the member
+|Seat resolution - a node names a _role_, the active team names the member
 
 |Workspaces & worktrees
-|The execution environment. _(Per-node worktree isolation is designed, not built — parallel
+|The execution environment. _(Per-node worktree isolation is designed, not built - parallel
 writing nodes share one tree today.)_
 
 |Otto tool catalog + permission modes
@@ -189,7 +189,7 @@ writing nodes share one tree today.)_
 |Persistence, status vocabulary, the gate mechanism, the Orchestrations page
 
 |Accounting (activity stats, usage ledger)
-|Cost roll-up with no new plumbing — children are ordinary agents
+|Cost roll-up with no new plumbing - children are ordinary agents
 
 |Visualizer, chat, mobile client
 |Monitoring, from anywhere, with no orchestration-specific work
@@ -210,7 +210,7 @@ composition.
 . Seat resolution is snapshotted at execution start and never re-read mid-run.
 . Tool authority is applied at spawn. No node is asked in prose to refrain from
   something it has been given.
-. An orchestration always lands in a chat — the root agent's — watchable from any device.
+. An orchestration always lands in a chat - the root agent's - watchable from any device.
 . A graph with validation problems can always be saved and never be executed.
 
 == Change checklist

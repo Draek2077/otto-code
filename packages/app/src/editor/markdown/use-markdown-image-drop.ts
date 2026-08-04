@@ -16,13 +16,13 @@ import { isMarkdownPath } from "./markdown-path";
  *
  * The editor cannot do either. It has no daemon connection on native (it runs
  * in a webview) and no filesystem on any platform, so it recognises the image
- * and hands it here — see `markdownImageDropHandler`.
+ * and hands it here - see `markdownImageDropHandler`.
  *
  * Returning `undefined` is the capability gate, and the only one: no handler
  * means the core registers no drop extension at all, so a daemon without
  * `features.binaryFileWrite` leaves a dropped image to the platform rather than
  * swallowing it into a feature that cannot finish. There is deliberately no
- * degraded path — the client cannot write a workspace file itself.
+ * degraded path - the client cannot write a workspace file itself.
  */
 
 /**
@@ -91,7 +91,7 @@ export function useMarkdownImageDrop(input: {
   );
 
   // The gate. `isMarkdownPath` too, so a `.ts` buffer never carries a handler
-  // whose CM6 half would decline anyway — one less extension in every other file.
+  // whose CM6 half would decline anyway - one less extension in every other file.
   return canWriteBinary && client && isMarkdownPath(path) ? handleImageDrop : undefined;
 }
 
@@ -101,7 +101,7 @@ export function useMarkdownImageDrop(input: {
  *
  * A failure is deliberately silent. The drop either produces a link or it does
  * not, and there is no surface here that could report "the daemon refused this
- * path" without inventing an error affordance the editor does not have — the
+ * path" without inventing an error affordance the editor does not have - the
  * user sees no link appear, and their document is untouched.
  */
 async function writeWithFreeName(input: {

@@ -8,13 +8,13 @@ import type { StructuredTextGeneration } from "../checkout/git-metadata-generato
  * documents out.
  *
  * Deliberately *not* an agent with tools. The whole point of Refine is that the
- * proposal is inert — it reaches no filesystem, opens no file the user did not
+ * proposal is inert - it reaches no filesystem, opens no file the user did not
  * put in front of it, and is shown as a diff before anything is written. So
  * this runs through the same one-shot, non-persisted, internal structured
  * generation the chat auto-title and commit-message writers use
  * (`persistSession: false`, `internal: true`), routed to the host's Writer
  * role. That routing is what makes Refine provider-agnostic: whatever the host
- * has — a hosted frontier model or a local one served from LM Studio — is what
+ * has - a hosted frontier model or a local one served from LM Studio - is what
  * rewrites the documents.
  *
  * Two lists, and the difference between them is the entire safety model:
@@ -22,8 +22,8 @@ import type { StructuredTextGeneration } from "../checkout/git-metadata-generato
  * - `documents` are rewritable. This list IS the blast radius. A file that is
  *   not in it cannot be changed by this request, whatever comes back.
  * - `references` are readable only. They exist so a rewrite can be made *in the
- *   context of the project* — compacting a CLAUDE.md sensibly means knowing
- *   what the docs it points at actually say — without that context becoming
+ *   context of the project* - compacting a CLAUDE.md sensibly means knowing
+ *   what the docs it points at actually say - without that context becoming
  *   something the model may quietly edit.
  *
  * Ids never reach the model's understanding of filenames: it is told to return
@@ -83,8 +83,8 @@ const REFINE_SCHEMA = z.object({
  * and tightened for a whole-document rewrite across a set.
  *
  * It is doing real work. The failure mode of this task is not a bad edit, it is
- * a model that answers *about* the documents — a summary, a diff, a chatty
- * preamble — instead of returning them. The structured schema stops the
+ * a model that answers *about* the documents - a summary, a diff, a chatty
+ * preamble - instead of returning them. The structured schema stops the
  * wrapper; the rules below stop the rest, and rule 1 is what keeps a
  * multi-document request from turning into a rewrite of everything in sight.
  */
@@ -176,7 +176,7 @@ export function createRefineGenerator(deps: {
         });
         // The blast-radius gate. An id the request never sent is not a file the
         // user put in front of the model, so it is dropped rather than routed
-        // anywhere — this is what makes an invented filename a no-op.
+        // anywhere - this is what makes an invented filename a no-op.
         const seen = new Set<string>();
         return result.files.filter((file) => {
           if (!known.has(file.id) || seen.has(file.id)) {

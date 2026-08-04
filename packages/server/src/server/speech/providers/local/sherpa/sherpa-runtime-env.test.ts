@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { prependEnvPath, resolveUnpackedLibDir } from "./sherpa-runtime-env.js";
 
 // prependEnvPath joins with path.delimiter, which is ";" on Windows and ":"
-// elsewhere. Build the expectations from it so these pass on CI too — and keep
+// elsewhere. Build the expectations from it so these pass on CI too - and keep
 // the entries themselves free of colons, since a Windows-style "C:\lib" splits
 // into two entries under a POSIX delimiter and silently defeats the dedup.
 const D = path.delimiter;
@@ -41,7 +41,7 @@ describe("resolveUnpackedLibDir", () => {
 
   it("keeps the original path when nothing is unpacked", () => {
     // Better a useless PATH entry than one pointing at a directory that isn't
-    // there — the caller still probes for the addon before using it.
+    // there - the caller still probes for the addon before using it.
     expect(resolveUnpackedLibDir(PACKAGED_WIN, () => false)).toBe(PACKAGED_WIN);
   });
 

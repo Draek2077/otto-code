@@ -148,7 +148,7 @@ export function useWorkspaceArchive(input: ArchiveWorkspaceInput): WorkspaceArch
     }
 
     if (!canOfferBranchDeletion(detection) || !detection) {
-      // No leftover branch to clean up — fall back to the plain risk warning.
+      // No leftover branch to clean up - fall back to the plain risk warning.
       const confirmed = await confirmRiskyWorktreeArchive(
         { workspaceName: name, isDirty, aheadOfOrigin, diffStat },
         warningLabels,

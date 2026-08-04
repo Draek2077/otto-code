@@ -1,12 +1,23 @@
 import http from "node:http";
 
+import { chunkHasContent, chunkHasReasoning, readActivity, ReasoningTracker } from "./activity.js";
 import { Scheduler } from "./scheduler.js";
 import type { Supervisor } from "./supervisor.js";
+import { slots as sampleSlots } from "../sysmon.js";
 import { makeVramFitPredicate, selectCodingModel } from "./model-selector.js";
 import { query as queryGpu } from "../gpu.js";
 import { rankModels, type RankedModel } from "../ops/results.js";
 import type { GpuInfo, Model, ModelMetadata } from "../types.js";
 import type { Profile } from "../config/schema.js";
+import type { HostApi } from "./host-api.js";
+import {
+  errorBody,
+  errorMessage,
+  HOP_BY_HOP,
+  readJsonBody,
+  sendError,
+  sendJson,
+} from "./http-util.js";
 
 /**
  * Fronts the supervised llama-server on a stable port.
@@ -23,17 +34,6 @@ import type { Profile } from "../config/schema.js";
  *     catalog (via the injected `getCatalog`), mark the running one 'loaded',
  *     and give each a friendly name plus the context fields clients size against.
  */
-
-const HOP_BY_HOP = new Set([
-  "connection",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade",
-]);
 
 const MAX_ANALYSIS_BYTES = 2 * 1024 * 1024;
 // Completion bodies are buffered so the scheduler can read `model` and replay
@@ -106,17 +106,31 @@ export class Telemetry {
     if (this.records.length > this.keep) this.records.shift();
   }
 
-  /** Advice derived from observed behaviour, not guesswork. */
+  /**
+   * Advice derived from the recent window (`records`), not lifetime `totals`.
+   * A ratio over the lifetime total barely moves once a service has served any
+   * real volume, so a handful of clean responses after a bad patch could never
+   * clear it. The sliding window lets a few good requests visibly clear the
+   * advice, and `reset()` gives a restarted model a clean slate instead of
+   * carrying blame from before the fix was applied.
+   */
   get warning(): string | null {
-    const { requests, reasoningOnly, truncated } = this.totals;
-    if (requests < 3) return null;
-    if (reasoningOnly / requests > 0.3) {
-      return `${reasoningOnly}/${requests} responses spent all tokens on reasoning and returned no content - lower the reasoning budget`;
+    const total = this.records.length;
+    if (total < 3) return null;
+    const reasoningOnly = this.records.filter((r) => r.verdict === "reasoning-only").length;
+    if (reasoningOnly / total > 0.3) {
+      return `${reasoningOnly}/${total} recent responses spent all tokens on reasoning and returned no content - lower the reasoning budget`;
     }
-    if (truncated / requests > 0.3) {
-      return `${truncated}/${requests} responses hit the token limit - raise the client's max_tokens`;
+    const truncated = this.records.filter((r) => r.verdict === "truncated").length;
+    if (truncated / total > 0.3) {
+      return `${truncated}/${total} recent responses hit the token limit - raise the client's max_tokens`;
     }
     return null;
+  }
+
+  /** Clear the recent window so the warning starts fresh - called when the model (re)starts. */
+  reset(): void {
+    this.records = [];
   }
 }
 
@@ -136,10 +150,6 @@ function readTokens(usage: unknown, key: string): number | null {
   if (!isRecord(usage)) return null;
   const value = usage[key];
   return typeof value === "number" ? value : null;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 /** Classify a completion body (Anthropic or OpenAI shaped). */
@@ -188,13 +198,6 @@ export function analyse(bodyText: string): Analysis | null {
   return { finishReason, contentChars, reasoningChars, outputTokens, toolCalls, verdict };
 }
 
-function errorBody(status: number, message: string): string {
-  return JSON.stringify({
-    type: "error",
-    error: { type: status === 503 ? "overloaded_error" : "api_error", message },
-  });
-}
-
 type ModelState = "loaded" | "loading" | "not-loaded";
 
 interface DescribeOptions {
@@ -237,7 +240,7 @@ export function describeModel(
   const md: ModelMetadata = model.metadata || {};
 
   const entry: ModelEntry = {
-    // Standard OpenAI fields — id is the friendly name, never the file path.
+    // Standard OpenAI fields - id is the friendly name, never the file path.
     id: model.displayName,
     object: "model",
     created: Math.floor((createdAt ? createdAt.getTime() : Date.now()) / 1000),
@@ -339,20 +342,24 @@ function handleModelsRoute(
   return true;
 }
 
-function sendError(res: http.ServerResponse, status: number, message: string): void {
-  if (res.headersSent) {
-    if (!res.writableEnded) res.destroy();
-    return;
-  }
-  const body = errorBody(status, message);
-  const headers: http.OutgoingHttpHeaders = {
-    "content-type": "application/json",
-    "content-length": Buffer.byteLength(body),
-  };
-  if (status === 503) headers["retry-after"] = "5";
-  res.writeHead(status, headers);
-  res.end(body);
+/**
+ * Correlates the chunks of one proxied stream for the reasoning tracker. A
+ * counter rather than a uuid: it never leaves the process and only has to be
+ * unique among the handful of streams in flight at once.
+ */
+let streamCounter = 0;
+function nextStreamId(): string {
+  streamCounter += 1;
+  return `s${streamCounter}`;
 }
+
+/**
+ * The reasoning tracker is module-scoped rather than per-router because both
+ * proxy paths need it and `proxyBuffered` is a free function. One service
+ * process hosts exactly one router, so there is nothing to collide with; the
+ * bench command builds its own throwaway router and simply never reads it.
+ */
+const reasoningTracker = new ReasoningTracker();
 
 interface ProxyBufferedOptions {
   agent: http.Agent;
@@ -362,6 +369,8 @@ interface ProxyBufferedOptions {
   req: http.IncomingMessage;
   res: http.ServerResponse;
   body: Buffer;
+  /** Live mid-thought tracking for `/__host/status`. See `activity.ts`. */
+  reasoning?: ReasoningTracker | null;
 }
 
 /**
@@ -378,10 +387,16 @@ function proxyBuffered({
   req,
   res,
   body,
+  reasoning = null,
 }: ProxyBufferedOptions): Promise<void> {
   return new Promise((resolve) => {
     let settled = false;
+    const streamId = nextStreamId();
     const done = (): void => {
+      // Always release the reasoning flag, including on the error and abort
+      // paths: a stream that dies mid-thought would otherwise pin the rail on
+      // "thinking" until the service restarts.
+      reasoning?.end(streamId);
       if (!settled) {
         settled = true;
         resolve();
@@ -418,9 +433,9 @@ function proxyBuffered({
           let sawReasoning = false;
           upstreamRes.on("data", (chunk: Buffer) => {
             const text = String(chunk);
-            if (text.includes('"text_delta"') || /"content"\s*:\s*"[^"]/.test(text))
-              sawContent = true;
-            if (text.includes("thinking") || text.includes("reasoning")) sawReasoning = true;
+            reasoning?.observe(streamId, text);
+            if (chunkHasContent(text)) sawContent = true;
+            if (chunkHasReasoning(text)) sawReasoning = true;
           });
           upstreamRes.on("end", () => {
             telemetry.record({
@@ -543,37 +558,6 @@ interface ScheduleCompletionOptions {
   modelGate: (name: string | null) => ModelGateResult;
 }
 
-type JsonBodyResult = { ok: true; body: unknown } | { ok: false; error: string };
-
-/** Buffer a bounded JSON request body (for POST /__host/config). */
-function readJsonBody(
-  req: http.IncomingMessage,
-  limit: number,
-  cb: (result: JsonBodyResult) => void,
-): void {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  let tooBig = false;
-  req.on("data", (chunk: Buffer) => {
-    size += chunk.length;
-    if (size > limit) tooBig = true;
-    else chunks.push(chunk);
-  });
-  req.on("error", () => cb({ ok: false, error: "request stream error" }));
-  req.on("end", () => {
-    if (tooBig) {
-      cb({ ok: false, error: "request body too large" });
-      return;
-    }
-    try {
-      const text = Buffer.concat(chunks).toString("utf8") || "{}";
-      cb({ ok: true, body: JSON.parse(text) });
-    } catch {
-      cb({ ok: false, error: "invalid JSON body" });
-    }
-  });
-}
-
 /** Buffer a completion request, resolve its target model, and queue it. */
 function scheduleCompletion({
   req,
@@ -619,7 +603,18 @@ function scheduleCompletion({
     const model = gate.model;
 
     scheduler
-      .submit(model, () => proxyBuffered({ agent, supervisor, telemetry, logger, req, res, body }))
+      .submit(model, () =>
+        proxyBuffered({
+          agent,
+          supervisor,
+          telemetry,
+          logger,
+          req,
+          res,
+          body,
+          reasoning: reasoningTracker,
+        }),
+      )
       .catch((error: unknown) =>
         sendError(res, 502, `could not serve ${model.displayName}: ${errorMessage(error)}`),
       );
@@ -629,7 +624,7 @@ function scheduleCompletion({
 // The bench ranking is read from disk (one JSON per run). A completion request
 // must not pay that IO, and rankings only change when a bench run finishes
 // (rare), so the router caches the ranking and re-reads it at most once per
-// window — the cheap time-based trigger.
+// window - the cheap time-based trigger.
 const RANKING_TTL_MS = 60_000;
 
 export interface RouterOptions {
@@ -644,9 +639,9 @@ export interface RouterOptions {
   queryGpuInfo?: () => Promise<GpuInfo | null>;
   /** The brain package version, reported on `/__host/status` for the host UI. */
   version?: string | null;
-  /** Effective config with secrets redacted — served on `/__host/config`. */
+  /** Effective config with secrets redacted - served on `/__host/config`. */
   getConfig?: (() => unknown) | null;
-  /** Benchmark rankings/variance/latest — served on `/__host/evals`. */
+  /** Benchmark rankings/variance/latest - served on `/__host/evals`. */
   getEvals?: (() => unknown) | null;
   /** Live: pin the host to one model (refuse completions naming a different one). */
   getLockModel?: () => boolean;
@@ -664,6 +659,20 @@ export interface RouterOptions {
    * until its owner opts in. Read/use are unaffected.
    */
   getAllowConfigWrite?: () => boolean;
+  /**
+   * The management API (`host-api.ts`): model inventory, per-model profiles, the
+   * VRAM budget, load/unload, delete, and logs. Absent means those routes are not
+   * offered, which is exactly what `/__host/capabilities` then reports, so an
+   * older brain degrades to "that tab is unavailable" rather than a 404 storm.
+   */
+  hostApi?: HostApi | null;
+  /**
+   * Live system telemetry (CPU, RAM, GPU, slots), folded into `/__host/status`
+   * ONLY when the caller asks with `?resources=1`. The daemon's liveness probe
+   * polls status frequently and must not pay an `nvidia-smi` spawn for it; the
+   * Brain page's Overview tab opts in.
+   */
+  getResources?: (() => Promise<unknown>) | null;
 }
 
 export function createRouter({
@@ -681,15 +690,26 @@ export function createRouter({
   getDefaultModel = () => null,
   applyConfigPatch = null,
   getAllowConfigWrite = () => false,
+  hostApi = null,
+  getResources = null,
 }: RouterOptions): (req: http.IncomingMessage, res: http.ServerResponse) => void {
   const agent = new http.Agent({ keepAlive: true, maxSockets: 32 });
   const scheduler = loadModel
     ? new Scheduler({ supervisor, loadModel, logger: (m) => logger?.warn?.(m) })
     : null;
 
+  // A (re)start means whatever produced the current warning no longer applies -
+  // either a different model is now resident, or the same one just picked up an
+  // edited profile (e.g. a lowered reasoning budget). Either way the recent
+  // window is stale, so start it clean rather than let old records blame a
+  // config that is no longer running.
+  supervisor.on("state", ({ state }: { state: string }) => {
+    if (state === "starting") telemetry.reset();
+  });
+
   // GPU total VRAM is static hardware, so it is queried once at startup and
   // cached. Absent (no nvidia-smi) or not-yet-resolved leaves the fit predicate
-  // undefined, and the selector skips the VRAM filter — mirroring serve.ts.
+  // undefined, and the selector skips the VRAM filter - mirroring serve.ts.
   let fitPredicate: ((model: Model) => boolean) | undefined;
   void (async () => {
     try {
@@ -764,33 +784,61 @@ export function createRouter({
     });
   };
 
-  const sendJson = (res: http.ServerResponse, payload: unknown): void => {
-    const body = JSON.stringify(payload, null, 2);
-    res.writeHead(200, {
-      "content-type": "application/json",
-      "content-length": Buffer.byteLength(body),
-    });
-    res.end(body);
-  };
-
   return function handler(req: http.IncomingMessage, res: http.ServerResponse): void {
     // Host-management read surface (`/__host/*`): the single API both the TUI and
     // Otto's GUI consume, so the two never drift. Status is live; config and
     // evals are point-in-time reads the daemon proxies to its settings UI.
-    if (req.url === "/__host/status") {
-      sendJson(res, {
+    const path = (req.url || "").split("?")[0];
+
+    if (path === "/__host/status") {
+      const schedulerStats = scheduler ? scheduler.stats() : null;
+      const base = {
         version,
         ...supervisor.status(),
         telemetry: { ...telemetry.totals, warning: telemetry.warning },
-        scheduler: scheduler ? scheduler.stats() : null,
+        scheduler: schedulerStats,
         recent: telemetry.records.slice(-10),
-      });
+        logLineCount: supervisor.logLines.length,
+        // Carried inline rather than fetched from /__host/capabilities: the
+        // daemon polls status constantly, and a separately cached copy would go
+        // stale the moment the owner toggles allowRemoteConfig.
+        capabilities: hostApi ? hostApi.capabilities() : null,
+        // The three signals the Brain rail's icon is derived from. All are cheap
+        // enough for the liveness poll: `activity` is one stat of a file that is
+        // usually absent, `reasoning` is in-process state, and `queued` is
+        // already computed above. Slot phases are the one that costs a round
+        // trip, and are fetched below.
+        activity: readActivity(),
+        reasoning: reasoningTracker.active,
+        queued: schedulerStats ? schedulerStats.queued : 0,
+      };
+
+      // Slots come from a loopback GET on the resident llama-server. That is
+      // cheap enough to pay on every poll - unlike the GPU sampling below, which
+      // spawns `nvidia-smi` and stays opt-in. Skipped entirely unless a model is
+      // resident, since there is nothing listening otherwise.
+      const slotsPromise =
+        supervisor.state === "ready"
+          ? sampleSlots({ host: supervisor.host, port: supervisor.internalPort }).catch(() => null)
+          : Promise.resolve(null);
+
+      // Resources cost an `nvidia-smi` spawn, so they are opt-in: the daemon's
+      // liveness probe polls this route far more often than any UI does, and
+      // must not pay for a panel it is not rendering.
+      const wantsResources = /[?&]resources=1(&|$)/.test(req.url || "");
+      if (!wantsResources || !getResources) {
+        void slotsPromise.then((slots) => sendJson(res, { ...base, slots }));
+        return;
+      }
+      Promise.all([slotsPromise, getResources().catch(() => null)])
+        .then(([slots, resources]) => sendJson(res, { ...base, slots, resources }))
+        .catch(() => sendJson(res, { ...base, slots: null, resources: null }));
       return;
     }
     // Config write: apply an editable patch (model/lock live, the rest persisted).
     // Must precede the GET read below, which matches the same URL for any method.
     // Refused unless the owner opted into remote configuration.
-    if (req.method === "POST" && req.url === "/__host/config") {
+    if (req.method === "POST" && path === "/__host/config") {
       if (!applyConfigPatch || !getAllowConfigWrite()) {
         sendError(res, 403, "remote configuration is disabled on this brain");
         return;
@@ -806,21 +854,27 @@ export function createRouter({
       });
       return;
     }
-    if (req.url === "/__host/config" && getConfig) {
+    if (path === "/__host/config" && getConfig) {
       sendJson(res, getConfig());
       return;
     }
-    if (req.url === "/__host/evals" && getEvals) {
+    if (path === "/__host/evals" && getEvals) {
       sendJson(res, getEvals());
       return;
     }
+
+    // The management API: inventory, profiles, budget, load/unload, delete, logs.
+    // It claims only the routes it implements and returns false otherwise, so an
+    // unknown /__host/* path still falls through to the 503/proxy path below
+    // rather than being swallowed here.
+    if (hostApi && hostApi.handle(req, res)) return;
 
     // Answer model discovery ourselves so ids are real names (not paths), the
     // whole catalog is listed, and each carries LM Studio's context fields.
     if (handleModelsRoute(req, res, supervisor, getCatalog)) return;
 
     // With a scheduler wired in, completion requests are queued and served in
-    // turns — including loading/switching to the model they ask for — instead
+    // turns - including loading/switching to the model they ask for - instead
     // of failing when it is not the resident one.
     if (scheduler && COMPLETION_RE.test(req.url || "")) {
       scheduleCompletion({
@@ -883,13 +937,20 @@ export function createRouter({
           let sawContent = false;
           let sawReasoning = false;
           if (isCompletion) {
+            const streamId = nextStreamId();
+            // Released on close, not just on end: an aborted stream would
+            // otherwise pin `/__host/status` on "thinking" forever.
+            const releaseReasoning = () => reasoningTracker.end(streamId);
             upstreamRes.on("data", (chunk: Buffer) => {
               const text = String(chunk);
-              if (text.includes('"text_delta"') || /"content"\s*:\s*"[^"]/.test(text))
-                sawContent = true;
-              if (text.includes("thinking") || text.includes("reasoning")) sawReasoning = true;
+              reasoningTracker.observe(streamId, text);
+              if (chunkHasContent(text)) sawContent = true;
+              if (chunkHasReasoning(text)) sawReasoning = true;
             });
+            upstreamRes.on("close", releaseReasoning);
+            upstreamRes.on("error", releaseReasoning);
             upstreamRes.on("end", () => {
+              releaseReasoning();
               telemetry.record({
                 at: new Date().toISOString(),
                 path: req.url,

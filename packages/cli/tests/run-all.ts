@@ -88,7 +88,7 @@ async function runNpmScript(label: string, script: string, cwd: string): Promise
   const exitCode = await new Promise<number>((resolve, reject) => {
     // npm is npm.cmd on Windows, which Node refuses to exec without a shell.
     // The script name is a literal, so it goes in the command string rather
-    // than an args array — that keeps the shell with nothing to escape (and
+    // than an args array - that keeps the shell with nothing to escape (and
     // avoids Node's DEP0190 warning about args passed alongside `shell`).
     const proc = spawn(`npm run ${script}`, {
       cwd,

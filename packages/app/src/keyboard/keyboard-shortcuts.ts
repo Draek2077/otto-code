@@ -79,7 +79,7 @@ interface ShortcutWhen {
   /** false = disabled when command center is open */
   commandCenter?: false;
   /**
-   * Exact focus scope match — and the binding's SPECIFICITY. A binding that
+   * Exact focus scope match - and the binding's SPECIFICITY. A binding that
    * names the focused surface beats one that applies everywhere on the same
    * combo (see `bindingSpecificity`), which is how the File Editor section
    * overrides the general bindings while the editor has focus. Nothing else in
@@ -808,7 +808,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
   // it: `editor.goToDefinition` in the File Editor section below is bound to the
   // same combo with `focusScope: "code-editor"`, and a focus-scoped binding
   // outranks an unscoped one, so the editor wins the combo while it has focus
-  // and the toggle wins everywhere else — composer included. That is the whole
+  // and the toggle wins everywhere else - composer included. That is the whole
   // override mechanic, and it follows the editor binding: rebind Go to
   // definition off Mod+B and this toggle simply starts working in the editor
   // too, which a hardcoded guard could never do.
@@ -871,18 +871,18 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
 
   // --- Find a file (Files tab + its filename finder) ---
   // The four "find" gestures, kept straight because they are easy to conflate:
-  //   Mod+,         — find A FILE by name, anywhere (this pair, the documented one)
-  //   Mod+F         — find in this file (`editor.find`, File Editor section)
-  //   Mod+F         — find A FILE by name, everywhere else (the alias pair below)
-  //   Mod+Shift+F   — find in project, i.e. text across every file (below)
+  //   Mod+,         - find A FILE by name, anywhere (this pair, the documented one)
+  //   Mod+F         - find in this file (`editor.find`, File Editor section)
+  //   Mod+F         - find A FILE by name, everywhere else (the alias pair below)
+  //   Mod+Shift+F   - find in project, i.e. text across every file (below)
   // Mod+, is the row we print because it is the only one that survives a focused
   // text surface. In the editor `editor.find` outranks this pair on specificity,
   // which is what lets the two Mod+F meanings share a combo; the editable:false
-  // below is doing the REST of the job — keeping Mod+F out of the composer and
+  // below is doing the REST of the job - keeping Mod+F out of the composer and
   // plain text fields, where there is no editor binding to yield to and the
   // browser's own find is what the user means.
   // General rule: an Otto shortcut that overlaps an editor shortcut needs no
-  // guard at all — put the editor's version in the File Editor section and it
+  // guard at all - put the editor's version in the File Editor section and it
   // takes over while the editor has focus. Reach for editable:false only for
   // scopes with no editor binding to hand the combo to.
   {
@@ -928,7 +928,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
   // --- Find in project ---
   // Mod+S is deliberately NOT bound here. It used to open this same sidebar,
   // which made it a duplicate of Mod+Shift+F while shadowing the one thing
-  // Mod+S means to everyone — Save. It stays free.
+  // Mod+S means to everyone - Save. It stays free.
   {
     id: "sidebar-open-search-cmd-shift-f-mac",
     action: "sidebar.open.search",
@@ -1204,7 +1204,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
   // --- Markdown Editor ---
   // Declared BEFORE the File Editor section, and that order is load-bearing
   // twice over. `buildEditorKeyBindings` walks this array in order, so the CM6
-  // keymap gets bold's `Mod-b` ahead of Go to definition's — and because the
+  // keymap gets bold's `Mod-b` ahead of Go to definition's - and because the
   // markdown commands return false outside markdown context, the same keymap
   // runs bold in a `.md` file and falls through to Go to definition in a `.ts`
   // one without either binding knowing what file is open.
@@ -1353,7 +1353,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
   //
   //  1. OVERRIDE. A focus-scoped binding outranks an unscoped one on the same
   //     combo (see `bindingSpecificity`), so while the editor has focus these
-  //     win — and the general binding they shadow needs no guard of its own.
+  //     win - and the general binding they shadow needs no guard of its own.
   //     Outside the editor they never match, so nothing is taken away.
   //  2. EXECUTION. `routeKeyboardShortcut` deliberately routes `editor.*`
   //     nowhere; CodeMirror runs the command, from a keymap built out of these
@@ -1367,7 +1367,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
   // to split them over, and one binding means one rebindable row.
   //
   // NOT here, on purpose: Escape-closes-find (conditional on a query running, so
-  // it has to fall through to CM6's simplifySelection when idle — a condition the
+  // it has to fall through to CM6's simplifySelection when idle - a condition the
   // registry cannot express) and CodeMirror's `defaultKeymap` (select line,
   // undo, indent…), which are the platform's editor bindings rather than Otto's.
   {
@@ -1418,7 +1418,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       keys: ["mod", "B"],
     },
   },
-  // F12 stays as an alias with no help row — muscle memory splits (Mod+B is
+  // F12 stays as an alias with no help row - muscle memory splits (Mod+B is
   // JetBrains, F12 is VS Code) but one feature gets one row, and that row has to
   // be the combo that survives a laptop with media keys on the function row.
   // Same shape as Ctrl+` aliasing the right sidebar.
@@ -1595,9 +1595,9 @@ function focusScopeSatisfies(actual: KeyboardFocusScope, required: KeyboardFocus
  * exactly or through the parent chain.
  *
  * Three ranks, because there are three ways to claim a combo:
- *   2 — names the focused surface exactly (Markdown Editor in a `.md` file)
- *   1 — names a scope the focused surface inherits from (File Editor there too)
- *   0 — applies everywhere
+ *   2 - names the focused surface exactly (Markdown Editor in a `.md` file)
+ *   1 - names a scope the focused surface inherits from (File Editor there too)
+ *   0 - applies everywhere
  *
  * This is what makes the File Editor section OVERRIDE the general bindings while
  * the editor has focus, and the Markdown Editor section override File Editor

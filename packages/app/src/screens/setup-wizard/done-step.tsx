@@ -1,10 +1,10 @@
 /**
- * DoneStep — the wizard's closing bookend. Mirrors the Welcome cover (same
+ * DoneStep - the wizard's closing bookend. Mirrors the Welcome cover (same
  * WizardBrandBackdrop + blurred plasma ring), shows a short summary of what was
  * set up, and a single "Get started" button that marks the wizard complete and
  * goes home (the shell owns that on the callback).
  *
- * Presentational only — `onFinish` is wired by the shell.
+ * Presentational only - `onFinish` is wired by the shell.
  */
 
 import { useMemo } from "react";

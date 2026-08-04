@@ -57,7 +57,7 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
     //
     // NOTE: this default only reaches fresh installs. The store persists the
     // whole settings object, so every existing install already has `true` on
-    // disk — including users who never touched the toggle — and keeps the old
+    // disk - including users who never touched the toggle - and keeps the old
     // behavior until they flip it themselves.
     keepRunningAfterQuit: false,
   },

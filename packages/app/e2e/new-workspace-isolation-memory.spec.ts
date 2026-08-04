@@ -37,7 +37,7 @@ test.describe("New workspace isolation memory", () => {
   // Order matters and only runs one way: every daemon record goes first, the
   // directories last. Archiving a worktree runs git inside the repo, so doing it
   // after the repo is deleted fails and strands the workspace on a path that no
-  // longer exists — which then breaks the *next* spec's composer rather than
+  // longer exists - which then breaks the *next* spec's composer rather than
   // this one. The repos are removed here, not in the test body, for that reason.
   test.afterEach(async () => {
     if (client) {

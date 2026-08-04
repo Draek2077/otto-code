@@ -1,5 +1,5 @@
 // "00-" prefix is intentional: this file must sort before every other spec.
-// Sessions history is daemon-global — any agent created by a prior spec hides the empty state.
+// Sessions history is daemon-global - any agent created by a prior spec hides the empty state.
 // If the beforeAll probe below fails, a spec sorted before this file is creating agents.
 import { test } from "./fixtures";
 import { connectSeedClient } from "./helpers/seed-client";
@@ -14,7 +14,7 @@ test.describe("Sessions screen empty state", () => {
   // ~30-35s while later, warm tests finish in <10s; on slower CI runners the
   // cold path tips past the default 60s test timeout and the test times out
   // mid-body (during openSessions / the empty-state wait). Give the cold first
-  // test extra headroom — later tests keep the default because the app is warm.
+  // test extra headroom - later tests keep the default because the app is warm.
   test.describe.configure({ timeout: 120_000 });
 
   test.beforeAll(async () => {

@@ -36,8 +36,8 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
     paddingTop: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
   },
-  // Fills the sheet's static content area so the ScrollView — and only the
-  // ScrollView — takes the overflow, leaving the footer pinned below.
+  // Fills the sheet's static content area so the ScrollView - and only the
+  // ScrollView - takes the overflow, leaving the footer pinned below.
   tabScroll: {
     flex: 1,
     minHeight: 0,
@@ -45,7 +45,7 @@ const styles = StyleSheet.create((theme) => ({
   // The sheet body indent lives HERE, inside the scroll view, not on the
   // sheet's static content wrapper around it. A field flush with the scroll
   // box paints its focus ring outside its own bounds, and `overflow: hidden`
-  // on the scroller slices that ring off down both sides — so the indent has
+  // on the scroller slices that ring off down both sides - so the indent has
   // to be scrollable padding, not a wrapper the scroller clips against.
   tabScrollContent: {
     paddingHorizontal: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
@@ -69,7 +69,7 @@ export interface TabScrollViewProps {
  * Per-tab scroll container: fills the bounded height of a `scrollable={false}`
  * `AdaptiveModalSheet` and owns its own scrolling, so any action bar pinned
  * around it (the sheet footer, a per-tab toolbar) stays put while the tab
- * content scrolls. It also owns the sheet body indent — see `tabScrollContent`
+ * content scrolls. It also owns the sheet body indent - see `tabScrollContent`
  * for why that padding cannot live on a wrapper outside the scroll view.
  */
 export function TabScrollView({ children, webScrollbar = true }: TabScrollViewProps) {
@@ -119,7 +119,7 @@ export interface TabbedModalSheetProps<T extends string> {
    */
   children: ReactNode;
   /**
-   * Fixed slot rendered between the tab strip and the scrolling tab content —
+   * Fixed slot rendered between the tab strip and the scrolling tab content -
    * e.g. a search field that must stay put while the list below it scrolls.
    * Switch on `activeTab` to render it for one tab only.
    */
@@ -149,7 +149,7 @@ export interface TabbedModalSheetProps<T extends string> {
 /**
  * A dialog whose body is tabbed. Builds the full hybrid layout on top of
  * `AdaptiveModalSheet`: a pinned title, a pinned tab strip, per-tab content
- * that scrolls internally, and a pinned footer — a centered card on desktop and
+ * that scrolls internally, and a pinned footer - a centered card on desktop and
  * a bottom sheet on mobile, both at a stable bounded height. Reach for this
  * instead of stacking tabs and action buttons inside a scrolling body (where
  * they scroll out of view). For a non-tabbed dialog, use `AdaptiveModalSheet`

@@ -2,7 +2,7 @@
 
 Live agent-loop coverage without API spend. The E2E daemon's openai-compat provider points at
 the user's LM Studio instance (qwen3.6-27b-mtp), so specs exercise the **real** daemon-owned
-tool loop — native tool injection, permission gating, compaction, rewind — with real inference.
+tool loop - native tool injection, permission gating, compaction, rewind - with real inference.
 
 ## Why this tier exists
 
@@ -10,7 +10,7 @@ The mock agent (T1) proves the UI and daemon plumbing but scripts every agent ev
 never prove the loop itself: that a prompt actually becomes tool calls, that tool results feed
 back correctly, that compaction preserves a usable session, that a permission denial actually
 stops the tool. The paid tier (T3) proves that but costs money per run. A local model is the
-missing middle: free, private, and — for the openai-compat provider specifically — it _is_ the
+missing middle: free, private, and - for the openai-compat provider specifically - it _is_ the
 production code path, not a stand-in.
 
 ## Connection
@@ -25,20 +25,20 @@ E2E_LOCAL_AI_MODEL=qwen3.6-27b-mtp@q4_k_m           # pin one quant; do not "lat
 ```
 
 The user's dev `OTTO_HOME` (`packages/desktop/.dev/otto-home/config.json`) already carries a
-working openai-compatible provider block — copy its values into `.env.test` once.
+working openai-compatible provider block - copy its values into `.env.test` once.
 
 ## Harness integration (Phase 2)
 
 1. **Global setup:** when `E2E_LOCAL_AI=1` and all three env vars are present, write the
    openai-compatible provider block (env: `OPENAI_BASE_URL`, `OPENAI_API_KEY`) into the forked
-   `OTTO_HOME`'s `config.json` after `forkOttoHomeMetadata()` runs. When absent, skip silently —
+   `OTTO_HOME`'s `config.json` after `forkOttoHomeMetadata()` runs. When absent, skip silently -
    T2 specs then fail fast with a clear "local AI not configured" error (no conditional skips
    inside specs; the tier is selected by Playwright project, mirroring how `real-provider` works).
 2. **Playwright project:** add a `local-ai` project with `testMatch: ["**/*.local.spec.ts"]` and
    `testIgnore` it from the default project, exactly like `real-provider`.
 3. **npm script:** `test:e2e:local-ai --workspace=@otto-code/app`.
 4. **Preflight:** global setup pings `GET {baseUrl}/models` and asserts the pinned model is in
-   the list — catches "LM Studio not running / model not loaded" in seconds instead of a
+   the list - catches "LM Studio not running / model not loaded" in seconds instead of a
    60s spec timeout. (LM Studio JIT-loads on first completion; the preflight also warms it.)
 
 ## Writing T2 specs that don't flake
@@ -48,10 +48,10 @@ multi-step ambiguity. Rules:
 
 - **One imperative, one observable side effect.** "Create a file named `EXACTLY.txt` containing
   exactly `hello-e2e` and nothing else. Do not explain." Then assert the file row appears in
-  Changes and the content matches via the daemon — never assert on chat prose.
+  Changes and the content matches via the daemon - never assert on chat prose.
 - **Cap the blast radius.** Low max-tool-rounds for the spec's agent; temp workspace dir;
   60–120s generous timeouts (local inference is slow; MTP helps but budget for it).
-- **Retries are legitimate here.** Unlike T1, one retry on a T2 spec is honest — inference is
+- **Retries are legitimate here.** Unlike T1, one retry on a T2 spec is honest - inference is
   nondeterministic. Keep `retries: 1` on the `local-ai` project only.
 - **Assert loop mechanics, not intelligence.** Good targets: a tool call row rendered, a
   permission prompt appeared and denial stopped execution, compaction event emitted and the
@@ -84,7 +84,7 @@ Phase 2 infra is BUILT: `local-ai` Playwright project (240s project timeout, 1 r
 `test:e2e:local-ai` npm script, `helpers/local-ai.ts`, repo-root `.env.test` populated.
 
 **6/6 written specs are green** (2026-07-24). The whole batch runs in ~1.2 min of specs on a
-warm model, on top of the ~2 min global-setup cold start. Only the vision spec is unwritten —
+warm model, on top of the ~2 min global-setup cold start. Only the vision spec is unwritten -
 it waits on a vision-capable pinned model. Iron-out details in `iron-out.md`.
 
 Two gotchas that cost the most time, worth knowing before touching this tier:
@@ -97,4 +97,4 @@ Two gotchas that cost the most time, worth knowing before touching this tier:
 - **A settled tool call may not render as `tool-call-badge`.** On a freshly loaded chat every
   action is settled, and a run of 2+ settled actions (e.g. a reasoning block plus the tool call
   a thinking model emits) collapses into one `action-group-badge`; the tool row only exists
-  inside the expanded group. Assert on either shape — see `openai-compat-resume.local.spec.ts`.
+  inside the expanded group. Assert on either shape - see `openai-compat-resume.local.spec.ts`.

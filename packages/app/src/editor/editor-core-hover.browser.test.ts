@@ -225,7 +225,7 @@ describe("editor core hover tooltips", () => {
     if (box === undefined) {
       throw new Error("editor did not render a line");
     }
-    // Well past the end of "const target = 1;" — inside the line box, on no word.
+    // Well past the end of "const target = 1;" - inside the line box, on no word.
     line?.dispatchEvent(
       new MouseEvent("mousemove", {
         clientX: box.right - 2,

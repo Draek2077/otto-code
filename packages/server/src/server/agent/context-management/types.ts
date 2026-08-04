@@ -1,5 +1,5 @@
 /**
- * Domain types for Context Management — the daemon's model of everything a
+ * Domain types for Context Management - the daemon's model of everything a
  * provider sends before the user types a word.
  *
  * See `docs/context-management.md`. The two
@@ -12,7 +12,7 @@
  *    model chooses to read it.
  */
 
-/** Where a node sits in the provider's load hierarchy — drives the UI scope badge. */
+/** Where a node sits in the provider's load hierarchy - drives the UI scope badge. */
 export type ContextScope =
   | "enterprise"
   | "global"
@@ -40,7 +40,7 @@ export type ContextCategory =
  * - `conditional`: only once the agent touches that area (subdirectory
  *   CLAUDE.md, skill bodies, recalled memory entries).
  * - `referenced`: only if the model decides to follow the link. Never counted
- *   as cost — surfaced so users can see the pull they've set up.
+ *   as cost - surfaced so users can see the pull they've set up.
  */
 export type ContextCostClass = "fixed" | "conditional" | "referenced";
 
@@ -84,7 +84,7 @@ export interface ContextFinding {
   lineEnd?: number;
   /** True when a mechanical delete of `range` resolves this kind outright. */
   fixable?: boolean;
-  /** Exact text at `range` when scanned — the staleness guard a fix verifies against. */
+  /** Exact text at `range` when scanned - the staleness guard a fix verifies against. */
   snippet?: string;
 }
 
@@ -106,8 +106,8 @@ export interface ContextNode {
   bytes: number;
   estTokens: number;
   /**
-   * Additional parents that also reach this node. The node is listed — and
-   * counted — exactly once; these render as a dimmed "also imported by" chip
+   * Additional parents that also reach this node. The node is listed - and
+   * counted - exactly once; these render as a dimmed "also imported by" chip
    * rather than a second row (charter §6.2).
    */
   alsoImportedByNodeIds: string[];
@@ -116,7 +116,7 @@ export interface ContextNode {
 
 export interface ContextEdge {
   fromNodeId: string;
-  /** Null when the target could not be resolved — pairs with a `dead_*` finding. */
+  /** Null when the target could not be resolved - pairs with a `dead_*` finding. */
   toNodeId: string | null;
   kind: "import" | "reference";
   /** The literal path text as written in the parent, e.g. `docs/foo.md`. */

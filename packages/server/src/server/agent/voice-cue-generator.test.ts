@@ -81,7 +81,7 @@ describe("createVoiceCueGenerator", () => {
     const fake = fakeGeneration(() => ({
       join: ["Right then", "On the clock"],
       thinking: ["Right then", "Turning it over"],
-      // Every line already claimed elsewhere — the group keeps its first anyway,
+      // Every line already claimed elsewhere - the group keeps its first anyway,
       // because a moment with no lines is silent at playback.
       waiting: ["on the clock!", "Right then"],
       done: ["That's the lot"],

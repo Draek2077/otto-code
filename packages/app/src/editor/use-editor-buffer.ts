@@ -55,7 +55,7 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
     }
     const existing = useEditorBufferStore.getState().buffers[key];
     if (existing?.status === "ready" && existing.dirty && existing.draft != null) {
-      // A host remount (layout change, webview crash) with unsaved edits —
+      // A host remount (layout change, webview crash) with unsaved edits -
       // the pane restores from the draft; don't clobber it with a fresh read.
       return;
     }
@@ -233,7 +233,7 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
 
   /**
    * "Keep my changes": adopt the disk state as the new baseline while the
-   * document stays as-is — the next save preconditions honestly against what
+   * document stays as-is - the next save preconditions honestly against what
    * is actually on disk, and revert restores the disk version.
    */
   const keepMyChanges = useCallback(async () => {
@@ -278,7 +278,7 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
       }
       if (event.hash && event.hash === state.baseline.hash) {
         // Same content (our own save echoing back, or a touch/checkout of an
-        // identical file) — refresh the identity silently.
+        // identical file) - refresh the identity silently.
         useEditorBufferStore.getState().rebaseline(key, {
           ...state.baseline,
           modifiedAt: event.modifiedAt ?? state.baseline.modifiedAt,

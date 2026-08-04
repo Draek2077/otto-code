@@ -68,7 +68,7 @@ terminalPerfDescribe("Terminal wire performance", () => {
       });
 
       console.log(
-        `[perf] Throughput: ${report.throughputMBps} MB/s — ${LINE_COUNT} lines in ${elapsedMs}ms`,
+        `[perf] Throughput: ${report.throughputMBps} MB/s - ${LINE_COUNT} lines in ${elapsedMs}ms`,
       );
 
       expect(
@@ -132,7 +132,7 @@ terminalPerfDescribe("Terminal wire performance", () => {
       });
 
       console.log(
-        `[perf] Keystroke latency — p50: ${report.p50Ms}ms, p95: ${report.p95Ms}ms, max: ${report.maxMs}ms`,
+        `[perf] Keystroke latency - p50: ${report.p50Ms}ms, p95: ${report.p95Ms}ms, max: ${report.maxMs}ms`,
       );
 
       expect(

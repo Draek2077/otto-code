@@ -8,7 +8,7 @@ import {
 } from "@/git/diff-tree";
 
 // The row model for the Changes FlatList. `fileIndex` is the file's index within
-// the (path-sorted) `files` array — a stable identity for testIDs/keys that is
+// the (path-sorted) `files` array - a stable identity for testIDs/keys that is
 // independent of folder rows and collapse state. `depth` drives indentation.
 export type DiffFlatItem =
   | {
@@ -33,7 +33,7 @@ export type DiffFlatItem =
 
 export interface DiffFlatItemsResult {
   items: DiffFlatItem[];
-  /** Indices into `items` of expanded file headers — folder rows are never sticky. */
+  /** Indices into `items` of expanded file headers - folder rows are never sticky. */
   stickyHeaderIndices: number[];
 }
 

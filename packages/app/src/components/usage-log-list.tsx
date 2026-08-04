@@ -40,8 +40,8 @@ const ThemedLayers = withUnistyles(Layers);
 const mutedColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 // The "when" gutter that leads every ledger row, sized to hold the widest label
-// it renders ("12:34 PM"). It sits OUTSIDE the row cards — sub-agent rows indent
-// within the remaining width — so the timestamps stay one straight column no
+// it renders ("12:34 PM"). It sits OUTSIDE the row cards - sub-agent rows indent
+// within the remaining width - so the timestamps stay one straight column no
 // matter how deep the spawn tree goes. The day header pads by the same amount so
 // its text lines up with the row content beside it.
 //
@@ -113,12 +113,12 @@ function computeTotals(events: UsageEvent[]): UsageTotals {
   return { count: events.length, fresh, cached, out, cost };
 }
 
-// The itemized usage ledger — the scrollable rows behind the Metrics tiles
+// The itemized usage ledger - the scrollable rows behind the Metrics tiles
 // (usage-ledger). Renders as plain mapped rows (not a FlatList) so it composes
 // inside the host panel's ScrollView without nested-scroll conflicts;
 // the page size is capped at 200 rows, well within a cheap map. `window` mirrors
 // the Summary tab's range selector, filtered client-side over the loaded page.
-// The range totals are NOT rendered here — they're reported up via
+// The range totals are NOT rendered here - they're reported up via
 // `onTotalsChange` so the Metrics screen can pin them below its scroll region
 // (a fixed screen-bottom bar, not a row that scrolls away with the list).
 export function UsageLogList({
@@ -134,7 +134,7 @@ export function UsageLogList({
   // Shared with chat message timestamps (Appearance → Time format): clock time,
   // or elapsed for rows recent enough that "how long ago" is the better answer.
   const timestampDisplay = useAppSettings().settings.chatTimestampDisplay;
-  // Read once here rather than per row — hundreds of rows each subscribing to
+  // Read once here rather than per row - hundreds of rows each subscribing to
   // the breakpoint would be a lot of listeners for one shared answer.
   const isCompact = useIsCompactFormFactor();
   const now = Date.now();
@@ -186,7 +186,7 @@ export function UsageLogList({
         const parentTotals = computeParentRowTotals(ordered);
         const depths = computeSubagentRowDepths(ordered);
         // Per group, so each day's oldest row keeps a real stamp (the labels
-        // anchor to the bottom of a same-time run — see computeUsageRowStamps).
+        // anchor to the bottom of a same-time run - see computeUsageRowStamps).
         const stamps = computeUsageRowStamps(ordered, now, timestampDisplay);
         return (
           <View key={group.key} style={styles.dayGroup}>
@@ -258,14 +258,14 @@ function UsageLogRow({
   event: UsageEvent;
   /**
    * The gutter label, already deduped against the row below (see
-   * computeUsageRowStamps) — so this row may render the repeat marker instead of
+   * computeUsageRowStamps) - so this row may render the repeat marker instead of
    * its own time.
    */
   stamp: string;
   /** Stack the card into full-width lines instead of icon | main | cost. */
   isCompact: boolean;
   /**
-   * Whole-tree rollup (this turn + all its sub-agents, any nesting depth) —
+   * Whole-tree rollup (this turn + all its sub-agents, any nesting depth) -
    * present only on a chat row that owns sub-agent rows below it.
    */
   treeTotals?: UsageParentTotals;
@@ -310,7 +310,7 @@ function UsageLogRow({
 
   const cost = (
     <Text style={hasCost ? styles.rowCost : styles.rowCostMuted}>
-      {hasCost ? formatMicroUsd(event.costMicroUsd) : "—"}
+      {hasCost ? formatMicroUsd(event.costMicroUsd) : "-"}
     </Text>
   );
   // Hidden when the tree cost is all zeros (token-only providers).
@@ -373,7 +373,7 @@ function UsageLogRow({
 
 // A row's own token figures: fresh in, cache-read in, out, plus the round count
 // and compaction slice when they apply. `inlineTreeTotals` appends the Σ
-// whole-tree rollup to the same line — passed only on the wide layout, since
+// whole-tree rollup to the same line - passed only on the wide layout, since
 // compact gives the rollup a line of its own.
 function RowTokens({
   event,
@@ -419,7 +419,7 @@ function RowTokens({
 }
 
 // The Σ token rollup on a parent chat row, split fresh/cached/out like the row's
-// own figures — a flat sum would bury the cache-read share. Its own component so
+// own figures - a flat sum would bury the cache-read share. Its own component so
 // the row's token line stays within the JSX
 // depth ceiling now that every row nests inside the time-gutter wrapper.
 function RowTreeTokens({ totals }: { totals: UsageParentTotals }): ReactElement {
@@ -466,7 +466,7 @@ const styles = StyleSheet.create((theme) => ({
     // Inset the cost to sit under the rows' cost column: each row is a card with
     // a 1px border + spacing[3] inner padding, so its cost is that far in from
     // the content edge. The bar has no card, so add the same inset here. No
-    // matching LEFT inset — the bar summarises the whole range rather than
+    // matching LEFT inset - the bar summarises the whole range rather than
     // belonging to the rows' time column, and indenting it past the gutter just
     // left it hanging.
     paddingRight: theme.spacing[3] + 1,
@@ -529,7 +529,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 11,
     fontVariant: ["tabular-nums"],
   },
-  // "Same time as the row above" — faded well back, since its whole job is to
+  // "Same time as the row above" - faded well back, since its whole job is to
   // hold the column open without competing with the stamps that carry meaning.
   rowTimeRepeat: {
     width: TIME_COLUMN_WIDTH,
@@ -621,7 +621,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[1],
   },
-  // Cached tokens, round counts, and the separator bullets — the neutral half of
+  // Cached tokens, round counts, and the separator bullets - the neutral half of
   // the token line. The tinted variants below carry the fresh-in/out figures.
   rowTokens: {
     color: theme.colors.foregroundMuted,
@@ -656,7 +656,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     columnGap: theme.spacing[2],
   },
-  // Whole-tree rollup figures (Σ tokens / Σ cost) on a parent chat row — muted
+  // Whole-tree rollup figures (Σ tokens / Σ cost) on a parent chat row - muted
   // and tabular so they read as a summary beside the row's own numbers.
   rowTreeTotal: {
     color: theme.colors.foregroundMuted,

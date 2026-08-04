@@ -74,7 +74,7 @@ export function countLiveObservedSubagents(serverId: string, parentAgentId: stri
 /**
  * Confirms an interrupting send to a busy agent that has live observed
  * subagent/workflow rows. Resolves `true` when there is nothing live to kill,
- * the warning was previously suppressed, or the user accepts — and `false`
+ * the warning was previously suppressed, or the user accepts - and `false`
  * when they cancel. Mirrors `confirmArchiveChat` (the shared suppressible
  * confirm-dialog pattern): a "don't ask again" checkbox persists device-locally.
  */

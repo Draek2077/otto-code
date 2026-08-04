@@ -125,7 +125,7 @@ async function computeFileSha256(filePath: string): Promise<string> {
   return hash.digest("hex");
 }
 
-// Refuse to extract an archive whose bytes don't match the pinned digest — the
+// Refuse to extract an archive whose bytes don't match the pinned digest - the
 // guard against a compromised release asset or a MITM'd download. Throws on
 // mismatch (the caller deletes the bad archive); warns loudly when no digest is
 // pinned yet rather than silently trusting the download.

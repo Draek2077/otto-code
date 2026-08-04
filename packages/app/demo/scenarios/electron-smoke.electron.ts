@@ -12,13 +12,13 @@ import { buildHostAgentDetailRoute } from "../../src/utils/host-routes";
 import { DESKTOP_CAPTURE_RESOLUTION, DESKTOP_LAYOUT_VIEWPORT } from "../helpers/resolution";
 
 /**
- * Electron capture-lane smoke test — proves the whole new lane end to end:
+ * Electron capture-lane smoke test - proves the whole new lane end to end:
  * a real Electron desktop window (not plain Chromium) rendering Otto's
  * `<webview>`-backed Preview browser pane with genuine dev-server content
  * inside it. This is the scenario that unblocks
  * the "02-preview-verify" demo scenario: Preview's `<webview>` tag only has
  * runtime behavior inside Electron's renderer, so the plain-Chromium demo
- * pipeline (playwright.demo.config.ts) can never capture it — see
+ * pipeline (playwright.demo.config.ts) can never capture it - see
  * docs/preview.md and this file's sibling playwright.demo-electron.config.ts.
  */
 
@@ -66,7 +66,7 @@ function hasNavigatedWebview(): boolean {
 }
 
 function buildStaticServerScript(port: number): string {
-  // A minimal CommonJS static server — no external deps, so the preview's
+  // A minimal CommonJS static server - no external deps, so the preview's
   // launch.json can spawn it with a bare `node` runtimeExecutable regardless
   // of what else is on PATH in the isolated e2e environment.
   return [
@@ -93,7 +93,7 @@ test("real Electron renders a live <webview> preview", async () => {
   const serverId = process.env.E2E_SERVER_ID;
   if (!metroPort || !serverId) {
     throw new Error(
-      "E2E_METRO_PORT / E2E_SERVER_ID not set — globalSetup must run first (via playwright.demo-electron.config.ts).",
+      "E2E_METRO_PORT / E2E_SERVER_ID not set - globalSetup must run first (via playwright.demo-electron.config.ts).",
     );
   }
 
@@ -198,7 +198,7 @@ test("real Electron renders a live <webview> preview", async () => {
       )
       .toBe(true);
 
-    // The webview navigates once previewStatus flips to "ready" — wait for
+    // The webview navigates once previewStatus flips to "ready" - wait for
     // the marker element the static server renders, proving real page
     // content loaded inside the <webview>, not a spinner or error state.
     await expect(async () => {
@@ -209,7 +209,7 @@ test("real Electron renders a live <webview> preview", async () => {
     // Give the guest page a moment to paint after navigation before capturing.
     await window.waitForTimeout(2_000);
 
-    // Second screenshot: the actual deliverable — a real <webview> rendering
+    // Second screenshot: the actual deliverable - a real <webview> rendering
     // real dev-server content inside the real Otto UI chrome.
     const previewPath = path.join(outDir, "02-electron-webview-preview.png");
     await window.screenshot({ path: previewPath });
@@ -217,7 +217,7 @@ test("real Electron renders a live <webview> preview", async () => {
 
     // Third capture: the full window as actually composited on screen,
     // including OS-drawn window chrome (Windows Window Controls Overlay
-    // buttons) that a CDP-based page.screenshot() can never show — see
+    // buttons) that a CDP-based page.screenshot() can never show - see
     // captureWindowWithChrome's docstring in e2e/helpers/electron-app.ts.
     // No targetSize here deliberately: this shot exists to prove OS chrome is
     // captured at all, and forcing it to the content-only DESKTOP_CAPTURE_RESOLUTION

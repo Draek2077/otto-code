@@ -7,7 +7,7 @@ import { createCpuSampler } from "../sysmon.js";
  * System-health sampling for a benchmark run.
  *
  * A score is only trustworthy if the machine was in a comparable state when it
- * was measured — a thermal-throttled or power-capped GPU produces a slower,
+ * was measured - a thermal-throttled or power-capped GPU produces a slower,
  * lower run that says nothing about the model. So we sample GPU/CPU/RAM through
  * the run and summarise it alongside the result, and flag when nvidia-smi itself
  * reports a thermal or power slowdown (more reliable than inferring one from a
@@ -136,7 +136,7 @@ export function summarize(samples: HealthSamples): HealthSummary {
 /**
  * Begin sampling; returns a handle with stop() that returns the summary.
  * Sampling failures (no GPU, nvidia-smi missing) degrade to empty aggregates
- * rather than throwing — health is diagnostic, never a reason to fail a bench.
+ * rather than throwing - health is diagnostic, never a reason to fail a bench.
  */
 export function start({ intervalMs = 1000 }: { intervalMs?: number } = {}): HealthHandle {
   const samples: HealthSamples = { gpu: [], cpu: [], ram: [] };

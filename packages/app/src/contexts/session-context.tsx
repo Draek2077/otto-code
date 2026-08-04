@@ -1141,7 +1141,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     // the pending set per parent agent and re-sends the whole list on every
     // change, so the store replaces rather than merges. Without these
     // subscriptions the store's maps stay at the empty Map `initializeSession`
-    // creates and the surfaces that read them can never render anything — which
+    // creates and the surfaces that read them can never render anything - which
     // is exactly how the suggested-task card went silently dead through the
     // Paseo v0.2.5 merge (5e3cc1def) while the store, selectors, overlay and
     // panel wiring all survived and kept compiling.

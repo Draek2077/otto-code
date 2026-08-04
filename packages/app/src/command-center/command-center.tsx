@@ -122,7 +122,7 @@ export function CommandCenterRootActions() {
   // Upstream's action opens their AddProjectFlow sheet. Otto replaced that with
   // the New project page (it can create the folder, init or clone a repo, and
   // create the remote), so every "New project" entry point routes through
-  // useOpenProjectPicker instead — see hooks/use-open-project-picker.ts.
+  // useOpenProjectPicker instead - see hooks/use-open-project-picker.ts.
   const openProjectPicker = useOpenProjectPicker();
   const settingsRoute = useMemo<Href>(() => buildSettingsRoute(), []);
   const homeRoute = useMemo<Href>(() => buildOpenProjectRoute(), []);

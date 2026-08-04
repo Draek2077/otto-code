@@ -19,7 +19,7 @@ type AgentUpdatesFilter = NonNullable<
  *
  * A running agent fires lifecycle/permission/mode/steer events several times a
  * second, and each one used to trigger a full workspace descriptor rebuild per
- * connected session — the deep-equal dedupe downstream suppresses the wire send,
+ * connected session - the deep-equal dedupe downstream suppresses the wire send,
  * not the rebuild. Batching per workspaceId turns a burst into one rebuild while
  * bounding staleness at this window: the first event in a burst arms the timer,
  * every event inside it folds in, and the timer reads whatever state is current
@@ -39,7 +39,7 @@ interface AgentUpdatesSubscriptionState {
  * Owns the single per-client `agent_update` subscription: when a client subscribes
  * via `fetch_agents_request`, every later agent lifecycle change (live forward,
  * stored-record archive/detach, delete) is filtered against the subscription's
- * filter and either emitted or — while the initial snapshot is still being built —
+ * filter and either emitted or - while the initial snapshot is still being built -
  * buffered and replayed on flush. Keeping the mutable subscription state, the
  * bootstrap buffer, the provider-visibility gate, and the filter predicate behind
  * one interface stops the rest of session.ts from poking the subscription shape or

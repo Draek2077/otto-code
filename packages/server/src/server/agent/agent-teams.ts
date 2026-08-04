@@ -15,7 +15,7 @@ import type { ProviderSnapshotEntry } from "./agent-sdk-types.js";
 
 /**
  * The active team resolved at spawn and frozen onto the agent as
- * `AgentSessionConfig.teamSnapshot` — the team-layer sibling of
+ * `AgentSessionConfig.teamSnapshot` - the team-layer sibling of
  * `personalitySnapshot`, with the same lifecycle: switching the active team
  * never mutates a running or observed agent; the born team is part of the
  * agent's identity, like its cwd. Only the fields spawn semantics need are
@@ -34,7 +34,7 @@ export interface ResolvedTeamSnapshot {
  * The one team rule, applied at every spawn path: if the spawning personality
  * is a member of the active team at spawn time, the team layer rides onto the
  * agent. Raw spawns (no personality) and non-member personality spawns get no
- * team layer — and no active team, a dangling active id, or an empty roster
+ * team layer - and no active team, a dangling active id, or an empty roster
  * all read as "no team", never an error.
  */
 export function resolveTeamSnapshotForPersonality(
@@ -63,7 +63,7 @@ export function resolveTeamSnapshotForPersonality(
 /**
  * Resolve the dynamic "Team's Scheduler" schedule binding: the active team's
  * first AVAILABLE member carrying the Scheduler role, in memberIds order.
- * Every failure is a loud, named error — the same hard-fail semantics as a
+ * Every failure is a loud, named error - the same hard-fail semantics as a
  * bound personality being out of commission (never a silent fallback).
  */
 export function resolveTeamSchedulerSnapshot(params: {
@@ -120,7 +120,7 @@ function composeTeamPromptBase(
  * coordinator "orchestration is yours" or a focused worker "stay on task").
  *
  * `roles` are the resolved snapshot's roles; omit them (or pass none) and no
- * directive is appended — with no team layer and no roles the personality prompt
+ * directive is appended - with no team layer and no roles the personality prompt
  * passes through verbatim, byte-identical to pre-teams behavior. A team prompt
  * or directive with no personality prompt stands alone. Callers still apply the
  * ownership rule: a caller-authored systemPrompt wins and nothing composes.

@@ -111,7 +111,7 @@ describe("isProviderImageMarkdown", () => {
   });
 
   test("rejects user-authored markdown that is not a materialized attachment", () => {
-    // No content hash — a hand-written path, not something the writer produced.
+    // No content hash - a hand-written path, not something the writer produced.
     expect(isProviderImageMarkdown("![diagram](./otto-attachments/notes.png)")).toBe(false);
     expect(isProviderImageMarkdown("![diagram](./attachments/notes.png)")).toBe(false);
     expect(isProviderImageMarkdown("![logo](https://example.com/logo.png)")).toBe(false);

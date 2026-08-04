@@ -22,7 +22,7 @@ import type {
 } from "@/visualizer/visualizer-view-types";
 
 // react-native-webview always allows "about:blank" (the origin of the initial
-// source={{ html }} document) regardless of this list — see
+// source={{ html }} document) regardless of this list - see
 // artifact-html-view.tsx for the same note.
 const ORIGIN_WHITELIST: string[] = [];
 
@@ -85,7 +85,7 @@ export const VisualizerView = forwardRef<VisualizerViewHandle, VisualizerViewPro
             onMessage(data as VisualizerHostMessage);
           }
         } catch {
-          // Malformed payload from the guest — drop it.
+          // Malformed payload from the guest - drop it.
         }
       },
       [onMessage],

@@ -38,7 +38,7 @@ import { clearGraphDraft, getGraphDraft, setGraphDraft } from "./graph-draft-sto
 
 // The graph designer tab (web + Electron): toolbar on top, separator, and the
 // Drawflow canvas ported from Draekz Forge underneath. Mobile/native gets the
-// placeholder in orchestration-graph-panel.tsx — the dialog + execute flow is
+// placeholder in orchestration-graph-panel.tsx - the dialog + execute flow is
 // cross-platform; designing wants a desktop-sized screen.
 
 interface OrchestrationGraphPanelInnerProps {
@@ -79,7 +79,7 @@ function OrchestrationGraphPanelInner({
   const [runPrefill, setRunPrefill] = useState<NewOrchestrationPrefill | null>(null);
   const [loadedGraphId, setLoadedGraphId] = useState<string | null>(null);
 
-  // Bumped by every edit. `dirty` alone can't drive the draft mirror below —
+  // Bumped by every edit. `dirty` alone can't drive the draft mirror below -
   // it flips true once and then stops changing, so only the first edit would
   // ever be captured.
   const [revision, setRevision] = useState(0);
@@ -109,7 +109,7 @@ function OrchestrationGraphPanelInner({
     handleRef.current?.setTheme(canvasTheme);
   }, [canvasTheme]);
 
-  // Load the graph into the canvas exactly once per graph id — later push
+  // Load the graph into the canvas exactly once per graph id - later push
   // updates must never clobber in-progress edits. An unsaved working copy from
   // earlier in this session wins over the host's version: navigating away and
   // back is not a discard.
@@ -126,7 +126,7 @@ function OrchestrationGraphPanelInner({
   }, [graph, loadedGraphId, serverId]);
 
   // The node cards' "Prompt template" select is populated from the host's
-  // stored templates, which can arrive before or after the graph loads —
+  // stored templates, which can arrive before or after the graph loads -
   // re-push on either, since the canvas repopulates in place.
   useEffect(() => {
     if (templates) {
@@ -172,13 +172,13 @@ function OrchestrationGraphPanelInner({
     }
     setDirty(false);
     clearGraphDraft(serverId, saved.id);
-    // Validation problems never block saving — a half-built graph is a normal
+    // Validation problems never block saving - a half-built graph is a normal
     // thing to save. They only gate Run. The toast stays a one-word verdict;
     // the detail of what's wrong belongs in the toolbar warnings, not here.
     const problems = validateOrchestrationGraph(saved);
     const warnings = reviewOrchestrationGraph(saved);
     if (problems.length > 0 || warnings.length > 0) {
-      toast.show("Saved — With Issues");
+      toast.show("Saved - With Issues");
     } else {
       toast.show("Saved", { variant: "success" });
     }
@@ -226,7 +226,7 @@ function OrchestrationGraphPanelInner({
     setInputs(next);
     setDirty(true);
     // Node cards surface the declared inputs (prompt hint + the
-    // prompt-from-input select) — keep them in sync live.
+    // prompt-from-input select) - keep them in sync live.
     handleRef.current?.setDeclaredInputs(next.map((input) => input.key));
   }, []);
 
@@ -287,10 +287,10 @@ function OrchestrationGraphPanelInner({
   );
 }
 
-/** "2 issues before it can run — <the first one>". */
+/** "2 issues before it can run - <the first one>". */
 function describeProblems(problems: readonly string[]): string {
   const count = `${problems.length} issue${problems.length === 1 ? "" : "s"} before it can run`;
-  return problems[0] ? `${count} — ${problems[0]}` : count;
+  return problems[0] ? `${count} - ${problems[0]}` : count;
 }
 
 const mutedIconColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
@@ -372,7 +372,7 @@ function CanvasEmptyState({
   );
 }
 
-// Declared inputs editor — the graph's fill-in parameters, rendered as a form
+// Declared inputs editor - the graph's fill-in parameters, rendered as a form
 // by the New Orchestration dialog when this graph is picked. Rows get local
 // synthetic uids so React keys survive key-field edits and reorders.
 interface GraphInputRowState {
@@ -501,7 +501,7 @@ function GraphInputRow({
         <View style={styles.inputRowField}>
           <Field label="Key">
             {/* AdaptiveTextInput renders uncontrolled from initialValue (RN
-                flicker workaround) — omitting it shows an EMPTY field even
+                flicker workaround) - omitting it shows an EMPTY field even
                 when data exists. Rows are uid-keyed, so the one-shot seed is
                 correct per mount. */}
             <FormTextInput
@@ -550,7 +550,7 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
-  // Icon-only actions keep this to a single compact row — the canvas is the
+  // Icon-only actions keep this to a single compact row - the canvas is the
   // point of this tab, not its chrome.
   toolbar: {
     flexDirection: "row",

@@ -7,14 +7,14 @@ export interface TutorialAppState {
   pathname: string;
   isExplorerOpen: boolean;
   // Total registered projects across all hosts (workspaces + empty projects).
-  // Adding a project in Otto does NOT navigate — it just registers a directory
-  // in the sidebar — so this count is the only signal that "create a project"
+  // Adding a project in Otto does NOT navigate - it just registers a directory
+  // in the sidebar - so this count is the only signal that "create a project"
   // succeeded.
   projectCount: number;
 }
 
 // Benign staging actions a step may run before its target is spotlighted. The
-// tour never performs the meaningful create/open/chat action here — the user
+// tour never performs the meaningful create/open/chat action here - the user
 // does that on the real highlighted control.
 export interface TutorialEnterCtx {
   router: Router;

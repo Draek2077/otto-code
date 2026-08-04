@@ -344,7 +344,7 @@ export function extractTaskEntriesFromToolCall(
 // Unlike TodoWrite/update_plan (which resend the whole list every call), these
 // tools mutate one task at a time and identify tasks by an `id` the SDK assigns.
 // TaskCreate returns that id in its OUTPUT; TaskUpdate/TaskList reference it. The
-// reducer accumulates these ops into one evolving checklist — see stream.ts.
+// reducer accumulates these ops into one evolving checklist - see stream.ts.
 
 /**
  * A single mutation to the running checklist, extracted from one completed
@@ -360,7 +360,7 @@ const CHECKLIST_TASK_TOOLS = new Set(["taskcreate", "taskupdate", "tasklist", "t
 /**
  * The checklist Task* family, by normalized name. Note this deliberately does
  * NOT match the bare `Task` tool (subagent fan-out) or `TaskOutput`/`TaskStop`
- * (background-task control) — only the todo-list tools.
+ * (background-task control) - only the todo-list tools.
  */
 export function isChecklistTaskTool(toolName: string): boolean {
   return CHECKLIST_TASK_TOOLS.has(normalizeToolName(toolName));
@@ -378,7 +378,7 @@ const TaskListOutputSchema = z.object({
 });
 
 // Tool I/O may reach us as a structured object or a JSON-encoded string,
-// depending on how the provider serializes the result — tolerate both.
+// depending on how the provider serializes the result - tolerate both.
 function coerceToolPayload(value: unknown): unknown {
   if (typeof value === "string") {
     try {
@@ -446,6 +446,6 @@ export function extractTaskListOperation(
     };
   }
 
-  // taskget and anything else in the family are reads — no list mutation.
+  // taskget and anything else in the family are reads - no list mutation.
   return null;
 }

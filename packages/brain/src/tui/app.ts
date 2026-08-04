@@ -14,7 +14,13 @@ import {
 } from "../models/index.js";
 import type { DiskUsage, QuantOption, RepoQuants, ModelSearchResult } from "../models/index.js";
 import * as profiles from "../config/profiles.js";
-import { loadBrainConfig, loadProfilesStore, saveProfilesStore } from "../config/index.js";
+import {
+  formatReasoningBudget,
+  loadBrainConfig,
+  loadProfilesStore,
+  saveProfilesStore,
+  UNRESTRICTED_REASONING_BUDGET,
+} from "../config/index.js";
 import * as vram from "../vram.js";
 import * as gpu from "../gpu.js";
 import { calibrate } from "../ops/calibrate.js";
@@ -226,7 +232,8 @@ export const FIELDS: Field[] = [
     kind: "cycle",
     values: REASONING_CYCLE,
     format: (p) => {
-      if (p.reasoningBudget === -1) return `${style.red}unrestricted${style.reset}`;
+      if (p.reasoningBudget === UNRESTRICTED_REASONING_BUDGET)
+        return `${style.red}${formatReasoningBudget(p.reasoningBudget)}${style.reset}`;
       if (p.reasoningBudget === 0) return `${style.cyan}thinking off${style.reset}`;
       return `${p.reasoningBudget} tokens`;
     },
@@ -287,6 +294,13 @@ export class App {
   telemetry: Telemetry;
   supervisor: Supervisor;
   routerServer: http.Server | null;
+
+  /**
+   * The VRAM fit behind the resident model, so a benchmark can record whether
+   * the profile it measured was the profile the user configured. Keyed by model
+   * id because a fit computed for one model says nothing about the next.
+   */
+  lastFit: { modelId: string; fit: vram.FitResult } | null = null;
 
   filterMode = false;
   confirming: ConfirmState | null = null;
@@ -391,6 +405,7 @@ export class App {
   async loadModelFitted(target: Model): Promise<void> {
     const info = this.gpuInfo || (await gpu.query());
     let profile = profiles.forModel(this.store, target);
+    this.lastFit = null;
     if (info) {
       const fit = vram.fitToBudget({
         model: target,
@@ -399,6 +414,9 @@ export class App {
         totalVramBytes: info.totalBytes,
       });
       if (!fit.adjusted && !fit.budget.fits) throw new Error(fit.reason ?? undefined);
+      // Held for the benchmark to record: once `fit.profile` is applied, the
+      // context the user actually asked for is gone from every other source.
+      this.lastFit = { modelId: target.id, fit };
       profile = fit.profile;
     }
     this.setStatus(`switching to ${target.displayName}…`, "info");
@@ -813,7 +831,7 @@ export class App {
     const plan = planDelete(model);
     this.confirming = { kind: "delete", model };
     this.setStatus(
-      `delete ${model.displayName} — frees ${vram.formatGiB(plan.bytes)}` +
+      `delete ${model.displayName} - frees ${vram.formatGiB(plan.bytes)}` +
         `${plan.includesProjector ? " (incl. projector)" : ""}?   y / n`,
       "warn",
     );
@@ -830,7 +848,7 @@ export class App {
         this.reload();
         void this.refreshDisk();
         this.setStatus(
-          `deleted ${confirming.model.displayName} — freed ${vram.formatGiB(plan.bytes)}`,
+          `deleted ${confirming.model.displayName} - freed ${vram.formatGiB(plan.bytes)}`,
           "good",
         );
       });
@@ -1109,7 +1127,7 @@ export class App {
     const lines = [this.header(cols), ""];
     lines.push(
       ...box({
-        title: `Download quant — ${truncate(picker.repo, Math.max(8, inner - 18))}`,
+        title: `Download quant - ${truncate(picker.repo, Math.max(8, inner - 18))}`,
         lines: rows,
         innerWidth: inner,
         footer: picker.loading
@@ -1338,7 +1356,7 @@ export class App {
 
         const healthSampler = health.start();
         // stop() is idempotent (clearInterval); guarantee the 1s nvidia-smi
-        // sampler never outlives the run even if runSuite throws — otherwise a
+        // sampler never outlives the run even if runSuite throws - otherwise a
         // failed bench leaks a recurring subprocess.
         let sampled = false;
         try {
@@ -1355,7 +1373,7 @@ export class App {
                 this.benchProgress[this.benchProgress.length - 1] =
                   `${p.title}: ${(p.score * 100).toFixed(0)}%  ${p.summary}`;
               } else if (p.phase === "failed")
-                this.benchProgress.push(`${p.title}: failed — ${p.summary}`);
+                this.benchProgress.push(`${p.title}: failed - ${p.summary}`);
               this.draw();
             },
           });
@@ -1371,11 +1389,25 @@ export class App {
             runtime: `${this.runtime.label} v${this.runtime.version}`,
             system: report.system,
             archiveId,
+            args: this.supervisor.args,
+            // Only when it belongs to the model actually being benchmarked - the
+            // model may have been resident since before this fit was computed.
+            fit: this.lastFit?.modelId === model.id ? this.lastFit.fit : null,
+            calibration: profile ? profiles.getCalibration(this.store, model, profile) : null,
+            suite: {
+              // The TUI runs the full static suite; only concurrency varies, and
+              // it tracks the profile's slot count the same way runSuite is called.
+              execute: true,
+              concurrency: Math.max(1, profile?.parallelSlots || 3),
+              depths: null,
+              only: null,
+              mined: false,
+            },
           });
           this.loadBenchResults();
           this.loadRankings();
           this.benchProgress.push(
-            `done — overall ${(report.overall * 100).toFixed(0)}% (${report.grade})`,
+            `done - overall ${(report.overall * 100).toFixed(0)}% (${report.grade})`,
           );
           this.setStatus(
             `benchmark complete: ${model.displayName} ${(report.overall * 100).toFixed(0)}% (${report.grade})`,
@@ -1620,7 +1652,7 @@ export class App {
       return box({
         title: "Leaderboard",
         lines: [
-          `${style.grey}no benchmarks yet — select a model and press r to run one${style.reset}`,
+          `${style.grey}no benchmarks yet - select a model and press r to run one${style.reset}`,
         ],
         innerWidth: innerWidth - 2,
       });
@@ -1669,7 +1701,7 @@ export class App {
     const body: string[] = [];
     if (logs.length === 0) {
       body.push(
-        `${style.grey}no logs yet — start a model with s to see llama-server output${style.reset}`,
+        `${style.grey}no logs yet - start a model with s to see llama-server output${style.reset}`,
       );
     } else {
       for (const line of logs.slice(Math.max(0, logs.length - bodyRows)))
@@ -1986,19 +2018,19 @@ export class App {
     section("Change settings (Configuration panel)");
     item("← →", "change the selected field (toggle / cycle / ± step)");
     item("- +", "same as ← →");
-    item("Enter", "edit a number field — type digits, Enter saves, Esc cancels");
+    item("Enter", "edit a number field - type digits, Enter saves, Esc cancels");
     item("m", "set context to the largest size that fits in VRAM");
     section("Run the model");
     item("s", "start / load the selected model");
     item("x", "stop the running model");
-    item("c", "calibrate — measure real VRAM per token");
-    item("w", "sweep — find the best reasoning budget");
+    item("c", "calibrate - measure real VRAM per token");
+    item("w", "sweep - find the best reasoning budget");
     section("Manage models");
-    item("f", "find on Hugging Face — search and add a new model");
-    item("g", "get a quant — pick Q4/Q5/Q6… to download for this repo");
+    item("f", "find on Hugging Face - search and add a new model");
+    item("g", "get a quant - pick Q4/Q5/Q6… to download for this repo");
     item("D", "delete the selected model (frees disk, asks to confirm)");
     section("Views");
-    item("b", "benchmark mode — rank models, run the coding suite");
+    item("b", "benchmark mode - rank models, run the coding suite");
     item("l", "view the live llama-server log");
     item("/", "filter the model list (Enter apply, Esc clear)");
     item("r", "rescan the models folder");
@@ -2010,7 +2042,7 @@ export class App {
     const lines = [this.header(cols), ""];
     lines.push(
       ...box({
-        title: "Help — every key and what it does",
+        title: "Help - every key and what it does",
         lines: rows,
         innerWidth: inner,
         footer: `${style.grey}esc or ? to go back${style.reset}`,
@@ -2022,8 +2054,8 @@ export class App {
 
   /**
    * The key hints for the current mode, as an array of lines. Groups are
-   * deliberately broken onto separate lines — navigation first, then the
-   * actions — and each group wraps further only if the terminal is too narrow.
+   * deliberately broken onto separate lines - navigation first, then the
+   * actions - and each group wraps further only if the terminal is too narrow.
    */
   keybindings(cols: number): string[] {
     let groups: string[][][];
@@ -2078,14 +2110,14 @@ export class App {
       ];
     } else {
       groups = [
-        // Navigation — line one.
+        // Navigation - line one.
         [
           ["↑↓", "select"],
           ["tab", "panel"],
           ["←→", "change"],
           ["enter", "edit"],
         ],
-        // Actions — line two onward.
+        // Actions - line two onward.
         [
           ["s", "start"],
           ["x", "stop"],

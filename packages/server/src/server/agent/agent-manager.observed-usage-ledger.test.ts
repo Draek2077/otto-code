@@ -104,7 +104,7 @@ test("stamps spawn-tree identity (startedAt, own key, parent key) on the row", (
   expect(row.startedAt).toBeGreaterThanOrEqual(before);
   expect(row.startedAt).toBeLessThanOrEqual(Date.now());
 
-  // A depth-1 sub-agent has no spawning sub-agent — parent key stays absent.
+  // A depth-1 sub-agent has no spawning sub-agent - parent key stays absent.
   internals.onObservedSubagentUpdated(
     PARENT,
     update({ key: "task-top", status: "running", usage: HAIKU_SPLIT }),
@@ -230,7 +230,7 @@ test("settles with no split ⇒ no ledger row (honest blank, never fabricated)",
   const { usageEvents, internals } = createHarness();
 
   // Only a scalar cumulative total was ever known (e.g. a starved workflow child),
-  // never a real per-frame split — so there is nothing honest to itemize.
+  // never a real per-frame split - so there is nothing honest to itemize.
   internals.onObservedSubagentUpdated(
     PARENT,
     update({ key: "task-1", status: "running", cumulativeTokens: 1200 }),

@@ -6,7 +6,7 @@ import type { LspPublishedDiagnostics } from "./connection.js";
  *
  * Two-level keying is what makes multi-server documents behave. An Angular `.ts` file is
  * held by both `typescript` and `angular`, and each publishes its **own complete** set for
- * that document — so a push replaces one server's slice and leaves the other's alone.
+ * that document - so a push replaces one server's slice and leaves the other's alone.
  * Flattening to one list per document would make whichever server published last erase
  * the other's findings.
  *
@@ -25,7 +25,7 @@ const SEVERITY_BY_LSP_CODE: Readonly<Record<number, CodeDiagnosticSeverity>> = {
 
 /**
  * LSP makes `severity` optional and says the client decides. A problem the server took
- * the trouble to report but did not rank is treated as an error — the same call VS Code
+ * the trouble to report but did not rank is treated as an error - the same call VS Code
  * makes, and the safe direction: over-reporting severity is visible, under-reporting hides
  * a real failure in a tone the eye skips.
  */
@@ -45,7 +45,7 @@ const SEVERITY_RANK: Readonly<Record<CodeDiagnosticSeverity, number>> = {
  *
  * Zero-width ranges are widened by one column. A server is entitled to point at a single
  * offset (missing semicolons and unexpected EOF both do), but a marker with no extent
- * cannot be drawn or hovered — it would be a diagnostic the user can see in no way at all.
+ * cannot be drawn or hovered - it would be a diagnostic the user can see in no way at all.
  */
 export function toCodeDiagnostics(
   published: LspPublishedDiagnostics,
@@ -76,7 +76,7 @@ export function toCodeDiagnostics(
 export interface SetDiagnosticsInput {
   /** Canonical document identity, from `documentKey`. */
   documentKey: string;
-  /** Canonical (workspace × server) identity — one server's slice of this document. */
+  /** Canonical (workspace × server) identity - one server's slice of this document. */
   serverKey: string;
   diagnostics: CodeDiagnostic[];
 }

@@ -109,8 +109,8 @@ export function normalizeAndValidateBaseRefName(input: string): string {
  * Same safety checks as {@link normalizeAndValidateBaseRefName}, but **keeps** an `origin/`
  * qualifier instead of stripping it.
  *
- * `main` and `origin/main` are separate answers to "what is this diffed against?" — local can be
- * behind, ahead, or diverged from origin — so a base the user pinned explicitly has to survive
+ * `main` and `origin/main` are separate answers to "what is this diffed against?" - local can be
+ * behind, ahead, or diverged from origin - so a base the user pinned explicitly has to survive
  * round-tripping. The comparison path honours the qualifier verbatim; merge and PR targets
  * collapse it back to the local name, because there is no such thing as opening a PR against a
  * remote-tracking ref.
@@ -132,7 +132,7 @@ export function writeOttoWorktreeMetadata(
     // which PR/MR it belongs to. The caller always passed it through a spread,
     // which slips past the excess-property check, so leaving it off this
     // signature discarded it silently for every checkout-change-request
-    // worktree — and a cross-repo MR with no push remote has nothing else to
+    // worktree - and a cross-repo MR with no push remote has nothing else to
     // recover the lookup from.
     changeRequestLookupTarget?: OttoWorktreeChangeRequestLookupTarget;
   },

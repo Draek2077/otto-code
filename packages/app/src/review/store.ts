@@ -54,7 +54,7 @@ export interface BuildReviewDraftKeyInput extends BuildReviewDraftScopeKeyInput 
   mode: ReviewDraftMode;
   /**
    * The checkout's current branch. Comments anchor to line numbers in a specific
-   * diff, so drafts are scoped to the branch they were written on — switching
+   * diff, so drafts are scoped to the branch they were written on - switching
    * branches must not carry comments onto an unrelated diff (baseRef is the
    * repository default branch and does not change on branch switch). Null/absent
    * covers detached HEAD, where all detached states share one bucket.

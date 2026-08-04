@@ -5,7 +5,7 @@ import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspac
  * Tracks which workspaces have their pane content actually mounted (a layout
  * exists, so the tab strip + panes render), as opposed to just the workspace
  * shell being on screen. The route-fade veil reads this to HOLD its reveal until
- * the incoming workspace's panes are up — on a cold/unseeded workspace the shell
+ * the incoming workspace's panes are up - on a cold/unseeded workspace the shell
  * paints a frame or two before `layoutByWorkspace[key]` is populated, and without
  * this gate the veil would lift on the empty shell and the panes would pop in
  * after (see RouteFadeContainer / PAGE_TRANSITION_MAX_HOLD_MS).
@@ -59,7 +59,7 @@ export function useWorkspaceContentReady(key: string | null): boolean {
   );
 }
 
-/** Readiness of the workspace the route currently points at — what the app-wide
+/** Readiness of the workspace the route currently points at - what the app-wide
  * route fade gates its reveal on. */
 export function useActiveWorkspaceContentReady(): boolean {
   const selection = useActiveWorkspaceSelection();

@@ -182,7 +182,7 @@ function resolveOpenCodeCreateConfig(
   if (inheritsUnattended && requestedMode === undefined) {
     // Unattendedness for OpenCode is carried by auto_accept (set above), not
     // by any particular agent. Leave the mode unset so OpenCode uses its own
-    // default agent — `build` may not exist in the user's OpenCode config.
+    // default agent - `build` may not exist in the user's OpenCode config.
     return { modeId: undefined, featureValues };
   }
 
@@ -550,7 +550,7 @@ function matchesHydratedFingerprint(
 
 // `null` = no explicit mode. The `agent` field is then omitted from OpenCode
 // prompt/command calls so OpenCode falls back to its own configured default
-// agent — never assume any particular agent (even `build`) exists, since
+// agent - never assume any particular agent (even `build`) exists, since
 // OpenCode users can define or delete agents at will.
 function normalizeOpenCodeModeId(modeId: string | null | undefined): string | null {
   const trimmed = typeof modeId === "string" ? modeId.trim() : "";
@@ -619,7 +619,7 @@ function mergeOpenCodeModes(discoveredModes: AgentMode[]): AgentMode[] {
   const filtered = discoveredModes.filter(
     (mode) => mode.id !== OPENCODE_LEGACY_FULL_ACCESS_MODE_ID,
   );
-  // When discovery returns results, trust them exactly — don't inject hardcoded
+  // When discovery returns results, trust them exactly - don't inject hardcoded
   // defaults that the user may have intentionally disabled in their OpenCode config.
   // When discovery produced nothing, return empty rather than fabricating modes:
   // OpenCode users can rename or delete any agent, so a hardcoded fallback can
@@ -1677,7 +1677,7 @@ export class OpenCodeAgentClient implements AgentClient {
     );
 
     if (response.error || !response.data) {
-      // Discovery failed — return an empty list rather than fabricating
+      // Discovery failed - return an empty list rather than fabricating
       // modes. OpenCode users can rename or delete any agent (including
       // "build"/"plan"), so a hardcoded fallback can validate a mode that
       // does not actually exist, which then fails at prompt time.
@@ -2731,7 +2731,7 @@ function appendOpenCodeSessionStatus(
   }
   if (status.type === "retry") {
     // Mirror what opencode's TUI shows: retry attempts are visible activity, not
-    // terminal. opencode itself never gives up — it backs off and tries again
+    // terminal. opencode itself never gives up - it backs off and tries again
     // forever. If we silently swallow these the user sees a spinner with no
     // explanation. Forwarding as a timeline error item is a no-op for old
     // clients (the schema already supports it).
@@ -2746,7 +2746,7 @@ function appendOpenCodeSessionStatus(
     });
     return;
   }
-  // "busy" is transient — no terminal event, no surfaced activity.
+  // "busy" is transient - no terminal event, no surfaced activity.
 }
 
 interface Deferred<T> {

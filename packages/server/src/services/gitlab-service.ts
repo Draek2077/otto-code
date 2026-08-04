@@ -500,8 +500,8 @@ function toTimelineComment(
     return null;
   }
   const location = toTimelineCommentLocation(note, discussion);
-  // Top-level thread id groups every note of a reply chain — including general
-  // (non-file) discussions that carry no `location` — into one timeline thread.
+  // Top-level thread id groups every note of a reply chain - including general
+  // (non-file) discussions that carry no `location` - into one timeline thread.
   const threadId = isThreadDiscussion(discussion) ? discussion.id : undefined;
   // A resolvable discussion without a file position (a general thread) carries its
   // resolution here, since `location.isResolved` only exists for file threads.
@@ -1103,7 +1103,7 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
       // `--auto-merge=false` forces an immediate merge: without it glab's default
       // would schedule "merge when the pipeline succeeds" while a pipeline runs,
       // turning a direct merge into an auto-merge. Mirrors `gh pr merge` without
-      // `--auto`. The pre-flight guard above stays — both are needed.
+      // `--auto`. The pre-flight guard above stays - both are needed.
       const args = ["mr", "merge", String(input.prNumber), "--auto-merge=false", "--yes"];
       if (input.mergeMethod === "squash") {
         args.push("--squash");

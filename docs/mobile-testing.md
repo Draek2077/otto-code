@@ -12,7 +12,7 @@ maestro test packages/app/maestro/my-flow.yaml
 
 ### Screenshots
 
-`takeScreenshot` writes to the **current working directory** — there's no way to configure the output path in the YAML. To keep screenshots out of the checkout, `cd` into a temp directory and use an absolute path for the flow:
+`takeScreenshot` writes to the **current working directory** - there's no way to configure the output path in the YAML. To keep screenshots out of the checkout, `cd` into a temp directory and use an absolute path for the flow:
 
 ```bash
 FLOW="$(pwd)/packages/app/maestro/my-flow.yaml"
@@ -24,7 +24,7 @@ cd /tmp/maestro-out && maestro test "$FLOW"
 
 ### Element targeting
 
-Use `testID` or `nativeID` on components, then target with `id:` in flows. Prefer this over text matching — text breaks on copy changes.
+Use `testID` or `nativeID` on components, then target with `id:` in flows. Prefer this over text matching - text breaks on copy changes.
 
 ```tsx
 // Component
@@ -58,7 +58,7 @@ This is how `flows/dev-client.yaml` handles Expo dev client screens that only ap
 
 ### Don't use launchApp against a running dev app
 
-`launchApp` kills and restarts the app, disrupting Expo dev client state and host connections. For flows that test against an already-running dev app, **omit launchApp entirely** — just interact with whatever is on screen.
+`launchApp` kills and restarts the app, disrupting Expo dev client state and host connections. For flows that test against an already-running dev app, **omit launchApp entirely** - just interact with whatever is on screen.
 
 Use `launchApp` only in flows that need a clean start (e.g., onboarding tests).
 
@@ -74,7 +74,7 @@ Use `start`/`end` with percentage coordinates for precise control:
     duration: 300
 ```
 
-`direction: RIGHT` is simpler but less precise — use it for generic swipes, use coordinates when the start position matters (edge gestures, avoiding specific UI regions).
+`direction: RIGHT` is simpler but less precise - use it for generic swipes, use coordinates when the start position matters (edge gestures, avoiding specific UI regions).
 
 ### Assertions
 
@@ -92,12 +92,12 @@ For async elements, use `extendedWaitUntil`:
 
 Two reusable flows handle Expo dev client screens after launch:
 
-- `flows/launch.yaml` — handles dev launcher, dismisses dev menu, asserts "Welcome to Otto"
-- `flows/dev-client.yaml` — same but without asserting a particular app route
+- `flows/launch.yaml` - handles dev launcher, dismisses dev menu, asserts "Welcome to Otto"
+- `flows/dev-client.yaml` - same but without asserting a particular app route
 
 ### Reach the composer
 
-`flows/land-in-chat.yaml` is the canonical "get into a chat" primitive. It `clearState`s, runs `launch.yaml`, taps the welcome screen's direct-connection option, types `127.0.0.1:6788` (the repo dev daemon — **not** the installed app's `6868`), submits, and waits for `message-input-root`. Compose any composer-level fixture on top of it:
+`flows/land-in-chat.yaml` is the canonical "get into a chat" primitive. It `clearState`s, runs `launch.yaml`, taps the welcome screen's direct-connection option, types `127.0.0.1:6788` (the repo dev daemon - **not** the installed app's `6868`), submits, and waits for `message-input-root`. Compose any composer-level fixture on top of it:
 
 ```yaml
 appId: ai.ottocode
@@ -139,7 +139,7 @@ The workspace-create shell scripts render those subflows into a temp directory b
 
 ### Inputs that Maestro types into
 
-Maestro `inputText` fires one character at a time. React Native's **controlled** `TextInput` re-renders per keystroke; if a controlled input's state update lags or re-mounts mid-type, characters are dropped silently — the final value on screen is a truncated/scrambled version of what was "typed."
+Maestro `inputText` fires one character at a time. React Native's **controlled** `TextInput` re-renders per keystroke; if a controlled input's state update lags or re-mounts mid-type, characters are dropped silently - the final value on screen is a truncated/scrambled version of what was "typed."
 
 For inputs that E2E flows type into (host endpoint, pairing URL, etc.), use an **uncontrolled ref-backed input**: `defaultValue` + `onChangeText` writes into a `useRef`, reads via the ref on submit. No per-keystroke re-render, no dropped characters.
 
@@ -151,11 +151,11 @@ On iOS, when a dropdown menu (`DropdownMenu` / RN `Modal`) item needs to launch 
 
 `DropdownMenu` handles this by deferring the selected item's `onSelect` until `Modal.onDismiss` fires (UIKit-level dismissal complete), then adds a small extra buffer before invoking it. See `components/ui/dropdown-menu.tsx`'s `selectItem` / `flushPendingSelect`.
 
-When building a new component that composes a dropdown with a native presenter, reuse this dropdown — do not invent a new timing shim.
+When building a new component that composes a dropdown with a native presenter, reuse this dropdown - do not invent a new timing shim.
 
 ## Self-verification loops
 
-Maestro can only interact with the app UI — it can't toggle iOS appearance, change locale, or simulate network conditions. For bugs that depend on system-level state, wrap Maestro in a bash script that handles the system changes between Maestro runs.
+Maestro can only interact with the app UI - it can't toggle iOS appearance, change locale, or simulate network conditions. For bugs that depend on system-level state, wrap Maestro in a bash script that handles the system changes between Maestro runs.
 
 This pattern also lets agents self-verify fixes without manual user testing.
 
@@ -260,7 +260,7 @@ const { theme } = useUnistyles();
 />;
 ```
 
-Regular `View` components can safely use Unistyles dynamic styles — the conflict is specific to `Animated.View`.
+Regular `View` components can safely use Unistyles dynamic styles - the conflict is specific to `Animated.View`.
 
 ## Native Chat Stream Layout
 

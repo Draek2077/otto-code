@@ -11,7 +11,7 @@ import {
 /**
  * What a rendered document is allowed to draw, and where it may draw it from.
  *
- * Both image paths — markdown `![](x)` and translated `<img src="x">` — end up
+ * Both image paths - markdown `![](x)` and translated `<img src="x">` - end up
  * in {@link useMarkdownImageSource}, so the scheme gate and the workspace
  * resolution are decided once rather than twice.
  */
@@ -52,7 +52,7 @@ export function MarkdownImageProvider({
 export type MarkdownImageSource = { kind: "uri"; uri: string } | { kind: "svg"; xml: string };
 
 export interface MarkdownImageResolution {
-  /** What to draw, or `null` when nothing may be drawn — the caller shows alt text. */
+  /** What to draw, or `null` when nothing may be drawn - the caller shows alt text. */
   source: MarkdownImageSource | null;
   /** A workspace read is in flight. Not a failure yet, so draw nothing rather than alt text. */
   pending: boolean;
@@ -63,8 +63,8 @@ export interface MarkdownImageResolution {
  *
  * A workspace-relative src is resolved, contained and read through the daemon;
  * everything else faces the scheme allowlist it always did. The raw src of a
- * relative image never becomes an `<Image>` source — only the store URL the read
- * produced — which is what keeps `remoteImages: "altText"` meaningful.
+ * relative image never becomes an `<Image>` source - only the store URL the read
+ * produced - which is what keeps `remoteImages: "altText"` meaningful.
  */
 export function useMarkdownImageSource(src: string): MarkdownImageResolution {
   const { remoteImages, workspaceImages } = useContext(MarkdownImageContext);

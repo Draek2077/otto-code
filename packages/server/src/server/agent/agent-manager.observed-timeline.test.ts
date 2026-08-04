@@ -11,7 +11,7 @@ const logger = createTestLogger();
 // Observed subagents have no ManagedAgent, so nothing runs the normal
 // registration path that seeds the timeline store. These tests pin the
 // regression where every observed timeline append/fetch threw
-// "Unknown agent '<parent>::sub::<key>'" — killing the subagent's live
+// "Unknown agent '<parent>::sub::<key>'" - killing the subagent's live
 // stream, backfill, and pane transcript all at once.
 interface ObservedInternals {
   onObservedSubagentUpdated(

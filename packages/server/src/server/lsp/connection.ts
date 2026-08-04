@@ -18,7 +18,7 @@ import { toFileUri } from "./uri.js";
 
 /**
  * One live language server: the spawned process, the JSON-RPC channel to it, and
- * the handshake. Owns nothing above itself — which server to run and when to run
+ * the handshake. Owns nothing above itself - which server to run and when to run
  * it belong to the registry and the pool.
  *
  * Two rules from the charter's risk list are structural here, not policy above:
@@ -31,7 +31,7 @@ import { toFileUri } from "./uri.js";
  * Providers are declared rather than left to the loose index signature because the
  * fan-out filters on them: `oxlint` binds `.ts` alongside `typescript` but answers only
  * diagnostics, and asking it for a definition wastes a round-trip on a guaranteed miss.
- * A server's own `initialize` reply is the authority on what it can do — better than a
+ * A server's own `initialize` reply is the authority on what it can do - better than a
  * `provides:` column in the registry, which would be ours to keep accurate forever.
  */
 const ProviderSchema = z.union([z.boolean(), z.looseObject({})]).optional();
@@ -66,7 +66,7 @@ const ProgressNotificationSchema = z.looseObject({
 
 /**
  * `textDocument/publishDiagnostics`, parsed no further than the envelope. Positions stay
- * 0-based and severity stays numeric here — `service.ts` is the only place that converts
+ * 0-based and severity stays numeric here - `service.ts` is the only place that converts
  * to Otto's wire shape, exactly as it is for request replies.
  *
  * `severity` is optional in LSP ("client decides"), and `code` may be a string or a
@@ -121,14 +121,14 @@ export interface LspConnectionOptions {
   requestTimeoutMs: number;
   onExit: (info: LspExitInfo) => void;
   /**
-   * Fired whenever this server becomes busy or idle — spawn/handshake and each
+   * Fired whenever this server becomes busy or idle - spawn/handshake and each
    * work-done-progress window. The pool aggregates these into a per-workspace signal
    * so the UI can show that indexing is live rather than leaving the user guessing.
    */
   onActivityChange?: () => void;
   /**
-   * Fired for every `textDocument/publishDiagnostics`. Unsolicited by nature — the
-   * server decides when it has recomputed — which is why diagnostics are a push channel
+   * Fired for every `textDocument/publishDiagnostics`. Unsolicited by nature - the
+   * server decides when it has recomputed - which is why diagnostics are a push channel
    * rather than a request like everything else in this subsystem.
    */
   onDiagnostics?: (published: LspPublishedDiagnostics) => void;
@@ -205,7 +205,7 @@ function quoteForCmd(value: string): string {
 
 /**
  * Node refuses to spawn `.cmd`/`.bat` directly (CVE-2024-27980), and npm installs
- * its bins as `.cmd` shims on Windows — which is exactly how the workspace-first
+ * its bins as `.cmd` shims on Windows - which is exactly how the workspace-first
  * ladder finds `typescript-language-server`.
  *
  * `shell: true` is the obvious workaround and the wrong one: it concatenates argv
@@ -351,7 +351,7 @@ export class LspConnection {
   }
 
   /**
-   * Whether the server advertised this request. Absent and explicit `false` are both no —
+   * Whether the server advertised this request. Absent and explicit `false` are both no -
    * LSP allows either for "not supported".
    */
   supports(feature: LspFeature): boolean {
@@ -364,7 +364,7 @@ export class LspConnection {
   }
 
   /**
-   * Whether the server has work-done progress in flight — a real signal from the
+   * Whether the server has work-done progress in flight - a real signal from the
    * server, not a guess from elapsed time. It is what lets an empty definition result
    * during a cold project load be reported as "indexing" rather than "not found".
    */
@@ -472,7 +472,7 @@ export class LspConnection {
           // Declared even though most servers publish regardless: some gate on it,
           // and a server that thinks nobody is listening is entitled to stay quiet.
           // `relatedInformation` is off because nothing renders the secondary spans yet
-          // — claiming support we ignore would only make payloads bigger.
+          // - claiming support we ignore would only make payloads bigger.
           // `codeDescriptionSupport` is on: it is the rule's documentation URL, and a
           // lint warning that can link to what the rule is for is the difference between
           // an instruction and an explanation.
@@ -485,7 +485,7 @@ export class LspConnection {
         },
         workspace: { workspaceFolders: true, configuration: true },
         // Without this a server MUST NOT start server-initiated progress (LSP spec), so
-        // it never tells us it is loading a project — which is exactly why TypeScript
+        // it never tells us it is loading a project - which is exactly why TypeScript
         // looked like it indexed instantly and then quietly under-reported references for
         // the next several seconds. Answering `window/workDoneProgress/create` is not
         // enough; the capability has to be advertised for the server to ask at all.
@@ -497,7 +497,7 @@ export class LspConnection {
   }
 
   /**
-   * Servers block on these until answered — pyright asks for configuration
+   * Servers block on these until answered - pyright asks for configuration
    * before it will index, and several register capabilities during startup.
    * Phase 1 answers them minimally rather than negotiating.
    */

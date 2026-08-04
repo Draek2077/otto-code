@@ -2,7 +2,7 @@ import type { ComponentProps, ReactElement } from "react";
 import { CombinedModelSelector } from "@/components/combined-model-selector";
 import type { RolePersonality } from "@/provider-selection/role-model-personality";
 
-// The model-half of CombinedModelSelector — everything except the personality
+// The model-half of CombinedModelSelector - everything except the personality
 // props, which this component owns via the unified RolePersonality contract.
 type ModelHalfProps = Omit<
   ComponentProps<typeof CombinedModelSelector>,

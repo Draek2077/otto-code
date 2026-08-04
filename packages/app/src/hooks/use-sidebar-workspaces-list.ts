@@ -125,7 +125,7 @@ export function useSidebarWorkspacesList(options?: {
     }
     const selected = new Set(hostFilters);
     const matched = allServerIds.filter((id) => selected.has(id));
-    // Registry has settled but none of the pinned hosts still exist — fall back to every
+    // Registry has settled but none of the pinned hosts still exist - fall back to every
     // host rather than leaving the sidebar empty.
     if (hostRegistryLoaded && matched.length === 0) {
       return allServerIds;

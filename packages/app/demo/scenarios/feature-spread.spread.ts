@@ -13,10 +13,10 @@ import { demoThemeAppearance, resolveDemoTheme } from "../helpers/theme";
 import { seedDemoWorkspace, type DemoWorkspace } from "../staging/seed";
 
 /**
- * Feature spread — not a step-by-step demo, but a sweep of stills across the
+ * Feature spread - not a step-by-step demo, but a sweep of stills across the
  * app's surfaces for the website's feature sections and store listings. Runs
  * in two Playwright projects: `spread` (desktop 1440×900) and `spread-mobile`
- * (390×844 at 3× — Play-Store-ready portrait PNGs). Assets land in
+ * (390×844 at 3× - Play-Store-ready portrait PNGs). Assets land in
  * demo/.out/feature-spread[-mobile]/.
  *
  * The agent-chat surface needs a real provider turn; it only runs when
@@ -52,7 +52,7 @@ function isPhoneProject(projectName: string): boolean {
 
 /**
  * Diff expanded-state persists per workspace on the device, so a later visit
- * in the same browser session may find the first file already expanded —
+ * in the same browser session may find the first file already expanded -
  * clicking it again would collapse it. Only click when the body is hidden.
  */
 async function expandFirstDiffIfCollapsed(page: Page): Promise<void> {
@@ -66,7 +66,7 @@ async function expandFirstDiffIfCollapsed(page: Page): Promise<void> {
 
 /**
  * Per-platform capture themes: desktop/site spreads run both site-default
- * themes (Twilight/Daylight, see demo/helpers/theme.ts) — Android phone and
+ * themes (Twilight/Daylight, see demo/helpers/theme.ts) - Android phone and
  * tablet stay stock dark, iOS stays light, matching each store's own
  * screenshot conventions rather than the site's branding.
  */
@@ -119,7 +119,7 @@ test("feature spread", async ({ page }, testInfo) => {
   await recorder.shot("home", "Home", "Start an agent in any project, from anywhere.");
 
   if (!mobile) {
-    // Workspace with the explorer + pending diff open — the IDE surface.
+    // Workspace with the explorer + pending diff open - the IDE surface.
     await gotoWorkspace(page, storefront.workspaceId);
     await page.getByRole("button", { name: "Open explorer" }).first().click();
     await page.getByTestId("explorer-tab-changes").click();
@@ -185,7 +185,7 @@ test("feature spread", async ({ page }, testInfo) => {
     if (!mobile) {
       // Agent chat + the diff it just reviewed, side by side. The explorer
       // panel state persisted from the workspace-diff surface earlier in this
-      // session, so it may already be open — only click the button if shown.
+      // session, so it may already be open - only click the button if shown.
       const openExplorer = page.getByRole("button", { name: "Open explorer" }).first();
       if (await openExplorer.isVisible().catch(() => false)) {
         await openExplorer.click();

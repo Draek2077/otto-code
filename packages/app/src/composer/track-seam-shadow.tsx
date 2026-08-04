@@ -4,16 +4,16 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { SPACING, type Theme } from "@/styles/theme";
 
 // Visible depth of the cast shadow: how far the darkening reaches UP from the
-// front card's top edge. A fixed pixel value rather than a spacing token — it
+// front card's top edge. A fixed pixel value rather than a spacing token - it
 // is a lighting effect sized to read as a card edge, not layout.
 const TRACK_SEAM_SHADOW_FALLOFF = 10;
-// How much of itself each card tucks behind the next one — the same
+// How much of itself each card tucks behind the next one - the same
 // `-spacing[4]` every track carries as `track.marginBottom`.
 const TRACK_SEAM_SHADOW_TUCK = SPACING[4];
 // The strip runs from the falloff down to the card's own bottom edge, not just
 // down to the front card's top edge. The front card has rounded top corners, so
 // its two corner notches leave the tucked strip of THIS card visible at the far
-// left and right — unshaded, those notches read as bright nicks in the seam.
+// left and right - unshaded, those notches read as bright nicks in the seam.
 const TRACK_SEAM_SHADOW_HEIGHT = TRACK_SEAM_SHADOW_FALLOFF + TRACK_SEAM_SHADOW_TUCK;
 
 const TRACK_SEAM_SHADOW_OPACITY_LIGHT = 0.06;
@@ -30,19 +30,29 @@ const SHADOW_FULL_STOP = shadowStop(TRACK_SEAM_SHADOW_FALLOFF);
 // `shadowOpacity` is optional with a default for the same reason as
 // sidebar-seam-shadow.tsx: withUnistyles supplies it through `uniProps` at
 // render time, so it is never passed at the JSX call site.
+//
+// `layer` makes the gradient id unique per caller (see gradientId below) -
+// without it every mounted track shared the literal string
+// "composer-track-seam-shadow", and `url(#id)` references resolve against the
+// whole document, not the local `<svg>`. Whichever track's Defs happened to
+// land first in the DOM "won" for every other track's <Rect>; dismissing that
+// first track then left the rest pointing at a gradient that no longer
+// existed, so their shadow silently stopped painting.
 function TrackSeamShadowGradient({
+  layer,
   shadowOpacity = TRACK_SEAM_SHADOW_OPACITY_DARK,
 }: {
+  layer: number;
   shadowOpacity?: number;
 }) {
-  const gradientId = "composer-track-seam-shadow";
+  const gradientId = `composer-track-seam-shadow-${layer}`;
   return (
     <Svg width="100%" height="100%" preserveAspectRatio="none">
       <Defs>
         <LinearGradient id={gradientId} x1="0%" y1="0%" x2="0%" y2="100%">
           <Stop offset="0%" stopColor="#000000" stopOpacity={0} />
           {/* Mid stop keeps the falloff hugging the seam instead of smearing
-              evenly across it — light drops off fast under a card edge. */}
+              evenly across it - light drops off fast under a card edge. */}
           <Stop offset={SHADOW_MID_STOP} stopColor="#000000" stopOpacity={shadowOpacity * 0.3} />
           <Stop offset={SHADOW_FULL_STOP} stopColor="#000000" stopOpacity={shadowOpacity} />
           <Stop offset="100%" stopColor="#000000" stopOpacity={shadowOpacity} />
@@ -58,7 +68,7 @@ function TrackSeamShadowGradient({
 // the factory's non-color values are computed once at module load against the
 // then-active theme and never re-evaluated on scheme switches, so the branch
 // would freeze on the startup scheme (docs/unistyles.md). Same reason the color
-// is a literal black rather than a token — an SVG `stopColor` presentation
+// is a literal black rather than a token - an SVG `stopColor` presentation
 // attribute cannot resolve a `var()` (see chat-seam-fade.tsx).
 const ThemedTrackSeamShadowGradient = withUnistyles(TrackSeamShadowGradient);
 
@@ -80,7 +90,7 @@ const seamShadowOpacityMapping = (theme: Theme) => ({
  * nothing over it and therefore carries no strip.
  *
  * Render as the sibling right AFTER the surface, inside the track's
- * `ChatWidthBounds` — not inside the surface itself. Two reasons, both about
+ * `ChatWidthBounds` - not inside the surface itself. Two reasons, both about
  * the surface's box: an absolutely-positioned child anchors to the padding box,
  * which sits inside the surface's 1px border, and the expandable surfaces clip
  * to that same box with `overflow: "hidden"`. Either way the strip would stop
@@ -89,10 +99,10 @@ const seamShadowOpacityMapping = (theme: Theme) => ({
  * here spans the surface's full border box. Being a later sibling also keeps it
  * painted over the card's background and any hover fill.
  */
-export function ComposerTrackSeamShadow() {
+export function ComposerTrackSeamShadow({ layer }: { layer: number }) {
   return (
     <View style={styles.strip} pointerEvents="none">
-      <ThemedTrackSeamShadowGradient uniProps={seamShadowOpacityMapping} />
+      <ThemedTrackSeamShadowGradient layer={layer} uniProps={seamShadowOpacityMapping} />
     </View>
   );
 }

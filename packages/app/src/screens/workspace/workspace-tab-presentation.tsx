@@ -9,7 +9,7 @@ import { getPanelRegistration } from "@/panels/panel-registry";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 // WorkspaceTabIcon lives in its own module so leaf consumers (e.g. the
 // subagents track) can render a tab glyph without pulling in the panel
-// registry — importing it from here would close a require cycle.
+// registry - importing it from here would close a require cycle.
 import {
   WorkspaceTabIcon,
   type WorkspaceTabPresentation,
@@ -192,7 +192,7 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
   },
   optionLabel: {
-    // Explicit compact bump (not left to the ambient theme-patch scale) — this
+    // Explicit compact bump (not left to the ambient theme-patch scale) - this
     // row renders inside a bottom sheet, which can hold onto stale sizing (see
     // docs/unistyles.md's "Hidden Sheet Content" gotcha).
     fontSize: {

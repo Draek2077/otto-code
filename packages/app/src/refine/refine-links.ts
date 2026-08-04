@@ -5,7 +5,7 @@
 // index is defined by its entries, an instruction file by the docs it defers
 // to. Compaction gets that context handed to it by Context Management, which
 // already holds a graph; a file opened from the editor has no graph, so it has
-// to read its own links — which is what makes a plain Refine over a document as
+// to read its own links - which is what makes a plain Refine over a document as
 // project-aware as a compaction, with a different objective.
 //
 // Discovery only ever produces READ-ONLY references. A file arriving here can
@@ -52,7 +52,7 @@ export function refinePathKey(path: string): string {
 
 /**
  * Resolve a link target against the linking file's directory. Returns null for
- * anything that is not a path into the filesystem — URLs, bare anchors, mail
+ * anything that is not a path into the filesystem - URLs, bare anchors, mail
  * addresses, and `~` targets whose home we cannot know from here.
  */
 export function resolveLinkTarget(fromDir: string, target: string): string | null {
@@ -75,7 +75,7 @@ function isAbsolutePath(path: string): boolean {
   return path.startsWith("/") || /^[a-zA-Z]:\//.test(path);
 }
 
-/** Collapse `.` and `..` without touching the filesystem — these paths may not exist. */
+/** Collapse `.` and `..` without touching the filesystem - these paths may not exist. */
 function normalizeSegments(path: string): string {
   const drive = /^[a-zA-Z]:\//.exec(path)?.[0];
   const prefix = drive ?? (path.startsWith("/") ? "/" : "");
@@ -105,7 +105,7 @@ export const MAX_REFINE_LINKED_DOCUMENTS = 8;
 export interface LinkedDocumentsInput {
   /** The linking document's content. */
   content: string;
-  /** Its absolute path — link targets resolve against its directory. */
+  /** Its absolute path - link targets resolve against its directory. */
   absolutePath: string;
   /** Paths already in the working set, in any separator or case. */
   exclude?: readonly string[];

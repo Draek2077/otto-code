@@ -54,7 +54,7 @@ import { useIconSize } from "@/styles/theme";
 
 const MIN_CHAT_WIDTH = 400;
 // Files / Search / Changes / PR pill height, trimmed 2px below what
-// spacing[2] would give. Scoped to this row on purpose — see styles.tab.
+// spacing[2] would give. Scoped to this row on purpose - see styles.tab.
 const TAB_VERTICAL_PADDING = 7;
 function logExplorerSidebar(_event: string, _details: Record<string, unknown>): void {}
 
@@ -371,7 +371,7 @@ function resolveActiveExplorerTab(input: {
 }): ExplorerTab {
   // User interface mode exposes only the Files tab (Changes / Search / PR are
   // developer-and-git surfaces). Any persisted dev-tab selection coerces to
-  // files rather than rendering an empty pane — see interface-modes.md.
+  // files rather than rendering an empty pane - see interface-modes.md.
   if (!input.isDeveloperMode) {
     return "files";
   }
@@ -426,7 +426,7 @@ function ExplorerSidebarContent({
   const toast = useToast();
   const padding = useWindowControlsPadding("explorerSidebar");
   // In User interface mode only the Files tab renders, so the PR/git query is
-  // never needed — keep it from firing (a lens, not a lock: no dev-surface RPCs).
+  // never needed - keep it from firing (a lens, not a lock: no dev-surface RPCs).
   const canQueryPullRequest = isDeveloperMode && isGit && Boolean(workspaceRoot);
   const prPane = usePrPaneData({
     serverId,
@@ -480,7 +480,7 @@ function ExplorerSidebarContent({
 
   // User mode shows only Files; Changes / Search / PR are developer-and-git
   // surfaces gated out of that lens (interface-modes.md). Search may return to
-  // User mode later as a simpler variant — keep it behind the same gate for now.
+  // User mode later as a simpler variant - keep it behind the same gate for now.
   const tabDefs: ExplorerTabDef[] = [];
   if (isDeveloperMode && isGit) {
     tabDefs.push({
@@ -561,7 +561,7 @@ function ExplorerSidebarContent({
             </Pressable>
           )}
         </View>
-        {/* Invisible clones of the tab row — one icon+label, one label-only —
+        {/* Invisible clones of the tab row - one icon+label, one label-only -
             whose natural widths decide which display tier the real tabs can
             afford. Absolute with pointerEvents none so they affect neither
             layout, clicks, nor the titlebar drag region. */}
@@ -670,7 +670,7 @@ function PrTabContent({
   return <PullRequestPaneSkeleton />;
 }
 
-// Static styles for Animated.Views — must NOT use Unistyles dynamic theme to
+// Static styles for Animated.Views - must NOT use Unistyles dynamic theme to
 // avoid the "Unable to find node on an unmounted component" crash when Unistyles
 // tries to patch the native node that Reanimated also manages.
 const explorerStaticStyles = RNStyleSheet.create({
@@ -730,7 +730,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     // Deliberately off the spacing scale: spacing[2] (8) makes these pills 2px
     // taller than they want to read inside the fixed-height sidebar header.
-    // Local to this tab row — do not promote it into the shared control geometry.
+    // Local to this tab row - do not promote it into the shared control geometry.
     paddingVertical: TAB_VERTICAL_PADDING,
     paddingHorizontal: theme.spacing[3],
     borderRadius: theme.borderRadius.md,

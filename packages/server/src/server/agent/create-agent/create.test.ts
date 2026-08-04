@@ -382,7 +382,7 @@ test("mcp create exposes the created worktree before dispatching the initial pro
 
 // Regression (safe-unattended): an MCP create_agent input never sets
 // `unattended`, but the resolver OR's in an unattended parent and returns the
-// effective flag. The session config must stamp that resolved value — otherwise
+// effective flag. The session config must stamp that resolved value - otherwise
 // a child of an unattended parent runs with `unattended:false` and its
 // deny-responder never arms, so a coerced-Auto escalation hangs forever.
 test("mcp create stamps the resolver's effective unattended onto the child config", async () => {
@@ -433,7 +433,7 @@ test("mcp create stamps the resolver's effective unattended onto the child confi
         background: true,
         notifyOnFinish: false,
         callerAgentId: parent.id,
-        // Note: no `unattended` field — the input never carries it.
+        // Note: no `unattended` field - the input never carries it.
       },
     );
 
@@ -522,7 +522,7 @@ test("session create keeps an explicit title after the initial prompt settles", 
 
 // A bare spawn ("just open a new chat") gets a placeholder title so its tab has
 // something to show. The placeholder must not count as a caller-chosen title, or
-// auto-naming never runs and the chat reads "New chat" forever — which the app
+// auto-naming never runs and the chat reads "New chat" forever - which the app
 // renders as a permanent loading skeleton.
 function createBareSpawnHarness() {
   const snapshot = {

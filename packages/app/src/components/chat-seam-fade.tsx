@@ -43,11 +43,11 @@ const fadeColorMapping = (theme: Theme) => ({
  * pane/active-tab background (`surface0`, pure black under the black chat
  * scope) into transparent, so chat content scrolling past that edge
  * dissolves into the surrounding chrome instead of clipping hard. Chat panes
- * only — terminal/browser/file panes render without it.
+ * only - terminal/browser/file panes render without it.
  *
  * `edge` names the seam: "top" for the tab-bar seam (opaque at the top),
  * "bottom" for the composer seam (opaque at the bottom). Neither edge
- * carries a zIndex — inside the stream view the fades must paint below the
+ * carries a zIndex - inside the stream view the fades must paint below the
  * desktop web scrollbar overlay (zIndex 10, `web-desktop-scrollbar.tsx`) so
  * the scrollbar stays visible over the fades, and below the scroll-to-bottom
  * button, which has no zIndex and relies on later-sibling paint order (see

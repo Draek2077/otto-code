@@ -10,7 +10,7 @@ import {
 } from "./quit-lifecycle";
 
 // Both fixtures state the flag outright rather than leaning on whatever
-// DEFAULT_DESKTOP_SETTINGS currently holds — these assert the function's logic,
+// DEFAULT_DESKTOP_SETTINGS currently holds - these assert the function's logic,
 // and must not silently invert if the shipped default is ever flipped again.
 const SETTINGS_KEEP_RUNNING = {
   ...DEFAULT_DESKTOP_SETTINGS,

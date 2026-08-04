@@ -251,7 +251,7 @@ export interface ComboboxItemProps {
   elevated?: boolean;
   /**
    * Dense variant: reduced row height/padding so long lists fit more items on
-   * screen (currently the model/personality picker). Desktop-only shrink —
+   * screen (currently the model/personality picker). Desktop-only shrink -
    * compact breakpoints keep the default touch-friendly height.
    */
   dense?: boolean;
@@ -1753,7 +1753,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
   },
   comboboxItemLabel: {
-    // Explicit compact bump (not left to the ambient theme-patch scale) — this
+    // Explicit compact bump (not left to the ambient theme-patch scale) - this
     // list renders inside sheets/popovers that can hold onto stale sizing.
     fontSize: {
       xs: theme.fontSize.sm + 2,
@@ -1825,7 +1825,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[1],
   },
   desktopChildrenScrollContent: {
-    // No padding — custom children (e.g. model selector) control their own spacing
+    // No padding - custom children (e.g. model selector) control their own spacing
   },
   desktopScrollContentAboveSearch: {
     flexGrow: 1,

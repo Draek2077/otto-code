@@ -30,7 +30,7 @@ export type CrossProjectOpenDecision =
   | { kind: "in-project" }
   // A file that belongs to another project OR to no project at all: open in
   // place, scoped to the owning (or synthesized) workspace. Whether editing it
-  // warns is decided later by resolveEditGate against the live link set — the
+  // warns is decided later by resolveEditGate against the live link set - the
   // open itself never blocks (any file can be previewed).
   | { kind: "out-of-project"; origin: WorkspaceFileOrigin; location: WorkspaceFileLocation };
 
@@ -43,7 +43,7 @@ export type CrossProjectOpenDecision =
  * - a file outside *every* known project → open in place under a synthesized
  *   origin rooted at the file's own directory (so any scratch/plan file can be
  *   previewed; the daemon serves single-file reads regardless of workspace).
- * Never blocks — the edit gate is applied separately at edit time.
+ * Never blocks - the edit gate is applied separately at edit time.
  * Pure so it can be unit-tested without the store/UI.
  */
 export function resolveCrossProjectFileOpen(
@@ -60,7 +60,7 @@ export function resolveCrossProjectFileOpen(
 
   const owner = resolveWorkspaceForPath(path, workspaces);
   if (!owner) {
-    // Outside every known workspace — a scratch/plan file. Synthesize an origin
+    // Outside every known workspace - a scratch/plan file. Synthesize an origin
     // rooted at the file's own directory so it opens in place; editing it is
     // gated as "outside any project" (always warns). Requires the daemon to
     // serve out-of-workspace files; without it, leave the path as in-project.

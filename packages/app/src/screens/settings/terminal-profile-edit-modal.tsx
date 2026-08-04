@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { TextFieldPicker, type ComboboxOption } from "@/components/ui/text-field-picker";
 
-// Common shell binaries — still fully freeform via allowCustomValue, since a
+// Common shell binaries - still fully freeform via allowCustomValue, since a
 // custom wrapper script or an uncommon shell path is entirely valid too.
 const SHELL_COMMAND_PRESETS: ComboboxOption[] = [
   { id: "bash", label: "bash" },

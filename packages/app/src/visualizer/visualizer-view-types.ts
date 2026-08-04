@@ -1,8 +1,8 @@
 import type { VisualizerAppearance } from "./visualizer-appearance";
 
 // Page -> host messages the vendored bridge (vscode-bridge.ts) sends. Loosely
-// typed on purpose — the bridge tolerates/ignores fields it doesn't know.
-// `load-failed` is NOT a page message — the Electron view synthesizes it from
+// typed on purpose - the bridge tolerates/ignores fields it doesn't know.
+// `load-failed` is NOT a page message - the Electron view synthesizes it from
 // the webview's did-fail-load so the panel can show a real failure state
 // instead of an eternally-opaque load cover (a guest that never loads emits
 // nothing at all otherwise; see visualizer-view.electron.tsx).
@@ -15,7 +15,7 @@ export type VisualizerHostMessage =
   | { type: "sound-muted"; muted: boolean }
   // A page keyboard shortcut (t/f/$/s) asked to toggle a panel. Host settings
   // are the source of truth for panel visibility (config.panels), so the page
-  // forwards the request instead of flipping page-local state — the host flips
+  // forwards the request instead of flipping page-local state - the host flips
   // the matching device-local setting and the change round-trips back to the
   // page via the config.panels push (OTTO PATCH).
   | { type: "panel-toggle"; panel: "timeline" | "files" | "cost" | "stats" }
@@ -30,7 +30,7 @@ export type VisualizerHostMessage =
     };
 
 // The vendored page's SimulationEvent shape (web/lib/agent-types.ts). Payloads
-// are intentionally loose records — each handle-*.ts hook in the vendored page
+// are intentionally loose records - each handle-*.ts hook in the vendored page
 // reads its own subset of fields and tolerates missing ones. See
 // docs/visualizer.md for the full payload-shape table; key naming is NOT
 // consistent across event types (agent_spawn/agent_complete/agent_idle key
@@ -65,7 +65,7 @@ export interface VisualizerSessionInfo {
   lastActivityTime: number;
 }
 
-/** Host -> page messages, per the bridge contract in vscode-bridge.ts —
+/** Host -> page messages, per the bridge contract in vscode-bridge.ts -
  * except `otto-appearance`, which is consumed by the Otto shell script in
  * emit-bundle.mjs (the vendor bridge ignores unknown types). */
 export type VisualizerHostToPageMessage =
@@ -80,7 +80,7 @@ export type VisualizerHostToPageMessage =
   // happen live (the initial attach / visibility-regain reset+replay). The page
   // applies it to the settled end state instead of animating each event (no
   // spawn/tool bursts, no sound, transient tool cards / message bubbles dropped)
-  // — the full event content still lands in the timeline + per-node chat panels.
+  // - the full event content still lands in the timeline + per-node chat panels.
   // Absent/false = a live batch, animated normally. See docs/visualizer.md
   // "Hydrate on attach" and vendor OTTO-PATCHES.md.
   | { type: "agent-event-batch"; events: SimulationEvent[]; hydrate?: boolean }
@@ -116,13 +116,13 @@ export type VisualizerHostToPageMessage =
           nodeShape: "square" | "hexagon" | "octagon" | "circle";
           // Bottom-right HUD FPS meter (OTTO PATCH).
           showFps: boolean;
-          // Which single context-occupancy readout the main agent node draws —
+          // Which single context-occupancy readout the main agent node draws -
           // the page used to draw both the ring and the bar (OTTO PATCH).
           contextDisplay: "ring" | "bar";
         }>;
         // Auto-fit framing profile (OTTO PATCH). The camera's constants are
         // tuned for a full-tab viewport; PIP mode sends a tighter profile.
-        // Omitted keys — and an omitted object — keep the tab's values, so the
+        // Omitted keys - and an omitted object - keep the tab's values, so the
         // Visualizer tab simply never sends this.
         camera: Partial<{
           viewportPadding: number;
@@ -149,7 +149,7 @@ export type VisualizerHostToPageMessage =
   | { type: "select-session"; sessionId: string }
   | { type: "close-session"; sessionId: string }
   // One-shot viewport actions from the Otto toolbar's "Zoom to Fit" / "Restart"
-  // buttons (OTTO PATCH). Stateless — the page just runs the action. The
+  // buttons (OTTO PATCH). Stateless - the page just runs the action. The
   // stateful counterparts (grid/stats toggles) flow through config.panels.
   | { type: "viewport-command"; action: "zoom-to-fit" | "restart" };
 
@@ -157,12 +157,12 @@ export interface VisualizerViewProps {
   /** Fires for every page -> host message, including the initial handshake `ready`. */
   onMessage?: (message: VisualizerHostMessage) => void;
   /** devicePixelRatio cap baked into the page shell (see
-   * applyVisualizerRenderScale). Changing it reloads the guest — callers must
+   * applyVisualizerRenderScale). Changing it reloads the guest - callers must
    * treat it as a remount (fresh `ready` handshake). Defaults to 1. */
   renderScale?: number;
   /** Palette JSON baked into the page shell (see applyVisualizerTheme /
    * resolveVisualizerTheme). Like renderScale, changing it reloads the guest
-   * — callers must treat it as a remount. Absent → the vendor's own look. */
+   * - callers must treat it as a remount. Absent → the vendor's own look. */
   themeJson?: string;
   /** The palette's stage background, painted on the host-side container so
    * guest load/resize never flashes a mismatched color. */
@@ -172,6 +172,6 @@ export interface VisualizerViewProps {
 /** Imperative host -> page channel. The adapter (task 03) drives this via ref. */
 export interface VisualizerViewHandle {
   postMessage(message: VisualizerHostToPageMessage): void;
-  /** Electron only — pops the guest webview's own DevTools. No-op elsewhere. */
+  /** Electron only - pops the guest webview's own DevTools. No-op elsewhere. */
   openDevTools?(): void;
 }

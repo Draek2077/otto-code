@@ -35,7 +35,7 @@ export interface SuggestedTasksOverlayProps {
 }
 
 // The card rises into place from below when it appears and sinks back down when
-// dismissed — the same fly-up / fly-down idiom as the composer detail cards (see
+// dismissed - the same fly-up / fly-down idiom as the composer detail cards (see
 // composer/track-transition.tsx), so every card that pops over the chat reads as
 // one motion language. We use Reanimated's FadeInDown/FadeOutDown PRESETS (fade +
 // short rise/sink) rather than a custom worklet on purpose: the worklet-function
@@ -51,7 +51,7 @@ const flyOut = FadeOutDown.duration(COMPOSER_TRACK_FLY_OUT_DURATION_MS);
 // button (primary = their default mode, caret = the other modes + Dismiss), or
 // closes the whole card with the title-bar X. It never steals composer focus and
 // persists until the queue is empty. Mounted inside the chat content container
-// (not a Portal) so it stays within bounds — Android hit-testing needs the card
+// (not a Portal) so it stays within bounds - Android hit-testing needs the card
 // inside its parent (see docs/floating-panels.md).
 //
 // On a phone the same queue collapses to a single row (see compact-card.tsx):
@@ -205,14 +205,14 @@ const styles = StyleSheet.create((theme) => ({
     // The card is an offer of work, not a log line, so it takes the info tone
     // from the status-tint family (docs/design.md §12) instead of the neutral
     // panel chrome used elsewhere: a sky ring around a sky-washed interior.
-    // Deliberately NOT the theme accent — accent is the CTA colour and already
+    // Deliberately NOT the theme accent - accent is the CTA colour and already
     // paints the start button below, so an accent card would read as more of
     // the same chrome; and on the monochrome variants accentBright is
     // near-white, which would leave this card with no hue at all. Blue also
     // stays put across all 13 variants, so "a suggestion" always looks like a
     // suggestion.
     //
-    // surface2 is the opaque base under the children's alpha washes — the card
+    // surface2 is the opaque base under the children's alpha washes - the card
     // floats over the stream, so it cannot be washed directly or chat text
     // would show through.
     backgroundColor: theme.colors.surface2,

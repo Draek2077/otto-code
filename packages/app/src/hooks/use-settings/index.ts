@@ -140,7 +140,7 @@ type SettingsSelector<TSelected> = (settings: Settings) => TSelected;
 
 // Per-field allowlist for routing merged-Settings updates to the AppSettings
 // store. Desktop-owned fields (manageBuiltInDaemon, releaseChannel) are handled
-// separately by the caller — ADD NEW AppSettings FIELDS HERE, or writes to them
+// separately by the caller - ADD NEW AppSettings FIELDS HERE, or writes to them
 // through `useSettings()` are silently dropped.
 //
 // This was a chain of one `if` per field until it outgrew the cyclomatic-
@@ -232,8 +232,8 @@ export function useAppSettings(): UseAppSettingsReturn {
 
 /**
  * Narrow subscription to a single derived AppSettings value. Unlike
- * `useAppSettings()` — a bare query subscription that re-renders its consumer
- * on every settings write — this applies `select` inside the query, so the
+ * `useAppSettings()` - a bare query subscription that re-renders its consumer
+ * on every settings write - this applies `select` inside the query, so the
  * consumer re-renders only when the selected value itself changes. Use it in
  * hot paths (per-message components, list rows). Pass a stable (module-level)
  * selector that returns a defined value; while the settings are still loading

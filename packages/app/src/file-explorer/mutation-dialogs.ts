@@ -5,13 +5,13 @@ import type { ConfirmDialogInput } from "@/utils/confirm-dialog";
  * Copy for the one destructive gesture in the file explorer.
  *
  * Delete in Otto is an **unlink**, not a move to the OS trash. The daemon may be
- * headless, remote, or inside WSL, where there is no trash to move to — a
+ * headless, remote, or inside WSL, where there is no trash to move to - a
  * "deleted" file that quietly survived on one host and vanished on another would
  * be worse than either behaviour. So the dialog says permanently, and it says it
  * before the file is gone rather than in a docs page afterwards.
  *
  * Deleting a folder is the same act with a bigger blast radius, so it gets a
- * second dialog — but only once the daemon has reported the folder is not empty.
+ * second dialog - but only once the daemon has reported the folder is not empty.
  * A user who believed it was empty learns that here, before anything is removed,
  * rather than from a tree that lost more than they meant.
  *
@@ -22,7 +22,7 @@ import type { ConfirmDialogInput } from "@/utils/confirm-dialog";
  */
 
 export interface DeleteEntryDialogInput {
-  /** The entry's display name — the leaf, not the whole path. */
+  /** The entry's display name - the leaf, not the whole path. */
   name: string;
   kind: "file" | "directory";
 }

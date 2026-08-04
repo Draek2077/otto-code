@@ -6,7 +6,7 @@ import { ThemedStack } from "@/navigation/themed-stack";
 import { useHostRegistryStatus, useHosts } from "@/runtime/host-runtime";
 
 // Page-transition motion is handled app-wide by RouteFadeContainer (a Reanimated
-// opacity fade), not the native-stack `animation` prop — react-native-screens on
+// opacity fade), not the native-stack `animation` prop - react-native-screens on
 // web/Electron ignores stack animations. See _layout.tsx.
 const HOST_STACK_SCREEN_OPTIONS = {
   headerShown: false,

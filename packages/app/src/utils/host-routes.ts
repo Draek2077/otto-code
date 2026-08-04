@@ -440,6 +440,10 @@ export function buildStatsRoute() {
   return "/stats" as const;
 }
 
+export function buildBrainRoute() {
+  return "/brain" as const;
+}
+
 export function buildOpenProjectRoute() {
   return "/open-project" as const;
 }

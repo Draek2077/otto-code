@@ -163,7 +163,7 @@ const MutableMetadataGenerationConfigSchema = z
     // true preserves today's behavior. Read by the generation path (WP-B).
     enabled: z.boolean().default(true),
     // When true, metadata generation prefers a role-matched Writer personality
-    // over the cheap default tier. Default false — cheap-tier routing is the
+    // over the cheap default tier. Default false - cheap-tier routing is the
     // default. Read by the generation routing (WP-B).
     preferWriterPersonalities: z.boolean().default(false),
   })
@@ -215,11 +215,11 @@ const MutableBrowserToolsConfigSchema = z
 
 /**
  * Language-server code intelligence, host-scoped because the servers are processes
- * on the daemon's machine — they follow the host, not the client.
+ * on the daemon's machine - they follow the host, not the client.
  *
  * `enabled` defaults **on** and that is safe: nothing spawns until a
  * code-intelligence action needs a language in a workspace, so an unused language
- * costs nothing. What the switch guarantees is that off means off — no server
+ * costs nothing. What the switch guarantees is that off means off - no server
  * spawns for any workspace, and the ctags index still serves the outline and the
  * fuzzy finder.
  *
@@ -240,16 +240,16 @@ const MutableLspConfigSchema = z
   .passthrough();
 
 /**
- * "Microsoft .NET Solution Management" — the Solution view's own switch.
+ * "Microsoft .NET Solution Management" - the Solution view's own switch.
  *
  * **A sibling of `lsp`, not a member of it.** Turning C# code intelligence off does not turn
  * this off and vice versa: they are independent capabilities that happen to share a language,
  * and nesting this inside the LSP settings object would imply exactly the coupling that
- * decision rejects. (It would also be wrong on the facts — LSP has no project-structure
+ * decision rejects. (It would also be wrong on the facts - LSP has no project-structure
  * request, so nothing here rides on a language server.)
  *
  * Defaults **off**: the feature spawns a process and evaluates MSBuild. Disabled is genuinely
- * off, not merely hidden — no discovery walk, no `.sln` read, no `.csproj` parse, no sidecar,
+ * off, not merely hidden - no discovery walk, no `.sln` read, no `.csproj` parse, no sidecar,
  * no cache, no watcher, and no view switcher. The daemon reads this before scheduling any work,
  * so a disabled feature costs exactly one boolean check.
  */
@@ -347,26 +347,26 @@ export type MutableGitHostingConfig = z.infer<typeof MutableGitHostingConfigSche
 
 // Canonical personality roles, in display order. Kept as an exported const so
 // the daemon and app share one vocabulary, but the wire schema stores roles as
-// plain strings (below) — adding a role later must never break an older peer's
+// plain strings (below) - adding a role later must never break an older peer's
 // parsing. Consumers filter incoming role arrays to this known set. The retired
 // "worker" role is mapped to "coder" on the way in (see LEGACY_ROLE_ALIASES in
 // agent-personalities.ts) so personalities persisted before the split keep their
 // role rather than silently losing it.
 export const PERSONALITY_ROLES = [
-  // Surfaces — the interactive / host-facing entry points.
+  // Surfaces - the interactive / host-facing entry points.
   "chatter",
   "artificer",
   "scheduler",
-  // Thinking workers — read-only, return structured findings, never edit.
+  // Thinking workers - read-only, return structured findings, never edit.
   "researcher",
   "planner",
   "judger",
   "advisor",
-  // Making workers — produce code, design, or short text.
+  // Making workers - produce code, design, or short text.
   "coder",
   "designer",
   "writer",
-  // Conductor — the sole role whose whole job is planning and driving a team.
+  // Conductor - the sole role whose whole job is planning and driving a team.
   "orchestrator",
 ] as const;
 export type PersonalityRole = (typeof PERSONALITY_ROLES)[number];
@@ -379,8 +379,8 @@ const AgentPersonalitySpinnerSchema = z
   })
   .passthrough();
 
-// A TTS voice for the personality's spoken identity. Stored self-describing —
-// provider + model + voice name — because voice names are namespaced per TTS
+// A TTS voice for the personality's spoken identity. Stored self-describing -
+// provider + model + voice name - because voice names are namespaced per TTS
 // engine/model (the same speaker index maps to different names across models),
 // so a bare name is ambiguous across hosts. All plain strings (like the speech
 // config) for forward-compat. This is a soft binding: an unavailable voice
@@ -395,7 +395,7 @@ const AgentPersonalityVoiceSchema = z
   .passthrough();
 
 // The Visualizer lifecycle moments a personality voice-cue line can belong to.
-// Protocol owns this vocabulary — the daemon's cue generator, the personality
+// Protocol owns this vocabulary - the daemon's cue generator, the personality
 // editor, and the Visualizer playback hook all import it from here.
 // "waiting" is the parent's turn ending while its observed sub-agents are still
 // running; it DEFERS "done" rather than replacing it (see docs/visualizer.md).
@@ -403,11 +403,11 @@ export const CUE_MOMENTS = ["join", "thinking", "waiting", "done"] as const;
 export type CueMoment = (typeof CUE_MOMENTS)[number];
 
 // Pre-generated (and user-editable) spoken "voice cue" lines for the personality
-// — a few short variations for each Visualizer moment (its node joins the graph,
+// - a few short variations for each Visualizer moment (its node joins the graph,
 // first starts thinking, finishes its turn but waits on sub-agents, completes).
 // Stored on the personality so they're deterministic and hand-tunable in the
 // editor; the Visualizer reads them directly (no runtime generation). All groups
-// optional/loose — a personality may have none, or only some (personalities
+// optional/loose - a personality may have none, or only some (personalities
 // authored before "waiting" existed simply stay silent for that moment).
 // See docs/visualizer.md "Voice cues".
 const AgentPersonalityVoiceCuesSchema = z
@@ -474,7 +474,7 @@ const MutableAgentPersonalitiesConfigPatchSchema = z
   .passthrough();
 
 // A team's avatar. v1 ships only `color` (hex, validated at the editor like
-// spinner colors); `imageId` is reserved for the future themed avatar set —
+// spinner colors); `imageId` is reserved for the future themed avatar set -
 // when present it wins over color, and color stays the fallback so an old
 // client that doesn't know `imageId` keeps rendering the swatch. Plain
 // strings for forward compat.
@@ -489,7 +489,7 @@ const AgentTeamAvatarSchema = z
 // template: which personalities are on deck, plus a shared team prompt stacked
 // directly ahead of the member's personality prompt at spawn. `id` is the
 // stable identity everything binds to; `name` is a freely-renamable label.
-// `memberIds` bind personality ids (order = display order) — an entry pointing
+// `memberIds` bind personality ids (order = display order) - an entry pointing
 // at a deleted personality is tolerated and ignored everywhere, then pruned on
 // the next save of that team. Membership is many-to-many.
 export const AgentTeamSchema = z
@@ -532,7 +532,7 @@ export const ModelTierSchema: z.ZodType<ModelTier> = z.enum(["deep", "standard",
 // A user's explicit tier tag for one model of one provider. The daemon stamps
 // `model.tier` at ingest, preferring a matching override here over inference
 // (see model-tiers.ts). Stored as an array (not a nested record) so a patch
-// replaces it wholesale — that's how a tag gets cleared, since deep-merge can't
+// replaces it wholesale - that's how a tag gets cleared, since deep-merge can't
 // delete a record key.
 export const ModelTierOverrideSchema = z
   .object({
@@ -549,13 +549,13 @@ export type ModelTierOverride = z.infer<typeof ModelTierOverrideSchema>;
 // pick instead of re-typing the key. Entries are scoped by the connection
 // env-var pair they belong to (OPENAI_BASE_URL/OPENAI_API_KEY vs
 // ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN), which is exactly what the provider
-// settings sheet keys its dropdown off — so every openai-compatible provider
+// settings sheet keys its dropdown off - so every openai-compatible provider
 // entry on the host shares one pool, and Claude-compatible entries share
 // another. Deliberately `z.string()` rather than an enum: a future env-var
 // family must not make old entries unparseable.
 export const SavedProviderEndpointSchema = z
   .object({
-    /** Stable identity, `${baseUrlKey}::${baseUrl}` — dedupes on re-save. */
+    /** Stable identity, `${baseUrlKey}::${baseUrl}` - dedupes on re-save. */
     id: z.string().min(1),
     baseUrlKey: z.string().min(1),
     apiKeyKey: z.string().min(1),
@@ -597,7 +597,7 @@ export const MutableBrainRemoteConfigSchema = z
     // SHA-256 fingerprint of the remote brain's TLS certificate (openssl's
     // "AB:CD:..." form; colons optional). When set, the daemon pins HTTPS
     // connections to exactly this certificate instead of the system trust
-    // store — required for a brain serving tls.mode=self-signed. When null,
+    // store - required for a brain serving tls.mode=self-signed. When null,
     // the certificate must validate against the system trust store.
     certFingerprint: z.string().nullable().default(null),
   })
@@ -651,13 +651,13 @@ export const MutableBrainConfigSchema = z
 
 export type MutableBrainConfig = z.infer<typeof MutableBrainConfigSchema>;
 
-// The brain PATCH schema — deliberately NOT `MutableBrainConfigSchema.partial()`.
+// The brain PATCH schema - deliberately NOT `MutableBrainConfigSchema.partial()`.
 // Every field of the full schema carries a `.default()` (so an old daemon's
 // half-written config still parses as a well-formed OFF section), and Zod keeps
 // those defaults through `.partial()`: `MutableBrainConfigSchema.partial().parse(
 // { allowRemoteConfig: true })` expands to the FULL object with every other field
 // defaulted. The daemon deep-merges the parsed patch over the stored config, so a
-// single-field patch would silently reset the entire brain block to defaults —
+// single-field patch would silently reset the entire brain block to defaults -
 // turning sharing off (host back to loopback), wiping the auth token, and
 // disabling the server. Mirroring the shape WITHOUT defaults keeps an omitted
 // field omitted, so the deep-merge preserves it. Every level is deep-partial so a
@@ -747,7 +747,7 @@ export const MutableDaemonConfigSchema = z
         toolGroups: z.array(z.enum(OTTO_TOOL_GROUPS)).optional(),
       })
       .passthrough(),
-    // Defaults off, matching the daemon's own resolution — browser tools are an
+    // Defaults off, matching the daemon's own resolution - browser tools are an
     // explicit opt-in, so an omitted section must never read as on.
     browserTools: MutableBrowserToolsConfigSchema.default({ enabled: false }),
     // Daemon-wide agent behavior toggles (Claude-tier capabilities). Defaults to
@@ -840,7 +840,7 @@ export const MutableDaemonConfigPatchSchema = z
     // Gated by server_info features.agentBehaviorToggles; patches deep-merge.
     agentBehaviors: MutableAgentBehaviorsConfigSchema.partial().optional(),
     // A null entry removes the provider's config entirely (custom provider
-    // uninstall). Gated by server_info features.providerRemove — old daemons
+    // uninstall). Gated by server_info features.providerRemove - old daemons
     // reject null values.
     providers: z
       .record(z.string(), MutableDaemonProviderConfigSchema.partial().passthrough().nullable())
@@ -954,7 +954,7 @@ export const AgentRateLimitInfoSchema = z.object({
   // does not report it (Claude only includes it near the limit).
   utilizationPercent: z.number().optional(),
   // Provider-reported window identifier, e.g. "five_hour" | "seven_day".
-  // Open set — display code falls back to a generic label for unknown values.
+  // Open set - display code falls back to a generic label for unknown values.
   limitType: z.string().optional(),
   // ISO 8601 timestamp when the window resets.
   resetsAt: z.string().optional(),
@@ -1067,7 +1067,7 @@ const AgentUsageSchema: z.ZodType<AgentUsage> = z.object({
   // Provider-graded context breakdown for the visualizer ring/bar; absent ⇒
   // occupancy only (pre-composition behavior). See ContextComposition.
   contextComposition: ContextCompositionSchema.optional(),
-  // The provider's own labelled split — same accounting as
+  // The provider's own labelled split - same accounting as
   // `agent.context.get_usage`, pushed on the snapshot. Preferred over
   // contextComposition; absent ⇒ fall back to the estimate, then to occupancy.
   contextCategories: z.array(AgentContextCategorySchema).optional(),
@@ -1343,7 +1343,7 @@ export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem, unknow
     type: z.literal("compaction"),
     // COMPAT(compactionFailedStatus): "failed" added in v0.4.3. Clients older
     // than that drop the whole timeline event on parse and keep showing the
-    // loading row — exactly their pre-"failed" behavior, so no gate is needed.
+    // loading row - exactly their pre-"failed" behavior, so no gate is needed.
     // Nothing to remove: this tag records why the enum could be widened without
     // a shim, so it has no cleanup date by design.
     status: z.enum(["loading", "completed", "failed"]),
@@ -1454,7 +1454,7 @@ const AgentRuntimeInfoSchema: z.ZodType<AgentRuntimeInfo> = z.object({
 /**
  * One message parked for delivery as an agent's NEXT turn (`delivery: "queue"`).
  * The daemon owns the queue; this is the read-only projection the Queue track
- * renders. Declared above AgentSnapshotPayloadSchema — zod-aot emits schemas in
+ * renders. Declared above AgentSnapshotPayloadSchema - zod-aot emits schemas in
  * source order, so a forward reference is a build-time ReferenceError.
  */
 export const QueuedAgentMessagePayloadSchema = z.object({
@@ -1466,7 +1466,7 @@ export const QueuedAgentMessagePayloadSchema = z.object({
   /**
    * Who parked the message. Absent (from an older daemon) or "user" is a normal
    * user turn; "system" marks a system-injected entry (a chat mention, a
-   * scheduled fire) that the daemon's drain never merges into a user turn — the
+   * scheduled fire) that the daemon's drain never merges into a user turn - the
    * client must likewise exclude it from "Send all".
    */
   source: z.enum(["user", "system"]).optional(),
@@ -1474,7 +1474,7 @@ export const QueuedAgentMessagePayloadSchema = z.object({
 
 /**
  * An agent's LIFETIME SPEND, kept as the real token split plus the provider's
- * own cost — the raw material for "what did this chat cost".
+ * own cost - the raw material for "what did this chat cost".
  *
  * Deliberately distinct from context-window occupancy (`agent.context.get_usage`
  * and `lastUsage.contextWindow*`), which answers "how full am I" and shares no
@@ -1483,12 +1483,12 @@ export const QueuedAgentMessagePayloadSchema = z.object({
  *
  * `costUsd` is only ever a provider's OWN reported cost, already de-inflated so
  * a parent never carries what its sub-agents reported. It is NEVER derived from
- * a $/M rate table — a rate keyed off a model id misprices a gateway serving
+ * a $/M rate table - a rate keyed off a model id misprices a gateway serving
  * that model at its own prices (docs/subagent-accounting.md, pricing invariant).
  * `costCoverage` says how far it can be trusted, so a surface can show a floor
  * or an honest blank rather than a confident wrong figure.
  *
- * Declared above AgentSnapshotPayloadSchema — zod-aot emits schemas in source
+ * Declared above AgentSnapshotPayloadSchema - zod-aot emits schemas in source
  * order, so a forward reference is a build-time ReferenceError.
  */
 export const AgentCumulativeUsageSchema = z.object({
@@ -1499,9 +1499,9 @@ export const AgentCumulativeUsageSchema = z.object({
   /** Provider-reported cost booked so far. Absent ⇒ nothing was priceable. */
   costUsd: z.number().optional(),
   /**
-   * `complete` — every token-bearing turn was priced; `costUsd` is the total.
-   * `partial` — some turns were unpriced; `costUsd` is a FLOOR, present it as
-   * one. `none` — nothing priceable; show tokens and a blank, never an estimate.
+   * `complete` - every token-bearing turn was priced; `costUsd` is the total.
+   * `partial` - some turns were unpriced; `costUsd` is a FLOOR, present it as
+   * one. `none` - nothing priceable; show tokens and a blank, never an estimate.
    */
   costCoverage: z.enum(["complete", "partial", "none"]).optional(),
 });
@@ -1529,7 +1529,7 @@ export const AgentSnapshotPayloadSchema = z.object({
   runtimeInfo: AgentRuntimeInfoSchema.optional(),
   lastUsage: AgentUsageSchema.optional(),
   // Honest cumulative token total (Σ across the whole run) from the provider,
-  // for the subagents-track cost readout — the only currency that works for
+  // for the subagents-track cost readout - the only currency that works for
   // cost-less local models. Observed subagents source it from the provider's
   // per-task usage.total_tokens (already cumulative-per-subagent). Purely
   // additive; absent ⇒ no readout. Old clients ignore it.
@@ -1546,7 +1546,7 @@ export const AgentSnapshotPayloadSchema = z.object({
   cumulativeUsage: AgentCumulativeUsageSchema.optional(),
   // Liveness signals for the sub-agents track: how much work this agent has done
   // (`toolUseCount`, cumulative and monotonic) and what it is doing right now
-  // (`currentTool`, the latest tool name, cleared once the agent is terminal —
+  // (`currentTool`, the latest tool name, cleared once the agent is terminal -
   // a finished agent isn't "running Bash"). Both are purely additive optional
   // leaves: a provider that can't report them leaves them absent and the row
   // omits the readout rather than showing a wrong value.
@@ -1557,7 +1557,7 @@ export const AgentSnapshotPayloadSchema = z.object({
   toolUseCount: z.number().optional(),
   currentTool: z.string().optional(),
   // Messages parked for delivery as this agent's NEXT turn (delivery: "queue").
-  // Daemon-owned and ephemeral — the composer's Queue track renders straight
+  // Daemon-owned and ephemeral - the composer's Queue track renders straight
   // from this. Absent/empty ⇒ nothing queued; old clients ignore it.
   // COMPAT(steerQueue): added in v0.6.8, drop the gate when floor >= v0.6.8.
   queuedMessages: z.array(QueuedAgentMessagePayloadSchema).optional(),
@@ -1570,7 +1570,7 @@ export const AgentSnapshotPayloadSchema = z.object({
   archivedAt: z.string().nullable().optional(),
   providerUnavailable: z.boolean().optional(),
   // Attendability. "observed" marks a provider-managed subagent (Claude Task /
-  // ultracode fan-out) that the user can watch but not prompt or reconfigure —
+  // ultracode fan-out) that the user can watch but not prompt or reconfigure -
   // the daemon refuses attended operations and the client renders it read-only.
   // COMPAT(observedSubagents): added in v0.4.3; absent ⇒ "attended". Drop the
   // gate when daemon floor >= v0.4.3. See projects/observed-subagents/observed-subagents.md.
@@ -1701,7 +1701,7 @@ export const CloseItemsRequestMessageSchema = z.object({
 // OpenCode sessions) is deliberately left in place: Otto never created it,
 // another tool still reads it, and silently deleting another tool's state is not
 // ours to do. There is intentionally **no** opt-in flag for provider data on the
-// wire — the UI discloses what stays behind instead. See docs/chat-lifecycle.md.
+// wire - the UI discloses what stays behind instead. See docs/chat-lifecycle.md.
 // Gated by server_info.features.historyDelete.
 export const HistoryAgentsClearArchivedRequestSchema = z.object({
   type: z.literal("history.agents.clear_archived.request"),
@@ -1716,7 +1716,7 @@ export const HistoryAgentsClearArchivedRequestSchema = z.object({
 export const HistoryAgentsClearArchivedResponseSchema = z.object({
   type: z.literal("history.agents.clear_archived.response"),
   payload: z.object({
-    // How many archived records the cutoff selected — the number the confirm
+    // How many archived records the cutoff selected - the number the confirm
     // dialog quotes back after a dry run.
     matched: z.number().int().nonnegative(),
     deleted: z.number().int().nonnegative(),
@@ -1777,7 +1777,7 @@ export const AttachmentsImagesClearRequestSchema = z.object({
   olderThanDays: z.number().int().min(0).default(0),
   // Safe by default: a request that omits the flag previews instead of deleting.
   // The client always sends it explicitly. Same contract as
-  // history.agents.clear_archived, and for the same reason — the client cannot
+  // history.agents.clear_archived, and for the same reason - the client cannot
   // enumerate the set, and there is no undo.
   dryRun: z.boolean().default(true),
   requestId: z.string(),
@@ -1801,6 +1801,29 @@ export const AttachmentsImagesClearResponseSchema = z.object({
 // (evals). Live status streaming (subscribe_brain_status + brain_status_changed)
 // is added alongside its client/daemon consumers.
 
+/**
+ * What the brain on the far side can actually serve. Passthrough so it can grow.
+ *
+ * Declared here rather than beside the Brain Console RPCs below because
+ * BrainHostStatusSchema carries it, and a zod const must be initialised before
+ * the schema that references it (see docs on the AOT validator's declaration
+ * ordering). Moving it back down produces a module-evaluation TDZ error.
+ */
+export const BrainCapabilitiesSchema = z
+  .object({
+    profiles: z.boolean().default(false),
+    budget: z.boolean().default(false),
+    logs: z.boolean().default(false),
+    delete: z.boolean().default(false),
+    load: z.boolean().default(false),
+    resources: z.boolean().default(false),
+    inventory: z.boolean().default(false),
+    /** Whether writes are permitted right now (the brain's allowRemoteConfig). */
+    writable: z.boolean().default(false),
+  })
+  .passthrough();
+export type BrainCapabilities = z.infer<typeof BrainCapabilitiesSchema>;
+
 // The brain's host status, as the daemon derives it: liveness plus the fields
 // proxied from the brain's own `/__host/status`. Passthrough on the opaque
 // sub-objects so the brain can evolve them without a protocol bump.
@@ -1823,6 +1846,64 @@ export const BrainHostStatusSchema = z
     telemetry: z.record(z.string(), z.unknown()).nullable().optional(),
     scheduler: z.record(z.string(), z.unknown()).nullable().optional(),
     recent: z.array(z.record(z.string(), z.unknown())).optional(),
+    /**
+     * What the brain on the far side can serve. Carried here rather than fetched
+     * from /__host/capabilities so the client gets it with the status it is
+     * already polling, and so it cannot go stale when the owner toggles remote
+     * configuration. Null from a brain that predates the management API.
+     */
+    capabilities: BrainCapabilitiesSchema.nullable().optional(),
+    /** Live CPU/RAM/GPU/slot telemetry, only when the request asked for it. */
+    resources: z.record(z.string(), z.unknown()).nullable().optional(),
+    /** How many log lines the brain currently holds, for the Logs tab. */
+    logLineCount: z.number().nullable().optional(),
+    /**
+     * Which long-running op currently owns the brain, if any. Cheap to carry:
+     * the brain reads it from a small file beside its pid file, so this rides on
+     * the liveness poll rather than needing `resources: true`.
+     *
+     * `kind` is a plain string, not an enum: the brain may grow ops this client
+     * has never heard of, and the protocol contract forbids narrowing a field
+     * later. Unknown kinds fall through to the ordinary busy states.
+     */
+    activity: z
+      .object({
+        kind: z.string(),
+        target: z.string().nullable().optional(),
+        /** Completion in [0,1], for ops that can measure it. */
+        progress: z.number().nullable().optional(),
+        startedAt: z.string().nullable().optional(),
+      })
+      .passthrough()
+      .nullable()
+      .optional(),
+    /**
+     * Whether any in-flight completion is currently mid-reasoning: reasoning
+     * deltas have arrived and no content has yet. Also on the liveness poll,
+     * because it is one boolean the router already knows.
+     */
+    reasoning: z.boolean().nullable().optional(),
+    /**
+     * Slot occupancy split by phase, so a client can tell a prompt being
+     * ingested from a model that has started answering. Rides here rather than
+     * inside `resources` on purpose: `resources` costs an `nvidia-smi` spawn and
+     * is off by default, and this is the half the status rail needs every poll.
+     */
+    slots: z
+      .object({
+        total: z.number().nullable().optional(),
+        busy: z.number().nullable().optional(),
+        idle: z.number().nullable().optional(),
+        prefill: z.number().nullable().optional(),
+        decode: z.number().nullable().optional(),
+      })
+      .passthrough()
+      .nullable()
+      .optional(),
+    /** Jobs the scheduler is holding because no slot is free, or a swap is mid-flight. */
+    queued: z.number().nullable().optional(),
+    /** Whether the daemon reached the brain on its last probe. */
+    reachable: z.boolean().nullable().optional(),
   })
   .passthrough();
 export type BrainHostStatus = z.infer<typeof BrainHostStatusSchema>;
@@ -1835,6 +1916,13 @@ const BrainHostStatusResultSchema = z.object({
 
 export const BrainHostStatusRequestSchema = z.object({
   type: z.literal("brain.host.status.request"),
+  /**
+   * Ask for live CPU/RAM/GPU/slot telemetry alongside the status. Off by default
+   * on purpose: it costs an `nvidia-smi` spawn plus a /slots round trip on the
+   * brain, and this RPC is also the liveness poll. Only a surface actually
+   * rendering the numbers should turn it on.
+   */
+  resources: z.boolean().default(false),
   requestId: z.string(),
 });
 export const BrainHostStatusResponseSchema = z.object({
@@ -2106,7 +2194,7 @@ const BrainJobsResultSchema = z.object({
   requestId: z.string(),
 });
 
-// Installed models — `otto-brain scan`.
+// Installed models - `otto-brain scan`.
 export const BrainModelsScanRequestSchema = z.object({
   type: z.literal("brain.models.scan.request"),
   requestId: z.string(),
@@ -2120,7 +2208,7 @@ export const BrainModelsScanResponseSchema = z.object({
   }),
 });
 
-// Downloadable catalog — `otto-brain catalog`.
+// Downloadable catalog - `otto-brain catalog`.
 export const BrainCatalogListRequestSchema = z.object({
   type: z.literal("brain.catalog.list.request"),
   requestId: z.string(),
@@ -2134,7 +2222,7 @@ export const BrainCatalogListResponseSchema = z.object({
   }),
 });
 
-// Installed runtimes — `otto-brain runtime list`.
+// Installed runtimes - `otto-brain runtime list`.
 export const BrainRuntimeListRequestSchema = z.object({
   type: z.literal("brain.runtime.list.request"),
   requestId: z.string(),
@@ -2148,7 +2236,7 @@ export const BrainRuntimeListResponseSchema = z.object({
   }),
 });
 
-// Download a catalog model — starts a `pull` job.
+// Download a catalog model - starts a `pull` job.
 export const BrainModelsPullRequestSchema = z.object({
   type: z.literal("brain.models.pull.request"),
   // Catalog id or name fragment.
@@ -2160,7 +2248,7 @@ export const BrainModelsPullResponseSchema = z.object({
   payload: BrainJobResultSchema,
 });
 
-// Install a llama.cpp runtime — starts a `runtime-install` job.
+// Install a llama.cpp runtime - starts a `runtime-install` job.
 export const BrainRuntimeInstallRequestSchema = z.object({
   type: z.literal("brain.runtime.install.request"),
   // Optional llama.cpp release build tag; null = the brain's default.
@@ -2172,7 +2260,7 @@ export const BrainRuntimeInstallResponseSchema = z.object({
   payload: BrainJobResultSchema,
 });
 
-// Measure real KV bytes/token for a model — starts a `calibrate` job. Needs a
+// Measure real KV bytes/token for a model - starts a `calibrate` job. Needs a
 // runtime + GPU; refused with a helpful error otherwise.
 export const BrainCalibrateRequestSchema = z.object({
   type: z.literal("brain.calibrate.request"),
@@ -2184,7 +2272,7 @@ export const BrainCalibrateResponseSchema = z.object({
   payload: BrainJobResultSchema,
 });
 
-// Find the best reasoning budget for a model — starts a `sweep` job.
+// Find the best reasoning budget for a model - starts a `sweep` job.
 export const BrainSweepRequestSchema = z.object({
   type: z.literal("brain.sweep.request"),
   model: z.string(),
@@ -2195,7 +2283,7 @@ export const BrainSweepResponseSchema = z.object({
   payload: BrainJobResultSchema,
 });
 
-// Run the agentic-coding benchmark — starts a `bench` job. `model` is an
+// Run the agentic-coding benchmark - starts a `bench` job. `model` is an
 // optional comma list of name fragments; null lets the brain pick.
 export const BrainBenchRequestSchema = z.object({
   type: z.literal("brain.bench.request"),
@@ -2248,7 +2336,7 @@ export const BrainHfSearchResultSchema = z
   .passthrough();
 export type BrainHfSearchResult = z.infer<typeof BrainHfSearchResultSchema>;
 
-// One downloadable quantization of a repo — `otto-brain add <repo> --list-quants`.
+// One downloadable quantization of a repo - `otto-brain add <repo> --list-quants`.
 export const BrainRepoQuantSchema = z
   .object({
     quant: z.string().default(""),
@@ -2261,7 +2349,7 @@ export const BrainRepoQuantSchema = z
   .passthrough();
 export type BrainRepoQuant = z.infer<typeof BrainRepoQuantSchema>;
 
-// Search Hugging Face for GGUF models — `otto-brain search <query>`.
+// Search Hugging Face for GGUF models - `otto-brain search <query>`.
 export const BrainHfSearchRequestSchema = z.object({
   type: z.literal("brain.hf.search.request"),
   query: z.string(),
@@ -2277,7 +2365,7 @@ export const BrainHfSearchResponseSchema = z.object({
   }),
 });
 
-// List the quantizations a repo offers — `otto-brain add <repo> --list-quants`.
+// List the quantizations a repo offers - `otto-brain add <repo> --list-quants`.
 export const BrainHfQuantsRequestSchema = z.object({
   type: z.literal("brain.hf.quants.request"),
   repo: z.string(),
@@ -2292,7 +2380,7 @@ export const BrainHfQuantsResponseSchema = z.object({
   }),
 });
 
-// Download a chosen quant of an arbitrary HF repo — starts a `pull` job.
+// Download a chosen quant of an arbitrary HF repo - starts a `pull` job.
 export const BrainModelsAddRequestSchema = z.object({
   type: z.literal("brain.models.add.request"),
   repo: z.string(),
@@ -2302,6 +2390,308 @@ export const BrainModelsAddRequestSchema = z.object({
 export const BrainModelsAddResponseSchema = z.object({
   type: z.literal("brain.models.add.response"),
   payload: BrainJobResultSchema,
+});
+
+// --- Brain Console: the management API, proxied ---------------------------
+// Unlike the job RPCs above (which shell out to `otto-brain <verb> --json` and
+// are therefore local-only), these proxy the brain's own `/__host/*` HTTP API.
+// The daemon already resolves that endpoint by mode, so a local child and a
+// remote brain are reached by the same code with no branch on either side.
+// All gated by server_info.features.brainConsole.
+//
+// Two versions matter and they move independently: the daemon (does it know how
+// to proxy?) and the brain (does it serve it?). features.brainConsole answers
+// the first; `capabilities` on brain.host.status answers the second. A brain too
+// old for a capability is reported honestly rather than reimplemented.
+
+/**
+ * A model's hosting profile. Passthrough because the brain persists more than it
+ * exposes for editing (batchSize, extraArgs, the reasoning-budget message) and
+ * those must survive a round trip untouched rather than being dropped here.
+ */
+export const BrainProfileSchema = z
+  .object({
+    contextSize: z.number().default(0),
+    cacheTypeK: z.string().default(""),
+    cacheTypeV: z.string().default(""),
+    flashAttention: z.boolean().default(true),
+    gpuLayers: z.number().default(0),
+    vision: z.boolean().default(false),
+    reasoningBudget: z.number().default(0),
+    parallelSlots: z.number().default(1),
+  })
+  .passthrough();
+export type BrainProfile = z.infer<typeof BrainProfileSchema>;
+
+/** One editable field, as the brain describes it, so the editor cannot drift. */
+export const BrainProfileFieldSchema = z
+  .object({
+    key: z.string(),
+    label: z.string().default(""),
+    kind: z.string().default("number"),
+    step: z.number().nullable().optional(),
+    min: z.number().nullable().optional(),
+    max: z.number().nullable().optional(),
+    options: z.array(z.union([z.string(), z.number()])).default([]),
+    optionLabels: z.array(z.string()).default([]),
+    available: z.boolean().default(true),
+    unavailableReason: z.string().nullable().optional(),
+  })
+  .passthrough();
+export type BrainProfileField = z.infer<typeof BrainProfileFieldSchema>;
+
+/** A note on a field. `blocksStart` means this combination cannot load at all. */
+export const BrainProfileWarningSchema = z
+  .object({
+    field: z.string().nullable().default(null),
+    severity: z.string().default("info"),
+    message: z.string().default(""),
+    blocksStart: z.boolean().default(false),
+  })
+  .passthrough();
+export type BrainProfileWarning = z.infer<typeof BrainProfileWarningSchema>;
+
+/**
+ * Where the KV bytes/token figure came from. `inherited` means it was measured
+ * on a relative with the same attention geometry and rescaled, which the UI must
+ * never present as measured on this file.
+ */
+export const BrainCalibrationInfoSchema = z
+  .object({
+    state: z.string().default("unknown"),
+    kvBytesPerToken: z.number().nullable().default(null),
+    measuredAt: z.string().nullable().default(null),
+    measuredOn: z.string().nullable().default(null),
+  })
+  .passthrough();
+export type BrainCalibrationInfo = z.infer<typeof BrainCalibrationInfoSchema>;
+
+/** The VRAM breakdown for a profile. Raw bytes; the client formats at the edge. */
+export const BrainBudgetSchema = z
+  .object({
+    weightsBytes: z.number().default(0),
+    mmprojBytes: z.number().default(0),
+    kvBytes: z.number().default(0),
+    overheadBytes: z.number().default(0),
+    totalBytes: z.number().default(0),
+    usableBytes: z.number().default(0),
+    totalVramBytes: z.number().default(0),
+    reserveBytes: z.number().default(0),
+    kvBytesPerToken: z.number().default(0),
+    source: z.string().default("unknown"),
+    theoreticalKvBytesPerToken: z.number().nullable().default(null),
+    fits: z.boolean().default(false),
+    headroomBytes: z.number().default(0),
+    utilization: z.number().default(0),
+  })
+  .passthrough();
+export type BrainBudget = z.infer<typeof BrainBudgetSchema>;
+
+/** A model's benchmark standing, joined onto its inventory row. */
+export const BrainModelScoreSchema = z
+  .object({
+    id: z.string().nullable().default(null),
+    displayName: z.string().default(""),
+    overall: z.number().default(0),
+    runs: z.number().default(0),
+    std: z.number().default(0),
+    grade: z.string().default(""),
+    rank: z.number().nullable().optional(),
+  })
+  .passthrough();
+export type BrainModelScore = z.infer<typeof BrainModelScoreSchema>;
+
+/**
+ * One installed model with everything the Models tab shows, joined by the brain.
+ * The client must not have to correlate the scan, the metadata and the rankings
+ * itself: they key on different things and only the brain knows the file layout.
+ */
+export const BrainInventoryModelSchema = z
+  .object({
+    id: z.string(),
+    displayName: z.string().default(""),
+    publisher: z.string().nullable().default(null),
+    quant: z.string().nullable().default(null),
+    sizeBytes: z.number().default(0),
+    mmprojBytes: z.number().default(0),
+    origin: z.string().nullable().default(null),
+    arch: z.string().nullable().default(null),
+    contextLength: z.number().nullable().default(null),
+    blockCount: z.number().nullable().default(null),
+    headCountKv: z.number().nullable().default(null),
+    hasProjector: z.boolean().default(false),
+    reasoning: z.boolean().default(false),
+    mtp: z.boolean().default(false),
+    distilled: z.boolean().default(false),
+    useCases: z.array(z.string()).default([]),
+    tier: z.string().nullable().default(null),
+    profile: BrainProfileSchema.nullable().default(null),
+    calibration: BrainCalibrationInfoSchema.nullable().default(null),
+    budget: BrainBudgetSchema.nullable().default(null),
+    maxContextThatFits: z.number().nullable().default(null),
+    score: BrainModelScoreSchema.nullable().default(null),
+    state: z.string().default("not-loaded"),
+    warnings: z.array(BrainProfileWarningSchema).default([]),
+  })
+  .passthrough();
+export type BrainInventoryModel = z.infer<typeof BrainInventoryModelSchema>;
+
+export const BrainDiskUsageSchema = z
+  .object({
+    freeBytes: z.number().default(0),
+    totalBytes: z.number().default(0),
+    modelBytes: z.number().default(0),
+  })
+  .passthrough();
+export type BrainDiskUsage = z.infer<typeof BrainDiskUsageSchema>;
+
+// The joined inventory - GET /__host/models.
+export const BrainModelsInventoryRequestSchema = z.object({
+  type: z.literal("brain.models.inventory.request"),
+  requestId: z.string(),
+});
+export const BrainModelsInventoryResponseSchema = z.object({
+  type: z.literal("brain.models.inventory.response"),
+  payload: z.object({
+    models: z.array(BrainInventoryModelSchema).default([]),
+    disk: BrainDiskUsageSchema.nullable().default(null),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+// Read a model's profile plus the descriptors an editor renders from.
+export const BrainModelProfileGetRequestSchema = z.object({
+  type: z.literal("brain.model.profile.get.request"),
+  modelId: z.string(),
+  requestId: z.string(),
+});
+export const BrainModelProfileGetResponseSchema = z.object({
+  type: z.literal("brain.model.profile.get.response"),
+  payload: z.object({
+    profile: BrainProfileSchema.nullable().default(null),
+    fields: z.array(BrainProfileFieldSchema).default([]),
+    warnings: z.array(BrainProfileWarningSchema).default([]),
+    calibration: BrainCalibrationInfoSchema.nullable().default(null),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+// Write the editable fields. `patch` carries only the eight the brain accepts;
+// anything else is ignored there rather than rejected, so an older client that
+// sends a field a newer brain dropped still succeeds.
+export const BrainModelProfileSetRequestSchema = z.object({
+  type: z.literal("brain.model.profile.set.request"),
+  modelId: z.string(),
+  patch: z.record(z.string(), z.unknown()),
+  requestId: z.string(),
+});
+export const BrainModelProfileSetResponseSchema = z.object({
+  type: z.literal("brain.model.profile.set.response"),
+  payload: z.object({
+    profile: BrainProfileSchema.nullable().default(null),
+    /** Human-readable notes about anything clamped or ignored. */
+    adjustments: z.array(z.string()).default([]),
+    warnings: z.array(BrainProfileWarningSchema).default([]),
+    calibration: BrainCalibrationInfoSchema.nullable().default(null),
+    budget: BrainBudgetSchema.nullable().default(null),
+    maxContextThatFits: z.number().nullable().default(null),
+    /** True when the edited model is the resident one, so a restart applies it. */
+    requiresRestart: z.boolean().default(false),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+// The budget for a hypothetical profile - GET /__host/model/budget. `overrides`
+// are string-encoded field values so the UI can preview a budget while a control
+// is mid-drag, without persisting a value the user is scrubbing past.
+export const BrainModelBudgetGetRequestSchema = z.object({
+  type: z.literal("brain.model.budget.get.request"),
+  modelId: z.string(),
+  overrides: z.record(z.string(), z.string()).default({}),
+  requestId: z.string(),
+});
+export const BrainModelBudgetGetResponseSchema = z.object({
+  type: z.literal("brain.model.budget.get.response"),
+  payload: z.object({
+    profile: BrainProfileSchema.nullable().default(null),
+    budget: BrainBudgetSchema.nullable().default(null),
+    maxContextThatFits: z.number().nullable().default(null),
+    gpu: z.record(z.string(), z.unknown()).nullable().default(null),
+    warnings: z.array(BrainProfileWarningSchema).default([]),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+// Load a model into the running brain. Distinct from brain.host.start, which
+// restarts the daemon's child and has no remote equivalent.
+export const BrainModelLoadRequestSchema = z.object({
+  type: z.literal("brain.model.load.request"),
+  modelId: z.string(),
+  requestId: z.string(),
+});
+export const BrainModelLoadResponseSchema = z.object({
+  type: z.literal("brain.model.load.response"),
+  payload: z.object({
+    status: BrainHostStatusSchema.nullable().default(null),
+    /** The profile actually used: the brain clamps context to fit VRAM. */
+    profile: BrainProfileSchema.nullable().default(null),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const BrainModelUnloadRequestSchema = z.object({
+  type: z.literal("brain.model.unload.request"),
+  requestId: z.string(),
+});
+export const BrainModelUnloadResponseSchema = z.object({
+  type: z.literal("brain.model.unload.response"),
+  payload: z.object({
+    status: BrainHostStatusSchema.nullable().default(null),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+// Delete a model's files. The brain refuses while that model is loaded.
+export const BrainModelDeleteRequestSchema = z.object({
+  type: z.literal("brain.model.delete.request"),
+  modelId: z.string(),
+  requestId: z.string(),
+});
+export const BrainModelDeleteResponseSchema = z.object({
+  type: z.literal("brain.model.delete.response"),
+  payload: z.object({
+    deleted: z.array(z.string()).default([]),
+    freedBytes: z.number().default(0),
+    includesProjector: z.boolean().default(false),
+    /** How many models remain after the re-scan. */
+    remaining: z.number().default(0),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+// Tail the brain's llama-server log.
+export const BrainLogsTailRequestSchema = z.object({
+  type: z.literal("brain.logs.tail.request"),
+  limit: z.number().nullable().default(null),
+  requestId: z.string(),
+});
+export const BrainLogsTailResponseSchema = z.object({
+  type: z.literal("brain.logs.tail.response"),
+  payload: z.object({
+    lines: z.array(z.string()).default([]),
+    total: z.number().default(0),
+    state: z.string().nullable().default(null),
+    command: z.string().nullable().default(null),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
 });
 
 export const ProjectRenameRequestSchema = z.object({
@@ -2416,7 +2806,7 @@ export const GitHubIssueAttachmentSchema = z.object({
 // COMPAT(hostingAttachments): added in v0.7.6, remove after 2027-02-01.
 // These were the provider-neutral successors to github_pr/github_issue. The
 // forge merge replaced them with forge_change_request/forge_issue, so no
-// current client sends them — they stay accepted (protocol contract) purely so
+// current client sends them - they stay accepted (protocol contract) purely so
 // a client from before that merge can still attach a PR or an issue. The
 // daemon renders them at
 // server/src/server/agent/prompt-attachments.ts; retire both halves together.
@@ -2768,11 +3158,11 @@ export const SetDaemonConfigRequestMessageSchema = z.object({
   config: MutableDaemonConfigPatchSchema,
 });
 
-// Connectors — MCP servers surfaced as named, toggle-able integrations. The
+// Connectors - MCP servers surfaced as named, toggle-able integrations. The
 // registry itself (add/remove/enable/disable a connector or an individual tool)
 // lives in daemon config and is edited via set_daemon_config's `connectors`
 // patch. The one thing config can't answer is what tools a connector actually
-// exposes, which needs a live connect + listTools — that is this RPC. Gated by
+// exposes, which needs a live connect + listTools - that is this RPC. Gated by
 // features.connectors.
 export const ConnectorsListToolsRequestSchema = z.object({
   type: z.literal("connectors.list_tools.request"),
@@ -2800,6 +3190,76 @@ export const ConnectorsListToolsResponseSchema = z.object({
 export type ConnectorsListToolsRequest = z.infer<typeof ConnectorsListToolsRequestSchema>;
 export type ConnectorsListToolsResponse = z.infer<typeof ConnectorsListToolsResponseSchema>;
 
+// Connector OAuth - the "sign in" path for connectors whose MCP server
+// authenticates by login rather than by a pasted token. Three steps, because a
+// login is not a request/response: the client asks to authorize, the daemon
+// answers with a URL to open (or "already authorized"), and the actual result
+// arrives later as a pushed status once the user finishes in their browser.
+// Gated by features.connectorOauth.
+export const ConnectorsOauthAuthorizeRequestSchema = z.object({
+  type: z.literal("connectors.oauth.authorize.request"),
+  requestId: z.string(),
+  connectorId: z.string(),
+  /** Scopes to request, when the catalog entry names them. */
+  scope: z.string().optional(),
+});
+export const ConnectorsOauthAuthorizeResponseSchema = z.object({
+  type: z.literal("connectors.oauth.authorize.response"),
+  payload: z.object({
+    connectorId: z.string(),
+    /**
+     * Present when the user must sign in: the client opens this URL. Absent when
+     * the daemon already held a usable authorization, in which case status is
+     * "authorized" and there is nothing to open.
+     */
+    authorizationUrl: z.string().nullable().default(null),
+    status: z.enum(["redirect", "authorized", "error"]).default("error"),
+    error: z.string().nullable().default(null),
+    requestId: z.string(),
+  }),
+});
+
+export const ConnectorsOauthDisconnectRequestSchema = z.object({
+  type: z.literal("connectors.oauth.disconnect.request"),
+  requestId: z.string(),
+  connectorId: z.string(),
+});
+export const ConnectorsOauthDisconnectResponseSchema = z.object({
+  type: z.literal("connectors.oauth.disconnect.response"),
+  payload: z.object({
+    connectorId: z.string(),
+    requestId: z.string(),
+  }),
+});
+
+/**
+ * Pushed when an in-flight authorization settles. Not correlated to a requestId:
+ * the browser round-trip outlives the request that started it, and more than one
+ * client may be watching the same connector.
+ */
+export const ConnectorsOauthStatusMessageSchema = z.object({
+  type: z.literal("connectors.oauth.status"),
+  payload: z.object({
+    connectorId: z.string(),
+    status: z.enum(["connected", "failed"]),
+    /** Account label to show once connected, when the server reveals one. */
+    account: z.string().nullable().default(null),
+    error: z.string().nullable().default(null),
+  }),
+});
+
+export type ConnectorsOauthAuthorizeRequest = z.infer<typeof ConnectorsOauthAuthorizeRequestSchema>;
+export type ConnectorsOauthAuthorizeResponse = z.infer<
+  typeof ConnectorsOauthAuthorizeResponseSchema
+>;
+export type ConnectorsOauthDisconnectRequest = z.infer<
+  typeof ConnectorsOauthDisconnectRequestSchema
+>;
+export type ConnectorsOauthDisconnectResponse = z.infer<
+  typeof ConnectorsOauthDisconnectResponseSchema
+>;
+export type ConnectorsOauthStatusMessage = z.infer<typeof ConnectorsOauthStatusMessageSchema>;
+
 export const SpeechSettingsGetOptionsRequestSchema = z.object({
   type: z.literal("speech.settings.get_options.request"),
   requestId: z.string(),
@@ -2825,8 +3285,8 @@ export const SpeechTtsPreviewRequestSchema = z.object({
 });
 
 // Read a full assistant message aloud on demand (the per-message playback
-// button). Unlike the preview RPC — which truncates to a short sample and
-// returns one buffered clip — this synthesizes the ENTIRE text and streams it
+// button). Unlike the preview RPC - which truncates to a short sample and
+// returns one buffered clip - this synthesizes the ENTIRE text and streams it
 // back as `audio_output` chunks (isVoiceMode: false), one group per sentence, so
 // playback starts after the first sentence instead of the whole message.
 // `voice` (optional) is the speaking agent's personality voice, resolved on the
@@ -2857,8 +3317,8 @@ export const SpeechTtsSpeakCancelRequestSchema = z.object({
 
 // COMPAT(visualizerVoiceCues): added in v0.6.3; gate lives in
 // features.visualizerVoiceCues. Author short spoken "cue" lines for a
-// personality — a handful of variations each for three Visualizer moments
-// (join / thinking / done) — via the Writer mini-task chain, flavored by the
+// personality - a handful of variations each for three Visualizer moments
+// (join / thinking / done) - via the Writer mini-task chain, flavored by the
 // persona's `name` + `prompt`. The persona is passed inline (not a stored id)
 // so the personality editor can generate for an unsaved draft too; the result
 // is stored on the personality (`voiceCues`) and edited there, so this is an
@@ -2993,7 +3453,7 @@ export const CreateAgentRequestMessageSchema = z.object({
   config: AgentSessionConfigSchema,
   // Optional personality id. When present the daemon resolves the personality
   // against this cwd's provider snapshot and snapshots its identity (spinner,
-  // voice, prompt) onto the agent — the brain (provider/model/mode/effort) still
+  // voice, prompt) onto the agent - the brain (provider/model/mode/effort) still
   // comes from `config`, so hand-deviations in the picker keep the identity.
   // COMPAT(agentPersonalities): added in v0.5.0; gate lives in features.agentPersonalities.
   personality: z.string().optional(),
@@ -3058,7 +3518,7 @@ export const ProviderUsageListRequestMessageSchema = z.object({
   requestId: z.string(),
 });
 
-// Daemon-wide "fun stats" counters — see docs/data-model.md ActivityStatsStore.
+// Daemon-wide "fun stats" counters - see docs/data-model.md ActivityStatsStore.
 // Every field defaults to 0 so old and new daemons/clients stay compatible as
 // counters are added later.
 export const ActivityCountersSchema = z.object({
@@ -3077,7 +3537,7 @@ export const ActivityCountersSchema = z.object({
   // Usage & cost accounting (WP-G). Additive/defaulted like every counter above,
   // so old daemons emit 0 and old clients drop the unknown leaves. "In"/"Out"
   // are token totals; *CostMicroUsd are integer micro-USD (usd*1e6) to stay
-  // summable — populated only for turns reporting a real provider cost (Claude).
+  // summable - populated only for turns reporting a real provider cost (Claude).
   // The client detects whether the daemon actually populates these via
   // features.usageCostCategories (see below).
   costMicroUsd: z.number().default(0),
@@ -3113,10 +3573,10 @@ export const StatsActivityGetResponseMessageSchema = z.object({
   }),
 });
 
-// Daemon-wide "activity counters moved" ping — broadcast to every client,
+// Daemon-wide "activity counters moved" ping - broadcast to every client,
 // coalesced at the daemon (at most once every few seconds) so bursts of
 // increments don't get chatty. Carries no payload: clients re-fetch the
-// rollups via stats.activity.get. Purely additive — old clients drop the
+// rollups via stats.activity.get. Purely additive - old clients drop the
 // unknown type with a warning, and against old daemons (which never send it)
 // the stats screen degrades to today's focus/manual refresh. Rides the
 // existing activityStats capability; no new feature flag needed because no
@@ -3125,12 +3585,12 @@ export const ActivityStatsChangedSchema = z.object({
   type: z.literal("activity_stats_changed"),
 });
 
-// One itemized row of the usage ledger — a single token/cost-bearing activity
+// One itemized row of the usage ledger - a single token/cost-bearing activity
 // (a chat turn, a sub-agent turn, or a background generation). The aggregate
 // ActivityCounters above are the rollup of this same event stream; the ledger is
 // the scrollable detail behind the tiles (usage-ledger project). `kind` and
 // `provider` are plain strings (not enums) so an OLD client still parses a NEW
-// daemon that emits a kind it hasn't heard of — it renders it generically rather
+// daemon that emits a kind it hasn't heard of - it renders it generically rather
 // than failing the whole message. All token/cost leaves default to 0.
 export const UsageEventSchema = z.object({
   /** Stable unique id for the row (daemon-generated). */
@@ -3166,20 +3626,20 @@ export const UsageEventSchema = z.object({
   /**
    * How many model round-trips this row aggregates. A chat row is one query, but
    * a sub-agent row covers a whole delegated task that internally ran many
-   * rounds — and each round re-reads the growing context, so `cachedTokensIn` is
+   * rounds - and each round re-reads the growing context, so `cachedTokensIn` is
    * cumulative cache-READS, not a cache size. Surfacing the count is what makes a
    * large cached figure legible instead of looking like a bug. Absent when the
    * provider doesn't report it.
    */
   rounds: z.number().optional(),
   /**
-   * Sub-agent rows only — the spawn-tree identity that lets the Log group rows
+   * Sub-agent rows only - the spawn-tree identity that lets the Log group rows
    * the way a human reads the run (chat turn → its sub-agents → their
    * sub-agents) instead of by settle time, which async sub-agents crossing turn
    * boundaries makes wrong. `startedAt` is when the sub-agent was first
    * observed (epoch ms; a row belongs to the turn that spawned it, not the turn
    * it happened to settle in), `subagentKey` is its stable observed key, and
-   * `parentSubagentKey` is the spawning sub-agent's key — absent for depth-1
+   * `parentSubagentKey` is the spawning sub-agent's key - absent for depth-1
    * sub-agents spawned by the chat itself.
    */
   startedAt: z.number().optional(),
@@ -3208,7 +3668,7 @@ export const UsageLogGetResponseMessageSchema = z.object({
 });
 
 // Wipe every daemon-wide usage counter AND the itemized usage ledger back to
-// zero — the "Reset" action on the Metrics screen. One RPC clears both sinks
+// zero - the "Reset" action on the Metrics screen. One RPC clears both sinks
 // (the day-bucketed ActivityStatsStore and the UsageLogStore) so the tiles and
 // the Log tab start fresh together. Gated behind features.statsReset so an old
 // daemon (no handler) never receives a request the client thinks it can send.
@@ -3436,7 +3896,7 @@ export const AgentSubagentStopResponseMessageSchema = z.object({
 });
 
 // A background shell task launched by a provider's own Bash tool (Claude:
-// run_in_background). Not an agent, not a subagent — a plain shell process
+// run_in_background). Not an agent, not a subagent - a plain shell process
 // the daemon tracks for the parent agent's Background Tasks track.
 // COMPAT(backgroundShellTasks): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
 export const BackgroundShellTaskInfoSchema = z.object({
@@ -3453,7 +3913,7 @@ export const BackgroundShellTaskInfoSchema = z.object({
 });
 
 // Pushed with the full current set of background shell tasks for a parent
-// agent whenever any of them changes (start/progress/settle/clear) — same
+// agent whenever any of them changes (start/progress/settle/clear) - same
 // full-list reconciliation shape as TerminalsChangedSchema.
 export const BackgroundShellTasksChangedSchema = z.object({
   type: z.literal("background_shell_tasks_changed"),
@@ -3494,7 +3954,7 @@ export const AgentBackgroundTaskClearResponseMessageSchema = z.object({
 // A suggested task an agent surfaced via the `spawn_task` tool (Claude Desktop
 // parity). Renders as a chip in the parent agent's session; the user starts it
 // (new worktree / local / this session) or dismisses it. The `prompt` is
-// deliberately NOT part of this wire shape — it stays server-side and is only
+// deliberately NOT part of this wire shape - it stays server-side and is only
 // used when the task is started ("not shown directly" in Claude Desktop).
 // COMPAT(suggestedTasks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
 export const SuggestedTaskStateSchema = z.enum(["pending", "started", "dismissed"]);
@@ -3511,7 +3971,7 @@ export const SuggestedTaskInfoSchema = z.object({
 });
 
 // Pushed with the full current set of pending suggested tasks for a parent
-// agent whenever any of them changes (spawn/start/dismiss) — same full-list
+// agent whenever any of them changes (spawn/start/dismiss) - same full-list
 // reconciliation shape as BackgroundShellTasksChangedSchema.
 export const SuggestedTasksChangedSchema = z.object({
   type: z.literal("suggested_tasks_changed"),
@@ -3521,7 +3981,7 @@ export const SuggestedTasksChangedSchema = z.object({
   }),
 });
 
-// Context Management — the daemon's accounting of everything a provider sends
+// Context Management - the daemon's accounting of everything a provider sends
 // before the user types (see docs/context-management.md).
 //
 // Two distinctions carry the whole feature and must not be collapsed on the
@@ -3590,7 +4050,7 @@ export const ContextFindingSchema = z.object({
   range: ContextRangeSchema.optional(),
   relatedNodeIds: z.array(z.string()).optional(),
   // The node this finding is about. Redundant while the finding sits on its
-  // node, load-bearing once the report flattens them all into one list — that
+  // node, load-bearing once the report flattens them all into one list - that
   // list is the "Issues" tab, and without this a row cannot say where it came
   // from or take you there.
   nodeId: z.string().optional(),
@@ -3601,9 +4061,9 @@ export const ContextFindingSchema = z.object({
   // rather than dropping a cursor at the top of it.
   lineEnd: z.number().optional(),
   // True for kinds a mechanical delete can resolve on its own (dead links, a
-  // duplicate block) — false/absent for kinds that need judgment (which side
+  // duplicate block) - false/absent for kinds that need judgment (which side
   // of an import cycle to cut, how to split an oversized entry). Computed
-  // server-side, once, in `locateFinding` — the only place that knows the kind
+  // server-side, once, in `locateFinding` - the only place that knows the kind
   // vocabulary, so the fix-all button never has to guess.
   fixable: z.boolean().optional(),
   // The exact text at `range` when the file was scanned. `context.findings.fix`
@@ -3629,7 +4089,7 @@ export const ContextNodeSchema = z.object({
 
 export const ContextEdgeSchema = z.object({
   fromNodeId: z.string(),
-  // Null when the target could not be resolved — pairs with a dead_* finding.
+  // Null when the target could not be resolved - pairs with a dead_* finding.
   toNodeId: z.string().nullable(),
   kind: z.enum(["import", "reference"]),
   rawTarget: z.string(),
@@ -3652,7 +4112,7 @@ export const ContextCategoryTotalSchema = z.object({
 export const ContextReportSchema = z.object({
   workspaceId: z.string(),
   provider: z.string(),
-  // The window the report was evaluated against — from the active model, or
+  // The window the report was evaluated against - from the active model, or
   // the client's what-if picker. Severity is meaningless without it.
   windowTokens: z.number(),
   scannedAt: z.string(),
@@ -3713,7 +4173,7 @@ export const ContextReportGetResponseMessageSchema = z.object({
 });
 
 // One readable block of the assembled prompt. `text` is absent exactly when
-// `visibility` is "not_visible" — the provider composes that part internally and
+// `visibility` is "not_visible" - the provider composes that part internally and
 // Otto has nothing to show, which the section states rather than hides.
 export const ContextPromptSectionSchema = z.object({
   category: ContextCategorySchema,
@@ -3738,8 +4198,8 @@ export const ContextPromptPreviewGetRequestMessageSchema = z.object({
   provider: z.string().optional(),
   windowTokens: z.number().optional(),
   personalityId: z.string().optional(),
-  // Assemble only this category. The tab reads one section at a time — the user
-  // clicked a row in the tree — and assembling the rest would re-read every
+  // Assemble only this category. The tab reads one section at a time - the user
+  // clicked a row in the tree - and assembling the rest would re-read every
   // context file on disk to build text nobody asked to see. Omitted means all,
   // which is what an older client sends.
   category: ContextCategorySchema.optional(),
@@ -3759,7 +4219,7 @@ export const ContextEdgeConvertRequestMessageSchema = z.object({
   type: z.literal("context.edge.convert.request"),
   requestId: z.string(),
   workspaceId: z.string(),
-  // The parent file holding the reference — its `ContextNode.path`, not its
+  // The parent file holding the reference - its `ContextNode.path`, not its
   // id: ids are case-folded on Windows and are not safe to write through.
   filePath: z.string(),
   rawTarget: z.string(),
@@ -3776,7 +4236,7 @@ export const ContextEdgeConvertResponseMessageSchema = z.object({
   }),
 });
 
-// Deletes every mechanically-fixable finding's range in one pass — the
+// Deletes every mechanically-fixable finding's range in one pass - the
 // "Fix all" button in the Issues tab. Each item names the file, the range the
 // scan flagged, and the snippet expected there; a file that changed since the
 // scan is skipped rather than corrupted (charter §7.5).
@@ -3804,7 +4264,7 @@ export const ContextFindingsFixResponseMessageSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// Personality memory — the lessons a named personality accrues across sessions.
+// Personality memory - the lessons a named personality accrues across sessions.
 // See docs/agent-personalities.md § Memory.
 // ---------------------------------------------------------------------------
 
@@ -3850,7 +4310,7 @@ export const PersonalityMemoryListResponseMessageSchema = z.object({
     personalityName: z.string(),
     /** Whether this personality is accruing (the `memoryEnabled` switch). */
     enabled: z.boolean(),
-    /** Every stored entry, including other projects' — the UI shows them all. */
+    /** Every stored entry, including other projects' - the UI shows them all. */
     entries: z.array(PersonalityMemoryEntrySchema),
     // The EXACT text the daemon would inject for `projectRoot`, not a
     // reconstruction. Memory is only trustworthy if it is inspectable, and the
@@ -3923,7 +4383,7 @@ export const PersonalityMemoryTransferResponseMessageSchema = z.object({
 });
 
 // Per-personality lesson counts. Its own RPC over its own file, mirroring
-// agentPersonalities.get_stats — counts must not ride the daemon-config
+// agentPersonalities.get_stats - counts must not ride the daemon-config
 // broadcast, or every recorded lesson would fan a config change to every client.
 export const PersonalityMemoryStatsRequestMessageSchema = z.object({
   type: z.literal("personality.memory.stats.request"),
@@ -3950,14 +4410,14 @@ const SuggestedTaskActionResponsePayloadSchema = z.object({
   error: z.string().nullable(),
 });
 
-// Start one or more suggested tasks, applying the SAME mode to each — no
+// Start one or more suggested tasks, applying the SAME mode to each - no
 // combining. Four modes, only `subagent` links the new agent to the parent:
 //  - `new_chat`:   a fresh independent agent in its own tab, same repo/cwd, NO
-//                  parent link — survives the parent's cancel/archive.
+//                  parent link - survives the parent's cancel/archive.
 //  - `subagent`:   a bound child agent that shows in the parent's Subagents
 //                  track and archive-cascades with it.
 //  - `worktree`:   an independent agent on a new git worktree (auto branch-off),
-//                  isolated workspace — also unlinked from the parent.
+//                  isolated workspace - also unlinked from the parent.
 //  - `in_session`: steers the parent agent with the task prompt (no new agent).
 // The daemon resolves the parent agent's brain (provider/model/personality) so a
 // started task continues the suggesting agent.
@@ -3995,8 +4455,8 @@ export const TasksSuggestedDismissResponseMessageSchema = z.object({
 
 // Switch a running agent to an Agent Personality (or clear with null). The
 // daemon re-resolves the id against the roster + the agent's cwd provider
-// snapshot and applies the full personality live — system prompt, identity
-// (name/spinner), and brain (model/mode/effort) — restarting the provider query
+// snapshot and applies the full personality live - system prompt, identity
+// (name/spinner), and brain (model/mode/effort) - restarting the provider query
 // so the new prompt takes effect on the next turn. Providers that cannot apply
 // a prompt mid-session reject. COMPAT(setAgentPersonality): added in v0.5.0;
 // gate lives in features.setAgentPersonality.
@@ -4358,7 +4818,7 @@ export const RunsClearResponseSchema = z.object({
   }),
 });
 
-// Delete one run by id. Terminal (done/failed/canceled) and draft runs only —
+// Delete one run by id. Terminal (done/failed/canceled) and draft runs only -
 // deleting an active run is refused so a cleanup click can't silently orphan
 // running agents; cancel it first. Gated by server_info.features.runsDelete.
 export const RunsDeleteRequestSchema = z.object({
@@ -4370,7 +4830,7 @@ export const RunsDeleteResponseSchema = z.object({
   type: z.literal("runs.delete.response"),
   payload: z.object({
     // The deleted id, or absent when nothing was deleted (unknown or still
-    // active) — `error` then carries why.
+    // active) - `error` then carries why.
     runId: z.string().optional(),
     error: z.string().optional(),
     requestId: z.string(),
@@ -4495,11 +4955,11 @@ export const RunsTemplatesChangedNotificationSchema = z.object({
 });
 
 // Start (or draft) a user-initiated orchestration from the New Orchestration
-// dialog. `flavor` is an open vocabulary: "ai" (prompt-and-go — the daemon
+// dialog. `flavor` is an open vocabulary: "ai" (prompt-and-go - the daemon
 // spawns an orchestrator agent that declares its own plan via start_run) or
-// "graph" (deterministic — the daemon executes `graphId` with `graphInputs`).
+// "graph" (deterministic - the daemon executes `graphId` with `graphInputs`).
 // `draft: true` creates the record without executing (the designer flow);
-// `runId` executes an existing draft in place — or, with `draft: true`, re-saves
+// `runId` executes an existing draft in place - or, with `draft: true`, re-saves
 // that draft in place (Edit Orchestration).
 export const RunsStartRequestSchema = z.object({
   type: z.literal("runs.start.request"),
@@ -4585,7 +5045,7 @@ export const CheckoutGitCommitRequestSchema = z.object({
 
 // Resolve which agent the daemon would use to author a commit message for this
 // checkout (the "writer" role) so the client can name it in a confirmation
-// before running the AI-authored commit. A pure query — it never commits. Gated
+// before running the AI-authored commit. A pure query - it never commits. Gated
 // by server_info.features.checkoutGitCommitAgent.
 export const CheckoutGitCommitAgentRequestSchema = z.object({
   type: z.literal("checkout.git.commit_agent.request"),
@@ -4642,8 +5102,8 @@ export const CheckoutGitFileCommitDiffRequestSchema = z.object({
   requestId: z.string(),
 });
 
-// One page of blame. Always paged — blaming a large file whole would block the
-// daemon — so the client walks the file a page at a time.
+// One page of blame. Always paged - blaming a large file whole would block the
+// daemon - so the client walks the file a page at a time.
 export const CheckoutGitFileBlameRequestSchema = z.object({
   type: z.literal("checkout.git.get_file_blame.request"),
   cwd: z.string(),
@@ -4964,7 +5424,7 @@ export const HostingSearchRequestSchema = z.object({
   requestId: z.string(),
 });
 
-// Reports whether a host-level provider's credentials are valid — drives the
+// Reports whether a host-level provider's credentials are valid - drives the
 // connection-status row in the host Git providers settings section.
 export const HostingAuthStatusRequestSchema = z.object({
   type: z.literal("hosting.auth_status.request"),
@@ -5079,11 +5539,11 @@ export const ProjectAddRequestSchema = z.object({
 // from a remote), optionally create that remote on a connected hosting
 // provider, then register the result as a project. One RPC rather than a
 // client-driven sequence so a half-finished project can never be left behind by
-// a dropped socket — the daemon owns the whole transaction.
+// a dropped socket - the daemon owns the whole transaction.
 // COMPAT(projectScaffold): added in v0.6.9. Gated by server_info.features.projectScaffold.
 
 // Built-in .gitignore starters. Deliberately a short list of the ecosystems Otto
-// itself works in — this is a convenience, not a mirror of github/gitignore. The
+// itself works in - this is a convenience, not a mirror of github/gitignore. The
 // wire field stays an open string so a newer daemon can add one without an older
 // client's validator rejecting the message.
 export const PROJECT_SCAFFOLD_GITIGNORE_TEMPLATE_IDS = [
@@ -5214,7 +5674,7 @@ export const ArchiveWorkspaceRequestSchema = z.object({
   workspaceId: z.string(),
   requestId: z.string(),
   // COMPAT(worktreeArchiveBranchCleanup): added in v0.6.7, drop the optional
-  // gate when daemon floor >= v0.6.7. Absent means "keep" — the leftover local
+  // gate when daemon floor >= v0.6.7. Absent means "keep" - the leftover local
   // branch is never touched (old-client behavior). "delete" asks the daemon to
   // remove the worktree's local branch after the backing directory is torn down
   // (only when this was the last reference to it and the branch is not checked
@@ -5239,7 +5699,7 @@ export const WorkspaceArchivePreflightRequestSchema = z.object({
 // COMPAT(checkoutDiffBaseAnyRepo): added in v0.7.4.
 export const CheckoutBaseSourceSchema = z.enum(["user", "inferred", "worktree", "default"]);
 
-// Repoint a worktree-backed workspace's base branch — what the Changes view diffs
+// Repoint a worktree-backed workspace's base branch - what the Changes view diffs
 // against, and what merge-into-base and PR creation target. On a stacked branch the
 // useful base is the parent branch, not the repo default, the same way a forge PR
 // carries an explicit base. A null baseRef resets to the repository default branch.
@@ -5249,7 +5709,7 @@ export const WorktreeBaseRefSetRequestSchema = z.object({
   requestId: z.string(),
   workspaceId: z.string(),
   // Branch name; null resets to the default branch. An `origin/` prefix is meaningful and is
-  // kept — `main` and `origin/main` are different comparisons whenever the two have drifted.
+  // kept - `main` and `origin/main` are different comparisons whenever the two have drifted.
   baseRef: z.string().nullable(),
   // Forget the remembered base and detect the branch's parent again, ignoring `baseRef`.
   // The escape hatch for a wrong guess: parent detection is a heuristic over a graph that does
@@ -5462,7 +5922,7 @@ export const FsFileWriteRequestSchema = z.object({
  * The counterpart to `fs.file.write`, which is text only: it LF-normalizes,
  * re-applies the file's detected EOL, and outright refuses to overwrite a file
  * whose current bytes look binary. None of that can carry a PDF, an image or
- * any other generated artifact, so those go through here instead — the bytes
+ * any other generated artifact, so those go through here instead - the bytes
  * land verbatim.
  *
  * Deliberately not a conditional write. Callers are producing a generated file
@@ -5477,8 +5937,8 @@ export const FsFileWriteRequestSchema = z.object({
  * is a different power and does not need to be that wide.
  *
  * The bytes themselves do not ride in this message. They follow it as
- * `FileTransfer` binary frames correlated on `requestId` — FileBegin, then
- * FileChunk, then FileEnd — the same transport `file.upload` uses. This request
+ * `FileTransfer` binary frames correlated on `requestId` - FileBegin, then
+ * FileChunk, then FileEnd - the same transport `file.upload` uses. This request
  * is the metadata half: where the bytes go and how many of them to expect.
  * Everything here writes multi-megabyte files (a printed PDF, a dropped image),
  * and base64 in a JSON message costs a third again on the wire plus the whole
@@ -5500,8 +5960,8 @@ export const FsFileWriteBinaryRequestSchema = z.object({
    *
    * COMPAT(binaryWriteBase64): added in v0.7.6, drop this field and its daemon
    * branch on 2027-02-02. Superseded by `size` plus file-transfer frames. The
-   * daemon still reads it — a field we stopped sending is not a field we stop
-   * accepting — and picks the branch from which of the two is present.
+   * daemon still reads it - a field we stopped sending is not a field we stop
+   * accepting - and picks the branch from which of the two is present.
    */
   contentBase64: z.string().optional(),
   /**
@@ -5537,7 +5997,7 @@ export const FileUploadRequestSchema = z.object({
 /**
  * Text-editor save. A conditional write: the request carries the client's
  * last-known file identity and the daemon refuses to clobber content it did
- * not hand out — a mismatch comes back as a typed conflict, never a write.
+ * not hand out - a mismatch comes back as a typed conflict, never a write.
  */
 export const FileWriteRequestSchema = z.object({
   type: z.literal("file.write.request"),
@@ -5577,7 +6037,7 @@ export const FileCreateRequestSchema = z.object({
 });
 
 /**
- * Permanent delete — an unlink, not a move to the OS trash. The daemon may be
+ * Permanent delete - an unlink, not a move to the OS trash. The daemon may be
  * headless, remote, or inside WSL, where there is no reliable trash to move to;
  * a "deleted" file that silently stayed on disk in one environment and vanished
  * in another would be worse than either. The client's confirmation says so.
@@ -5594,7 +6054,7 @@ export const FileDeleteRequestSchema = z.object({
 });
 
 /**
- * Rename and move are the same operation — a move is a rename whose new path
+ * Rename and move are the same operation - a move is a rename whose new path
  * has a different parent. Never clobbers: an occupied destination comes back as
  * `exists` and nothing moves. There is no overwrite flag on purpose, so this
  * RPC cannot destroy a file the user did not name.
@@ -5608,7 +6068,7 @@ export const FileRenameRequestSchema = z.object({
 });
 
 /**
- * Refine — an AI rewrite the user reviews as a diff before anything is written.
+ * Refine - an AI rewrite the user reviews as a diff before anything is written.
  * This RPC only *proposes*: it reads nothing from disk and writes nothing. The
  * accepted result goes back through `file.write.request` like any other save,
  * so the conditional-write precondition still guards it.
@@ -5638,7 +6098,7 @@ export const FileRefineReferenceSchema = z.object({
 
 export const FileRefineRequestSchema = z.object({
   type: z.literal("file.refine.request"),
-  // Provider resolution only — which workspace's mini-task chain runs this.
+  // Provider resolution only - which workspace's mini-task chain runs this.
   // Documents are NOT read from disk here; they travel on the wire.
   cwd: z.string(),
   // What the model may rewrite. The blast radius of the whole request: a file
@@ -5771,7 +6231,7 @@ export const CodeRenamePreviewRequestSchema = z.object({
  *
  * The client sends back only the `planId` it was shown; the daemon recomputes the plan and
  * refuses unless the identity matches. A request that carried its own edit list would be a
- * remote arbitrary-write primitive wearing a rename's name — any client could post any text
+ * remote arbitrary-write primitive wearing a rename's name - any client could post any text
  * at any path. This shape makes the daemon's own language server the sole author of what
  * gets written, and the plan id the proof that the user saw it.
  */
@@ -5788,7 +6248,7 @@ export const CodeRenameApplyRequestSchema = z.object({
 });
 
 /**
- * Undo a run. Carries only the run's id — the daemon holds the before-images.
+ * Undo a run. Carries only the run's id - the daemon holds the before-images.
  *
  * Declared here, with the other inbound rename schemas, rather than beside its response
  * further down: `SessionInboundMessageSchema` is a top-level const, so a schema it names
@@ -5835,8 +6295,8 @@ export const LspServerStopRequestSchema = z.object({
  * as the build system sees it rather than as the filesystem lays it out.
  *
  * **Independent of the LSP family above, despite sharing the `code.` domain.** There is no
- * project-structure request in the Language Server Protocol — not one Otto has yet to wire, one
- * that does not exist — so this subsystem builds its own model through Microsoft's solution
+ * project-structure request in the Language Server Protocol - not one Otto has yet to wire, one
+ * that does not exist - so this subsystem builds its own model through Microsoft's solution
  * libraries. Turning C# code intelligence off does not turn this off, and vice versa.
  *
  * Discovery is separate from loading on purpose: `list` decides whether the switcher appears at
@@ -5853,7 +6313,7 @@ export const CodeSolutionListRequestSchema = z.object({
 
 /**
  * One solution's organisation: folders, the projects inside them, and the configurations. No file
- * membership — that is `load_project`, paid per project on expand, because evaluating fifty
+ * membership - that is `load_project`, paid per project on expand, because evaluating fifty
  * projects to render a collapsed tree is the cost this design exists to avoid.
  */
 export const CodeSolutionGetTreeRequestSchema = z.object({
@@ -5866,7 +6326,7 @@ export const CodeSolutionGetTreeRequestSchema = z.object({
 
 /**
  * One project's evaluated file membership. `solutionPath` scopes the sidecar instance so two
- * solutions in one repo never share a warm `ProjectCollection` — and so Phase 4 has the selection
+ * solutions in one repo never share a warm `ProjectCollection` - and so Phase 4 has the selection
  * it needs for `--solution`.
  */
 export const CodeSolutionLoadProjectRequestSchema = z.object({
@@ -5907,7 +6367,7 @@ const FileReplaceMatchSchema = z.object({
 
 /**
  * Preview-first project replace. Each file carries the hash the preview was
- * built against — files changed since are skipped and reported, never
+ * built against - files changed since are skipped and reported, never
  * corrupted. The replacement string is literal (no capture references in v1).
  */
 export const FileReplaceRequestSchema = z.object({
@@ -6006,7 +6466,7 @@ export const CreateTerminalRequestSchema = z.object({
   command: z.string().optional(),
   args: z.array(z.string()).optional(),
   // Initial PTY size. Added in v0.1.107; the app no longer sends it (the estimate cache that fed
-  // it was removed — the pane-focus resize claim sizes the PTY instead). Kept and honored
+  // it was removed - the pane-focus resize claim sizes the PTY instead). Kept and honored
   // permanently: released v0.1.107 clients still send it, and programmatic callers may pass an
   // exact size. Daemons without it start at 80x24 and the first resize corrects that.
   size: z
@@ -6187,6 +6647,14 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   BrainHfSearchRequestSchema,
   BrainHfQuantsRequestSchema,
   BrainModelsAddRequestSchema,
+  BrainModelsInventoryRequestSchema,
+  BrainModelProfileGetRequestSchema,
+  BrainModelProfileSetRequestSchema,
+  BrainModelBudgetGetRequestSchema,
+  BrainModelLoadRequestSchema,
+  BrainModelUnloadRequestSchema,
+  BrainModelDeleteRequestSchema,
+  BrainLogsTailRequestSchema,
   UpdateAgentRequestMessageSchema,
   ProjectRenameRequestSchema,
   ProjectRemoveRequestSchema,
@@ -6209,6 +6677,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   GetDaemonConfigRequestMessageSchema,
   SetDaemonConfigRequestMessageSchema,
   ConnectorsListToolsRequestSchema,
+  ConnectorsOauthAuthorizeRequestSchema,
+  ConnectorsOauthDisconnectRequestSchema,
   SpeechSettingsGetOptionsRequestSchema,
   SpeechTtsPreviewRequestSchema,
   SpeechTtsSpeakRequestSchema,
@@ -6678,6 +7148,16 @@ export const ServerInfoStatusPayloadSchema = z
         // Without it the Brain "Models" section hides the Hugging Face search box.
         // COMPAT(brainHfSearch): added in v0.7.5, remove gate after 2026-07-30 once daemon floor >= v0.7.5.
         brainHfSearch: z.boolean().optional(),
+        // Daemon proxies the brain's own /__host/* management API: the joined
+        // model inventory, per-model profiles, the VRAM budget, load/unload,
+        // delete, and the log tail. Unlike brainManage (which shells out to the
+        // CLI and is therefore local-only) these work against a remote brain too.
+        // Without it the Brain page is not offered at all. Which of those the
+        // brain on the far side actually serves is a separate question, answered
+        // by `capabilities` on brain.host.status, because the daemon and the
+        // brain version independently.
+        // COMPAT(brainConsole): added in v0.7.7, drop the gate when daemon floor >= v0.7.7.
+        brainConsole: z.boolean().optional(),
         // COMPAT(agentForkContext): added in v0.1.102, remove gate after 2026-12-28.
         agentForkContext: z.boolean().optional(),
         // COMPAT(providerRemove): added in v0.1.105, drop the gate when daemon floor >= v0.1.105.
@@ -6700,7 +7180,7 @@ export const ServerInfoStatusPayloadSchema = z
         // Daemon owns a per-agent queue of steering messages, accepts
         // `delivery: "queue"` on send, reports `queuedMessages` on the agent
         // snapshot, and serves agent.queue.remove/clear. Without it the
-        // composer keeps its own local queue — that is the pre-existing
+        // composer keeps its own local queue - that is the pre-existing
         // behavior, not a degraded build of this feature.
         steerQueue: z.boolean().optional(),
         // Daemon serves agent.queue.reorder. Separate from `steerQueue`
@@ -6711,34 +7191,34 @@ export const ServerInfoStatusPayloadSchema = z
         // Daemon reports `cumulativeUsage` (the lifetime in/cached/out split
         // plus its own booked cost) on every agent snapshot, so a chat's total
         // spend can be summed and priced honestly. Without it the client shows
-        // token totals only and no cost — NOT an estimated cost, which is the
+        // token totals only and no cost - NOT an estimated cost, which is the
         // behavior this feature exists to remove.
         // COMPAT(cumulativeUsage): added in v0.7.0, drop the gate when daemon floor >= v0.7.0.
         cumulativeUsage: z.boolean().optional(),
         // Daemon can resolve and evaluate the provider's context graph, serve
         // context.report.* and push context_report_changed. Without it the
         // client hides both the Context Management tab and the composer
-        // warning entirely — there is no degraded client-side fallback, since
+        // warning entirely - there is no degraded client-side fallback, since
         // only the daemon can see the files a provider loads.
         // COMPAT(contextManagement): added in v0.6.5, drop the gate when daemon floor >= v0.6.5.
         contextManagement: z.boolean().optional(),
         // COMPAT(textEditor): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
         textEditor: z.boolean().optional(),
-        // Refine — the daemon can turn a pinned document plus an instruction
+        // Refine - the daemon can turn a pinned document plus an instruction
         // into a proposed rewrite (`file.refine.*`). Without it the Refine
         // entry is absent: there is no client-side substitute for a model, and
         // a degraded "open a chat instead" path is exactly the unreviewed edit
         // Refine exists to replace.
         // COMPAT(refine): added in v0.6.9, drop the gate when daemon floor >= v0.6.9.
         refine: z.boolean().optional(),
-        // Personality memory — the daemon stores per-personality lessons, injects
+        // Personality memory - the daemon stores per-personality lessons, injects
         // them at spawn, and serves personality.memory.*. Without it the client
         // hides the Memory tab, the accrual indicator and the transfer-on-delete
         // choice: storage is daemon-side by definition, so there is nothing a
         // client-side fallback could read.
         // COMPAT(personalityMemory): added in v0.7.0, drop the gate when daemon floor >= v0.7.0.
         personalityMemory: z.boolean().optional(),
-        // Script discovery — the daemon scans a workspace for the Scripts its
+        // Script discovery - the daemon scans a workspace for the Scripts its
         // project files already declare (package.json scripts, and later
         // Makefile targets, .NET launch profiles) and serves them from
         // `workspace.script.list` with `includeDiscovered`. Without it the
@@ -6764,11 +7244,11 @@ export const ServerInfoStatusPayloadSchema = z
         // flag the client says to update the host rather than showing an empty screen.
         // COMPAT(lspHostServers): added in v0.7.3, drop the gate when daemon floor >= v0.7.3.
         lspHostServers: z.boolean().optional(),
-        // The Solution view — the daemon can discover solutions and serve
+        // The Solution view - the daemon can discover solutions and serve
         // `code.solution.*`. Deliberately NOT implied by `lsp`: there is no
         // project-structure request in LSP, so this subsystem is independent of
         // language servers and of the C# row's on/off state. Without the flag the
-        // client never shows the view switcher and never asks — there is no
+        // client never shows the view switcher and never asks - there is no
         // client-side substitute for reading a solution, and a hand-parsed
         // half-tree is exactly the mistake this design exists to avoid.
         // COMPAT(solutionView): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
@@ -6803,7 +7283,7 @@ export const ServerInfoStatusPayloadSchema = z
         // COMPAT(checkoutGitLog): added in v0.5.1, drop the gate when daemon floor >= v0.5.1.
         checkoutGitLog: z.boolean().optional(),
         // Local-git file investigation: history, per-commit diff, blame, origin
-        // commit — for a whole file or a line range. No forge connection needed
+        // commit - for a whole file or a line range. No forge connection needed
         // and no per-provider rollout; it is git, so every provider gets it at
         // once.
         // COMPAT(checkoutGitFileHistory): added in v0.6.6, drop the gate when daemon floor >= v0.6.6.
@@ -6812,19 +7292,19 @@ export const ServerInfoStatusPayloadSchema = z
         // archiving (workspace.archive.preflight.*) and delete it as part of the
         // archive (archive_workspace_request.branchDisposition). Without it the
         // client archives the worktree exactly as before and never offers to
-        // remove the branch — no degraded client-side branch detection exists.
+        // remove the branch - no degraded client-side branch detection exists.
         // COMPAT(worktreeArchiveBranchCleanup): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
         worktreeArchiveBranchCleanup: z.boolean().optional(),
         // COMPAT(worktreeReattach): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
         worktreeReattach: z.boolean().optional(),
         // Set when the daemon can repoint a worktree's stored base branch
         // (worktree.baseRef.set.*). Without it the client renders the base as a
-        // read-only "vs <base>" label — there is no client-side override, since only
+        // read-only "vs <base>" label - there is no client-side override, since only
         // the daemon can write the worktree's metadata.
         // COMPAT(worktreeDiffBase): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
         worktreeDiffBase: z.boolean().optional(),
         // Set when the daemon stores the diff base *per branch*, which is what lets any git
-        // checkout repoint it rather than only an Otto worktree — a plain checkout's gitdir is
+        // checkout repoint it rather than only an Otto worktree - a plain checkout's gitdir is
         // shared by every branch in it, so a single stored base would bleed across branch
         // switches. Also gates parent-branch detection, the `origin/`-qualified pin, and the
         // re-detect action. Without it the client keeps the worktree-only picker.
@@ -6880,24 +7360,30 @@ export const ServerInfoStatusPayloadSchema = z
         // cap) shows "Update the host" instead of a knob that does nothing.
         openaiCompatMaxToolRounds: z.boolean().optional(),
         // COMPAT(mcpToolGroups): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
-        // Set when the daemon honors `mcp.toolGroups` — per-group gating of the
+        // Set when the daemon honors `mcp.toolGroups` - per-group gating of the
         // Otto tool catalog on the MCP (Claude) path. Old daemons register every
         // group regardless, so the client hides the categorized section instead
         // of showing category switches that do nothing.
         mcpToolGroups: z.boolean().optional(),
         // COMPAT(connectors): added in v0.7.5, drop the gate when daemon floor >= v0.7.5.
-        // Set when the daemon persists and honors `connectors` — MCP servers
+        // Set when the daemon persists and honors `connectors` - MCP servers
         // surfaced as named, toggle-able integrations with per-tool disable,
         // enforced today on the openai-compat path. Old daemons ignore the
         // section, so the client hides the Connectors settings entirely.
         connectors: z.boolean().optional(),
+        // COMPAT(connectorOauth): added in v0.7.7, drop the gate when daemon floor >= v0.7.7.
+        // Set when the daemon can run the OAuth authorization-code flow for a
+        // connector and attach the resulting token to its MCP transport. Old
+        // daemons have no broker and no way to hold a token, so the client hides
+        // Connect / Disconnect and offers only the paste-a-token connectors.
+        connectorOauth: z.boolean().optional(),
         // COMPAT(agentBehaviorToggles): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
         // Set when the daemon persists `agentBehaviors.*` (promptSuggestions,
         // agentProgressSummaries, notifyOnFinishDefault). The reads are wired by
         // Claude-tier providers (WP-E); the client gates the toggle cards on this.
         agentBehaviorToggles: z.boolean().optional(),
         // COMPAT(todoReminders): added in v0.7.5, drop the gate when daemon floor >= v0.7.5.
-        // Set when the daemon acts on `agentBehaviors.{todoNudge,todoReconcileOnIdle}` —
+        // Set when the daemon acts on `agentBehaviors.{todoNudge,todoReconcileOnIdle}` -
         // the provider-agnostic stale-todo nudge (next turn) and idle reconcile pass.
         // The client gates the task-list toggle cards on this so an old daemon never
         // shows switches that do nothing.
@@ -6928,27 +7414,27 @@ export const ServerInfoStatusPayloadSchema = z
         // the existing `delete_agent_request`, and in bulk via
         // `history.agents.clear_archived`. Archive has always been a soft delete
         // with no counterpart; this is the counterpart. Deleting removes Otto's
-        // record only — provider transcripts are never touched (see the
+        // record only - provider transcripts are never touched (see the
         // clear_archived schema). The client hides both affordances when this is
         // absent rather than shipping a degraded path.
         historyDelete: z.boolean().optional(),
         // COMPAT(fileMutations): added in v0.7.0, drop the gate when daemon floor >= v0.7.0.
         // Set when the daemon serves `file.create`, `file.delete` and
-        // `file.rename` — creating, removing and moving entries, as opposed to
+        // `file.rename` - creating, removing and moving entries, as opposed to
         // `file.write`, which only changes what is inside an existing file.
         // There is no client-side substitute (the client never touches the
         // filesystem), so an old daemon simply does not get the menu items.
         fileMutations: z.boolean().optional(),
         // COMPAT(binaryFileWrite): added in v0.7.6, drop the gate when daemon
         // floor >= v0.7.6. Set when the daemon serves
-        // `fs.file.write_binary` — bytes to a workspace path, as opposed to
+        // `fs.file.write_binary` - bytes to a workspace path, as opposed to
         // `fs.file.write`, which is text and refuses binary targets outright.
         // The client cannot write a workspace file itself on any platform, so
         // an old daemon simply does not offer the exports that produce bytes.
         binaryFileWrite: z.boolean().optional(),
         // COMPAT(attachmentStorage): added in v0.7.1, drop the gate when daemon floor >= v0.7.1.
         // Set when the daemon serves `attachments.images.get_stats` and
-        // `attachments.images.clear` — the readout and reclaim for the images it
+        // `attachments.images.clear` - the readout and reclaim for the images it
         // materializes on the agent's behalf. The client has no way to size or
         // clear a directory on the host, so an old daemon simply does not get
         // the daemon half of the Storage section; the app-side preview cache row
@@ -6956,7 +7442,7 @@ export const ServerInfoStatusPayloadSchema = z
         attachmentStorage: z.boolean().optional(),
         // COMPAT(agentWorkspaceTransfer): added in v0.7.4, drop the gate when
         // daemon floor >= v0.7.4. Set when the daemon serves
-        // `agent.workspace.transfer` — moving a chat to another workspace over
+        // `agent.workspace.transfer` - moving a chat to another workspace over
         // the same directory. The client cannot restamp ownership itself (it is
         // daemon state), so an old daemon simply does not get the menu item.
         agentWorkspaceTransfer: z.boolean().optional(),
@@ -7095,7 +7581,7 @@ export const DaemonConfigChangedStatusPayloadSchema = z
  * spinner, so an idempotent snapshot cannot drift out of sync the way a missed
  * transition would.
  *
- * Separate from the workspace status bucket on purpose — indexing is not the workspace
+ * Separate from the workspace status bucket on purpose - indexing is not the workspace
  * "working", and folding it in would mislabel a quiet workspace as busy with agent work.
  */
 export const LspActivityChangedStatusPayloadSchema = z
@@ -7120,11 +7606,11 @@ export const CodeDiagnosticSchema = z.object({
   endColumn: z.number().int().positive(),
   severity: CodeDiagnosticSeveritySchema,
   message: z.string(),
-  /** Who says so — `ts`, `pyright`, a linter behind the server. */
+  /** Who says so - `ts`, `pyright`, a linter behind the server. */
   source: z.string().optional(),
   /** The server's own code for the rule or error, e.g. TypeScript's `2345`. */
   code: z.string().optional(),
-  /** Documentation for that rule, when the server offers one — oxlint does. */
+  /** Documentation for that rule, when the server offers one - oxlint does. */
   codeHref: z.string().optional(),
   /** Which registry row published it, so two servers on one file stay attributable. */
   serverId: z.string().optional(),
@@ -7136,7 +7622,7 @@ export const CodeDiagnosticSchema = z.object({
  * This is the one part of code intelligence that is not request/response:
  * `textDocument/publishDiagnostics` arrives whenever the server has recomputed, which is
  * whenever it feels like it. So it is a status broadcast, and the payload is the document's
- * **whole** current set — never a delta. A missed delta would leave a stale squiggle on a
+ * **whole** current set - never a delta. A missed delta would leave a stale squiggle on a
  * line the user already fixed, and an idempotent snapshot cannot drift.
  *
  * Only documents a client has synced produce these. A server may know about every file in
@@ -7267,7 +7753,7 @@ export const WorkspaceScriptPayloadSchema = z.object({
    */
   scriptName: z.string(),
   /**
-   * What to show instead of `scriptName` — the name the project itself uses.
+   * What to show instead of `scriptName` - the name the project itself uses.
    * COMPAT(workspaceScriptDiscovery): added in v0.7.6; absent ⇒ show `scriptName`.
    */
   label: z.string().optional(),
@@ -7565,7 +8051,7 @@ export const WorkspaceUpdateMessageSchema = z.object({
 
 // A project's own metadata changed (today: the user renamed it). The workspace
 // channel can only carry a project's name inside its workspaces' descriptors, so
-// a project with no active workspaces had no live channel at all — its name only
+// a project with no active workspaces had no live channel at all - its name only
 // refreshed on the next full workspace fetch. This is the project-level channel:
 // it fires whether or not the project currently has workspaces, and the daemon
 // fans it out to every connected session because project metadata is host-global.
@@ -7655,7 +8141,7 @@ export const ProjectScaffoldResponseSchema = z.object({
   type: z.literal("project.scaffold.response"),
   payload: z.object({
     requestId: z.string(),
-    // Registered project on success. Null whenever any step failed — the
+    // Registered project on success. Null whenever any step failed - the
     // daemon does not register a half-built directory.
     project: WorkspaceProjectDescriptorPayloadSchema.nullable(),
     // Absolute path of the created directory. Non-null even on a late failure
@@ -7884,7 +8370,7 @@ export const ArchiveWorkspaceResponseMessageSchema = z.object({
 // the workspace is archived. See WorkspaceArchivePreflightRequestSchema.
 export const WorktreeArchiveBranchDetectionSchema = z.object({
   // True only for Otto-owned worktrees whose branch we can offer to delete.
-  // False for local checkouts, plain directories, and non-owned worktrees — the
+  // False for local checkouts, plain directories, and non-owned worktrees - the
   // client then skips the branch-cleanup UI entirely.
   isOttoWorktree: z.boolean(),
   // The local branch checked out in the worktree, or null when detached/unknown.
@@ -7894,7 +8380,7 @@ export const WorktreeArchiveBranchDetectionSchema = z.object({
   mergeState: z.enum(["merged", "unmerged", "unknown"]),
   // Commits on the branch not contained in the base ref; null when unknown.
   unmergedCommitCount: z.number().int().nonnegative().nullable(),
-  // A matching origin/<branch> exists — deleting the local branch keeps the
+  // A matching origin/<branch> exists - deleting the local branch keeps the
   // remote copy. Purely informational for the confirmation copy.
   hasRemoteBranch: z.boolean(),
   // The branch is checked out in another worktree too, so git will refuse to
@@ -8154,7 +8640,7 @@ export const AgentQueueRemoveResponseMessageSchema = z.object({
     /**
      * The removed message's text, handed back so the composer can put it back
      * in the box for editing or re-send it right away. Null when the id was
-     * already gone — the turn drained it while the tap was in flight.
+     * already gone - the turn drained it while the tap was in flight.
      * Attachments are not echoed: the client that queued the message keeps its
      * own local copy keyed by `id` (see the composer's queued-attachment
      * sidecar), and a client that never queued it has nothing to restore.
@@ -8258,7 +8744,7 @@ export const SendAgentMessageResponseMessageSchema = z.object({
     error: z.string().nullable(),
     // Set when the message was parked for the next turn rather than dispatched
     // (`delivery: "queue"` against a busy agent). `queuedMessageId` is the
-    // entry's id in `AgentSnapshotPayload.queuedMessages` — the key the sender
+    // entry's id in `AgentSnapshotPayload.queuedMessages` - the key the sender
     // uses to find its own entry again. Absent ⇒ dispatched now (or old daemon).
     // COMPAT(steerQueue): added in v0.6.8, drop the gate when floor >= v0.6.8.
     queued: z.boolean().optional(),
@@ -8736,7 +9222,7 @@ const CheckoutPrGithubStatusObjectSchema = z.object({
 
 const CheckoutPrGithubStatusSchema = CheckoutPrGithubStatusObjectSchema.optional();
 
-// The open facts envelope for forge-specific PR facts. Permanent — non-GitHub
+// The open facts envelope for forge-specific PR facts. Permanent - non-GitHub
 // forges deliver their native facts through it. The transitional piece is the
 // `github` mirror above, which stays populated for clients predating this
 // envelope; see COMPAT(forgeSpecific) in status-projection.ts for the shim.
@@ -9043,7 +9529,7 @@ export const GitFileHistoryEntrySchema = z.object({
   authoredAt: z.number(),
   committerName: z.string(),
   committedAt: z.number(),
-  // The file's name at this commit — differs from the requested path across a
+  // The file's name at this commit - differs from the requested path across a
   // rename. Diff requests must echo this one back, not the current name.
   path: z.string(),
   previousPath: z.string().optional(),
@@ -9076,7 +9562,7 @@ export const CheckoutGitFileCommitDiffResponseSchema = z.object({
     diff: z.string(),
     // Highlighted/parsed form of the same diff, when it parsed cleanly.
     structured: z.array(ParsedDiffFileSchema).optional(),
-    // The file's previous revision — the diff's left-hand side, and the honest
+    // The file's previous revision - the diff's left-hand side, and the honest
     // label for it. Absent when this revision created the file.
     previousSha: z.string().optional(),
     previousPath: z.string().optional(),
@@ -9924,7 +10410,7 @@ export const FileCreateResponseSchema = z.object({
 
 /**
  * Delete outcome. `not_empty` means the target is a directory with children and
- * the request did not set `recursive` — nothing was removed, and the client can
+ * the request did not set `recursive` - nothing was removed, and the client can
  * re-ask with the stronger confirmation.
  */
 export const FileDeleteResultSchema = z.discriminatedUnion("status", [
@@ -10070,7 +10556,7 @@ export const CodeDefinitionLocationSchema = z.object({
   /**
    * Which registry row answered (`typescript`, `csharp`, …). The multi-hit picker
    * shows it, so a user looking at two candidates can tell whether a language server
-   * resolved them or the name index guessed — which changes how much to trust the
+   * resolved them or the name index guessed - which changes how much to trust the
    * list. Absent from old daemons.
    */
   serverId: z.string().optional(),
@@ -10079,7 +10565,7 @@ export const CodeDefinitionLocationSchema = z.object({
 /**
  * Three-valued on purpose. `unavailable` (no server for this language on the host) and
  * `indexing` (the server is up but still building its project model) are different
- * answers to the user, and neither is "not found" — reporting either as an empty
+ * answers to the user, and neither is "not found" - reporting either as an empty
  * result is how a working feature reads as broken.
  */
 export const CodeDefinitionStatusSchema = z.enum(["ok", "indexing", "unavailable"]);
@@ -10161,7 +10647,7 @@ export const CodeRenameEditSchema = z.object({
   newText: z.string(),
   /**
    * The text this edit expects to replace. Carried so the dry run can show what is being
-   * changed rather than only what it becomes — and, on the daemon side, so the run can tell
+   * changed rather than only what it becomes - and, on the daemon side, so the run can tell
    * that a file moved under the plan. For a rename this is always one identifier.
    */
   oldText: z.string().default(""),
@@ -10200,7 +10686,7 @@ export const CodeRenamePreviewResponseSchema = z.object({
  * workspace. Collapsing them into one failure is how "nothing happened" becomes unexplainable.
  */
 /**
- * Whether the run HAPPENED — deliberately not whether everything applied.
+ * Whether the run HAPPENED - deliberately not whether everything applied.
  *
  * A run where two of fourteen edits no longer fit is still a run that took place, and the
  * twelve that landed are real. Collapsing that into a failure would hide them, and hiding a
@@ -10330,7 +10816,7 @@ export const SolutionFormatSchema = z.enum(["sln", "slnx"]);
 
 /** One solution a workspace contains. Enough to populate the switcher's picker, nothing more. */
 export const SolutionRefSchema = z.object({
-  /** Workspace-relative, forward slashes — the identity used by every later request. */
+  /** Workspace-relative, forward slashes - the identity used by every later request. */
   path: z.string(),
   /** File name without the extension, which is what a .NET developer calls the solution. */
   name: z.string(),
@@ -10344,7 +10830,7 @@ export const CodeSolutionListResponseSchema = z.object({
     /**
      * Empty means the switcher never appears and the Files tab behaves exactly as it does today.
      * That is also what a disabled feature, a host with no .NET SDK, and a workspace with no
-     * solution all return — the client has one silent case to handle, not four.
+     * solution all return - the client has one silent case to handle, not four.
      */
     solutions: z.array(SolutionRefSchema),
     error: z.string().nullable(),
@@ -10376,8 +10862,8 @@ export const SolutionTreeProjectSchema = z.object({
    */
   path: z.string(),
   /**
-   * A project the solution names outside the workspace root. Shown and opened like any other —
-   * the solution file is the authority naming it, so this is not free browsing — but editing one
+   * A project the solution names outside the workspace root. Shown and opened like any other -
+   * the solution file is the authority naming it, so this is not free browsing - but editing one
    * warns, and it is absent from every git surface. See docs/solution-view.md.
    */
   outsideWorkspace: z.boolean(),
@@ -10396,7 +10882,7 @@ export const CodeSolutionGetTreeResponseSchema = z.object({
     format: SolutionFormatSchema.default("sln"),
     folders: z.array(SolutionTreeFolderSchema),
     projects: z.array(SolutionTreeProjectSchema),
-    /** Solution configurations and platforms — first-class .NET concepts no CLI surfaces. */
+    /** Solution configurations and platforms - first-class .NET concepts no CLI surfaces. */
     buildTypes: z.array(z.string()),
     platforms: z.array(z.string()),
     error: z.string().nullable(),
@@ -10435,7 +10921,7 @@ export const SolutionProjectNodeSchema = z.discriminatedUnion("kind", [
     name: z.string(),
     path: z.string(),
     outsideWorkspace: z.boolean(),
-    /** `Compile`, `Content`, `EmbeddedResource`, … — MSBuild's own item type. */
+    /** `Compile`, `Content`, `EmbeddedResource`, … - MSBuild's own item type. */
     itemType: z.string(),
     isImplicit: z.boolean(),
   }),
@@ -10496,7 +10982,7 @@ export const FileSearchResultEventSchema = z.object({
     cwd: z.string(),
     searchId: z.string(),
     path: z.string(),
-    /** File content hash at match time — the replace precondition. */
+    /** File content hash at match time - the replace precondition. */
     hash: z.string(),
     matches: z.array(FileSearchMatchSchema),
   }),
@@ -11064,6 +11550,9 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   GetDaemonConfigResponseMessageSchema,
   SetDaemonConfigResponseMessageSchema,
   ConnectorsListToolsResponseSchema,
+  ConnectorsOauthAuthorizeResponseSchema,
+  ConnectorsOauthDisconnectResponseSchema,
+  ConnectorsOauthStatusMessageSchema,
   SpeechSettingsGetOptionsResponseSchema,
   SpeechTtsPreviewResponseSchema,
   SpeechTtsSpeakResponseSchema,
@@ -11133,6 +11622,14 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   BrainHfSearchResponseSchema,
   BrainHfQuantsResponseSchema,
   BrainModelsAddResponseSchema,
+  BrainModelsInventoryResponseSchema,
+  BrainModelProfileGetResponseSchema,
+  BrainModelProfileSetResponseSchema,
+  BrainModelBudgetGetResponseSchema,
+  BrainModelLoadResponseSchema,
+  BrainModelUnloadResponseSchema,
+  BrainModelDeleteResponseSchema,
+  BrainLogsTailResponseSchema,
   AgentArchivedMessageSchema,
   CloseItemsResponseSchema,
   CheckoutStatusResponseSchema,
@@ -12083,6 +12580,22 @@ export type BrainHfQuantsRequest = z.infer<typeof BrainHfQuantsRequestSchema>;
 export type BrainHfQuantsResponse = z.infer<typeof BrainHfQuantsResponseSchema>;
 export type BrainModelsAddRequest = z.infer<typeof BrainModelsAddRequestSchema>;
 export type BrainModelsAddResponse = z.infer<typeof BrainModelsAddResponseSchema>;
+export type BrainModelsInventoryRequest = z.infer<typeof BrainModelsInventoryRequestSchema>;
+export type BrainModelsInventoryResponse = z.infer<typeof BrainModelsInventoryResponseSchema>;
+export type BrainModelProfileGetRequest = z.infer<typeof BrainModelProfileGetRequestSchema>;
+export type BrainModelProfileGetResponse = z.infer<typeof BrainModelProfileGetResponseSchema>;
+export type BrainModelProfileSetRequest = z.infer<typeof BrainModelProfileSetRequestSchema>;
+export type BrainModelProfileSetResponse = z.infer<typeof BrainModelProfileSetResponseSchema>;
+export type BrainModelBudgetGetRequest = z.infer<typeof BrainModelBudgetGetRequestSchema>;
+export type BrainModelBudgetGetResponse = z.infer<typeof BrainModelBudgetGetResponseSchema>;
+export type BrainModelLoadRequest = z.infer<typeof BrainModelLoadRequestSchema>;
+export type BrainModelLoadResponse = z.infer<typeof BrainModelLoadResponseSchema>;
+export type BrainModelUnloadRequest = z.infer<typeof BrainModelUnloadRequestSchema>;
+export type BrainModelUnloadResponse = z.infer<typeof BrainModelUnloadResponseSchema>;
+export type BrainModelDeleteRequest = z.infer<typeof BrainModelDeleteRequestSchema>;
+export type BrainModelDeleteResponse = z.infer<typeof BrainModelDeleteResponseSchema>;
+export type BrainLogsTailRequest = z.infer<typeof BrainLogsTailRequestSchema>;
+export type BrainLogsTailResponse = z.infer<typeof BrainLogsTailResponseSchema>;
 export type KillTerminalRequest = z.infer<typeof KillTerminalRequestSchema>;
 export type KillTerminalResponse = z.infer<typeof KillTerminalResponseSchema>;
 export type CaptureTerminalRequest = z.infer<typeof CaptureTerminalRequestSchema>;

@@ -1,5 +1,5 @@
 /**
- * Resolves an absolute host file path to the known workspace that owns it — the
+ * Resolves an absolute host file path to the known workspace that owns it - the
  * foundation of gated-multi-root: to decide whether a file belongs to the
  * current project or another one, we first find which workspace root contains
  * it. Pure and platform-tolerant (Windows drive-letter + WSL/posix forms).

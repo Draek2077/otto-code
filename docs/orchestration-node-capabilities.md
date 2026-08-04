@@ -13,7 +13,7 @@ concern beside it. Schemas: `packages/protocol/src/orchestration.ts`.
 ## Node results are three-valued
 
 A node settles **done**, **failed**, or **skipped**. A skip is control flow routing around
-a node — an ordinary outcome, never an error — and it always carries a reason:
+a node - an ordinary outcome, never an error - and it always carries a reason:
 
 | `RunPhase.skipReason` | Meaning                                            |
 | --------------------- | -------------------------------------------------- |
@@ -23,20 +23,20 @@ a node — an ordinary outcome, never an error — and it always carries a reaso
 | `canceled`            | The run was canceled before this node dispatched.  |
 
 `notes` carries the same fact as a sentence, which is what the Orchestrations page shows.
-The wrap-up message names every skipped node and tells the orchestrator to say so —
+The wrap-up message names every skipped node and tells the orchestrator to say so -
 **a run must never report success while silently omitting part of the graph.**
 
 A phase written by an older daemon has no `skipReason`; read that as `upstream-failed`,
 the only skip that existed then.
 
-## Output fields — the value plane
+## Output fields - the value plane
 
 A node declares the fields it will produce (`GraphNode.output.fields`). Each descriptor is
-`{ key, type, description?, required? }` — plain JSON, never a serialized Zod schema,
+`{ key, type, description?, required? }` - plain JSON, never a serialized Zod schema,
 because the same descriptor has to be three things: wire-safe, renderable as a form, and
 compilable to both Zod (validation) and JSON Schema (the tool's input).
 
-`type` is an open vocabulary — `string`, `number`, `boolean`, `array` today. **An unknown
+`type` is an open vocabulary - `string`, `number`, `boolean`, `array` today. **An unknown
 type validates as "anything" rather than failing**, so an old daemon meeting a new type
 degrades to accepting the value instead of refusing a graph it could otherwise run.
 `required` absent means required.
@@ -46,13 +46,13 @@ When a node declares fields:
 1. Its task gains a short instruction listing them (`buildOutputInstruction`).
 2. Its agent gets a **`submit_output`** tool (below).
 3. Its result is validated and persisted to `RunPhaseCandidate.outputFields`.
-4. Downstream nodes receive the values as a labelled JSON block _alongside_ the prose —
+4. Downstream nodes receive the values as a labelled JSON block _alongside_ the prose -
    the prose still carries reasoning the fields deliberately don't.
 
 Rule: **references, not contents.** Fields carry values and paths; anything large is a
 file the next node reads with its own tools.
 
-## `submit_output` — enforcement with in-session self-correction
+## `submit_output` - enforcement with in-session self-correction
 
 `packages/server/src/server/orchestration/node-output.ts`
 
@@ -64,7 +64,7 @@ through the daemon-owned tool loop, and local models get the identical contract.
 provider branch exists anywhere in the engine.
 
 Validation failure returns `isError: true` with a precise message, so the model corrects
-**within the same session** — one extra turn instead of a re-dispatch.
+**within the same session** - one extra turn instead of a re-dispatch.
 
 Two details are load-bearing and easy to undo by accident:
 
@@ -73,7 +73,7 @@ Two details are load-bearing and easy to undo by accident:
   mistake (a missing field) into a thrown parse error instead of a correctable tool error.
   Every field is advertised as optional; requiredness is enforced in the handler.
 - **`submit_output` is registered past the group and policy gates.** Those gates decide
-  which Otto _capabilities_ a node may use. This is not a capability — it is the node's
+  which Otto _capabilities_ a node may use. This is not a capability - it is the node's
   own deliverable channel, and a deterministic node (the kind most likely to declare
   fields) would otherwise have it stripped with the `agents` group.
 
@@ -88,7 +88,7 @@ of strict. A node that declares fields and delivers neither fails, naming the co
 
 `GraphEdge.when.expression` is a JSONata expression evaluated against the upstream node's
 output fields (plus `output`, its prose) once it settles. JSONata rather than a bespoke
-DSL because it is parsed and evaluated, never `eval`'d — **a graph is user-authored data
+DSL because it is parsed and evaluated, never `eval`'d - **a graph is user-authored data
 and must never become code the daemon executes.**
 
 `GraphEdge.fields` narrows what an edge carries. Selection only, never renaming.
@@ -104,12 +104,12 @@ off whichever branch executed, because the pruned side reaches it as _upstream-s
 rather than as a veto. The `starter-triage` graph is the shipped example.
 
 **Otto's scheduler needs no fixed-point pass.** Each node decides after awaiting all of its
-upstream promises, so nothing it read can still change — the memoised-promise model
+upstream promises, so nothing it read can still change - the memoised-promise model
 carries conditional edges unchanged.
 
 A condition that throws **fails the node**; it is never treated as a quiet false. A typo
 would otherwise silently prune half the graph. Expression syntax is checked before the run
-starts (`validateEdgeConditions`, daemon-side — the shared validator stays parser-free for
+starts (`validateEdgeConditions`, daemon-side - the shared validator stays parser-free for
 the client bundle); `reviewOrchestrationGraph` returns the advisory warning when a
 condition targets a node with no declared fields.
 
@@ -118,25 +118,25 @@ condition targets a node with no declared fields.
 Three narrowings, all applied at spawn and never requested in prose. Workspace access has
 its own section below; the other two:
 
-**Otto tool groups** (`GraphNode.tools`) — an allowlist over the eight existing groups,
+**Otto tool groups** (`GraphNode.tools`) - an allowlist over the eight existing groups,
 read from a label and **intersected** with the daemon-wide allowlist. A node can hand
 itself less authority than the daemon allows, never more. An empty array is meaningful
 ("no Otto tools at all"). This is a cost lever as much as a safety one: the catalog is
 paid for in input tokens on every request, and a smaller catalog measurably helps smaller
 models stay on task.
 
-**Query tools** (`GraphNode.queryTools`) — author-defined read-only lookups scoped to one
+**Query tools** (`GraphNode.queryTools`) - author-defined read-only lookups scoped to one
 node's session (`node-query-tools.ts`), namespaced `query_*` so they can never shadow a
 built-in. Three kinds, each read-only _by construction_ rather than by validation:
 
 | Kind        | Safety property                                                                                                                                                                       |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `command`   | argv array spawned with `shell: false`. A parameter containing `;`, `&&`, `$()` is one argument — there is no string to inject into. Pipelines belong in a script the tool points at. |
+| `command`   | argv array spawned with `shell: false`. A parameter containing `;`, `&&`, `$()` is one argument - there is no string to inject into. Pipelines belong in a script the tool points at. |
 | `http-get`  | GET only, no author-supplied headers, http(s) only. A graph template cannot carry a credential outbound.                                                                              |
 | `file-read` | Path resolved, then checked against the run's cwd. Escapes are refused, not clipped.                                                                                                  |
 
 > **SECURITY (same trust boundary as EJS templates below):** `http-get` has **no host
-> restrictions** — a tool URL can target `localhost` services or link-local/metadata
+> restrictions** - a tool URL can target `localhost` services or link-local/metadata
 > addresses. Acceptable today because graphs are authored locally by the machine's own user,
 > but this is SSRF-shaped: the day graphs become shareable or importable, `http-get` needs a
 > host policy behind the same trust gate as template rendering. Do not add an import path
@@ -144,7 +144,7 @@ built-in. Three kinds, each read-only _by construction_ rather than by validatio
 
 ## Workspace access
 
-`GraphNode.access` — `none`, `read` or `write` (absent means `write`, today's behaviour).
+`GraphNode.access` - `none`, `read` or `write` (absent means `write`, today's behaviour).
 It rides to the agent on `AgentSessionConfig.workspaceAccess`, and each provider adapter
 narrows its own tool surface. The meaning of each level lives in one place
 (`agent/workspace-access.ts`); how it is imposed is per adapter.
@@ -192,7 +192,7 @@ Two invariants:
 Backoff is `backoffMs * multiplier^(attempt-1)` (multiplier defaults to 2) and ends early
 if the run is canceled.
 
-**Time limit** (`GraphNode.timeoutMs`) must _cancel_, not merely stop waiting — an
+**Time limit** (`GraphNode.timeoutMs`) must _cancel_, not merely stop waiting - an
 abandoned agent keeps running and keeps spending. On expiry the engine calls the port's
 `cancelAgent`, marks `RunPhase.timedOut`, and fails the node; its retry policy may then
 catch it, and independent branches finish normally. Otto can do this because node agents
@@ -205,7 +205,7 @@ are managed processes; an in-process engine cannot.
 to be included by others; `include("id")` resolves **against the store, not the
 filesystem**, because templates are host records rather than files.
 
-A node binds one with `GraphNode.promptTemplate` — `{ templateId, variables }`, where a
+A node binds one with `GraphNode.promptTemplate` - `{ templateId, variables }`, where a
 variable is a literal, `$inputs.<key>`, or `$output.<nodeId>.<field>`. An unresolvable
 reference renders empty rather than leaking its own syntax into the prompt, where it would
 read as an instruction.
@@ -220,13 +220,13 @@ reusable _behavioural rules_ live in a snippet (`submit-rules`). Repeating those
 every node is duplication and tokens on every dispatch.
 
 > **SECURITY:** EJS compiles templates to JavaScript that runs in the daemon process.
-> Acceptable today because templates are authored locally by the machine's own user — the
+> Acceptable today because templates are authored locally by the machine's own user - the
 > same trust level as a workspace script. **The day templates become shareable or
 > importable, this is a code-execution vector and needs an explicit trust gate.**
 
 ## Authoring these in the designer
 
-Every node property on this page is editable from the node card's **Advanced** disclosure —
+Every node property on this page is editable from the node card's **Advanced** disclosure -
 workspace access, output fields, retry, time limit, Otto tool groups, query tools and the
 prompt-template binding. Edge properties (**condition**, **fields carried**) live in an
 inspector panel that opens when you select a wire. The disclosure opens on its own whenever
@@ -239,18 +239,18 @@ Three of them use one-per-line text forms rather than repeating row editors, bec
 | Property           | Form                                  | Notes                                                                                                                                |
 | ------------------ | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | Output fields      | `name : type : description`           | Trailing `?` = optional. A bare name is a required string. Splits on the first two colons only, so a description may contain colons. |
-| Query tools        | `name \| kind \| spec \| description` | Pipe, not colon — a URL carries colons. `spec` is the argv line, URL or path.                                                        |
+| Query tools        | `name \| kind \| spec \| description` | Pipe, not colon - a URL carries colons. `spec` is the argv line, URL or path.                                                        |
 | Template variables | `name = value`                        | Splits on the first `=`, so a value may contain one.                                                                                 |
 
 **Query-tool parameters are derived, not declared.** Each `{{name}}` in the spec becomes a
-string parameter — the substitution syntax already names them, and a parameter nothing
+string parameter - the substitution syntax already names them, and a parameter nothing
 substitutes is one the tool cannot use. That is lossy against a hand-authored tool with
 typed or described parameters, so `parseQueryTools` takes the node's existing tools and
 hands back the **original object** for any line that still formats identically. Editing a
 line rewrites it in the simple form; leaving it alone keeps every detail.
 
 **Otto tools is tri-state, and the third state matters.** "Whatever the policy allows"
-writes no `tools` property at all; "Only these groups" writes the array — including an
+writes no `tools` property at all; "Only these groups" writes the array - including an
 _empty_ array, which is the real declaration "no Otto tools". Never collapse the empty
 array to absent on save: they mean opposite things.
 
@@ -259,7 +259,7 @@ array to absent on save: they mean opposite things.
 > (`carryUneditedNodeFields` / `carryUneditedEdgeFields` in `graph-doc.ts`, keyed
 > `from→to` for edges). Without that, opening a graph that uses a capability the designer
 > has no control for and pressing Save would silently delete it. **When you add a node or
-> edge property, either add a control for it or confirm it survives the round-trip** —
+> edge property, either add a control for it or confirm it survives the round-trip** -
 > `graph-doc.test.ts` is where that is proven. `CANVAS_OWNED_NODE_KEYS` must list exactly
 > what `buildGraphNode` writes: a property with a control that is missing from the set is
 > written twice (harmless), but a property in the set with no control is **deleted on
@@ -277,7 +277,7 @@ its first use.
 1. A skip is never an error, and always carries a machine-readable reason.
 2. A run never reports done while silently omitting part of the graph.
 3. An unknown field type accepts; it never fails a run.
-4. `submit_output` reaches every provider through the per-agent Otto tool catalog — no
+4. `submit_output` reaches every provider through the per-agent Otto tool catalog - no
    provider branch in the engine.
 5. Validation failure is a correctable tool error, not a thrown parse error.
 6. A condition that cannot be evaluated fails its node; it is never a quiet false.

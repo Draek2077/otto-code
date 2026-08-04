@@ -69,7 +69,7 @@ async function createProject(port: number): Promise<string> {
   return cwd;
 }
 
-/** Workspace whose launch.json lists `port` under the name "external" — the
+/** Workspace whose launch.json lists `port` under the name "external" - the
  * server itself is expected to be started by the test, not the manager. */
 async function createExternalProject(port: number): Promise<string> {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "otto-preview-ext-"));
@@ -276,7 +276,7 @@ describe("DevServerManager", () => {
   test("skips its own process when an external stop resolves to the daemon's pid", async () => {
     const manager = createManager();
     // Listener owned by the test (= "daemon") process itself: the pid lookup
-    // resolves to process.pid, which the self-pid guard must skip — otherwise
+    // resolves to process.pid, which the self-pid guard must skip - otherwise
     // this very test run would be tree-killed.
     const listener = net.createServer();
     const port = await new Promise<number>((resolve, reject) => {
@@ -308,7 +308,7 @@ describe("DevServerManager", () => {
       });
     });
     try {
-      // No reconcileRunning happened for this port — an agent guessing
+      // No reconcileRunning happened for this port - an agent guessing
       // `ext:<port>` ids must not be able to tree-kill arbitrary services.
       await expect(manager.stop(`ext:${port}`)).rejects.toThrow(/not a preview server/);
       expect(listener.listening).toBe(true);

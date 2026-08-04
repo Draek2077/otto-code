@@ -59,7 +59,7 @@ test.describe("Assistant fork menu", () => {
 
   // The assistant turn footer that hosts the fork trigger is hidden-until-hover
   // by default (`hideChatMessageDetails` defaults to true), which on desktop web
-  // renders it with opacity 0 / pointer-events none — the trigger is present and
+  // renders it with opacity 0 / pointer-events none - the trigger is present and
   // passes toBeVisible(), but every click is intercepted by the element behind
   // it, so the whole fork flow stalls until the test times out. Pin the setting
   // off so the footer is always visible for these tests.

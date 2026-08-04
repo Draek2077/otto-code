@@ -164,7 +164,7 @@ class OmpCliRuntimeSession implements OmpRuntimeSession {
   }
 
   async getSessionStats(): Promise<OmpSessionStats> {
-    // COMPAT(ompGetStateFallback): added in v0.1.105 — older OMP binaries
+    // COMPAT(ompGetStateFallback): added in v0.1.105 - older OMP binaries
     // lack the `get_session_stats` RPC command; fall back to extracting
     // context window usage from `get_state`. Remove after 2027-01-10 once the
     // supported OMP floor includes `get_session_stats`.
@@ -172,7 +172,7 @@ class OmpCliRuntimeSession implements OmpRuntimeSession {
     try {
       stats = OmpSessionStatsSchema.parse(await this.request({ type: "get_session_stats" }));
     } catch {
-      // get_session_stats not supported by this binary — will try get_state below
+      // get_session_stats not supported by this binary - will try get_state below
     }
     if (stats?.tokens == null && stats?.cost == null && stats?.contextUsage == null) {
       try {
@@ -187,7 +187,7 @@ class OmpCliRuntimeSession implements OmpRuntimeSession {
           };
         }
       } catch {
-        // get_state also failed — nothing we can do
+        // get_state also failed - nothing we can do
       }
     }
     return stats ?? {};

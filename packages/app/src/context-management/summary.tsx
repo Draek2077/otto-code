@@ -70,7 +70,7 @@ export function ContextSummary({
       })),
     [],
   );
-  // A window the presets do not cover is still a window worth naming — a saved
+  // A window the presets do not cover is still a window worth naming - a saved
   // setting outliving a preset must not read as "nothing selected".
   const windowLabel =
     WINDOW_PRESETS.find((preset) => preset.tokens === windowTokens)?.label ??
@@ -92,7 +92,7 @@ export function ContextSummary({
       showsVerticalScrollIndicator={!isWeb}
     >
       {/* The pickers lead: every number below them is only meaningful relative
-          to the window — and to the personality — you are evaluating against.
+          to the window - and to the personality - you are evaluating against.
           One row, because they are one question asked twice. */}
       <View style={styles.scopeRow}>
         <ScopeSelect
@@ -166,7 +166,7 @@ export function ContextSummary({
           {/* Findings are not here: they live in the sidebar's "Worth fixing"
               tab, which tones amber when it has any. This panel stays a readout.
 
-              Two caveats used to sit here — that the sizes are estimates from
+              Two caveats used to sit here - that the sizes are estimates from
               convention rather than observation, and that this block is exactly
               what providers cache so token cost and money cost diverge. Both
               are true and both still need telling; a permanent paragraph in the

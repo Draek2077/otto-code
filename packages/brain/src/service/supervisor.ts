@@ -66,6 +66,12 @@ export class Supervisor extends EventEmitter {
   vramAtReadyBytes: number | null;
   vramBaselineBytes: number | null;
   command: string | null;
+  /**
+   * The argv of the running child, beside the formatted `command`. Kept as the
+   * array as well because a benchmark stores it (`ops/results.ts`) and a quoted
+   * shell line is for reading, not for re-parsing.
+   */
+  args: string[] | null;
 
   constructor({
     runtime,
@@ -90,6 +96,7 @@ export class Supervisor extends EventEmitter {
     this.vramAtReadyBytes = null;
     this.vramBaselineBytes = null;
     this.command = null;
+    this.args = null;
   }
 
   get upstreamBase(): string {
@@ -123,6 +130,7 @@ export class Supervisor extends EventEmitter {
       { ...profile, modelPath: model.modelPath, mmprojPath: model.mmprojPath },
       { port: this.internalPort, host: this.host },
     );
+    this.args = args;
     this.command = formatCommand(this.runtime, args);
     this.#log(`launching: ${this.command}`);
 

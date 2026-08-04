@@ -8,7 +8,7 @@ import type { WidgetPayload } from "./types.js";
  *
  * Shared by all three renderers (native WebView, web iframe, Electron
  * <webview>) so the CSP, the host stylesheet and the bridge bootstrap cannot
- * drift apart per platform — a widget that works in one has to work in all of
+ * drift apart per platform - a widget that works in one has to work in all of
  * them.
  */
 
@@ -28,7 +28,7 @@ import type { WidgetPayload } from "./types.js";
  *      a hostile file or page, and an outbound URL is a payload.
  *
  * The fragment therefore gets inline script/style and data: assets, and nothing
- * else. Charts are hand-rolled SVG — the contract document says so plainly, and
+ * else. Charts are hand-rolled SVG - the contract document says so plainly, and
  * a blocked resource surfaces as a visible error rather than a blank box.
  */
 const WIDGET_CSP =
@@ -122,7 +122,7 @@ function buildBootstrap(widgetId: string): string {
       return true;
     }
     // Web: the MessagePort the host transferred in. Validating on port identity
-    // is the point — this iframe has no allow-same-origin, so its origin is
+    // is the point - this iframe has no allow-same-origin, so its origin is
     // "null" and event.origin can prove nothing.
     if (port) {
       port.postMessage(payload);
@@ -229,7 +229,7 @@ export interface BuildWidgetDocumentInput {
 /**
  * Wrap a sanitized fragment into the full guest document.
  *
- * The fragment is inserted verbatim — it was already sanitized daemon-side
+ * The fragment is inserted verbatim - it was already sanitized daemon-side
  * (`packages/server/src/server/widget/widget-fragment.ts`) and the CSP plus the
  * per-platform sandbox are what actually contain it. Re-parsing it here would
  * add a second, weaker sanitizer that only ever disagrees with the first.

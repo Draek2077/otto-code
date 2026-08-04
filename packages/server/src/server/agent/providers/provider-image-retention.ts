@@ -1,7 +1,7 @@
 // Selection for the materialized-image sweep. Kept pure and separate from the
 // IO in provider-image-output.ts for the same reason `history-retention.ts` is
 // separate from the chat-delete handler: every name this returns gets unlinked
-// with no undo, and a boundary mistake there is silent — the transcript keeps
+// with no undo, and a boundary mistake there is silent - the transcript keeps
 // its markdown and quietly renders alt text instead of the picture.
 //
 // See docs/attachment-lifecycle.md for the policy these numbers encode.
@@ -30,16 +30,16 @@ export interface SelectStaleMaterializedImagesInput {
  * Two rules, applied in order:
  *
  * 1. **Age.** A file nobody has re-materialized in `maxAgeMs` is stale. Re-use
- *    is a write — `materializeProviderImage` rewrites the same content-hashed
- *    path — so an image that keeps appearing in a live transcript keeps its
+ *    is a write - `materializeProviderImage` rewrites the same content-hashed
+ *    path - so an image that keeps appearing in a live transcript keeps its
  *    stamp fresh, and only genuinely cold bytes age out.
  * 2. **Cap.** If what survived rule 1 still exceeds `maxTotalBytes`, keep
  *    deleting oldest-first until it fits. The cap is the backstop for a burst
  *    the age rule has not caught up with yet, not the primary lever.
  *
  * A file stamped in the future (clock skew, a copied directory) is never stale
- * by age — we cannot prove it is old, and the safe answer to "how old is this?"
- * is to keep it — but it is still eligible for the cap, sorting last so it goes
+ * by age - we cannot prove it is old, and the safe answer to "how old is this?"
+ * is to keep it - but it is still eligible for the cap, sorting last so it goes
  * only when nothing older is left.
  */
 export function selectStaleMaterializedImages(input: SelectStaleMaterializedImagesInput): string[] {

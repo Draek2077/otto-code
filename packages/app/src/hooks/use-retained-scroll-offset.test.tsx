@@ -18,7 +18,7 @@ function scrollEvent(y: number): NativeSyntheticEvent<NativeScrollEvent> {
 
 /**
  * Mounts the hook with a stand-in ScrollView already attached. The ref is
- * assigned during render, the way React attaches a real one — before the layout
+ * assigned during render, the way React attaches a real one - before the layout
  * effect that runs the first restore.
  */
 function mountWithScrollView(key: string) {

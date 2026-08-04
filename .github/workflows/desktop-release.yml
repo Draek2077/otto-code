@@ -512,8 +512,8 @@ jobs:
   finalize-rollout:
     needs: [publish-macos, publish-linux, publish-windows]
     # COMPAT(macOS-signing): macOS builds are skipped on this fork (no Apple
-    # Developer Program certs — see apple-signing-gate), so unlike upstream this
-    # gate tolerates publish-macos being skipped or failed — otherwise
+    # Developer Program certs - see apple-signing-gate), so unlike upstream this
+    # gate tolerates publish-macos being skipped or failed - otherwise
     # Windows/Linux auto-update manifests would never publish. The assemble step
     # below already skips the mac manifest unless publish-macos succeeded.
     # Restore the macOS success requirement once Apple signing is configured.

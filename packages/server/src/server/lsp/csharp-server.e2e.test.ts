@@ -11,7 +11,7 @@ import { LSP_SERVER_ROWS, resolveServerCommand, type LspServerRow } from "./regi
  * Settles the charter's one deferred Phase 1 question: does the C# server need a
  * `solution/open` bootstrap after `initialize`, or is it an ordinary stdio server?
  *
- * The answer is ordinary — proven against the three project shapes a real repo can
+ * The answer is ordinary - proven against the three project shapes a real repo can
  * have: a loose folder with no project file at all, a classic `.sln`, and .NET 10's
  * new `.slnx`. If that ever stops being true, C# needs a per-language bootstrap hook
  * and this test is where it will show up first.

@@ -2,7 +2,7 @@
  * Stop a running background shell task and drop its row. An explicit Stop is a
  * dismissal: the user has said they are done with this task, so making them
  * clear it afterwards is a second chore for a decision they already made. Only
- * an explicit stop removes the row — a task that ends on its own still settles
+ * an explicit stop removes the row - a task that ends on its own still settles
  * into Completed or Failed, which is where the outcome of work nobody stopped
  * belongs.
  *

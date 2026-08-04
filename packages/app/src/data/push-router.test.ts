@@ -493,7 +493,7 @@ describe("server data push router", () => {
     unsubscribeObserver();
 
     // The subscription lingers rather than tearing down the moment the last
-    // observer detaches — leaving a workspace and coming straight back is the
+    // observer detaches - leaving a workspace and coming straight back is the
     // common case, and each subscribe costs a full `terminals_changed` push.
     expect(fake.unsubscribeTerminalCalls).toEqual([]);
 
@@ -530,7 +530,7 @@ describe("server data push router", () => {
     const second = new QueryObserver(queryClient, observerOptions);
     const unsubscribeSecond = second.subscribe(() => undefined);
 
-    // No teardown, and no second subscribe — the round-trip is free.
+    // No teardown, and no second subscribe - the round-trip is free.
     expect(fake.unsubscribeTerminalCalls).toEqual([]);
     expect(fake.subscribeTerminalCalls).toEqual([{ cwd, workspaceId }]);
 

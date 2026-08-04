@@ -282,7 +282,7 @@ describe("keyboard-shortcuts", () => {
     },
     // Mod+B steps aside only for the file editor, not for text fields at large:
     // the composer holds focus most of the time, and Mod+B means nothing there.
-    // Nothing on the sidebar binding says so — the editor's own Mod+B is
+    // Nothing on the sidebar binding says so - the editor's own Mod+B is
     // focus-scoped and simply outranks it there. See the specificity block below.
     {
       name: "still toggles the left sidebar with Cmd+B from the composer",
@@ -373,7 +373,7 @@ describe("keyboard-shortcuts", () => {
       context: { isMac: false, focusScope: "code-editor" },
       action: "editor.goToLine",
     },
-    // Non-overlapping Otto shortcuts keep working in the editor — the override
+    // Non-overlapping Otto shortcuts keep working in the editor - the override
     // is per-combo, not a modal takeover of the whole keyboard.
     {
       name: "still opens the command center with Ctrl+K from the editor",
@@ -632,7 +632,7 @@ describe("keyboard-shortcuts", () => {
       context: { isMac: true, isDesktop: true, focusScope: "message-input" },
     },
     // Sanity: the macOS Option-substitution fallback must still respect
-    // modifier checks — pressing Option+T alone (no Cmd) must not trigger
+    // modifier checks - pressing Option+T alone (no Cmd) must not trigger
     // the Cmd+Alt+T theme-cycle binding.
     {
       name: "does not cycle theme on macOS when Cmd is missing (Alt+T alone)",

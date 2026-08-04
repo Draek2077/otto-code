@@ -1,4 +1,4 @@
-# Script discovery — every runnable thing a project already has
+# Script discovery - every runnable thing a project already has
 
 **Status:** In build. Slice 1 (the provider abstraction + npm, end to end) is built and dogfooded;
 see [What dogfooding slice 1 found](#what-dogfooding-slice-1-found) for what it turned up and what
@@ -35,7 +35,7 @@ The user's own framing is the answer: every one of these is **a thing you can ru
 project**. There is one noun for it, and per [docs/glossary.md](../../docs/glossary.md) the
 existing UI label wins:
 
-> **Script** — one runnable command a project offers. UI label: **Scripts** (the Play button and
+> **Script** - one runnable command a project offers. UI label: **Scripts** (the Play button and
 > its dropdown). Never "runnable", "task", "run configuration", "target", or "launch profile" in
 > UI copy, no matter what the originating file calls it.
 
@@ -58,7 +58,7 @@ Scripts
 
 Second term, needed because the grouping is a real concept:
 
-> **Script source** — where a Script came from. Either **Otto** (declared in `otto.json`) or a
+> **Script source** - where a Script came from. Either **Otto** (declared in `otto.json`) or a
 > discovery provider named after the tool and its file (`npm · package.json`).
 
 ## 2. What a provider is
@@ -69,8 +69,8 @@ anything.
 
 ```ts
 interface ScriptProvider {
-  readonly sourceId: string; // "npm", "make", "dotnet" — stable, appears in qualified names
-  readonly sourceLabel: string; // "npm" — the group header's tool half
+  readonly sourceId: string; // "npm", "make", "dotnet" - stable, appears in qualified names
+  readonly sourceLabel: string; // "npm" - the group header's tool half
   discover(context: ScriptDiscoveryContext): Promise<DiscoveredScript[]>;
 }
 
@@ -101,8 +101,8 @@ Three rules make this contract survivable:
 
 ### Identity: qualified names
 
-Everything downstream of the dropdown — the runtime store, the service-proxy hostname, the
-start/stop RPCs — is keyed by `scriptName`. Two sources can both offer `build`, so a discovered
+Everything downstream of the dropdown - the runtime store, the service-proxy hostname, the
+start/stop RPCs - is keyed by `scriptName`. Two sources can both offer `build`, so a discovered
 Script's wire name is qualified:
 
 ```
@@ -125,9 +125,9 @@ the deliverable; npm is the evidence it works.
 
 Charter-only, in rough order of value:
 
-- **npm workspaces** — packages' own `package.json` scripts, grouped per package.
-- **Make** — `Makefile` targets (needs `.PHONY` parsing to avoid offering file rules).
-- **.NET** — `.sln`/`.slnx` → `.csproj` → `launchSettings.json` profiles. The heaviest, and the one
+- **npm workspaces** - packages' own `package.json` scripts, grouped per package.
+- **Make** - `Makefile` targets (needs `.PHONY` parsing to avoid offering file rules).
+- **.NET** - `.sln`/`.slnx` → `.csproj` → `launchSettings.json` profiles. The heaviest, and the one
   the user called out; it wants the [Solution view](../../docs/solution-view.md) sidecar rather
   than a hand-rolled MSBuild reader.
 - **Compose**, **Cargo**, **pyproject**, **`.vscode/tasks.json`**.
@@ -156,8 +156,8 @@ halves and it is out of slice 1.
 
 ## 5. What happens on run
 
-Discovered Scripts get **the same runtime machinery** — the terminal, the runtime store, lifecycle
-tracking, exit codes, View terminal, Stop, Restart — and **no service-proxy route**.
+Discovered Scripts get **the same runtime machinery** - the terminal, the runtime store, lifecycle
+tracking, exit codes, View terminal, Stop, Restart - and **no service-proxy route**.
 
 The tradeoff, stated plainly:
 
@@ -167,7 +167,7 @@ The tradeoff, stated plainly:
   The runtime store is already keyed by `(workspaceId, scriptName)` and qualified names slot into
   it for free.
 - **Why no service proxy.** A proxy route needs a declared port and the _intent_ that this thing
-  serves HTTP. `package.json` cannot tell us either — `npm run dev` might be a server, a watcher,
+  serves HTTP. `package.json` cannot tell us either - `npm run dev` might be a server, a watcher,
   or a one-shot. Guessing produces dead proxy URLs, which is worse than none. So a discovered
   Script is always `type: "script"`, and a user who wants a proxied URL declares it in `otto.json`
   (or, later, pins it).
@@ -186,13 +186,13 @@ All additive, all optional, per the root `CLAUDE.md` contract.
 | --------- | ----------------------- | ----------------------- |
 | `label`   | `string?`               | display as `scriptName` |
 | `source`  | `{ id, label, file? }?` | an Otto script          |
-| `command` | `string \| null?`       | unknown — no subtitle   |
+| `command` | `string \| null?`       | unknown - no subtitle   |
 
 `workspace.script.list.request` gains `includeDiscovered: boolean?` (default `false`), so an old
 client's list call returns exactly what it returns today.
 
 Capability gate: `server_info.features.workspaceScriptDiscovery`. An old daemon simply does not
-offer the grouped list — no fallback path, no client-side scanning.
+offer the grouped list - no fallback path, no client-side scanning.
 
 ## Test plan
 
@@ -222,7 +222,7 @@ Two conclusions:
    **Pinning was deliberately not built.** It is manual curation, and this menu already has two
    automatic forms of it: `otto.json` (authored, always first and expanded) and Recent (earned by
    use). A third, hand-maintained list would compete with both and go stale. If Recent proves too
-   volatile in real use — a one-off `npm run something` evicting a daily driver — pinning is the
+   volatile in real use - a one-off `npm run something` evicting a daily driver - pinning is the
    answer, but that is a measurement, not an assumption.
 
 ## Out of scope

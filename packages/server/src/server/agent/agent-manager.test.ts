@@ -61,7 +61,7 @@ function deferred<T>(): Deferred<T> {
   return { promise, resolve, reject };
 }
 
-// The agentBehaviors the daemon hands a provider when nothing is configured —
+// The agentBehaviors the daemon hands a provider when nothing is configured -
 // every key in the schema at its default. Shared by the launch-context
 // assertions below rather than copied into each, so a new behavior flag is one
 // line here instead of four drifting literals.
@@ -1600,7 +1600,7 @@ test("an explicit model pick leaves a mode that picks the model itself", async (
   expect(notice?.type).toBe("info");
 
   // Clearing the model back to the provider default is the user declining to
-  // choose, which is what Auto is for — that must not evict the mode.
+  // choose, which is what Auto is for - that must not evict the mode.
   await manager.setAgentMode(snapshot.id, "auto");
   const clearNotice = await manager.setAgentModel(snapshot.id, null);
 
@@ -5888,7 +5888,7 @@ test("global subscriber receives stream for observable internal agents but not p
     idFactory: () => generatedAgentIds[agentCounter++] ?? randomUUID(),
   });
 
-  // Global subscriber (no agentId) — the shape the daemon session uses.
+  // Global subscriber (no agentId) - the shape the daemon session uses.
   const streamAgentIds: string[] = [];
   const stateAgentIds: string[] = [];
   const observableCompleted = new Promise<void>((resolve) => {
@@ -7113,7 +7113,7 @@ test("unattended run auto-denies permission escalations without broadcasting att
 
   const session = client.session;
   expect(session).not.toBeNull();
-  // The daemon answered the escalation itself — a single deny by policy.
+  // The daemon answered the escalation itself - a single deny by policy.
   expect(session?.responses).toHaveLength(1);
   const response = session?.responses[0];
   expect(response?.behavior).toBe("deny");
@@ -7162,7 +7162,7 @@ test("attended run still broadcasts permission attention and waits for a respons
   await stream.next(); // turn_started
   await stream.next(); // permission_requested
 
-  // Attended agents surface the prompt and hold — the daemon must NOT answer it.
+  // Attended agents surface the prompt and hold - the daemon must NOT answer it.
   const pending = manager.getAgent(agent.id);
   expect(pending?.pendingPermissions.size).toBe(1);
   expect(pending?.guardrailDenials).toBe(0);
@@ -8505,7 +8505,7 @@ test("replaceAgentRun succeeds when foreground turn terminal event is never deli
 
     override async interrupt(): Promise<void> {
       this.interrupted = true;
-      // No events produced — the terminal event was suppressed
+      // No events produced - the terminal event was suppressed
     }
   }
 
@@ -8526,11 +8526,11 @@ test("replaceAgentRun succeeds when foreground turn terminal event is never deli
     workspaceId: undefined,
   });
 
-  // Start first foreground run — it will hang (no terminal event)
+  // Start first foreground run - it will hang (no terminal event)
   const firstRun = manager.streamAgent(snapshot.id, "hanging prompt");
   const firstRunDrain = (async () => {
     for await (const _event of firstRun) {
-      // Draining — will hang until force-cleaned
+      // Draining - will hang until force-cleaned
     }
   })();
 
@@ -8865,7 +8865,7 @@ test("commandMayHaveChangedExternalState matches remote-state commands", () => {
 });
 
 test("commandMayHaveChangedExternalState ignores local or read-only commands", () => {
-  // Local git mutations — already caught by file watchers on .git/HEAD
+  // Local git mutations - already caught by file watchers on .git/HEAD
   expect(commandMayHaveChangedExternalState("git commit -m 'hello'")).toBe(false);
   expect(commandMayHaveChangedExternalState("git checkout main")).toBe(false);
   expect(commandMayHaveChangedExternalState("git merge feature")).toBe(false);
@@ -9033,7 +9033,7 @@ test("cumulativeTokens sums each turn's usage across turns, the same way for eve
   expect(manager.getAgent(snapshot.id)?.cumulativeTokens).toBe(185);
 
   // A turn reporting no usage leaves the running total untouched rather than
-  // resetting it — some providers omit usage on some turn_completed events.
+  // resetting it - some providers omit usage on some turn_completed events.
   capturedSession?.pushEvent({
     type: "turn_completed",
     provider: "codex",
@@ -9067,7 +9067,7 @@ test("a provider reporting lifetime session stats is differenced, not re-booked 
     workspaceId: undefined,
   });
 
-  // Pi's session stats ARE the lifetime figures — tokens and cost alike — so
+  // Pi's session stats ARE the lifetime figures - tokens and cost alike - so
   // each turn's report includes everything the previous ones already reported.
   capturedSession?.pushEvent({
     type: "turn_completed",
@@ -9085,7 +9085,7 @@ test("a provider reporting lifetime session stats is differenced, not re-booked 
     usage: { inputTokens: 130, outputTokens: 70, totalCostUsd: 0.5 },
   });
   await manager.flush();
-  // The lifetime total tracks the provider's own final figure — not 350, which
+  // The lifetime total tracks the provider's own final figure - not 350, which
   // is what adding both reports would give.
   expect(manager.getAgent(snapshot.id)?.cumulativeTokens).toBe(200);
 
@@ -9237,7 +9237,7 @@ test("a native sub-agent's tool calls drive its track-row liveness, counted once
 
   // Two flushes per step: the first drains the queued session event into the
   // stream coalescer, the second flushes that buffer (a running tool call is
-  // coalesced — which is also what keeps the row from strobing in production).
+  // coalesced - which is also what keeps the row from strobing in production).
   const settle = async (): Promise<void> => {
     await manager.flush();
     await manager.flush();
@@ -9252,7 +9252,7 @@ test("a native sub-agent's tool calls drive its track-row liveness, counted once
   expect(manager.getAgent(snapshot.id)?.toolUseCount).toBe(1);
   expect(manager.getAgent(snapshot.id)?.currentTool).toBe("Read");
 
-  // The same call completing is the same tool use — the count must not double.
+  // The same call completing is the same tool use - the count must not double.
   capturedSession?.pushEvent({
     type: "timeline",
     provider: "codex",
@@ -9271,7 +9271,7 @@ test("a native sub-agent's tool calls drive its track-row liveness, counted once
   expect(manager.getAgent(snapshot.id)?.currentTool).toBe("Bash");
 });
 
-test("a main chat is not counted — the liveness readout belongs to track rows", async () => {
+test("a main chat is not counted - the liveness readout belongs to track rows", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-main-chat-liveness-"));
   let capturedSession: TestAgentSession | null = null;
   class CapturingClient extends TestAgentClient {
@@ -9320,7 +9320,7 @@ test("reconciles a stale todo list when the agent goes idle, nudges the turn, an
     override async startTurn(prompt: AgentPromptInput): Promise<{ turnId: string }> {
       capturedPrompts.push(prompt);
       const turnId = `turn-${capturedPrompts.length}`;
-      // Start the turn but leave completion to the test — the finalize (and its
+      // Start the turn but leave completion to the test - the finalize (and its
       // reconcile check) only runs when we push turn_completed.
       setTimeout(() => {
         this.pushEvent({ type: "turn_started", provider: this.provider, turnId });

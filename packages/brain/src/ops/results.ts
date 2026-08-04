@@ -3,7 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { GpuInfo, Model, ModelFeatures } from "../types.js";
-import type { Profile } from "../config/schema.js";
+import type { Calibration, Profile } from "../config/schema.js";
+import type { FitResult } from "../vram.js";
 
 /**
  * Persistent benchmark history.
@@ -12,6 +13,16 @@ import type { Profile } from "../config/schema.js";
  * compared and charted later. Runs record the configuration they were measured
  * under, because a score is meaningless without the quant, context size and
  * reasoning budget that produced it.
+ *
+ * **A run records every value it was measured with, not a summary of them.** A
+ * bad score is far more often a bad setup than a bad model, and the difference
+ * is only visible from the settings: a context the VRAM fit had to cut, a
+ * reasoning budget the model spends entirely on thinking, a KV quant that
+ * wrecked recall, weights that fell off the GPU because `gpuLayers` did not
+ * cover them, a budget estimated from the formula rather than measured. None of
+ * that is recoverable after the fact, so it is all written down at save time -
+ * including the exact llama-server argv the run was served with, which is the
+ * only true statement of what ran.
  */
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -71,7 +82,14 @@ export interface BenchReport {
   system?: SystemHealth | null;
 }
 
-/** The model identity persisted with a run. */
+/**
+ * The model identity persisted with a run.
+ *
+ * The geometry fields are here because a context size is only sensible against
+ * them: 32k on a model whose GGUF header says 8k native is a setup error, not a
+ * capability, and layer/KV-head counts are what make a KV cost per token
+ * explicable rather than just large.
+ */
 export interface RecordModel {
   id: string | null;
   displayName: string;
@@ -80,16 +98,95 @@ export interface RecordModel {
   sizeBytes: number | null;
   publisher: string | null;
   features: ModelFeatures | null;
+  /** Native context from the GGUF header - the ceiling `contextSize` sits under. */
+  contextLength: number | null;
+  blockCount: number | null;
+  headCountKv: number | null;
 }
 
-/** The subset of a profile persisted with a run. */
+/**
+ * The profile persisted with a run: every field that reaches llama-server.
+ *
+ * Schema 1 kept six of these. The omitted ones are exactly the ones that explain
+ * a bad score - `gpuLayers` short of the model's layer count silently runs part
+ * of it on the CPU, `parallelSlots` splits the context between slots so the
+ * effective window is a fraction of `contextSize`, and `extraArgs` can override
+ * anything above.
+ */
 export interface RecordProfile {
   contextSize: number;
   cacheTypeK: string;
   cacheTypeV: string;
   reasoningBudget: number;
+  reasoningBudgetMessage: string | null;
   vision: boolean;
   flashAttention: boolean;
+  gpuLayers: number | null;
+  parallelSlots: number | null;
+  batchSize: number | null;
+  ubatchSize: number | null;
+  extraArgs: string[];
+}
+
+/**
+ * How the run was actually set up, as opposed to how it was configured.
+ *
+ * The gap between the two is where bad scores come from. `fitToBudget` will cut
+ * a profile's context down to whatever fits the GPU and run anyway, which is the
+ * right call at load time and a silent lie afterwards: the record would say the
+ * model scored 41% at 128k context when it was really measured at 16k. Same for
+ * the KV budget - a context chosen off the theoretical formula (which
+ * overestimates by up to 4x) is a different measurement from one chosen off a
+ * calibration, even when the numbers land in the same place.
+ */
+export interface RecordSetup {
+  /**
+   * The exact llama-server argv this run was served with. Every other field
+   * here is a convenience; this one is the ground truth, and it is what makes a
+   * run reproducible by hand.
+   */
+  args: string[] | null;
+  /** True when the VRAM fit had to change the profile for the run to happen. */
+  adjusted: boolean;
+  /** The context the profile asked for, before any fit adjustment. */
+  requestedContextSize: number | null;
+  /** Why the fit changed the profile, in the fitter's own words. */
+  adjustReason: string | null;
+  /** Where the KV bytes/token came from. `theoretical` means nobody measured. */
+  kvSource: "measured" | "theoretical" | "unknown" | null;
+  /**
+   * True when the calibration came from a relative with the same attention
+   * geometry rather than from this file. Never present it as measured.
+   */
+  kvInherited: boolean;
+  kvBytesPerToken: number | null;
+  /** The formula's answer, kept beside the measured one to expose the gap. */
+  theoreticalKvBytesPerToken: number | null;
+  /** What the budget predicted the run would take, against `vramBytes` observed. */
+  predictedVramBytes: number | null;
+  reserveBytes: number | null;
+  headroomBytes: number | null;
+}
+
+/**
+ * Which suite graded the run.
+ *
+ * Two runs scored on different task sets are not comparable, and neither are a
+ * run that was allowed to execute generated code and one that was only allowed
+ * to syntax-check it. `configKey` deliberately does not include any of this (see
+ * `configKey()` below), so it is recorded here instead of silently merging
+ * unlike runs into one group.
+ */
+export interface RecordSuite {
+  /** False when `--no-execute` limited grading to a syntax check. */
+  execute: boolean | null;
+  concurrency: number | null;
+  /** Prompt depths for the depth-scaling task, when overridden. */
+  depths: number[] | null;
+  /** Task ids the run was restricted to (`--only`), when restricted. */
+  only: string[] | null;
+  /** True when the static suite was replaced by tasks mined from a repo. */
+  mined: boolean;
 }
 
 /** The GPU identity persisted with a run. */
@@ -111,12 +208,24 @@ export interface RecordTask {
   error: string | null;
 }
 
-/** One stored benchmark run — the shared shape used across results and report. */
+/**
+ * One stored benchmark run - the shared shape used across results and report.
+ *
+ * `schema` is 2 as of the setup-capture change: 2 carries the full profile plus
+ * `setup` and `suite`; 1 carried six profile fields and neither. Readers must
+ * treat everything added in 2 as absent on an older record rather than assuming
+ * it, because those runs are still perfectly good scores - they just cannot say
+ * what they were measured with.
+ */
 export interface RunRecord {
   schema: number;
   ranAt: string;
   model: RecordModel;
   profile: RecordProfile | null;
+  /** Schema 2+. Absent on runs saved before setup capture. */
+  setup: RecordSetup | null;
+  /** Schema 2+. Absent on runs saved before setup capture. */
+  suite: RecordSuite | null;
   configKey: string;
   archiveId: string | null;
   gpu: RecordGpu | null;
@@ -134,15 +243,29 @@ export interface RunRecord {
   runIndex?: number;
 }
 
-/** Arguments to `save`. */
+/**
+ * Arguments to `save`.
+ *
+ * Everything past `report` is optional so a caller that cannot supply it still
+ * writes a usable record - but every caller that CAN should, because a run saved
+ * without its setup is a score nobody can explain later.
+ */
 export interface SaveOptions {
   model: Model | null;
+  /** The profile the run was actually served with (post-fit, not as configured). */
   profile: Profile | null;
   report: BenchReport;
   gpu?: GpuInfo | null;
   runtime?: string | null;
   archiveId?: string | null;
   system?: SystemHealth | null;
+  /** The argv the supervisor launched, straight from `Supervisor.args`. */
+  args?: string[] | null;
+  /** The VRAM fit that produced `profile`, including what it had to change. */
+  fit?: FitResult | null;
+  /** The calibration the fit was computed against, if there was one. */
+  calibration?: Calibration | null;
+  suite?: Partial<RecordSuite> | null;
   timestamp?: Date;
 }
 
@@ -215,7 +338,15 @@ function slugify(text: string): string {
     .slice(0, 80);
 }
 
-/** Stable identity for "same model, same settings", so reruns can be grouped. */
+/**
+ * Stable identity for "same model, same settings", so reruns can be grouped.
+ *
+ * Deliberately unchanged when the record grew: this string is the grouping key
+ * every stored run was written with, and widening it would not re-key history -
+ * it would split each model's past runs from its future ones and quietly reset
+ * every variance figure on the page. New settings are recorded as data, not
+ * folded in here.
+ */
 function configKey(profile: Profile | null): string {
   if (!profile) return "unknown";
   return [
@@ -226,6 +357,44 @@ function configKey(profile: Profile | null): string {
   ].join("_");
 }
 
+/** Read a numeric GGUF metadata field, which is `null` when the header lacked it. */
+function metadataNumber(model: Model | null, key: string): number | null {
+  const value = model?.metadata?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Fold the fit and the calibration into the record's setup block.
+ *
+ * `fit.profile` is the profile that actually ran, so the requested context has
+ * to be read from what the fit was HANDED, not from what it returned - by the
+ * time `save` sees a profile, the adjustment has already been applied and is
+ * invisible.
+ */
+function buildSetup({
+  args,
+  fit,
+  calibration,
+}: Pick<SaveOptions, "args" | "fit" | "calibration">): RecordSetup | null {
+  if (!args && !fit && !calibration) {
+    return null;
+  }
+  const budget = fit?.budget ?? null;
+  return {
+    args: args ?? null,
+    adjusted: fit?.adjusted ?? false,
+    requestedContextSize: fit?.requestedContextSize ?? null,
+    adjustReason: fit?.reason ?? null,
+    kvSource: budget?.source ?? null,
+    kvInherited: calibration?.inherited === true,
+    kvBytesPerToken: budget?.kvBytesPerToken ?? null,
+    theoreticalKvBytesPerToken: budget?.theoreticalKvBytesPerToken ?? null,
+    predictedVramBytes: budget?.totalBytes ?? null,
+    reserveBytes: budget?.reserveBytes ?? null,
+    headroomBytes: budget?.headroomBytes ?? null,
+  };
+}
+
 function save({
   model,
   profile,
@@ -234,12 +403,16 @@ function save({
   runtime = null,
   archiveId = null,
   system = null,
+  args = null,
+  fit = null,
+  calibration = null,
+  suite = null,
   timestamp = new Date(),
 }: SaveOptions): SaveResult {
   fs.mkdirSync(RESULTS_DIR, { recursive: true });
 
   const record: RunRecord = {
-    schema: 1,
+    schema: 2,
     ranAt: timestamp.toISOString(),
     model: {
       id: model?.id ?? null,
@@ -249,15 +422,37 @@ function save({
       sizeBytes: model?.sizeBytes ?? null,
       publisher: model?.publisher ?? null,
       features: model?.features ?? null,
+      contextLength: metadataNumber(model, "contextLength"),
+      blockCount: metadataNumber(model, "blockCount"),
+      headCountKv: metadataNumber(model, "headCountKv"),
     },
+    // The whole profile, not a summary of it. `ProfileSchema` is `.passthrough()`
+    // and its numeric fields carry defaults, so read them defensively: a profile
+    // written by an older brain can be missing anything below `vision`.
     profile: profile
       ? {
           contextSize: profile.contextSize,
           cacheTypeK: profile.cacheTypeK,
           cacheTypeV: profile.cacheTypeV,
           reasoningBudget: profile.reasoningBudget,
+          reasoningBudgetMessage: profile.reasoningBudgetMessage ?? null,
           vision: profile.vision,
           flashAttention: profile.flashAttention,
+          gpuLayers: profile.gpuLayers ?? null,
+          parallelSlots: profile.parallelSlots ?? null,
+          batchSize: profile.batchSize ?? null,
+          ubatchSize: profile.ubatchSize ?? null,
+          extraArgs: profile.extraArgs ?? [],
+        }
+      : null,
+    setup: buildSetup({ args, fit, calibration }),
+    suite: suite
+      ? {
+          execute: suite.execute ?? null,
+          concurrency: suite.concurrency ?? null,
+          depths: suite.depths ?? null,
+          only: suite.only ?? null,
+          mined: suite.mined ?? false,
         }
       : null,
     configKey: configKey(profile),
@@ -326,7 +521,7 @@ function latestPerConfig(records: RunRecord[] = loadAll()): RunRecord[] {
 /**
  * Group every run by model+config (all runs kept, not just the latest), and
  * number them oldest→newest so a run can be plotted against run number. Wall
- * time is deliberately not the axis — only how many times we have measured it.
+ * time is deliberately not the axis - only how many times we have measured it.
  */
 function grouped(records: RunRecord[] = loadAll()): Group[] {
   const groups = new Map<string, Group>();
@@ -366,7 +561,7 @@ function stats(values: Array<number | undefined>): Stats | null {
 }
 
 /**
- * Per-config spread of overall and per-task scores across repeated runs — the
+ * Per-config spread of overall and per-task scores across repeated runs - the
  * measure of whether the benchmark method is itself consistent.
  */
 function variance(records: RunRecord[] = loadAll()): VarianceRow[] {

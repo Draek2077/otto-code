@@ -393,7 +393,7 @@ describe("createTerminal", () => {
     // recent-output cap, so the chunk-trimming path runs repeatedly. The final
     // distinctive lines must survive in the exit summary. The process is kept
     // alive (no self-exit) so we can wait until the last chunk has actually been
-    // parsed by the headless terminal before killing — otherwise the exit
+    // parsed by the headless terminal before killing - otherwise the exit
     // summary races the async xterm parse and reads a stale buffer.
     const session = trackSession(
       await createTerminal({

@@ -4,7 +4,7 @@
 // long-lived effect, a websocket handler, or a plain module (the voice runtime),
 // where re-subscribing on a slider drag would tear down the very thing that is
 // playing. Same shape and same reason as `isThinkingToneEnabled` in
-// contexts/voice-context.tsx — the setting is never rendered, only consulted.
+// contexts/voice-context.tsx - the setting is never rendered, only consulted.
 //
 // This is the assistant-speech channel only: voice mode, auto-speech, the
 // per-message play button, and voice mode's thinking tone. Agent voice cues

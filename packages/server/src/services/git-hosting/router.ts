@@ -6,7 +6,7 @@ import { GitHostingCredentialsMissingError } from "./types.js";
 // target directory's project selects. Every method on the service interface
 // already carries a cwd, so existing consumers (session, checkout,
 // auto-archive, agent tools) become multi-provider by swapping the singleton
-// injection for this router — no per-call-site changes.
+// injection for this router - no per-call-site changes.
 export function createGitHostingRouter(resolver: GitHostingResolver): ForgeService {
   async function serviceFor(cwd: string) {
     const resolved = await resolver.resolveForCwd(cwd);

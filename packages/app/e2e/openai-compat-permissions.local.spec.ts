@@ -20,7 +20,7 @@ import { waitForPermissionPrompt } from "./helpers/permissions";
  * edit-kind, so the daemon parks the turn on a permission prompt before
  * executing it (openai-compat-agent.ts toolNeedsApproval). Denying must leave
  * no side effect on disk; approving must let the exact write land. Asserts on
- * the file and on daemon-emitted tool-call rows — never on model prose.
+ * the file and on daemon-emitted tool-call rows - never on model prose.
  */
 
 const TARGET_FILE = "gated.txt";
@@ -29,7 +29,7 @@ const TARGET_CONTENT = "gated";
 const PROMPT =
   `Create a file named ${TARGET_FILE} in the current directory containing exactly ` +
   `"${TARGET_CONTENT}" (without the quotes) and nothing else. Use your write_file tool. ` +
-  `Do not run shell commands. If the user declines a tool call, stop immediately — ` +
+  `Do not run shell commands. If the user declines a tool call, stop immediately - ` +
   `do not retry and do not use any other tool. Do not explain anything.`;
 
 test.describe("openai-compat permission gating (Always Ask)", () => {

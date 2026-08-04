@@ -78,7 +78,7 @@ export type KeyboardActionDefinition =
 
 // Actions that reach developer-only surfaces (the git/search explorer tabs, new
 // terminals, pane splits). In User interface mode they are swallowed at dispatch
-// so a stray keybinding can't resurrect a surface the UI hides — one gate for
+// so a stray keybinding can't resurrect a surface the UI hides - one gate for
 // every listener, per interface-modes.md surface inventory (#8).
 //
 // `sidebar.open.files` is NOT here: User mode keeps a Files-only explorer, so the

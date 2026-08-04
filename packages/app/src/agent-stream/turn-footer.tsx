@@ -79,7 +79,7 @@ export const TurnFooter = memo(function TurnFooter({
 // running-turn footer never hides (see TurnFooter above). `revealed` lets a
 // wider hover scope (the turn's content in the stream) reveal the row; the
 // row additionally tracks hover on its own full-width strip so the bottom
-// auxiliary footer — which has no adjacent stream item — stays reachable.
+// auxiliary footer - which has no adjacent stream item - stays reachable.
 // Hidden state uses opacity so the strip keeps its geometry and stays
 // hoverable (docs/hover.md), with pointerEvents off so invisible buttons
 // can't be clicked.
@@ -130,7 +130,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
 
 // The spinner is memo-isolated: BlobLoader recreates reanimated styles and an
 // SVG gradient tree on every render, so it must not re-render when the token
-// estimate ticks or the agent snapshot rebuilds the spinner object — only
+// estimate ticks or the agent snapshot rebuilds the spinner object - only
 // when the personality's glow colors actually change (hence value equality).
 const TurnSpinner = memo(
   function TurnSpinner({ spinner }: { spinner?: PersonalitySpinnerColors }) {

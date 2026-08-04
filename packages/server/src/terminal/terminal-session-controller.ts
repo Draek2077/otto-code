@@ -346,7 +346,7 @@ export class TerminalSessionController {
     // A terminal can live in a subdirectory of a subscribed workspace root (an
     // agent can open one there). Deliver the change to every subscribed root at
     // or above the terminal's cwd, keyed by that root, carrying the full
-    // aggregated list — so the client's cache replacement doesn't drop the
+    // aggregated list - so the client's cache replacement doesn't drop the
     // terminals that live directly at the root.
     const matchingSubscriptions = Array.from(this.subscribedDirectories.values()).filter(
       (subscription) => this.isPathWithinRoot(subscription.cwd, event.cwd),
@@ -858,7 +858,7 @@ export class TerminalSessionController {
           // produced output AND actually backed up on the wire. A client that
           // keeps draining reports ~0 buffered, so it streams continuously even
           // past the byte threshold. outputBytesSinceSnapshot keeps accumulating
-          // in that case — it's harmless, it only gates the snapshot decision at
+          // in that case - it's harmless, it only gates the snapshot decision at
           // the instant backpressure appears, and trySendSnapshot resets it to 0.
           // A null reading means the transport exposes no backpressure signal
           // (e.g. the multiplexed relay socket); there we can't tell a slow client

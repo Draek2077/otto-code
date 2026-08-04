@@ -18,11 +18,11 @@ Both need the same primitive: **reveal a specific sidebar row in its scroll cont
 
 ## Architecture facts (from exploration, with refs)
 
-- Two group modes: `"project"` (default) and `"status"` — `stores/sidebar-view-store.ts`.
+- Two group modes: `"project"` (default) and `"status"` - `stores/sidebar-view-store.ts`.
   Each mode has its **own** scroll container, only one mounted at a time:
   - project mode: `ProjectModeList` → `NestableScrollContainer`(native)/`ScrollView`(web),
     testID `sidebar-project-workspace-list-scroll` (`components/sidebar-workspace-list.tsx:2510`).
-    Inner `DraggableList`s have `scrollEnabled={false}` — the ambient container owns scroll.
+    Inner `DraggableList`s have `scrollEnabled={false}` - the ambient container owns scroll.
   - status mode: `SidebarStatusWorkspaceList` → own container, testID
     `sidebar-status-list-scroll` (`components/sidebar/sidebar-status-list.tsx:79`).
 - Row identity: workspace `workspaceKey = ${serverId}:${workspaceId}`; project `projectKey`
@@ -35,7 +35,7 @@ Both need the same primitive: **reveal a specific sidebar row in its scroll cont
   hook's return changed; key via `activeWorkspaceSelectionKey`.
 - New Workspace completion (both empty + chat-agent paths) funnels through
   `navigateToWorkspace` → `/h/{serverId}/workspace/{workspaceId}`.
-- Collapse: `stores/sidebar-collapsed-sections-store` — `collapsedProjectKeys` /
+- Collapse: `stores/sidebar-collapsed-sections-store` - `collapsedProjectKeys` /
   `collapsedStatusGroupKeys`; use `setProjectCollapsed(key,false)` (there's no "expand").
   A collapsed section **unmounts** its child rows, so reveal must expand → wait a frame →
   measure → scroll. Project header rows themselves are never unmounted.
@@ -45,13 +45,13 @@ Both need the same primitive: **reveal a specific sidebar row in its scroll cont
 
 ## Plan
 
-### Increment 1 — reveal primitive + general active-workspace reveal
+### Increment 1 - reveal primitive + general active-workspace reveal
 
 - `components/sidebar/sidebar-row-anchors.ts`: module `Map<string, MeasurableNode>` +
   subscribe/register/get (mirror `tutorial/anchor-registry.ts`). Keys:
   `workspace:${serverId}:${workspaceId}` and `project:${projectKey}`.
 - `stores/sidebar-reveal-store.ts` (zustand): `{ request: {key, token} | null;
-requestReveal(key) }` — monotonic token so repeat reveals of the same key still fire.
+requestReveal(key) }` - monotonic token so repeat reveals of the same key still fire.
 - Attach the registry ref (via `mergeRefs`, no wrapper) to the existing row Pressables:
   project-mode `WorkspaceRow`, `ProjectHeaderRow`; status-mode workspace row.
 - A `useSidebarRevealController(scrollRef)` used by each container: subscribe to the
@@ -61,7 +61,7 @@ requestReveal(key) }` — monotonic token so repeat reveals of the same key stil
 - `useRevealActiveWorkspace()` mounted in `LeftSidebar`: on `useActiveWorkspaceSelection()`
   change, `requestReveal(workspace:${serverId}:${workspaceId})`.
 
-### Increment 2 — tutorial create-workspace step
+### Increment 2 - tutorial create-workspace step
 
 - Widen tutorial anchors for a project block (either add a `"new-workspace"` fixed anchor
   registered on the first/only empty project's block, or a keyed variant). Register on the
@@ -74,13 +74,13 @@ requestReveal(key) }` — monotonic token so repeat reveals of the same key stil
 
 - Increment 1: **shipped and committed** (commit state verified against the tree 2026-07-24),
   static-clean (typecheck + lint). Files:
-  - `components/sidebar/sidebar-row-anchors.ts` — keyed measurable-node registry.
-  - `components/sidebar/use-sidebar-row-anchor.ts` — ref-callback hook.
-  - `stores/sidebar-reveal-store.ts` — `{request:{key,token}}` + `requestSidebarReveal`.
-  - `components/sidebar/use-sidebar-reveal-controller.ts` — per-container measure+scrollTo
+  - `components/sidebar/sidebar-row-anchors.ts` - keyed measurable-node registry.
+  - `components/sidebar/use-sidebar-row-anchor.ts` - ref-callback hook.
+  - `stores/sidebar-reveal-store.ts` - `{request:{key,token}}` + `requestSidebarReveal`.
+  - `components/sidebar/use-sidebar-reveal-controller.ts` - per-container measure+scrollTo
     (measureInWindow + onScroll offset; **native NestableScrollContainer overrides onScroll
-    so offset tracking is web/desktop only** — native reveal is best-effort for now).
-  - `components/sidebar/use-reveal-active-workspace.ts` — producer, mounted in LeftSidebar.
+    so offset tracking is web/desktop only** - native reveal is best-effort for now).
+  - `components/sidebar/use-reveal-active-workspace.ts` - producer, mounted in LeftSidebar.
   - Anchors merged onto project rows + workspace rows in both modes
     (`sidebar-workspace-list.tsx`, `sidebar/sidebar-status-list.tsx`).
   - **Deferred (Increment 1b):** auto-expand a collapsed project/status group before

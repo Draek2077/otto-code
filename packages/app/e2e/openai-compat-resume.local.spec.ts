@@ -18,10 +18,10 @@ import { connectSeedClient } from "./helpers/seed-client";
 /**
  * Tier-2: proves openai-compat history fidelity across a daemon restart. The
  * provider persists its conversation (including tool calls) and replays it on
- * resume, so after `restartTestDaemon()` — same OTTO_HOME, same port, same
- * global-setup environment — the rehydrated timeline must still carry the
+ * resume, so after `restartTestDaemon()` - same OTTO_HOME, same port, same
+ * global-setup environment - the rehydrated timeline must still carry the
  * user prompt and the executed tool call, and the reopened UI must render
- * both. Asserts on durable timeline structure and disk state — never on model
+ * both. Asserts on durable timeline structure and disk state - never on model
  * prose.
  */
 
@@ -90,7 +90,7 @@ test.describe("openai-compat resume after daemon restart", () => {
       expect(existsSync(targetPath)).toBe(true);
       expect(readFileSync(targetPath, "utf8").trim()).toBe(TARGET_CONTENT);
 
-      // Same OTTO_HOME, same port — exercises the rehydration path.
+      // Same OTTO_HOME, same port - exercises the rehydration path.
       await restartTestDaemon();
 
       // The old client's socket died with the daemon; reconnect fresh.

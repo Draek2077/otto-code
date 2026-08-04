@@ -14,7 +14,7 @@ function resolveBalance(balance: ProviderUsageBalance): ResolvedBalance {
   if (limit != null && limit > 0) {
     const usedAmount = used ?? (remaining != null ? limit - remaining : null);
     const usedPct = usedAmount != null ? (usedAmount / limit) * 100 : null;
-    const usedText = usedAmount != null ? formatAmount(usedAmount, unit) : "—";
+    const usedText = usedAmount != null ? formatAmount(usedAmount, unit) : "-";
     return { amountText: `${usedText} / ${formatAmount(limit, unit)}`, usedPct };
   }
   if (remaining != null) {
@@ -23,7 +23,7 @@ function resolveBalance(balance: ProviderUsageBalance): ResolvedBalance {
   if (used != null) {
     return { amountText: formatAmount(used, unit), usedPct: null };
   }
-  return { amountText: "—", usedPct: null };
+  return { amountText: "-", usedPct: null };
 }
 
 function fillToneStyle(tone: ProviderUsageTone) {

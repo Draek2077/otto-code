@@ -33,7 +33,7 @@ interface ContextWindowMeterInnerProps extends ContextWindowMeterProps {
    * Theme-dependent meter colors, mapped by the `withUnistyles` wrapper below.
    * These are `themeColorRef` values: `var(--colors-...)` on web so the ring
    * follows the nearest scope's CSS variables (the black chat scope wraps the
-   * whole chat pane, composer included — see `styles/black-chat-scope.ts`),
+   * whole chat pane, composer included - see `styles/black-chat-scope.ts`),
    * and concrete scoped-theme colors on native where `ScopedTheme` works.
    * Resolving concrete colors through React here (the old `useUnistyles()`
    * approach) painted the ring track with the app theme's `surface3` on the
@@ -53,7 +53,7 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 // o'clock instead of the SVG default of 3 o'clock. A `transform` on the
 // outermost <svg> is unreliable on web (browsers largely ignore it there,
 // and Unistyles-generated `style` transforms don't consistently reach the
-// <svg> element either — see the width/height comment below), and it's
+// <svg> element either - see the width/height comment below), and it's
 // applied in rendered CSS-pixel space rather than viewBox units, which would
 // need to track `svgSize` as it doubles on compact form factors. A <G> is an
 // inner SVG element, so its transform always applies in the fixed 14x14
@@ -93,7 +93,7 @@ function formatSessionCost(value: number): string | null {
 // on web the prop lands as an SVG presentation attribute, where the
 // `var(--...)` refs from `themeColorRef` never resolve, while style entries
 // land as real CSS (react-native-web compiles SVG stroke styles) that follows
-// the cascade — and therefore the black chat scope's variables. Native merges
+// the cascade - and therefore the black chat scope's variables. Native merges
 // style entries into props (`propsAndStyles` in react-native-svg), so the
 // same delivery works there. `CircleProps` omits `style` even though the
 // runtime supports it on both platforms; spreading (exempt from excess
@@ -181,7 +181,7 @@ function ContextBreakdownList({ usage }: { usage: AgentContextUsage }) {
           key={category.name}
           name={category.name}
           tokens={category.tokens}
-          percentage="—"
+          percentage="-"
           filled={false}
         />
       ))}
@@ -213,7 +213,7 @@ function ContextWindowMeterInner({
   meterDestructiveColor,
 }: ContextWindowMeterInnerProps) {
   const { t } = useTranslation();
-  // react-native-svg needs explicit dimensions — unistyles breakpoint styles
+  // react-native-svg needs explicit dimensions - unistyles breakpoint styles
   // don't reach the <svg> element on web, leaving it 0×0. Match compactUp():
   // doubled on compact form factors.
   const isCompact = useIsCompactFormFactor();
@@ -248,7 +248,7 @@ function ContextWindowMeterInner({
     [],
   );
 
-  // No usage yet — a brand-new conversation, a draft, or a chat just cleared
+  // No usage yet - a brand-new conversation, a draft, or a chat just cleared
   // with /clear or /new. Always render the ring so the footer's footprint
   // stays stable, but as an inert, non-interactive track: there's nothing to
   // show a breakdown of yet.

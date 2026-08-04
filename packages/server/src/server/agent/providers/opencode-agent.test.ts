@@ -642,7 +642,7 @@ describe("OpenCodeAgentClient adapter smoke tests", () => {
     const cwd = tmpCwd();
     const runtime = new TestOpenCodeHarness();
     // Default TestOpenCodeClient returns no agents. Discovery failure/empty
-    // must not fabricate modes — OpenCode users can rename/delete any agent,
+    // must not fabricate modes - OpenCode users can rename/delete any agent,
     // so a hardcoded fallback could validate a mode that doesn't exist.
     runtime.enqueueClient(new TestOpenCodeClient());
     const client = new OpenCodeAgentClient(logger, undefined, {

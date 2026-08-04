@@ -447,7 +447,7 @@ test.describe("Workspace model restart regressions", () => {
         .toContain(`workspace-tab-agent_${LEGACY_AGENT_ID}`);
 
       // `seedRestartHome` writes workspaceA and workspaceB onto the same cwd directly in the
-      // registry — the shape a pre-guard install still has on disk, and the one this test is
+      // registry - the shape a pre-guard install still has on disk, and the one this test is
       // about. It used to mint a THIRD same-cwd workspace through the New Workspace form; that
       // path is now refused outright (docs/workspace-lifecycle.md, occupied-directory guard), so
       // the assertions below cover the two seeded siblings only.

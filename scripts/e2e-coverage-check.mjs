@@ -72,7 +72,7 @@ if (totals.instruments > 0) {
   console.log(`  ${"".padEnd(width)}  📊 ${totals.instruments} (instruments, not scored)`);
 }
 console.log(
-  `\n  Spec files on disk: ${diskSpecs.size} — all claimed by the matrix: ${unmapped.length === 0 ? "yes" : "NO"}`,
+  `\n  Spec files on disk: ${diskSpecs.size} - all claimed by the matrix: ${unmapped.length === 0 ? "yes" : "NO"}`,
 );
 
 let failed = false;

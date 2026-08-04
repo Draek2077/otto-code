@@ -20,7 +20,7 @@ describe("isUserSelectableMode", () => {
 });
 
 describe("getUnattendedModeId", () => {
-  it("returns dontAsk for Claude — the guardrailed unattended target before bypass", () => {
+  it("returns dontAsk for Claude - the guardrailed unattended target before bypass", () => {
     expect(getUnattendedModeId("claude")).toBe("dontAsk");
   });
 });

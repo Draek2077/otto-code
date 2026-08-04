@@ -121,7 +121,7 @@ describe("createProjectScaffoldService", () => {
   });
 
   it("clones an existing repository into the named folder", async () => {
-    // A real local repo to clone from — no network involved.
+    // A real local repo to clone from - no network involved.
     const origin = join(parentDirectory, "origin");
     await runGitCommand(["init", "--initial-branch", "main", origin], { cwd: parentDirectory });
     await runGitCommand(["commit", "--allow-empty", "-m", "seed"], {

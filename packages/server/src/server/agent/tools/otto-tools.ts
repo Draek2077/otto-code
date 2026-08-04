@@ -168,14 +168,14 @@ export interface OttoToolHostDependencies {
   /**
    * Reads the live Agent Teams section (teams + active team id) from the
    * daemon config. Lets create_agent stamp the frozen team layer onto member
-   * spawns. Absent on hosts that don't wire teams — spawns are then teamless,
+   * spawns. Absent on hosts that don't wire teams - spawns are then teamless,
    * exactly the no-active-team behavior.
    */
   readAgentTeams?: () => AgentTeamsConfigView | undefined;
   /**
    * Per-personality accrued lessons. Enables remember_lesson / review_lessons /
    * revise_lesson. Absent on hosts that don't wire personality memory, in which
-   * case the tools are never registered at all — a tool that can only fail is
+   * case the tools are never registered at all - a tool that can only fail is
    * worse than a missing one.
    */
   personalityMemory?: PersonalityMemoryService | null;
@@ -223,7 +223,7 @@ export interface OttoToolHostDependencies {
    * Daemon-wide Otto tool-group allowlist. undefined = every group enabled
    * (mirrors openai-compat's per-provider `ottoToolGroups` semantics); an empty
    * array = no Otto tools. A tool whose group (ottoToolGroupForName) is absent
-   * from this set is never registered — so the MCP catalog and any future
+   * from this set is never registered - so the MCP catalog and any future
    * consumer inherit per-group gating. The browser AND preview groups remain
    * additionally gated by `browserToolsEnabled` (the authoritative browser
    * master over the whole Preview subsystem); the group filter can only further
@@ -254,7 +254,7 @@ export interface OttoToolHostDependencies {
   resolveCallerContext?: (callerAgentId: string) => VoiceCallerContext | null;
   enableVoiceTools?: boolean;
   voiceOnly?: boolean;
-  /** Fun-stats counters — see packages/server/src/server/activity-stats. */
+  /** Fun-stats counters - see packages/server/src/server/activity-stats. */
   onActivity?: ActivityIncrementFn;
   /**
    * Where submit_output writes what a graph node's agent submitted. Present
@@ -695,8 +695,8 @@ interface InheritedArtifactIdentity {
 }
 
 /**
- * The personality identity an MCP-created artifact inherits from its caller —
- * the caller's personality name and spinner colors — so its card shows who
+ * The personality identity an MCP-created artifact inherits from its caller -
+ * the caller's personality name and spinner colors - so its card shows who
  * generated it and its spinner renders in the personality's colors. Only
  * inherited when the artifact runs on the caller's own brain: an explicit
  * provider override detaches it, mirroring how the model/effort inherit.
@@ -743,7 +743,7 @@ function resolveArtifactGenerationSettings(params: {
 const EFFORT_INPUT_DESCRIPTION =
   "Effort level (off/minimal/low/medium/high/xhigh/max), clamped to the model's nearest option, or an exact thinkingOptions id from list_models.";
 
-// Lets a caller start an agent with no task in hand — "just open a new chat".
+// Lets a caller start an agent with no task in hand - "just open a new chat".
 // When create_agent omits initialPrompt, the new agent gets this generic ask so
 // it immediately greets the user and asks what to work on, instead of the caller
 // having to invent a reason up front (which otherwise stalls the spawn while the
@@ -777,7 +777,7 @@ const WAIT_FOR_AGENTS_MESSAGE_TAIL_CHARS = 800;
 
 /**
  * Default window for `capture_terminal` with `scrollback: true`. That flag used
- * to mean `start: 0` — the entire xterm buffer, up to 1000 lines of wide build
+ * to mean `start: 0` - the entire xterm buffer, up to 1000 lines of wide build
  * output in one result. An explicit `start`/`end` still selects any range,
  * including the whole buffer.
  */
@@ -825,7 +825,7 @@ function resolveBareSpawnTitleAndPrompt(input: {
   return {
     title: input.title ?? (usesPlaceholderTitle ? DEFAULT_BARE_AGENT_TITLE : undefined),
     // The placeholder is a stand-in, not a name the caller picked, so it must not
-    // suppress auto-naming — otherwise the chat reads "New chat" forever and the
+    // suppress auto-naming - otherwise the chat reads "New chat" forever and the
     // app renders it as a permanent loading skeleton (resolveWorkspaceAgentTabLabel).
     titleIsPlaceholder: usesPlaceholderTitle,
     initialPrompt: input.initialPrompt ?? DEFAULT_BARE_AGENT_INITIAL_PROMPT,
@@ -833,7 +833,7 @@ function resolveBareSpawnTitleAndPrompt(input: {
 }
 
 /**
- * Resolve a requested effort — canonical level or exact option id — against a
+ * Resolve a requested effort - canonical level or exact option id - against a
  * provider's advertised models. Levels clamp to the nearest supported option.
  * When the target model (or its thinkingOptions) isn't in the snapshot the
  * request passes through unchanged and the provider normalizes it like any
@@ -1067,7 +1067,7 @@ function deriveArtifactName(description: string): string {
 /**
  * Resolve the projectId to stamp on a created artifact. Artifacts store the
  * project's canonical *root path* (matching what the client's create sheet
- * stores and what the app's project pickers/filters key on) — NOT the
+ * stores and what the app's project pickers/filters key on) - NOT the
  * registry's opaque grouping key (`remote:host/owner/repo` for repos with a
  * git remote), which nothing client-side can display or match against a
  * workspace. The workspace record only carries the grouping key, so map it
@@ -1101,7 +1101,7 @@ async function resolveArtifactProjectId(params: {
 
 // The caller's workspace-access ceiling (agent/workspace-access.ts), read from
 // its stored config the same way the orchestration policy is read from its
-// labels. No caller — the daemon/user-level catalog, not an agent session —
+// labels. No caller - the daemon/user-level catalog, not an agent session -
 // resolves to "write", the pre-feature behaviour.
 function resolveCallerWorkspaceAccess(
   agentManager: AgentManager,
@@ -1124,9 +1124,9 @@ function resolveOrchestrationPolicy(
 }
 
 // The orchestration tool binary (projects/orchestration-graphs). No policy ⇒
-// everything allowed. "deterministic" — the daemon does all linking, so the
+// everything allowed. "deterministic" - the daemon does all linking, so the
 // node loses every orchestration-shaped tool (the agents + schedules groups)
-// plus preview and browser control. "autonomous" — full toolset EXCEPT
+// plus preview and browser control. "autonomous" - full toolset EXCEPT
 // start_run: orchestrations never nest orchestrations.
 function buildOrchestrationPolicyGate(
   policy: "deterministic" | "autonomous" | null,
@@ -1155,7 +1155,7 @@ function buildOrchestrationPolicyGate(
  * `nodeGroups` is one graph node's own declaration, read from its labels
  * (null = the node didn't declare one). They intersect, never union: a node can
  * hand itself less authority than the daemon allows, never more. An empty node
- * list is meaningful — "no Otto tools at all" — which is why it is an empty
+ * list is meaningful - "no Otto tools at all" - which is why it is an empty
  * array rather than null.
  */
 // Validate a tool's input against its declared schema before the handler sees
@@ -1243,8 +1243,8 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       return;
     }
     // Workspace-access ceiling: enforced here at registration, like the two
-    // gates above, so every catalog consumer — the MCP server serving CLI
-    // providers and openai-compat's daemon-owned tool loop — withholds the
+    // gates above, so every catalog consumer - the MCP server serving CLI
+    // providers and openai-compat's daemon-owned tool loop - withholds the
     // same tools. A tool that was never registered cannot be argued into
     // running (agent/workspace-access.ts).
     if (!isOttoToolAllowedForAccess(name, callerWorkspaceAccess)) {
@@ -1456,8 +1456,8 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     teamSnapshot?: ResolvedTeamSnapshot;
   }
 
-  // Turn the create_agent brain inputs — a personality name and/or explicit
-  // provider/settings — into the concrete provider/model/effort/mode/prompt to
+  // Turn the create_agent brain inputs - a personality name and/or explicit
+  // provider/settings - into the concrete provider/model/effort/mode/prompt to
   // spawn with. A personality expands to its resolved snapshot; explicit sibling
   // fields override it per-field (no heuristic substitution). Without a
   // personality this is the plain provider/model path.
@@ -1762,7 +1762,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       .max(60, "Title must be 60 characters or fewer")
       .optional()
       .describe(
-        "Short descriptive title (<= 60 chars) summarizing the agent's focus. Optional — omit to let Otto derive one from the prompt (or name a bare new chat).",
+        "Short descriptive title (<= 60 chars) summarizing the agent's focus. Optional - omit to let Otto derive one from the prompt (or name a bare new chat).",
       ),
     provider: ProviderModelInputSchema.optional().describe(
       "Provider/model pair, for example codex/gpt-5.4. Required unless `personality` is given; when both are given, this overrides the personality's provider/model.",
@@ -1773,7 +1773,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       .min(1)
       .optional()
       .describe(
-        "Spawn from a named Agent Personality on this host — expands to its provider/model/effort/mode/prompt; explicit provider/settings override per-field. See list_personalities for each one's guidance and tier (coordinators delegate; focused writer/coder/judger personalities finish one task). Fails loudly if unavailable here — no fallback.",
+        "Spawn from a named Agent Personality on this host - expands to its provider/model/effort/mode/prompt; explicit provider/settings override per-field. See list_personalities for each one's guidance and tier (coordinators delegate; focused writer/coder/judger personalities finish one task). Fails loudly if unavailable here - no fallback.",
       ),
     labels: z.record(z.string(), z.string()).optional().describe("Labels to set on the agent"),
     settings: CreateAgentSettingsInputSchema.optional().describe(
@@ -1785,7 +1785,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       .min(1, "initialPrompt cannot be empty")
       .optional()
       .describe(
-        "First task to run immediately after creation. Optional — omit to just open a new chat; the agent then greets the user and asks what to work on. Don't refuse to spawn just because there's no task yet.",
+        "First task to run immediately after creation. Optional - omit to just open a new chat; the agent then greets the user and asks what to work on. Don't refuse to spawn just because there's no task yet.",
       ),
   };
   const agentToAgentInputSchema = {
@@ -1878,7 +1878,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       .optional()
       .default("interrupt")
       .describe(
-        "How to reach the agent if it is BUSY. 'interrupt' (default) cancels whatever it is doing and runs your prompt now — use it for corrections that must land immediately. 'queue' lets the current turn finish and runs your prompt as the next one — use it for a follow-up that should not throw away work in progress. If the agent is idle both run it immediately.",
+        "How to reach the agent if it is BUSY. 'interrupt' (default) cancels whatever it is doing and runs your prompt now - use it for corrections that must land immediately. 'queue' lets the current turn finish and runs your prompt as the next one - use it for a follow-up that should not throw away work in progress. If the agent is idle both run it immediately.",
       ),
   };
   const agentToAgentSendAgentPromptInputSchema = {
@@ -1979,8 +1979,8 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     return toCatalog();
   }
 
-  // Both halves of Preview — browser verification (`browser_*`) and dev-server
-  // lifecycle (`preview_*`) — are gated behind the browser-tools master, so the
+  // Both halves of Preview - browser verification (`browser_*`) and dev-server
+  // lifecycle (`preview_*`) - are gated behind the browser-tools master, so the
   // "Browser Tools" host setting is a single functional switch for the whole
   // subsystem: master off = neither half is registered for any provider.
   if (options.browserToolsEnabled && options.browserToolsBroker) {
@@ -2007,7 +2007,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     {
       title: "Create agent",
       description:
-        "Create an agent. Requires relationship, workspace, and either provider/model (e.g. codex/gpt-5.4) or a personality name. Title and initialPrompt are optional — omit both to open a bare new chat that greets the user. Prefer a personality when the host has them (list_personalities). Don't guess the provider — call list_providers/list_models if unsure.",
+        "Create an agent. Requires relationship, workspace, and either provider/model (e.g. codex/gpt-5.4) or a personality name. Title and initialPrompt are optional - omit both to open a bare new chat that greets the user. Prefer a personality when the host has them (list_personalities). Don't guess the provider - call list_providers/list_models if unsure.",
       inputSchema: createAgentInputSchema,
       outputSchema: {
         agentId: z.string(),
@@ -2158,7 +2158,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       {
         title: "List personalities",
         description:
-          "List the Agent Personalities on this host — named templates binding a provider/model, effort, mode, prompt, and roles. Pass a name to create_agent's `personality` to spawn it (availability is resolved per workspace; unavailable ones can't be spawned there). Any agent may call this to pick a teammate. Each entry's `guidance`, `tier`, and `canLaunch` fields explain when to choose it.",
+          "List the Agent Personalities on this host - named templates binding a provider/model, effort, mode, prompt, and roles. Pass a name to create_agent's `personality` to spawn it (availability is resolved per workspace; unavailable ones can't be spawned there). Any agent may call this to pick a teammate. Each entry's `guidance`, `tier`, and `canLaunch` fields explain when to choose it.",
         inputSchema: {
           cwd: z
             .string()
@@ -2192,7 +2192,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
                 ),
               guidance: z
                 .string()
-                .describe("Why you'd choose this personality — its roles' intent."),
+                .describe("Why you'd choose this personality - its roles' intent."),
               unavailableReason: z.string().optional(),
               modeId: z.string().optional(),
               thinkingOptionId: z.string().optional(),
@@ -2203,7 +2203,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
             .object({ id: z.string(), name: z.string(), note: z.string() })
             .optional()
             .describe(
-              "Present when an Agent Team is active — the list above is scoped to its members.",
+              "Present when an Agent Team is active - the list above is scoped to its members.",
             ),
         },
       },
@@ -2213,7 +2213,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         const cwd = args.cwd?.trim() || caller?.cwd || undefined;
         const entries = await providerSnapshotManager.listProviders({ cwd, wait: true });
         // With a team active, the bench is the team: only members are listed
-        // (create_agent by explicit name still resolves the full roster — an
+        // (create_agent by explicit name still resolves the full roster - an
         // off-team specialist can be pulled in deliberately, without the team
         // prompt). No active team = the full roster, exactly as before.
         const activeTeam = getActiveAgentTeam(readAgentTeams?.());
@@ -2307,7 +2307,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   // Resolve the effective notifyOnFinish for a create_agent call. Agent-scoped
   // omissions fall back to the daemon agentBehaviors.notifyOnFinishDefault toggle
   // (default true); top-level omissions stay false (top-level sends can't be
-  // notified — there's no caller agent to notify). Explicit args always win.
+  // notified - there's no caller agent to notify). Explicit args always win.
   function resolveCreateAgentNotifyOnFinish(resolved: ResolvedCreateAgentToolArgs): boolean {
     if (resolved.kind === "agent-scoped") {
       return (
@@ -2810,15 +2810,15 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     {
       title: "Show a widget",
       description:
-        "Render a visual inline in the conversation — an SVG diagram or chart, an HTML " +
+        "Render a visual inline in the conversation - an SVG diagram or chart, an HTML " +
         "dashboard, a mockup, a small interactive control. It appears in the transcript at " +
         "this point in your reply, next to the text explaining it.\n\n" +
         "Reach for this whenever a picture carries the answer better than prose: comparing " +
         "options, showing a flow or an architecture, plotting numbers, sketching UI, laying " +
-        "out anything with two dimensions. Do not narrate what you are about to draw — draw it.\n\n" +
+        "out anything with two dimensions. Do not narrate what you are about to draw - draw it.\n\n" +
         "Call widget_contract FIRST, before your first widget, and follow what it says. It " +
         "carries the theme variables, the icon set, the two host globals, and the sandbox " +
-        "limits — none of which you can guess. There is NO network: no CDN, no Chart.js, no " +
+        "limits - none of which you can guess. There is NO network: no CDN, no Chart.js, no " +
         "D3, no web fonts. Everything is inline HTML/CSS/SVG/JS.\n\n" +
         "A widget is not an artifact. Use this for something that explains the answer here " +
         "and now; use create_artifact for a document the user will come back to.",
@@ -2826,7 +2826,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         // Declared before widget_code on purpose. Providers stream tool inputs
         // in declaration order and withhold a string argument until it closes,
         // so the fields listed first arrive while the fragment is still being
-        // written — which is what lets Otto show these messages instead of a
+        // written - which is what lets Otto show these messages instead of a
         // dead spinner.
         loading_messages: z
           .array(z.string())
@@ -2834,8 +2834,8 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           .max(WIDGET_MAX_LOADING_MESSAGES)
           .describe(
             "1-4 short lines shown while the widget renders, roughly five words each, in the " +
-              "user's language. If the subject is serious — illness, grief, conflict, disaster, " +
-              'money someone could lose — keep them flat and factual ("Laying out the stages"). ' +
+              "user's language. If the subject is serious - illness, grief, conflict, disaster, " +
+              'money someone could lose - keep them flat and factual ("Laying out the stages"). ' +
               "Otherwise have fun with them.",
           ),
         title: z
@@ -2844,14 +2844,14 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           .min(1)
           .describe(
             "Short snake_case identifier, specific enough to tell this widget apart from " +
-              "others in the same conversation — q4_revenue_by_region, not chart.",
+              "others in the same conversation - q4_revenue_by_region, not chart.",
           ),
         widget_code: z
           .string()
           .min(1)
           .describe(
             "The fragment. Starts with <svg for SVG mode, otherwise HTML. No DOCTYPE, no " +
-              "<html>/<head>/<body>. Content-driven height — never position:fixed and never a " +
+              "<html>/<head>/<body>. Content-driven height - never position:fixed and never a " +
               "height on html/body.",
           ),
       },
@@ -2861,7 +2861,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       },
     },
     async (input: { widget_code: string; title: string; loading_messages: string[] }) => {
-      // The widget renders from the tool CALL, not from this result — the
+      // The widget renders from the tool CALL, not from this result - the
       // fragment is already on its way to the client by the time this runs (see
       // widget-timeline.ts). The handler exists to validate, so a fragment that
       // cannot render comes back to the model as a fixable error instead of
@@ -2914,7 +2914,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         "Call this on your own initiative, without being asked, whenever you notice something " +
         "worth doing that would bloat the current change: dead code, stale docs, missing test " +
         "coverage, a confirmed TODO, a refactor, or a bug spotted in passing. Noticing it is the " +
-        "trigger — do not wait for permission and do not just mention it in prose.\n\n" +
+        "trigger - do not wait for permission and do not just mention it in prose.\n\n" +
         'Also call this whenever the user asks for one, in any of their words: "suggest a task", ' +
         '"suggest tasks", "make that a task", "add a task", "queue that up", "spin that off", ' +
         '"flag that for later", "note that for later", "spawn a task". These all mean this tool.\n\n' +
@@ -2927,14 +2927,14 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         title: z
           .string()
           .describe(
-            "A short imperative action phrase, under 60 chars, starting with a verb — the card " +
+            "A short imperative action phrase, under 60 chars, starting with a verb - the card " +
               'label and the spawned session\'s title. E.g. "Fix the flaky auth test", "Add ' +
               'parser tests".',
           ),
         prompt: z
           .string()
           .describe(
-            "The self-contained initial message for the spawned session — NOT shown to the user " +
+            "The self-contained initial message for the spawned session - NOT shown to the user " +
               "directly. Include file paths and enough context to do the task without this " +
               "conversation.",
           ),
@@ -2982,7 +2982,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         "Withdraw a suggested-task card you created with spawn_task, when it's now stale, " +
         "superseded, or already handled (to replace one, spawn the new card first, then dismiss the " +
         "old task_id). Only cards the user hasn't acted on can be withdrawn; if it was already " +
-        "started or dismissed, the result says so — don't retry.",
+        "started or dismissed, the result says so - don't retry.",
       inputSchema: {
         task_id: z.string(),
         reason: z
@@ -3022,8 +3022,8 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
 
     /**
      * The personality behind the calling agent. Memory is keyed to the
-     * personality, not the agent — the agent is ephemeral, the personality is
-     * the continuity — so an agent with no bound personality has nowhere to keep
+     * personality, not the agent - the agent is ephemeral, the personality is
+     * the continuity - so an agent with no bound personality has nowhere to keep
      * anything and is told so plainly rather than silently succeeding.
      */
     const requireMemoryTarget = (): { personalityId: string; cwd: string | undefined } => {
@@ -3047,7 +3047,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         title: "Remember a lesson",
         description:
           "Record something you learned, so you still know it in your next session. State the " +
-          "lesson and nothing else — there is no id to track, no file to choose and no index to " +
+          "lesson and nothing else - there is no id to track, no file to choose and no index to " +
           "maintain. Storage, placement and de-duplication are handled for you, and restating " +
           "something you already recorded reinforces it rather than duplicating it.\n\n" +
           "Call this on your own initiative whenever you learn something that will still be true " +
@@ -3064,7 +3064,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
             .string()
             .describe(
               "The lesson, as one short standalone paragraph. Include the specific names, paths " +
-                "or commands involved — a lesson too vague to act on is noise.",
+                "or commands involved - a lesson too vague to act on is noise.",
             ),
           scope: z
             .enum(["project", "everywhere"])
@@ -3116,7 +3116,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           "on your own initiative when a lesson you were given contradicts what you are seeing.\n\n" +
           "Then work through them looking for lessons that are now WRONG, too VAGUE to act on, " +
           "OVERLAPPING with another, or no longer RELEVANT.\n\n" +
-          "For every change you want to make, ASK THE USER FIRST — say which lesson, what you " +
+          "For every change you want to make, ASK THE USER FIRST - say which lesson, what you " +
           "think is wrong with it, and what you propose instead, then wait for the answer. Only " +
           "then call revise_lesson. Rewriting a lesson on your own judgement turns your " +
           "assumptions into something you will trust permanently, which is the failure this " +
@@ -3160,7 +3160,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         title: "Revise a remembered lesson",
         description:
           "Apply one reviewed change to a lesson: rewrite it, change its scope, or forget it. " +
-          "The handle comes from review_lessons — call that first.\n\n" +
+          "The handle comes from review_lessons - call that first.\n\n" +
           "Only call this after the user has agreed to this specific change. This is the " +
           "deliberate counterpart to remember_lesson: recording is reflexive, revising is not.",
         inputSchema: {
@@ -3378,7 +3378,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     {
       title: "Create artifact",
       description:
-        'Create an artifact: a self-contained HTML page (report, dashboard, visualization, mockup) generated by a background agent and shown in the Artifacts screen. Returns immediately as "generating" and flips to "ready"/"error" on its own within minutes — no need to poll. Runs unattended and inherits your provider/model/effort/mode unless overridden. The generator can\'t see this conversation, so put all content, data, and requirements in the description.',
+        'Create an artifact: a self-contained HTML page (report, dashboard, visualization, mockup) generated by a background agent and shown in the Artifacts screen. Returns immediately as "generating" and flips to "ready"/"error" on its own within minutes - no need to poll. Runs unattended and inherits your provider/model/effort/mode unless overridden. The generator can\'t see this conversation, so put all content, data, and requirements in the description.',
       inputSchema: {
         name: z
           .string()
@@ -3393,7 +3393,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           .trim()
           .min(1, "description is required")
           .describe(
-            "Generation prompt. Self-contained: include all content, data, and requirements — the generator has no access to this conversation.",
+            "Generation prompt. Self-contained: include all content, data, and requirements - the generator has no access to this conversation.",
           ),
         provider: z
           .string()
@@ -3425,7 +3425,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           .min(1)
           .optional()
           .describe(
-            "Permission mode id for the generation agent (unattended/bypass modes only — anything else falls back to the provider's unattended default, so generation never stalls). Defaults to your own mode when generating with your provider.",
+            "Permission mode id for the generation agent (unattended/bypass modes only - anything else falls back to the provider's unattended default, so generation never stalls). Defaults to your own mode when generating with your provider.",
           ),
         projectId: z
           .string()
@@ -3603,7 +3603,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     {
       title: "Update artifact",
       description:
-        "Edit an artifact's metadata — name, prompt, project, provider, model, effort — WITHOUT re-running generation. Call generate_artifact afterwards to re-generate with the new settings.",
+        "Edit an artifact's metadata - name, prompt, project, provider, model, effort - WITHOUT re-running generation. Call generate_artifact afterwards to re-generate with the new settings.",
       inputSchema: {
         artifactId: z
           .string()
@@ -4360,7 +4360,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
 
       let resolvedInput = input;
       if (typeof input.thinkingOptionId === "string") {
-        // Resolve against the provider/model the schedule ends up with —
+        // Resolve against the provider/model the schedule ends up with -
         // either from this same update or from the stored target.
         const existing = await scheduleService.inspect(input.id);
         const existingConfig =
@@ -4534,7 +4534,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   // Workspace-level counterparts to the worktree tools below. These speak the
   // noun the UI uses: one create_workspace call covers both an existing
   // checkout and a fresh worktree, selected by `isolation` (docs/glossary.md).
-  // The worktree tools stay registered — they are the lower-level operation,
+  // The worktree tools stay registered - they are the lower-level operation,
   // and archive_worktree in particular archives every workspace on a worktree,
   // which archive_workspace deliberately does not do.
   registerTool(
@@ -4711,7 +4711,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       // A worktree-backed workspace lives under a parent repo whose worktree
       // list goes stale the moment this one is removed. Hand the repo root to
       // archiveByScope so it force-refreshes that snapshot, exactly as
-      // archive_worktree does — otherwise the removed worktree lingers in the UI.
+      // archive_worktree does - otherwise the removed worktree lingers in the UI.
       const repoRoot =
         workspace.kind === "worktree" && options.workspaceGitService
           ? await options.workspaceGitService.resolveRepoRoot(workspace.cwd).catch(() => undefined)
@@ -5172,7 +5172,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       {
         title: "Start orchestration run",
         description:
-          "Declare a multi-agent plan the daemon executes as a Run: typed phases (research/plan/implement/design/verify/gate/deliver), fanning out candidates, judging them, looping until enough pass, and pausing at gates for approval. Each phase dispatches to the active team's member for its role — fails loudly if the team lacks one. Blocks until the run finishes (returning `result`, the final deliverable, which you should relay to the user) or pauses at a gate (returning a `note` to relay). Prefer this over hand-spawning and tracking agents yourself.",
+          "Declare a multi-agent plan the daemon executes as a Run: typed phases (research/plan/implement/design/verify/gate/deliver), fanning out candidates, judging them, looping until enough pass, and pausing at gates for approval. Each phase dispatches to the active team's member for its role - fails loudly if the team lacks one. Blocks until the run finishes (returning `result`, the final deliverable, which you should relay to the user) or pauses at a gate (returning a `note` to relay). Prefer this over hand-spawning and tracking agents yourself.",
         inputSchema: RunPlanSchema,
         outputSchema: {
           runId: z.string(),
@@ -5212,7 +5212,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           awaitAgent: async ({ agentId, signal }) => {
             try {
               // Wait for the whole subtree to settle, not just the worker's first
-              // idle — a worker that spawns its own helpers gets re-invoked when
+              // idle - a worker that spawns its own helpers gets re-invoked when
               // they finish and writes its real answer in a later turn.
               const result = await agentManager.waitForAgentFullySettled(agentId, { signal });
               const finalMessage =
@@ -5225,7 +5225,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           cancelAgent: async ({ agentId }) => {
             try {
               // The cancel cascade: a canceled run must really stop its
-              // children, not abandon them running. Best-effort — an agent that
+              // children, not abandon them running. Best-effort - an agent that
               // settled first is the expected race.
               await agentManager.cancelAgentRun(agentId);
             } catch (error) {
@@ -5245,7 +5245,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           ...(activeTeam ? { teamId: activeTeam.id, teamName: activeTeam.name } : {}),
         });
         // Block until the run settles or parks at a gate, so the conductor comes
-        // back with the actual deliverable to relay — not just a fire-and-forget id.
+        // back with the actual deliverable to relay - not just a fire-and-forget id.
         const outcome = await activeRunService.settleOrPause({ runId: run.id, settled });
         const result = summarizeRunOutput(outcome);
         return {
@@ -5272,7 +5272,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       {
         title: "Get run status",
         description:
-          "Return the current projection of an orchestration run — its phases, statuses, and structured judge verdicts.",
+          "Return the current projection of an orchestration run - its phases, statuses, and structured judge verdicts.",
         inputSchema: {
           runId: z.string(),
         },
@@ -5320,7 +5320,7 @@ function registerGraphNodeTools(input: {
  * Register a graph node's own read-only query tools, from its labels.
  *
  * Like submit_output these sit past the group gates, because they are not Otto
- * capabilities being handed out — they are lookups this node's author defined
+ * capabilities being handed out - they are lookups this node's author defined
  * for this node, and each one is read-only by construction
  * (orchestration/node-query-tools.ts). Names are prefixed so a query tool can
  * never shadow a built-in.
@@ -5375,13 +5375,13 @@ function registerNodeQueryTools(input: {
  * Register submit_output for an agent the daemon spawned as a graph node with
  * declared output fields (projects/orchestration-graphs). The contract rides on
  * the agent's own labels, so the tool exists for exactly one agent and every
- * provider reaches it the same way — MCP-served seats through the daemon's MCP
+ * provider reaches it the same way - MCP-served seats through the daemon's MCP
  * server, openai-compat seats through the native tool loop.
  *
  * Deliberately registered past the group and orchestration-policy gates. Those
  * gates decide which Otto *capabilities* a node may use; this is not a
- * capability, it is the node's own deliverable channel. A deterministic node —
- * the very kind most likely to declare fields — would otherwise have its submit
+ * capability, it is the node's own deliverable channel. A deterministic node -
+ * the very kind most likely to declare fields - would otherwise have its submit
  * tool stripped as part of the "agents" group and could never satisfy the
  * contract its graph gave it.
  *
@@ -5408,7 +5408,7 @@ function registerNodeOutputTool(input: {
     name: "submit_output",
     title: "Submit output",
     description:
-      "Submit this node's declared output fields. Call exactly once when your work is complete — this call is the deliverable, not your chat message.",
+      "Submit this node's declared output fields. Call exactly once when your work is complete - this call is the deliverable, not your chat message.",
     inputSchema: compileOutputToolInputShape(fields),
     handler: async (rawInput: unknown): Promise<OttoToolResult> => {
       const validation = validateNodeOutput(fields, rawInput);

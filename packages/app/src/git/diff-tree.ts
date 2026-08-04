@@ -36,7 +36,7 @@ export interface DiffTreeFolderRow {
   /** compressed display label, e.g. "packages/app/src" */
   displayName: string;
   depth: number;
-  /** which indent rails keep running below this row — see tree-rail-mask.ts */
+  /** which indent rails keep running below this row - see tree-rail-mask.ts */
   ancestorMask: number;
   additions: number;
   deletions: number;
@@ -46,7 +46,7 @@ export interface DiffTreeFileRow {
   kind: "file";
   file: ParsedDiffFile;
   depth: number;
-  /** which indent rails keep running below this row — see tree-rail-mask.ts */
+  /** which indent rails keep running below this row - see tree-rail-mask.ts */
   ancestorMask: number;
 }
 
@@ -137,7 +137,7 @@ interface DirStats {
 const EMPTY_DIR_STATS: DirStats = { additions: 0, deletions: 0 };
 
 // Single post-order pass computing every directory node's aggregate stats from
-// its already-summed children — O(n), vs. re-walking each subtree per folder row.
+// its already-summed children - O(n), vs. re-walking each subtree per folder row.
 function computeDirStats(root: DiffTreeDirNode): Map<DiffTreeDirNode, DirStats> {
   const statsByNode = new Map<DiffTreeDirNode, DirStats>();
   function visit(node: DiffTreeDirNode): DirStats {
@@ -201,7 +201,7 @@ export function flattenDiffTree(
   return rows;
 }
 
-/** Every directory path in the (compressed) tree — used for "collapse all folders". */
+/** Every directory path in the (compressed) tree - used for "collapse all folders". */
 export function collectDirPaths(root: DiffTreeDirNode): string[] {
   const paths: string[] = [];
   function walk(node: DiffTreeDirNode): void {

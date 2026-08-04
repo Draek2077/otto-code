@@ -136,11 +136,11 @@ for (let i = 0; i < 20; i++) {
 
 ### 3. fetchAgents is required before most operations
 
-Call `client.fetchAgents()` after connecting. The daemon session expects this handshake before it processes other requests — without it, messages like `get_providers_snapshot_request` will silently hang.
+Call `client.fetchAgents()` after connecting. The daemon session expects this handshake before it processes other requests - without it, messages like `get_providers_snapshot_request` will silently hang.
 
 ### 4. listen: "127.0.0.1:0" for port allocation
 
-Always use port `0` so the OS picks a free port. Never hardcode a port — it will collide with the main daemon or other test runs.
+Always use port `0` so the OS picks a free port. Never hardcode a port - it will collide with the main daemon or other test runs.
 
 ### 5. Script must live inside packages/server
 

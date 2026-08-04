@@ -13,7 +13,7 @@ import type { WidgetFrameProps } from "./widget-frame-types";
 /**
  * Web widget renderer.
  *
- * `allow-same-origin` is deliberately absent, exactly as for artifacts — the
+ * `allow-same-origin` is deliberately absent, exactly as for artifacts - the
  * guest must not reach the parent document. That makes the frame's origin the
  * opaque string `"null"`, so `event.origin` on a plain `window.postMessage`
  * proves nothing and cannot be used to authenticate the guest.

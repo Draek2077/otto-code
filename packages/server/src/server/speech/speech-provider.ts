@@ -72,7 +72,7 @@ export interface SpeechStreamResult {
 export interface SpeechVoiceOverride {
   /** Voice name (e.g. "af_heart" for Kokoro, "alloy" for OpenAI). */
   name: string;
-  /** The voice's model id — used to resolve a local speaker id. */
+  /** The voice's model id - used to resolve a local speaker id. */
   model?: string;
 }
 

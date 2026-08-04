@@ -6,7 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 // means anything with real layout, so this runs in a browser: the fan is
 // bottom-anchored above the message box, and the regression it guards against
 // was the card being drawn somewhere else entirely for the first frame of its
-// exit — high above the composer — before fading and sinking from there.
+// exit - high above the composer - before fading and sinking from there.
 //
 // Reanimated's web exit did that, which is why this component no longer uses it:
 // it pins an absolutely-positioned clone at coordinates snapshotted at the

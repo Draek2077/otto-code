@@ -36,7 +36,7 @@ export const CURATED_REPOS: CuratedRepo[] = [
     workspaceDir: "packages/protocol",
     ref: "origin/main",
     maxTasks: 3,
-    note: "schema/validation workspace — fast suite, no heavy deps",
+    note: "schema/validation workspace - fast suite, no heavy deps",
   },
   {
     name: "brain",
@@ -44,7 +44,7 @@ export const CURATED_REPOS: CuratedRepo[] = [
     workspaceDir: "packages/brain",
     ref: "origin/main",
     maxTasks: 3,
-    note: "the brain package itself — pure-logic tests (vram, gguf, bench)",
+    note: "the brain package itself - pure-logic tests (vram, gguf, bench)",
   },
 ];
 
@@ -55,5 +55,5 @@ export function findCuratedRepo(name: string): CuratedRepo | null {
 
 /** A one-per-line listing of the available presets, for help/error text. */
 export function describeCuratedRepos(): string {
-  return CURATED_REPOS.map((r) => `  ${r.name.padEnd(10)} ${r.workspace} — ${r.note}`).join("\n");
+  return CURATED_REPOS.map((r) => `  ${r.name.padEnd(10)} ${r.workspace} - ${r.note}`).join("\n");
 }

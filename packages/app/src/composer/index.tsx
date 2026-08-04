@@ -530,7 +530,7 @@ interface QueuedMessageRowProps {
   onSendNow: (id: string) => void;
   /** Non-null on the head row only, and only when more than one message waits. */
   onSendAll: (() => void) | null;
-  /** Null when the host cannot re-order — the move controls are then absent. */
+  /** Null when the host cannot re-order - the move controls are then absent. */
   onMove: ((id: string, direction: "up" | "down") => void) | null;
   canMoveUp: boolean;
   canMoveDown: boolean;
@@ -1171,7 +1171,7 @@ export function Composer({
 
   const agentState = useSessionStore(useShallow(buildAgentStateSelector(serverId, agentId)));
 
-  // Daemon-owned when the host advertises it, client-held otherwise — the
+  // Daemon-owned when the host advertises it, client-held otherwise - the
   // composer only ever talks to this controller. See composer/queue.ts.
   const messageQueue = useComposerQueue({ serverId, agentId, client, encodeImages });
   const queuedMessages = messageQueue.items;
@@ -1238,7 +1238,7 @@ export function Composer({
   const [folderSearchQuery, setFolderSearchQuery] = useState("");
   const [lightboxMetadata, setLightboxMetadata] = useState<AttachmentMetadata | null>(null);
   // Mirrored up from AgentControls: true while an agent.personality.set RPC is
-  // in flight. Locks send (button + keyboard), dictation, and voice mode —
+  // in flight. Locks send (button + keyboard), dictation, and voice mode -
   // typing and attachments deliberately stay enabled, so this must never feed
   // the MessageInput `disabled` prop.
   const [isPersonalitySwitching, setIsPersonalitySwitching] = useState(false);
@@ -1251,7 +1251,7 @@ export function Composer({
 
   // On mobile the chat layout reflows at send time as if the keyboard were
   // already gone, so the soft keyboard must start dismissing immediately with
-  // the send — not linger over the response. Hardware-keyboard sends (soft
+  // the send - not linger over the response. Hardware-keyboard sends (soft
   // keyboard not visible) keep focus so the user can type the next message.
   const dismissKeyboardOnSubmit = useCallback(() => {
     if (blurOnSubmit || (isNative && Keyboard.isVisible())) {
@@ -1385,7 +1385,7 @@ export function Composer({
   // background tab or an unopened transcript finds nothing and does nothing.
   //
   // Routes through submitMessage rather than the full composer submit path on
-  // purpose — the widget's message must not clear a draft the user is halfway
+  // purpose - the widget's message must not clear a draft the user is halfway
   // through typing, and must not force-interrupt a running turn.
   useEffect(() => {
     return registerWidgetPromptSender({ serverId, agentId }, (text) => {
@@ -1438,6 +1438,13 @@ export function Composer({
       const trimmed = queuedMessage.trim();
       if (!trimmed && queuedAttachments.length === 0) return;
 
+      // Queueing is a send from the reader's point of view: they hit Enter and
+      // expect to see where their words landed. docs/chat-scrolling.md counts
+      // "sending a message" among the three explicit take-me-to-the-bottom
+      // requests, and leaving this path out of it meant a reader who had scrolled
+      // up stayed scrolled up with no sign the message went anywhere.
+      onMessageSent?.();
+
       // Clear optimistically: the row appears from the queue controller either
       // way, and a failed enqueue surfaces as a send error like any other.
       setUserInput("");
@@ -1448,7 +1455,15 @@ export function Composer({
         setSendError(error instanceof Error ? error.message : t("composer.errors.failedToSend"));
       });
     },
-    [clearSentAttachments, messageQueue, resetSuppression, setSelectedAttachments, setUserInput, t],
+    [
+      clearSentAttachments,
+      messageQueue,
+      onMessageSent,
+      resetSuppression,
+      setSelectedAttachments,
+      setUserInput,
+      t,
+    ],
   );
 
   const sendMessageWithContent = useCallback(
@@ -1458,9 +1473,9 @@ export function Composer({
       forceSend?: boolean,
     ): Promise<boolean> => {
       // A forced send to a busy agent interrupts the active turn server-side,
-      // which kills any in-flight observed subagents/workflows — confirm first
+      // which kills any in-flight observed subagents/workflows - confirm first
       // (suppressible). Runs before submitAgentInput so a cancel leaves the
-      // composer untouched — including its grown height (the false return
+      // composer untouched - including its grown height (the false return
       // tells the input not to collapse).
       if (forceSend && isAgentRunning) {
         const confirmedInterrupt = await confirmInterruptWithLiveSubagents({
@@ -1510,7 +1525,7 @@ export function Composer({
         appendSentPrompt(serverId, agentId, outgoingMessage);
         historyNavRef.current = { index: null, stashed: "" };
         // The box was just cleared programmatically, which fires no selection
-        // event — mirror that so the ArrowUp caret gate is not left stale.
+        // event - mirror that so the ArrowUp caret gate is not left stale.
         selectionRef.current = { start: 0, end: 0 };
         setAgentPromptSuggestion(serverId, agentId, null);
       }
@@ -1775,7 +1790,7 @@ export function Composer({
   );
 
   // Null when this host has no way to re-order, which is what hides the
-  // controls — the capability check lives in useComposerQueue, not here.
+  // controls - the capability check lives in useComposerQueue, not here.
   const queueMove = messageQueue.move;
   const handleMoveQueuedMessage = useMemo(
     () =>
@@ -1795,7 +1810,7 @@ export function Composer({
     async (id: string) => {
       if (!sendAgentMessageRef.current && !onSubmitMessageRef.current) return;
       // "Send now" on a queued message interrupts the active turn, which kills
-      // any in-flight observed subagents/workflows — confirm first (suppressible).
+      // any in-flight observed subagents/workflows - confirm first (suppressible).
       if (isAgentRunning) {
         const confirmedInterrupt = await confirmInterruptWithLiveSubagents({
           serverId,
@@ -1805,7 +1820,7 @@ export function Composer({
           return;
         }
       }
-      // Take it out of the queue first, then reuse the regular send path — the
+      // Take it out of the queue first, then reuse the regular send path - the
       // server-side send atomically interrupts whatever is running.
       let taken: ComposerQueueItem | null = null;
       try {
@@ -1958,7 +1973,7 @@ export function Composer({
   }, [agentId, serverId, setAgentPromptSuggestion, setUserInput]);
 
   // Recall swaps the value programmatically, which does not move the caret on
-  // every platform — park it at the end so the next keystroke appends, matching
+  // every platform - park it at the end so the next keystroke appends, matching
   // shell history. Deferred a frame so the new value has reached the TextInput.
   const parkCaretAtEnd = useCallback(() => {
     setTimeout(() => {
@@ -1978,7 +1993,7 @@ export function Composer({
         if (nav.index === null) {
           const sel = selectionRef.current;
           // An empty box has nowhere for ArrowUp to move the caret, so it always
-          // recalls — `selectionRef` can still hold the pre-clear offset after a
+          // recalls - `selectionRef` can still hold the pre-clear offset after a
           // send, since clearing the value fires no selection event.
           if (userInputRef.current.length > 0 && (sel.start !== 0 || sel.end !== 0)) return false;
           historyNavRef.current = { index: history.length - 1, stashed: userInputRef.current };

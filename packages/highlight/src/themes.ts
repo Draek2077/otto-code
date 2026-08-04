@@ -7,7 +7,7 @@ import type { DiffBackgroundColors, HighlightStyle } from "./types.js";
 // app (resolveSyntaxColors receives the active theme's colorScheme). Every
 // theme ships both variants -- none may assume a dark (or light) surface, so
 // none may rely on a bare white/black "base" text color that would vanish on
-// the other surface. The code frame — gutter, line numbers, background —
+// the other surface. The code frame - gutter, line numbers, background -
 // follows the app theme, not the palette.
 export type SyntaxThemeId =
   | "default"
@@ -104,7 +104,7 @@ function expandRolePalette(r: RolePalette): SyntaxColors {
   };
 }
 
-// --- Default (high-contrast primary hues — the CGA-basic baseline) -------
+// --- Default (high-contrast primary hues - the CGA-basic baseline) -------
 const defaultLight: RolePalette = {
   base: "#000000",
   keyword: "#0000aa",
@@ -224,7 +224,7 @@ const monokaiDark: RolePalette = {
   diffRemoved: "rgba(248, 53, 53, 0.18)",
 };
 
-// --- Nightshade (Light / Dark — gothic pink/purple/cyan, formerly "Dracula";
+// --- Nightshade (Light / Dark - gothic pink/purple/cyan, formerly "Dracula";
 // renamed once it grew a light variant the original theme never had) --------
 const nightshadeLight: RolePalette = {
   base: "#282a36",
@@ -255,7 +255,7 @@ const nightshadeDark: RolePalette = {
   diffRemoved: "rgba(255, 85, 85, 0.18)",
 };
 
-// --- Neotokyo (Light / Dark — cyber yellow, hot pink, neon cyan) ----------
+// --- Neotokyo (Light / Dark - cyber yellow, hot pink, neon cyan) ----------
 const neotokyoLight: RolePalette = {
   base: "#1a1025",
   keyword: "#c2188f",

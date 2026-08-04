@@ -209,7 +209,7 @@ function readTtsSelection(speech: MutableSpeechConfig | null): TtsSelection {
 type ApplyPatch = (patch: MutableDaemonConfigPatch) => void;
 
 // ---------------------------------------------------------------------------
-// Row primitives — title (+ hint) on the left, compact control on the right,
+// Row primitives - title (+ hint) on the left, compact control on the right,
 // matching the appearance section's picker rows.
 // ---------------------------------------------------------------------------
 
@@ -588,7 +588,7 @@ function VoiceModeCard({
 }
 
 // ---------------------------------------------------------------------------
-// OpenAI API key — one shared key for the OpenAI STT/TTS engines. Commits on
+// OpenAI API key - one shared key for the OpenAI STT/TTS engines. Commits on
 // blur/submit; an empty value clears the stored key on the host.
 // ---------------------------------------------------------------------------
 
@@ -650,7 +650,7 @@ function OpenAiKeyCard({
 
 /**
  * The key card only earns its place once OpenAI backs one of the three engine
- * slots — otherwise it's a field nobody in this configuration uses.
+ * slots - otherwise it's a field nobody in this configuration uses.
  */
 function usesOpenAiEngine(speech: MutableSpeechConfig | null): boolean {
   return (

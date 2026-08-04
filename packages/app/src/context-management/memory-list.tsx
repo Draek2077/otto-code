@@ -23,7 +23,7 @@ const ThemedX = withUnistyles(X);
 const ROW_ICON_SIZE = 15;
 
 interface ContextMemoryListProps {
-  /** null when no personality is selected — the list says so rather than blanking. */
+  /** null when no personality is selected - the list says so rather than blanking. */
   view: PersonalityMemoryView | null;
   isLoading: boolean;
   error: string | null;
@@ -38,7 +38,7 @@ interface ContextMemoryListProps {
 }
 
 /**
- * The Memory tab: what one personality has learned, and — above it — the exact
+ * The Memory tab: what one personality has learned, and - above it - the exact
  * text that gets injected because of it.
  *
  * The brief comes first and is shown verbatim, because "memory is only
@@ -48,7 +48,7 @@ interface ContextMemoryListProps {
  * dropped three lessons, the brief says so and the rows still show all of them.
  *
  * Lessons are NOT a node in the Context tree next door. Tree rows open in the
- * file pane, and a lesson is a stored row rather than a file — a row that opened
+ * file pane, and a lesson is a stored row rather than a file - a row that opened
  * a path that does not exist would be a worse lie than not being there at all.
  */
 export function ContextMemoryList({
@@ -300,7 +300,7 @@ function MemoryRow({
 
   return (
     // Hover on a plain View with pointerenter/leave, actions in Pressables
-    // inside it — the canonical pattern from docs/hover.md. Putting hover on a
+    // inside it - the canonical pattern from docs/hover.md. Putting hover on a
     // Pressable that contains Pressables makes the two state machines fight.
     <View
       style={styles.row}
@@ -363,7 +363,7 @@ interface MemoryComposerProps {
  * works on a set of FILES and reviews a diff hunk by hunk, which earns its
  * complexity on a long document and is pure overhead on a two-sentence lesson.
  * The model-assisted path for improving a lesson is `review_lessons`, which asks
- * the user questions — the thing a diff review cannot do.
+ * the user questions - the thing a diff review cannot do.
  */
 function MemoryComposer({
   initialText,
@@ -467,7 +467,7 @@ function resolveReach(
     : "elsewhere";
 }
 
-/** Mirrors the daemon's root comparison — trailing separators, slashes, case. */
+/** Mirrors the daemon's root comparison - trailing separators, slashes, case. */
 function normalizeRoot(root: string): string {
   return root
     .replace(/[\\/]+$/, "")
@@ -532,7 +532,9 @@ const styles = StyleSheet.create((theme) => {
       borderWidth: theme.borderWidth[1],
       borderColor: theme.colors.border,
       borderRadius: theme.borderRadius.md,
-      backgroundColor: theme.colors.surface2,
+      // surface1, not surface2: `border` is nearly identical to surface2 on
+      // this theme, which swallows the card's own outline.
+      backgroundColor: theme.colors.surface1,
     },
     briefHeader: {
       flexDirection: "row",

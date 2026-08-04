@@ -2,7 +2,7 @@
  * Reproducible terminal latency benchmark (Node-only, isolated daemon).
  *
  * Boots its OWN isolated daemon subprocess (fresh mkdtemp OTTO_HOME, random
- * port) — it NEVER touches the developer daemon on port 6868 — and measures:
+ * port) - it NEVER touches the developer daemon on port 6868 - and measures:
  *   A) terminal echo latency  (single-byte input -> first echoed output frame)
  *   B) terminal output jitter (inter-frame gaps while a command drains ~2MB)
  *   C) RPC ping RTT at 10Hz (proxy for daemon main-loop delay)
@@ -332,7 +332,7 @@ async function measureBurst(client: DaemonClientLike, terminalId: string): Promi
   let lastActivityAt = performance.now();
 
   // Frames smaller than this are the echoed command / prompt noise, not burst
-  // payload — gap timing only starts once real drain data is flowing, so the
+  // payload - gap timing only starts once real drain data is flowing, so the
   // node startup latency doesn't pollute the inter-frame jitter.
   const BURST_FRAME_MIN_BYTES = 1_024;
 
@@ -413,7 +413,7 @@ const PING_INTERVAL_MS = 100;
 
 /**
  * Samples RPC RTT at 10Hz for `durationMs`. Uses `ping` if available, else a
- * cheap listTerminals request. Returns RTT stats — a proxy for main-loop delay.
+ * cheap listTerminals request. Returns RTT stats - a proxy for main-loop delay.
  */
 async function measurePing(client: DaemonClientLike, durationMs: number): Promise<Stats> {
   const rtts: number[] = [];
@@ -666,7 +666,7 @@ function getCommitHash(): string {
 
 async function main(): Promise<void> {
   const commit = getCommitHash();
-  console.log(`Terminal latency benchmark — commit ${commit}`);
+  console.log(`Terminal latency benchmark - commit ${commit}`);
   console.log("Booting isolated daemon (random port, fresh OTTO_HOME)...");
 
   let daemon: BootedDaemon | null = null;

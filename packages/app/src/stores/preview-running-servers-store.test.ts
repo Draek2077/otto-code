@@ -24,7 +24,7 @@ describe("preview running servers store", () => {
     replaceRunningForCwd("server-a", "/repo", ["s1", "s2"]);
     const afterFirst = usePreviewRunningServersStore.getState().runningServerIdsBySessionAndCwd;
 
-    // Order differs, contents don't — the 10s poll must not wake subscribers.
+    // Order differs, contents don't - the 10s poll must not wake subscribers.
     replaceRunningForCwd("server-a", "/repo", ["s2", "s1"]);
 
     expect(usePreviewRunningServersStore.getState().runningServerIdsBySessionAndCwd).toBe(

@@ -10,11 +10,11 @@ const webSelectableTextStyle = isWeb ? { userSelect: "text" as const } : {};
  * Colors go through `themeColorRef`, NOT `theme.colors.*` directly: these
  * styles are resolved in JS (withUnistyles `uniProps` in markdown/renderer)
  * and on web a concrete hex would ignore scoped-theme wrappers like the black
- * chat scope — light-theme text on the pure-black chat pane. See
+ * chat scope - light-theme text on the pure-black chat pane. See
  * `styles/theme-color-ref.ts`.
  *
  * Vertical rhythm: React Native (Yoga) does NOT collapse adjacent margins the
- * way browsers do — a block's marginBottom and the next block's marginTop
+ * way browsers do - a block's marginBottom and the next block's marginTop
  * always stack. Blocks therefore own their spacing via marginBottom, and top
  * margins stay small: they are the *extra* gap added on top of whatever the
  * previous block already left. Sizing a marginTop as if it were the whole gap
@@ -34,7 +34,7 @@ export function createMarkdownStyles(theme: Theme) {
       ...webSelectableTextStyle,
       color: themeColorRef(theme, "foreground"),
       // Prose matches the UI's own text size (sidebar rows, tab titles), not
-      // fontSize.base — chat is a working surface, not a document.
+      // fontSize.base - chat is a working surface, not a document.
       fontSize: theme.fontSize.sm,
       lineHeight: Math.round(theme.fontSize.sm * 1.4),
       flexShrink: 1,
@@ -191,7 +191,7 @@ export function createMarkdownStyles(theme: Theme) {
       lineHeight: Math.round(theme.fontSize.code * 1.45),
     },
 
-    // Indented and fenced blocks both sit on `surfaceCode` — the editor's code
+    // Indented and fenced blocks both sit on `surfaceCode` - the editor's code
     // well, not the elevated-card ramp. Code quoted in chat is the same
     // material as the same code open in the editor.
     code_block: {

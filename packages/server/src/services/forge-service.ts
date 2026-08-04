@@ -490,7 +490,7 @@ export interface ForgeService {
    * auth failure) on failure instead of just resolving to false. Callers that
    * want the precise failure kind before falling back to a PR-status lookup
    * (which can't distinguish "unauthenticated" from "no PR found") should
-   * only probe isAuthenticated() when this is set — otherwise the call
+   * only probe isAuthenticated() when this is set - otherwise the call
    * cannot change the outcome and is pure overhead.
    */
   authProbeCanThrow?: boolean;

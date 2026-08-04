@@ -43,7 +43,7 @@ function formatConnectionEndpoint(endpoint: string): string {
   return endpoint.replace(/:(?:443|80)$/, "");
 }
 
-// Socket/pipe transports have no host:port — their endpoint is a filesystem
+// Socket/pipe transports have no host:port - their endpoint is a filesystem
 // path, so they read as "Local". TCP and relay show the address being used.
 function formatActiveConnectionLabel(connection: ActiveConnection): string {
   if (connection.type === "directSocket" || connection.type === "directPipe") {

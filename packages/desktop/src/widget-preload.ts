@@ -9,7 +9,7 @@ import { contextBridge, ipcRenderer } from "electron";
  * Artifact guests get their preload stripped in main.ts precisely because they
  * need none of that; widgets get this one instead.
  *
- * It exposes exactly one function, one-way, and nothing else — no ipcRenderer,
+ * It exposes exactly one function, one-way, and nothing else - no ipcRenderer,
  * no `require`, no Node. contextIsolation is on, so this code runs in the
  * isolated world and the bridge is the ONLY thing the fragment's own scripts
  * can see. The host still parses and validates every frame

@@ -84,7 +84,7 @@ rm -rf android
 
 ## Running on an emulator against a worktree daemon
 
-`npm run android` builds and installs the dev client, but two connections have to reach your Mac from inside the emulator — Metro (the JS bundle) and the Otto daemon — and **the emulator does not share the host's loopback**: `localhost` inside the emulator is the emulator itself. Reach the host at `10.0.2.2` (the standard AVD's host alias) for both:
+`npm run android` builds and installs the dev client, but two connections have to reach your Mac from inside the emulator - Metro (the JS bundle) and the Otto daemon - and **the emulator does not share the host's loopback**: `localhost` inside the emulator is the emulator itself. Reach the host at `10.0.2.2` (the standard AVD's host alias) for both:
 
 ```bash
 REACT_NATIVE_PACKAGER_HOSTNAME=10.0.2.2 \
@@ -92,10 +92,10 @@ REACT_NATIVE_PACKAGER_HOSTNAME=10.0.2.2 \
   npm run android
 ```
 
-- **`REACT_NATIVE_PACKAGER_HOSTNAME=10.0.2.2`** — without it, Expo bakes your Mac's LAN IP into the dev client's Metro URL, which the emulator can't route to, and the app dies with `Failed to connect to /<lan-ip>:8081` before any JS loads.
-- **`EXPO_PUBLIC_LOCAL_DAEMON=10.0.2.2:<port>`** — the client's daemon endpoint (`packages/app/src/runtime/host-runtime.ts`); when unset it defaults to `localhost:6868`, the production daemon. Use `$OTTO_SERVICE_DAEMON_PORT` for a worktree daemon running as a Otto service, or `6768` for a standalone `npm run dev:server`. It is inlined into the JS bundle at Metro bundle time, so set it on the build command and clear the Metro cache (`npx expo start -c`) if a change doesn't take.
+- **`REACT_NATIVE_PACKAGER_HOSTNAME=10.0.2.2`** - without it, Expo bakes your Mac's LAN IP into the dev client's Metro URL, which the emulator can't route to, and the app dies with `Failed to connect to /<lan-ip>:8081` before any JS loads.
+- **`EXPO_PUBLIC_LOCAL_DAEMON=10.0.2.2:<port>`** - the client's daemon endpoint (`packages/app/src/runtime/host-runtime.ts`); when unset it defaults to `localhost:6868`, the production daemon. Use `$OTTO_SERVICE_DAEMON_PORT` for a worktree daemon running as a Otto service, or `6768` for a standalone `npm run dev:server`. It is inlined into the JS bundle at Metro bundle time, so set it on the build command and clear the Metro cache (`npx expo start -c`) if a change doesn't take.
 
-**Alternative — `adb reverse` + `localhost`** (if `10.0.2.2` misbehaves):
+**Alternative - `adb reverse` + `localhost`** (if `10.0.2.2` misbehaves):
 
 ```bash
 adb reverse tcp:8081 tcp:8081
@@ -154,7 +154,7 @@ points the gradle plugin's `cliFile` at
 [`scripts/metro-embed-cli.cjs`](../packages/app/scripts/metro-embed-cli.cjs), a
 wrapper that re-absolutizes `--entry-file` before delegating to `@expo/cli`. The
 plugin is gated to `win32` prebuilds, so EAS output is byte-for-byte unaffected.
-Note: a `metro.config.js` is **not** a viable fix here — its mere presence makes
+Note: a `metro.config.js` is **not** a viable fix here - its mere presence makes
 Expo take the `mergeConfig` path, which breaks the `.js`→`.ts` source-extension
 substitution that workspace packages (e.g. `@otto-code/relay`) rely on.
 
@@ -169,20 +169,20 @@ adb exec-out screencap -p > screenshot.png
 > **Fork reality:** on this fork the only thing a tag push triggers on the mobile side is
 > `.github/workflows/android-apk-release.yml`, which builds an APK on the fork's own EAS project
 > (`otto-code` Expo org) and attaches it to the GitHub Release. There are **no store
-> submissions** — no Play Console listing, no Apple account, no EAS GitHub-app store pipeline.
+> submissions** - no Play Console listing, no Apple account, no EAS GitHub-app store pipeline.
 > The upstream description below is kept as reference for if/when store accounts exist; see
 > [fork-release-guide.md](fork-release-guide.md).
 
 Upstream's stable tag pushes like `v0.1.0` trigger:
 
 - The EAS GitHub app on Expo servers (iOS + Android production builds + store submit). There is no workflow file in this repo for it, and it is not wired up on this fork.
-- `.github/workflows/android-apk-release.yml` on GitHub Actions (APK asset on GitHub Release) — the only part active on this fork.
+- `.github/workflows/android-apk-release.yml` on GitHub Actions (APK asset on GitHub Release) - the only part active on this fork.
 
 Upstream: iOS auto-submits to App Store review via a Fastlane lane after EAS uploads to TestFlight, and Android auto-submits to the Play Store via EAS-managed credentials. Neither happens on this fork.
 
 Beta tags like `v0.1.1-beta.1` only trigger the GitHub APK workflow. They publish a GitHub prerelease APK for testing and do not submit to the stores.
 
-`android-v*` tags also trigger only the GitHub APK workflow — useful when you want to ship an APK without going through stores. The GitHub APK workflow supports `workflow_dispatch` with an existing `tag` input so you can rebuild without cutting a new tag.
+`android-v*` tags also trigger only the GitHub APK workflow - useful when you want to ship an APK without going through stores. The GitHub APK workflow supports `workflow_dispatch` with an existing `tag` input so you can rebuild without cutting a new tag.
 
 ### Useful commands
 

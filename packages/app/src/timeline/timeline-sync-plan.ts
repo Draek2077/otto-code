@@ -56,7 +56,7 @@ export function planInitialAgentTimelineSync(input: {
  *
  * Focusing used to fetch unconditionally, which meant every workspace
  * round-trip re-issued `fetch_agent_timeline` for a transcript the client
- * already held — measured at 4 responses (~15 KiB) per round-trip with nothing
+ * already held - measured at 4 responses (~15 KiB) per round-trip with nothing
  * changed, and the largest single share of the navigation path's inbound
  * handler time. It is redundant while the connection has stayed up: live
  * `agent_stream` keeps the tail current, and the reducer's own seq/epoch gate

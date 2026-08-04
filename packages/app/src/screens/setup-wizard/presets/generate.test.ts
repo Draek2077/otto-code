@@ -90,7 +90,7 @@ describe("resolveTierModels", () => {
     expect(resolveTierModels(models)).toEqual({ deep: "big", standard: "mid", fast: "small" });
   });
 
-  it("does NOT guess unknown local models by name — they fall to the heuristic", () => {
+  it("does NOT guess unknown local models by name - they fall to the heuristic", () => {
     // Arbitrary HF ids are not in the catalog, so name/size is ignored; the
     // context-window heuristic (biggest = deep) is the only signal left.
     const models: AgentModelDefinition[] = [
@@ -107,7 +107,7 @@ describe("resolveTierModels", () => {
         contextWindowMaxTokens: 128_000,
       },
     ];
-    // The "7B" wins deep purely on context window — proof we don't read the name.
+    // The "7B" wins deep purely on context window - proof we don't read the name.
     expect(resolveTierModels(models)?.deep).toBe("Qwen2.5-7B");
   });
 

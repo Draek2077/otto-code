@@ -1,5 +1,5 @@
 /**
- * `otto brain report` — write the HTML comparison report and print a per-model
+ * `otto brain report` - write the HTML comparison report and print a per-model
  * score table (newest run per model+config).
  */
 import type { Command } from "commander";

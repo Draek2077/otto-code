@@ -4,7 +4,7 @@
 // mistake is silent: every id this returns has its record unlinked from disk
 // with no undo. The handler does IO; this decides *what*.
 //
-// See docs/chat-lifecycle.md — Delete.
+// See docs/chat-lifecycle.md - Delete.
 
 const MS_PER_DAY = 24 * 60 * 60 * 1_000;
 
@@ -34,7 +34,7 @@ interface Selected {
  * The rules, in the order they matter:
  *
  * 1. **A chat with no `archivedAt` is never selected.** Delete is reachable only
- *    through archive — archive first, then delete — so an active chat can never
+ *    through archive - archive first, then delete - so an active chat can never
  *    be swept, whatever the cutoff. This is the load-bearing boundary.
  * 2. **An unparseable `archivedAt` counts as archived but ageless.** With
  *    `olderThanDays: 0` ("clear everything archived") it is selected; with any
@@ -44,7 +44,7 @@ interface Selected {
  *    that many days old, so it is selected.
  * 4. **A future `archivedAt`** (clock skew, an edited record) is not older than
  *    any positive cutoff, so an age-limited sweep skips it. `olderThanDays: 0`
- *    still takes it — it is archived, and no age filter applies.
+ *    still takes it - it is archived, and no age filter applies.
  * 5. **Oldest first**, so a sweep that fails partway through has deleted the
  *    chats the user cared least about. Ageless records sort last for the same
  *    reason.

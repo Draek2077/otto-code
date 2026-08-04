@@ -1,13 +1,13 @@
 import { z } from "zod";
 
 /**
- * Inline widgets — an agent emits a tool call carrying a fragment of HTML or
+ * Inline widgets - an agent emits a tool call carrying a fragment of HTML or
  * SVG, and Otto renders it inline in the transcript at that call's position.
  *
  * Widgets are NOT artifacts. An artifact is a file-backed document the user
  * keeps (see `../artifacts/types.ts`); a widget is a thought the model had in
  * the middle of a sentence. It has no file, no versioning, and no lifetime
- * beyond its transcript position — the tool-call input IS the content, so a
+ * beyond its transcript position - the tool-call input IS the content, so a
  * re-opened chat re-renders its widgets from the stored timeline for free.
  *
  * See `docs/widgets.md`.
@@ -26,7 +26,7 @@ export const WIDGET_CONTRACT_TOOL_NAME = "widget_contract";
  * (messages.ts) is a `z.discriminatedUnion`, so a client that predates widgets
  * would reject an unknown discriminator and fail to parse the ENTIRE timeline
  * message, not just the widget. `metadata` is `z.record(z.string(), z.unknown())`
- * — an old client carries this through untouched and renders the tool call's
+ * - an old client carries this through untouched and renders the tool call's
  * `plain_text` detail as an ordinary row. That is the protocol contract doing
  * its job.
  */
@@ -41,7 +41,7 @@ export const WIDGET_PAYLOAD_VERSION = 1;
 
 /**
  * How the fragment is interpreted. Auto-detected from the code itself (a
- * fragment starting with `<svg` is SVG), never asked of the model — one less
+ * fragment starting with `<svg` is SVG), never asked of the model - one less
  * thing for it to get wrong.
  */
 export const WIDGET_MODES = ["html", "svg"] as const;
@@ -78,7 +78,7 @@ export type WidgetPayload = z.infer<typeof WidgetPayloadSchema>;
  * Read a widget payload out of a tool call's metadata bag.
  *
  * Returns null for anything that is not a widget of a version this build
- * understands — the caller renders the ordinary tool-call row instead. Never
+ * understands - the caller renders the ordinary tool-call row instead. Never
  * throws: metadata is `unknown` by contract and may come from a newer daemon.
  */
 export function readWidgetPayload(

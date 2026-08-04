@@ -62,7 +62,7 @@ interface ConfigChange {
 
 /**
  * A client's per-agent config surface: set mode, model, feature, and thinking
- * option. Each request shares one envelope — log, run the mutation, then emit the
+ * option. Each request shares one envelope - log, run the mutation, then emit the
  * accepted response, or on failure emit an activity_log error frame followed by
  * the rejected response. Reaches no state beyond the injected operations and the
  * outbound channel.

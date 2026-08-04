@@ -10,6 +10,10 @@ describe("resolveSidebarFooterActiveItem", () => {
     expect(resolveSidebarFooterActiveItem("/stats")).toBe("stats");
   });
 
+  it("marks Brain on the brain route", () => {
+    expect(resolveSidebarFooterActiveItem("/brain")).toBe("brain");
+  });
+
   it("marks Settings on the settings route and its sections", () => {
     expect(resolveSidebarFooterActiveItem("/settings")).toBe("settings");
     expect(resolveSidebarFooterActiveItem("/settings/projects/local/otto")).toBe("settings");
@@ -18,6 +22,12 @@ describe("resolveSidebarFooterActiveItem", () => {
   it("matches the host-scoped twins of those routes", () => {
     expect(resolveSidebarFooterActiveItem("/h/local/open-project")).toBe("home");
     expect(resolveSidebarFooterActiveItem("/h/local/settings")).toBe("settings");
+  });
+
+  it("keeps Brain distinct from Settings, whose Brain section is a different surface", () => {
+    // `/settings/hosts/<id>/brain` is the connection-and-security page, not the
+    // console. Settings is checked first, so the section keeps the Settings mark.
+    expect(resolveSidebarFooterActiveItem("/settings/hosts/local/brain")).toBe("settings");
   });
 
   it("marks nothing on routes with no footer destination", () => {

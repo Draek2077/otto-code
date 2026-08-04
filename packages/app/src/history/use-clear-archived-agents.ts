@@ -21,7 +21,7 @@ export interface ClearArchivedAgentsRequest {
 /**
  * Resolve the hosts a sweep may actually run against: connected, with a client,
  * and advertising `features.historyDelete`. A host that fails any of those is
- * dropped silently rather than surfaced as an error — the button is already gated
+ * dropped silently rather than surfaced as an error - the button is already gated
  * on at least one eligible host, so this is the race-at-press-time case.
  */
 function resolveSweepableHosts(serverIds: readonly string[]): ClearArchivedHost[] {
@@ -48,7 +48,7 @@ function resolveSweepableHosts(serverIds: readonly string[]): ClearArchivedHost[
 
 /**
  * "Clear archived" on the History screen: dry-run for a count, confirm with that
- * count, then delete. Otto's records only — see delete-dialogs.ts for what the
+ * count, then delete. Otto's records only - see delete-dialogs.ts for what the
  * user is told stays behind.
  */
 export function useClearArchivedAgents(): {

@@ -172,7 +172,7 @@ app.setName(APP_NAME);
 // Electron's own default identity, so toasts are labeled "Electron" and
 // clicking one launches a bare electron.exe instead of activating us.
 //
-// The packaged app must use electron-builder's `appId` — the NSIS installer
+// The packaged app must use electron-builder's `appId` - the NSIS installer
 // stamps that same AUMID onto its Start Menu shortcut, and Windows resolves the
 // sender through it. A dev build has no such shortcut, so it writes its own and
 // claims a distinct AUMID; that is what keeps dev toasts attributable when both
@@ -210,7 +210,7 @@ function applyAppUserModelId(): void {
       `[aumid] using ${decision.appUserModelId}` +
         (decision.wroteDevShortcut
           ? " (dev Start Menu shortcut written)"
-          : " — no dev shortcut, dev toasts will look like the installed app's"),
+          : " - no dev shortcut, dev toasts will look like the installed app's"),
     );
   }
 }
@@ -219,14 +219,14 @@ applyAppUserModelId();
 
 // CSP for the app shell's own session only (registered on defaultSession, which
 // the main window uses). Browser-webview guests run on separate
-// `persist:otto-browser-*` partitions and are untouched by this policy — they
+// `persist:otto-browser-*` partitions and are untouched by this policy - they
 // browse arbitrary third-party sites, so imposing our own CSP there would be
 // both wrong (it's not our content) and easily broken by real-world pages.
 //
 // connect-src stays wide open (any http/https/ws/wss origin): Otto's core
 // multi-host feature lets users point the renderer at arbitrary daemon hosts
 // (LAN, Tailscale, the relay), so a fixed allowlist would break that. The
-// actual security value here is script-src/object-src/base-uri — blocking
+// actual security value here is script-src/object-src/base-uri - blocking
 // injected/inline script execution and foreign navigation targets.
 const CSP_SHARED_DIRECTIVES = [
   "default-src 'self'",
@@ -389,7 +389,7 @@ if (forcedUserDataDir) {
       windowsHide: true,
     }).trim();
     devWorktreeName = path.basename(topLevel);
-    // Main checkout (e.g. "otto") gets default userData — only worktrees diverge.
+    // Main checkout (e.g. "otto") gets default userData - only worktrees diverge.
     const commonDir = path.resolve(
       topLevel,
       execFileSync("git", ["rev-parse", "--git-common-dir"], {
@@ -431,7 +431,7 @@ if (electronFlags) {
 }
 
 // Adds Chromium features without clobbering whatever is already on the command
-// line — appendSwitch("enable-features", …) replaces the previous value, so an
+// line - appendSwitch("enable-features", …) replaces the previous value, so an
 // OTTO_ELECTRON_FLAGS-supplied list and ours have to be merged, not stacked.
 function appendChromiumFeatures(features: readonly string[]): void {
   const existing = app.commandLine.getSwitchValue("enable-features");
@@ -443,7 +443,7 @@ function appendChromiumFeatures(features: readonly string[]): void {
 }
 
 // The Otto browser pane shows guest pages in a <webview>, and those pages draw
-// Chromium's classic always-visible scrollbar — the one surface in the app that
+// Chromium's classic always-visible scrollbar - the one surface in the app that
 // still does. Every scrollable surface in Otto's own renderer sets
 // scrollbar-width: none and paints the themed auto-hiding overlay instead (see
 // use-web-scrollbar / web-desktop-scrollbar), so the browser's content area was
@@ -454,7 +454,7 @@ function appendChromiumFeatures(features: readonly string[]): void {
 // agents to verify. Chromium's overlay scrollbars are the only mechanism that
 // both floats over content and fades out when idle, and it is a process-wide
 // switch rather than a per-webContents setting. Enabling it app-wide is
-// effectively scoped to guest pages anyway — there is no native scrollbar left
+// effectively scoped to guest pages anyway - there is no native scrollbar left
 // in Otto's own renderer for it to change. No-op on macOS, where overlay
 // scrollbars are already the platform default.
 //
@@ -462,8 +462,8 @@ function appendChromiumFeatures(features: readonly string[]): void {
 // Chromium 146 (Electron 41) by loading an overflowing page and reading
 // window.innerWidth - documentElement.clientWidth, it takes the scrollbar
 // gutter from 15px to 0. The Fluent-era names ("FluentScrollbar",
-// "FluentOverlayScrollbar") are no-ops in this build — Fluent styling is
-// already the Windows default — so do not add them back as belt-and-braces:
+// "FluentOverlayScrollbar") are no-ops in this build - Fluent styling is
+// already the Windows default - so do not add them back as belt-and-braces:
 // unknown features are silently ignored and would read as working config.
 appendChromiumFeatures(["OverlayScrollbar"]);
 
@@ -500,7 +500,7 @@ if (OTTO_DEBUG) {
   log.info("[open-project] pendingOpenProjectPath:", pendingOpenProjectPath);
 }
 
-// The renderer pulls the pending path on mount via IPC — this avoids
+// The renderer pulls the pending path on mount via IPC - this avoids
 // a race where the push event arrives before React registers its listener.
 ipcMain.handle("otto:get-pending-open-project", (event) => {
   const webContentsId = event.sender.id;
@@ -861,7 +861,7 @@ async function createWindow(
   options: {
     pendingOpenProjectPath?: string | null;
     restoreWindowState?: boolean;
-    /** Route to land on instead of "/" — an agent deep link that had no window to focus. */
+    /** Route to land on instead of "/" - an agent deep link that had no window to focus. */
     initialRoute?: string | null;
   } = {},
 ): Promise<BrowserWindow> {
@@ -881,7 +881,7 @@ async function createWindow(
     ? clampWindowStateToWorkAreas(savedWindowState, getWorkAreasPrimaryFirst())
     : null;
 
-  // Only the first window of a session honors "start minimized to tray" — a
+  // Only the first window of a session honors "start minimized to tray" - a
   // window opened later (⌘N, second-instance, "Open in new window") is an
   // explicit ask to see it. Mac has no tray-only mode to start into (see
   // shouldHideWindowOnClose's darwin exemption): the dock already keeps Otto
@@ -931,7 +931,7 @@ async function createWindow(
 
   // Windows/Linux: hide the last visible window to the tray instead of letting it
   // close, unless the user opted out or an app quit is already in flight. macOS's
-  // native close behavior is untouched — the dock already keeps Otto running with
+  // native close behavior is untouched - the dock already keeps Otto running with
   // zero windows open, which is this feature's mac equivalent.
   mainWindow.on("close", (event) => {
     const otherWindows = BrowserWindow.getAllWindows().filter(
@@ -951,7 +951,7 @@ async function createWindow(
     }
 
     // Closing the last window on Windows/Linux triggers window-all-closed →
-    // app.quit(), but by then this window is already destroyed — before-quit's
+    // app.quit(), but by then this window is already destroyed - before-quit's
     // confirmQuitIfNeeded() would have no window left to render a dialog in.
     // Confirm here instead, while the window still exists, then destroy it for
     // real (bypassing this handler) so the quit proceeds without asking twice.
@@ -1003,8 +1003,8 @@ async function createWindow(
       pendingWebviewAttaches.push({ kind: "widget" });
       // Order matters: drop whatever preload the renderer asked for FIRST, then
       // let the hardener install the main-process-owned path. A widget guest is
-      // the one guest type that gets a preload at all — it has to report its
-      // own content height — and the renderer never gets to choose the file.
+      // the one guest type that gets a preload at all - it has to report its
+      // own content height - and the renderer never gets to choose the file.
       delete params.preload;
       delete (params as { preloadURL?: string }).preloadURL;
       hardenWidgetWebviewPreferences(webPreferences);
@@ -1118,9 +1118,9 @@ async function createWindow(
       revealFallbackTimer = null;
     }
     clearPendingWindowReveal(webContentsId);
-    // Reaching a revealed window — by ANY path: the renderer's boot-settled signal
+    // Reaching a revealed window - by ANY path: the renderer's boot-settled signal
     // (otto:window:signalReady), first paint (ready-to-show), or the fallback timer
-    // — proves the graphics path works this launch, so disarm the GPU startup watch
+    // - proves the graphics path works this launch, so disarm the GPU startup watch
     // (paint watchdog + sentinel) here, not only on `ready-to-show`. That event
     // never fires on some software-rendering VM guests (VMware "No 3D enabled"),
     // where the window still reveals fine via signalReady on native Wayland; tying
@@ -1140,12 +1140,12 @@ async function createWindow(
   registerPendingWindowReveal(webContentsId, revealWindow);
 
   mainWindow.once("ready-to-show", () => {
-    // The first window painted — the graphics path works this launch, so disarm
+    // The first window painted - the graphics path works this launch, so disarm
     // the startup watch that would otherwise flip the next launch to software
     // rendering. Fires even when the window stays hidden (start-minimized).
     markGpuStartupHealthy();
     if (shouldStartMinimizedToTray) {
-      // Not showing a window this launch — reveal now (surfaces the tray) rather
+      // Not showing a window this launch - reveal now (surfaces the tray) rather
       // than waiting on a renderer signal we don't need.
       revealWindow();
       return;
@@ -1506,7 +1506,7 @@ void runDesktopStartup({
 }).catch((error) => {
   const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
   process.stderr.write(`${message}\n`);
-  // A GUI launch that never got off the ground otherwise dies silently — show a
+  // A GUI launch that never got off the ground otherwise dies silently - show a
   // native error box (works even when the renderer/GPU is what failed) before
   // exiting.
   showStartupErrorDialog(error);
@@ -1520,7 +1520,7 @@ function showDaemonShutdownDialog(): void {
 }
 
 // Prefers the focused window (the one the user is actually looking at), then
-// falls back to any visible window, then whatever window exists at all — so a
+// falls back to any visible window, then whatever window exists at all - so a
 // "warn before quitting" confirmation always has somewhere to render.
 function pickWindowForQuitConfirm(): BrowserWindow | null {
   const windows = BrowserWindow.getAllWindows().filter((win) => !win.isDestroyed());
@@ -1560,7 +1560,7 @@ async function confirmQuitIfNeeded(): Promise<boolean> {
   }
   if (targetWindow && (targetWindow.isMinimized() || !targetWindow.isVisible())) {
     // The user can't answer a dialog rendered in a hidden (tray-minimized) or
-    // OS-minimized window, so surface it first — before the request is sent,
+    // OS-minimized window, so surface it first - before the request is sent,
     // so the window is already on screen when the dialog appears in it.
     log.info("[quit-confirm] restoring hidden/minimized window before asking");
     if (targetWindow.isMinimized()) {

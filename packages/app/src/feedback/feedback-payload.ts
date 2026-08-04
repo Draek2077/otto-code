@@ -4,7 +4,7 @@
 // (otto-code.me/api/feedback), not through the user's daemon: a report about
 // "my host won't connect" has to be sendable while the host is unreachable.
 //
-// Everything built here is shown to the reporter verbatim before it is sent —
+// Everything built here is shown to the reporter verbatim before it is sent -
 // nothing leaves the device that they haven't read. Keep the context block
 // small and boring for that reason: facts that help triage, never workspace
 // paths, repo names, or host labels the reporter didn't choose to disclose.
@@ -97,7 +97,7 @@ export function buildFeedbackPayload(input: {
   if (contact.length > 0) {
     payload.contact = contact;
   }
-  // Opt-out, and the checkbox state is what decides — not whether the block
+  // Opt-out, and the checkbox state is what decides - not whether the block
   // happens to be non-empty.
   if (input.includeContext && context.length > 0) {
     payload.context = context;

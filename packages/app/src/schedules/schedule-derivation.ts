@@ -30,7 +30,7 @@ export interface ResolvedSchedule {
   state: ScheduleDerivedState;
   bucket: ScheduleBucket;
   target: ScheduleTargetResolution;
-  /** The schedule's effective project root, when known — used for project filtering. */
+  /** The schedule's effective project root, when known - used for project filtering. */
   cwd: string | null;
 }
 
@@ -44,7 +44,7 @@ export interface ResolveScheduleInput {
   projectNameByCwd: ReadonlyMap<string, string>;
   /**
    * Whether the agent directory has finished its first load. While false we do
-   * not claim an agent target is gone — absence would just be a cold cache.
+   * not claim an agent target is gone - absence would just be a cold cache.
    */
   agentDataLoaded: boolean;
 }
@@ -96,7 +96,7 @@ function resolveCwd(input: ResolveScheduleInput): string | null {
 
 // One badge, one truth. Order matters: expiry and a missing target are more
 // informative than the raw "completed"/"paused" status, so they win. A failed
-// last run outranks "paused"/"active" too — it's actionable regardless of
+// last run outranks "paused"/"active" too - it's actionable regardless of
 // whether the schedule is currently running or paused.
 function deriveState(input: ResolveScheduleInput): ScheduleDerivedState {
   const { schedule, now } = input;

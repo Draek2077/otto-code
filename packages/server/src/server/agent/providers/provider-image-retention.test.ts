@@ -79,7 +79,7 @@ describe("selectStaleMaterializedImages", () => {
 });
 
 describe("selectMaterializedImagesToClear", () => {
-  test("takes everything at olderThanDays 0 — the opposite of the sweep's reading", () => {
+  test("takes everything at olderThanDays 0 - the opposite of the sweep's reading", () => {
     const files = [file("a.png", 40), file("b.png", 0)];
 
     expect(selectMaterializedImagesToClear({ files, now: NOW, olderThanDays: 0 })).toEqual([

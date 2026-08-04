@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "Curated download catalog for a 12-32GB-VRAM home-hardware box, aimed at coding + generative work (logic, financial/marketing prose, analysis, documents, and code-driven charts/widgets/artifacts). One canonical entry per distinct model (dense and MoE both) — quant/imatrix/distill/MTP re-quant variants are intentionally excluded; search Hugging Face directly for those. Source of truth for docs/candidate-models.md. approxWeightsBytes is the on-disk GGUF size at the listed quant (raw bytes, GiB-based, approximate); real KV/context fit must still be measured with `npm run calibrate`. Repos/files verified against public GGUF releases as of 2026-07; confirm the exact file before downloading.",
+  "note": "Curated download catalog for a 12-32GB-VRAM home-hardware box, aimed at coding + generative work (logic, financial/marketing prose, analysis, documents, and code-driven charts/widgets/artifacts). One canonical entry per distinct model (dense and MoE both) - quant/imatrix/distill/MTP re-quant variants are intentionally excluded; search Hugging Face directly for those. Source of truth for docs/candidate-models.md. approxWeightsBytes is the on-disk GGUF size at the listed quant (raw bytes, GiB-based, approximate); real KV/context fit must still be measured with `npm run calibrate`. Repos/files verified against public GGUF releases as of 2026-07; confirm the exact file before downloading.",
   "vramBudgetBytes": 34359738368,
   "systemRamBytes": 68719476736,
   "models": [
@@ -35,7 +35,7 @@
       "contextMax": 262144,
       "useCases": ["coding", "artifacts", "widgets", "agentic-tools"],
       "tier": "coding-specialist",
-      "why": "Coder-tuned MoE — very fast on a 32GB GPU because only ~3B params are active. Strong at tool-use and iterating on widgets/artifacts.",
+      "why": "Coder-tuned MoE - very fast on a 32GB GPU because only ~3B params are active. Strong at tool-use and iterating on widgets/artifacts.",
       "status": "candidate"
     },
     {
@@ -52,7 +52,7 @@
       "contextMax": 131072,
       "useCases": ["coding", "reasoning", "prose", "analysis"],
       "tier": "all-rounder",
-      "why": "Strongest all-round open model in this class for reasoning + code + structured prose. Thinking model — run `npm run sweep` to cap the reasoning budget before trusting it for documents/charts.",
+      "why": "Strongest all-round open model in this class for reasoning + code + structured prose. Thinking model - run `npm run sweep` to cap the reasoning budget before trusting it for documents/charts.",
       "status": "candidate"
     },
     {
@@ -69,7 +69,7 @@
       "contextMax": 262144,
       "useCases": ["coding", "reasoning", "prose", "analysis"],
       "tier": "all-rounder",
-      "why": "Fast MoE daily driver — ~3B active means high tokens/sec on this GPU. Thinking model; cap the reasoning budget with `npm run sweep`.",
+      "why": "Fast MoE daily driver - ~3B active means high tokens/sec on this GPU. Thinking model; cap the reasoning budget with `npm run sweep`.",
       "status": "candidate"
     },
     {
@@ -86,7 +86,7 @@
       "contextMax": 262144,
       "useCases": ["coding", "reasoning", "prose", "analysis", "vision"],
       "tier": "all-rounder",
-      "why": "Newest Qwen generation with multi-token prediction and vision — a top all-rounder in this footprint. Measured KV ~40KB/token; fits a large context on a 32GB GPU at Q5_K_M. Thinking model; cap the budget with `npm run sweep`. (Community distill/imatrix/pi-tune spins of this model exist on HF — this is the canonical base.)",
+      "why": "Newest Qwen generation with multi-token prediction and vision - a top all-rounder in this footprint. Measured KV ~40KB/token; fits a large context on a 32GB GPU at Q5_K_M. Thinking model; cap the budget with `npm run sweep`. (Community distill/imatrix/pi-tune spins of this model exist on HF - this is the canonical base.)",
       "status": "candidate"
     },
     {
@@ -103,7 +103,7 @@
       "contextMax": 131072,
       "useCases": ["prose", "analysis", "documents", "vision"],
       "tier": "prose-analysis",
-      "why": "Best-in-class prose/tone for marketing & financial writing; multimodal so it can read charts/images. Note the higher per-token KV — measure context fit with calibrate.",
+      "why": "Best-in-class prose/tone for marketing & financial writing; multimodal so it can read charts/images. Note the higher per-token KV - measure context fit with calibrate.",
       "status": "candidate"
     },
     {
@@ -120,7 +120,7 @@
       "contextMax": 131072,
       "useCases": ["prose", "analysis", "documents", "vision"],
       "tier": "prose-analysis",
-      "why": "Newer Gemma generation — dense 31B with vision, strong prose/tone and document reading. High per-token KV (measured ~52KB/token); measure context fit with `npm run calibrate` before pushing context.",
+      "why": "Newer Gemma generation - dense 31B with vision, strong prose/tone and document reading. High per-token KV (measured ~52KB/token); measure context fit with `npm run calibrate` before pushing context.",
       "status": "candidate"
     },
     {
@@ -154,7 +154,7 @@
       "contextMax": 262144,
       "useCases": ["coding", "reasoning", "vision", "agentic-tools"],
       "tier": "all-rounder",
-      "why": "Vision-capable 35B MoE (deepreinforce-ai). Largest model here — Q4_K_S keeps weights near ~19GB so a 32GB GPU still has KV headroom. Thinking model; cap the budget with `npm run sweep`. (MTP-APEX / NVFP4 re-quant spins exist on HF — this is the canonical base.)",
+      "why": "Vision-capable 35B MoE (deepreinforce-ai). Largest model here - Q4_K_S keeps weights near ~19GB so a 32GB GPU still has KV headroom. Thinking model; cap the budget with `npm run sweep`. (MTP-APEX / NVFP4 re-quant spins exist on HF - this is the canonical base.)",
       "status": "candidate"
     },
     {
@@ -188,7 +188,7 @@
       "contextMax": 200000,
       "useCases": ["coding", "reasoning", "agentic-tools", "artifacts"],
       "tier": "all-rounder",
-      "why": "Strongest model in the 30B-A3B class — leads SWE-Bench/GPQA at this size with a 200K window and ~3.6B active params (fast on a 32GB GPU). Zhipu ships weights only, so unsloth is the canonical GGUF source. Thinking model; cap the budget with `npm run sweep`.",
+      "why": "Strongest model in the 30B-A3B class - leads SWE-Bench/GPQA at this size with a 200K window and ~3.6B active params (fast on a 32GB GPU). Zhipu ships weights only, so unsloth is the canonical GGUF source. Thinking model; cap the budget with `npm run sweep`.",
       "status": "candidate"
     },
     {
@@ -222,7 +222,7 @@
       "contextMax": 131072,
       "useCases": ["reasoning", "analysis", "long-context", "agentic-tools"],
       "tier": "all-rounder",
-      "why": "NVIDIA's 30B-A3B MoE reasoner. ~3B active keeps it fast; NVIDIA advertises a very long context ceiling — confirm the exact max before relying on 1M. Thinking model; cap the budget with `npm run sweep`.",
+      "why": "NVIDIA's 30B-A3B MoE reasoner. ~3B active keeps it fast; NVIDIA advertises a very long context ceiling - confirm the exact max before relying on 1M. Thinking model; cap the budget with `npm run sweep`.",
       "status": "candidate"
     },
     {
@@ -239,7 +239,7 @@
       "contextMax": 131072,
       "useCases": ["agentic-tools", "coding", "reasoning", "structured-output"],
       "tier": "all-rounder",
-      "why": "OpenAI's open-weight 20B MoE — cleanest tool-call output in the class and native MXFP4 (~11GB), leaving the most KV/context headroom of any model here. Built-in reasoning-effort levels.",
+      "why": "OpenAI's open-weight 20B MoE - cleanest tool-call output in the class and native MXFP4 (~11GB), leaving the most KV/context headroom of any model here. Built-in reasoning-effort levels.",
       "status": "candidate"
     },
     {
@@ -273,7 +273,7 @@
       "contextMax": 8192,
       "useCases": ["documents", "ocr", "vision"],
       "tier": "doc-ingestion",
-      "why": "Document/PDF ingestion companion — small enough (~3GB at Q8_0) to ride alongside any other model. NOTE: current GGUFs need a specific llama.cpp PR branch, not upstream main — confirm runtime support before pulling.",
+      "why": "Document/PDF ingestion companion - small enough (~3GB at Q8_0) to ride alongside any other model. NOTE: current GGUFs need a specific llama.cpp PR branch, not upstream main - confirm runtime support before pulling.",
       "status": "candidate"
     }
   ]

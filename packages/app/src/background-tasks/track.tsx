@@ -130,7 +130,7 @@ export function BackgroundTasksTrack({
                 nestedScrollEnabled
               >
                 {active.map((row) => (
-                  // Clear targets *this* row's id, never a bulk group list —
+                  // Clear targets *this* row's id, never a bulk group list -
                   // the active list has no group behind it to clear against.
                   <BackgroundTaskTrackRow
                     key={row.id}
@@ -170,7 +170,7 @@ export function BackgroundTasksTrack({
               </ScrollView>
             ) : null}
           </View>
-          <ComposerTrackSeamShadow />
+          <ComposerTrackSeamShadow layer={COMPOSER_TRACK_LAYERS.backgroundTasks} />
         </ChatWidthBounds>
       </View>
     </ComposerTrackTransition>
@@ -295,7 +295,7 @@ function BackgroundTaskTrackRow({
   const actionsVisible = isNative || isCompact || hovered;
 
   return (
-    // Plain View owns hover per docs/hover.md — onPointerEnter/Leave here,
+    // Plain View owns hover per docs/hover.md - onPointerEnter/Leave here,
     // separate inner Pressables for the action buttons.
     <View
       onPointerEnter={handlePointerEnter}

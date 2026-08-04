@@ -3,7 +3,7 @@
  *
  * Findings are produced against a file's bytes but consumed in a flat list that
  * has long since forgotten which file that was. Both facts a "take me there"
- * affordance needs — the owning node and a line number — are only cheap at the
+ * affordance needs - the owning node and a line number - are only cheap at the
  * moment the finding is created, while the text is still in hand. So they are
  * stamped there rather than reconstructed by the client.
  */

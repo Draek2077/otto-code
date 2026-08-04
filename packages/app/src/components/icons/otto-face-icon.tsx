@@ -8,14 +8,14 @@ import { useAnimationsEnabled } from "@/hooks/use-animations-enabled";
 // ink fills 88% of the width and only 42% of the height. Dropped into a 12px
 // tool-call rail that renders as a smudge floating in a mostly-empty box. This
 // variant crops the viewBox to the ink, so the element's box IS the glyph and
-// the surrounding flex container centres it for free — no per-icon nudge.
+// the surrounding flex container centres it for free - no per-icon nudge.
 //
 // Consequence: the mark is 2.09:1, so `size` here is the WIDTH and the height
 // follows from the aspect ratio. Pick the width that optically matches the
 // square icons beside it, not the height you'd pass a lucide icon.
 //
 // Geometry must stay in sync with branding/otto-icon.svg and
-// branding/otto-icon-wink.svg — see branding/README.md.
+// branding/otto-icon-wink.svg - see branding/README.md.
 
 const INK_LEFT = 30.72778; // left eye centre − radius − half stroke
 const INK_WIDTH = 450.54493; // out to the right eye's outer edge
@@ -23,12 +23,12 @@ const RESTING_TOP = 148; // brow line − half stroke
 const RESTING_BOTTOM = 364; // the T stems' baseline
 const RESTING_CENTRE_Y = (RESTING_TOP + RESTING_BOTTOM) / 2;
 
-// The wink raises the left brow, whose stroke corner reaches y≈93 — well above
+// The wink raises the left brow, whose stroke corner reaches y≈93 - well above
 // the resting face. Cropping to the resting ink would shear the brow off, and
 // growing the box only while winking would bounce the face inside its centred
 // slot. So the box keeps a matching pad above AND below, centred on the resting
-// face: the brow has headroom, the box never changes, and the resting face —
-// which is what most rows show — still sits dead centre.
+// face: the brow has headroom, the box never changes, and the resting face -
+// which is what most rows show - still sits dead centre.
 const BROW_RAISED_TOP = 93.33;
 const BOX_HALF_HEIGHT = RESTING_CENTRE_Y - BROW_RAISED_TOP;
 // Optical centring beats geometric: the mark's mass is in the eyes, which sit

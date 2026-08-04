@@ -4,15 +4,15 @@ General UI icons (chevrons, kebab menus, settings gear, buttons, etc.) come from
 [Material Symbols](https://github.com/marella/material-symbols) (installed as
 `@material-symbols/svg-400`, a dev dependency in `packages/app`), not a font or icon
 library imported at runtime. This is unrelated to `material-icon-theme`, which is scoped
-only to file-type icons in the file explorer — see [file-icons.md](file-icons.md).
+only to file-type icons in the file explorer - see [file-icons.md](file-icons.md).
 
 Icons are vendored as monochrome SVG strings, generated once and committed:
 
 ```
-packages/app/scripts/material-symbols-map.json       — lucide-style name -> Material Symbol key
-packages/app/scripts/generate-material-symbols.mjs    — codegen script
-packages/app/src/assets/material-symbol-icons.ts      — generated SVG strings (do not edit by hand)
-packages/app/src/components/icons/material-icons.ts   — the actual icon components consumed by the app
+packages/app/scripts/material-symbols-map.json       - lucide-style name -> Material Symbol key
+packages/app/scripts/generate-material-symbols.mjs    - codegen script
+packages/app/src/assets/material-symbol-icons.ts      - generated SVG strings (do not edit by hand)
+packages/app/src/components/icons/material-icons.ts   - the actual icon components consumed by the app
 ```
 
 ## How it works
@@ -30,11 +30,11 @@ packages/app/src/components/icons/material-icons.ts   — the actual icon compon
   `material-symbol-icons.ts`.
 - `material-icons.ts` exports one `IconComponent` per entry in the map. Each renders its
   vendored SVG through `react-native-svg`'s `<SvgXml>`, the same recoloring mechanism
-  already used for provider logos in `provider-icons.ts` — `SvgXml`'s `color` prop
+  already used for provider logos in `provider-icons.ts` - `SvgXml`'s `color` prop
   resolves any `currentColor` reference in the SVG, so icons take on whatever color the
   caller passes, exactly like a font icon would.
 - Every exported icon has the signature `{ size: number; color: string; style?: StyleProp<ViewStyle> }`
-  (both `size` and `color` are **required**, not optional — matching the various
+  (both `size` and `color` are **required**, not optional - matching the various
   `LeftIcon`/`PanelIconProps`/`ToolCallIconComponent`-style slots elsewhere in the app that
   plug icons into buttons, panels, and menus). `style` is supported for icons that need a
   transform (e.g. a spinning refresh icon).
@@ -58,7 +58,7 @@ not spend these on anything else, and do not draw the concept with a different i
 | Concept               | Icon                    | Where it appears                                                                                   |
 | --------------------- | ----------------------- | -------------------------------------------------------------------------------------------------- |
 | Skill                 | `Handyman` (`handyman`) | Settings → Integrations skills row, the chat tool-call rail for `Skill` calls, any future skill UI |
-| Background generation | `Robot` (`robot_2`)     | The `generation` usage kind — the Usage ledger row and the Stats "Background generations" tile     |
+| Background generation | `Robot` (`robot_2`)     | The `generation` usage kind - the Usage ledger row and the Stats "Background generations" tile     |
 
 The `artificer` personality role used to wear `Handyman`; it moved to `Architecture` when
 the skill reservation landed. See `packages/app/src/provider-selection/role-icons.ts`.
@@ -66,7 +66,7 @@ the skill reservation landed. See `packages/app/src/provider-selection/role-icon
 Skill tool calls resolve their glyph client-side in `tool-call-icon-name.ts`, from the
 tool name, not from the wire. `ToolCallIconName` is a `z.enum` on the WebSocket schema
 (`messages.ts`), so `handyman` is added to the client-only `ToolCallIcon` union next to
-`otto` rather than to the protocol enum — an old client must never meet an icon name it
+`otto` rather than to the protocol enum - an old client must never meet an icon name it
 cannot parse.
 
 ## Why "outlined", unfilled by default

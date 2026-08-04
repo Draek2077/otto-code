@@ -5,18 +5,18 @@
 Implementation landmarks (all typecheck/lint/test-green):
 
 - SDK forwarding: `forwardSubagentText` + `agentProgressSummaries` in the Claude query options (`providers/claude/agent.ts buildOptions`).
-- Provider events: `observed_subagent_updated` / `observed_subagent_timeline` added to `AgentStreamEvent` (server `agent-sdk-types.ts`, protocol `agent-types.ts`), emitted by the Claude adapter from sidechain messages, `task_started`/`task_progress`/`task_notification` (failed → `error` + attention — the previously-invisible usage-exhaustion signal), Task `tool_result` settle, and interrupt teardown. `AgentSession.stopTask?` → SDK `query.stopTask`.
+- Provider events: `observed_subagent_updated` / `observed_subagent_timeline` added to `AgentStreamEvent` (server `agent-sdk-types.ts`, protocol `agent-types.ts`), emitted by the Claude adapter from sidechain messages, `task_started`/`task_progress`/`task_notification` (failed → `error` + attention - the previously-invisible usage-exhaustion signal), Task `tool_result` settle, and interrupt teardown. `AgentSession.stopTask?` → SDK `query.stopTask`.
 - Daemon projection: `AgentManager.observedSubagents` registry + `toObservedSubagentPayload` (attend `"observed"`, parent label, all-false interactive capabilities); observed timeline rows recorded under the synthetic id `${parentAgentId}::sub::${key}`; timeline fetch and `agent_stream` forwarding work for observed ids; `stopObservedSubagent` resolves to the parent session's `stopTask`.
 - Protocol: `attend` on the agent snapshot, `features.observedSubagents`, `agent.subagent.stop.request/.response` (all `COMPAT(observedSubagents)`-tagged).
 - Client: observed rows land in the normal track via `parentAgentId` (detach hidden); the pane swaps the composer for `ObservedSubagentCallout` (read-only banner + Stop) keyed off `attend === "observed"`.
 - Tests: `agent.sub-agent-sidechain.test.ts` proves announce → observed timeline → settle; `wire-compat.test.ts` covers the fetch path.
-- Workflow runs (2026-07-14): Claude Code's **Workflow** tool (deterministic multi-agent orchestration — `agent()`/`parallel()`/`pipeline()`, ultracode fan-out) is a distinct spawn path from plain Task subagents but reports through the same `task_started`/`task_progress`/`task_notification` stream. It was previously **dropped** (the observed gate only recognized `subagent_type` / a `Task`/`Agent` tool / an already-tracked task). Now recognized by `task_type: "local_workflow"` (friendly label `"workflow"`) or a cached `Workflow` tool call and surfaced as an observed row titled `Workflow: <meta.name>` (via `readClaudeWorkflowLabel`, folded into the `subAgentType` title source). Progress → live description + `cumulativeTokens`; `task_notification` `failed` → `error` + attention (the previously-invisible "the workflow took over and nothing was watching it" case). Keyed by the Workflow `tool_use` id so the sidechain transcript lands on the same row; settled via `task_notification` (not tool_result — the Workflow tool_result is an immediate background ack, like a `run_in_background` Bash), and settled on interrupt teardown alongside Task rows. See `agent.ts` `appendTaskStartedEvents`/`appendTaskProgressEvents`/`appendTaskNotificationEvents` + the `isClaudeWorkflow*` helpers; tests in `agent.sub-agent-sidechain.test.ts`. Provider-neutral: the projection/protocol/client are unchanged — other providers' workflow-equivalents plug in via the same observed path.
+- Workflow runs (2026-07-14): Claude Code's **Workflow** tool (deterministic multi-agent orchestration - `agent()`/`parallel()`/`pipeline()`, ultracode fan-out) is a distinct spawn path from plain Task subagents but reports through the same `task_started`/`task_progress`/`task_notification` stream. It was previously **dropped** (the observed gate only recognized `subagent_type` / a `Task`/`Agent` tool / an already-tracked task). Now recognized by `task_type: "local_workflow"` (friendly label `"workflow"`) or a cached `Workflow` tool call and surfaced as an observed row titled `Workflow: <meta.name>` (via `readClaudeWorkflowLabel`, folded into the `subAgentType` title source). Progress → live description + `cumulativeTokens`; `task_notification` `failed` → `error` + attention (the previously-invisible "the workflow took over and nothing was watching it" case). Keyed by the Workflow `tool_use` id so the sidechain transcript lands on the same row; settled via `task_notification` (not tool_result - the Workflow tool_result is an immediate background ack, like a `run_in_background` Bash), and settled on interrupt teardown alongside Task rows. See `agent.ts` `appendTaskStartedEvents`/`appendTaskProgressEvents`/`appendTaskNotificationEvents` + the `isClaudeWorkflow*` helpers; tests in `agent.sub-agent-sidechain.test.ts`. Provider-neutral: the projection/protocol/client are unchanged - other providers' workflow-equivalents plug in via the same observed path.
 
-Known v1 limits: rows are ephemeral projections — daemon restart/client reconnect drops them until the next live event (history replay stays intentionally inert); the row archive (X) surfaces a daemon error instead of silently dropping the projection; no push notification on observed failure (track/pane attention only).
+Known v1 limits: rows are ephemeral projections - daemon restart/client reconnect drops them until the next live event (history replay stays intentionally inert); the row archive (X) surfaces a daemon error instead of silently dropping the projection; no push notification on observed failure (track/pane attention only).
 
-**Next phase:** [provider-adapters.md](./provider-adapters.md) — the adapter contract, per-provider plan (OpenCode, Codex, ACP family, Pi), and the required pass folding the durable facts into official `docs/` documentation.
+**Next phase:** [provider-adapters.md](./provider-adapters.md) - the adapter contract, per-provider plan (OpenCode, Codex, ACP family, Pi), and the required pass folding the durable facts into official `docs/` documentation.
 
-Bridge the gap between an agent's **provider-managed subagents** (spawned by the CLI/SDK inside the agent's own process — Claude's `Task` tool, "ultracode" fan-out, etc.) and Otto's ability to **track and watch each of them separately**. Today Otto flattens all of a Claude subagent's activity into a single log string inside the parent's `Task` tool-call row and drops its failure signals entirely. This doc defines how to promote each provider-managed subagent to a first-class, separately-watchable — but **read-only / unattended** — entry in the parent's subagents track.
+Bridge the gap between an agent's **provider-managed subagents** (spawned by the CLI/SDK inside the agent's own process - Claude's `Task` tool, "ultracode" fan-out, etc.) and Otto's ability to **track and watch each of them separately**. Today Otto flattens all of a Claude subagent's activity into a single log string inside the parent's `Task` tool-call row and drops its failure signals entirely. This doc defines how to promote each provider-managed subagent to a first-class, separately-watchable - but **read-only / unattended** - entry in the parent's subagents track.
 
 Read [chat-lifecycle.md](../../docs/chat-lifecycle.md) first: it defines the existing **Otto-native** subagent (the thing we are _not_ changing) and the track/tab/pane/archive machinery we are reusing.
 
@@ -28,14 +28,14 @@ Otto already has one notion of subagent and is gaining a second. They must not b
 
 |                   | **Otto-native subagent** (exists)                                                          | **Observed subagent** (this doc)                                                         |
 | ----------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
-| Created by        | The agent calling Otto's `create_agent` MCP tool with `relationship: { kind: "subagent" }` | The provider's own CLI/SDK (Claude `Task` tool, ultracode fan-out) — Otto is never asked |
+| Created by        | The agent calling Otto's `create_agent` MCP tool with `relationship: { kind: "subagent" }` | The provider's own CLI/SDK (Claude `Task` tool, ultracode fan-out) - Otto is never asked |
 | Runtime           | A real Otto-managed agent process                                                          | Lives **inside the parent's** process; Otto has no separate runtime for it               |
 | Identity          | Full `Agent` record, `otto.parent-agent-id` label                                          | Provider task id + provider subagent session id; **no** independent Otto runtime         |
-| Attendability     | **Attended** — user can prompt it, change model/mode/thinking, approve permissions         | **Unattended, always** — user can only watch, and stop it                                |
+| Attendability     | **Attended** - user can prompt it, change model/mode/thinking, approve permissions         | **Unattended, always** - user can only watch, and stop it                                |
 | Lifecycle control | create / prompt / archive / detach / cascade                                               | observe + stop/background only (see [Hard constraints](#hard-constraints))               |
 | Today's tracking  | Full track row + tab + pane                                                                | A log string inside the parent's `Task` row; failures dropped                            |
 
-The whole point of this feature: an **observed subagent** should sit in the same subagents track, open in the same tab/pane, and render in the same message UI as everything else — just with every interactive affordance disabled.
+The whole point of this feature: an **observed subagent** should sit in the same subagents track, open in the same tab/pane, and render in the same message UI as everything else - just with every interactive affordance disabled.
 
 ---
 
@@ -45,9 +45,9 @@ The `@anthropic-ai/claude-agent-sdk` surface is rich; Otto currently consumes al
 
 | Capability                   | SDK surface                                                                                                                                                                                                                                    | Otto today                                                                                                                                                                                          |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Subagent lifecycle           | `task_started` / `task_progress` / `task_notification` system messages — each carries `task_id`, `tool_use_id`, `subagent_type`, `usage`, `output_file`, and `status: completed \| failed \| stopped`                                          | `task_started`/`task_progress` ignored; `task_notification` **dropped** for subagent tool names (`agent.ts` `appendTaskNotificationEvents`, the `TODO: subagent timelines are best-effort` comment) |
+| Subagent lifecycle           | `task_started` / `task_progress` / `task_notification` system messages - each carries `task_id`, `tool_use_id`, `subagent_type`, `usage`, `output_file`, and `status: completed \| failed \| stopped`                                          | `task_started`/`task_progress` ignored; `task_notification` **dropped** for subagent tool names (`agent.ts` `appendTaskNotificationEvents`, the `TODO: subagent timelines are best-effort` comment) |
 | Per-subagent identity        | Subagent messages carry `session_id` + `parent_tool_use_id` + `subagent_type` + `task_description`; `SubagentStart`/`SubagentStop` hooks carry `agent_id`, `agent_type`, `agent_transcript_path`, `last_assistant_message`, `background_tasks` | not used                                                                                                                                                                                            |
-| Full nested transcript       | `forwardSubagentText: true` query option (off by default — only tool_use/tool_result heartbeats come through)                                                                                                                                  | **off**                                                                                                                                                                                             |
+| Full nested transcript       | `forwardSubagentText: true` query option (off by default - only tool_use/tool_result heartbeats come through)                                                                                                                                  | **off**                                                                                                                                                                                             |
 | Periodic AI progress summary | `agentProgressSummaries: true` → `summary` on `task_progress`                                                                                                                                                                                  | **off**                                                                                                                                                                                             |
 | On-disk transcript           | `~/.claude/projects/<dir>/<sessionId>/subagents/agent-<agentId>.jsonl`; helpers `listSubagents(sessionId)`, `getSubagentMessages(sessionId, agentId)`                                                                                          | not used                                                                                                                                                                                            |
 | **Control**                  | `query.stopTask(taskId)`, `query.backgroundTasks(toolUseId)`                                                                                                                                                                                   | not wired                                                                                                                                                                                           |
@@ -75,15 +75,15 @@ attend: "attended" | "observed"   // default "attended" (COMPAT: absent ⇒ "att
 `"observed"` is the whole contract:
 
 - **Daemon** rejects/へ no-ops attended RPCs for the agent: prompt/send, setModel, setPermissionMode, setThinking, rewind, slash commands. Only **stop** (→ provider `stopTask`) is honored. There is no Otto runtime to prompt anyway; the marker makes the refusal explicit and typed rather than an accidental crash.
-- **Client** treats `attend === "observed"` as the single source of truth for hiding/disabling interactive UI. Not a separate screen or "read-only mode toggle" — the same pane, same message list, with affordances removed.
+- **Client** treats `attend === "observed"` as the single source of truth for hiding/disabling interactive UI. Not a separate screen or "read-only mode toggle" - the same pane, same message list, with affordances removed.
 
 Keep `attend` provider-agnostic. Claude populates it from `Task`/sidechain streams; other providers populate it from their own subagent signals later. Nothing in the protocol or client should say "claude".
 
 ### Identity & storage
 
-- **Otto agent id:** deterministic from the parent — e.g. `${parentAgentId}:sub:${providerTaskId}` — so repeated `task_progress` updates converge on one record and reconnects are idempotent.
+- **Otto agent id:** deterministic from the parent - e.g. `${parentAgentId}:sub:${providerTaskId}` - so repeated `task_progress` updates converge on one record and reconnects are idempotent.
 - **Provider linkage:** store `task_id`, the subagent `session_id`, and `agent_transcript_path` on the record (in `runtimeInfo.extra` or a typed sub-object) so **stop** can call `stopTask(task_id)` and a future "load full transcript" can read the jsonl.
-- **Persistence:** observed subagents are **ephemeral by default** — they are a projection of the parent's live/replayable stream, not independent durable agents. Do **not** write them to `$OTTO_HOME/agents/**` as standalone files. They are reconstructed when the parent's timeline is (re)streamed. This avoids polluting cwd-keyed agent storage with records that have no runtime. (Open question: durability across daemon restarts — see below.)
+- **Persistence:** observed subagents are **ephemeral by default** - they are a projection of the parent's live/replayable stream, not independent durable agents. Do **not** write them to `$OTTO_HOME/agents/**` as standalone files. They are reconstructed when the parent's timeline is (re)streamed. This avoids polluting cwd-keyed agent storage with records that have no runtime. (Open question: durability across daemon restarts - see below.)
 
 ### Lifecycle
 
@@ -94,11 +94,11 @@ Driven entirely by the provider's task stream, mapped onto the existing `AgentLi
 | `task_started` / first `SubagentStart`                   | `initializing` → `running`    | create the record, add row to track                         |
 | `task_progress` (+ `summary`, `usage`, `last_tool_name`) | `running`                     | update title/summary/usage; drive live activity             |
 | `task_notification status: completed`                    | `idle` (terminal-ish)         | done; row stays until parent archived                       |
-| `task_notification status: failed` / usage-exhaustion    | `error` + `requiresAttention` | **the failure that is invisible today** — must surface here |
+| `task_notification status: failed` / usage-exhaustion    | `error` + `requiresAttention` | **the failure that is invisible today** - must surface here |
 | `task_notification status: stopped`                      | `closed`                      | user-initiated stop or parent stop                          |
 
-- **Archive/cascade:** observed subagents cascade-archive with the parent exactly like Otto-native subagents (they cannot outlive it — they live in its process). They are **not** independently archivable in a way that kills a runtime (there is none); the row's "X" simply drops the projection.
-- **Detach:** **not supported** — detach means "keep running as an independent root agent," which is impossible for something with no runtime. The track row must hide the detach affordance for `attend === "observed"`.
+- **Archive/cascade:** observed subagents cascade-archive with the parent exactly like Otto-native subagents (they cannot outlive it - they live in its process). They are **not** independently archivable in a way that kills a runtime (there is none); the row's "X" simply drops the projection.
+- **Detach:** **not supported** - detach means "keep running as an independent root agent," which is impossible for something with no runtime. The track row must hide the detach affordance for `attend === "observed"`.
 - **Stop:** supported → `query.stopTask(task_id)`. This is the one write operation an observed subagent allows and should be the primary action in its pane header.
 
 ---
@@ -109,13 +109,13 @@ Requirement (from the fork owner): **do not build a different mode.** Open the o
 
 Interactive affordances to hide/disable when `attend === "observed"` (single gate, read off the agent record):
 
-- **Composer** ([`agent-panel.tsx`](../../packages/app/src/panels/agent-panel.tsx) `AgentComposerSection` / `ActiveAgentComposer`): hide the input, send, and attachment controls. Prefer a slim, clearly-disabled banner ("Observed subagent — read only") over an empty focusable box.
-- **Parameter controls:** model / mode / thinking pickers, rewind, slash-command entry — hidden or rendered visibly disabled (reduced opacity + no press target), never silently inert.
-- **Permission prompts:** none exist for observed subagents (the provider handles permissions inside its own process), so there is nothing to approve — ensure no permission UI can appear.
+- **Composer** ([`agent-panel.tsx`](../../packages/app/src/panels/agent-panel.tsx) `AgentComposerSection` / `ActiveAgentComposer`): hide the input, send, and attachment controls. Prefer a slim, clearly-disabled banner ("Observed subagent - read only") over an empty focusable box.
+- **Parameter controls:** model / mode / thinking pickers, rewind, slash-command entry - hidden or rendered visibly disabled (reduced opacity + no press target), never silently inert.
+- **Permission prompts:** none exist for observed subagents (the provider handles permissions inside its own process), so there is nothing to approve - ensure no permission UI can appear.
 - **Track row actions:** show **archive/drop**; hide **detach**.
 - **Pane header:** the one live action is **Stop** (when `running`), plus read-only status/usage.
 
-Everything read-only — the transcript, tool calls, usage, status — renders through the existing components unchanged. The disabling must be **visually apparent** (dimmed, no cursor affordance), not just non-functional.
+Everything read-only - the transcript, tool calls, usage, status - renders through the existing components unchanged. The disabling must be **visually apparent** (dimmed, no cursor affordance), not just non-functional.
 
 Gate all of the above behind a capability flag so old daemons/clients degrade cleanly (below).
 
@@ -125,8 +125,8 @@ Gate all of the above behind a capability flag so old daemons/clients degrade cl
 
 Follow the [CLAUDE.md](../../CLAUDE.md) protocol contract and [rpc-namespacing.md](../../docs/rpc-namespacing.md).
 
-- **New agent field** `attend` on the agent snapshot ([`agent-types.ts`](../../packages/protocol/src/agent-types.ts) / the session-store `Agent`): optional, default `"attended"`. Old clients ignore it (they render the record as a normal — attended — agent, which is a graceful, if not read-only, fallback; the capability gate below prevents that on capable clients).
-- **Capability flag** `server_info.features.observedSubagents` ([`messages.ts`](../../packages/protocol/src/messages.ts) features block) with `// COMPAT(observedSubagents): added in vX.Y, drop the gate when daemon floor >= vX.Y`. Client shows the read-only track rows/pane only when the flag is present; otherwise it falls back to **today's behavior** (the embedded `sub_agent` log in the parent Task row) — which is exactly the "update the host to use this" degradation the fork's feature contract calls for. **No fallback path** that simulates observed subagents on an old daemon.
+- **New agent field** `attend` on the agent snapshot ([`agent-types.ts`](../../packages/protocol/src/agent-types.ts) / the session-store `Agent`): optional, default `"attended"`. Old clients ignore it (they render the record as a normal - attended - agent, which is a graceful, if not read-only, fallback; the capability gate below prevents that on capable clients).
+- **Capability flag** `server_info.features.observedSubagents` ([`messages.ts`](../../packages/protocol/src/messages.ts) features block) with `// COMPAT(observedSubagents): added in vX.Y, drop the gate when daemon floor >= vX.Y`. Client shows the read-only track rows/pane only when the flag is present; otherwise it falls back to **today's behavior** (the embedded `sub_agent` log in the parent Task row) - which is exactly the "update the host to use this" degradation the fork's feature contract calls for. **No fallback path** that simulates observed subagents on an old daemon.
 - **Stop RPC** for an observed subagent: `agent.subagent.stop.request` / `.response`, resolved by the daemon to the owning provider session's `stopTask`. Reuse the existing stop path if one already targets provider tasks; do not add a Claude-specific RPC.
 
 Backward-compat rules apply verbatim: `attend` is additive/optional, never flips to required, and the embedded-log path stays parseable so a 6-month-old client still renders _something_.
@@ -138,8 +138,8 @@ Backward-compat rules apply verbatim: `attend` is additive/optional, never flips
 Claude ships first, but the seams are drawn so the next providers slot in without touching the protocol or client:
 
 1. **Daemon core** owns an `ObservedSubagent` projection: `{ id, parentAgentId, providerTaskId, sessionId, transcriptPath, status, title, summary, usage, attend: "observed" }` and the reducer that maps provider lifecycle signals → agent snapshots + timeline. This is provider-neutral.
-2. **Each provider adapter** implements a small interface — "given my raw subagent stream, emit ObservedSubagent lifecycle + timeline events, and expose stop(taskId)." Claude's adapter is the sidechain/task-stream consumer (replacing the lossy `ClaudeSidechainTracker` write-only log with events that feed the projection). Codex/Copilot/OpenCode/Pi implement the same interface against their own subagent mechanisms later.
-3. **Client** never branches on provider — it reads `attend` and the normal agent/timeline shapes.
+2. **Each provider adapter** implements a small interface - "given my raw subagent stream, emit ObservedSubagent lifecycle + timeline events, and expose stop(taskId)." Claude's adapter is the sidechain/task-stream consumer (replacing the lossy `ClaudeSidechainTracker` write-only log with events that feed the projection). Codex/Copilot/OpenCode/Pi implement the same interface against their own subagent mechanisms later.
+3. **Client** never branches on provider - it reads `attend` and the normal agent/timeline shapes.
 
 When we generalize, the only per-provider work is the adapter + turning on that provider's equivalent of `forwardSubagentText`; the protocol, store, track, pane, and read-only gating are written once here.
 
@@ -147,11 +147,11 @@ When we generalize, the only per-provider work is the adapter + turning on that 
 
 ## Hard constraints
 
-Set expectations before building — these bound what "bridge the gap" can deliver:
+Set expectations before building - these bound what "bridge the gap" can deliver:
 
 - **You cannot re-prompt an observed subagent.** The SDK drives subagents from the parent's Task loop; there is no API to send a fresh prompt to one in isolation. "Watch separately" is achievable; "converse with it independently" is not. This is _why_ the model is read-only, not a limitation of our implementation.
 - **Control is stop/background only** (`stopTask`, `backgroundTasks`). No model/mode/thinking/rewind.
-- **Usage-exhaustion / mid-subagent failure surfaces only as `task_notification status: failed`** (plus `SubagentStop`). That single signal must become the `error` + `requiresAttention` state — it is the concrete symptom the fork owner hit ("if they run out of usage they will not interact with Otto"). Capturing it is a primary acceptance criterion.
+- **Usage-exhaustion / mid-subagent failure surfaces only as `task_notification status: failed`** (plus `SubagentStop`). That single signal must become the `error` + `requiresAttention` state - it is the concrete symptom the fork owner hit ("if they run out of usage they will not interact with Otto"). Capturing it is a primary acceptance criterion.
 
 ---
 
@@ -167,9 +167,9 @@ Set expectations before building — these bound what "bridge the gap" can deliv
 ## Open questions
 
 1. **Durability across daemon restart / reconnect.** Observed subagents are a projection of the parent's stream. If the parent is idle and the client reconnects, do we replay enough to reconstruct in-flight/finished subagents, or read `listSubagents()` + `getSubagentMessages()` from disk to rehydrate? Leaning: rehydrate from the parent's replayable timeline; fall back to the on-disk jsonl for full transcript on demand.
-2. **Glossary term.** "Observed subagent" is the working name (internal). The UI label wins per [glossary.md](../../docs/glossary.md) — pick the user-facing label before shipping and record it there. Candidates: "watched subagent", "observed subagent", "read-only subagent".
+2. **Glossary term.** "Observed subagent" is the working name (internal). The UI label wins per [glossary.md](../../docs/glossary.md) - pick the user-facing label before shipping and record it there. Candidates: "watched subagent", "observed subagent", "read-only subagent".
 3. **Track density.** Ultracode fan-out can spawn many subagents; the track already flags accumulation for Otto-native subagents. Do observed subagents need grouping/auto-collapse of completed ones sooner?
-4. **Nested subagents.** A subagent that itself spawns subagents — do we flatten to the top parent or preserve depth? (SDK `parent_tool_use_id` chains make depth recoverable.) Leaning: flatten for v1.
+4. **Nested subagents.** A subagent that itself spawns subagents - do we flatten to the top parent or preserve depth? (SDK `parent_tool_use_id` chains make depth recoverable.) Leaning: flatten for v1.
 5. **Token economy.** `forwardSubagentText` multiplies streamed volume. Confirm the coalescing/backpressure story (see [terminal-performance.md](../../docs/terminal-performance.md) for the existing invariants) holds for many concurrent subagent transcripts.
 
 ---
@@ -186,11 +186,11 @@ Set expectations before building — these bound what "bridge the gap" can deliv
 ## SDK notes (added 2026-07-17, SDK 0.3.212)
 
 - **Level-signal reconcile shipped:** `system/background_tasks_changed` (full live-set, REPLACE
-  semantics) now settles background rows whose `task_notification` edge was lost — see
+  semantics) now settles background rows whose `task_notification` edge was lost - see
   "Edge events vs. the native level signal" in [docs/chat-lifecycle.md](../../docs/chat-lifecycle.md).
   The edge stream stays the provider-neutral spine.
 - **Structured Task output (queued incorporation):** user messages carrying a Task tool*result now
-  expose `tool_use_result` typed as `AgentToolCompletedOutput` — the subagent's final report
+  expose `tool_use_result` typed as `AgentToolCompletedOutput` - the subagent's final report
   without the model-directed agentId/usage trailer, plus run totals. `handleToolResult` /
   `mapClaudeCompletedToolCall` currently parse the report from the tool_result \_text*; switch the
   Claude path to the structured object (with text fallback for older CLIs and other providers).

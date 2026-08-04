@@ -3,7 +3,7 @@ import type { SeedDaemonClient } from "./seed-client";
 /**
  * Prompt grammar for the mock provider's synthetic E2E scenarios. Keep these
  * builders in lockstep with the parsers in
- * packages/server/src/server/agent/providers/mock-load-test-agent.ts — the
+ * packages/server/src/server/agent/providers/mock-load-test-agent.ts - the
  * prompts are the deterministic injection surface for stream events the mock
  * does not emit in its regular scripted cycle.
  */

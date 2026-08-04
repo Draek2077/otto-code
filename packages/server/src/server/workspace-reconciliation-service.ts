@@ -379,7 +379,7 @@ export class WorkspaceReconciliationService {
       workspaceCheckouts.map(async ({ workspace, checkout: wsGit }) => {
         // Re-read before writing. `workspace` was snapshotted when this
         // reconciliation pass started, and reading a checkout is slow enough
-        // that an archive can land in between — writing the stale copy back
+        // that an archive can land in between - writing the stale copy back
         // carried its `archivedAt: null` with it and resurrected the record.
         // That is how an archive could report success, drop the workspace from
         // the active list, and then have it reappear moments later.
@@ -527,7 +527,7 @@ export class WorkspaceReconciliationService {
     }
     // Identity fields only. Reconciliation compares branch, remote and root
     // identity and throws the rest away, so the full checkout read's dirty
-    // check and ahead/behind counts would be pure waste — and this runs for
+    // check and ahead/behind counts would be pure waste - and this runs for
     // every project root and every workspace cwd on every tick.
     return this.workspaceGitService.getCheckoutLite(cwd);
   }

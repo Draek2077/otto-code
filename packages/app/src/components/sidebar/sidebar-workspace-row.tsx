@@ -573,7 +573,10 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surfaceSidebarHover,
   },
   workspaceRowDragging: {
-    backgroundColor: theme.colors.surface2,
+    // surface1, not surface2: `border` is nearly identical to surface2 on this
+    // theme, which swallowed the lifted card's own outline (the shadow still
+    // sells the lift against the sidebar background either way).
+    backgroundColor: theme.colors.surface1,
     borderWidth: 1,
     borderColor: theme.colors.border,
     transform: [{ scale: 1.02 }],

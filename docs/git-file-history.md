@@ -1,6 +1,6 @@
 # Git file history, diffs, and blame
 
-Investigate one file — or one selection inside it — through git: which commits
+Investigate one file - or one selection inside it - through git: which commits
 touched it, what each of those commits did to it, who wrote each line, and who
 created the file in the first place. JetBrains' "Show History / Annotate", from
 the file tab.
@@ -14,7 +14,7 @@ here first:
 
 - **It is local git, not a hosting provider.** It works in a repo with no
   remote and no GitHub/Bitbucket connection. It must stay out of the forge layer
-  (`services/git-hosting/`, [git-providers.md](git-providers.md)) — nothing in
+  (`services/git-hosting/`, [git-providers.md](git-providers.md)) - nothing in
   it may grow a dependency on a forge client, and no forge capability check may
   gate it.
 - **There is no per-provider rollout.** Almost everything else in this repo
@@ -41,14 +41,14 @@ and never write anything.
 Things that are load-bearing and easy to undo by accident:
 
 - **`--follow` is the whole feature.** Without it the history stops dead at the
-  rename — which is exactly the moment someone reaches for file history. Its
+  rename - which is exactly the moment someone reaches for file history. Its
   cost is that git must diff each commit to track the path, which is why history
   is paged rather than fetched whole.
 - **The per-revision diff compares two blobs, not a commit against a pathspec.**
   This is the one thing in this file most likely to get "simplified" back into a
   bug. `git show <sha> -- <path>` looks obviously right and is wrong: git applies
   the pathspec **before** rename detection, so across a rename it reports the
-  file as brand new and every line reads as an addition — the change you opened
+  file as brand new and every line reads as an addition - the change you opened
   the tool to see is not in the output at all. Comparing
   `<previous revision>:<name then>` against `<this revision>:<name now>` avoids
   that, and it also gives merge commits a real diff, where `git show` on a merge
@@ -65,11 +65,11 @@ Things that are load-bearing and easy to undo by accident:
   back, not the file's current name, or the pathspec matches nothing on the far
   side of a rename. Blame's porcelain `filename` field serves the same role for
   blame rows. Merge commits emit no `--name-status` at all, so the walk carries
-  the name backwards across renames and stamps it on the records that have none —
+  the name backwards across renames and stamps it on the records that have none -
   without that, every merge in the list points at the wrong path.
 - **Line-range history is `git log -L`, which cannot be combined with
   `--follow`** (git refuses). `-L` does its own rename tracking, and it implies
-  a patch, so `-s` suppresses it — we only want the commit list.
+  a patch, so `-s` suppresses it - we only want the commit list.
 - **`--reverse` is applied after `-n`**, so it cannot be used to ask git for the
   oldest commit. `getFileOriginCommit` walks to the last record instead.
 - **Blame is always paged.** Blaming a large file whole is seconds of blocked
@@ -100,7 +100,7 @@ Four request/response pairs, dispatched from `session.ts` into
 
 They are pure reads, so every response carries a nullable
 `CheckoutGitFileError` (`not_git_repo` | `invalid_path` | `git_failed`) rather
-than rejecting — the pane shows the message in place. The commit-diff response
+than rejecting - the pane shows the message in place. The commit-diff response
 also carries an optional `structured` array (the same parsed/highlighted shape
 the Changes view uses); a diff that fails to parse still ships as raw text
 instead of failing the request.
@@ -118,14 +118,14 @@ the code while you walk commits, not a question you answer and dismiss. A
 bounded 600px card also leaves a table stranded in whitespace. The `gitLog` tab
 is the model it follows.
 
-Whole-file and line-scoped histories are **separate tabs** — "what happened to
+Whole-file and line-scoped histories are **separate tabs** - "what happened to
 this file" and "who touched these three lines" are different questions, so one
 does not evict the other. `identity.ts` keys the tab on path plus scope.
 
 Layout, and the reasons, since these are the things that make a history pane
 usable rather than merely present:
 
-- **Three panes stacked vertically** — commits, diff, commit message — with a
+- **Three panes stacked vertically** - commits, diff, commit message - with a
   `ResizeHandle` between each (no splitters on compact). Stacked, not side by
   side: a diff is a wide thing, and spending the horizontal axis on four narrow
   list columns makes every line of code wrap or scroll. The list is short and
@@ -137,23 +137,23 @@ usable rather than merely present:
   (`stores/file-history-layout-store.ts`), not per file or per tab. You arrange
   this pane once to match how you read history and every file after that opens
   the same way; keying it per file would mean re-dragging on every new tab.
-- **The commit list is a real table** — Version │ Date │ Author │ Commit message
+- **The commit list is a real table** - Version │ Date │ Author │ Commit message
   under a pinned header, with full-bleed row selection. Column widths live in
   `table-geometry.ts` and are imported by both the header and the rows, because
   the header cannot be a row of the same scroll view (it must not scroll away)
   and two copies of the widths drift on the first edit.
 - **The diff header names both sides**: the previous revision + the path the
   file had then → this revision + the path now. That is what stops `--follow`
-  from being confusing — without it, a rename reads as a rewrite. A file's first
+  from being confusing - without it, a rename reads as a rewrite. A file's first
   revision says "File created" instead of inventing a left-hand side.
-- **A difference count**, counting changed _blocks_, not lines — a five-line
+- **A difference count**, counting changed _blocks_, not lines - a five-line
   replacement is one edit to a reviewer.
 - **The commit message body has its own pane** (`commit-detail.tsx`). The daemon
   has always sent it; the body is where the reasoning lives, and a one-line
   truncated subject is not the commit. It is resizable rather than fixed-height
   because how much room a message deserves depends on the repo.
 - **The diff has a real gutter** (`revision-diff-body.tsx`): blame, pre-image
-  line number, post-image line number, then the code — rendered from the
+  line number, post-image line number, then the code - rendered from the
   daemon's `structured` payload, which is the only form that carries the hunk
   coordinates a gutter needs. Line metrics come from `theme.lineHeight.diff`,
   shared by the gutter and the code so the columns stay locked and the density
@@ -178,16 +178,16 @@ Two properties make the annotation true rather than merely present:
 - **Blame is resolved at the revision being viewed** (`getFileBlame` takes a
   `sha`), not at HEAD. The diff's line numbers describe the file as it stood at
   that commit; blaming the working tree instead would label them with whoever
-  has since touched those line _positions_ — a different file's authorship,
+  has since touched those line _positions_ - a different file's authorship,
   presented silently as this one's.
 - **Runs collapse** (`blame-runs.ts`, unit-tested): consecutive lines from one
   commit print the author once. The repetition does not merely add noise, it
-  hides the only thing blame is read for — where authorship changes.
+  hides the only thing blame is read for - where authorship changes.
 
 Only the span the diff actually shows is blamed, capped at 2000 lines, and a
 blame failure costs the gutter rather than the diff.
 
-Data hooks are in `git/file-history/use-file-history-data.ts` — plain imperative
+Data hooks are in `git/file-history/use-file-history-data.ts` - plain imperative
 fetches with local state, no subscription or replica query, because nothing here
 updates itself.
 
@@ -198,15 +198,15 @@ Three, all opening the same tab:
 | From           | Gesture                        | Gate                                                |
 | -------------- | ------------------------------ | --------------------------------------------------- |
 | File tab       | Selection-aware toolbar button | `editGate.kind === "free"` (in-project files)       |
-| Changes view   | Right-click a file             | host capability only — every row is a tracked path  |
+| Changes view   | Right-click a file             | host capability only - every row is a tracked path  |
 | Files explorer | Right-click a file, or kebab   | host capability **and** the workspace is a git repo |
 
 The Files explorer is the only one that has to ask whether this is a repo at
 all: it happily browses folders that git knows nothing about, so it checks
-`useCheckoutStatusQuery` (a shared, `staleTime: Infinity` query — the same cache
+`useCheckoutStatusQuery` (a shared, `staleTime: Infinity` query - the same cache
 entry the Changes view already populates, so the check is free). The Changes
 view needs no such test; if a file is listed there, it is tracked. In both, the
-menu item is simply absent rather than disabled — an item that only ever errors
+menu item is simply absent rather than disabled - an item that only ever errors
 is noise.
 
 The file-tab button is limited to **in-project files**
@@ -223,7 +223,7 @@ It is a **selection-aware toolbar button** instead: pressing History with lines
 selected scopes the history to that range (and opens blame at that line), with
 the scope stated above the list and a one-press "Show whole file".
 
-Right-click inside the editor belongs to the platform's own edit menu — copy,
+Right-click inside the editor belongs to the platform's own edit menu - copy,
 paste, spellcheck. On Electron that menu fires even when the renderer calls
 `preventDefault` (see `shouldShowDefaultContextMenu` in
 `packages/desktop/src/window/window-manager.ts`), so an app-level menu over the
@@ -233,8 +233,8 @@ gesture in one fewer step and costs nothing.
 ## Testing
 
 `packages/server/src/utils/git-file-history.test.ts` drives real `git` in a temp
-repo — rename following, paging, line-range scoping, multi-line bodies, blame
-attribution and EOF paging, origin across a rename — plus a pure unit test for
+repo - rename following, paging, line-range scoping, multi-line bodies, blame
+attribution and EOF paging, origin across a rename - plus a pure unit test for
 the porcelain parser's metadata-carry-forward behavior. The diff cases are the
 ones to keep honest: they assert that a rename shows its real edits rather than
 `new file mode`, that the left-hand side is the file's previous revision rather

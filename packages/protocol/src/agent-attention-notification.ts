@@ -130,7 +130,7 @@ const PERMISSION_INPUT_DESCRIPTION_KEYS = [
   "prompt",
 ] as const;
 
-// Deterministic field extraction — NOT an AI summary. Picks an existing string
+// Deterministic field extraction - NOT an AI summary. Picks an existing string
 // field out of the tool's input (by the priority list, then any string field)
 // so the notification can show it verbatim instead of raw JSON.
 const describePermissionInput = (input: Record<string, unknown> | undefined): string | null => {

@@ -144,7 +144,7 @@ describe("formatHeaderLabel with token totals", () => {
 
   it("adds already-cleared tokens back into the header total so the clear isn't lossy", () => {
     // One completed row worth 300 tokens left in the track, plus 12k already
-    // cleared out of it — the total must still read the full 12.3k.
+    // cleared out of it - the total must still read the full 12.3k.
     expect(
       formatHeaderLabel(
         partitionSubagentRows([row({ id: "a", status: "closed", cumulativeTokens: 300 })]),
@@ -199,7 +199,7 @@ describe("partitionSubagentRows", () => {
   });
 
   it("treats idle as completion only for observed rows", () => {
-    // A native create_agent subagent idles *between turns* — it may still be
+    // A native create_agent subagent idles *between turns* - it may still be
     // mid-conversation with its orchestrator, so it must not tidy (or become
     // eligible for "Clear all") just because a turn finished.
     expect(isSubagentRowTidyEligible(row({ id: "native", status: "idle" }))).toBe(false);
@@ -447,7 +447,7 @@ describe("formatSubagentToolUseCount", () => {
     expect(formatSubagentToolUseCount(89)).toBe("89 tools");
   });
 
-  it("stays raw at large counts — 140 tool calls must not read as 89", () => {
+  it("stays raw at large counts - 140 tool calls must not read as 89", () => {
     expect(formatSubagentToolUseCount(1240)).toBe("1240 tools");
   });
 

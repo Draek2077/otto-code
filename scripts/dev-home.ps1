@@ -1,12 +1,12 @@
 # Shared dev-environment defaults for the Windows dev scripts.
 #
-# PowerShell mirror of scripts/dev-home.sh — keep the two in sync. Both exist to
+# PowerShell mirror of scripts/dev-home.sh - keep the two in sync. Both exist to
 # guarantee one thing: a dev Otto never touches the installed Otto. Different
 # port, different OTTO_HOME, different Electron userData.
 
 # The dev daemon port. Deliberately NOT 6868: that belongs to the installed
 # desktop app's daemon over `~/.otto`, and a dev daemon that lands on it either
-# crash-loops fighting for the port or — worse — silently hands dev clients and
+# crash-loops fighting for the port or - worse - silently hands dev clients and
 # `npm run cli` the production agent state. Keep the two on separate ports so
 # both can run at once. Override with OTTO_DEV_DAEMON_PORT.
 function Get-OttoDevDaemonPort {
@@ -25,9 +25,9 @@ function Get-OttoDevRoot {
 # Electron, `npm run cli`). It sits under packages/desktop because that is where
 # the desktop dev script has always put it, and that is where the accumulated
 # dev state lives. Everything else was pointed here rather than the reverse so
-# no one has to move a populated home — and its git worktrees — to get one.
+# no one has to move a populated home - and its git worktrees - to get one.
 # Derived from the checkout root, so an Otto worktree still gets its own.
-# OTTO_DEV_HOME names a *managed* home other than the default one — the escape
+# OTTO_DEV_HOME names a *managed* home other than the default one - the escape
 # hatch for standing up an additional isolated lane (see the agent lane in
 # docs/development.md). It differs from raw OTTO_HOME, which is honored but never
 # written to: a managed home gets its config.json seeded with the lane's port, so
@@ -54,7 +54,7 @@ function Set-OttoDevDaemonConfig {
 }
 
 # Establishes the isolated dev environment and returns its settings. An
-# OTTO_HOME already in the environment is honored and left completely alone —
+# OTTO_HOME already in the environment is honored and left completely alone -
 # including its config.json, which may be a production one the caller pointed us
 # at on purpose. Only the script-managed home gets seeded.
 function Initialize-OttoDevEnvironment {
@@ -70,7 +70,7 @@ function Initialize-OttoDevEnvironment {
     if (-not $env:OTTO_LISTEN) { $env:OTTO_LISTEN = "127.0.0.1:$devPort" }
 
     # Allow any origin in dev so Electron and Metro on their shifting localhost
-    # ports all work. SECURITY: wildcard CORS is unsafe in production — only
+    # ports all work. SECURITY: wildcard CORS is unsafe in production - only
     # acceptable here because the dev daemon binds to loopback and these scripts
     # are never used for production.
     if (-not $env:OTTO_CORS_ORIGINS) { $env:OTTO_CORS_ORIGINS = "*" }

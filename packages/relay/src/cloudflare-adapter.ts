@@ -26,7 +26,7 @@ const LEGACY_RELAY_VERSION: RelayProtocolVersion = "1";
 const CURRENT_RELAY_VERSION: RelayProtocolVersion = "2";
 
 // Client frames are buffered while no daemon data socket is attached. Cloudflare caps a single
-// WebSocket message at 1 MiB, so a count-only trim still admits ~200 MiB per connectionId — past
+// WebSocket message at 1 MiB, so a count-only trim still admits ~200 MiB per connectionId - past
 // the Durable Object's 128 MB memory limit. Legitimate buffered traffic is only a client's
 // pre-attach opening frames (the E2EE handshake init, well under a kilobyte); large payloads such
 // as screenshots or file content flow only after the server data socket exists and are never
@@ -263,7 +263,7 @@ export class RelayDurableObject {
   }
 
   private frameByteSize(message: string | ArrayBuffer): number {
-    // For strings this counts UTF-16 code units, not UTF-8 bytes (off by at most 3x) — close
+    // For strings this counts UTF-16 code units, not UTF-8 bytes (off by at most 3x) - close
     // enough for a resource cap.
     return typeof message === "string" ? message.length : message.byteLength;
   }

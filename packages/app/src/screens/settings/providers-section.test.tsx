@@ -113,7 +113,7 @@ vi.mock("react-native", () => ({
   // Below here nothing is rendered by this screen. react-native-reanimated
   // re-exports a slice of react-native at import time to build its Animated.*
   // wrappers, and a missing binding fails the whole module graph rather than
-  // the line that uses it — so these exist purely to keep the import loading.
+  // the line that uses it - so these exist purely to keep the import loading.
   FlatList: () => null,
   Image: () => null,
   ScrollView: () => null,

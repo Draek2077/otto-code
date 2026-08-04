@@ -238,9 +238,9 @@ export const fr: TranslationResources = {
           "La mémoire est désactivée pour cette personnalité, donc rien de tout cela n'est envoyé. Les leçons sont conservées.",
         empty: "Rien n'est ajouté au contexte de cette personnalité dans ce projet.",
         emptyButStored_one:
-          "La leçon ci-dessous ne s'applique pas à ce projet, donc rien n'est ajouté ici — l'étiquette sur la ligne indique pourquoi.",
+          "La leçon ci-dessous ne s'applique pas à ce projet, donc rien n'est ajouté ici - l'étiquette sur la ligne indique pourquoi.",
         emptyButStored_other:
-          "Aucune des {{count}} leçons ci-dessous ne s'applique à ce projet, donc rien n'est ajouté ici — l'étiquette sur chaque ligne indique pourquoi.",
+          "Aucune des {{count}} leçons ci-dessous ne s'applique à ce projet, donc rien n'est ajouté ici - l'étiquette sur chaque ligne indique pourquoi.",
         omitted:
           "{{count}} des leçons ci-dessous n'entrent pas dans le budget d'injection et ne sont pas envoyées.",
       },
@@ -248,7 +248,7 @@ export const fr: TranslationResources = {
         global: "Partout",
         project: "Ce projet",
         elsewhere: "Un autre projet",
-        unattached: "Aucun projet — jamais envoyée",
+        unattached: "Aucun projet - jamais envoyée",
         change: "Portée : {{scope}}. Touchez pour changer.",
       },
       row: {
@@ -479,7 +479,7 @@ export const fr: TranslationResources = {
         title: "Supprimer cette conversation ?",
         subjectFallback: "cette conversation",
         recordLine:
-          "L'enregistrement d'Otto pour {{subject}} est supprimé définitivement — la ligne, son titre et ses métadonnées.",
+          "L'enregistrement d'Otto pour {{subject}} est supprimé définitivement - la ligne, son titre et ses métadonnées.",
         transcriptLine:
           "La transcription propre à {{provider}} sur l'hôte est laissée en place : la conversation reste sur le disque et peut encore être lue ou reprise en dehors d'Otto.",
         undoLine: "Côté Otto, cela ne peut pas être annulé.",
@@ -493,7 +493,7 @@ export const fr: TranslationResources = {
         recordLineMany:
           "Supprime définitivement les enregistrements d'Otto pour {{count}} conversations archivées. Les conversations que vous n'avez pas archivées ne sont pas touchées.",
         transcriptLine:
-          "Les transcriptions propres aux fournisseurs d'agents sur l'hôte sont laissées en place — ceci vide l'historique d'Otto, pas les conversations sur le disque.",
+          "Les transcriptions propres aux fournisseurs d'agents sur l'hôte sont laissées en place - ceci vide l'historique d'Otto, pas les conversations sur le disque.",
         undoLine: "Côté Otto, cela ne peut pas être annulé.",
         confirm: "Vider",
       },
@@ -871,7 +871,7 @@ export const fr: TranslationResources = {
       closeAction: "Fermer le Visualiseur",
       loadFailedTitle: "Le Visualiseur n'a pas pu démarrer",
       loadFailedBody:
-        "La vue graphe n'a jamais fini de se charger sur cette machine. Cela peut arriver lorsque l'application s'exécute sans accélération GPU — le journal du bureau en contient les détails. Fermez puis rouvrez l'onglet pour réessayer.",
+        "La vue graphe n'a jamais fini de se charger sur cette machine. Cela peut arriver lorsque l'application s'exécute sans accélération GPU - le journal du bureau en contient les détails. Fermez puis rouvrez l'onglet pour réessayer.",
     },
     contextManagement: {
       tabLabel: "Contexte",
@@ -1249,15 +1249,15 @@ export const fr: TranslationResources = {
           // Branch cleanup section (worktreeArchiveBranchCleanup)
           branchIntro: "Ce worktree est sur la branche {{branchName}}.",
           deleteBranchCheckbox: "Supprimer aussi la branche {{branchName}}",
-          branchMerged: "Entièrement fusionnée dans {{baseBranch}} — suppression sans risque.",
-          branchMergedNoBase: "Entièrement fusionnée — suppression sans risque.",
+          branchMerged: "Entièrement fusionnée dans {{baseBranch}} - suppression sans risque.",
+          branchMergedNoBase: "Entièrement fusionnée - suppression sans risque.",
           branchUnmergedCommit:
-            "Non fusionnée dans {{baseBranch}} — la suppression abandonne {{count}} commit.",
+            "Non fusionnée dans {{baseBranch}} - la suppression abandonne {{count}} commit.",
           branchUnmergedCommits:
-            "Non fusionnée dans {{baseBranch}} — la suppression abandonne {{count}} commits.",
-          branchUnmergedCommitNoBase: "Non fusionnée — la suppression abandonne {{count}} commit.",
+            "Non fusionnée dans {{baseBranch}} - la suppression abandonne {{count}} commits.",
+          branchUnmergedCommitNoBase: "Non fusionnée - la suppression abandonne {{count}} commit.",
           branchUnmergedCommitsNoBase:
-            "Non fusionnée — la suppression abandonne {{count}} commits.",
+            "Non fusionnée - la suppression abandonne {{count}} commits.",
           branchMergeUnknown: "Impossible de déterminer l'état de fusion.",
           branchRemoteKept: "La copie sur origin est conservée.",
           branchDeleted: "Branche {{branchName}} supprimée.",
@@ -1302,7 +1302,7 @@ export const fr: TranslationResources = {
         deletedFile: "Supprimé",
         baseChip: "vs {{baseRef}}",
         baseChipReadOnly: "Comparaison avec {{baseRef}}",
-        baseChipEditable: "Comparaison avec {{baseRef}} — appuyez pour changer",
+        baseChipEditable: "Comparaison avec {{baseRef}} - appuyez pour changer",
         baseChipInferred: "Comparaison avec {{baseRef}}, détectée comme la branche parente",
         baseChipWorktree:
           "Comparaison avec {{baseRef}}, la branche d'origine de cet arbre de travail",
@@ -2246,10 +2246,10 @@ export const fr: TranslationResources = {
     team: {
       title: "Quel genre d'équipe voulez-vous ?",
       subtitle:
-        "Choisissez une équipe et Otto vous construit un groupe complet et équilibré — des personnages nommés, avec leur propre personnalité. Pas convaincu ? Rebrassez. Ou construisez la vôtre à partir de vos agents.",
+        "Choisissez une équipe et Otto vous construit un groupe complet et équilibré - des personnages nommés, avec leur propre personnalité. Pas convaincu ? Rebrassez. Ou construisez la vôtre à partir de vos agents.",
       unsupportedTitle: "Construisez votre équipe",
       unsupportedBody:
-        "Cet hôte ne gère pas encore les équipes d'agents. Mettez-le à jour pour qu'Otto vous en construise une — vous pouvez ignorer cette étape pour l'instant.",
+        "Cet hôte ne gère pas encore les équipes d'agents. Mettez-le à jour pour qu'Otto vous en construise une - vous pouvez ignorer cette étape pour l'instant.",
       blueprints: {
         application: {
           name: "Équipe application",
@@ -2257,7 +2257,7 @@ export const fr: TranslationResources = {
         },
         game: {
           name: "Équipe jeu vidéo",
-          tagline: "Un studio pour créer des jeux — mécaniques, ressenti et petits plus.",
+          tagline: "Un studio pour créer des jeux - mécaniques, ressenti et petits plus.",
         },
         web: {
           name: "Équipe web",
@@ -2265,7 +2265,7 @@ export const fr: TranslationResources = {
         },
         creative: {
           name: "Studio créatif",
-          tagline: "Un studio pour écrire, créer et imaginer — sans écrire une ligne de code.",
+          tagline: "Un studio pour écrire, créer et imaginer - sans écrire une ligne de code.",
         },
         management: {
           name: "Équipe de gestion",
@@ -2281,7 +2281,7 @@ export const fr: TranslationResources = {
         tagline: "Assemblez une équipe à partir de vos agents, à votre façon.",
       },
       providerNoModels:
-        "Ce fournisseur n'a encore aucun modèle — actualisez-le dans les Paramètres, puis revenez.",
+        "Ce fournisseur n'a encore aucun modèle - actualisez-le dans les Paramètres, puis revenez.",
       providerMissing:
         "Choisissez d'abord un fournisseur (étape précédente) pour qu'Otto sache quels modèles utiliser.",
       memberCountOne: "1 membre",
@@ -2585,9 +2585,9 @@ export const fr: TranslationResources = {
     wordWrap: "Retour à la ligne",
     outOfProject: {
       badge:
-        "Modification hors du projet ({{project}}) — ne fait pas partie du contexte de l'agent ni des changements Git de ce Workspace.",
+        "Modification hors du projet ({{project}}) - ne fait pas partie du contexte de l'agent ni des changements Git de ce Workspace.",
       badgeNoProject:
-        "Modification hors du projet — ne fait pas partie du contexte de l'agent ni des changements Git de ce Workspace.",
+        "Modification hors du projet - ne fait pas partie du contexte de l'agent ni des changements Git de ce Workspace.",
     },
     contextMenu: {
       cut: "Couper",
@@ -2649,13 +2649,13 @@ export const fr: TranslationResources = {
     loading: "Chargement des fichiers...",
     noResults: "Aucun fichier",
   },
-  // Refine — the reviewed AI rewrite (docs/refine.md). Only the two
+  // Refine - the reviewed AI rewrite (docs/refine.md). Only the two
   // entry-point strings are translated here; the Refine tab itself is literal
   // English pending the pre-release i18n sweep, like the rename/references tabs.
   refine: {
     open: "Affiner avec l'IA",
     saveFirst:
-      "Enregistrez ou annulez d'abord vos modifications — Affiner travaille à partir du fichier sur le disque.",
+      "Enregistrez ou annulez d'abord vos modifications - Affiner travaille à partir du fichier sur le disque.",
     compactOpen: "Compacter avec l'IA",
     unsupported: "Mettez l'hôte à jour pour utiliser Affiner.",
     job: {
@@ -2671,8 +2671,8 @@ export const fr: TranslationResources = {
     toolbar: {
       discard: "Abandonner cette proposition et relire tous les fichiers",
       writing: "Écriture…",
-      acceptOne: "Accepter — écrire les changements conservés",
-      acceptMany: "Accepter — écrire {{count}} fichiers",
+      acceptOne: "Accepter - écrire les changements conservés",
+      acceptMany: "Accepter - écrire {{count}} fichiers",
       dropAll: "Abandonner tous les changements",
       keepAll: "Conserver tous les changements",
     },
@@ -2690,7 +2690,7 @@ export const fr: TranslationResources = {
         "Laisser la réécriture modifier tous les fichiers de cet ensemble, pas seulement le premier.",
       writableHint: "Peut être réécrit. Touchez pour le passer en contexte lecture seule.",
       referenceHint:
-        "Contexte en lecture seule — le modèle le lit mais ne peut jamais le modifier. Touchez pour autoriser la réécriture.",
+        "Contexte en lecture seule - le modèle le lit mais ne peut jamais le modifier. Touchez pour autoriser la réécriture.",
     },
     instruction: {
       placeholder: "Que faut-il changer ? Ex. : garder chaque règle, couper les répétitions",
@@ -2736,22 +2736,22 @@ export const fr: TranslationResources = {
     },
     summary: {
       pinning:
-        "Les fichiers sont figés dans leur état actuel — c'est ce à quoi chaque proposition sera comparée.",
+        "Les fichiers sont figés dans leur état actuel - c'est ce à quoi chaque proposition sera comparée.",
       unreadable: "Cet ensemble de travail n'a pas pu être lu.",
       idle: "Aucune proposition pour l'instant. Aucun fichier n'a été touché.",
-      generating: "Tour {{round}} — réécriture.",
+      generating: "Tour {{round}} - réécriture.",
       accepting: "Écriture des changements conservés.",
-      acceptedOne: "Terminé — 1 fichier écrit.",
-      acceptedMany: "Terminé — {{count}} fichiers écrits.",
+      acceptedOne: "Terminé - 1 fichier écrit.",
+      acceptedMany: "Terminé - {{count}} fichiers écrits.",
       partiallyAccepted: "{{written}} écrits, {{skipped}} laissés tels quels. Rien n'a été écrasé.",
       reviewOne:
-        "Tour {{round}} — {{kept}} changement conservé sur {{total}}, +{{additions}} −{{removals}} lignes. Rien n'a encore été écrit.",
+        "Tour {{round}} - {{kept}} changement conservé sur {{total}}, +{{additions}} −{{removals}} lignes. Rien n'a encore été écrit.",
       reviewMany:
-        "Tour {{round}} — {{kept}} changements conservés sur {{total}}, +{{additions}} −{{removals}} lignes. Rien n'a encore été écrit.",
+        "Tour {{round}} - {{kept}} changements conservés sur {{total}}, +{{additions}} −{{removals}} lignes. Rien n'a encore été écrit.",
       reviewOneScoped:
-        "Tour {{round}} — {{kept}} changement conservé sur {{total}}, dans {{changedFiles}}/{{proposedFiles}} fichiers, +{{additions}} −{{removals}} lignes. Rien n'a encore été écrit.",
+        "Tour {{round}} - {{kept}} changement conservé sur {{total}}, dans {{changedFiles}}/{{proposedFiles}} fichiers, +{{additions}} −{{removals}} lignes. Rien n'a encore été écrit.",
       reviewManyScoped:
-        "Tour {{round}} — {{kept}} changements conservés sur {{total}}, dans {{changedFiles}}/{{proposedFiles}} fichiers, +{{additions}} −{{removals}} lignes. Rien n'a encore été écrit.",
+        "Tour {{round}} - {{kept}} changements conservés sur {{total}}, dans {{changedFiles}}/{{proposedFiles}} fichiers, +{{additions}} −{{removals}} lignes. Rien n'a encore été écrit.",
     },
   },
   refactor: {
@@ -3113,7 +3113,7 @@ export const fr: TranslationResources = {
       mountedWorkspaceLimit: {
         label: "Workspaces gardés chargés",
         description:
-          "Combien de Workspaces restent chargés pour qu'y revenir soit instantané. Au-delà, celui utilisé le moins récemment est déchargé et se recharge à la prochaine ouverture. Réglez-le au moins sur le nombre entre lesquels vous basculez vraiment — en dessous, chaque bascule décharge le Workspace où vous êtes sur le point de revenir. Plus la valeur est élevée, plus la mémoire utilisée augmente.",
+          "Combien de Workspaces restent chargés pour qu'y revenir soit instantané. Au-delà, celui utilisé le moins récemment est déchargé et se recharge à la prochaine ouverture. Réglez-le au moins sur le nombre entre lesquels vous basculez vraiment - en dessous, chaque bascule décharge le Workspace où vous êtes sur le point de revenir. Plus la valeur est élevée, plus la mémoire utilisée augmente.",
         accessibilityLabel: "Workspaces gardés chargés",
       },
       mountedTabLimit: {
@@ -3291,7 +3291,7 @@ export const fr: TranslationResources = {
         },
         chatMetricsBar: {
           title: "Afficher les métriques de la conversation",
-          hint: "Une ligne fine au-dessus de la transcription indiquant le total de tokens, le coût et l'activité des sous-agents de cette conversation — y compris tout ce qu'elle a lancé. Le coût n'apparaît que si le fournisseur en rapporte un",
+          hint: "Une ligne fine au-dessus de la transcription indiquant le total de tokens, le coût et l'activité des sous-agents de cette conversation - y compris tout ce qu'elle a lancé. Le coût n'apparaît que si le fournisseur en rapporte un",
           accessibilityLabel: "Afficher les métriques de la conversation",
         },
         autoExpandReasoning: {
@@ -3863,7 +3863,7 @@ export const fr: TranslationResources = {
           "Si désactivé, les discussions masquent le sélecteur d'auto-compactage et utilisent toujours la valeur par défaut ci-dessus.",
         maxToolRoundsLabel: "Nombre maximal de tours d'outils par échange",
         maxToolRoundsHint:
-          "L'échange s'arrête sur une erreur après ce nombre de tours d'outils sans réponse finale — une soupape de sécurité contre les boucles incontrôlées.",
+          "L'échange s'arrête sur une erreur après ce nombre de tours d'outils sans réponse finale - une soupape de sécurité contre les boucles incontrôlées.",
         maxToolRoundsValue: "{{rounds}} tours",
         maxToolRoundsRequiresUpdate:
           "Mettez à jour l'hôte pour configurer le nombre maximal de tours d'outils.",

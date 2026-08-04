@@ -1,5 +1,5 @@
 /**
- * `otto brain sweep` — find the reasoning budget that yields the best output, and
+ * `otto brain sweep` - find the reasoning budget that yields the best output, and
  * save it to the model's profile. Guards against the thinking-model failure where
  * an unrestricted budget returns pure reasoning and no content.
  */
@@ -7,6 +7,7 @@ import type { Command } from "commander";
 
 import {
   forModel,
+  formatReasoningBudget,
   loadBrainConfig,
   loadProfilesStore,
   put,
@@ -15,11 +16,12 @@ import {
 import { pickModel, scanModels } from "../models/index.js";
 import type { AnyCommandResult, OutputSchema } from "../output/index.js";
 import { CommandError } from "../output/types.js";
-import { sweep } from "../ops/sweep.js";
+import { DEFAULT_BUDGETS, sweep } from "../ops/sweep.js";
 import { resolveRuntime } from "../runtime/index.js";
+import { withActivity } from "../service/activity.js";
 
 export interface SweepRow {
-  budget: number | string;
+  budget: number;
   content: string;
   files: string;
   tokensPerSec: string;
@@ -30,7 +32,14 @@ export interface SweepRow {
 const sweepSchema: OutputSchema<SweepRow> = {
   idField: "budget",
   columns: [
-    { header: "BUDGET", field: "budget", width: 8, align: "right" },
+    // Labelled only for the table. `budget` stays the raw number on the row, so
+    // json/yaml and --quiet still emit -1 for machine consumers.
+    {
+      header: "BUDGET",
+      field: (row) => formatReasoningBudget(row.budget),
+      width: 8,
+      align: "right",
+    },
     { header: "CONTENT", field: "content", width: 9, align: "right" },
     { header: "FILES", field: "files", width: 6, align: "right" },
     { header: "TOK/S", field: "tokensPerSec", width: 7, align: "right" },
@@ -68,20 +77,29 @@ export async function runSweepCommand(
     ? options.budgets.split(",").map((s) => Number(s.trim()))
     : undefined;
 
-  const report = await sweep({
-    runtime,
-    model,
-    profile,
-    budgets,
-    onProgress: (p) => {
-      if (p.phase === "loading")
-        process.stderr.write(`  budget ${String(p.budget).padStart(5)}: loading…\n`);
-      if (p.phase === "done")
-        process.stderr.write(`  budget ${String(p.budget).padStart(5)}: done\n`);
-      if (p.phase === "failed")
-        process.stderr.write(`  budget ${String(p.budget).padStart(5)}: failed ${p.error}\n`);
-    },
-  });
+  // Progress lines stack, so pad to the widest label this run will print rather
+  // than a fixed width that "unrestricted" would overflow.
+  const labelWidth = Math.max(
+    ...(budgets ?? DEFAULT_BUDGETS).map((b) => formatReasoningBudget(b).length),
+  );
+  const label = (budget: number): string => formatReasoningBudget(budget).padStart(labelWidth);
+
+  // Announced so the Brain rail can show the host as busy: a sweep reloads the
+  // model once per budget and owns the machine for the duration.
+  const report = await withActivity("sweep", { target: model.displayName }, () =>
+    sweep({
+      runtime,
+      model,
+      profile,
+      budgets,
+      onProgress: (p) => {
+        if (p.phase === "loading") process.stderr.write(`  budget ${label(p.budget)}: loading…\n`);
+        if (p.phase === "done") process.stderr.write(`  budget ${label(p.budget)}: done\n`);
+        if (p.phase === "failed")
+          process.stderr.write(`  budget ${label(p.budget)}: failed ${p.error}\n`);
+      },
+    }),
+  );
 
   if (report.recommended !== null && report.recommended !== undefined) {
     profile.reasoningBudget = report.recommended;

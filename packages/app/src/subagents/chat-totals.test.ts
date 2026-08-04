@@ -67,7 +67,7 @@ function split(input: Partial<AgentCumulativeUsage> & { costUsd?: number }): Age
 }
 
 describe("selectChatTotals", () => {
-  it("is the parent PLUS its descendants — the number nothing used to show", () => {
+  it("is the parent PLUS its descendants - the number nothing used to show", () => {
     const totals = selectChatTotals(
       state([
         {

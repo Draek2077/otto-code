@@ -8,7 +8,7 @@ function snapshot(...paths: string[]): { path: string }[] {
 describe("resolveChangedPathSet", () => {
   it("keeps the previous set identity when a new snapshot has the same membership", () => {
     const first = resolveChangedPathSet(snapshot("src/a.ts", "src/b.ts"), new Set<string>());
-    // A fresh array of fresh objects — the shape every `checkout_diff_update`
+    // A fresh array of fresh objects - the shape every `checkout_diff_update`
     // push arrives in while an agent is editing files already in the diff.
     const second = resolveChangedPathSet(snapshot("src/a.ts", "src/b.ts"), first);
 

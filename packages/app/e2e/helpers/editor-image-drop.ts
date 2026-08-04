@@ -5,7 +5,7 @@ import type { Locator } from "@playwright/test";
  *
  * Playwright cannot drive a real OS drag, and it cannot put an image on the
  * system clipboard, so the gesture is reconstructed inside the page: a real
- * `DataTransfer` carrying real `File` objects, dispatched on `.cm-content` —
+ * `DataTransfer` carrying real `File` objects, dispatched on `.cm-content` -
  * the element `EditorView.domEventHandlers` attaches its handlers to, which is
  * why the event is dispatched there rather than on the pane or the page.
  *

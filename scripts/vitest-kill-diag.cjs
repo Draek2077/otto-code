@@ -2,7 +2,7 @@
 // DIAG(windows-fork-crash): temporary instrumentation for the Windows
 // server-tests worker crashes ("[vitest-pool]: Worker forks emitted error"
 // with every test passing). Loaded through NODE_OPTIONS --require into every
-// node process of the test run — the vitest main process, every pool fork,
+// node process of the test run - the vitest main process, every pool fork,
 // and every child the tests spawn. Inert unless OTTO_KILL_DIAG_FILE is set.
 //
 // One JSON line per event is appended to OTTO_KILL_DIAG_FILE:

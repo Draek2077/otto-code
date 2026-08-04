@@ -58,7 +58,7 @@ export function compileOutputSchema(
   const shape: Record<string, z.ZodTypeAny> = {};
   for (const field of fields) {
     const base = zodForField(field);
-    // Absent `required` means required — you declared the field, you produce it.
+    // Absent `required` means required - you declared the field, you produce it.
     shape[field.key] = field.required === false ? base.optional() : base;
   }
   return z.object(shape).passthrough() as unknown as z.ZodType<Record<string, unknown>>;
@@ -70,7 +70,7 @@ export function compileOutputSchema(
  * Every field is optional here even when the contract requires it, and that is
  * deliberate. The catalog parses a tool's input against this schema *before*
  * the handler runs and throws on failure, so a strictly-typed shape would mean
- * a missing field — the most common mistake, and the one worth correcting —
+ * a missing field - the most common mistake, and the one worth correcting -
  * surfaces as a thrown parse error rather than as this module's own message.
  * Making the shape permissive hands every such case to the handler, which
  * answers with a precise, correctable tool error on every provider. Requiredness
@@ -113,13 +113,13 @@ export function validateNodeOutput(
 export function buildOutputInstruction(fields: readonly NodeOutputFieldDescriptor[]): string {
   const lines = fields.map((field) => {
     const optional = field.required === false ? ", optional" : "";
-    const description = field.description ? ` — ${field.description}` : "";
+    const description = field.description ? ` - ${field.description}` : "";
     return `- ${field.key} (${field.type}${optional})${description}`;
   });
   return [
     "When your work is complete, call the submit_output tool exactly once with these fields:",
     ...lines,
-    "The tool call is the deliverable — do not write the fields as prose instead. If the tool reports a validation error, correct the values and call it again.",
+    "The tool call is the deliverable - do not write the fields as prose instead. If the tool reports a validation error, correct the values and call it again.",
   ].join("\n");
 }
 
@@ -140,7 +140,7 @@ interface SubmittedOutput {
 export class NodeOutputStore {
   private readonly submissions = new Map<string, SubmittedOutput>();
 
-  /** Last valid submission wins — a model that corrects itself means it. */
+  /** Last valid submission wins - a model that corrects itself means it. */
   record(agentId: string, value: Record<string, unknown>): void {
     this.submissions.set(agentId, { value });
   }
@@ -164,7 +164,7 @@ export class NodeOutputStore {
 /**
  * Recover output fields from a final message when the tool was never called.
  *
- * Not a fallback *path* — the feature contract still says "declare fields, get
+ * Not a fallback *path* - the feature contract still says "declare fields, get
  * fields". This is the difference between a node whose model wrote its JSON in
  * prose (recoverable, and common on small local models) and a node that
  * produced nothing usable (a real failure worth reporting).

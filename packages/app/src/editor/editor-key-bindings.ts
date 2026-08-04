@@ -16,8 +16,8 @@ import type { EditorKeyAction, EditorKeyBinding } from "./editor-contract";
 // native webview and may not import from the registry (or from anything else in
 // the app). It receives plain `EditorKeyBinding`s instead.
 //
-// The global keyboard hook still matches these bindings — that is what makes the
-// editor's version beat a general binding on the same combo — but routes them
+// The global keyboard hook still matches these bindings - that is what makes the
+// editor's version beat a general binding on the same combo - but routes them
 // nowhere, leaving the keystroke to reach the editor. See route-shortcut.ts.
 
 const EDITOR_KEY_ACTIONS: Record<string, EditorKeyAction> = {
@@ -48,8 +48,8 @@ const EDITOR_KEY_ACTIONS: Record<string, EditorKeyAction> = {
  *
  * `KeyCombo.key` is the printable character for the keys that have one ("s",
  * ","), which is exactly what CM6 matches on. Keys without one are named by
- * their `code`, and for this set — the function keys, Escape, the arrows,
- * Backspace and friends — the code IS the `KeyboardEvent.key`, so it carries
+ * their `code`, and for this set - the function keys, Escape, the arrows,
+ * Backspace and friends - the code IS the `KeyboardEvent.key`, so it carries
  * across unchanged. The one code that is not a real key is `Digit`, the
  * registry's wildcard for the 1-9 row; an editor command bound to it would be
  * meaningless, so it is dropped rather than mistranslated.
@@ -63,7 +63,7 @@ function codeMirrorKeyName(combo: KeyCombo): string | null {
 
 /**
  * One registry combo string ("Mod+S") as a CodeMirror key ("Mod-s"). Modifier
- * order does not matter — CM6 normalizes the name it is given — but the
+ * order does not matter - CM6 normalizes the name it is given - but the
  * modifiers themselves must survive, `Mod` included: it means the same
  * Cmd-on-mac/Ctrl-elsewhere thing in both systems, which is what keeps a single
  * registry row from having to split into a per-platform pair.
@@ -99,7 +99,7 @@ export function comboStringToCodeMirrorKey(comboString: string): string | null {
  * app's chord state machine lives in the global handler, and half-implementing a
  * second one inside the editor would give the same chord two owners. A user who
  * rebinds an editor command to a chord loses that command's key rather than
- * getting a subtly different one — and the row still says so in Settings.
+ * getting a subtly different one - and the row still says so in Settings.
  */
 export function buildEditorKeyBindings(
   bindings: readonly ParsedShortcutBinding[] = DEFAULT_BINDINGS,

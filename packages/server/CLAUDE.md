@@ -1,4 +1,4 @@
-# AGENTS.md — Otto Server Development Guide
+# AGENTS.md - Otto Server Development Guide
 
 For AI coding agents working in `packages/server`. Supplements at the repo root.
 
@@ -26,29 +26,29 @@ Formatting is oxfmt, linting is oxlint; both read config from the repo root. Do 
 
 ### TypeScript
 
-- **Fully strict** — no `any`, no implicit `any`
+- **Fully strict** - no `any`, no implicit `any`
 - **`interface`** over `type`\*\* when possible
 - **`function` declarations** over arrow function assignments
-- **Named types** — no complex inline types in public signatures
-- **Object parameters** — use single object param when >1 argument
-- **Infer from Zod schemas** — `z.infer<typeof schema>` instead of hand-written types
+- **Named types** - no complex inline types in public signatures
+- **Object parameters** - use single object param when >1 argument
+- **Infer from Zod schemas** - `z.infer<typeof schema>` instead of hand-written types
 - `noUnusedLocals: true`, `noUnusedParameters: true`, `noFallthroughCasesInSwitch: true`
 
 ### Imports
 
 - Use path alias `@server/*` in server package (maps to `./src/`)
-- No barrel `index.ts` re-exports — they create unnecessary indirection
+- No barrel `index.ts` re-exports - they create unnecessary indirection
 
 ### Naming
 
 - Files: `kebab-case.ts` named after the main export (`create-tool-call.ts`)
 - Tests: collocated with implementation (`thing.test.ts`)
-- No prefixes like `RpcX`, `DbX`, `UiX` — keep one canonical type per concept
+- No prefixes like `RpcX`, `DbX`, `UiX` - keep one canonical type per concept
 
 ### Error Handling
 
-- **Fail explicitly** — throw instead of silently returning defaults
-- **Typed domain errors** — extend `Error` with structured metadata
+- **Fail explicitly** - throw instead of silently returning defaults
+- **Typed domain errors** - extend `Error` with structured metadata
 
 ```typescript
 class TimeoutError extends Error {
@@ -88,19 +88,19 @@ type FetchState =
 
 Tests prove behavior, not structure. Every test should answer: "what user-visible or API-visible behavior does this verify?"
 
-- **TDD**: Work in vertical slices — one test, one implementation, repeat
+- **TDD**: Work in vertical slices - one test, one implementation, repeat
 - **Determinism first**: No conditional assertions, no timing/randomness, no weak assertions
-- **Real deps over mocks**: Database, APIs, file system — real in tests
+- **Real deps over mocks**: Database, APIs, file system - real in tests
 - **Flaky tests are a bug**: Never remove a test because it's flaky; fix the variance source
 
 ---
 
 ## Critical Rules
 
-1. **NEVER restart the daemon on port 6868** — that is the installed app's daemon over `~/.otto`, and restarting it kills your own process. Dev runs on `6788` over `packages/desktop/.dev/otto-home`; see [docs/development.md](../../docs/development.md).
-2. **NEVER assume timeouts need a restart** — they can be transient
+1. **NEVER restart the daemon on port 6868** - that is the installed app's daemon over `~/.otto`, and restarting it kills your own process. Dev runs on `6788` over `packages/desktop/.dev/otto-home`; see [docs/development.md](../../docs/development.md).
+2. **NEVER assume timeouts need a restart** - they can be transient
 3. **Always run `npm run typecheck` after changes**
-4. **NEVER add auth checks to tests** — agent providers handle their own auth
+4. **NEVER add auth checks to tests** - agent providers handle their own auth
 5. **NEVER make breaking WebSocket/message schema changes.** The protocol contract is always backward-compatible; the per-feature contract is not. The root CLAUDE.md carries the full rule, including capability gating via `server_info.features.*` and the `COMPAT(name)` tagging convention.
 
 ---

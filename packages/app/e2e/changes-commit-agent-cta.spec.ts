@@ -9,7 +9,7 @@ import { seedWorkspace } from "./helpers/seed-client";
 // use (checkout.git.commit_agent) and confirms it with the user. To keep the
 // resolution deterministic regardless of which provider CLIs exist on the
 // machine, this spec seeds a Writer-role Agent Personality bound to the
-// dev-only mock provider — role-matched personalities are always resolved
+// dev-only mock provider - role-matched personalities are always resolved
 // ahead of the configured/substring/current-selection fallback chain.
 //
 // The flow is asserted up to the confirm dialog and then cancelled: confirming
@@ -49,7 +49,7 @@ test("commit CTA confirms the writer agent before an AI commit", async ({ page }
     roles: ["writer"],
   };
   // preferWriterPersonalities defaults false, which puts the built-in cheap
-  // ladder ahead of any role-matched Writer — so the seeded writer only ever
+  // ladder ahead of any role-matched Writer - so the seeded writer only ever
   // won when a builtin happened to be bound to the same provider/model the
   // ladder picked. Opt in so the personality this spec seeds is genuinely the
   // one the CTA resolves, which is what the assertion below claims.
@@ -102,7 +102,7 @@ test("commit CTA confirms the writer agent before an AI commit", async ({ page }
 
   // Cancelling ran no commit: still only the fixture commit, and alpha.ts is
   // still an uncommitted change. (The Changes view stages selected files, so
-  // the porcelain index column varies — assert the change persists, not its
+  // the porcelain index column varies - assert the change persists, not its
   // exact staged/unstaged state.)
   expect(gitOutput(workspace.repoPath, ["rev-list", "--count", "HEAD"])).toBe("1");
   expect(gitOutput(workspace.repoPath, ["status", "--porcelain"])).toContain("src/alpha.ts");

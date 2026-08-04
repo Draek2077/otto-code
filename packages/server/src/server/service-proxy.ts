@@ -263,7 +263,7 @@ function parseHostHeaderPort(hostHeader: string): string | null {
   if (!match) {
     return null;
   }
-  // The authority is client-supplied — route lookup strips the port before
+  // The authority is client-supplied - route lookup strips the port before
   // matching, so any digits reach us. Only pass on something that could be a
   // real port rather than handing services a number they will build URLs from.
   const port = Number(match[1]);
@@ -293,13 +293,13 @@ function buildForwardedHeaders({
   // above, and frameworks apply x-forwarded-port afterwards, so an inbound port
   // that disagrees would silently win over the authority we forwarded. The port
   // in Host therefore takes precedence. When Host carries no port there is
-  // nothing to derive from and an upstream proxy's value survives — the
+  // nothing to derive from and an upstream proxy's value survives - the
   // nginx-on-:8443 case, where $host drops the port and x-forwarded-port is the
   // only source. Never derive the port from the scheme: the upgrade path
   // hardcodes "http", so defaulting would turn a correct 443 into 80.
   //
   // LIMITATION: none of this is authenticated, and the port in Host is not an
-  // observation of the connection — it is whatever the client wrote, since
+  // observation of the connection - it is whatever the client wrote, since
   // route lookup normalizes the port away before matching. Paseo also does not
   // check whether an inbound x-forwarded-port arrived from a configured trusted
   // proxy. Services must treat the forwarded authority as client-influenced

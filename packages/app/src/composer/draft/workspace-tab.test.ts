@@ -110,7 +110,7 @@ describe("draft personality resolution", () => {
     const draftPersonality = resolveDraftPersonality({
       autoSubmitConfig,
       agentControls: {
-        // The tab's own composer never selected anything — the personality
+        // The tab's own composer never selected anything - the personality
         // came from the originating new-workspace composer instead.
         personality: {
           selectedPersonalityId: null,

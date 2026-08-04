@@ -13,11 +13,11 @@ import type { DevServerManager, PreviewServerSummary } from "./dev-server-manage
  * Registered into the Otto tool catalog next to the browser_* tools; the
  * agent starts a server here, then verifies it through the browser tools.
  *
- * The verification surface is the Otto browser pane — the same tab the user
- * watches — never a headless or system browser. Each server gets exactly one
+ * The verification surface is the Otto browser pane - the same tab the user
+ * watches - never a headless or system browser. Each server gets exactly one
  * designated tab ("it"): preview_start opens or re-finds that tab and returns
  * its browserId for the browser_* tools. Tool descriptions deliberately steer
- * agent behavior — see docs/preview.md ("Design principles").
+ * agent behavior - see docs/preview.md ("Design principles").
  */
 
 interface CallerAgentContext {
@@ -26,7 +26,7 @@ interface CallerAgentContext {
   workspaceId?: string;
 }
 
-/** Narrow surface of DevServerManager the tools need — keeps tests honest. */
+/** Narrow surface of DevServerManager the tools need - keeps tests honest. */
 export type PreviewDevServerHost = Pick<
   DevServerManager,
   "start" | "stop" | "list" | "logs" | "bindTab" | "boundTab" | "getServer"
@@ -114,10 +114,10 @@ function sameOrigin(a: string, b: string): boolean {
  * made a tab the user was looking at read as closed, so `ensurePreviewTab`
  * opened another one beside it:
  *
- * - `present` — the tab exists. It may still be attaching (`ready: false`),
+ * - `present` - the tab exists. It may still be attaching (`ready: false`),
  *   which is emphatically NOT a reason to open a replacement.
- * - `absent` — the host answered and the tab genuinely is not there.
- * - `unavailable` — we could not ask (broker error, no browser host attached).
+ * - `absent` - the host answered and the tab genuinely is not there.
+ * - `unavailable` - we could not ask (broker error, no browser host attached).
  *   Unknown is not the same as gone; never create on this.
  */
 type BoundTabLookup =
@@ -165,13 +165,13 @@ async function ensurePreviewTab(params: {
   if (!broker) {
     return {
       browserId: null,
-      note: "Browser tools are disabled on this daemon — server started without a preview tab.",
+      note: "Browser tools are disabled on this daemon - server started without a preview tab.",
     };
   }
   if (!context.workspaceId) {
     return {
       browserId: null,
-      note: "No workspace context — server started without opening a preview tab.",
+      note: "No workspace context - server started without opening a preview tab.",
     };
   }
 
@@ -183,7 +183,7 @@ async function ensurePreviewTab(params: {
       // than opening a second one on the strength of a failed lookup.
       return {
         browserId: bound,
-        note: `Could not reach the browser host to check the preview tab — reusing the bound tab ${bound}.`,
+        note: `Could not reach the browser host to check the preview tab - reusing the bound tab ${bound}.`,
       };
     }
     if (existing.kind === "present") {
@@ -191,7 +191,7 @@ async function ensurePreviewTab(params: {
         // Still attaching. It is on screen; its url is simply not readable yet.
         return {
           browserId: bound,
-          note: `The preview tab is still opening — use this browserId, it will be drivable shortly.`,
+          note: `The preview tab is still opening - use this browserId, it will be drivable shortly.`,
         };
       }
       if (sameOrigin(existing.url, server.url)) {
@@ -201,7 +201,7 @@ async function ensurePreviewTab(params: {
         browserId: bound,
         tabUrl: existing.url,
         note:
-          `The preview tab is currently at ${existing.url}, not the dev server — it may have been navigated away. ` +
+          `The preview tab is currently at ${existing.url}, not the dev server - it may have been navigated away. ` +
           `Use browser_navigate with this browserId to return to ${server.url}.`,
       };
     }
@@ -224,7 +224,7 @@ async function ensurePreviewTab(params: {
       return {
         browserId: payload.result.browserId,
         tabUrl: payload.result.url,
-        ...(bound ? { note: "The previous preview tab was closed — opened a new one." } : {}),
+        ...(bound ? { note: "The previous preview tab was closed - opened a new one." } : {}),
       };
     }
     const message = payload.ok
@@ -250,8 +250,8 @@ export function registerPreviewTools(options: RegisterPreviewToolsOptions): void
     {
       title: "Start preview dev server",
       description:
-        "Start a dev server by name from .claude/launch.json, and open (or re-find) its designated preview tab in the Otto browser — the same tab the user sees. " +
-        "Reuses the server if already running — including one Otto didn't start, which comes back adopted under an ext:<port> id with no captured logs. ALWAYS use this instead of shell commands to run dev servers. " +
+        "Start a dev server by name from .claude/launch.json, and open (or re-find) its designated preview tab in the Otto browser - the same tab the user sees. " +
+        "Reuses the server if already running - including one Otto didn't start, which comes back adopted under an ext:<port> id with no captured logs. ALWAYS use this instead of shell commands to run dev servers. " +
         "The result's browser.browserId is the tab to verify against: pass it to browser_snapshot, browser_click, browser_screenshot, etc. Don't open extra tabs for verification. " +
         "If .claude/launch.json doesn't exist, create it first with this format:\n" +
         LAUNCH_JSON_FORMAT +
@@ -316,7 +316,7 @@ export function registerPreviewTools(options: RegisterPreviewToolsOptions): void
         return failure(CWD_REQUIRED_MESSAGE);
       }
       try {
-        // Scoped to the caller's workspace — an agent can only stop servers
+        // Scoped to the caller's workspace - an agent can only stop servers
         // belonging to the workspace it runs in.
         const stopped = await options.manager.stop(input.serverId, { requireCwd: caller.cwd });
         return success(stopped);
@@ -331,7 +331,7 @@ export function registerPreviewTools(options: RegisterPreviewToolsOptions): void
     {
       title: "List preview dev servers",
       description:
-        "List the dev servers running for this workspace — ones started with preview_start, plus any already-running configured server Otto has observed. Returns serverIds for use with the other preview_* tools.",
+        "List the dev servers running for this workspace - ones started with preview_start, plus any already-running configured server Otto has observed. Returns serverIds for use with the other preview_* tools.",
       inputSchema: {},
       outputSchema: PreviewToolOutputSchema,
     },

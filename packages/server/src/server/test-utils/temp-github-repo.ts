@@ -1,5 +1,5 @@
 // Single namespace for temporary GitHub repos created by Otto tests.
-// Bulk cleanup relies on this prefix being unmistakable — never reuse `otto-`
+// Bulk cleanup relies on this prefix being unmistakable - never reuse `otto-`
 // (collides with real repos like `otto`, `otto-website`).
 export const TEMP_GITHUB_REPO_PREFIX = "ottotmp-";
 

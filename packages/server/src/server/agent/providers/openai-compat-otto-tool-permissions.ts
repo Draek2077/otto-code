@@ -5,7 +5,7 @@
  *
  * CLI providers reach these tools through their own MCP client, so the CLI's
  * permission system prompts before running them. The openai-compat provider
- * has no CLI in front of it — the daemon executes the call directly — so the
+ * has no CLI in front of it - the daemon executes the call directly - so the
  * daemon must supply the equivalent gating itself. Without it, an "Always Ask"
  * session could create a terminal and send keystrokes (shell execution),
  * upload arbitrary files through a browser form, or flip another agent to
@@ -13,12 +13,12 @@
  *
  * The classes mirror CompatToolKind (openai-compat-tools.ts):
  *
- * - "read":     observation only — never prompts.
+ * - "read":     observation only - never prompts.
  * - "interact": drives visible UI the user is watching (browser pane
- *               interaction, preview servers) — prompts in default mode,
+ *               interaction, preview servers) - prompts in default mode,
  *               auto-approved in acceptEdits, like file edits.
  * - "execute":  can run code, move data off the page, or change what other
- *               agents are allowed to do — prompts in default AND acceptEdits,
+ *               agents are allowed to do - prompts in default AND acceptEdits,
  *               like shell commands.
  *
  * Unknown names default to "execute": a new tool must be classified here
@@ -57,14 +57,14 @@ const READ_ONLY_TOOLS = new Set([
   "list_pending_permissions",
   "list_artifacts",
   "inspect_artifact",
-  // Suggesting/withdrawing a background task only draws or removes a card — the
+  // Suggesting/withdrawing a background task only draws or removes a card - the
   // work starts when the user clicks Start, which is where the real gate lives.
   "spawn_task",
   "dismiss_task",
 ]);
 
 const INTERACT_TOOLS = new Set([
-  // Browser pane interaction — the same surface the user is watching.
+  // Browser pane interaction - the same surface the user is watching.
   "browser_new_tab",
   "browser_close_tab",
   "browser_navigate",
@@ -82,7 +82,7 @@ const INTERACT_TOOLS = new Set([
   "browser_resize",
   // Dev servers run launch.json commands. "They're pre-authored, and editing
   // the config is itself edit-gated" holds in default mode but not in
-  // acceptEdits, where that edit is auto-approved too — so classification
+  // acceptEdits, where that edit is auto-approved too - so classification
   // alone would let a session write a shell command into launch.json and run
   // it promptless. preview_start therefore keeps "interact" only under an
   // extra check (PreviewStartGate, applied in the agent's tool loop):

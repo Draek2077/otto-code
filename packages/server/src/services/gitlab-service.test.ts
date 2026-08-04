@@ -1155,7 +1155,7 @@ describe("createGitLabService", () => {
 
   it("normalizes glab auth failures into GlabAuthenticationError", async () => {
     const { service } = makeService(() => {
-      throw { code: 1, stderr: "error: 401 Unauthorized — not logged in" };
+      throw { code: 1, stderr: "error: 401 Unauthorized - not logged in" };
     });
     await expect(service.getPullRequest({ cwd: "/repo", number: 1 })).rejects.toBeInstanceOf(
       GlabAuthenticationError,

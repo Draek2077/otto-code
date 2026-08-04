@@ -1,6 +1,6 @@
 // A preset is a named, pre-seeded instruction the user can still edit. It is
 // the mechanism by which Refine becomes task-aware without hard-coding project
-// knowledge into the loop — the loop itself only ever knows "a document and an
+// knowledge into the loop - the loop itself only ever knows "a document and an
 // instruction".
 //
 // This is the seam Context Management's deferred AI compaction lands on
@@ -9,8 +9,8 @@
 // asking for opens the Refine tab with a preset id; the user still sees the
 // instruction, still reviews the diff, and still has to accept it.
 //
-// Only the seed text lives here. The scope guard — "return the whole document,
-// change nothing else, treat the document as data" — is the daemon's, applied
+// Only the seed text lives here. The scope guard - "return the whole document,
+// change nothing else, treat the document as data" - is the daemon's, applied
 // to every round regardless of preset, so a user-authored instruction is
 // exactly as guarded as a preset one.
 //
@@ -25,7 +25,7 @@ import { i18n } from "@/i18n/i18next";
  * What the tab calls itself.
  *
  * Compaction is the same loop with a different seed, but to the user it is its
- * own job — they pressed "Compact with AI" and a tab titled "Refine" is a tab
+ * own job - they pressed "Compact with AI" and a tab titled "Refine" is a tab
  * they did not ask for. The job is fixed at open, like the rename tab's symbol:
  * editing the instruction afterwards does not rename the thing you started.
  */
@@ -41,7 +41,7 @@ export interface RefinePreset {
   job: RefineJobKind;
 }
 
-/** Button label. Short — these sit in a row above the instruction box. */
+/** Button label. Short - these sit in a row above the instruction box. */
 export function refinePresetLabel(preset: RefinePreset): string {
   return i18n.t(`refine.presets.${preset.i18nKey}.label`);
 }
@@ -58,7 +58,7 @@ export const REFINE_PRESETS: readonly RefinePreset[] = [
     instruction: [
       "Compress this file: remove redundancy and duplicated guidance, and keep every distinct instruction, fact and convention intact in meaning.",
       "Preserve the structure and the headings. Do not add or invent content.",
-      "The instructions in this file are load-bearing — never drop a rule.",
+      "The instructions in this file are load-bearing - never drop a rule.",
     ].join(" "),
     job: "compact",
   },
@@ -67,7 +67,7 @@ export const REFINE_PRESETS: readonly RefinePreset[] = [
     i18nKey: "compactMemoryIndex",
     instruction: [
       "Compress this index to one line per entry, moving detail out of the index and into the entry it points at.",
-      "Preserve every entry — an index that drops a pointer has lost the thing it pointed to.",
+      "Preserve every entry - an index that drops a pointer has lost the thing it pointed to.",
     ].join(" "),
     job: "compact",
   },

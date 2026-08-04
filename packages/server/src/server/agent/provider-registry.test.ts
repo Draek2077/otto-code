@@ -465,7 +465,7 @@ beforeEach(() => {
   mockState.reset();
 });
 
-test("builds registry with no overrides — same as built-in count", () => {
+test("builds registry with no overrides - same as built-in count", () => {
   const registry = buildProviderRegistry(logger);
 
   expect(Object.keys(registry)).toHaveLength(AGENT_PROVIDER_DEFINITIONS.length);
@@ -900,7 +900,7 @@ test("derived provider inherits and merges disallowedTools from base", () => {
   expect(zaiDisallowedTools).toEqual(["WebSearch", "ComputerUse"]);
 });
 
-test("extension inherits base override — override claude command, zai extends claude gets overridden command", () => {
+test("extension inherits base override - override claude command, zai extends claude gets overridden command", () => {
   buildProviderRegistry(logger, {
     providerOverrides: {
       claude: {
@@ -1321,7 +1321,7 @@ describe("model merging", () => {
     ]);
   });
 
-  test("no profile models — runtime models returned as-is", async () => {
+  test("no profile models - runtime models returned as-is", async () => {
     mockState.runtimeModels.set("claude", [
       {
         provider: "claude",
@@ -1581,5 +1581,41 @@ describe("fetchCatalog", () => {
     expect(injectedClient.fetchCatalog).toHaveBeenCalledTimes(1);
     expect(catalog.models.map((model) => model.id)).toEqual(["catalog-model"]);
     expect(catalog.modes.map((mode) => mode.id)).toEqual(["ask"]);
+  });
+});
+
+// The local AI host is registered like any other built-in, but its endpoint
+// comes from the brain settings rather than provider config. When the brain is
+// off there is nothing to fall back to, so the catalog fetch has to fail with
+// the operator-facing reason - that error is what paints the Providers row red
+// and leaves the model picker with nothing to list.
+describe("otto-brain built-in provider", () => {
+  test("is registered without any endpoint configuration", () => {
+    const registry = buildProviderRegistry(logger);
+
+    expect(registry["otto-brain"]).toMatchObject({
+      id: "otto-brain",
+      label: "Otto Brain",
+      enabled: true,
+      derivedFromProviderId: null,
+    });
+  });
+
+  test("surfaces the brain's own reason when the host is unavailable", async () => {
+    const registry = buildProviderRegistry(logger, {
+      brainEndpoint: () => ({ state: "unavailable", reason: "Otto Brain is turned off." }),
+    });
+
+    await expect(
+      registry["otto-brain"]!.fetchCatalog({ scope: "global", force: false }),
+    ).rejects.toThrow("Otto Brain is turned off.");
+  });
+
+  test("is unavailable when no brain endpoint resolver is wired in", async () => {
+    const registry = buildProviderRegistry(logger);
+
+    await expect(
+      registry["otto-brain"]!.fetchCatalog({ scope: "global", force: false }),
+    ).rejects.toThrow(/not available/u);
   });
 });

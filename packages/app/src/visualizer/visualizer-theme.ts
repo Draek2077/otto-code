@@ -6,13 +6,13 @@ import type { DarkThemeName, LightThemeName } from "@/styles/theme";
 
 // Builds the Visualizer guest palette from the active theme variant: a full
 // overlay for the vendor page's `COLORS` registry (vendor/agent-flow/web/lib/
-// colors.ts — merged at module init from `window.__OTTO_THEME__`, see
+// colors.ts - merged at module init from `window.__OTTO_THEME__`, see
 // OTTO-PATCHES.md) plus CSS variables for the shell's glass-card/scrollbar
 // overrides (emit-bundle.mjs). Design intent (docs/visualizer.md "Theme
 // colors"):
 //
-// - The stage (`void`) is always DARKER than the app background — a step
-//   below even the sidebar — so the graph reads as its own space. Light
+// - The stage (`void`) is always DARKER than the app background - a step
+//   below even the sidebar - so the graph reads as its own space. Light
 //   variants stay light (slightly deepened paper) with dark glyphs; dark
 //   variants go near-black.
 // - The vendor's fixed holographic cyan becomes the variant's ACCENT: glow,
@@ -25,7 +25,7 @@ import type { DarkThemeName, LightThemeName } from "@/styles/theme";
 //
 // FORMAT RULES (load-bearing): vendor draw/component code appends 2-digit hex
 // alphas to "solid" tokens (`COLORS.holoBase + '80'`, `stateColor + '90'`,
-// `alphaHex(...)`) — every solid token this builder emits MUST therefore be a
+// `alphaHex(...)`) - every solid token this builder emits MUST therefore be a
 // 6-digit `#rrggbb`. Tokens the vendor authored as `rgba(...)`, partial
 // `rgba(r, g, b,` bases (consumed via `withAlpha`), 8-digit hexes, gradients,
 // or box-shadow strings must keep exactly that shape.
@@ -48,7 +48,7 @@ interface VisualizerPaletteInput {
 }
 
 export interface VisualizerPalette {
-  /** Full-page/stage background — also sent as `colors.void`; separate so the
+  /** Full-page/stage background - also sent as `colors.void`; separate so the
    * embed views can paint their host-side containers before the guest boots. */
   background: string;
   /** Overlay merged over the vendor page's COLORS registry. */
@@ -70,7 +70,7 @@ function mix(a: string, b: string, t: number): string {
   return `#${((m(ar, br) << 16) | (m(ag, bg) << 8) | m(ab, bb)).toString(16).padStart(6, "0")}`;
 }
 
-/** `rgba(r, g, b, a)` — the vendor's spaced rgba shape. */
+/** `rgba(r, g, b, a)` - the vendor's spaced rgba shape. */
 function alpha(hex: string, a: number): string {
   const [r, g, b] = channels(hex);
   return `rgba(${r}, ${g}, ${b}, ${a})`;
@@ -108,7 +108,7 @@ interface SchemeProfile {
   nodeInterior: string;
   glassBg: string;
   glassBorderA: number;
-  /** Multiplier for the faint holo border/separator alphas — accent tints
+  /** Multiplier for the faint holo border/separator alphas - accent tints
    * need roughly double the alpha to register on a light stage. */
   borderBoost: number;
   panelBg: string;
@@ -268,7 +268,7 @@ export function buildVisualizerPalette(theme: VisualizerPaletteInput): Visualize
     holoBright,
     holoHot,
 
-    // Agent states (solid 6-hex — vendor appends hex alphas)
+    // Agent states (solid 6-hex - vendor appends hex alphas)
     idle: holo,
     thinking: holo,
     tool_calling: amberText,
@@ -401,7 +401,7 @@ export function buildVisualizerPalette(theme: VisualizerPaletteInput): Visualize
     barFillMain: alpha(holo, 0.15),
     barFillSub: alpha(purple, 0.15),
 
-    // Transcript / message feed — user
+    // Transcript / message feed - user
     userMsgBg: alpha(amber, 0.06),
     userMsgBorder: alpha(amber, 0.12),
     userLabel: hex8(userText, "90"),
@@ -485,7 +485,7 @@ export interface VisualizerThemeInput {
 
 export interface VisualizerTheme {
   /** JSON payload substituted into the shell's `__OTTO_THEME_JSON__`
-   * placeholder (applyVisualizerTheme). Stable string — views key their html
+   * placeholder (applyVisualizerTheme). Stable string - views key their html
    * memo (and therefore guest remounts) on it. */
   json: string;
   /** The palette's stage background, for the embed views' host-side containers. */

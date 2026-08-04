@@ -5,7 +5,7 @@ import { ScopeSelect } from "./scope-select";
 import type { AgentPersonality } from "@otto-code/protocol/messages";
 
 /**
- * "Viewing context for: …" — the selector that makes this tab honest now that
+ * "Viewing context for: …" - the selector that makes this tab honest now that
  * personalities carry their own memory.
  *
  * Context used to be a property of a workspace and a provider alone. It is not
@@ -17,7 +17,7 @@ import type { AgentPersonality } from "@otto-code/protocol/messages";
  * weight every agent here carries regardless of who runs, which is exactly what
  * you want when you are hunting bloat in the project's own files.
  *
- * Rendered as the same dropdown as the window picker beside it, on purpose —
+ * Rendered as the same dropdown as the window picker beside it, on purpose -
  * both answer "what am I evaluating against", and a roster that grows every time
  * someone names a personality is exactly the list that must not be a chip row.
  */
@@ -25,7 +25,7 @@ import type { AgentPersonality } from "@otto-code/protocol/messages";
 /** Above this many, scanning the list stops being faster than typing a name. */
 const SEARCHABLE_ROSTER_SIZE = 8;
 
-/** Not a personality id — "Everyone" is a selection, so it needs one of its own. */
+/** Not a personality id - "Everyone" is a selection, so it needs one of its own. */
 const EVERYONE_ID = "everyone";
 
 interface ContextPersonalitySelectorProps {

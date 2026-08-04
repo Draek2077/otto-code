@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
  * Language servers speak `file://` URIs; the daemon speaks filesystem paths.
  * Node's WHATWG conversion already handles drive letters, UNC shares (including
  * `\\wsl$\...`) and percent-encoding, so this module only adds the boundary
- * checks and — the part stdlib cannot give us — a canonical identity key.
+ * checks and - the part stdlib cannot give us - a canonical identity key.
  *
  * The key matters because a server may echo a document back in a different but
  * equivalent spelling: we send `file:///C:/a/b.ts`, tsserver answers with
@@ -51,7 +51,7 @@ export function fromFileUri(uri: string): string {
 /**
  * Canonical identity for a document, accepting either a path or a `file://` URI.
  * Forward slashes throughout and an upper-cased drive letter, because `c:` and
- * `C:` are the same file on Windows. The rest of the path keeps its case — POSIX
+ * `C:` are the same file on Windows. The rest of the path keeps its case - POSIX
  * filesystems are case-sensitive and lower-casing would merge distinct files.
  */
 export function documentKey(filePathOrUri: string): string {

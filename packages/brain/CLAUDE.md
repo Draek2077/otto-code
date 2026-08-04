@@ -4,7 +4,7 @@ This file guides Claude Code when working in the otto-brain package.
 
 ## What this is
 
-`@otto-code/brain` — a self-contained host for local GGUF models on llama.cpp's
+`@otto-code/brain` - a self-contained host for local GGUF models on llama.cpp's
 `llama-server`, built as an Otto suite package. It runs as a service the Otto
 daemon can bring up and manage (like the daemon manages its own children) **or**
 standalone, including on a separate server. It is **opt-in**: Otto ships with the
@@ -12,11 +12,11 @@ local brain off and never auto-starts it.
 
 Its reason for existing is two hard problems it solves empirically:
 
-1. **VRAM budgeting** — the theoretical KV-cache formula overestimates badly (~4x
+1. **VRAM budgeting** - the theoretical KV-cache formula overestimates badly (~4x
    on architectures that only keep a full cache on a subset of layers), so the tool
    _measures_ real bytes/token (`calibrate`) and refuses to start a model that won't
    fit.
-2. **Reasoning-budget control** — thinking models default to an unrestricted budget
+2. **Reasoning-budget control** - thinking models default to an unrestricted budget
    (`-1`) and will spend an entire token allowance reasoning, returning zero
    content. The tool caps that budget (`sweep`), measures the best cap per model,
    and watches live traffic for the failure recurring (the router's telemetry).
@@ -29,9 +29,9 @@ present, but are not required.
 ## History
 
 This package began life as a standalone Node-stdlib tool ("otto-brain") and was
-refactored into an Otto suite package, then merged here. The integration record —
+refactored into an Otto suite package, then merged here. The integration record -
 architecture rationale, module map, and remaining follow-ups (daemon-managed
-lifecycle, the full `vitest run` teardown) — lives in
+lifecycle, the full `vitest run` teardown) - lives in
 [docs/integration-notes.md](docs/integration-notes.md). The download catalog is
 seeded from [docs/candidate-models.md](docs/candidate-models.md).
 
@@ -82,45 +82,45 @@ npm run format:files -- packages/brain           # oxfmt (root)
 the library barrel (`createBrainCommand()` mounts the group into the main `otto`
 CLI). `src/cli.ts` builds the commander tree; `src/run.ts` is the standalone runner.
 
-**CLI (`src/commands/`, `src/output/`)** — commander commands that return typed
+**CLI (`src/commands/`, `src/output/`)** - commander commands that return typed
 `{type,data,schema}` results; `src/output/with-output.ts` renders table/json/yaml.
 Handlers never print or call chalk directly (chalk lives only in
 `src/output/render.ts`); they express color declaratively via `ColumnDef.color`.
 Errors are thrown as `CommandError` and rendered to stderr.
 
-**Config (`src/config/`)** — resolves `$OTTO_HOME` exactly like the daemon
+**Config (`src/config/`)** - resolves `$OTTO_HOME` exactly like the daemon
 (`otto-home.ts`), stores everything under `$OTTO_HOME/otto-brain/` (`config.json`,
 `profiles.json`, `catalog.json`) with zod schemas, atomic private writes
 (`private-files.ts`), and `CLI → env → file → default` precedence (`env.ts`, the
 `OTTO_BRAIN_*` namespace). `profiles.ts` holds per-model profiles + the
 measured-calibration lookup keyed by cache types and attention geometry.
 
-**Discovery** — `gguf.ts` (bounded GGUF header reader), `models/` (walks the model
+**Discovery** - `gguf.ts` (bounded GGUF header reader), `models/` (walks the model
 dirs, pairs vision projectors, sums shards; `scanModels` unions the managed dir and
 LM Studio), `gpu.ts` (`nvidia-smi`, returns null when absent).
 
-**Decision** — `vram.ts` (`budget()`/`maxContextThatFits()`/`fitToBudget()`; the
+**Decision** - `vram.ts` (`budget()`/`maxContextThatFits()`/`fitToBudget()`; the
 theoretical formula is a bound, calibration is preferred).
 
-**Runtime (`src/runtime/`)** — a provider interface over "where does llama-server
+**Runtime (`src/runtime/`)** - a provider interface over "where does llama-server
 come from": `lmstudio.ts` (discover an install; **the DLL-stub trap is documented
-here — a runtime is always paired with its vendor dir**) and `managed.ts` (download
+here - a runtime is always paired with its vendor dir**) and `managed.ts` (download
 a pinned build into `$OTTO_HOME/otto-brain/runtimes/`, extracting with OS built-ins
 only). `args.ts` builds the child args/env; `index.ts` resolves a runtime per config.
 
-**Service (`src/service/`)** — `supervisor.ts` (owns the `llama-server` child as an
+**Service (`src/service/`)** - `supervisor.ts` (owns the `llama-server` child as an
 EventEmitter state machine, polls `/health`, samples VRAM at ready), `router.ts`
 (HTTP reverse proxy: 503+retry-after while loading, tees completions and classifies
 verdicts for both Anthropic and OpenAI shapes, `Telemetry`), `scheduler.ts` (queues
 model switches in turns), `serve.ts` (binds the service, VRAM fit, remote auth +
 non-loopback guard, TLS termination, pid file), `tls.ts` + `tailscale.ts`
-(HTTPS in-process — see below), `pid-lock.ts` (`otto-brain.pid` lifecycle).
+(HTTPS in-process - see below), `pid-lock.ts` (`otto-brain.pid` lifecycle).
 
-**Built-in HTTPS (`config.tls`)** — the brain terminates TLS itself so it can be
+**Built-in HTTPS (`config.tls`)** - the brain terminates TLS itself so it can be
 exposed securely with **no relay in front** (it supersedes the standalone
 `otto-brain-relay`). Four modes: `off` (plain HTTP, the loopback-safe default),
 `files` (bring your own cert/key), `self-signed` (generated + cached under
-`$OTTO_HOME/otto-brain/certs`, via the `selfsigned` dep — the one non-stdlib
+`$OTTO_HOME/otto-brain/certs`, via the `selfsigned` dep - the one non-stdlib
 reason for it), and `tailscale` (a real Let's Encrypt cert for this machine's
 MagicDNS name issued/renewed via `tailscaled`, hot-swapped on renewal without
 dropping connections). `listen.host: "tailscale"` binds the tailnet IP only.
@@ -141,10 +141,10 @@ any on-path peer answer the handshake and read the token. Only the daemon's loop
 probe of its own local child keeps the relaxed check, since that traffic never leaves
 the machine.
 
-**Ops (`src/ops/`)** — `calibrate.ts`, `sweep.ts`, `results.ts`, `report.ts`,
-`archive.ts`. **Bench (`src/bench/`)** — the agentic-coding benchmark suite.
+**Ops (`src/ops/`)** - `calibrate.ts`, `sweep.ts`, `results.ts`, `report.ts`,
+`archive.ts`. **Bench (`src/bench/`)** - the agentic-coding benchmark suite.
 
-**TUI (`src/tui/`)** — `screen.ts` is a dependency-free ANSI toolkit; `app.ts` wires
+**TUI (`src/tui/`)** - `screen.ts` is a dependency-free ANSI toolkit; `app.ts` wires
 the discovery/decision/runtime modules to an editable config screen with an embedded
 router+supervisor.
 
@@ -152,7 +152,7 @@ router+supervisor.
 
 - Every module is ESM TypeScript. Relative imports carry `.js` extensions (NodeNext).
   No `'use strict'`. Interfaces (not `type`) for object shapes; no `any` (oxlint).
-- **Preserve the header comments** — they carry hard-won empirical facts (the
+- **Preserve the header comments** - they carry hard-won empirical facts (the
   DLL-stub trap, the KV overestimate ratio, the reasoning-only failure). Do not
   paraphrase them away in a port.
 - Discovery functions return `null`/empty on absence rather than throwing; the CLI

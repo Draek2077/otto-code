@@ -1,6 +1,6 @@
 import type { MutableDaemonConfig } from "@otto-code/protocol/messages";
 
-// The row label, not the section header ("Browser Tools") it sits under — it
+// The row label, not the section header ("Browser Tools") it sits under - it
 // names the toggle, mirroring "Enable Otto tools" in the Otto Tools section.
 export const BROWSER_TOOLS_TITLE = "Enable Browser tools";
 export const BROWSER_TOOLS_WARNING =

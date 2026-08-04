@@ -6,8 +6,8 @@ const baseURL =
   process.env.E2E_BASE_URL ?? `http://localhost:${process.env.E2E_METRO_PORT ?? "8081"}`;
 
 // Artifacts (traces, videos, screenshots) live under a per-project directory.
-// Playwright wipes a test's output directory — and its worker's shared
-// `.playwright-artifacts-N` scratch dir — as the test starts, so two Playwright
+// Playwright wipes a test's output directory - and its worker's shared
+// `.playwright-artifacts-N` scratch dir - as the test starts, so two Playwright
 // runs sharing one output root delete each other's in-flight artifacts. That's
 // how a failing spec ends up reporting `ENOENT ... trace.zip` instead of its
 // real assertion error. This repo routinely has more than one agent running

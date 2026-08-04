@@ -12,6 +12,11 @@ const output = path.join(appRoot, "src/assets/material-symbol-icons.ts");
 // Default weight is 400 (outlined). A key prefixed with "700:" pulls the bold
 // weight instead, from the separate @material-symbols/svg-700 package (weight
 // is baked into the path geometry, not a runtime stroke-width toggle).
+//
+// A key suffixed with "-fill" pulls the filled variant, which ships as its own
+// file alongside the outline in the same directory. Reach for it when an icon
+// has to sit beside solid glyphs - an outline next to a filled family reads as
+// disabled rather than as a sibling.
 const svgRootByWeight = {
   400: path.join(repoRoot, "node_modules/@material-symbols/svg-400/outlined"),
   700: path.join(repoRoot, "node_modules/@material-symbols/svg-700/outlined"),

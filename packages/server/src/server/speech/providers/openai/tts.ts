@@ -11,7 +11,7 @@ export type { SpeechStreamResult };
 
 // The voices the OpenAI speech API accepts. A personality voice naming one of
 // these is honored; any other name (e.g. a local Kokoro voice) falls back to the
-// provider's configured voice — the binding is soft, never a hard error.
+// provider's configured voice - the binding is soft, never a hard error.
 const OPENAI_TTS_VOICES: ReadonlySet<string> = new Set([
   "alloy",
   "ash",

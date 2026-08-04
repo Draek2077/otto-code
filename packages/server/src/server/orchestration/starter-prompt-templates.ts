@@ -5,7 +5,7 @@ import type { PromptTemplate } from "@otto-code/protocol/orchestration";
 import type { PromptTemplateStore } from "./prompt-template-store.js";
 
 // Bundled prompt templates (projects/orchestration-graphs, Stage 5). Seeded
-// once, never re-seeded over a user's edits — the same contract as starter
+// once, never re-seeded over a user's edits - the same contract as starter
 // graphs. These exist to demonstrate the shape as much as to be used: a
 // snippet holding shared behavioural rules, and a template that includes it.
 
@@ -19,7 +19,7 @@ const STARTER_TEMPLATES: PromptTemplate[] = [
     builtIn: true,
     content: [
       "Deliver your result by calling the submit_output tool exactly once, when the work is done.",
-      "The tool call is the deliverable — a summary written as prose instead of calling it does not count.",
+      "The tool call is the deliverable - a summary written as prose instead of calling it does not count.",
       "If the tool rejects your submission, read the validation message, correct the values, and call it again.",
     ].join("\n"),
   },

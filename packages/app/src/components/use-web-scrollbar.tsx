@@ -65,7 +65,7 @@ export function useWebElementScrollbar(
     horizontal?: boolean;
     /**
      * Render the vertical overlay. Off for surfaces that draw their own
-     * full-height indicator in that lane — the file editor's overview ruler —
+     * full-height indicator in that lane - the file editor's overview ruler -
      * where a second thumb beside it would say the same thing twice. The native
      * bar stays hidden either way: this switches off *our* bar, not the hiding.
      */
@@ -135,8 +135,8 @@ export function useWebElementScrollbar(
     // It has been added and reverted twice (cacbbf405, then re-added by
     // 46e7f223a) because it silently eats keystrokes in the composer: a
     // target-phase listener runs before React's delegated handler, and its
-    // setState — which only actually changes on a wrap, since metricsChanged
-    // compares contentSize — flushes a synchronous render carrying the *stale*
+    // setState - which only actually changes on a wrap, since metricsChanged
+    // compares contentSize - flushes a synchronous render carrying the *stale*
     // controlled value. React then writes that stale string back onto the
     // textarea and rewinds its value tracker, so onChange never fires and the
     // wrap-triggering character is lost until it is typed a second time.

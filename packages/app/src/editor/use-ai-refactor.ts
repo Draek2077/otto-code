@@ -25,7 +25,7 @@ export interface UseAiRefactorResult {
 
 /**
  * AI Refactor entry from the editor. Reads the current selection for scope,
- * then — on confirm — composes a scope-guarded prompt and opens a *pre-filled
+ * then - on confirm - composes a scope-guarded prompt and opens a *pre-filled
  * draft* so the change goes through the proven composer/agent-creation path
  * (the user reviews provider/model and sends). Deliberately does not spawn an
  * agent directly: that keeps the central agent flow untouched.

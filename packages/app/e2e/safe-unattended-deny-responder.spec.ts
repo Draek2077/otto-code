@@ -6,7 +6,7 @@ import { createMockUnattendedSchedule, runScheduleOnce } from "./helpers/unatten
 import { waitForSidebarHydration } from "./helpers/workspace-ui";
 
 // Safe unattended runs (docs/safe-unattended.md): `unattended: true` is not a
-// create_agent wire field — the only deterministic path to an unattended agent
+// create_agent wire field - the only deterministic path to an unattended agent
 // is an owning daemon service. Schedule runs create their agent
 // `unattended: true` + `internal: true` in a HIDDEN workspace
 // (packages/server/src/server/schedule/service.ts), so these specs drive a
@@ -20,8 +20,8 @@ import { waitForSidebarHydration } from "./helpers/workspace-ui";
 //     shell in the sidebar (docs/safe-unattended.md calls this
 //     "promote-on-error-with-content", and names "personality unavailable" as
 //     the archive case). The reveal half of that branch has no deterministic
-//     mock trigger yet — the mock provider cannot stream content and then fail
-//     — so it is covered structurally by the kept-success reveal in
+//     mock trigger yet - the mock provider cannot stream content and then fail
+//     - so it is covered structurally by the kept-success reveal in
 //     schedule-hidden-runs-promote.spec.ts, which exercises the same
 //     revealWorkspace path.
 const TOOL_PERMISSION_PROMPT = "Emit synthetic tool permission.";
@@ -45,7 +45,7 @@ test.describe("Safe unattended deny responder", () => {
       deleteSchedule = schedule.cleanup;
 
       // The mock turn only completes after its pending tool permission is
-      // answered — a succeeded run IS the proof the deny-responder answered
+      // answered - a succeeded run IS the proof the deny-responder answered
       // (an unanswered prompt fails the run with "waiting for permission").
       const run = await runScheduleOnce(workspace, schedule.scheduleId);
       expect(run.status).toBe("succeeded");
@@ -98,7 +98,7 @@ test.describe("Safe unattended deny responder", () => {
         archiveOnFinish: true,
         // A personality binding that cannot resolve fails the run AFTER the
         // hidden run workspace exists (resolveSchedulePersonalityBrain) but
-        // BEFORE the agent produces anything — the canonical content-less
+        // BEFORE the agent produces anything - the canonical content-less
         // failure, which archives rather than promotes.
         personality: missingPersonality,
       });

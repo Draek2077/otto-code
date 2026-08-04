@@ -1,4 +1,4 @@
-/** The summer capsule. Visuals are emoji on purpose — no binary assets in this repo. */
+/** The summer capsule. Visuals are emoji on purpose - no binary assets in this repo. */
 export const products = [
   {
     id: "tee-sunset",

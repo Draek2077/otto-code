@@ -38,7 +38,7 @@ function createUpdater(
   return { updater, port, reportedInstallErrors };
 }
 
-describe("desktop app updater — check", () => {
+describe("desktop app updater - check", () => {
   it("forwards manual check intent and the requested release channel to the port", async () => {
     const { updater, port } = createUpdater();
     port.nextCheckResult(buildFakeCheckResult());
@@ -306,7 +306,7 @@ describe("desktop app updater — check", () => {
   });
 });
 
-describe("desktop app updater — install", () => {
+describe("desktop app updater - install", () => {
   it("forwards the requested release channel to the port", async () => {
     const { updater, port } = createUpdater();
     port.nextInstallResult(buildFakeInstallResult({ installed: true }));
@@ -362,7 +362,7 @@ describe("desktop app updater — install", () => {
   });
 });
 
-describe("desktop app updater — subscribe", () => {
+describe("desktop app updater - subscribe", () => {
   it("notifies subscribers when the status changes", async () => {
     const { updater, port } = createUpdater();
     port.nextCheckResult(buildFakeCheckResult({ hasUpdate: true, readyToInstall: true }));

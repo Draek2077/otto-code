@@ -54,9 +54,9 @@ function findVisualizerSplitTarget(
 
 /**
  * Open (or focus) the Visualizer tab for a workspace. One instance per
- * workspace (or per run, when `runId` is given) — reopening focuses the
- * existing tab. The Visualizer is a companion view — the user watches it
- * alongside the chat or orchestration that's beginning — so it opens in a
+ * workspace (or per run, when `runId` is given) - reopening focuses the
+ * existing tab. The Visualizer is a companion view - the user watches it
+ * alongside the chat or orchestration that's beginning - so it opens in a
  * split to the right of the focused pane rather than covering it. When it's
  * already split out into another pane, or there's nothing in the focused pane
  * to watch alongside, it opens/focuses in place.

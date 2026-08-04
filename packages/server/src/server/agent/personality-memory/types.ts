@@ -1,5 +1,5 @@
 /**
- * Domain types for Personality Memory — the lessons a named personality accrues
+ * Domain types for Personality Memory - the lessons a named personality accrues
  * across sessions and carries into every later spawn.
  *
  * See `docs/agent-personalities.md` § Memory. The two ideas that
@@ -22,7 +22,7 @@
 export type PersonalityMemoryScope = "project" | "global";
 
 /**
- * How the entry got here. Purely provenance — it never gates injection, and the
+ * How the entry got here. Purely provenance - it never gates injection, and the
  * agent that records a lesson does not choose it.
  */
 export type PersonalityMemorySource = "agent" | "user" | "review" | "transfer";
@@ -30,7 +30,7 @@ export type PersonalityMemorySource = "agent" | "user" | "review" | "transfer";
 export interface PersonalityMemoryEntry {
   /** Machine-generated. Never surfaced to a recording agent (fire-and-forget). */
   id: string;
-  /** The lesson itself — one short paragraph. */
+  /** The lesson itself - one short paragraph. */
   text: string;
   scope: PersonalityMemoryScope;
   /** Absolute project root. Set when (and only when) `scope === "project"`. */

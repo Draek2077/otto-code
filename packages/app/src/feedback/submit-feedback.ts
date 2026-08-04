@@ -61,7 +61,7 @@ export async function submitFeedback(body: FeedbackRequestBody): Promise<void> {
       signal: controller.signal,
     });
   } catch {
-    // Offline, DNS, TLS, or the 15s abort — indistinguishable to the reporter,
+    // Offline, DNS, TLS, or the 15s abort - indistinguishable to the reporter,
     // and the fix is the same either way.
     throw new FeedbackSubmitError(
       "Couldn't reach otto-code.me. Check your connection and try again.",

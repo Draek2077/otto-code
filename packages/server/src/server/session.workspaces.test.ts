@@ -190,7 +190,7 @@ type AgentUpdatesSubscriptionFilter = Parameters<
   AgentUpdatesService["beginSubscription"]
 >[0]["filter"];
 
-// Drives the agent-updates module to a live (non-bootstrapping) subscription —
+// Drives the agent-updates module to a live (non-bootstrapping) subscription -
 // the post-extraction equivalent of assigning a subscription with
 // `isBootstrapping: false`. begin → flush leaves an empty buffer and emits nothing.
 function activateAgentUpdatesSubscription(
@@ -5804,7 +5804,7 @@ test("buildWorkspaceDescriptorMap computes statusEnteredAt from runtime agent fi
       return descriptor!;
     });
 
-  // 1. Empty workspace — no agents contribute. The workspace entered its
+  // 1. Empty workspace - no agents contribute. The workspace entered its
   // initial "done" bucket when it was created.
   {
     const { session, workspace } = setupSession();
@@ -5818,7 +5818,7 @@ test("buildWorkspaceDescriptorMap computes statusEnteredAt from runtime agent fi
   const owned = (input: Parameters<typeof makeAgent>[0]) =>
     makeAgent({ ...input, workspaceId: "ws-status-entered" });
 
-  // 2. Single idle agent (derives to "done") — statusEnteredAt uses the
+  // 2. Single idle agent (derives to "done") - statusEnteredAt uses the
   // agent's updatedAt as a best-effort timestamp.
   {
     const { session, workspace } = setupSession();
@@ -6022,7 +6022,7 @@ test("same-cwd workspace descriptors compute agent status per workspaceId", asyn
   session.projectRegistry.list = async () => [project];
   session.workspaceRegistry.list = async () => [workspaceA, workspaceB];
 
-  // A running agent owned by A leaves the sibling B done — status is per id.
+  // A running agent owned by A leaves the sibling B done - status is per id.
   session.listAgentPayloads = async () => [
     makeAgent({
       id: "agent-running-a",
@@ -6729,7 +6729,7 @@ test("project.rename.request announces a project with no active workspaces on th
     projects.set(parsed.projectId, parsed);
   };
   // Archived workspaces resolve to no descriptor, so the workspace channel can
-  // carry nothing for this project — the project channel is the only way the
+  // carry nothing for this project - the project channel is the only way the
   // rename reaches the client.
   session.workspaceRegistry.list = async () => [
     createPersistedWorkspaceRecord({
@@ -7739,7 +7739,7 @@ test("workspace auto-name applies title once when branch auto-name is rejected",
 // Phase 7: branch is a git fact derived per-descriptor from each workspace's own
 // live git snapshot, and reconciliation re-persists `branch` per workspace from
 // its own cwd. handleCheckoutRenameBranchRequest renames the git branch and
-// re-emits, but performs NO denormalized cwd → ids branch write of its own — it
+// re-emits, but performs NO denormalized cwd → ids branch write of its own - it
 // never resolves which workspaces share the cwd to rewrite a cached branch.
 test("checkout.rename_branch.request renames the branch without a denormalized branch write", async () => {
   const emitted: SessionOutboundMessage[] = [];

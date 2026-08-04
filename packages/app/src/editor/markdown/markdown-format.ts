@@ -57,9 +57,9 @@ function hasMarkerAfter(doc: string, pos: number, marker: InlineMarker): boolean
  * Three cases, checked in order, because the same keystroke has to mean "undo
  * this" as readily as "apply this":
  *   1. the markers sit just outside the selection (you selected the word inside
- *      `**word**`) — remove them, keeping the word selected
+ *      `**word**`) - remove them, keeping the word selected
  *   2. the markers sit just inside the selection (you selected `**word**`
- *      whole) — remove them
+ *      whole) - remove them
  *   3. otherwise wrap, leaving the original text selected so a second keystroke
  *      round-trips
  *

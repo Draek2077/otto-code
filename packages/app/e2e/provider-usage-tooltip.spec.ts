@@ -49,7 +49,7 @@ test.describe("provider usage tooltip", () => {
     try {
       expect(usageFixture.requestCount()).toBe(0);
 
-      // The usage popup opens on click (DropdownMenuTrigger toggles on press —
+      // The usage popup opens on click (DropdownMenuTrigger toggles on press -
       // see components/ui/dropdown-menu.tsx), not on hover.
       await page.getByTestId("context-window-meter").click();
       await usageFixture.waitForRequestCount(1);

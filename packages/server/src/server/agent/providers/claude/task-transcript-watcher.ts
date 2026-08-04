@@ -1,9 +1,9 @@
-// Disk-backed usage source for PLAIN Task/Agent sub-agents — the non-workflow
+// Disk-backed usage source for PLAIN Task/Agent sub-agents - the non-workflow
 // twin of WorkflowTranscriptWatcher (see docs/subagent-accounting.md).
 //
 // Why disk at all (proven 2026-07-19 against a real nested fan-out session):
 //  - The live SDK stream forwards ONLY depth-1 sidechain frames. A sub-agent's
-//    own sub-agents (depth ≥ 2) never stream — their usage and conversation
+//    own sub-agents (depth ≥ 2) never stream - their usage and conversation
 //    exist ONLY in their on-disk transcripts.
 //  - Even at depth 1 the live sidechain assistant frames carry only the
 //    message_start usage snapshot (output_tokens ≈ 1-2); the final per-message
@@ -11,10 +11,10 @@
 //
 // The CLI writes every sub-agent's transcript in real time to
 //   <projectDir>/<sessionId>/subagents/agent-<agentId>.jsonl
-// and — unlike workflows — hands us a positive correlation: every Task/Agent
+// and - unlike workflows - hands us a positive correlation: every Task/Agent
 // tool_result carries "agentId: <id>" in its text (the sync completion and the
 // async launch ack alike, at every depth; a nested spawn's tool_result rides
-// the depth-1 sidechain the daemon DOES see). Binding is exact — no heuristic
+// the depth-1 sidechain the daemon DOES see). Binding is exact - no heuristic
 // dir discovery.
 //
 // Row lifecycle stays owned by agent.ts (announce via sidechain/task events,
@@ -42,7 +42,7 @@ const POLL_INTERVAL_MS = 700;
 // How long a settled key keeps polling for a late transcript flush.
 const SETTLE_DRAIN_MS = 3_500;
 
-// The "agentId: <id>" note the CLI embeds in every Task/Agent tool_result —
+// The "agentId: <id>" note the CLI embeds in every Task/Agent tool_result -
 // the id doubles as the transcript filename (agent-<id>.jsonl).
 const AGENT_ID_PATTERN = /\bagentId:\s*([A-Za-z0-9][A-Za-z0-9._-]*)/;
 
@@ -74,7 +74,7 @@ export interface TaskTranscriptWatcherOptions {
   cwd: string;
   /** Override for ~/.claude (honors CLAUDE_CONFIG_DIR when unset). */
   configDir?: string;
-  /** Live Claude session id — the <sessionId> directory transcripts live under. */
+  /** Live Claude session id - the <sessionId> directory transcripts live under. */
   getSessionId: () => string | null;
   /** Push a synthetic AgentStreamEvent into the parent session stream. */
   emit: (event: AgentStreamEvent) => void;
@@ -90,7 +90,7 @@ interface TrackedTaskAgent {
   agentId: string;
   tail: JsonlTail;
   mapper: WorkflowSubagentTranscriptMapper;
-  /** Emit timeline items from disk — only for keys with no live sidechain feed. */
+  /** Emit timeline items from disk - only for keys with no live sidechain feed. */
   emitTimeline: boolean;
   settledStatus?: "idle" | "error" | "closed";
   drainDeadlineMs?: number;
@@ -108,7 +108,7 @@ export class TaskTranscriptWatcher {
     this.opts = options;
   }
 
-  /** True once a key has a disk tail — the live sidechain accumulator must then
+  /** True once a key has a disk tail - the live sidechain accumulator must then
    * stand down for it (disk is a strict superset with the real output counts). */
   isBound(key: string): boolean {
     return this.agents.has(key);
@@ -258,7 +258,7 @@ export class TaskTranscriptWatcher {
         ...(status === "error" ? { requiresAttention: true } : {}),
         // The real in/out/cache split from the transcript's API frames, priced
         // on the sub-agent's OWN model, plus the grand-total scalar the track
-        // readout shows — same contract as the workflow watcher.
+        // readout shows - same contract as the workflow watcher.
         usage: toClaudeSubagentUsage(totals, model),
         usageRounds: entry.mapper.roundCount(),
         ...(model ? { model } : {}),
@@ -267,7 +267,7 @@ export class TaskTranscriptWatcher {
     });
   }
 
-  // <projectDir>/<sessionId>/subagents — resolved lazily so binds always use
+  // <projectDir>/<sessionId>/subagents - resolved lazily so binds always use
   // the session id current at spawn time.
   private resolveSubagentsDir(): string | null {
     const sessionId = this.opts.getSessionId();

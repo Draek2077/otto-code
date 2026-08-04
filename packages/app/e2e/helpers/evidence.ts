@@ -3,20 +3,20 @@ import { EVIDENCE_SEPARATOR, MONEY_SHOT_PREFIX, STEP_SHOT_PREFIX } from "./evide
 
 /**
  * QA evidence capture. Playwright's built-in `screenshot: "only-on-failure"`
- * proves nothing about a *passing* test — a human reviewing the suite has no way
+ * proves nothing about a *passing* test - a human reviewing the suite has no way
  * to see what "green" actually looked like. These helpers attach intentional
  * screenshots so every test ships its own visual proof.
  *
  * Two kinds:
- *  - `qaShot`     — an intermediate step, kept with the test's own evidence.
- *  - `moneyShot`  — THE frame that confirms the behavior under test. Exactly one
+ *  - `qaShot`     - an intermediate step, kept with the test's own evidence.
+ *  - `moneyShot`  - THE frame that confirms the behavior under test. Exactly one
  *                   per test is the norm; it is copied into the run-wide digest
  *                   (`e2e-report/money-shots/`) so the whole suite can be
  *                   validated by eye in one place.
  *
  * A test that never calls `moneyShot` still gets one: the auto fixture in
  * `fixtures.ts` captures the final frame of every passing test as a fallback.
- * Prefer an explicit call — the fallback frame is whatever the page happened to
+ * Prefer an explicit call - the fallback frame is whatever the page happened to
  * show at teardown, which is often after the interesting state is gone.
  *
  * The reporter parses these attachment names, so the separator is a contract:
@@ -43,7 +43,7 @@ async function attachScreenshot(page: Page, prefix: string, label: string): Prom
   });
 }
 
-/** Records an intermediate frame — context for how the test got where it did. */
+/** Records an intermediate frame - context for how the test got where it did. */
 export async function qaShot(page: Page, label: string): Promise<void> {
   await attachScreenshot(page, STEP_SHOT_PREFIX, label);
 }

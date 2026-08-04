@@ -84,13 +84,13 @@ export interface UseAgentFormStateResult {
    * form effect as picking the provider/model/mode/effort by hand, minus the
    * persistence: a personality outranks the last-used-model preference, so
    * writing itself into that preference would erase the very tier it is
-   * supposed to beat — and then read back as the user's own last choice on the
+   * supposed to beat - and then read back as the user's own last choice on the
    * next open. Only a real user pick may write there.
    */
   applyPersonalityValues: (values: {
     provider: string;
     model: string;
-    /** Omit on unattended surfaces (artifacts) — they have no mode field. */
+    /** Omit on unattended surfaces (artifacts) - they have no mode field. */
     modeId?: string;
     thinkingOptionId: string;
   }) => void;
@@ -248,7 +248,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
 
   // True while the form's model/mode/effort came from a personality or the
   // active team rather than from the user. Gates every preference write for the
-  // same reason applyPersonalityValues doesn't persist — see there.
+  // same reason applyPersonalityValues doesn't persist - see there.
   const appliedFromPersonalityRef = useRef(false);
 
   const reducerStateRef = useRef({ form: formState, userModified });
@@ -330,7 +330,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
   const modelSelectorProviders = snapshotModelSelectorProviders;
   const availableModels = snapshotSelectedProviderModels;
   // Modes are per-provider, but Auto support is per-model (daemon-stamped
-  // supportsAutoMode: false, e.g. Claude Auto on Haiku) — intersect the two.
+  // supportsAutoMode: false, e.g. Claude Auto on Haiku) - intersect the two.
   const modeOptions = filterModesForModel(
     snapshotSelectedProviderModes,
     findModelDefinition(snapshotSelectedProviderModels, formState.model),
@@ -525,7 +525,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
       dispatch({ type: "SET_MODE_FROM_USER", modeId });
       const provider = reducerStateRef.current.form.provider;
       // Under a personality the model half isn't the user's to remember, and
-      // mode/effort ride with it — see applyPersonalityValues.
+      // mode/effort ride with it - see applyPersonalityValues.
       if (provider && !appliedFromPersonalityRef.current) {
         void updatePreferences((current) =>
           mergeSelectedComposerPreferences({
@@ -613,7 +613,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
       return;
     }
     // Submitting under a personality would write that personality's model into
-    // the last-used-model preference — the tier it outranks — and it would read
+    // the last-used-model preference - the tier it outranks - and it would read
     // back next open as the user's own choice. See applyPersonalityValues.
     if (appliedFromPersonalityRef.current) {
       return;

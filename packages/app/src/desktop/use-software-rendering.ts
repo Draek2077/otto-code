@@ -3,7 +3,7 @@ import { isElectronRuntime } from "@/desktop/host";
 import { getDesktopRuntimeInfo } from "@/desktop/updates/desktop-updates";
 
 // Whether the desktop shell is presenting frames without GPU acceleration
-// (the gpu-fallback marker/flags or explicit software-GL argv — see
+// (the gpu-fallback marker/flags or explicit software-GL argv - see
 // packages/desktop/src/gpu-fallback.ts isSoftwareRenderingActive). The state
 // is fixed for the process lifetime, so it's fetched once and cached
 // module-level; every hook instance after the first resolves synchronously.

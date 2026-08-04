@@ -27,7 +27,7 @@ test("Browse fills the directory field with the folder the desktop dialog return
   await browse.click();
 
   // The New project page is a form, so Browse selects the folder and stops
-  // there. Submitting is the explicit Open action — the old modal opened the
+  // there. Submitting is the explicit Open action - the old modal opened the
   // project the instant the dialog returned.
   const input = page.getByTestId("new-project-directory-input");
   await expect(input).toHaveValue(projectPickerFixture.projectPath, { timeout: 30_000 });

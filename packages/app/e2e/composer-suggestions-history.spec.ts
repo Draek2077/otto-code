@@ -101,7 +101,7 @@ test.describe("Composer suggestions and history", () => {
       const stopButton = page.getByRole("button", { name: /stop|cancel/i }).first();
       await expect(stopButton).toBeVisible({ timeout: 30_000 });
 
-      // Escape never touches the composer text — typed-but-unsent text is unrecoverable.
+      // Escape never touches the composer text - typed-but-unsent text is unrecoverable.
       // A single Escape interrupts the running agent and leaves the draft intact.
       const input = composerLocator(page);
       await focusComposer(page);

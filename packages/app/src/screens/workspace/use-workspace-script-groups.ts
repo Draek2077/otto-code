@@ -30,8 +30,8 @@ export function useWorkspaceScriptDiscoveryFeature(serverId: string): boolean {
  *
  * Two sources feed this and they answer different questions. The **descriptor**
  * (`scripts`) is pushed and always live, but only ever carries what otto.json
- * declares plus whatever is running. The **fetched list** carries identity —
- * every discovered Script, its label, its source, its command — but goes stale
+ * declares plus whatever is running. The **fetched list** carries identity -
+ * every discovered Script, its label, its source, its command - but goes stale
  * the moment something starts or stops. So identity comes from the fetch and
  * status is overlaid from the descriptor, rather than refetching on every
  * `script_status_update` (which arrives on each health poll).
@@ -51,7 +51,7 @@ export function useWorkspaceScriptGroups(input: {
     queryKey: ["workspace-scripts", serverId, workspaceId],
     dataShape: "list",
     // Project files change under the user's hands, but only a menu open makes
-    // that visible — and that path refetches explicitly, below.
+    // that visible - and that path refetches explicitly, below.
     staleTimeMs: 30_000,
     enabled: discoveryEnabled && client !== null && workspaceId.length > 0,
     queryFn: async () => {
@@ -107,7 +107,7 @@ export function groupWorkspaceScripts(input: {
 }): WorkspaceScriptGroup[] {
   const liveByName = new Map(input.live.map((script) => [script.scriptName, script] as const));
 
-  // Before the fetch lands — or against a daemon without discovery — the
+  // Before the fetch lands - or against a daemon without discovery - the
   // descriptor is the whole truth, and every entry in it is an Otto script.
   const merged: WorkspaceScript[] = input.fetched
     ? input.fetched.map((script) => {

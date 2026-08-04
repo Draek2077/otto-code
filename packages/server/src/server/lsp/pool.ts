@@ -14,7 +14,7 @@ import { documentKey } from "./uri.js";
  * policy the charter's risk list demands before any language ships: lazy spawn,
  * idle reaping, a hard cap on running processes, and capped-backoff restart after
  * a crash. Three workspaces × three languages is nine processes and several
- * gigabytes on the same machine as the agents — none of this is a follow-up.
+ * gigabytes on the same machine as the agents - none of this is a follow-up.
  *
  * There are deliberately no timers in here. `reapIdle` is called by the daemon on
  * an interval and every decision reads an injected clock, which is what makes the
@@ -43,7 +43,7 @@ export interface LspServerPoolOptions {
   /** Called for every diagnostics push, tagged with which server in which workspace sent it. */
   onDiagnostics?: (event: LspDiagnosticsEvent) => void;
   /**
-   * Called once per server process that has ended, for any reason — crash, idle reap,
+   * Called once per server process that has ended, for any reason - crash, idle reap,
    * deliberate stop. Whatever that server asserted about a document is no longer backed by
    * a running process and has to be retracted.
    */
@@ -231,7 +231,7 @@ export class LspServerPool {
   }
 
   /**
-   * The running connection for this key, or null — never spawns. Document sync uses
+   * The running connection for this key, or null - never spawns. Document sync uses
    * it to notify servers that already hold a document without a `didChange` being
    * able to start a server on its own.
    */
@@ -245,7 +245,7 @@ export class LspServerPool {
   }
 
   /**
-   * Workspace roots with language-server work in flight — a server still starting up,
+   * Workspace roots with language-server work in flight - a server still starting up,
    * or one reporting work-done progress. This is what a "still working on it" indicator
    * needs, and nothing more.
    */
@@ -404,7 +404,7 @@ export class LspServerPool {
   /**
    * `pendingKey` is the server currently being started. It is excluded from both
    * the count and the victim search: `acquire` registers it before this runs, so
-   * counting it would make the pool evict one server too many — and it could pick
+   * counting it would make the pool evict one server too many - and it could pick
    * itself as the victim.
    */
   private async enforceRunningCap(pendingKey: string): Promise<void> {

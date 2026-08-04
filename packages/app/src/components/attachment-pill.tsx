@@ -8,7 +8,7 @@ import type { AttachmentMetadata } from "@/attachments/types";
 import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-url";
 import type { Theme } from "@/styles/theme";
 
-// Every attachment pill body — image thumbnail or labelled — renders at this
+// Every attachment pill body - image thumbnail or labelled - renders at this
 // height so mixed attachment trays line up.
 const ATTACHMENT_CONTENT_HEIGHT = 48;
 
@@ -81,7 +81,7 @@ interface AttachmentFrameProps {
   children: ReactNode;
 }
 
-/** Bare attachment frame for read-only surfaces (sent messages) — no remove button. */
+/** Bare attachment frame for read-only surfaces (sent messages) - no remove button. */
 export function AttachmentFrame({
   onPress,
   accessibilityLabel,
@@ -196,7 +196,9 @@ const styles = StyleSheet.create((theme) => ({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: theme.colors.surface2,
+    // surface1, not surface2: `border` is nearly identical to surface2 on this
+    // theme, which swallows the button's own outline.
+    backgroundColor: theme.colors.surface1,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
     alignItems: "center",

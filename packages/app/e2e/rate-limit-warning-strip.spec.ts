@@ -25,7 +25,7 @@ test.describe("Rate limit warning strip", () => {
 
       // Deterministic mock payload: warning, 85% used, five_hour window. The
       // headline names the *resolved provider label* for this agent, never a
-      // hardcoded "Claude" (see composer/rate-limit-warning-track.tsx) — so a
+      // hardcoded "Claude" (see composer/rate-limit-warning-track.tsx) - so a
       // mock agent reads "Mock Load Test".
       const strip = page.getByTestId(WARNING_STRIP);
       await expect(strip).toBeVisible({ timeout: 30_000 });

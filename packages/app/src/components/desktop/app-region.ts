@@ -9,14 +9,14 @@ import { isWeb } from "@/constants/platform";
  * backstop in `packages/app/public/index.html` only reaches interactive
  * elements inside drag-region containers and overlays portaled to `<body>`
  * (react-native-web Modal layers, `#overlay-root`). Anything floating inside
- * `#root` — gorhom bottom sheets and `@gorhom/portal` panels — must carve
+ * `#root` - gorhom bottom sheets and `@gorhom/portal` panels - must carve
  * itself out of the window drag rects with this style, or its contents are
  * click-dead wherever they overlap a titlebar strip or the New Workspace
  * screen's full-screen drag overlay. See docs/floating-panels.md Gotcha 7.
  *
  * Apply ONLY to views that exist while the panel is open. Stamping an
  * always-mounted full-screen host (e.g. FloatingPanelPortalHost's wrapper)
- * would permanently disable titlebar dragging — the exact unclipped-rect bug
+ * would permanently disable titlebar dragging - the exact unclipped-rect bug
  * the scoped backstop exists to prevent.
  *
  * `-webkit-app-region` is inert outside Electron, so plain browser web can

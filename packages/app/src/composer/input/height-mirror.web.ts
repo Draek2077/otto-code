@@ -89,7 +89,7 @@ export function useComposerHeightMirror({
       maxHeight: currentMaxHeight,
       onHeight: currentOnHeight,
     } = paramsRef.current;
-    // Trailing newline is collapsed by textarea measurement — pad with a space.
+    // Trailing newline is collapsed by textarea measurement - pad with a space.
     mirror.value = currentValue.endsWith("\n") ? `${currentValue} ` : currentValue;
 
     const next = Math.max(currentMinHeight, Math.min(currentMaxHeight, mirror.scrollHeight));

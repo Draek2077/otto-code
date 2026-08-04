@@ -8,7 +8,7 @@ import { useHostFeature } from "@/runtime/host-features";
  * Project links (the gated-multi-root permission) for one host. A link between
  * two projects lets a user open/edit a file that lives in the other project;
  * without a link, an out-of-project open is refused. Links are undirected and
- * bidirectional — see `docs`/the gated-multi-root project.
+ * bidirectional - see `docs`/the gated-multi-root project.
  *
  * Cached per host via react-query and kept fresh by the daemon's
  * `project.links.changed` push, mirroring the artifacts notification pattern.
@@ -19,7 +19,7 @@ export function projectLinksQueryKey(serverId: string) {
 
 /**
  * Canonical, order-independent key for a pair of project ids. In-memory only
- * (Set membership) — never persisted or sent over the wire. Project ids for
+ * (Set membership) - never persisted or sent over the wire. Project ids for
  * local projects are raw filesystem paths that routinely contain spaces, so a
  * plain space-join would let different pairs collide; JSON.stringify of the
  * ordered pair delimits the ids unambiguously. Kept consistent with the

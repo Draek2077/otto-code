@@ -108,7 +108,7 @@ export function SidebarActiveWorkspaceTools() {
       }
       // Claim the terminal before opening its tab. The workspace screen prunes
       // terminal tabs it doesn't know about, and the daemon's terminals list
-      // lags the start response — awaiting a refetch here was still a race,
+      // lags the start response - awaiting a refetch here was still a race,
       // because the screen owns its own query instance and may not even be
       // mounted yet. The shared pending set is what keeps the tab alive until
       // the list catches up.

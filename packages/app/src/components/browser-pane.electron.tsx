@@ -112,7 +112,7 @@ type DeviceSizeId =
 
 interface DeviceSizePreset {
   id: DeviceSizeId;
-  /** Display name (not translated — device names are proper nouns). */
+  /** Display name (not translated - device names are proper nouns). */
   name: string;
   /** Fixed CSS width, or null for "fill the available area". */
   width: number | null;
@@ -624,7 +624,7 @@ export function BrowserPane({
   const webviewRef = useRef<ElectronWebview | null>(null);
   const webviewHostRef = useRef<HTMLDivElement | null>(null);
   const urlInputRef = useRef<WebTextInput | null>(null);
-  // A preview tab that isn't confirmed "ready" has no real page to show yet —
+  // A preview tab that isn't confirmed "ready" has no real page to show yet -
   // point the webview at about:blank rather than navigating to a stale/default
   // URL, so no ERR_CONNECTION_REFUSED can surface before the server is known-up.
   const initialUrlRef = useRef(
@@ -639,7 +639,7 @@ export function BrowserPane({
   const pendingNavigationUrlRef = useRef<string | null>(null);
   // A URL requested via navigate() before the webview's dom-ready fired.
   // loadURL() throws ("must be attached to the DOM and dom-ready emitted")
-  // if called too early — most commonly when a preview tab mounts against an
+  // if called too early - most commonly when a preview tab mounts against an
   // already-running server, so previewStatus is "ready" synchronously and the
   // navigation effect fires before the guest page has ever loaded. We stash the
   // URL here and flush it from handleDomReady.
@@ -725,7 +725,7 @@ export function BrowserPane({
   const { settings: appSettings } = useAppSettings();
 
   // Shared by the restore-bootstrap effect below and the "Start preview
-  // server" / "Try again" overlay buttons — (re)starts the dev server for a
+  // server" / "Try again" overlay buttons - (re)starts the dev server for a
   // preview tab and reuses previewStart's own "already running" short-circuit.
   const startPreviewFlow = useCallback(
     async (client: DaemonClient, previewCwd: string, previewServerName: string) => {
@@ -773,7 +773,7 @@ export function BrowserPane({
   }, [serverId, startPreviewFlow]);
 
   // Bootstraps a preview tab restored from persisted storage (previewStatus
-  // was forced back to "idle" on load — see sanitizeBrowsersForPersist). Only
+  // was forced back to "idle" on load - see sanitizeBrowsersForPersist). Only
   // fires once per browserId, and only for tabs nobody has already kicked off
   // a start for: a freshly-created tab from the Preview button is already
   // "starting" by the time this component mounts, so this only matters for
@@ -791,7 +791,7 @@ export function BrowserPane({
     }
     const client = useSessionStore.getState().sessions[serverId]?.client ?? null;
     if (!client) {
-      // Session/workspace not available — leave the tab inert rather than
+      // Session/workspace not available - leave the tab inert rather than
       // showing a watermark whose button can't do anything.
       return;
     }
@@ -1051,7 +1051,7 @@ export function BrowserPane({
       }
       if (webview?.loadURL) {
         if (!domReadyRef.current) {
-          // Webview not ready yet — defer; handleDomReady flushes this.
+          // Webview not ready yet - defer; handleDomReady flushes this.
           pendingLoadUrlRef.current = normalizedUrl;
           return;
         }
@@ -1075,7 +1075,7 @@ export function BrowserPane({
   );
 
   // Fires the actual (first, or retried) navigation once a preview tab's dev
-  // server is confirmed ready — the mount effect above pointed the webview at
+  // server is confirmed ready - the mount effect above pointed the webview at
   // about:blank until now, which is what keeps a connection-refused flash from
   // ever appearing during startup.
   const previewNavigatedForStatusRef = useRef(false);

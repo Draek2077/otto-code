@@ -12,8 +12,8 @@ import { fetchPromptTemplates, promptTemplatesQueryKey } from "@/data/prompt-tem
  * (user orchestrations: the New Orchestration dialog + graph designer).
  *
  * Dev builds only while the node editor is still being built out: the whole
- * surface — the New Orchestration dialog, the designer tab, running graph
- * orchestrations — stays out of release builds, which keep the Orchestrations
+ * surface - the New Orchestration dialog, the designer tab, running graph
+ * orchestrations - stays out of release builds, which keep the Orchestrations
  * page exactly as it was. `isDev` is Metro's `__DEV__`, so a production bundle
  * dead-code-strips the branch entirely.
  * COMPAT(orchestrationGraphs): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
@@ -28,7 +28,7 @@ export function useOrchestrationGraphsFeature(serverId: string): boolean {
 /**
  * Live list of the host's reusable orchestration graph templates: fetched once,
  * then kept fresh by runs.graphs.changed.notification pushes (which carry the
- * full list — see data/push-router.ts).
+ * full list - see data/push-router.ts).
  */
 export function useOrchestrationGraphs(
   serverId: string | null,
@@ -50,7 +50,7 @@ export function useOrchestrationGraphs(
 }
 
 /**
- * Live list of the host's reusable prompt templates and snippets — what a graph
+ * Live list of the host's reusable prompt templates and snippets - what a graph
  * node's "Prompt template" select offers. Same capability gate as the graphs
  * themselves: both halves ship together.
  */

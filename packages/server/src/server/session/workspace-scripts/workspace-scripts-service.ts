@@ -190,7 +190,7 @@ export function createWorkspaceScriptsService(deps: {
     });
     // A *running* discovered script is already in the snapshot as an orphan
     // runtime entry, carrying live status but not its label or source. The
-    // discovered payload supersedes it — same key, richer record.
+    // discovered payload supersedes it - same key, richer record.
     const discoveredNames = new Set(discoveredPayloads.map((entry) => entry.scriptName));
 
     // Otto's declared Scripts sort first and stay first; discovery is derived,
@@ -216,8 +216,8 @@ export function createWorkspaceScriptsService(deps: {
 
   /**
    * A qualified name ("npm:build") never appears in otto.json, so its command
-   * has to come back from discovery. Re-running discovery at launch — rather
-   * than trusting a name the client last saw — means a Script deleted from
+   * has to come back from discovery. Re-running discovery at launch - rather
+   * than trusting a name the client last saw - means a Script deleted from
    * `package.json` since the menu opened fails loudly instead of running a
    * stale command.
    */

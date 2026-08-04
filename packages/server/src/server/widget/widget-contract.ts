@@ -6,7 +6,7 @@ import { WIDGET_MAX_CODE_CHARS } from "@otto-code/protocol/widgets/types";
  *
  * Claude's equivalent (`read_me` on its `visualize` server) is ~99K characters
  * across 1,189 lines. Otto does not copy that size. Most of it is aesthetic
- * doctrine — colour philosophy, prose style, words to avoid — and Otto is a
+ * doctrine - colour philosophy, prose style, words to avoid - and Otto is a
  * token-cost-conscious fork (docs/token-economy.md). What is kept is the half a
  * model cannot guess: the variable names, the globals, the sandbox limits.
  *
@@ -37,7 +37,7 @@ anything else means HTML.
 - Fragments only. No DOCTYPE, no \`<html>\`, \`<head>\` or \`<body>\`. Content starts
   immediately. (A whole document is unwrapped to its body, but do not rely on it.)
 - The container is \`display: block; width: 100%\`. Do not add a wrapper for it.
-- Height is content-driven — the frame measures your content and sizes itself.
+- Height is content-driven - the frame measures your content and sizes itself.
   Never \`position: fixed\`, and never set a height on \`html\`/\`body\`: both collapse
   the frame. For a modal or phone mockup, draw a normal-flow box that LOOKS like
   a viewport.
@@ -49,7 +49,7 @@ anything else means HTML.
   \`<desc>\`.
 - Budget: ${WIDGET_MAX_CODE_CHARS.toLocaleString("en-US")} characters. Past that the fragment is cut.
 
-## Theming — use these, never hard-coded colors
+## Theming - use these, never hard-coded colors
 
 The widget must be correct in light AND dark. Every variable below is supplied
 by the host and re-skinned when the user changes theme, so a hard-coded \`#fff\`
@@ -64,7 +64,7 @@ Role borders: \`--border-accent\` \`--border-danger\` \`--border-success\` \`--b
 Type: \`--font-sans\` \`--font-mono\` \`--font-voice\` (serif)
 Layout: \`--radius\` \`--radius-sm\` \`--pad-sm|md|lg|xl\` \`--gap-xs|sm|md|lg|xl\`
 
-Categorical palette, for charts and diagrams — eight hues that stay legible in
+Categorical palette, for charts and diagrams - eight hues that stay legible in
 both modes: \`--c-blue\` \`--c-teal\` \`--c-amber\` \`--c-red\` \`--c-green\`
 \`--c-purple\` \`--c-pink\` \`--c-gray\`.
 
@@ -75,7 +75,7 @@ In SVG use the shorthand classes instead of writing \`fill="…"\`:
 ## Icons
 
 \`<i class="ti ti-check"></i>\`, sized in \`em\`, inheriting \`currentColor\`. The set
-is curated, not the full Tabler font — these names exist and nothing else does:
+is curated, not the full Tabler font - these names exist and nothing else does:
 
 ${WIDGET_ICON_NAMES.join(", ")}
 
@@ -83,7 +83,7 @@ ${WIDGET_ICON_NAMES.join(", ")}
 
 - \`sendPrompt(text)\` sends a message to the chat as if the user typed it. Use it
   when the next step needs Claude to think. Do NOT use it for filtering,
-  sorting, or arithmetic you can do in local JavaScript — a round trip the user
+  sorting, or arithmetic you can do in local JavaScript - a round trip the user
   pays for should buy reasoning, not a calculation.
 - \`openLink(url)\` opens a URL through Otto's link confirmation. Plain
   \`<a href>\` clicks are routed the same way automatically.
@@ -95,7 +95,7 @@ screen. A widget cannot type into a conversation the user is not looking at.
 
 There is no CDN, no Google Fonts, no \`fetch\`, no XHR. Chart.js and D3 are NOT
 available. Everything must be inline HTML, CSS, SVG and plain JavaScript, plus
-\`data:\` images. This is not a limitation to work around with a clever loader —
+\`data:\` images. This is not a limitation to work around with a clever loader -
 the CSP blocks it, and a blocked resource renders as a visible error.
 
 Charts are hand-rolled SVG. Read the \`chart\` module; it is genuinely not hard.
@@ -117,13 +117,13 @@ Flowcharts, architectures, sequences, trees, state machines. Always SVG.
 
 - Set \`viewBox\` and let width be 100%: \`<svg viewBox="0 0 720 360" width="100%"
   role="img" aria-labelledby="t d">\`, with \`<title id="t">\` and \`<desc id="d">\`.
-- Fix the coordinate system first and lay out on a grid — nodes on multiples of
+- Fix the coordinate system first and lay out on a grid - nodes on multiples of
   20, one text baseline per row. Diagrams read as sloppy when boxes are 3px out.
 - Node: \`<rect rx="8" class="c-gray" fill-opacity="0.10" stroke="currentColor"/>\`
   is a weak default. Prefer \`fill="var(--surface-2)" stroke="var(--border-strong)"\`
   and reserve the palette classes for meaning, not decoration.
 - Labels: \`<text class="t" font-size="13" text-anchor="middle"
-  dominant-baseline="middle">\`. Never rely on a font metric you cannot measure —
+  dominant-baseline="middle">\`. Never rely on a font metric you cannot measure -
   keep labels short and give boxes generous padding.
 - Edges: one \`<defs>\` marker, reused.
   \`<marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6"
@@ -133,14 +133,14 @@ Flowcharts, architectures, sequences, trees, state machines. Always SVG.
 - Orthogonal edges (\`M x0 y0 H mx V y1 H x1\`) read better than diagonals for
   architecture; curves suit sequence and flow.
 - Legend only when colour carries meaning. If there are three colours and no
-  legend, the colours are decoration — use one.
+  legend, the colours are decoration - use one.
 - Dark mode is free if you only use the variables. Check that any
   \`fill-opacity\` you use still separates on \`--surface-0\` in both modes.
 `;
 
 const CHART = `# Module: chart
 
-No Chart.js, no D3. Hand-rolled SVG — the shapes below cover almost everything.
+No Chart.js, no D3. Hand-rolled SVG - the shapes below cover almost everything.
 
 Compute in JavaScript, emit SVG. Keep the maths in the template, not in
 attributes, so the numbers stay readable.
@@ -192,7 +192,7 @@ with \`transform="rotate(-90 cx cy)"\` and \`stroke-linecap="round"\`.
 
 const INTERACTIVE = `# Module: interactive
 
-Widgets that respond — filters, toggles, calculators, steppers, pickers.
+Widgets that respond - filters, toggles, calculators, steppers, pickers.
 
 - Handle it locally when it is filtering, sorting, formatting, or arithmetic.
   Call \`sendPrompt(text)\` only when the next step needs actual reasoning.
@@ -201,14 +201,14 @@ Widgets that respond — filters, toggles, calculators, steppers, pickers.
 - Every control must show its state without hover: a selected button gets
   \`background: var(--bg-accent); border-color: var(--border-accent); color:
   var(--text-accent)\`, not just a shadow.
-- Hit targets 32px minimum — widgets are read on phones.
+- Hit targets 32px minimum - widgets are read on phones.
 - Focus is visible: \`outline: 2px solid var(--text-accent); outline-offset: 2px\`.
   Do not remove outlines.
 - Do not hide content behind tabs, accordions or carousels. If it matters, show
   it; the widget has no scrollbar and the chat is already a scrolling surface.
 - No \`alert\`, \`confirm\` or \`prompt\`.
 - Growth is fine: the frame re-measures when your script changes the DOM, so a
-  "show all" button that adds rows works. Avoid animating height — it makes the
+  "show all" button that adds rows works. Avoid animating height - it makes the
   chat jump.
 
 Example of the one call that earns a round trip:
@@ -225,7 +225,7 @@ const MOCKUP = `# Module: mockup
 UI mockups, screen designs, before/after comparisons.
 
 - A "screen" is a normal-flow \`<div>\` with a fixed width, a border, \`--radius\`
-  and \`overflow: hidden\`. Never \`position: fixed\` — it collapses the frame.
+  and \`overflow: hidden\`. Never \`position: fixed\` - it collapses the frame.
 - Phone frame: an outer div at ~300px wide with \`border-radius: 28px\` and
   \`padding: 8px\`, an inner screen at \`--surface-0\`. Draw a status bar row;
   it does more for realism than any shadow.
@@ -247,7 +247,7 @@ Logos, wordmarks, illustrations, decorative SVG.
 - Build from geometry: \`<path>\`, \`<circle>\`, \`<rect rx>\`, \`<polygon>\`. Keep the
   path data on a grid you chose (a 100- or 120-unit box divides cleanly).
 - \`<defs>\` first: gradients, clip paths, masks, reused symbols. Reference with
-  \`url(#id)\`. Give ids a prefix — several widgets can share a page.
+  \`url(#id)\`. Give ids a prefix - several widgets can share a page.
 - Monochrome first. A mark that only works in colour is a weak mark; get it
   right in \`currentColor\`, then add the palette.
 - For anything that must sit on both themes, use \`currentColor\` or the \`--c-*\`

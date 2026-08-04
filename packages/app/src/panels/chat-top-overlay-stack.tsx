@@ -10,13 +10,13 @@ export interface ChatTopOverlayStackProps {
 
 /**
  * The single absolutely-positioned column that all top-anchored chat overlays
- * live in — today the suggested-task card and the pinned task checklist.
+ * live in - today the suggested-task card and the pinned task checklist.
  *
  * They used to own an absolute wrap each, both pinned to `top: 0`, ordered by
  * separate z-index slots. That never ordered anything: two boxes at the same
  * origin means the higher z simply covers the lower one, so whenever an agent
  * suggested work while a checklist was live, one of the two vanished. On a phone
- * that is the normal case, not a corner — the checklist is up almost the whole
+ * that is the normal case, not a corner - the checklist is up almost the whole
  * time an agent is working. Laying them out in one column is the fix; order in
  * the column is the priority, and both stay visible.
  *

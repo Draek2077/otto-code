@@ -2762,7 +2762,7 @@ describe("processAgentStreamEvents", () => {
         epoch: "epoch-1",
         startCursor: { seq: 10 },
         endCursor: { seq: 10 },
-        entries: [makeTimelineEntry(10, "Call-site API — exactly one primitive. Not")],
+        entries: [makeTimelineEntry(10, "Call-site API - exactly one primitive. Not")],
         error: null,
         hasNewer: false,
         hasOlder: false,
@@ -2787,7 +2787,7 @@ describe("processAgentStreamEvents", () => {
 
     expect(finalAssistantItems).toHaveLength(1);
     expect(finalAssistantItems[0]?.text).toBe(
-      "Call-site API — exactly one primitive. Not gateValue, not filterEnum.",
+      "Call-site API - exactly one primitive. Not gateValue, not filterEnum.",
     );
   });
 });

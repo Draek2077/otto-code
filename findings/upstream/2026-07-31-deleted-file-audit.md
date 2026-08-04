@@ -34,7 +34,7 @@ work does not map one-to-one, and those are the ones that need a decision.
 
 ## The seven heavy files
 
-### 1. `components/file-pane.tsx` (+730 / −142) — the largest, and it is Preview
+### 1. `components/file-pane.tsx` (+730 / −142) - the largest, and it is Preview
 
 Otto's additions are the **Preview subsystem's integration into the file viewer**, plus viewer
 features upstream does not have:
@@ -55,7 +55,7 @@ same seam rather than being inlined into their pane.
 **Watch:** `docs/preview.md` is non-negotiable design here. Do not let the port quietly drop the
 find-highlight or scroll-sync paths; they are what make browser-verified previews usable.
 
-### 2. `stores/workspace-tabs-store/state.ts` (+243 / −18) — our extra tab kinds
+### 2. `stores/workspace-tabs-store/state.ts` (+243 / −18) - our extra tab kinds
 
 Otto added target coercion for panel types upstream does not have:
 
@@ -71,7 +71,7 @@ that upstream's model consults, not be interleaved into their coercion switch.
 
 `state.test.ts` (+102 / 0) is the test for this and ports with it.
 
-### 3 and 4. `use-web-scrollbar.tsx` (+74 / −8) and `web-desktop-scrollbar.tsx` (+139 / −70) — DECISION NEEDED
+### 3 and 4. `use-web-scrollbar.tsx` (+74 / −8) and `web-desktop-scrollbar.tsx` (+139 / −70) - DECISION NEEDED
 
 **Upstream deleted the concept, not just the file.** `useWebScrollbar` and `WebDesktopScrollbar` do
 not exist anywhere in `v0.2.5`. Upstream replaced a React-rendered scrollbar with a CSS install
@@ -94,7 +94,7 @@ compact scrollbars and the DiffScroll horizontal overlay both depend on this com
 places that only need default styling; (b) drop our custom behaviour and accept upstream's CSS.
 My recommendation is (a), because (b) loses the horizontal overlay and the compact-mode work.
 
-### 5. `utils/desktop-window.ts` (+138 / −1) — clean port
+### 5. `utils/desktop-window.ts` (+138 / −1) - clean port
 
 Otto added **Window Controls Overlay** support: `getWindowControlsOverlay`, `overlayInsets`,
 `resolveOverlayInsets`, `refreshOverlayInsets`, `useWindowControlsOverlayInsets`,
@@ -103,7 +103,7 @@ Otto added **Window Controls Overlay** support: `getWindowControlsOverlay`, `ove
 Almost pure addition (one deleted line). **Lands in:** upstream's `desktop-window.tsx` directly.
 Lowest-risk heavy file in the audit.
 
-### 6. `git/use-github-search-query.ts` (+66 / −3) — rival abstraction, ours is broader
+### 6. `git/use-github-search-query.ts` (+66 / −3) - rival abstraction, ours is broader
 
 Otto added `hostingSearchEnabled`, `normalizeHostingSearchPayload`, `toHostingSearchKinds`,
 `useHostingSearchFeature`. This is Otto's **provider-neutral git-hosting layer**
@@ -209,18 +209,18 @@ populated**, so they arrive `undefined`.
 **Re-attachment checklist:**
 
 1. ✅ **Re-accept the hosting resolver as a dependency.** `resolveHostingForCwd?` added to the git
-   service deps, deliberately as a _separate seam_ from upstream's `forgeOverrides` — upstream's
+   service deps, deliberately as a _separate seam_ from upstream's `forgeOverrides` - upstream's
    forge registry has no equivalent of the typed provider id + capabilities.
 2. ✅ **Populate the three fields.** Done where the snapshot is stored and `target.cwd` is in scope:
    `target.latestForge = { ...forgeSnapshot, forge: resolution.forge, ...hostingFields }`. A failure
    in the hosting resolver is caught and must not lose the forge snapshot.
 3. ✅ **`bootstrap.ts` wiring.** Now passes BOTH `forgeOverrides: { github }` (upstream's injection
    seam, taking our `createGitHostingRouter` as the GitHub adapter) and our `resolveHostingForCwd`.
-   The stale bare `github` dep was dropped — upstream's deps have no such field and
+   The stale bare `github` dep was dropped - upstream's deps have no such field and
    `this.deps.github` had zero uses.
 4. ⬜ **Verify the client.** `packages/app/src/git/use-pr-status-query.ts` consumes `capabilities`;
    it should now receive them again, but this has not been exercised.
-5. ⬜ **Hard gate: Bitbucket Cloud end to end** — resolve a Bitbucket remote, list and open a PR, and
+5. ⬜ **Hard gate: Bitbucket Cloud end to end** - resolve a Bitbucket remote, list and open a PR, and
    confirm the checkout status shows the right provider and capabilities. See
    [docs/git-providers.md](../../docs/git-providers.md).
 

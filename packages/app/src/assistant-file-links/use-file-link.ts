@@ -117,7 +117,7 @@ export function useFileLink(source: AssistantFileLinkSource): UseFileLinkResult 
     });
   });
 
-  // A file opened from chat should never take over the chat's own pane — only
+  // A file opened from chat should never take over the chat's own pane - only
   // another chat tab does that. A plain click opens the document to the side (a
   // pane to the right of the chat, splitting one if needed); a modified click is
   // the escape hatch to open it in place instead.

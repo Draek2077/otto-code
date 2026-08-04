@@ -646,7 +646,7 @@ describe("observedUpdateHasTitleSource", () => {
     expect(observedUpdateHasTitleSource({ subAgentType: "   ", description: "" })).toBe(false);
   });
 
-  it("does not freeze on a catch-all type alone — a later description should win", () => {
+  it("does not freeze on a catch-all type alone - a later description should win", () => {
     expect(observedUpdateHasTitleSource({ subAgentType: "general-purpose" })).toBe(false);
     expect(
       observedUpdateHasTitleSource({ subAgentType: "general-purpose", description: "do it" }),

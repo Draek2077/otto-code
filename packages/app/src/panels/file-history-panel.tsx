@@ -28,7 +28,7 @@ import { useFileHistory, useFileOrigin } from "@/git/file-history/use-file-histo
  * commit table, the selected revision's diff, and that commit's full message.
  *
  * Stacked rather than side by side because a diff is a wide thing. Putting the
- * commit list beside it spends horizontal space — the axis code actually needs —
+ * commit list beside it spends horizontal space - the axis code actually needs -
  * on four narrow columns, and then every line of the diff wraps or scrolls. The
  * list is short and wide, the diff is tall and wide; they belong on top of each
  * other.
@@ -235,7 +235,7 @@ function usePaneStyle(base: object, share: number | undefined) {
 
 /**
  * The pane's own toolbar. The origin commit sits here rather than as a banner
- * inside the list — it is a fact about the file, true regardless of which commit
+ * inside the list - it is a fact about the file, true regardless of which commit
  * is selected, so it belongs with the file's other facts.
  */
 function FileHistoryToolbar({
@@ -293,7 +293,7 @@ function FileHistoryToolbar({
 
 /**
  * An icon-only toolbar control with a tooltip, matching the Changes toolbar.
- * `active` gives a toggle a visible on-state — an icon toggle that looks
+ * `active` gives a toggle a visible on-state - an icon toggle that looks
  * identical in both states is a switch you cannot read.
  */
 function ToolbarIconButton({
@@ -337,7 +337,7 @@ function ToolbarIconButton({
 }
 
 /**
- * The commit table. The column header is pinned outside the scroll view — a
+ * The commit table. The column header is pinned outside the scroll view - a
  * header that scrolls away stops naming anything the moment you use the table.
  */
 function ListPane({

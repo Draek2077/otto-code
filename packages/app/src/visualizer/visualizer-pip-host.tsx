@@ -9,13 +9,13 @@
 // It also owns the mutual exclusion that makes the "one canvas" decision real:
 // PIP renders only when no Visualizer TAB exists in this workspace. Both
 // surfaces host their own guest, so letting them coexist would mean two
-// simulations and two star fields — exactly the doubled per-frame cost the
+// simulations and two star fields - exactly the doubled per-frame cost the
 // charter warns about.
 //
 // The render gate below keeps that guarantee frame-tight, but it is NOT what
 // enforces the invariant: `useReconcileVisualizerSurface` writes the setting
 // back to false so the closed state is real rather than merely hidden. Parking
-// PIP silently is what made its old header button dead chrome — see the bug note
+// PIP silently is what made its old header button dead chrome - see the bug note
 // in use-visualizer-surface.ts.
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { VISUALIZER_PIP_FADE_DURATION_MS } from "@/constants/animation";
@@ -35,7 +35,7 @@ const VisualizerPipLazy = lazy(async () => {
 
 export interface VisualizerPipHostProps {
   serverId: string;
-  /** Empty before the route has resolved a workspace — the host renders nothing
+  /** Empty before the route has resolved a workspace - the host renders nothing
    * rather than making every call site guard. */
   workspaceId: string;
   /** The workspace route is on screen. */
@@ -50,7 +50,7 @@ export function VisualizerPipHost({
   onOpenFile,
 }: VisualizerPipHostProps) {
   const visualizerEnabled = useFeatureEnabled("visualizer");
-  // Never on mobile. Not "degraded on mobile" — absent. A floating viewport you
+  // Never on mobile. Not "degraded on mobile" - absent. A floating viewport you
   // drag around makes no sense on a single-pane phone layout, where the chat
   // already owns the whole screen and there is nothing to float over. Crossing
   // the breakpoint (resizing the window, rotating a tablet) unmounts it live;
@@ -63,7 +63,7 @@ export function VisualizerPipHost({
     () => buildWorkspaceTabPersistenceKey({ serverId, workspaceId }),
     [serverId, workspaceId],
   );
-  // Layout store, not the tabs store — see use-workspace-chat-focus.ts for why
+  // Layout store, not the tabs store - see use-workspace-chat-focus.ts for why
   // the latter is dead state.
   const workspaceTabs = useWorkspaceTabsFromLayout(tabPersistenceKey);
   const hasVisualizerTab = workspaceTabs.some((tab) => tab.target.kind === "visualizer");
@@ -76,7 +76,7 @@ export function VisualizerPipHost({
     !settings.visualizerPipOpen ||
     hasVisualizerTab
   );
-  // With motion on, the PIP fades rather than vanishing — which means staying
+  // With motion on, the PIP fades rather than vanishing - which means staying
   // mounted for the length of that fade after it should be gone. The overlap
   // with an expanding tab is bounded by the fade duration and the outgoing guest
   // is on its way out, so the one-canvas rule still holds in practice.
@@ -103,7 +103,7 @@ export function VisualizerPipHost({
   );
 }
 
-/** True while `shown` is true, and for `holdMs` after it goes false — long
+/** True while `shown` is true, and for `holdMs` after it goes false - long
  * enough for the exit fade to finish before the subtree is torn down. A hold of
  * 0 (Animations off) unmounts on the same commit, as it always did. */
 function useFadeOutHold(shown: boolean, holdMs: number): boolean {

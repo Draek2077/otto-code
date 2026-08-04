@@ -19,7 +19,7 @@ interface DiffScrollProps {
    * Overlay-scrollbar wiring, for callers that draw their own horizontal
    * scrollbar somewhere this scroller cannot reach. This scroller is nested
    * inside a vertically-scrolling list, so an overlay parented to it would be
-   * pinned to the bottom of the *content*, far off screen — the owner has to
+   * pinned to the bottom of the *content*, far off screen - the owner has to
    * host it against the viewport and feed it metrics from here. Ignored on
    * native, where the platform indicator already auto-hides.
    */

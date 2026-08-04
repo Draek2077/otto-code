@@ -17,7 +17,7 @@ interface MarkdownTextSpanProps {
 }
 
 // Android's <Text selectable> enables per-text-node selection natively. Each
-// sibling Text is its own selection scope — drag can't span across siblings
+// sibling Text is its own selection scope - drag can't span across siblings
 // (that requires a single UITextView ancestor and is iOS-only). onPress works
 // natively here, so links routed through this span stay tappable on Android.
 export function MarkdownTextSpan({
@@ -43,7 +43,7 @@ const MARKDOWN_PARAGRAPH_RESET: ViewStyle = {};
 
 // Paragraph stays a <View>, not a <Text>, for layout fidelity. RN Android's
 // text engine *does* accept inline View children (TextInlineViewPlaceholderSpan
-// in ReactBaseTextShadowNode), so this isn't a crash-avoidance choice — but
+// in ReactBaseTextShadowNode), so this isn't a crash-avoidance choice - but
 // inline-placeholder spans collapse block-level children (e.g. paragraph
 // images) into one-character placeholders, which destroys image row layout.
 // <View> preserves the original block layout; the trade-off is no cross-span

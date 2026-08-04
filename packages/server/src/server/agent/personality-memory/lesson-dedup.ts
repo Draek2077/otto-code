@@ -4,7 +4,7 @@
  * This file is the load-bearing half of "recording must be fire-and-forget": an
  * agent that rediscovers the same gotcha in three different sessions will phrase
  * it three different ways, and if all three land the injected brief fills up
- * with restatements of one fact. The agent cannot be asked to check first — that
+ * with restatements of one fact. The agent cannot be asked to check first - that
  * is bookkeeping, and bookkeeping is exactly what the decision forbids. So the
  * daemon checks.
  *

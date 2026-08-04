@@ -21,7 +21,7 @@ export type SheetSeamFadeEdge = "top" | "bottom";
 /**
  * Which dialog background the fade dissolves into. The desktop card paints
  * `surface1`; the mobile bottom sheet paints `surface0` (see
- * `adaptive-modal-sheet.tsx`). Unlike the chat pane there is no black scope —
+ * `adaptive-modal-sheet.tsx`). Unlike the chat pane there is no black scope -
  * dialogs only ever sit on the light/dark theme surfaces.
  */
 export type SheetSeamFadeSurface = "surface0" | "surface1";
@@ -43,8 +43,8 @@ export type SheetSeamFadeSurface = "surface0" | "surface1";
  * costs nothing here.
  *
  * `animated` gates the cross-fade. Pass the hook's `hasScrolled` so the strip
- * settles instantly while the scroll view is still measuring itself — bringing
- * a dialog or a tab up should not play an animation — and only animates once
+ * settles instantly while the scroll view is still measuring itself - bringing
+ * a dialog or a tab up should not play an animation - and only animates once
  * the user is driving the scroll.
  */
 export function SheetSeamFade({

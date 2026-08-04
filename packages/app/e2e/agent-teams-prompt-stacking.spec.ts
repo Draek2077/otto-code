@@ -77,7 +77,7 @@ test.describe("Agent teams prompt stacking", () => {
       expect(config.personalitySnapshot?.personalityId).toBe(personality.id);
 
       // Stack order: team prompt first, personality prompt after it (a
-      // role-focus directive may trail — assert order, not the full string).
+      // role-focus directive may trail - assert order, not the full string).
       const systemPrompt = config.systemPrompt ?? "";
       expect(systemPrompt.startsWith(TEAM_PROMPT)).toBe(true);
       const teamIndex = systemPrompt.indexOf(TEAM_PROMPT);

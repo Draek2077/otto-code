@@ -203,7 +203,7 @@ function dirnameForPlatform(value: string, platform: NodeJS.Platform): string {
 // explorer.exe parses each "/segment" of an argument as a command-line switch.
 // Given a POSIX-style path it finds no path token and silently falls back to
 // the default shell folder (the user's Documents). Hand it native backslashes.
-// Only the argument needs converting — CreateProcess resolves the command path
+// Only the argument needs converting - CreateProcess resolves the command path
 // fine with forward slashes.
 function toWindowsPathSeparators(value: string): string {
   return value.replace(/\//g, "\\");

@@ -128,7 +128,7 @@ describe("RunService", () => {
     const { run, settled } = service.startRun({ plan: gatedPlan, spawnPort: fakeSpawnPort() });
     const outcome = await service.settleOrPause({ runId: run.id, settled });
     expect(outcome.status).toBe("paused");
-    // The run is still live — answering the gate drives it to completion.
+    // The run is still live - answering the gate drives it to completion.
     expect(service.respondToGate(run.id, { approved: true })).toBe(true);
     expect((await settled).status).toBe("done");
   });
@@ -191,7 +191,7 @@ describe("RunService", () => {
 
   test("deleteRun refuses an in-flight run and an unknown id", async () => {
     // Delete before the run settles: the guard exists so a cleanup click can't
-    // orphan the run's agents — the caller has to cancel first.
+    // orphan the run's agents - the caller has to cancel first.
     const { run, settled } = service.startRun({ plan: simplePlan, spawnPort: fakeSpawnPort() });
     const refused = await service.deleteRun(run.id);
     expect(refused.deleted).toBe(false);
@@ -233,7 +233,7 @@ describe("RunService", () => {
       cwd: "/repo",
       runId: draft.id,
     });
-    // Same record, new values — an edit must not leave a second draft behind.
+    // Same record, new values - an edit must not leave a second draft behind.
     expect(edited.id).toBe(draft.id);
     expect(edited.status).toBe("draft");
     expect(service.getRun(draft.id)?.title).toBe("Second name");

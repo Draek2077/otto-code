@@ -311,7 +311,7 @@ test.describe("Schedules project target", () => {
     const modeTrigger = page.getByTestId("schedule-mode-trigger");
     await expect(hostTrigger).toBeVisible({ timeout: 30_000 });
     // Project and model are visible from the start (disabled until a host is
-    // chosen) — fields are never revealed step by step.
+    // chosen) - fields are never revealed step by step.
     await expect(projectTrigger).toBeVisible();
     await expect(modelTrigger).toBeVisible();
     await expect(thinkingTrigger).toHaveCount(0);
@@ -340,7 +340,7 @@ test.describe("Schedules project target", () => {
     await page.getByTestId(`schedule-host-option-${fakeHost.serverId}`).click();
     await expect(hostTrigger).toContainText("Fake host");
     await expect(projectTrigger).toContainText(/select project/i);
-    // Switching hosts clears both project and model — the prior model isn't
+    // Switching hosts clears both project and model - the prior model isn't
     // valid on the fake host and the field resets to the placeholder rather
     // than auto-picking the new host's default.
     await expect(modelTrigger).toContainText(/select model/i);

@@ -363,7 +363,7 @@ const DEFAULT_MODES: AgentMode[] = [
     label: "Don't Ask",
     // Guardrail-bearing description (same principle as preview tools): the mode
     // never prompts, but anything not covered by a permission allow-rule is
-    // DENIED rather than run. This is the default unattended target — listed
+    // DENIED rather than run. This is the default unattended target - listed
     // before bypassPermissions so resolveDefaultAgentCreateConfig picks it as
     // the coercion target for schedules/loops/artifacts.
     description: "Runs without prompting; actions not pre-approved are denied",
@@ -561,7 +561,7 @@ function resolveClaudeBareCompletionEffort(
 /**
  * Map a bare-completion result message's usage into AgentUsage (WP-G). Standalone
  * from the session's `buildResultUsage` (which also drives the context-window
- * ring) — a bare completion has no session/ring, so this only carries the
+ * ring) - a bare completion has no session/ring, so this only carries the
  * billing slices the cost ledger needs: the three input categories, output, and
  * Claude's real `total_cost_usd`.
  */
@@ -813,7 +813,7 @@ function toBase64ImageOutput(block: unknown): ProviderImageOutput | null {
 }
 
 // Claude returns images inside tool_result content as base64 Anthropic blocks. Left in place they
-// reach coerceToolResultContentToString, which JSON.stringifies the whole array — dumping base64
+// reach coerceToolResultContentToString, which JSON.stringifies the whole array - dumping base64
 // into the tool output. We pull those blocks out to render them as image markdown and leave a
 // "[image]" placeholder so image-only results still produce non-empty output.
 function splitClaudeToolResultImages(content: unknown): {
@@ -1221,7 +1221,7 @@ function isPermissionUpdate(value: AgentPermissionUpdate): value is PermissionUp
   return Array.isArray(rules) && typeof behavior === "string" && typeof destination === "string";
 }
 
-// Otto tools that only draw or withdraw a suggestion card — they have no side
+// Otto tools that only draw or withdraw a suggestion card - they have no side
 // effect until the user clicks Start on the card, so the real approval gate is
 // that Start button, not the act of suggesting. Auto-approved in every mode
 // (including Always-ask) so the model never has to ask permission to suggest.
@@ -1702,7 +1702,7 @@ export class ClaudeAgentClient implements AgentClient {
    * Tool-less one-shot completion for internal metadata generation (chat
    * titles, branch names, commit/PR text, …). Runs a minimal `claudeQuery`
    * with NO `claude_code` preset, NO CLAUDE.md (`settingSources: []`), NO tools
-   * (`allowedTools: []`), and NO MCP — everything the model needs is in the
+   * (`allowedTools: []`), and NO MCP - everything the model needs is in the
    * self-contained prompt. This is the whole cost win: a full spawn carries the
    * preset + CLAUDE.md + the Otto tool catalog (15–25K input tokens) just to
    * emit a few words; this path is a few hundred. Auth still flows through the
@@ -1863,7 +1863,7 @@ export class ClaudeAgentClient implements AgentClient {
    * plain default wherever the classifier is unavailable rather than starting a
    * session in a mode the CLI refuses mid-turn. Env precedence matches the
    * launch path: process env is the base, runtime settings override it, and an
-   * explicit launch env wins — so a launch can both inherit and disable an
+   * explicit launch env wins - so a launch can both inherit and disable an
    * ambient Bedrock/Vertex transport.
    */
   async resolveDefaultModeId(input: ResolveAgentDefaultModeInput): Promise<string> {
@@ -1932,7 +1932,7 @@ function mapClaudeRateLimitInfo(info: ClaudeRateLimitInfo): AgentRateLimitInfo {
   // The rate_limit_event `utilization` is a 0-1 FRACTION (verified against a live
   // event: 0.42 while the /usage dialog showed the weekly window at ~43%). Note
   // this differs from the /usage structured API, whose utilization is documented
-  // 0-100 — the two SDK sources use different scales. Multiply to a percent.
+  // 0-100 - the two SDK sources use different scales. Multiply to a percent.
   if (typeof info.utilization === "number" && Number.isFinite(info.utilization)) {
     mapped.utilizationPercent = Math.min(100, Math.max(0, Math.round(info.utilization * 100)));
   }
@@ -2129,7 +2129,7 @@ function isClaudeBackgroundShellToolName(name: string | undefined): boolean {
   return name === "Bash" || name === "PowerShell";
 }
 
-// Claude's Workflow tool (deterministic multi-agent orchestration —
+// Claude's Workflow tool (deterministic multi-agent orchestration -
 // agent()/parallel()/pipeline(), progress phases, task-completion notifications)
 // is a DIFFERENT spawn path than plain Task subagents, but it reports through the
 // same task_started/task_progress/task_notification stream. Unlike a Task
@@ -2153,10 +2153,10 @@ function isClaudeWorkflowTaskType(taskType: string | undefined): boolean {
 // An AI run that belongs in the observed-subagent track, by task_type. The CLI's
 // real discriminant values are local_bash / local_agent / remote_agent /
 // in_process_teammate / local_workflow / monitor_mcp / monitor_ws / mcp_task /
-// dream / auto_mode_scan — there is no "subagent". Otto excluded only that
+// dream / auto_mode_scan - there is no "subagent". Otto excluded only that
 // never-emitted string, so every Agent/Task run (task_type "local_agent") also
 // matched isClaudeBackgroundTaskType and the background_tasks_changed level
-// signal — which the SDK documents as arriving BEFORE the task_started edge —
+// signal - which the SDK documents as arriving BEFORE the task_started edge -
 // filed it as a background task too. The result was one sub-agent showing up
 // twice: once in each track, same title, seconds apart. "subagent" is kept as an
 // accepted alias so an older or renaming CLI still routes correctly.
@@ -2171,7 +2171,7 @@ function isClaudeSubagentTaskType(taskType: string | undefined): boolean {
 
 // Background-tasks track membership, decided by the SDK's task_type discriminant.
 // Sub-agents and workflows have their own richer observed-subagent rows, so the
-// background track takes everything else the CLI backgrounds — local_bash,
+// background track takes everything else the CLI backgrounds - local_bash,
 // monitor_mcp/monitor_ws, mcp_task, dream, auto_mode_scan, and any future or
 // unknown background type. Returns false for an absent task_type (later
 // task_progress omits it); those events fall back to the remembered
@@ -2217,7 +2217,7 @@ class ClaudeContextUsageState {
   private completedResultTurns = 0;
   // Watermark for de-cumulating `total_cost_usd`: the SDK reports it CUMULATIVE
   // across all turns of one CLI process (proven 2026-07-19: 0.59 → 1.05 → 1.09
-  // over three turns), while the ledger books usage per turn — passing it
+  // over three turns), while the ledger books usage per turn - passing it
   // through verbatim inflated a chat ~2.5×. Reset on process init.
   private lastCumulativeCostUsd = 0;
 
@@ -2238,7 +2238,7 @@ class ClaudeContextUsageState {
 
   // The per-turn share of the process-cumulative `total_cost_usd`. A reported
   // value below the watermark means the process restarted without an observed
-  // init — the report is that process's own spend, so take it whole.
+  // init - the report is that process's own spend, so take it whole.
   private takeTurnCostUsd(cumulative: number | undefined): number | undefined {
     if (typeof cumulative !== "number" || !Number.isFinite(cumulative) || cumulative < 0) {
       return cumulative;
@@ -2301,7 +2301,7 @@ class ClaudeContextUsageState {
       const usage: AgentUsage = {
         inputTokens: message.usage.input_tokens,
         cachedInputTokens: message.usage.cache_read_input_tokens,
-        // Cache-write spend — billed at a premium and previously dropped here,
+        // Cache-write spend - billed at a premium and previously dropped here,
         // making prompt-cache priming invisible to the cost ledger. (WP-D)
         cacheCreationInputTokens: message.usage.cache_creation_input_tokens,
         outputTokens: message.usage.output_tokens,
@@ -2409,12 +2409,12 @@ class ClaudeAgentSession implements AgentSession {
     getToolInput: (toolUseId) => this.toolUseCache.get(toolUseId)?.input ?? null,
   });
   // Observed-subagent bookkeeping (projects/observed-subagents/observed-subagents.md). Keys are the
-  // parent Task tool_use ids seen live this session — history replay never
+  // parent Task tool_use ids seen live this session - history replay never
   // announces, so stale tasks from persisted history cannot materialize rows.
   private readonly announcedObservedSubagents = new Set<string>();
   private readonly observedKeyByTaskId = new Map<string, string>();
   // Nested fan-out: a subagent's own Task tool_use appears inside ITS
-  // sidechain — record child tool_use id -> spawning sidechain's key so the
+  // sidechain - record child tool_use id -> spawning sidechain's key so the
   // child's observed row parents to the spawning subagent, not the root agent
   // (trees render as trees). See docs/agent-lifecycle.md.
   private readonly observedParentKeyByToolUseId = new Map<string, string>();
@@ -2424,17 +2424,17 @@ class ClaudeAgentSession implements AgentSession {
   // observed row key (parent Task tool_use id) so each row is priced on its own
   // usage, not a roll-up. See [[subagent-real-accounting]].
   private readonly observedSubagentUsage = new Map<string, SubagentUsageAccumulator>();
-  // Keys whose row reached a terminal status (idle/error/closed) — the
+  // Keys whose row reached a terminal status (idle/error/closed) - the
   // turn-end sweep settles anything still open, since a foreground Task
   // cannot outlive the turn that spawned it (a lost/garbled task_notification
   // otherwise left the row running forever).
   private readonly settledObservedSubagents = new Set<string>();
-  // Workflow runs are backgrounded (they legitimately outlive the turn) —
+  // Workflow runs are backgrounded (they legitimately outlive the turn) -
   // exempt from the turn-end sweep; they settle via their own task_notification.
   private readonly workflowObservedKeys = new Set<string>();
   // Observed keys whose Task/Agent tool_result has already come back. At that
   // moment we cannot tell a final report from a launch ack, so nothing is
-  // concluded here — but a row that is STILL live afterwards (a later
+  // concluded here - but a row that is STILL live afterwards (a later
   // task_progress flips it back to "running") can only be a backgrounded run.
   // That is the evidence isBackgroundedObservedRun reports to the client.
   private readonly observedKeysWithToolResult = new Set<string>();
@@ -2464,7 +2464,7 @@ class ClaudeAgentSession implements AgentSession {
   private lastRateLimitEventKey: string | null = null;
   // Task ids from the last system/background_tasks_changed level payload
   // (REPLACE semantics). An id present in the previous payload but absent from
-  // the next has settled even if its task_notification edge was lost — the
+  // the next has settled even if its task_notification edge was lost - the
   // reconcile in appendBackgroundTasksChangedEvents is the safety net that
   // guarantees stuck workflow/background rows eventually settle. Edge events
   // still own row creation and rich terminal status.
@@ -2550,7 +2550,7 @@ class ClaudeAgentSession implements AgentSession {
       );
     }
 
-    // Note: an auto mode the model can't run is NOT coerced here — the
+    // Note: an auto mode the model can't run is NOT coerced here - the
     // buildOptions assert fails the first turn with the specific reason
     // instead, keeping the mismatch visible (clients hide Auto up front via
     // the catalog's supportsAutoMode stamp and getAvailableModes filtering).
@@ -2806,7 +2806,7 @@ class ClaudeAgentSession implements AgentSession {
 
   /**
    * When a query restart is already pending, live SDK setters must not call
-   * ensureQuery(): with a turn active it would recycle the CLI mid-turn — the
+   * ensureQuery(): with a turn active it would recycle the CLI mid-turn - the
    * replaced query's pump deliberately skips failActiveTurns and no pump
    * starts until the next startTurn, orphaning the foreground turn forever.
    * The doomed query is rebuilt from config anyway, so staging the change in
@@ -3907,9 +3907,9 @@ class ClaudeAgentSession implements AgentSession {
    *
    * Deliberately EXCLUDED (stay denied under dontAsk):
    *  - Bash: arbitrary shell is exactly the "rm -rf" surface the charter guards
-   *    against — an unattended run must not run unreviewed commands.
+   *    against - an unattended run must not run unreviewed commands.
    *  - WebFetch / WebSearch: unattended network egress is out of scope here.
-   *  - Read / Glob / Grep: intentionally omitted — the SDK auto-approves these
+   *  - Read / Glob / Grep: intentionally omitted - the SDK auto-approves these
    *    read-only tools in cwd already, so listing them would be redundant.
    */
   private applyDontAskAllowlist(base: ClaudeOptions): void {
@@ -4292,7 +4292,7 @@ class ClaudeAgentSession implements AgentSession {
       // Off by default (zero cost); set OTTO_DEBUG_WORKFLOW=1 in the daemon
       // env to enable. Primary use: decide whether a Workflow's internal
       // agent() fan-out carries per-agent identity on the live stream (the
-      // "Path A" question) — group sidechain messages by parent_tool_use_id
+      // "Path A" question) - group sidechain messages by parent_tool_use_id
       // and see whether subagent_type/task_description vary per child. See
       // docs/visualizer.md (Debugging) and docs/subagent-accounting.md.
       if (process.env.OTTO_DEBUG_WORKFLOW) {
@@ -4554,7 +4554,7 @@ class ClaudeAgentSession implements AgentSession {
       //
       // The reconcile is deliberately diagnostic, not corrective. Otto's steer
       // queue is daemon-owned and sits above every adapter, so the daemon
-      // already decides what runs next for every provider — there is no
+      // already decides what runs next for every provider - there is no
       // provider-side queue for it to re-sync against. And the SDK exposes no
       // `cancel_async_message` on Query, so a survivor cannot be withdrawn even
       // if we wanted to. A non-empty list means an interrupt Otto reported as
@@ -4813,7 +4813,7 @@ class ClaudeAgentSession implements AgentSession {
       model: typeof betaMessage?.model === "string" ? betaMessage.model : undefined,
     });
     const totals = accumulator.totals();
-    // Only surface when the real footprint actually grew — a repeated stream
+    // Only surface when the real footprint actually grew - a repeated stream
     // frame of the same message.id (or a model-only frame) changes nothing.
     if (grandTotalTokens(totals) <= before) {
       return;
@@ -4834,7 +4834,7 @@ class ClaudeAgentSession implements AgentSession {
 
   /**
    * A Task/Agent tool_use inside a sidechain means THAT subagent is spawning
-   * its own child — remember child tool_use id -> spawning key so the child's
+   * its own child - remember child tool_use id -> spawning key so the child's
    * observed row (announced later by its task events or its own sidechain)
    * parents to the spawning subagent. Recursion gives depth > 2 for free: the
    * child's sidechain records its grandchildren the same way.
@@ -5033,7 +5033,7 @@ class ClaudeAgentSession implements AgentSession {
   /**
    * Arm a WorkflowTranscriptWatcher for a just-started Workflow run. It tails
    * the run's on-disk transcripts and re-emits observed-subagent events per
-   * internal agent (nested under the workflow row via parentKey) — the live SDK
+   * internal agent (nested under the workflow row via parentKey) - the live SDK
    * stream carries none of that. Idempotent; without a session id (the watcher
    * needs it to resolve the on-disk dir) the arm is buffered and drained when
    * one is assigned.
@@ -5046,7 +5046,7 @@ class ClaudeAgentSession implements AgentSession {
       this.pendingWorkflowArms.set(workflowKey, taskId);
       this.logger.debug(
         { agentId: this.agentId, workflowKey },
-        "workflow watcher arm buffered — no session id yet",
+        "workflow watcher arm buffered - no session id yet",
       );
       return;
     }
@@ -5102,16 +5102,16 @@ class ClaudeAgentSession implements AgentSession {
    */
   /**
    * Reconcile against the CLI's background-task level signal (REPLACE
-   * semantics — the payload is the full set of live background tasks, each with
+   * semantics - the payload is the full set of live background tasks, each with
    * its task_type + description). Two jobs:
    *
    * 1. CREATE/refresh a background row for every background-type task in the set
-   *    (shell, monitor, …) that the observed-subagent path doesn't own — the
+   *    (shell, monitor, …) that the observed-subagent path doesn't own - the
    *    authoritative membership signal, so a task whose task_started edge was
    *    lost or late still shows up. Subagents and workflows are skipped (they
    *    keep their richer observed rows and settle via their own path).
    * 2. SETTLE any known background/observed row whose task id vanished from the
-   *    set — the case where a lost or garbled task_notification otherwise left
+   *    set - the case where a lost or garbled task_notification otherwise left
    *    it running forever (workflow rows are exempt from the turn-end sweep, so
    *    they previously had no safety net).
    *
@@ -5130,7 +5130,7 @@ class ClaudeAgentSession implements AgentSession {
       // The level set is authoritative for background-task membership and now
       // carries each task's type + description, so create/refresh a background
       // row for any background-type task the edge stream hasn't already surfaced
-      // (a lost or late task_started otherwise left it invisible — the very gap
+      // (a lost or late task_started otherwise left it invisible - the very gap
       // that hid non-Bash background tasks). Subagents and workflows keep their
       // observed rows; skip them here so they never double as background rows.
       if (this.observedKeyByTaskId.has(task.task_id)) {
@@ -5205,7 +5205,7 @@ class ClaudeAgentSession implements AgentSession {
       return true;
     }
     const cachedTool = input.toolUseId ? this.toolUseCache.get(input.toolUseId) : undefined;
-    // A Workflow orchestration run is observable too — recognize it directly by
+    // A Workflow orchestration run is observable too - recognize it directly by
     // its cached tool so a task_progress/task_notification seen before (or
     // without) task_started still routes to the observed row.
     return (
@@ -5229,7 +5229,7 @@ class ClaudeAgentSession implements AgentSession {
 
   /**
    * Map a task_* system message onto the observed subagent's lifecycle. Only
-   * subagent tasks qualify — shell/monitor/workflow background tasks are
+   * subagent tasks qualify - shell/monitor/workflow background tasks are
    * ignored. See projects/observed-subagents/observed-subagents.md.
    */
   private appendObservedSubagentTaskEvent(
@@ -5302,7 +5302,7 @@ class ClaudeAgentSession implements AgentSession {
   /**
    * Map a task_* system message onto a background shell task's lifecycle
    * (Bash run_in_background). Sibling of appendObservedSubagentTaskEvent for
-   * the non-AI shell case — see projects/observed-subagents/observed-subagents.md's
+   * the non-AI shell case - see projects/observed-subagents/observed-subagents.md's
    * note that Otto previously ignored these entirely.
    */
   private appendBackgroundShellTaskEvent(
@@ -5351,7 +5351,7 @@ class ClaudeAgentSession implements AgentSession {
     // Subagent task_notifications arrive without parent_tool_use_id but with
     // tool_use_id pointing at the parent's subagent tool call. Keep them out of
     // the parent timeline, but map them onto the observed subagent's lifecycle
-    // — this is where a failed/stopped subagent (e.g. usage exhaustion) becomes
+    // - this is where a failed/stopped subagent (e.g. usage exhaustion) becomes
     // visible. See projects/observed-subagents/observed-subagents.md.
     const taskUseId = message.tool_use_id;
     const cachedTool = taskUseId ? this.toolUseCache.get(taskUseId) : undefined;
@@ -5374,7 +5374,7 @@ class ClaudeAgentSession implements AgentSession {
       });
       return;
     }
-    // A workflow run and a Task subagent settle the same way — the completion
+    // A workflow run and a Task subagent settle the same way - the completion
     // notification maps onto the observed row's terminal state (this is where a
     // failed/stopped run finally becomes visible). Both go through the shared
     // observed-subagent path; the gate below recognizes either a Task/Agent or a
@@ -5517,7 +5517,7 @@ class ClaudeAgentSession implements AgentSession {
     const usage = this.convertUsage(message, message.modelUsage);
     if (message.subtype === "success") {
       // Built-in slash commands (e.g. /voice, /usage, "Unknown command: …")
-      // run client-side in the Claude CLI with no model turn — output_tokens
+      // run client-side in the Claude CLI with no model turn - output_tokens
       // is 0 and the user-visible text is carried in `result`. Surface it only
       // when the turn has not already emitted assistant text so zero-token
       // accounting from provider gateways does not duplicate streamed output.
@@ -5547,8 +5547,8 @@ class ClaudeAgentSession implements AgentSession {
   /**
    * Diagnostic self-check on the sub-agent price table: re-price the turn's
    * whole-tree per-model token totals (the SDK's own `modelUsage`) and compare to
-   * the SDK's `costUSD`. Purely observational — the books stay balanced by the
-   * parent-residual rule regardless — but a mismatch means our list prices have
+   * the SDK's `costUSD`. Purely observational - the books stay balanced by the
+   * parent-residual rule regardless - but a mismatch means our list prices have
    * drifted and per-sub-agent cost is skewed, so log it loudly. See
    * [[subagent-real-accounting]] (block 5) and claude-pricing.ts.
    */
@@ -5569,7 +5569,7 @@ class ClaudeAgentSession implements AgentSession {
         mismatches: result.mismatches,
         unpriced: result.unpriced,
       },
-      "claude subagent price table drift vs modelUsage — per-subagent cost may be skewed",
+      "claude subagent price table drift vs modelUsage - per-subagent cost may be skewed",
     );
   }
 
@@ -5577,7 +5577,7 @@ class ClaudeAgentSession implements AgentSession {
    * A foreground Task cannot outlive the turn that spawned it, but its
    * terminal signal can go missing (nested leaves settle inside their
    * spawner's sidechain, never through the root's tool_result path, and a
-   * garbled/backgrounded finish can drop the task_notification) — leaving the
+   * garbled/backgrounded finish can drop the task_notification) - leaving the
    * row stuck "running" forever and its visualizer node never fading. When
    * the turn ends, settle every announced-but-unsettled row to idle.
    * Backgrounded Workflow runs legitimately span turns and are exempt.
@@ -5638,7 +5638,7 @@ class ClaudeAgentSession implements AgentSession {
     }
     const oldSessionId = this.claudeSessionId;
     // Session ID changed mid-stream (e.g. a hook caused Claude to restart
-    // with a new session). Accept the new ID and continue — the turn should
+    // with a new session). Accept the new ID and continue - the turn should
     // not be failed just because the underlying subprocess cycled.
     this.logger.warn(
       { existingSessionId: this.claudeSessionId, newSessionId: sessionId },
@@ -5661,7 +5661,7 @@ class ClaudeAgentSession implements AgentSession {
       return { threadStartedSessionId: null, notice: null };
     }
     // Every init is a fresh CLI process, whose cumulative total_cost_usd
-    // restarts at 0 — reset the per-turn cost watermark with it.
+    // restarts at 0 - reset the per-turn cost watermark with it.
     this.contextUsage.beginProcess();
 
     const msgRecord = toObjectRecord(message) ?? {};
@@ -5752,7 +5752,7 @@ class ClaudeAgentSession implements AgentSession {
     input,
     options,
   ): Promise<PermissionResult> => {
-    // Suggestion tools never prompt — the Start button on the card is the gate.
+    // Suggestion tools never prompt - the Start button on the card is the gate.
     if (AUTO_APPROVED_OTTO_TOOL_NAMES.has(toolName)) {
       return { behavior: "allow", updatedInput: input };
     }
@@ -5849,7 +5849,7 @@ class ClaudeAgentSession implements AgentSession {
           }),
         );
         // An interrupted turn takes its in-flight subagents (and workflow runs)
-        // down with it — settle their observed rows instead of leaving them
+        // down with it - settle their observed rows instead of leaving them
         // "running". Only tasks still in the cache are in-flight; a backgrounded
         // workflow whose tool_result already evicted it is left for its own
         // task_notification, matching the background-shell semantics below.
@@ -5868,7 +5868,7 @@ class ClaudeAgentSession implements AgentSession {
             this.disarmWorkflowWatcher(id, "closed");
           }
         }
-        // Same teardown for an in-flight background shell task — the process
+        // Same teardown for an in-flight background shell task - the process
         // dies with the interrupted turn, so settle its row instead of
         // leaving it stuck "running".
         if (
@@ -5932,7 +5932,7 @@ class ClaudeAgentSession implements AgentSession {
   // Every turn opens with this instead of a bare turn_started notify. Re-opening
   // the rate-limit dedup window means the turn's first rate_limit_event always
   // re-emits the current plan status, so a client that (re)connected mid-session
-  // — e.g. after an app refresh — gets resynced instead of staying blank because
+  // - e.g. after an app refresh - gets resynced instead of staying blank because
   // the daemon already delivered this exact payload to an earlier client. Dedup
   // still collapses repeats WITHIN the turn (rate_limit_event fires per request).
   private beginTurn(): void {
@@ -6163,7 +6163,7 @@ class ClaudeAgentSession implements AgentSession {
   //   - "user_message": coalesces all text blocks into a single user_message
   //     (matches extractUserMessageText semantics: trim each block, join with "\n\n")
   //
-  // suppressAssistantText only applies when textMessageType is "assistant_message" — user text
+  // suppressAssistantText only applies when textMessageType is "assistant_message" - user text
   // must never be suppressed since the TimelineAssembler only handles assistant text.
   //
   // NOTE: convertClaudeHistoryEntry uses extractUserMessageText directly instead of this function
@@ -6387,11 +6387,11 @@ class ClaudeAgentSession implements AgentSession {
 
   /**
    * Every Task/Agent tool_result (sync completion or async launch ack, at any
-   * depth) carries "agentId: <id>" — the sub-agent's on-disk transcript name.
+   * depth) carries "agentId: <id>" - the sub-agent's on-disk transcript name.
    * Bind the observed row to that transcript so its usage comes from disk (the
    * live sidechain lacks final output counts, and depth ≥ 2 sub-agents never
    * stream at all). Timeline is emitted from disk only for nested keys, which
-   * have no live sidechain feed — depth-1 panes are already fed live.
+   * have no live sidechain feed - depth-1 panes are already fed live.
    */
   private bindTaskTranscriptFromToolResult(
     toolName: string,
@@ -6416,7 +6416,7 @@ class ClaudeAgentSession implements AgentSession {
    * The completed Task/Agent item maps its sub_agent log from the final
    * report only; re-attach the sidechain's accumulated "[Tool] summary"
    * action lines so the finished card keeps the activity history the running
-   * updates built up (report first — short consumers truncate from the head).
+   * updates built up (report first - short consumers truncate from the head).
    */
   private withSidechainActionsLog(
     item: Extract<AgentTimelineItem, { type: "tool_call" }> | null,
@@ -6440,13 +6440,13 @@ class ClaudeAgentSession implements AgentSession {
 
   /**
    * Foreground Task settled: mark the observed subagent idle/error. Only keys
-   * announced live can enqueue — history replay stays inert. Queued instead of
+   * announced live can enqueue - history replay stays inert. Queued instead of
    * pushed because tool_result mapping runs inside item mapping, not event
    * building; translateMessageToEvents drains the queue.
    *
    * Deliberately NOT mirrored for background shell tasks: a backgrounded Bash
    * call's tool_result fires immediately with a "running in the background"
-   * ack, not real completion — treating that as "settled" would mark a still
+   * ack, not real completion - treating that as "settled" would mark a still
    * -running shell task idle. Real completion for those arrives via
    * task_notification (see appendBackgroundShellTaskEvent).
    */
@@ -6459,7 +6459,7 @@ class ClaudeAgentSession implements AgentSession {
       return;
     }
     // Remember the sighting before settling: if this result was only a launch
-    // ack, the run keeps going and a later task_progress reopens the row — at
+    // ack, the run keeps going and a later task_progress reopens the row - at
     // which point this is the proof that the row is backgrounded and an
     // interrupt of the parent turn will not stop it.
     this.observedKeysWithToolResult.add(toolUseId);

@@ -20,8 +20,8 @@ import { encodeLinkPath, relativeLinkPath } from "./markdown-link-completion";
  * (`workspace-image-source.ts`), because an image we write but cannot render is
  * a broken link that we created ourselves.
  *
- * The MIME type is what a paste gives us — a clipboard image has no filename at
- * all — so the table is keyed on it rather than on an extension.
+ * The MIME type is what a paste gives us - a clipboard image has no filename at
+ * all - so the table is keyed on it rather than on an extension.
  */
 const IMAGE_EXTENSIONS_BY_MIME_TYPE: Record<string, string> = {
   "image/png": "png",
@@ -49,7 +49,7 @@ const PASTED_IMAGE_STEM = "pasted-image";
 
 /**
  * Characters removed from a dropped file's name: illegal on Windows, or able to
- * end a markdown link target early. Whitespace is deliberately absent — it
+ * end a markdown link target early. Whitespace is deliberately absent - it
  * becomes a hyphen instead, which keeps the word boundaries the name carries.
  */
 const UNSAFE_FILE_NAME_CHARACTERS = /["*:<>?|()]/g;
@@ -81,7 +81,7 @@ export function imageExtensionForMimeType(mimeType: string): string | null {
  *
  * Path separators are dropped rather than escaped, so a name carrying `../../`
  * cannot climb anywhere: the result is always a single path segment. The daemon
- * contains the path again on its side — this is the client half of the same
+ * contains the path again on its side - this is the client half of the same
  * rule the workspace image resolver states.
  */
 export function sanitizeImageFileName(name: string): string {
@@ -175,7 +175,7 @@ export function buildImageInsert(documentPath: string, imagePath: string): strin
  * `x-2.png` -> `x-3.png`.
  *
  * Retrying is the client's job because `fs.file.write_binary` deliberately has
- * no overwrite-on-conflict mode — a drop must never destroy a file that is
+ * no overwrite-on-conflict mode - a drop must never destroy a file that is
  * already there, and only the daemon knows one is.
  */
 export function suffixImageAssetPath(path: string, attempt: number): string {

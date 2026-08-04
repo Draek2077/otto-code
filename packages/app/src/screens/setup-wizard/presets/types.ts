@@ -1,14 +1,14 @@
 /**
- * Themed team presets — the type layer.
+ * Themed team presets - the type layer.
  *
  * Three layers keep the system tractable (see the design in
  * projects/first-time-wizard/first-time-wizard.md):
  *
- *  1. Blueprint  — a team type's fixed role skeleton (6 slots, one orchestrator).
+ *  1. Blueprint  - a team type's fixed role skeleton (6 slots, one orchestrator).
  *                  Never randomizes; this is what guarantees balance.
- *  2. Archetype  — a single slot: roles + brain tier + a *functional* prompt core
+ *  2. Archetype  - a single slot: roles + brain tier + a *functional* prompt core
  *                  (what this member does). Fixed per slot.
- *  3. Variation  — a styled realization of an archetype: a persona (temperament,
+ *  3. Variation  - a styled realization of an archetype: a persona (temperament,
  *                  quirks, voice) written on top of the functional core, plus a
  *                  name-gender pool to draw from. Three per slot; one is picked at
  *                  random per generation.
@@ -67,7 +67,7 @@ export interface Archetype {
 export interface Variation {
   /** Which name pool to draw this member's name from. */
   gender: NameGender;
-  /** Persona prose — temperament, quirks, communication style. */
+  /** Persona prose - temperament, quirks, communication style. */
   flavor: string;
 }
 
@@ -86,7 +86,7 @@ export interface TeamBlueprint {
   accent: string;
   /** Team-level prompt (stacks above each member's personality prompt). */
   teamPrompt: string;
-  /** Ordered slots — exactly one orchestrator, 6 members. */
+  /** Ordered slots - exactly one orchestrator, 6 members. */
   slots: Archetype[];
 }
 

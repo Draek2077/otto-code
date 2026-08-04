@@ -1,4 +1,4 @@
-= Orchestration — Observability & Accounting
+= Orchestration - Observability & Accounting
 :description: The run event stream, the per-node record, cost roll-up into the existing ledger, and what makes a graph tunable rather than a slot machine.
 
 A graph you cannot inspect is a slot machine. Every visual builder surveyed ships a
@@ -9,18 +9,18 @@ graph is bad" into "this node's prompt is bad".
 ====
 *Status.* The transport half is built: the engine persists and pushes the full `Run` on every
 change (`runs.updated.notification`), phases carry statuses, skip reasons, candidates with
-summaries and output fields, retry counts and `timedOut` — so a client can already paint
+summaries and output fields, retry counts and `timedOut` - so a client can already paint
 per-node state from its replica without any new event types. What is *not* built is the
-per-node measurement record (timings, tokens, cost, tool calls) — now **decided and promoted
+per-node measurement record (timings, tokens, cost, tool calls) - now **decided and promoted
 to a precondition** of the template initiative
-(link:12-orchestration-data-model.html[Data Model] §"Decided, not built") — and the run
+(link:12-orchestration-data-model.html[Data Model] §"Decided, not built") - and the run
 estimate/budget events. The event names below are design vocabulary for what the snapshot
 push must come to carry, not a proposed side channel.
 ====
 
 == The event stream
 
-The daemon already emits a run snapshot on every state change and persists it — the
+The daemon already emits a run snapshot on every state change and persists it - the
 engine mutates a working `Run` and calls a persist-and-emit path that snapshots,
 broadcasts and stores. Clients keep a replica fed by pushes rather than polling.
 
@@ -34,7 +34,7 @@ What the stream needs to carry for orchestration, beyond today's phase statuses:
 |Paints the canvas and starts the elapsed timer.
 
 |`node.output`
-|The structured result — summary, artifact refs, declared fields, evidence.
+|The structured result - summary, artifact refs, declared fields, evidence.
 
 |`node.excluded`
 |*With a reason.* Branch not taken, upstream failed, run canceled. Without the reason a
@@ -60,12 +60,12 @@ per-node partial output to roughly 100ms; that is the right order of magnitude.
 `RunPhaseCandidate` already carries `agentId`, `personalityId` and `summary`. What makes
 a graph *tunable* is the rest:
 
-* `startedAt` / `completedAt` — where the wall-clock actually went
-* `tokens` / `cost` — per node, rolled up from the child agent's own accounting
-* `filesTouched` — the write-isolation story, and the honest answer to "what did this
+* `startedAt` / `completedAt` - where the wall-clock actually went
+* `tokens` / `cost` - per node, rolled up from the child agent's own accounting
+* `filesTouched` - the write-isolation story, and the honest answer to "what did this
   thing do to my repo"
-* `output` — the structured result, which doubles as what resume reads
-* `attempt` — which loop iteration this was, so a retry ladder is legible
+* `output` - the structured result, which doubles as what resume reads
+* `attempt` - which loop iteration this was, so a retry ladder is legible
 
 == Accounting
 
@@ -79,7 +79,7 @@ from the audit architecture apply unchanged:
 . *Cost is derived from tokens and a model's price*, never reported independently.
 . *Local-only.* Nothing leaves the machine.
 
-The one orchestration-specific addition is a *run total* — what this orchestration cost,
+The one orchestration-specific addition is a *run total* - what this orchestration cost,
 end to end, visible on the run and next to the estimate that was shown before it started.
 At an order-of-magnitude premium over a chat, estimate-versus-actual is the number that
 decides whether a user trusts the feature twice.
@@ -88,13 +88,13 @@ decides whether a user trusts the feature twice.
 
 Covered in link:17-orchestration-designer.html[Designer]; the point here is that it needs
 no new transport. The daemon emits, the client subscribes, the canvas paints. Rivet
-proves the shape works — its IDE attaches over WebSocket to a processor running elsewhere
+proves the shape works - its IDE attaches over WebSocket to a processor running elsewhere
 and paints node state from the same handlers it uses for local runs, so remote and local
 are identical downstream. We already have both halves.
 
 One lesson from its protocol worth *not* copying: its frames are asymmetric (`{type,
 data}` inbound, `{message, data}` outbound) with no versioning. Otto's RPC namespacing and
-compatibility rules already prevent that class of problem — keep orchestration events
+compatibility rules already prevent that class of problem - keep orchestration events
 inside them rather than inventing a side channel.
 
 == Visualizer
@@ -124,7 +124,7 @@ If any of those needs a transcript read, the observability layer is incomplete.
 . Cost is always derived, never independently reported.
 . Streaming to clients is throttled and bounded.
 . Orchestration events live inside the existing RPC namespacing and compatibility rules.
-. Accounting requires no orchestration-specific plumbing — if it ever does, the node has
+. Accounting requires no orchestration-specific plumbing - if it ever does, the node has
   stopped being an ordinary agent and that is the bug.
 
 == Change checklist

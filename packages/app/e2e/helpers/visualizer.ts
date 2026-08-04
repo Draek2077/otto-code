@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
 // Shared locators/flows for the Visualizer specs. Everything here asserts on
-// host-side DOM only — the vendored canvas is a sandboxed iframe whose
+// host-side DOM only - the vendored canvas is a sandboxed iframe whose
 // rendering output is never inspected (WebGL/canvas pixels are out of bounds
 // under headless Chromium). The bridge-observable boot signal is the native
 // Otto toolbar's chats dropdown: its entries mirror the guest page's live
@@ -14,12 +14,12 @@ export function visualizerHeaderButton(page: Page): Locator {
   return page.locator('[data-testid="workspace-visualizer-button"]:visible').first();
 }
 
-/** The Visualizer workspace tab chip (deterministic id — one per workspace). */
+/** The Visualizer workspace tab chip (deterministic id - one per workspace). */
 export function visualizerTabChip(page: Page): Locator {
   return page.locator('[data-testid="workspace-tab-visualizer"]:visible').first();
 }
 
-/** All (visible or not) Visualizer tab chips — for asserting removal. */
+/** All (visible or not) Visualizer tab chips - for asserting removal. */
 export function allVisualizerTabChips(page: Page): Locator {
   return page.locator('[data-testid="workspace-tab-visualizer"]:visible');
 }
@@ -29,7 +29,7 @@ export function visualizerChatsTrigger(page: Page): Locator {
   return page.locator('[data-testid="visualizer-toolbar-chats-trigger"]:visible').first();
 }
 
-/** The sandboxed guest iframe (web embed — visualizer-view.web.tsx). */
+/** The sandboxed guest iframe (web embed - visualizer-view.web.tsx). */
 export function visualizerIframe(page: Page): Locator {
   return page.locator('iframe[title="visualizer"]');
 }
@@ -45,7 +45,7 @@ export function visualizerPaneTabsRow(page: Page): Locator {
 
 /**
  * Open the Visualizer from the workspace header button and wait for the tab +
- * native toolbar to appear. Does not wait for the guest boot — pair with
+ * native toolbar to appear. Does not wait for the guest boot - pair with
  * {@link expectVisualizerBooted} for that.
  */
 export async function openVisualizerFromHeader(page: Page): Promise<void> {
@@ -53,7 +53,7 @@ export async function openVisualizerFromHeader(page: Page): Promise<void> {
   await expect(button).toBeVisible({ timeout: 30_000 });
   await button.click();
   await expect(visualizerTabChip(page)).toBeVisible({ timeout: 30_000 });
-  // The native toolbar renders unconditionally at the top of the tab — its
+  // The native toolbar renders unconditionally at the top of the tab - its
   // audio toggle is one of the always-visible controls (never collapsed).
   await expect(
     page.locator('[data-testid="visualizer-toolbar-audio"]:visible').first(),
@@ -63,12 +63,12 @@ export async function openVisualizerFromHeader(page: Page): Promise<void> {
 /**
  * Assert the guest page booted: iframe attached, no load-failure state, and the
  * chats dropdown shows the given chat title (the session-state mirror round
- * trip — guest `ready` -> adapter `session-started` -> guest `session-state`
+ * trip - guest `ready` -> adapter `session-started` -> guest `session-state`
  * -> toolbar). Never inspects rendering output.
  */
 export async function expectVisualizerBooted(page: Page, chatTitle: string): Promise<void> {
   await expect(visualizerIframe(page)).toBeAttached({ timeout: 30_000 });
-  // en.ts workspace.visualizer.loadFailedTitle — shown by the ready-handshake
+  // en.ts workspace.visualizer.loadFailedTitle - shown by the ready-handshake
   // watchdog when the guest never boots.
   await expect(page.getByText("The Visualizer couldn't start")).toHaveCount(0);
   await expect(visualizerChatsTrigger(page)).toContainText(chatTitle, { timeout: 60_000 });

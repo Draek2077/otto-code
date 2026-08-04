@@ -25,7 +25,7 @@ import type { DesktopBadgeWorkspaceStatus } from "@/utils/desktop-badge-state";
 
 // These are the ONLY supported ways to read workspaces from the session store.
 // Do not write raw `useSessionStore` selectors that return the workspaces Map, a session object,
-// or the sessions dict — it breaks re-render isolation.
+// or the sessions dict - it breaks re-render isolation.
 
 export type {
   DesktopBadgeWorkspaceStatus,
@@ -92,7 +92,7 @@ export function useWorkspaceDirectory(
 }
 
 /**
- * The workspace's per-host project id — the opaque `prj_...` the daemon
+ * The workspace's per-host project id - the opaque `prj_...` the daemon
  * registry is keyed on, which is what every RPC taking a `projectId` wants.
  * It is NOT the cross-host grouping key: for that, read `projectKey` off the
  * workspace structure (`useWorkspaceStructure`) or `getHostProjectId`'s project.

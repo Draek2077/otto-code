@@ -1,7 +1,7 @@
 // The performance-test conversation corpus: many projects, each with several
 // workspaces, each holding a dozen long chats.
 //
-// Imported by BOTH callers — scripts/seed-perf-corpus.mjs (the dev-daemon corpus
+// Imported by BOTH callers - scripts/seed-perf-corpus.mjs (the dev-daemon corpus
 // you can open by hand) and the Playwright soak. That sharing is the point, the
 // same way playbook-projects.mjs shares the boilerplate-project corpus: a number
 // measured by the soak has to describe the state a human just clicked through,
@@ -147,8 +147,8 @@ function composeUserPrompt(rng, itemCount, seed) {
 /**
  * Runs `worker` over `items` with at most `limit` in flight.
  *
- * Turns within one chat are necessarily serial — the mock provider refuses a
- * second turn while one is active — so all the available parallelism is across
+ * Turns within one chat are necessarily serial - the mock provider refuses a
+ * second turn while one is active - so all the available parallelism is across
  * chats, and that is where this is applied.
  */
 async function mapWithConcurrency(items, limit, worker) {
@@ -220,7 +220,7 @@ function dirtyWorkspaceTree(directory, seed, count = DIRTY_FILES_PER_WORKSPACE) 
   let written = 0;
   for (let index = 0; index < count; index += 1) {
     // Alternating, and each half indexed by its own counter so two writes never
-    // land on the same file — otherwise the reported count exceeds the number of
+    // land on the same file - otherwise the reported count exceeds the number of
     // files git actually reports as changed.
     const isModification = index % 2 === 0;
     const target = isModification

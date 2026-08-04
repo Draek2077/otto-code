@@ -1,5 +1,5 @@
 /**
- * `otto brain search <query>` and `otto brain repo-quants <repo>` — Hugging Face
+ * `otto brain search <query>` and `otto brain repo-quants <repo>` - Hugging Face
  * model discovery. These wrap the surface-agnostic primitives in models/hf.ts so
  * the same code serves the TUI (in-process) and the Otto app (daemon shells out
  * to `--json`, mirroring `catalog`/`scan`).

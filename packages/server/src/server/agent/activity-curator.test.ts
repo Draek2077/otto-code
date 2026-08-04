@@ -442,7 +442,7 @@ second line'`,
     ).toThrow("Selected assistant message is no longer available.");
   });
 
-  it("keeps long messages whole — a fork carries the conversation forward", () => {
+  it("keeps long messages whole - a fork carries the conversation forward", () => {
     const longAnswer = "L".repeat(20_000);
     const result = buildAgentForkContextAttachment({
       rows: [

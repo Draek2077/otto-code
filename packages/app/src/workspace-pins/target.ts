@@ -1,5 +1,5 @@
 export type PinnedTabTarget =
-  // Tab launchers — creating a new tab of a given kind.
+  // Tab launchers - creating a new tab of a given kind.
   | { kind: "draft" }
   | { kind: "terminal" }
   | { kind: "browser" }

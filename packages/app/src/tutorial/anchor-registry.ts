@@ -46,7 +46,7 @@ export function getTutorialAnchorNode(id: TutorialAnchorId): MeasurableNode | nu
 }
 
 // Subscribe to registration/unregistration of a single anchor. Returns an
-// unsubscribe. Controller-only — target components must never call this.
+// unsubscribe. Controller-only - target components must never call this.
 export function subscribeTutorialAnchor(id: TutorialAnchorId, cb: () => void): () => void {
   let set = listeners.get(id);
   if (!set) {

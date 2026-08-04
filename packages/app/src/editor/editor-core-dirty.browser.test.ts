@@ -6,8 +6,8 @@ import { createEditorCore, type EditorCore } from "./editor-core";
 
 // Dirty tracking, against a real CM6 in a real browser. The whole point of the
 // comparison-based baseline is that it holds for edits the editor never hears
-// about individually — an undo, a paste that happens to restore what a cut took
-// — so the interesting cases are the ones driven through actual key events and
+// about individually - an undo, a paste that happens to restore what a cut took
+// - so the interesting cases are the ones driven through actual key events and
 // the host's own edit commands rather than through a mocked view.
 
 const THEME: EditorThemeSpec = {

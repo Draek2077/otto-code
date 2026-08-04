@@ -40,7 +40,7 @@ describe("formatFeedbackContext", () => {
   });
 
   it("never leaks host labels, endpoints, or paths", () => {
-    // The facts shape carries no such field — this pins that intent so adding
+    // The facts shape carries no such field - this pins that intent so adding
     // one has to be a deliberate change to the contract, not a drive-by.
     const context = formatFeedbackContext(FACTS);
     expect(context).not.toMatch(/https?:|\/|\\/);

@@ -8,7 +8,7 @@ This guide walks through adding a new agent provider end-to-end. There are two i
 
 Extend `ACPAgentClient` from `packages/server/src/server/agent/providers/acp-agent.ts`. The base class handles process spawning, stdio transport, session lifecycle, streaming, permissions, and model discovery. You provide configuration (command, modes, capabilities) and optionally override `isAvailable()` for auth checks.
 
-The only built-in ACP provider today is `copilot` (`copilot-acp-agent.ts`). `GenericACPAgentClient` (`generic-acp-agent.ts`) is also ACP-based but is used for user-defined custom providers configured via `extends: "acp"` overrides — see [docs/custom-providers.md](custom-providers.md).
+The only built-in ACP provider today is `copilot` (`copilot-acp-agent.ts`). `GenericACPAgentClient` (`generic-acp-agent.ts`) is also ACP-based but is used for user-defined custom providers configured via `extends: "acp"` overrides - see [docs/custom-providers.md](custom-providers.md).
 
 Copilot custom agents are exposed through ACP session config, not the slash-command list. When custom agents are available, Copilot returns a select config option with `id: "agent"` and `category: "_agent"`; Otto maps that to the `agent` provider feature. Copilot uses the agent display name as the option value, and the blank value means the default Copilot agent.
 
@@ -44,9 +44,20 @@ OpenCode owns user message IDs. Do not pass Otto-generated IDs to OpenCode promp
 
 Every provider adapter owns its canonical user-message timeline rows. When a foreground prompt is accepted, the adapter must emit exactly one `user_message` timeline item for that submitted prompt, using the same message ID it gives to or receives from the provider runtime. Optimistic client messages are UI-only and provider transcript echoes are optional; neither is allowed to be the only source of truth. If the provider later echoes the same submitted user message, dedupe it only within the active turn. Prefer provider-visible message IDs, but ACP runtimes may omit that ID or replace it with a provider-owned one; in that case suppress only echo chunks whose accumulated text is a prefix of the active submitted prompt. Do not perform global transcript text dedupe.
 
-Draft metadata lookups should avoid creating provider sessions when the upstream provider has top-level APIs for that metadata. Prefer `AgentClient.fetchCatalog`, `listCommands`, or `listFeatures` over creating a scratch `AgentSession`; scratch sessions can show up as empty native sessions in provider import/history UIs. `fetchCatalog` is the single discovery API for models and modes — provider implementations may use one process, separate upstream calls, or static data internally, but callers outside the provider do not get separate runtime model/mode probes. Draft feature and command listing must use the explicit draft model only; if no model is selected yet, return no metadata instead of resolving a default model through catalog discovery.
+Draft metadata lookups should avoid creating provider sessions when the upstream provider has top-level APIs for that metadata. Prefer `AgentClient.fetchCatalog`, `listCommands`, or `listFeatures` over creating a scratch `AgentSession`; scratch sessions can show up as empty native sessions in provider import/history UIs. `fetchCatalog` is the single discovery API for models and modes - provider implementations may use one process, separate upstream calls, or static data internally, but callers outside the provider do not get separate runtime model/mode probes. Draft feature and command listing must use the explicit draft model only; if no model is selected yet, return no metadata instead of resolving a default model through catalog discovery.
 
 Provider session import has its own contract. The picker calls `listImportableSessions` and receives rows only: provider handle, cwd, title, prompt previews, and last activity. Import calls `importSession({ providerHandleId, cwd })` for the selected row and must not call listing again. The provider returns the resumed session, storage config, persistence handle, and hydrated timeline for that one native session; `AgentManager.importProviderSession` seeds the daemon timeline and publishes the Otto agent only after it is ready.
+
+### Otto Brain (the daemon's own local host)
+
+`otto-brain` is a built-in provider (`AGENT_PROVIDER_DEFINITIONS`) that reuses `OpenAICompatAgentClient`, but it is the one provider with **no connection settings of its own**. It never reads `OPENAI_BASE_URL`/`OPENAI_API_KEY`. The registry injects a `resolveEndpoint` callback that asks `BrainManager.getProviderEndpoint()` on every request, so the base URL, the bearer token, and the TLS trust all come from the brain settings under Settings, Host, Otto Brain (`daemon.brain`: `mode`, `enabled`, `listen`, `authMode`/`authToken`, `tls`, `remote`).
+
+Consequences worth keeping:
+
+- **`getProviderEndpoint()` is synchronous.** A host that was stopped a second ago must report unavailable immediately rather than waiting on a connection refusal.
+- **Unavailable is a throw, not an empty catalog.** `isAvailable()` stays `true` (there is nothing to install), and the resolver throws the operator-facing reason ("Otto Brain is turned off", "not running", "No remote host configured"). The snapshot manager turns that into `status: "error"`, which is what renders a red dot with a fix-it message in Providers and drops the provider from the model picker instead of offering models that cannot answer.
+- **TLS policy lives in `BrainManager`, not the provider.** A ready endpoint carries an optional undici `dispatcher` for the loopback-child and pinned self-signed cases; a chain-of-trust certificate gets `null` and uses the platform default. The dispatcher is cached per endpoint signature because an `Agent` owns a connection pool.
+- **Do not add it to the app's provider catalog.** `ACP_PROVIDER_CATALOG` must not list `otto-brain`: it is not something the user adds, and a catalog entry would write an `extends: "openai-compatible"` config entry with a hardcoded URL. `provider-diagnostic-sheet.tsx` also suppresses the Connection tab for it by id, so installs that predate this still show no URL or API-key fields.
 
 ## Provider Helper Processes
 
@@ -67,6 +78,10 @@ Snapshot reads may probe providers only while the requested cwd scope is cold. O
 Settings refresh is the user-facing "forget stale provider knowledge everywhere" action. A settings refresh clears provider snapshot caches and in-flight loads across all cwd scopes, then immediately refreshes only the global snapshot with `force: true`. Workspace snapshots are re-probed lazily on the next scoped read; do not fan out a settings refresh across every known workspace.
 
 Registry/config replacement may update visible metadata such as label, description, default mode, enabled state, and provider membership, but it must not spawn provider processes. If a provider needs to be re-probed after a config change, route that through the explicit settings refresh path.
+
+There is exactly one carve-out: a provider that is **newly registered** (no entry in any materialized snapshot) is probed in every snapshot as soon as the registry rebuild lands. This is not a cache revalidation, because there is no cached knowledge to preserve. Reconciliation can only seed a brand-new provider as `unavailable`, and the model picker hides providers in a failed state, so without the probe a freshly added provider shows its models in Settings (which refreshes the global scope explicitly) while being invisible in every workspace's picker until something unrelated forced a re-probe. The carve-out is scoped by `getUnprobedProviderIds`: a provider that already has an entry anywhere keeps its cached state.
+
+A provider whose availability the daemon itself owns must also push its own re-probes. `otto-brain` is the case in the tree: the daemon starts and stops that host, so `BrainManager` calls `ProviderSnapshotManager.refreshProviderEverywhere("otto-brain")` whenever reachability changes. Without it the Providers row keeps claiming "available" after the operator stopped the host from the same screen.
 
 Boundary tests should assert observable behavior: cold reads may call provider availability/model/mode discovery for that scope; warm reads and registry replacement must not; explicit workspace refreshes affect only one cwd; settings refresh wipes all scopes but immediately refreshes only global.
 
@@ -330,7 +345,7 @@ If your agent does not speak ACP, implement the interfaces from `agent-sdk-types
 
 ### Interfaces to implement
 
-The interfaces below are abridged signatures — read `agent-sdk-types.ts` for the full source of truth (option bag types, generics, etc.).
+The interfaces below are abridged signatures - read `agent-sdk-types.ts` for the full source of truth (option bag types, generics, etc.).
 
 **`AgentClient`** -- factory for sessions and model/mode listing:
 

@@ -4,7 +4,7 @@ import type { OrchestrationGraph } from "@otto-code/protocol/orchestration";
 
 import type { GraphStore } from "./graph-store.js";
 
-// Bundled starter graphs (projects/orchestration-graphs) — the graph designer's
+// Bundled starter graphs (projects/orchestration-graphs) - the graph designer's
 // equivalent of the starter team: ready-to-run templates that show the idiom
 // (declared inputs, role nodes, fan-in, a judge-gated loop) and give a fresh
 // install something executable on day one. Seeded once per id: a user who edits
@@ -41,7 +41,7 @@ export const STARTER_GRAPHS: OrchestrationGraph[] = [
         title: "Research",
         role: "researcher",
         prompt:
-          "Research everything needed to accomplish this goal. Report findings, constraints, and recommendations — no implementation.\n\nGoal:\n{{inputs.goal}}",
+          "Research everything needed to accomplish this goal. Report findings, constraints, and recommendations - no implementation.\n\nGoal:\n{{inputs.goal}}",
         position: { x: 360, y: 120 },
       },
       {
@@ -108,7 +108,7 @@ export const STARTER_GRAPHS: OrchestrationGraph[] = [
         title: "Case For",
         role: "researcher",
         prompt:
-          "Make the strongest evidence-based case FOR. Steelman it — cite concrete reasons.\n\nQuestion:\n{{inputs.question}}",
+          "Make the strongest evidence-based case FOR. Steelman it - cite concrete reasons.\n\nQuestion:\n{{inputs.question}}",
         position: { x: 360, y: 80 },
       },
       {
@@ -117,7 +117,7 @@ export const STARTER_GRAPHS: OrchestrationGraph[] = [
         title: "Case Against",
         role: "researcher",
         prompt:
-          "Make the strongest evidence-based case AGAINST. Steelman it — cite concrete risks and counterexamples.\n\nQuestion:\n{{inputs.question}}",
+          "Make the strongest evidence-based case AGAINST. Steelman it - cite concrete risks and counterexamples.\n\nQuestion:\n{{inputs.question}}",
         position: { x: 360, y: 240 },
       },
       {
@@ -126,7 +126,7 @@ export const STARTER_GRAPHS: OrchestrationGraph[] = [
         title: "Practical Angle",
         role: "researcher",
         prompt:
-          "Ignore the debate — what would actually happen in practice? Assess feasibility, costs, and second-order effects.\n\nQuestion:\n{{inputs.question}}",
+          "Ignore the debate - what would actually happen in practice? Assess feasibility, costs, and second-order effects.\n\nQuestion:\n{{inputs.question}}",
         position: { x: 360, y: 400 },
       },
       {
@@ -174,7 +174,7 @@ export const STARTER_GRAPHS: OrchestrationGraph[] = [
         title: "Triage",
         role: "researcher",
         prompt:
-          "Decide how much work this question deserves. Do not answer it — classify it.\n\nQuestion:\n{{inputs.question}}",
+          "Decide how much work this question deserves. Do not answer it - classify it.\n\nQuestion:\n{{inputs.question}}",
         // Classifying needs no workspace at all, so it gets none: the node is
         // cheaper (no file tools in its catalog) and structurally unable to
         // touch anything.

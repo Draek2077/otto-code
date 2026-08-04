@@ -107,7 +107,7 @@ function ArtifactsScreenContent(): ReactElement {
   );
 
   // The picker lists every known project (one entry per repo root), not just the
-  // roots that happen to have artifacts — a project with none should still be
+  // roots that happen to have artifacts - a project with none should still be
   // selectable and show an empty-state watermark.
   const projectOptions = useMemo<ProjectFilterOption[]>(() => {
     const byId = new Map<string, ProjectFilterOption>();
@@ -286,7 +286,7 @@ function ArtifactsBody({
     emptyFilterText = `No ${label?.toLowerCase()} artifacts`;
   }
 
-  // The filter is always shown so every project stays selectable — including
+  // The filter is always shown so every project stays selectable - including
   // ones with no artifacts, which fall through to the empty text below.
   return (
     <View style={styles.body}>

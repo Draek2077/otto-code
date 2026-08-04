@@ -71,7 +71,7 @@ function createSnapshot(
   const forgeName = resolveSnapshotForgeName(featuresEnabled, overrides);
   return {
     cwd,
-    // Measurement timestamp, not state — every fixture is an expectation, and the
+    // Measurement timestamp, not state - every fixture is an expectation, and the
     // per-test fake clocks differ, so match on shape.
     gitLoadedAtMs: expect.any(Number) as unknown as number,
     git: {
@@ -880,7 +880,7 @@ describe("WorkspaceGitServiceImpl", () => {
 
   // The PR-status poll measures no git state, so its emission must be tagged
   // PR-only. Untagged, downstream rebuilds a whole checkout status from the last
-  // git measurement and publishes it as news — which right after a commit ships a
+  // git measurement and publishes it as news - which right after a commit ships a
   // pre-commit aheadOfOrigin and mutes Push (batch-07-24 #2).
   test("the pull-request status poll emits a PR-status-only update", async () => {
     const github = createGitHubServiceStub() as GitHubService & {
@@ -1013,7 +1013,7 @@ describe("WorkspaceGitServiceImpl", () => {
 
   test("sets a 5-second fallback polling interval when recursive watch is unavailable", async () => {
     if (process.platform === "linux") {
-      // On Linux, recursive watch is never attempted — the service uses per-directory
+      // On Linux, recursive watch is never attempted - the service uses per-directory
       // watchers from the start. This scenario only applies to macOS/Windows where
       // recursive watch is tried first and may fail.
       return;

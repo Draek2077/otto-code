@@ -2069,7 +2069,7 @@ describe("ACPAgentSession", () => {
 
   test("settles listCommands() immediately on an empty Kiro commands batch", async () => {
     // A long timeout means a resolution can only come from settleCommandsReady()
-    // firing — not from the wait timer — so this test would hang if the empty
+    // firing - not from the wait timer - so this test would hang if the empty
     // batch failed to unblock listCommands() (the P1 regression).
     const session = createKiroSession({
       waitForInitialCommands: true,
@@ -3031,7 +3031,7 @@ describe("ACPAgentClient probe cleanup", () => {
   });
 });
 
-describe("ACP session/load invariant — cwd and mcpServers always passed", () => {
+describe("ACP session/load invariant - cwd and mcpServers always passed", () => {
   /**
    * Shared factory: creates an ACPAgentSession subclass whose spawnProcess
    * returns stubbed ACP internals so tests can inspect connection method calls

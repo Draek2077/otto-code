@@ -17,6 +17,7 @@ export interface BrainPaths {
   modelsDir: string;
   runtimesDir: string;
   pidFile: string;
+  activityFile: string;
   logFile: string;
   resultsDir: string;
 }
@@ -33,6 +34,10 @@ export function resolveBrainPaths(env: NodeJS.ProcessEnv = process.env): BrainPa
     modelsDir: path.join(root, "models"),
     runtimesDir: path.join(root, "runtimes"),
     pidFile: path.join(root, "otto-brain.pid"),
+    // Which long-running op currently owns the host. A file rather than service
+    // state because calibrate/sweep/bench run as their own CLI processes and the
+    // service - which is what answers /__host/status - never sees them otherwise.
+    activityFile: path.join(root, "otto-brain.activity"),
     logFile: path.join(root, "otto-brain.log"),
     resultsDir: path.join(root, "results"),
   };

@@ -15,7 +15,7 @@ const TOOLBAR_ICON_SIZE_COMPACT = TOOLBAR_ICON_SIZE * 2;
 
 // Icon-only toolbar button with a tooltip carrying its label (the
 // file-view-mode-bar pattern; every icon-only button needs a Tooltip wrapper).
-// `selected` shows a persistent highlight for stateful toggles — omit it for
+// `selected` shows a persistent highlight for stateful toggles - omit it for
 // momentary action buttons. `disabled` dims the button and blocks presses;
 // `loading` swaps the glyph for a spinner. Used by the file tab's editor
 // toolbar and the visualizer toolbar.
@@ -32,7 +32,7 @@ export type ToolbarIconComponent = ComponentType<{
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 
 const selectedIconColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
-// Also the disabled color — there is no dedicated "subtle" token; the disabled
+// Also the disabled color - there is no dedicated "subtle" token; the disabled
 // dimming comes from the button's reduced opacity (iconButtonDisabled) while
 // the icon keeps the muted color.
 const mutedIconColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
@@ -43,7 +43,7 @@ const mutedIconColorMapping = (theme: Theme) => ({ color: theme.colors.foregroun
 const accentIconColorMapping = (theme: Theme) => ({ color: theme.colors.accent });
 
 /**
- * `accent` marks the toolbar's primary action. At most one per toolbar — the
+ * `accent` marks the toolbar's primary action. At most one per toolbar - the
  * tint only means "this is the one" while nothing else is competing for it.
  */
 export type ToolbarIconButtonTone = "default" | "accent";
@@ -68,7 +68,7 @@ export function ToolbarIconButton({
   tone?: ToolbarIconButtonTone;
   /**
    * Key hint printed after the label, in the app's tooltip idiom (see
-   * header-toggle-button). Omit when the button has no binding — a tooltip that
+   * header-toggle-button). Omit when the button has no binding - a tooltip that
    * names a key the button doesn't answer to is worse than no hint.
    *
    * A chord (`ShortcutKey[][]`), not a single combo: these hints are resolved

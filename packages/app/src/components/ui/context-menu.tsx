@@ -201,7 +201,7 @@ function coerceEventPoint(event: unknown): { pageX: number; pageY: number } | nu
 /**
  * Extracts an anchor point (window coordinates) from a web `contextmenu` or a
  * native press event, suppressing the default browser menu. For imperative
- * menus that have no `ContextMenuTrigger` — pass the result to the
+ * menus that have no `ContextMenuTrigger` - pass the result to the
  * `ContextMenu` `anchor` prop. Returns null when the event carries no usable
  * coordinates.
  */
@@ -242,7 +242,7 @@ export function ContextMenu({
   onOpenChange?: (open: boolean) => void;
   /**
    * Anchor point in window coordinates for menus opened imperatively (no
-   * `ContextMenuTrigger`) — e.g. a single shared menu serving many rows.
+   * `ContextMenuTrigger`) - e.g. a single shared menu serving many rows.
    * Use `contextMenuAnchorFromEvent` to derive it from the source event.
    */
   anchor?: { x: number; y: number } | null;
@@ -572,7 +572,7 @@ export function ContextMenuContent({
         keyboardBlurBehavior="restore"
       >
         {/* The sheet's children are teleported to the app-root portal host, so
-            the ambient ContextMenu provider doesn't reach them — re-provide
+            the ambient ContextMenu provider doesn't reach them - re-provide
             inside the portaled subtree, not around the modal. */}
         <ContextMenuContext.Provider value={context}>
           <BottomSheetScrollView

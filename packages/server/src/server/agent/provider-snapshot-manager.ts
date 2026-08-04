@@ -35,6 +35,7 @@ import {
   type ProviderDefinition,
 } from "./provider-registry.js";
 import { BUILTIN_PROVIDER_IDS } from "@otto-code/protocol/provider-manifest";
+import type { BrainProviderEndpointResolver } from "./provider-registry.js";
 import { applyMutableProviderConfigToOverrides } from "../daemon-config-store.js";
 import {
   formatProviderDiagnostic,
@@ -104,6 +105,8 @@ export interface ProviderSnapshotManagerOptions {
   modelTierOverrides?: ModelTierOverride[];
   /** Daemon-wide connector registry, injected into the openai-compat provider. */
   connectors?: readonly ConnectorConfig[];
+  /** Endpoint source for the built-in otto-brain provider; see BuildProviderRegistryOptions. */
+  brainEndpoint?: BrainProviderEndpointResolver;
 }
 
 // provider → (modelId → tier), the lookup form of the stored override array.
@@ -165,7 +168,7 @@ export interface ResolveProviderCreateConfigOptions {
 export interface ResolvedProviderCreateConfig {
   modeId: string | undefined;
   featureValues: Record<string, unknown> | undefined;
-  // The effective unattended signal after OR-ing in an unattended parent — the
+  // The effective unattended signal after OR-ing in an unattended parent - the
   // same value that drove mode coercion. Callers stamp this onto the session
   // config so the deny-responder arms for children of unattended parents, not
   // just directly-unattended runs. See docs/safe-unattended.md.
@@ -244,6 +247,7 @@ export class ProviderSnapshotManager {
   private providerClients: Record<AgentProvider, AgentClient>;
   private modelTierOverrides: ModelTierOverrideIndex;
   private connectors: readonly ConnectorConfig[] | undefined;
+  private readonly brainEndpoint: BrainProviderEndpointResolver | undefined;
 
   constructor(options: ProviderSnapshotManagerOptions) {
     this.logger = options.logger;
@@ -256,6 +260,7 @@ export class ProviderSnapshotManager {
     this.runtimeSettings = options.runtimeSettings;
     this.providerOverrides = options.providerOverrides;
     this.baseProviderOverrides = options.providerOverrides;
+    this.brainEndpoint = options.brainEndpoint;
     this.refreshTimeoutMs = resolveRefreshTimeoutMs(options.refreshTimeoutMs);
     this.diagnosticTimeoutMs = resolveDiagnosticTimeoutMs(
       options.diagnosticTimeoutMs,
@@ -310,6 +315,33 @@ export class ProviderSnapshotManager {
 
   async refresh(options: ProviderSnapshotRefreshOptions): Promise<void> {
     await this.refreshSnapshotForCwd(options);
+  }
+
+  /**
+   * Re-probe one provider in every snapshot already materialized (the settings
+   * scope plus each workspace's). For providers whose availability is owned by
+   * the daemon rather than by the user's environment - otto-brain, whose host
+   * the daemon itself starts and stops - the alternative is a row that keeps
+   * claiming "available" until something else happens to refresh it.
+   */
+  async refreshProviderEverywhere(provider: AgentProvider): Promise<void> {
+    if (!this.hasProvider(provider)) {
+      return;
+    }
+    const providers = [provider];
+    const targets = [...this.snapshots.keys()].map((snapshotCwd) =>
+      snapshotCwd === GLOBAL_PROVIDER_SNAPSHOT_KEY
+        ? createGlobalSnapshotTarget()
+        : createWorkspaceSnapshotTarget(snapshotCwd),
+    );
+    this.clearCachedProviders(providers);
+    await Promise.all(
+      targets.map(async (target) => {
+        this.resetSnapshotToLoading(target.snapshotCwd, providers, { preserveExisting: true });
+        this.emitChange(target.snapshotCwd);
+        await this.refreshProviders(target, providers);
+      }),
+    );
   }
 
   listRegisteredProviderIds(): AgentProvider[] {
@@ -446,7 +478,7 @@ export class ProviderSnapshotManager {
       snapshotEntryPromise,
     ]);
 
-    const modelCount = entry.status === "ready" ? String(entry.models?.length ?? 0) : "—";
+    const modelCount = entry.status === "ready" ? String(entry.models?.length ?? 0) : "-";
     const status = formatProviderStatus(entry);
     const diagnostic = `${baseDiagnostic}\n  Models: ${modelCount}\n  Status: ${status}`;
     return { provider, diagnostic };
@@ -454,9 +486,9 @@ export class ProviderSnapshotManager {
 
   /**
    * The removed-provider list may arrive either as a bare array or inside the
-   * options object. Both spellings are in use — the daemon-config subscriber
+   * options object. Both spellings are in use - the daemon-config subscriber
    * passes the array, callers that also set other options pass
-   * `removeProviders` — and they used to be two separate removal passes, so
+   * `removeProviders` - and they used to be two separate removal passes, so
    * whichever form a caller did not use silently removed nothing.
    */
   applyMutableProviderConfig(
@@ -482,19 +514,45 @@ export class ProviderSnapshotManager {
     this.providerRegistry = this.buildRegistry();
     this.providerClients = { ...this.extraClients } as Record<AgentProvider, AgentClient>;
 
+    // A provider that was just registered has no entry in any existing
+    // snapshot, and reconcile can only seed it as "unavailable". Left there it
+    // reads as a failed provider - the model picker hides those - so a freshly
+    // added provider would show its models in Settings (which refreshes the
+    // global snapshot explicitly) yet be missing from every workspace's picker
+    // until something else forced a re-probe. Probe them instead.
+    const addedProviders = this.getUnprobedProviderIds();
     for (const cwd of this.snapshots.keys()) {
       this.providerLoads.delete(cwd);
       this.snapshots.set(cwd, this.reconcileSnapshotForRegistry(cwd));
       this.emitChange(cwd);
+    }
+    for (const provider of addedProviders) {
+      void this.refreshProviderEverywhere(provider).catch((error: unknown) => {
+        this.logger.warn({ err: error, provider }, "Failed to probe newly registered provider");
+      });
     }
 
     return this.getAgentManagerProviderState();
   }
 
   /**
+   * Registered providers that no materialized snapshot has an entry for - i.e.
+   * the ones this registry rebuild just added.
+   */
+  private getUnprobedProviderIds(): AgentProvider[] {
+    const snapshots = [...this.snapshots.values()];
+    if (snapshots.length === 0) {
+      return [];
+    }
+    return this.getProviderIds().filter((provider) =>
+      snapshots.every((snapshot) => !snapshot.has(provider)),
+    );
+  }
+
+  /**
    * Apply the daemon-wide connector registry (from daemon config). Rebuilds the
    * provider registry so the openai-compat client picks up the new set on its
-   * next spawn — a connector toggle takes effect without a daemon restart.
+   * next spawn - a connector toggle takes effect without a daemon restart.
    */
   setConnectors(connectors: readonly ConnectorConfig[] | undefined): AgentManagerProviderState {
     this.connectors = connectors;
@@ -582,6 +640,7 @@ export class ProviderSnapshotManager {
       workspaceGitService: this.workspaceGitService,
       managedProcesses: this.managedProcesses,
       connectors: this.connectors,
+      brainEndpoint: this.brainEndpoint,
       isDev: this.isDev,
     });
 

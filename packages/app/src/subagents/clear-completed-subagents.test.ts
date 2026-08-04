@@ -91,7 +91,7 @@ describe("clearCompletedSubagents", () => {
 
     expect(archiveAgent).toHaveBeenCalledTimes(3);
     expect(deps.reportError).toHaveBeenCalledTimes(1);
-    // The failed row ("b") is never recorded — it stays live and counted normally.
+    // The failed row ("b") is never recorded - it stays live and counted normally.
     expect(deps.recordCleared).toHaveBeenCalledTimes(2);
     const recordedIds = (deps.recordCleared as ReturnType<typeof vi.fn>).mock.calls
       .flatMap((call) => call[0].rows)

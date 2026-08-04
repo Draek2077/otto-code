@@ -68,10 +68,10 @@ const blueColorMapping = (theme: Theme) => ({ color: theme.colors.palette.blue[5
 // the top of its bucket instead of appending at the end. This keeps whatever
 // the user is already looking at pinned in place instead of jumping. RN docs
 // warn maintainVisibleContentPosition can jank if existing rows *reorder*, but
-// our sort order is otherwise stable — rows only re-sort by leaving one bucket
+// our sort order is otherwise stable - rows only re-sort by leaving one bucket
 // for another, which is itself a mount/unmount this prop covers. Hoisted to a
 // stable reference so it isn't a new object every render (react-perf lint).
-// No-op on react-native-web (unsupported there) — kept for parity; native is
+// No-op on react-native-web (unsupported there) - kept for parity; native is
 // where the scroll-jump actually hurts.
 const SIDEBAR_STATUS_LIST_MAINTAIN_VISIBLE_CONTENT_POSITION = { minIndexForVisible: 0 };
 

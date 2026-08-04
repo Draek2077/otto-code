@@ -17,7 +17,7 @@ describe("toMermaidFenceDocument", () => {
     expect(fence?.content).toBe("graph TD\n  A --> B\n");
   });
 
-  it("keeps YAML frontmatter inside the fence — mermaid parses it itself", () => {
+  it("keeps YAML frontmatter inside the fence - mermaid parses it itself", () => {
     const source = "---\ntitle: Flow\n---\ngraph TD\n  A --> B";
     const [fence] = fenceTokens(toMermaidFenceDocument(source));
 

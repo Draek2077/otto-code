@@ -53,7 +53,7 @@ describe("deniedToolsForAccess", () => {
     }
   });
 
-  test("the shell is denied only at none — read still allows checks", () => {
+  test("the shell is denied only at none - read still allows checks", () => {
     // "read" exists for reviewer nodes that run tests and git queries; denying
     // Bash there would make the level useless for its main purpose.
     expect(deniedToolsForAccess("read")).not.toContain("Bash");
@@ -121,7 +121,7 @@ describe("isOttoToolAllowedForAccess", () => {
   });
 
   test("a NEW tool in a workspace-shaped group is denied at none by default", () => {
-    // Default-deny: these names are listed nowhere — the group rule catches
+    // Default-deny: these names are listed nowhere - the group rule catches
     // them, so a future catalog tool cannot silently bypass the ceiling.
     for (const tool of ["purge_terminal_buffers", "sync_worktree", "delete_artifact"]) {
       expect(isOttoToolAllowedForAccess(tool, "none")).toBe(false);
@@ -170,7 +170,7 @@ describe("codexSandboxModeForAccess", () => {
     expect(codexSandboxModeForAccess("read")).toBe("read-only");
   });
 
-  test("none falls back to the read-only floor — defense in depth, not the level", () => {
+  test("none falls back to the read-only floor - defense in depth, not the level", () => {
     // Codex cannot express "no filesystem", so the capability gate refuses
     // "none" on Codex seats before this mapping runs. If a config carries the
     // level anyway, the floor is the most the adapter can impose.
@@ -179,7 +179,7 @@ describe("codexSandboxModeForAccess", () => {
 });
 
 describe("capabilitiesEnforceAccess", () => {
-  test("write needs no capability at all — it is today's behaviour", () => {
+  test("write needs no capability at all - it is today's behaviour", () => {
     expect(capabilitiesEnforceAccess(undefined, "write")).toBe(true);
     expect(capabilitiesEnforceAccess(null, "write")).toBe(true);
     expect(capabilitiesEnforceAccess({}, "write")).toBe(true);
@@ -191,7 +191,7 @@ describe("capabilitiesEnforceAccess", () => {
     expect(capabilitiesEnforceAccess({ supportsWorkspaceAccess: true }, "read")).toBe(true);
   });
 
-  test("none additionally requires supportsWorkspaceAccessNone — a read-only floor is not none", () => {
+  test("none additionally requires supportsWorkspaceAccessNone - a read-only floor is not none", () => {
     // Codex's shape: sandbox tiers bound writes, but its shell reads freely
     // inside every tier and the protocol has no tool-deny list, so declaring
     // supportsWorkspaceAccess alone must not admit "none".

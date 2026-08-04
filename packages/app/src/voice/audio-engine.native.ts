@@ -139,7 +139,7 @@ export function createAudioEngine(
           const pcm16k = resamplePcm16(pcm, inputRate, 16000);
           const durationSec = pcm16k.length / 2 / 16000;
           // No native volume control, so the level is baked into the samples.
-          // Still played (as silence) at gain 0 — the duration is what callers
+          // Still played (as silence) at gain 0 - the duration is what callers
           // time their acks and queue advances against.
           const leveled = applyPcm16Gain(pcm16k, gain);
 

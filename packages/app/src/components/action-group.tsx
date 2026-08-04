@@ -74,7 +74,7 @@ const SUMMARY_KEYS: Record<ActionGroupCategory, { one: string; many: string }> =
   },
 };
 
-// "Read 2 files, searched web, wrote file" — the phrases are stored lowercase
+// "Read 2 files, searched web, wrote file" - the phrases are stored lowercase
 // and the joined summary is sentence-cased, so only the first one leads with a
 // capital letter.
 function buildActionGroupSummary(t: TFunction, items: ActionGroupMemberItem[]): string {
@@ -95,7 +95,7 @@ function isFailedMember(member: ActionGroupMemberItem): boolean {
   return member.kind === "tool_call" && member.payload.data.status === "failed";
 }
 
-// Thoughts have no success or failure, so they never count toward — or dilute —
+// Thoughts have no success or failure, so they never count toward - or dilute -
 // the group's failure ratio.
 function isFailableMember(member: ActionGroupMemberItem): boolean {
   return member.kind === "tool_call";
@@ -123,7 +123,7 @@ interface ActionGroupMemberRowProps {
 }
 
 // Mirrors how agent-stream/view.tsx maps stream items onto ToolCall rows.
-// Speak bubbles and plan cards never reach here — grouping excludes them.
+// Speak bubbles and plan cards never reach here - grouping excludes them.
 function ActionGroupMemberRow({ member, cwd, onOpenFilePath }: ActionGroupMemberRowProps) {
   if (member.kind === "thought") {
     return (

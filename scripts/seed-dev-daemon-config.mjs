@@ -2,7 +2,7 @@
 // home's config.json.
 //
 // Why this exists: the desktop daemon-manager decides whether a daemon is
-// already running by reading `daemon.listen` out of config.json — it does NOT
+// already running by reading `daemon.listen` out of config.json - it does NOT
 // honor the OTTO_LISTEN env var. Without this file being seeded, a dev app
 // reads the default 6868, finds the *installed* app's daemon sitting there, and
 // wires the dev client straight into production state.
@@ -29,7 +29,7 @@ let config = {};
 try {
   config = JSON.parse(readFileSync(configPath, "utf8"));
 } catch {
-  // No config yet, or an unreadable one — start from scratch rather than
+  // No config yet, or an unreadable one - start from scratch rather than
   // refusing to boot the dev daemon.
 }
 

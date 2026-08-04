@@ -70,7 +70,7 @@ type AutoSubmitConfig = DraftAutoSubmitConfig;
 // Reconcile the form's selected mode against the currently discovered modes.
 // The mode picker displays modeOptions[0] when the stored mode isn't in the
 // list (e.g. a globally-remembered "plan" that this workspace's OpenCode config
-// no longer defines), so the submitted mode must match that display — otherwise
+// no longer defines), so the submitted mode must match that display - otherwise
 // we'd send a stale mode the provider rejects while the UI showed a valid one.
 function reconcileSelectedMode(modeOptionIds: readonly string[], selectedMode: string): string {
   if (modeOptionIds.length === 0) {
@@ -444,7 +444,7 @@ export function WorkspaceDraftAgentTab({
     COMPACT_FORM_FACTOR_WIDTH,
     { initialIsBelow: isCompactFormFactor },
   );
-  // The tab, not the window, is what the composer has to fit inside — measured
+  // The tab, not the window, is what the composer has to fit inside - measured
   // on the outermost box, whose height its own parent owns, so a growing
   // composer can never feed back into it.
   const { onLayout: onTabLayout, height: tabHeight } = useContainerHeight();

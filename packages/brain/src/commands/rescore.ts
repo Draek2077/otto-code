@@ -1,5 +1,5 @@
 /**
- * `otto brain rescore` — re-grade archived benchmark transcripts with the current
+ * `otto brain rescore` - re-grade archived benchmark transcripts with the current
  * scorer, no GPU used. Surfaces scorer changes against what was recorded live.
  */
 import type { Command } from "commander";
@@ -51,7 +51,7 @@ export async function runRescoreCommand(
       }
       const before = record?.tasks.find((t) => t.id === task.taskId);
       const now = `${(task.score * 100).toFixed(0)}%`;
-      const then = before ? `${(before.score * 100).toFixed(0)}%` : "—";
+      const then = before ? `${(before.score * 100).toFixed(0)}%` : "-";
       const moved = before && Math.abs(before.score - task.score) > 0.005;
       if (moved) changed += 1;
       process.stdout.write(

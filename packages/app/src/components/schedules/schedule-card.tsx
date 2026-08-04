@@ -30,7 +30,7 @@ import { formatCadence, formatNextRun, resolveScheduleTitle } from "@/utils/sche
 import { formatTimeAgo } from "@/utils/time";
 import type { ScheduleSummary } from "@otto-code/protocol/schedule/types";
 
-// Themed lucide wrappers — module-scope so only the icon re-renders on theme
+// Themed lucide wrappers - module-scope so only the icon re-renders on theme
 // change (never call useUnistyles in render). See docs/unistyles.md.
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedMessageSquare = withUnistyles(MessageSquare);
@@ -71,7 +71,7 @@ export interface ScheduleCardActions {
 
 interface ScheduleCardProps extends ScheduleCardActions {
   schedule: ScheduleSummary;
-  /** Host the schedule lives on — used to resolve the provider's display label. */
+  /** Host the schedule lives on - used to resolve the provider's display label. */
   serverId: string;
   /** Client-derived target line (agent title / project / shortened path). */
   targetLabel: string;
@@ -79,7 +79,7 @@ interface ScheduleCardProps extends ScheduleCardActions {
   provider: string | null;
   /** Resolved project name for the schedule's target, when known. */
   projectName: string | null;
-  /** Client-derived state — the single source for the badge and next-run copy. */
+  /** Client-derived state - the single source for the badge and next-run copy. */
   state: ScheduleDerivedState;
   /** Host name, rendered when the list spans more than one host. */
   serverName?: string;
@@ -258,7 +258,7 @@ export function ScheduleCard({
         <ProjectNameLine projectName={projectName} />
 
         {/* For "new agent" schedules the target line is just the project name
-            again (see resolveTarget in schedule-derivation.ts) — skip it so it
+            again (see resolveTarget in schedule-derivation.ts) - skip it so it
             doesn't repeat the ProjectNameLine above. Agent-targeted schedules
             show the agent's title here, which is distinct info. */}
         {targetLabel !== projectName ? (
@@ -412,7 +412,7 @@ function ScheduleKebabMenu({
 }
 
 // The hovered card is already surface2, so the kebab's own hover/press states
-// step up to surface3/surface4 — anything lower is invisible against the card.
+// step up to surface3/surface4 - anything lower is invisible against the card.
 function kebabTriggerStyle({
   hovered = false,
   pressed,

@@ -1,4 +1,4 @@
-# Godot integration — a game engine whose whole project is diffable text
+# Godot integration - a game engine whose whole project is diffable text
 
 ## Why Godot specifically
 
@@ -9,7 +9,7 @@ degrade to "someone changed something".
 Godot is the exception. A project is a directory containing `project.godot`, and **every part of it is
 plain text**: scenes (`.tscn`), resources (`.tres`), scripts (`.gd`), shaders (`.gdshader`), and the
 project file itself. That single property means most of Otto already works on a Godot project the day
-someone points it at one — Changes shows a real diff, blame attributes a real line, file history
+someone points it at one - Changes shows a real diff, blame attributes a real line, file history
 works, an agent can read and edit a scene.
 
 The second reason is scripting: Godot supports **C#**, which the LSP registry already has a row for.
@@ -32,7 +32,7 @@ first-class", and the list is shorter than it is for any other engine.
 | `project.godot`  | Project manifest      | Grammar; doubles as the project marker   |
 | `.import`        | Asset import settings | Grammar; usually noise, worth collapsing |
 
-`.tscn` and `.tres` use a custom INI-like format — sections in square brackets with typed values and
+`.tscn` and `.tres` use a custom INI-like format - sections in square brackets with typed values and
 `ExtResource`/`SubResource` references. It resembles INI and TOML without being either, and a
 near-miss grammar reads worse than none, so this wants to be its own grammar rather than a coerced
 existing one.
@@ -51,7 +51,7 @@ does not own its lifetime, and has to connect to something that may or may not b
 
 That forces three changes:
 
-- The registry grows a **transport** field — `stdio` today, `socket` for this.
+- The registry grows a **transport** field - `stdio` today, `socket` for this.
 - The pool learns to **attach to a socket** rather than own a child, including reconnect when the
   editor restarts and a clear degraded state when it is not running.
 - The UI needs an honest story for "the language server needs the Godot editor open", because that is
@@ -61,7 +61,7 @@ That forces three changes:
 checking against a current Godot build before this is planned in detail. Do not design against a
 remembered port number.
 
-The C# path has no such problem — it is the existing `csharp` row, unchanged.
+The C# path has no such problem - it is the existing `csharp` row, unchanged.
 
 ### 3. Build, export and run
 
@@ -72,10 +72,10 @@ would call, and what a workspace script would run.
 **Unverified.** The exact flags for headless build, C# solution build, and export need checking. They
 have changed across Godot 3 → 4 and should not be written from memory.
 
-### 4. Preview — the interesting one
+### 4. Preview - the interesting one
 
 Godot's **web export** produces a browser-runnable build. If that holds, Otto's existing browser pane
-could run and verify a game with **no new preview infrastructure at all** — the same accessibility
+could run and verify a game with **no new preview infrastructure at all** - the same accessibility
 snapshots, console capture, click/fill, viewport resize and screenshots that
 [preview](../../docs/preview.md) already provides for a web app, pointed at a game.
 
@@ -96,7 +96,7 @@ a nice-to-have or a headline.
 2. **File formats.** Grammars for `.gd`, `.tscn`, `.tres`, `.gdshader`, `project.godot`. Independent
    of everything else, immediately useful, and enough on its own to make Otto pleasant on a Godot repo.
 3. **Project support.** `project.godot` as a project marker so the explorer shows a Godot project
-   rather than a folder — a catalog row, per [toolchain-catalog](../toolchain-catalog/toolchain-catalog.md).
+   rather than a folder - a catalog row, per [toolchain-catalog](../toolchain-catalog/toolchain-catalog.md).
 4. **Socket transport for the LSP pool.** The real work. Justified by GDScript, and reusable by any
    other server that hosts rather than spawns.
 5. **Build and export**, via catalog entries and workspace scripts.
@@ -128,4 +128,4 @@ Steps 2 and 3 deliver most of the felt value and need none of the architecture i
   Godot should adopt that answer rather than invent one.
 - **Which Godot install does Otto use?** Godot is commonly a standalone download rather than a
   package-managed install, and the .NET-enabled build is a separate download from the standard one.
-  Detection needs to find both and tell them apart — the standard build cannot run a C# project at all.
+  Detection needs to find both and tell them apart - the standard build cannot run a C# project at all.

@@ -28,8 +28,8 @@ describe("solution-model path normalisation", () => {
   });
 
   /**
-   * The out-of-workspace policy, made legible on the wire. Shown and opened like any other file —
-   * the solution names it, so this is following a declaration, not free browsing — but flagged, so
+   * The out-of-workspace policy, made legible on the wire. Shown and opened like any other file -
+   * the solution names it, so this is following a declaration, not free browsing - but flagged, so
    * nothing downstream has to infer it by inspecting the string.
    */
   it("keeps an out-of-workspace project absolute and flags it", () => {

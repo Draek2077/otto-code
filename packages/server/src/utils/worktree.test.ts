@@ -233,7 +233,7 @@ describe("otto worktree manager", () => {
     });
     expect(existsSync(created.worktreePath)).toBe(false);
 
-    // Second call — nothing left on disk and no admin entry — must not throw.
+    // Second call - nothing left on disk and no admin entry - must not throw.
     await expect(
       deleteOttoWorktree({ cwd: repoDir, worktreePath: created.worktreePath, ottoHome }),
     ).resolves.toBeUndefined();

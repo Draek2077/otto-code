@@ -5,7 +5,7 @@ import { openAgentRoute, seedMockAgentWorkspace } from "./helpers/mock-agent";
 // (coerceModeForModel in packages/app/src/provider-selection/mode-support.ts,
 // keyed on the daemon stamping `supportsAutoMode: false` on Claude's Haiku
 // catalog entries). That trigger requires the real Claude catalog, so the
-// coercion ITSELF cannot run deterministically in Tier-1 — what CAN is the
+// coercion ITSELF cannot run deterministically in Tier-1 - what CAN is the
 // user-facing result: a live agent stuck in a non-user-selectable mode locks
 // the mode control into LockedAgentModeBadge (testID "mode-control-locked",
 // packages/app/src/composer/agent-controls/mode-control.tsx) instead of the

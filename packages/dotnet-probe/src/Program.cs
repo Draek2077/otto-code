@@ -28,7 +28,7 @@ internal static class Program
     /// <summary>
     /// Bumped when the request or response shape changes in a way an older daemon could
     /// misread. The daemon refuses a payload whose major version it does not know rather than
-    /// guessing — a stale payload on disk is the expected failure, not an exotic one.
+    /// guessing - a stale payload on disk is the expected failure, not an exotic one.
     /// </summary>
     private const int ProtocolVersion = 1;
 

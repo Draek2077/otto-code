@@ -176,7 +176,7 @@ export function useBranchSwitcher({
         }
         await invalidateStashAndCheckout();
       } catch {
-        // Non-critical — user can still restore on next branch switch
+        // Non-critical - user can still restore on next branch switch
       }
     },
     [operations, invalidateStashAndCheckout, toast, t],
@@ -217,7 +217,7 @@ export function useBranchSwitcher({
     (branchId: string) => {
       if (branchId === currentBranchName) return;
       // Disabled options are non-pressable, but keyboard selection still lands
-      // here — refuse instead of letting git error after the fact.
+      // here - refuse instead of letting git error after the fact.
       if (disabledBranchIds.has(branchId)) return;
       if (!workspaceDirectory) return;
       // Re-entry guard: one switch at a time per checkout. Read the store
@@ -241,7 +241,7 @@ export function useBranchSwitcher({
           toast.error(result.message);
           return;
         }
-        // Success — refresh and check for stashes on the target branch
+        // Success - refresh and check for stashes on the target branch
         await invalidateStashAndCheckout();
         await maybeRestoreStashForBranch(branchId);
       })();

@@ -21,7 +21,7 @@ import { isWeb } from "@/constants/platform";
 
 // Press-and-hold acceleration. A single tap steps by ±1. Holding a button dwells
 // briefly (so a slightly-long press is still one step), then auto-repeats on a
-// fixed cadence with an exponentially growing step size — starting at 1 so you
+// fixed cadence with an exponentially growing step size - starting at 1 so you
 // keep fine control, ramping up to STEP_CAP so you can cover the whole range in
 // a couple of seconds. Repeats stop the instant a bound is hit.
 const HOLD_START_DELAY_MS = 350;
@@ -31,7 +31,7 @@ const STEP_CAP = 200;
 
 // stepForHeldTime maps how long the auto-repeat has been running to a step size.
 // `STEP_CAP ** progress` is 1 at progress 0 and STEP_CAP at progress 1, with a
-// smooth exponential curve between — the "starts slow, accelerates" feel.
+// smooth exponential curve between - the "starts slow, accelerates" feel.
 function stepForHeldTime(repeatingMs: number): number {
   const progress = Math.min(1, Math.max(0, repeatingMs / RAMP_DURATION_MS));
   return Math.max(1, Math.round(STEP_CAP ** progress));
@@ -42,7 +42,7 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 // Parse the field's text into a number. Empty (and any non-digit noise) reads as
-// the minimum, which — with unlimitedAtMin — is the "unlimited" sentinel.
+// the minimum, which - with unlimitedAtMin - is the "unlimited" sentinel.
 function parseValue(text: string, min: number, max: number): number {
   const digits = text.replace(/[^0-9]/g, "");
   if (digits === "") {
@@ -109,7 +109,7 @@ export function NumberStepperField({
 
   // AdaptiveTextInput is uncontrolled (native owns the text; `value` is dropped),
   // so programmatic changes from the buttons can't be pushed through `value`.
-  // Its supported escape hatch is `resetKey` — bumping it remounts the input and
+  // Its supported escape hatch is `resetKey` - bumping it remounts the input and
   // re-seeds it from `initialValue`. We only bump on programmatic changes (steps,
   // blur reconcile), never while the user types, so typing keeps native ownership
   // and never cursor-jumps.
@@ -170,7 +170,7 @@ export function NumberStepperField({
 
   const handleChangeText = useCallback(
     (raw: string) => {
-      // Sanitize the stored value, but leave the native text as typed — the
+      // Sanitize the stored value, but leave the native text as typed - the
       // input owns its own text while focused, and blur reconciles the display.
       onChangeText(sanitizeTyped(raw, max));
     },

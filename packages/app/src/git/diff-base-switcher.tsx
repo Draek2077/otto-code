@@ -60,9 +60,9 @@ interface DiffBaseSwitcherProps {
    */
   visible: boolean;
   serverId: string;
-  /** Workspace record id — the RPC key. Absent for a workspace with no record yet. */
+  /** Workspace record id - the RPC key. Absent for a workspace with no record yet. */
   workspaceId: string | null | undefined;
-  /** Workspace directory — the cwd git operations run in. */
+  /** Workspace directory - the cwd git operations run in. */
   cwd: string;
   /** Display form of the current base (already stripped of refs/ prefixes). */
   baseRefLabel: string;
@@ -70,7 +70,7 @@ interface DiffBaseSwitcherProps {
   /**
    * Older daemons stored the base only in per-worktree metadata, so a plain checkout had nowhere
    * to put it and got the label without the picker. Newer daemons store it per branch and accept
-   * any checkout — see `isBaseEditable`.
+   * any checkout - see `isBaseEditable`.
    */
   isOttoOwnedWorktree: boolean;
   /** Where the current base came from, so the chip can label a detected parent as a guess. */
@@ -84,7 +84,7 @@ interface DiffBaseSwitcherProps {
  *
  * Two jobs, and the read-only one matters on its own: it names what the diff is measured
  * against, which is otherwise invisible. Where the host supports it, tapping repoints a
- * worktree at a different base — on a stacked branch that means the parent branch, so the
+ * worktree at a different base - on a stacked branch that means the parent branch, so the
  * parent's commits stop showing up as the child's work.
  */
 export function DiffBaseSwitcher({
@@ -169,7 +169,7 @@ export function DiffBaseSwitcher({
         rows.push({ id: branch.name, label: branch.name });
       }
       // A separate row for the remote-tracking side, because it is a different comparison
-      // whenever local and origin have drifted — behind, ahead, or outright diverged. Only
+      // whenever local and origin have drifted - behind, ahead, or outright diverged. Only
       // offered on daemons that keep the qualifier; older ones strip it and the two rows would
       // silently do the same thing.
       if (branch.hasRemote && supportsAnyRepo) {

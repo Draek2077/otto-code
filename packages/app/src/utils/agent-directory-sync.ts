@@ -111,7 +111,7 @@ export function removeAgentDirectoryReplica(serverId: string, agentId: string): 
     }
     return next.size === current.size ? current : next;
   });
-  // One funnel for every per-agent map the stream release owns — buffers,
+  // One funnel for every per-agent map the stream release owns - buffers,
   // cursor, applied flag, sync generation, and the transient composer state
   // (prompt suggestion, rate limits, sent-prompt history). Clearing them one
   // by one here is how side-maps got missed in the first place.

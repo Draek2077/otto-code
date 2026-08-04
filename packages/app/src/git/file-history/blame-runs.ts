@@ -2,7 +2,7 @@
  * Run-collapsing for gutter blame.
  *
  * Forty consecutive lines from one commit should print its author once, not
- * forty times. The repetition is not just noise — it actively hides the only
+ * forty times. The repetition is not just noise - it actively hides the only
  * thing blame is read for, which is *where authorship changes*.
  *
  * Pure and separate from the renderer so it can be tested without mounting

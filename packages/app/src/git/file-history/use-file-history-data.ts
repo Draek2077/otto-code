@@ -12,7 +12,7 @@ import { highlightDiffLines } from "@/utils/diff-highlight";
 
 /**
  * Data plumbing for the git file-history pane. Everything here is a plain
- * imperative fetch against the daemon's `checkout.git.get_file_*` RPCs — these
+ * imperative fetch against the daemon's `checkout.git.get_file_*` RPCs - these
  * are one-shot reads with no push updates, so there is no subscription or
  * replica query to model.
  */
@@ -27,7 +27,7 @@ const HISTORY_PAGE_SIZE = 40;
 /**
  * Ceiling on the blame window backing the diff gutter. A diff can legitimately
  * span a whole large file (a reformat, a generated file), and blaming thousands
- * of lines to annotate a gutter nobody scrolls to is not worth the daemon time —
+ * of lines to annotate a gutter nobody scrolls to is not worth the daemon time -
  * past this, the far end of the diff simply carries no annotation.
  */
 const BLAME_MAX_GUTTER_LINES = 2000;
@@ -52,8 +52,8 @@ interface UseFileHistoryInput {
   enabled: boolean;
   /**
    * Change to refetch from the top. These are one-shot reads with no push
-   * channel — a repo can gain commits under an open pane and nothing would say
-   * so — so refreshing has to be something the caller can ask for.
+   * channel - a repo can gain commits under an open pane and nothing would say
+   * so - so refreshing has to be something the caller can ask for.
    */
   reloadToken?: number;
   notARepoLabel: string;
@@ -144,7 +144,7 @@ export interface FileOriginState {
   error: string | null;
 }
 
-/** The commit that first added the file — a single cheap query, loaded once. */
+/** The commit that first added the file - a single cheap query, loaded once. */
 export function useFileOrigin(input: {
   serverId: string;
   cwd: string;
@@ -196,7 +196,7 @@ export interface FileCommitDiffState {
    * makes a line-number gutter (and therefore gutter blame) possible at all.
    */
   file: ParsedDiffFile | null;
-  /** The file's previous revision — the left-hand side of this comparison. */
+  /** The file's previous revision - the left-hand side of this comparison. */
   previousSha: string | null;
   previousPath: string | null;
   truncated: boolean;
@@ -217,7 +217,7 @@ const EMPTY_DIFF_RESULT = {
  *
  * The daemon compares this revision against the file's *previous revision*, so
  * `path` must be the file's name at this commit (history entries carry it) and
- * the response tells us which revision it ended up comparing against — that is
+ * the response tells us which revision it ended up comparing against - that is
  * the honest label for the diff's left-hand side, and it is not always the
  * commit's parent.
  */
@@ -307,7 +307,7 @@ const EMPTY_BLAME = new Map<number, GitBlameCommit>();
  * Blaming at the revision rather than at HEAD is what makes the annotation true:
  * the diff's line numbers describe the file as it stood at that commit, and
  * blaming the working tree instead would label them with whoever touched those
- * line *positions* since — a different file's authorship, silently.
+ * line *positions* since - a different file's authorship, silently.
  *
  * Only the shown span is requested. Blame is expensive on a large file, and a
  * diff usually touches a few hunks in the middle of one.
@@ -352,7 +352,7 @@ export function useRevisionBlame(input: {
         if (payload.error) {
           // Blame is an annotation, not the content. A file git cannot blame
           // (yet-uncommitted, or a revision it cannot reach) should cost the
-          // gutter, not the diff — so this failure stays silent.
+          // gutter, not the diff - so this failure stays silent.
           setByLine(EMPTY_BLAME);
           return;
         }

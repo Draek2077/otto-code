@@ -43,7 +43,7 @@ export interface PartitionedBackgroundTaskRows {
  * Split rows into the active list and the two collapsed terminal groups.
  * Status is the only input: the track once also pinned a row the user had just
  * stopped into the active list so it wouldn't vanish under their pointer, which
- * left terminal rows counted as active until the header was toggled — a
+ * left terminal rows counted as active until the header was toggled - a
  * cancelled-limbo group in all but name. An explicit stop now clears the row
  * outright (see stop-background-task.ts), so there is nothing left to pin.
  */
@@ -115,14 +115,14 @@ export function resolveBackgroundTaskRowAction(
   return status === "running" ? "stop" : "clear";
 }
 
-/** True while the task is still running — the row live-ticks its elapsed time. */
+/** True while the task is still running - the row live-ticks its elapsed time. */
 export function isBackgroundTaskRowRunning(status: BackgroundShellTaskRow["status"]): boolean {
   return status === "running";
 }
 
 /**
  * Frozen run duration (createdAt → updatedAt) for a terminal row, e.g. "3m 12s".
- * Returns null while the row is still running — the track renders a live
+ * Returns null while the row is still running - the track renders a live
  * ticker for those instead.
  */
 export function formatBackgroundTaskElapsed(row: BackgroundShellTaskRow): string | null {

@@ -424,7 +424,7 @@ export function findOccupyingWorkspaceForCwd(
 // Create a NEW workspace record backed by the existing directory `cwd`.
 // Used by explicit user creation. Rejects when a live visible workspace
 // already backs the directory (see WorkspaceDirectoryOccupiedError); hidden
-// per-run workspaces (schedule runs) are exempt from the guard — they are
+// per-run workspaces (schedule runs) are exempt from the guard - they are
 // transient, never shown while hidden, and disposed by their run lifecycle.
 // Existing persisted duplicates from before this guard are left untouched.
 export async function createLocalCheckoutWorkspace(
@@ -459,7 +459,7 @@ export async function createLocalCheckoutWorkspace(
   // Persist the live git branch into the dedicated `branch` field so
   // buildWorkspaceCheckout reports the real branch for directory/local_checkout
   // workspaces too (it reads workspace.branch). Same source deriveWorkspaceDisplayName
-  // reads. HEAD/detached resolves to null — there is no branch to report.
+  // reads. HEAD/detached resolves to null - there is no branch to report.
   const currentBranch = checkout.currentBranch?.trim() ?? null;
   const branch = currentBranch && currentBranch.toUpperCase() !== "HEAD" ? currentBranch : null;
   const workspace = createPersistedWorkspaceRecord({

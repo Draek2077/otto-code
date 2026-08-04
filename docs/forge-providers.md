@@ -126,7 +126,7 @@ Two registries live under `packages/app/src/git/forges/`:
 `CLIENT_FORGE_LOGIC_MODULES` (`index.ts`) drives URL grammar, merge-capability
 derivation, and native fallback checks; `CLIENT_FORGE_VIEW_MODULES` (`view.ts`)
 drives icon/color lookup and PR-pane contributions. Logic consumers must import
-the logic registry only — importing the view registry (or a `.view.tsx` module)
+the logic registry only - importing the view registry (or a `.view.tsx` module)
 from a logic path pulls react-native and breaks the Node-based e2e harness.
 
 Per-forge brand colors live on the module, not in `styles/theme.ts`. Use the
@@ -159,7 +159,7 @@ To add `acme`:
    mark.
 8. If the forge's CI/data model does not fit an existing required
    `ForgeService` field, widen the shared interface (plus the protocol schema
-   and its guards) instead of faking a value — e.g. Gitea Actions runs carry no
+   and its guards) instead of faking a value - e.g. Gitea Actions runs carry no
    check-run id, so `GetCheckDetailsOptions.checkRunId` became optional with
    `workflowRunId` as the alternative address. Expect this step to touch
    `forge-service.ts`, `messages.ts`, and the call-site guards of the other

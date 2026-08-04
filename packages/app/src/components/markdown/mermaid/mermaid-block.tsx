@@ -24,7 +24,7 @@ interface MermaidBlockInnerProps extends MermaidBlockOwnProps {
 
 function MermaidBlockInner({ code, inheritedStyles, textStyle, theme }: MermaidBlockInnerProps) {
   // A diagram that cannot be drawn falls back to the thing it was written as.
-  // Never an empty box, and never raw markup — the same policy the HTML
+  // Never an empty box, and never raw markup - the same policy the HTML
   // translation follows (docs/markdown-rendering.md).
   const renderFallback = useCallback(
     (error: string | null) => (

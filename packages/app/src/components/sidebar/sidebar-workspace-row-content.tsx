@@ -35,7 +35,7 @@ type SidebarWorkspaceScriptIconKind = "service" | "command";
  *
  * Only where hover exists. On native and in compact layouts `onHoverIn` never
  * fires, so those controls are permanently on screen (see the `isHovered ||
- * isNative || isCompact` rule in packages/app/CLAUDE.md) — floating them there
+ * isNative || isCompact` rule in packages/app/CLAUDE.md) - floating them there
  * would park them on top of the label forever. Reserved layout is correct on
  * those platforms and stays.
  */
@@ -192,7 +192,7 @@ function WorkspaceStatusIndicator({
   /**
    * Language-server startup/indexing. Deliberately the *lowest* priority branch below:
    * it fills a slot that would otherwise draw nothing, and never masks an attention
-   * badge — a workspace that needs review must keep saying so while a server warms up.
+   * badge - a workspace that needs review must keep saying so while a server warms up.
    */
   indexing?: boolean;
 }) {
@@ -216,7 +216,7 @@ function WorkspaceStatusIndicator({
 
   // Every actionable state renders the shared attention badge (see
   // status-bucket-icon.tsx): a filled circle with a symbol knocked out,
-  // color-coded by meaning — the same glyph the workspace tabs show. Running
+  // color-coded by meaning - the same glyph the workspace tabs show. Running
   // keeps its loader (above) and done/idle reserves the slot but draws
   // nothing (below).
   if (isAttentionStatusBucket(bucket)) {
@@ -301,7 +301,7 @@ export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
    * badge. Reserves no width, so the label is full-width at rest and the row
    * never reflows when the pointer arrives.
    *
-   * Opaque because it covers real content — the tail of a truncated label, and
+   * Opaque because it covers real content - the tail of a truncated label, and
    * the diff stat in the status grouping. `surfaceSidebarHover` is the row's own
    * hovered/selected background, and this only renders while hovered, so it
    * reads as part of the row. The one mismatch is the pressed state

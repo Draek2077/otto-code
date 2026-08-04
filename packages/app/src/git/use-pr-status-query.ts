@@ -39,7 +39,7 @@ export function useCheckoutPrStatusQuery({
     },
     enabled: !!client && isConnected && !!cwd && enabled,
     staleTime: Infinity,
-    // Refetch on mount only after explicit invalidation (e.g. reconnect) — see
+    // Refetch on mount only after explicit invalidation (e.g. reconnect) - see
     // useCheckoutStatusQuery for the rationale.
     refetchOnMount: true,
     refetchOnReconnect: false,
@@ -95,7 +95,7 @@ export function useWorkspacePrHint({
     },
     enabled: !!client && isConnected && !!cwd && enabled,
     staleTime: Infinity,
-    // Refetch on mount only after explicit invalidation (e.g. reconnect) — see
+    // Refetch on mount only after explicit invalidation (e.g. reconnect) - see
     // useCheckoutStatusQuery for the rationale.
     refetchOnMount: true,
     refetchOnReconnect: false,

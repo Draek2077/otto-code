@@ -6,7 +6,7 @@ import { parser as markdownParser } from "@lezer/markdown";
  *
  * **This is deliberately not part of `extractSymbols`.** A heading is not a
  * `SymbolKind`, and adding one would mean adding a value to
- * `CodeSymbolKindSchema` — a `z.enum` on the wire. A six-month-old client
+ * `CodeSymbolKindSchema` - a `z.enum` on the wire. A six-month-old client
  * parsing a `code.outline.response` carrying `kind: "heading"` would reject the
  * whole message, which the protocol contract forbids. Headings therefore stay
  * **client-side**: the client already holds the document it wants an outline of,
@@ -31,7 +31,7 @@ export interface MarkdownHeading {
 
 const HEADING_NODE = /^(?:ATX|Setext)Heading([1-6])$/;
 
-// `## Title ##` — the leading run, and the optional closing run ATX allows.
+// `## Title ##` - the leading run, and the optional closing run ATX allows.
 // The closing run must be preceded by whitespace, per CommonMark, which is what
 // keeps `# C#` from becoming "C".
 const ATX_LEADING = /^[ \t]*#{1,6}[ \t]*/;
@@ -66,7 +66,7 @@ function lineIndexForOffset(lineStarts: number[], offset: number): number {
  * Extract the headings of a markdown document, in document order.
  *
  * This parses rather than scanning for `#` because only a parse knows that a
- * `#` opening a line inside a fenced code block is a comment, not a heading —
+ * `#` opening a line inside a fenced code block is a comment, not a heading -
  * the single most common way a regex-based outline goes wrong on a README.
  */
 export function extractMarkdownHeadings(code: string): MarkdownHeading[] {

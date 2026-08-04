@@ -29,8 +29,8 @@ export interface SheetScrollRegion {
  * that dissolve content into the sheet background, and the themed hover-hiding
  * web scrollbar in place of the browser's.
  *
- * Every scrolling region inside a dialog goes through this — the sheet body,
- * each tab pane — so they all behave identically instead of each one wiring
+ * Every scrolling region inside a dialog goes through this - the sheet body,
+ * each tab pane - so they all behave identically instead of each one wiring
  * `useScrollEdgeFades` and `useWebScrollViewScrollbar` together by hand (and
  * drifting).
  */
@@ -40,7 +40,7 @@ export function useSheetScrollRegion(
     surface,
     webScrollbar,
   }: {
-    /** Sheet background the fades dissolve into — see `SheetSeamFade`. */
+    /** Sheet background the fades dissolve into - see `SheetSeamFade`. */
     surface: SheetSeamFadeSurface;
     /** False on native and on the mobile bottom sheet, which keep the OS bar. */
     webScrollbar: boolean;
@@ -80,7 +80,7 @@ export function useSheetScrollRegion(
         {/*
          * Fades sit after the scroll view (so they paint over the content) but
          * before the scrollbar overlay (so the scrollbar stays visible over
-         * them) — paint order only, no zIndex, matching the chat pane fades.
+         * them) - paint order only, no zIndex, matching the chat pane fades.
          */}
         <SheetSeamFade
           edge="top"

@@ -25,20 +25,20 @@ import type {
  *
  * Deliberately hand-rolled rather than `@codemirror/lint`. That package assumes it owns the
  * lint lifecycle (a source function it polls) where ours is a push from the daemon, and it
- * installs its own `hoverTooltip` — which would fight the language-server hover already on
+ * installs its own `hoverTooltip` - which would fight the language-server hover already on
  * this editor for the same pointer rest, producing two cards for one gesture. Here the
  * diagnostic is rendered *into* that one card instead (see `renderDiagnosticList`, called
  * from editor-core's hover source).
  *
  * Positions are mapped through document changes, so a squiggle follows the text it marks
  * while you type rather than staying pinned to a stale offset until the server republishes.
- * It is still a claim about an older version of the buffer — the honest alternative would be
+ * It is still a claim about an older version of the buffer - the honest alternative would be
  * to clear every marker on the first keystroke, which flickers the gutter constantly.
  *
  * No React, no app-store imports: this module is bundled into the native webview.
  */
 
-/** Replace the whole problem set. Never a delta — see the store's note on why. */
+/** Replace the whole problem set. Never a delta - see the store's note on why. */
 export const setEditorDiagnostics = StateEffect.define<readonly EditorDiagnostic[]>();
 
 const SEVERITY_RANK: Readonly<Record<EditorDiagnosticSeverity, number>> = {
@@ -142,7 +142,7 @@ export function diagnosticsAtPos(state: EditorState, pos: number): EditorDiagnos
  * redraw and only keeps one mark per few pixels, so materialising a list of a few
  * thousand problems just to throw it away is pure garbage.
  *
- * Reads the field optionally — the ruler is a separate extension, and an editor
+ * Reads the field optionally - the ruler is a separate extension, and an editor
  * assembled with one and not the other must draw an empty lane, not throw.
  */
 export function eachDiagnosticPosition(
@@ -252,14 +252,14 @@ const setGutterHover = StateEffect.define<number | null>();
 export interface DiagnosticsExtensionOptions {
   /**
    * Read at render time rather than captured, so a theme switch reaches tooltips
-   * created afterwards — same reason the hover tooltip takes a getter.
+   * created afterwards - same reason the hover tooltip takes a getter.
    */
   readTheme: () => EditorThemeSpec;
 }
 
 /**
  * Hovering a gutter glyph explains it. `hoverTooltip` only covers the content area, so the
- * gutter needs its own — and it is what the user reaches for when the squiggle is on a line
+ * gutter needs its own - and it is what the user reaches for when the squiggle is on a line
  * they are not pointing at.
  */
 function gutterTooltipField(readTheme: () => EditorThemeSpec): Extension {
@@ -324,7 +324,7 @@ export function createDiagnosticsExtension(options: DiagnosticsExtensionOptions)
           return false;
         },
         // Clicking a marker selects what it is about, which is the fastest way to
-        // act on it — the caret lands exactly on the offending span.
+        // act on it - the caret lands exactly on the offending span.
         mousedown: (view, line) => {
           const items = diagnosticsOnLine(view.state, line.from);
           if (items.length === 0) {
@@ -347,12 +347,12 @@ export function createDiagnosticsExtension(options: DiagnosticsExtensionOptions)
 }
 
 /**
- * The explanation itself — the point of the whole feature. A red squiggle that cannot say
+ * The explanation itself - the point of the whole feature. A red squiggle that cannot say
  * why is decoration; this is the compiler's or linter's own words.
  *
  * Three parts per entry, because that is what the servers actually send: the message, an
  * optional `help:` continuation (oxc's diagnostics carry a suggested fix that way), and the
- * attribution — which linter and which rule, with a link to the rule's documentation when
+ * attribution - which linter and which rule, with a link to the rule's documentation when
  * the server provided one.
  */
 export function renderDiagnosticList(
@@ -424,7 +424,7 @@ function renderAttribution(label: string, href: string | undefined): HTMLElement
 
 /**
  * oxc-family servers put the suggested fix in the message after a newline, prefixed
- * `help:`. Splitting it out is presentation, not protocol — the wire keeps the message the
+ * `help:`. Splitting it out is presentation, not protocol - the wire keeps the message the
  * server sent, so a client that does not know the convention still shows all of it.
  */
 function splitHelp(message: string): { headline: string; help: string | null } {

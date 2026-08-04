@@ -2,7 +2,7 @@
  * Reconciles scanned models back to their download-catalog entries so a model's
  * coding metadata (useCases, tier, thinking, contextMax) survives a `pull`. The
  * catalog carries this per entry, but once files land on disk scan.ts rebuilds a
- * Model from filename + GGUF header alone, dropping it — this is where it is
+ * Model from filename + GGUF header alone, dropping it - this is where it is
  * re-attached. Track B1 of the brain coding-capabilities work.
  *
  * The join key is the hfRepo path. download.ts writes each model to
@@ -14,7 +14,7 @@
  *
  * Total and best-effort by design: an empty catalog, a model with no match, or a
  * repo carrying several quants all resolve without throwing. Discovery returns
- * things unenriched on absence rather than raising — the caller decides whether
+ * things unenriched on absence rather than raising - the caller decides whether
  * absence matters.
  */
 import type { Catalog, CatalogModel } from "../config/schema.js";

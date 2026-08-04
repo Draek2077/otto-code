@@ -94,7 +94,7 @@ async function updateMacDockBadge(count?: number) {
 }
 
 // The tray icon (all desktop platforms, not just mac) swaps to the amber wink
-// variant when something needs the user's attention — see packages/desktop/src/features/tray.ts.
+// variant when something needs the user's attention - see packages/desktop/src/features/tray.ts.
 async function updateTrayAttention(status: FaviconStatus) {
   if (isNative || !isElectronRuntime()) return;
 

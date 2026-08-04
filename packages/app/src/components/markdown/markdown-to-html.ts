@@ -186,7 +186,7 @@ export function markdownToHtmlDocument(
  * `notes/design.md` exports as `design.<extension>`.
  *
  * Shared by every export format so they cannot disagree about what a document
- * is called — a `design.html` beside a `design-1.pdf` would be nobody's intent.
+ * is called - a `design.html` beside a `design-1.pdf` would be nobody's intent.
  */
 export function exportFileName(path: string, extension: string): string {
   const base = path.split(/[/\\]/).findLast(Boolean) ?? "document";

@@ -105,7 +105,7 @@ export function usePinnedLaunchers({ serverId, onLaunch }: UsePinnedLaunchersInp
       }
       if (target.kind !== "profile") {
         // Tool pins (preview/artifact/splits) don't resolve to launcher
-        // buttons — tools render their own buttons.
+        // buttons - tools render their own buttons.
         continue;
       }
       const profile = profiles.find((entry) => entry.id === target.profileId);
@@ -121,7 +121,7 @@ export function usePinnedLaunchers({ serverId, onLaunch }: UsePinnedLaunchersInp
       });
     }
     // Gutter order is fixed (agent, terminal, browser, then profiles) regardless
-    // of the order targets were pinned in — sort is stable so profile pins keep
+    // of the order targets were pinned in - sort is stable so profile pins keep
     // their relative order among themselves.
     return resolved
       .map((pin, index) => ({ pin, index }))

@@ -201,7 +201,7 @@ describe("findMountedWindowStart", () => {
 
   it("still rewinds to a user message that sits within the cap", () => {
     // 29 rows back is an ordinary conversational turn, which is the shape the
-    // walk-back exists for — the closer tool-call boundaries must not win.
+    // walk-back exists for - the closer tool-call boundaries must not win.
     const items: StreamItem[] = [userMessage("u0", 1)];
     for (let step = 0; step < 40; step += 1) {
       items.push(toolCall(`t${step}`, 2));
@@ -381,10 +381,9 @@ describe("shouldAbsorbVirtualRowResize", () => {
   // it sits above the fold and one 1000px in sits below it.
   const BLOCK_TOP_ABOVE_VIEWPORT = -900;
 
-  it("absorbs a correction above the reader while detached", () => {
+  it("absorbs a correction above the reader", () => {
     expect(
       shouldAbsorbVirtualRowResize({
-        isFollowingOutput: false,
         blockViewportRelativeTop: BLOCK_TOP_ABOVE_VIEWPORT,
         rowStart: 200,
       }),
@@ -397,7 +396,6 @@ describe("shouldAbsorbVirtualRowResize", () => {
   it("leaves the reader alone when the resized row is below the viewport", () => {
     expect(
       shouldAbsorbVirtualRowResize({
-        isFollowingOutput: false,
         blockViewportRelativeTop: BLOCK_TOP_ABOVE_VIEWPORT,
         rowStart: 1000,
       }),
@@ -407,23 +405,26 @@ describe("shouldAbsorbVirtualRowResize", () => {
   it("treats a row starting exactly at the top edge as below it", () => {
     expect(
       shouldAbsorbVirtualRowResize({
-        isFollowingOutput: false,
         blockViewportRelativeTop: BLOCK_TOP_ABOVE_VIEWPORT,
         rowStart: 900,
       }),
     ).toBe(false);
   });
 
-  it("never adjusts while following, wherever the row sits", () => {
-    for (const rowStart of [200, 900, 1000]) {
-      expect(
-        shouldAbsorbVirtualRowResize({
-          isFollowingOutput: true,
-          blockViewportRelativeTop: BLOCK_TOP_ABOVE_VIEWPORT,
-          rowStart,
-        }),
-      ).toBe(false);
-    }
+  // The answer does not depend on follow/detach, and that is the fix rather than
+  // an oversight. This used to return false for every row whenever the app was
+  // following, which is the state a send puts it in: releasing the mounted-window
+  // pin hands a turn back to the virtualizer at estimated heights, and the
+  // re-measurement that follows grows the document above the viewport by
+  // thousands of pixels with nothing subtracting it back off. See the note on
+  // shouldAbsorbVirtualRowResize.
+  it("absorbs growth above the reader in the following state too", () => {
+    expect(
+      shouldAbsorbVirtualRowResize({
+        blockViewportRelativeTop: BLOCK_TOP_ABOVE_VIEWPORT,
+        rowStart: 200,
+      }),
+    ).toBe(true);
   });
 
   // At the very top of the transcript nothing is above the reader at all, which
@@ -431,7 +432,6 @@ describe("shouldAbsorbVirtualRowResize", () => {
   it("absorbs nothing once the block starts inside the viewport", () => {
     expect(
       shouldAbsorbVirtualRowResize({
-        isFollowingOutput: false,
         blockViewportRelativeTop: 16,
         rowStart: 0,
       }),
@@ -441,8 +441,8 @@ describe("shouldAbsorbVirtualRowResize", () => {
 
 describe("scrolling up past never-measured history", () => {
   // The wall the reader hits, in the shape that produces it. Estimates for
-  // history nobody has scrolled through undershoot badly — an assistant reply
-  // nobody has mounted is guessed at 220px, a tool row at 40 — so each row the
+  // history nobody has scrolled through undershoot badly - an assistant reply
+  // nobody has mounted is guessed at 220px, a tool row at 40 - so each row the
   // virtualizer measures on the way up reports a large positive delta. With
   // overscan 8 that is thousands of pixels per batch, far more than a wheel
   // tick, and any of it applied for rows BELOW the fold pushes the reader back
@@ -455,7 +455,6 @@ describe("scrolling up past never-measured history", () => {
   function totalScrollAdjustment(rowStarts: number[]): number {
     return rowStarts.reduce((total, rowStart) => {
       const absorbs = shouldAbsorbVirtualRowResize({
-        isFollowingOutput: false,
         blockViewportRelativeTop: -VIEWPORT_TOP_IN_BLOCK,
         rowStart,
       });
@@ -476,5 +475,51 @@ describe("scrolling up past never-measured history", () => {
     const aboveFold = Array.from({ length: OVERSCAN_ROWS }, (_, index) => index * 100);
 
     expect(totalScrollAdjustment(aboveFold)).toBe(OVERSCAN_ROWS * UNDERSHOOT_PER_ROW);
+  });
+});
+
+describe("sending after reading back through history", () => {
+  // The reported bug, in the shape that produces it: send (or queue) a message
+  // after scrolling up, and the transcript lands at the very top instead of the
+  // bottom.
+  //
+  // Sending asks for the bottom, which drops the mounted-window pin, which hands
+  // the whole read-back turn to the virtualizer at estimated heights in one
+  // commit. The virtualizer then re-measures those rows in overscan-sized
+  // batches, and every one of them is above the viewport. Their real heights
+  // dwarf the estimates, so the document grows underneath the request that was
+  // supposed to end at the end of it.
+  //
+  // The stick-to-bottom rAF cannot win that race on its own: it fires once per
+  // frame against whatever the document is at that instant, while the batches
+  // keep landing. Absorbing the growth is what makes the position converge, and
+  // it costs nothing, because the stick writes an absolute scrollTop over the
+  // top of it.
+  const BATCHES = 6;
+  const ROWS_PER_BATCH = 8;
+  const UNDERSHOOT_PER_ROW = 580;
+  const VIEWPORT_TOP_IN_BLOCK = 12_000;
+
+  function driftFromBottomAfterRegrow(): number {
+    let unabsorbedGrowth = 0;
+    for (let batch = 0; batch < BATCHES; batch += 1) {
+      for (let row = 0; row < ROWS_PER_BATCH; row += 1) {
+        const rowStart = batch * ROWS_PER_BATCH * 220 + row * 220;
+        const absorbs = shouldAbsorbVirtualRowResize({
+          blockViewportRelativeTop: -VIEWPORT_TOP_IN_BLOCK,
+          rowStart,
+        });
+        if (!absorbs) {
+          unabsorbedGrowth += UNDERSHOOT_PER_ROW;
+        }
+      }
+    }
+    return unabsorbedGrowth;
+  }
+
+  it("leaves the view at the bottom once the virtualizer has re-measured the turn", () => {
+    // Every re-measured row sits above the viewport, so nothing is left over to
+    // push the reader up. Before the fix this was 48 rows x 580px of shove.
+    expect(driftFromBottomAfterRegrow()).toBe(0);
   });
 });

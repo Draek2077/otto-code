@@ -31,7 +31,7 @@ export interface RetainedTranscriptRecord {
   rows: AgentTimelineRow[];
   // Whether the run produced anything beyond its seed prompt (any assistant
   // message / tool activity). Drives "reveal the failed run's workspace only if
-  // there's content" — a run that failed before doing anything leaves no empty
+  // there's content" - a run that failed before doing anything leaves no empty
   // workspace behind. See docs/safe-unattended.md.
   hasContent: boolean;
 }

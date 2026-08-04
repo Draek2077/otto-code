@@ -38,7 +38,7 @@ describe("tree rail mask", () => {
   it("blanks an ancestor column once that branch has closed", () => {
     // root
     // └─ a          (depth 1, last)
-    //    ├─ b       (depth 2, not last) — column 0 is blank, not a running rail
+    //    ├─ b       (depth 2, not last) - column 0 is blank, not a running rail
     //    └─ c       (depth 2, last)
     const a = withTreeRail(TREE_RAILS_ALL_CONTINUE, 1, false);
     const b = withTreeRail(a, 2, true);
@@ -51,7 +51,7 @@ describe("tree rail mask", () => {
   it("keeps an ancestor rail running while that branch still has siblings", () => {
     // root
     // ├─ a          (depth 1, not last)
-    // │  └─ b       (depth 2, last) — column 0 still runs, column 1 closes
+    // │  └─ b       (depth 2, last) - column 0 still runs, column 1 closes
     // └─ d
     const a = withTreeRail(TREE_RAILS_ALL_CONTINUE, 1, true);
     const b = withTreeRail(a, 2, false);
@@ -65,7 +65,7 @@ describe("tree rail mask", () => {
     expect(treeRailContinuesAt(reopened, 2)).toBe(true);
   });
 
-  it("ignores depth 0 — those rows have no rail of their own", () => {
+  it("ignores depth 0 - those rows have no rail of their own", () => {
     expect(withTreeRail(TREE_RAILS_ALL_CONTINUE, 0, false)).toBe(TREE_RAILS_ALL_CONTINUE);
   });
 

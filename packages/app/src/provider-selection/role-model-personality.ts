@@ -19,8 +19,8 @@ import {
  * The single contract every surface's personality producer emits and the shared
  * RoleModelSelector consumes. `personalities` + the four selection handlers feed
  * CombinedModelSelector directly; the metadata below is what individual surfaces
- * read to drive their own chrome (effort-hide, row-lock, custom trigger, and —
- * schedules only — the submitted binding). Keeping every surface on one shape is
+ * read to drive their own chrome (effort-hide, row-lock, custom trigger, and -
+ * schedules only - the submitted binding). Keeping every surface on one shape is
  * what stops the wiring from drifting again.
  */
 export interface RolePersonality {
@@ -29,7 +29,7 @@ export interface RolePersonality {
    * The id to actually spawn with. Identical to `selectedPersonalityId` except
    * when the synthetic "Team's <Role>" slot is picked: that id is a UI-only
    * sentinel (`__team-chatter__`) no roster entry matches, so sending it made the
-   * daemon's roster lookup miss and spawn a bare agent — no personality prompt,
+   * daemon's roster lookup miss and spawn a bare agent - no personality prompt,
    * no team prompt, and whatever model the device happened to remember. Read this
    * for anything that crosses the wire; read `selectedPersonalityId` for the picker.
    */
@@ -55,14 +55,14 @@ export interface RolePersonality {
   selectedRoleIcon?: SelectorPersonality["roleIcon"];
   /**
    * Schedule binding only: the personality name (or team sentinel) to submit as
-   * the schedule's stored binding — exactly what the trigger shows, so display
+   * the schedule's stored binding - exactly what the trigger shows, so display
    * and persistence can't diverge. Undefined on apply-now surfaces.
    */
   resolveSubmitPersonality?: () => string | null;
 }
 
 // ===========================================================================
-// Form strategy — draft composer, artifact sheet, schedule form
+// Form strategy - draft composer, artifact sheet, schedule form
 // ===========================================================================
 
 /** The synthetic "Team's <Role>" combo entry configuration. */
@@ -94,7 +94,7 @@ export interface RolePersonalityBindingConfig {
 
 export interface UseFormRolePersonalityInput {
   serverId: string | null;
-  /** Which surface this picker is — only personalities tagged with this role show. */
+  /** Which surface this picker is - only personalities tagged with this role show. */
   role: PersonalityRole;
   entries: readonly ProviderSnapshotEntry[];
   /** Apply the resolved personality/role values to the host form. Must be stable. */
@@ -107,7 +107,7 @@ export interface UseFormRolePersonalityInput {
   binding?: RolePersonalityBindingConfig;
   /**
    * Personality identity inherited from elsewhere (a fork / "new tab from this
-   * agent"). Seeded once on mount and treated as an explicit pick — see
+   * agent"). Seeded once on mount and treated as an explicit pick - see
    * `usePersonalitySelection`'s `initialSelectedPersonalityId`.
    */
   initialPersonalityId?: string | null;
@@ -115,22 +115,22 @@ export interface UseFormRolePersonalityInput {
    * Impose the surface's own default on open. Runs once, only while the user
    * hasn't touched the picker and no stored binding is being edited.
    *
-   * - `"always"` — walk the precedence ladder and apply the winner:
+   * - `"always"` - walk the precedence ladder and apply the winner:
    *     1. the active team's holder of `role` (the "Team's <Role>" entry),
    *     2. the device's last-used personality for `role`, if it still carries
    *        the role and is available,
    *     3. the first available personality carrying `role`,
-   *     4. nothing — the form keeps its last-used model, then the provider
+   *     4. nothing - the form keeps its last-used model, then the provider
    *        default.
    *   Tiers 1–3 outrank the model preference unconditionally, which is the
    *   whole point: a configured team or personality is an explicit statement
    *   about what should run, while the last-used model is a leftover. Every
-   *   apply-now surface uses this — a picker whose contents depend on which
+   *   apply-now surface uses this - a picker whose contents depend on which
    *   screen you opened is exactly what made this unpredictable.
    *   Suppresses the match-gated remembered preselect, which tier 2 replaces:
    *   memory here re-applies the personality's values instead of only claiming
    *   identity when the form already happened to show them.
-   * - omitted / `false` — no default. Only for surfaces editing a stored record
+   * - omitted / `false` - no default. Only for surfaces editing a stored record
    *   (schedule/artifact edit), where the record's own binding is the top tier
    *   and re-deriving would overwrite it.
    */
@@ -164,7 +164,7 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
   const activeTeam = useMemo(() => getActiveAgentTeam(config?.agentTeams), [config?.agentTeams]);
 
   // The already-bound personality stays selectable even when the active team's
-  // strict filter would hide it — an edit must not break an existing binding.
+  // strict filter would hide it - an edit must not break an existing binding.
   const boundRosterId = useMemo(() => {
     if (!binding || !binding.originalBinding || binding.originalBinding === binding.teamSentinel) {
       return null;
@@ -199,7 +199,7 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
     currentSelection,
     alwaysIncludePersonalityId: boundRosterId,
     // A surface with a default owns the initial pick outright, and folds device
-    // memory into that ladder as tier 2 — so the match-gated preselect (which
+    // memory into that ladder as tier 2 - so the match-gated preselect (which
     // only claims identity when the form already shows the values) must not
     // race ahead of it.
     preselectRemembered: !autoSelectDefault,
@@ -225,12 +225,12 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
   const [teamEntrySelected, setTeamEntrySelected] = useState(
     binding ? binding.originalBinding === binding.teamSentinel : false,
   );
-  // True after any explicit select/clear — gates whether an edit rewrites or
+  // True after any explicit select/clear - gates whether an edit rewrites or
   // preserves the stored binding (a roster that hasn't loaded yet must not
   // silently strip it). Inert on apply-now surfaces (no binding).
   const [bindingTouched, setBindingTouched] = useState(false);
   // The id the default effect below auto-picked, if any. Its guard treats an
-  // existing selection as "someone else owns this" — but tier 2 now makes a
+  // existing selection as "someone else owns this" - but tier 2 now makes a
   // selection of its own, and a tier-1 team arriving late must still be able to
   // take over from it. Remembering our own pick is what tells the two apart.
   const autoPickedIdRef = useRef<string | null>(null);
@@ -250,7 +250,7 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
   const handleSelect = useCallback(
     (id: string) => {
       setBindingTouched(true);
-      // Whatever the default picked is no longer the default's — the user owns
+      // Whatever the default picked is no longer the default's - the user owns
       // this selection now, even if they landed on the same entry.
       autoPickedIdRef.current = null;
       if (teamEntryId !== null && id === teamEntryId) {
@@ -276,7 +276,7 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
 
   // Has the provider snapshot for this cwd finished warming up? The daemon's
   // FIRST snapshot lists every provider as `status: "loading"`, and personality
-  // availability requires `"ready"` — so "nothing resolves" during that window
+  // availability requires `"ready"` - so "nothing resolves" during that window
   // means "ask again", not "nothing is available". Deciding there is what made
   // the default latch onto a transient unavailable and never retry.
   const snapshotSettled = useMemo(
@@ -284,7 +284,7 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
     [entries],
   );
 
-  // One-shot default pick for surfaces that opt in — the precedence ladder
+  // One-shot default pick for surfaces that opt in - the precedence ladder
   // documented on `autoSelectDefault`. Waits for the roster, the provider
   // snapshot AND preferences to load (deciding on an empty snapshot would
   // wrongly read as "nothing available", and deciding before preferences load
@@ -294,7 +294,7 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
   // Re-open the one-shot when the team slot goes live. The team's two inputs
   // (daemon config, features.agentTeams) arrive from different sources, so the
   // effect below can legitimately settle on a tier-2/3 pick and only then learn
-  // a team was active all along — and tier 1 must still win. Declared before
+  // a team was active all along - and tier 1 must still win. Declared before
   // the default effect so it runs first in the same commit. A USER pick or an
   // inherited seed still wins: the default bails on bindingTouched /
   // teamEntrySelected / a selection that isn't its own.
@@ -309,7 +309,7 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
       return;
     }
     // Any explicit pick, a seeded team sentinel, or a stored binding under edit
-    // already owns the selection — settle without imposing a default. Our own
+    // already owns the selection - settle without imposing a default. Our own
     // earlier auto-pick is not such an owner (see autoPickedIdRef).
     if (
       bindingTouched ||
@@ -320,7 +320,7 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
       defaultAppliedRef.current = true;
       return;
     }
-    // Not enough loaded yet to tell what's available — try again next render.
+    // Not enough loaded yet to tell what's available - try again next render.
     if (!config || entries.length === 0 || isPreferencesLoading) {
       return;
     }
@@ -334,7 +334,7 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
       onApply(teamEntry.values);
       return;
     }
-    // Nothing resolved, and providers are still warming — retry, don't settle.
+    // Nothing resolved, and providers are still warming - retry, don't settle.
     if (!snapshotSettled) {
       return;
     }
@@ -354,7 +354,7 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
       return;
     }
     // Tiers 3–5: no team and no personality carries this role, so the form
-    // keeps what it resolved on its own — last-used model, then the provider
+    // keeps what it resolved on its own - last-used model, then the provider
     // default, then nothing.
     defaultAppliedRef.current = true;
   }, [
@@ -374,7 +374,7 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
     selectPersonality,
   ]);
 
-  // Grouped entries flattened for selection lookups — a personality picked
+  // Grouped entries flattened for selection lookups - a personality picked
   // from the browse groups may not be in the up-front (surface-role) list, and
   // the trigger/binding must still resolve its name and spinner.
   const groupedById = useMemo(() => {
@@ -412,7 +412,7 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
     [teamEntrySelected, teamEntry, effectiveSelectedId],
   );
 
-  // The name (or sentinel) to submit as the stored binding — exactly what the
+  // The name (or sentinel) to submit as the stored binding - exactly what the
   // trigger shows, so display and persistence can't diverge. Only meaningful on
   // binding surfaces; undefined elsewhere.
   const resolveSubmitPersonality = useCallback((): string | null => {
@@ -463,7 +463,7 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
 }
 
 // ===========================================================================
-// Agent strategy — running-agent message box (live agent.personality.set RPC)
+// Agent strategy - running-agent message box (live agent.personality.set RPC)
 // ===========================================================================
 
 /**

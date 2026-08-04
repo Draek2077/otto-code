@@ -20,7 +20,7 @@ interface FakeOptions {
     spawnIndex: number,
   ) => string | { message: string; failed: boolean };
   gate?: (phaseId: string) => { approved: boolean; note?: string };
-  /** Agents that hang until the run aborts — the cancel-cascade shape. */
+  /** Agents that hang until the run aborts - the cancel-cascade shape. */
   hangAgentIds?: Set<string>;
 }
 
@@ -50,7 +50,7 @@ function makeFake(options: FakeOptions): FakeRun {
     },
     async awaitAgent({ agentId, signal }) {
       if (options.hangAgentIds?.has(agentId)) {
-        // Hang until the run aborts — mirroring the real port, whose
+        // Hang until the run aborts - mirroring the real port, whose
         // waitForAgentFullySettled honors the signal.
         await new Promise<void>((resolve) => {
           if (signal.aborted) {
@@ -125,7 +125,7 @@ describe("cancel cascade", () => {
     controller.abort();
     const terminal = await execution;
     expect(terminal.status).toBe("canceled");
-    // The child was really stopped — an abandoned agent keeps running and spending.
+    // The child was really stopped - an abandoned agent keeps running and spending.
     expect(fake.canceled).toEqual(["agent_0"]);
   });
 });
@@ -180,7 +180,7 @@ describe("buildRunFromPlan", () => {
   });
 });
 
-describe("executeRun — linear + roles", () => {
+describe("executeRun - linear + roles", () => {
   test("runs phases in order and completes", async () => {
     const fake = makeFake({ respond: () => "done" });
     const result = await run(
@@ -214,7 +214,7 @@ describe("executeRun — linear + roles", () => {
   });
 });
 
-describe("executeRun — gates", () => {
+describe("executeRun - gates", () => {
   test("pauses at a gate and resumes on approval", async () => {
     const fake = makeFake({ respond: () => "ok", gate: () => ({ approved: true, note: "LGTM" }) });
     const result = await run(
@@ -275,7 +275,7 @@ describe("executeRun — gates", () => {
   });
 });
 
-describe("executeRun — fan-out + judged loop-until-N", () => {
+describe("executeRun - fan-out + judged loop-until-N", () => {
   test("fans out N candidates and judges each (verify-attached)", async () => {
     // 4 makers; the judger passes candidates from even maker indices only.
     const fake = makeFake({
@@ -391,7 +391,7 @@ describe("executeRun — fan-out + judged loop-until-N", () => {
   });
 });
 
-describe("executeRun — dependency output threading", () => {
+describe("executeRun - dependency output threading", () => {
   test("threads an upstream phase's output into a dependent phase's task", async () => {
     const fake = makeFake({
       respond: (input) =>
@@ -544,7 +544,7 @@ describe("buildRunSummaryPrompt", () => {
   });
 });
 
-describe("executeRun — dependency skip", () => {
+describe("executeRun - dependency skip", () => {
   test("skips a phase whose dependency failed", async () => {
     const fake = makeFake({
       respond: (input) => (input.phaseType === "verify" ? verdict("fail") : "bad"),

@@ -8,7 +8,7 @@ import { create } from "zustand";
  * running" on its own.
  *
  * Bucketed by (daemon session, cwd) because `preview.list_config` only
- * reconciles servers for one cwd at a time — replacing a session's whole set
+ * reconciles servers for one cwd at a time - replacing a session's whole set
  * on every fetch would wipe out servers known to be running under a
  * different cwd on the same session.
  */

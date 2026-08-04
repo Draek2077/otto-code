@@ -13,12 +13,12 @@ export type ChatSeamFadeEdge = "top" | "bottom";
  * Implemented as a CSS gradient in a `StyleSheet.create` class instead of the
  * native SVG gradient: on web every generated class references the theme's
  * CSS variables, so the fade follows the black chat scope's re-declared
- * variables (pure black) as well as live theme switches — an SVG `stopColor`
+ * variables (pure black) as well as live theme switches - an SVG `stopColor`
  * presentation attribute cannot resolve `var()` (docs/unistyles.md). The
  * transparent stop is `color-mix` of the same token so the fade stays in-hue
  * instead of interpolating through transparent black.
  *
- * Neither edge carries a zIndex — inside the stream view the fades must
+ * Neither edge carries a zIndex - inside the stream view the fades must
  * paint below the desktop web scrollbar overlay (zIndex 10,
  * `web-desktop-scrollbar.tsx`) so the scrollbar stays visible over the
  * fades, and below the scroll-to-bottom button, which has no zIndex and

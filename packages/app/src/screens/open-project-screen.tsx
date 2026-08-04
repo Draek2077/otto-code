@@ -279,11 +279,11 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: 0,
     padding: theme.spacing[6],
-    // Compact: the logo is the first thing under the header, so it sits flush —
+    // Compact: the logo is the first thing under the header, so it sits flush -
     // any breathing room comes from the logo art's own internal margin.
     paddingTop: { xs: 0, md: theme.spacing[6] },
     // The header sits above this centering region, so reserve the same height
-    // at the bottom — otherwise the block centers in the below-header space
+    // at the bottom - otherwise the block centers in the below-header space
     // and reads as sitting too low on the page.
     paddingBottom: { xs: theme.spacing[4], md: theme.spacing[4] + HEADER_INNER_HEIGHT },
   },

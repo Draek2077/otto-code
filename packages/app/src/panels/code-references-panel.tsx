@@ -35,7 +35,7 @@ import {
  * Every reference to one symbol, as a results tab you navigate FROM.
  *
  * A tab rather than a dialog, for the reason git-file-history already argues: this is a
- * working surface you keep open beside the code, and visiting a hit is the whole point — a
+ * working surface you keep open beside the code, and visiting a hit is the whole point - a
  * dialog would be dismissed by the very act of using it. One tab per (path, line, column),
  * so a second search does not evict the first.
  *
@@ -139,7 +139,7 @@ function CodeReferencesPanel() {
  *
  * The provisional chip is not decoration. The daemon reports `indexing` while a language
  * server is still building its project model, and a list captured then can be a fraction of
- * the truth — measured at 2 hits in 1 file where the real answer was 14 in 4. Showing a count
+ * the truth - measured at 2 hits in 1 file where the real answer was 14 in 4. Showing a count
  * without saying it is still settling is how a search quietly lies.
  */
 function ReferencesToolbar({

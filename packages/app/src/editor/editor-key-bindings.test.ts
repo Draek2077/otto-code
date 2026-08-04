@@ -81,7 +81,7 @@ describe("buildEditorKeyBindings", () => {
     );
     expect(bindings).toContainEqual({ action: "save", key: "Ctrl-Alt-w" });
     expect(bindings).not.toContainEqual({ action: "save", key: "Mod-s" });
-    // Everything else is untouched — a rebind is per row, not per section.
+    // Everything else is untouched - a rebind is per row, not per section.
     expect(bindings).toContainEqual({ action: "find", key: "Mod-f" });
   });
 

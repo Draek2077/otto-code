@@ -78,7 +78,7 @@ export const OttoMetadataGenerationSchema = z
   .catch({});
 
 // Which git hosting provider this project's PR/issue features use. Committed
-// with the repo (team-shared); credentials never live here — they belong to
+// with the repo (team-shared); credentials never live here - they belong to
 // the daemon's private config, keyed by project.
 export const OttoGitHostingConfigRawSchema = z
   .object({

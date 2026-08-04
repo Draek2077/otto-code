@@ -6,7 +6,7 @@ import { DEFAULT_MONO_FONT_STACK, DEFAULT_UI_FONT_STACK, FONT_SIZE } from "@/sty
 export interface VisualizerAppearance {
   uiFontFamily: string;
   codeFontFamily: string;
-  /** Chat prose size (resolved theme fontSize.sm) — the guest maps its own
+  /** Chat prose size (resolved theme fontSize.sm) - the guest maps its own
    * 10px content ramp onto it (scale = chatFontSize / 10). */
   chatFontSize: number;
 }
@@ -16,7 +16,7 @@ export interface VisualizerAppearance {
  * mirroring `applyAppearance` (apply-appearance.ts): empty families fall back
  * to the default stacks, compact form factors bump the UI size before the
  * ramp scales, and chat prose renders at `fontSize.sm` (markdown-styles.ts
- * body) — scaled from the authored ramp by `uiFontSize / FONT_SIZE.base`.
+ * body) - scaled from the authored ramp by `uiFontSize / FONT_SIZE.base`.
  */
 export function resolveVisualizerAppearance(input: {
   uiFontFamily: string;

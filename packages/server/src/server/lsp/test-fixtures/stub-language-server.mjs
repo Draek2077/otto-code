@@ -29,7 +29,7 @@ connection.onRequest("initialize", () => {
   }
   return {
     // Advertised because they are answered below. The service filters its fan-out on
-    // these — a server that does not declare a provider is never asked for it, which is
+    // these - a server that does not declare a provider is never asked for it, which is
     // what keeps a diagnostics-only server like oxlint out of definition lookups.
     capabilities: {
       definitionProvider: true,

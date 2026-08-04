@@ -27,7 +27,7 @@ export function applyPcm16Gain(bytes: Uint8Array, gain: number): Uint8Array {
   if (gain >= 1) {
     return bytes;
   }
-  // Copy into a fresh buffer so the Int16 view starts at offset 0 — a
+  // Copy into a fresh buffer so the Int16 view starts at offset 0 - a
   // subarray's byteOffset is not guaranteed to be 2-aligned, and the caller's
   // buffer is not ours to mutate.
   const out = new Uint8Array(bytes);

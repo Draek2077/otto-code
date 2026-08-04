@@ -109,7 +109,7 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
   },
   // Rendered as an absolutely-positioned overlay (not a real borderBottomWidth)
-  // so it doesn't shrink `row`'s content box by 1px on only one side — that
+  // so it doesn't shrink `row`'s content box by 1px on only one side - that
   // asymmetry is what pushed the centered header content up and left a visible
   // gap above this line.
   borderLine: {

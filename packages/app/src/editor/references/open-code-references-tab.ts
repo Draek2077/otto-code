@@ -9,7 +9,7 @@ export interface OpenCodeReferencesTabInput {
   /** 1-based caret position the search was made from. */
   line: number;
   column: number;
-  /** Identifier under the caret — the tab's name. */
+  /** Identifier under the caret - the tab's name. */
   symbol: string;
 }
 
@@ -21,7 +21,7 @@ export interface OpenCodeReferencesTabInput {
  * what a single reused results pane makes impossible. Same reasoning as whole-file vs
  * line-scoped git history.
  *
- * Opens next to the tab in focus, like the git logs — the results belong beside the code
+ * Opens next to the tab in focus, like the git logs - the results belong beside the code
  * they came from, not at the far end of the tab strip.
  */
 export function openCodeReferencesTab(input: OpenCodeReferencesTabInput): boolean {

@@ -1,4 +1,4 @@
-// Geometry for the overview ruler — the annotation lane down the right edge.
+// Geometry for the overview ruler - the annotation lane down the right edge.
 //
 // Split out from the extension so the one thing that is easy to get wrong (and
 // impossible to eyeball) can be tested in plain Node: the mapping between a
@@ -6,7 +6,7 @@
 //
 // Everything here works in SCROLL coordinates, not line numbers. A mark's y is
 // derived from the height CM6 assigns its line, which is what makes a mark line
-// up with the viewport thumb even when lines have different heights — wrapped
+// up with the viewport thumb even when lines have different heights - wrapped
 // text, or a file where the height map is still estimating the part nobody has
 // scrolled to. Mapping by line number instead would put marks where the line
 // "should" be and leave them a screen away from where scrolling actually lands.
@@ -19,7 +19,7 @@ export const RULER_MARK_HEIGHT_PX = 3;
 
 /**
  * The thumb never shrinks below this, however long the file. A proportional
- * thumb on a 20000-line document is under a pixel tall — correct, and useless
+ * thumb on a 20000-line document is under a pixel tall - correct, and useless
  * as the "where am I" indicator that is half of what this lane is for.
  */
 export const RULER_MIN_THUMB_PX = 24;
@@ -35,16 +35,16 @@ export const RULER_BUCKET_PX = RULER_MARK_HEIGHT_PX;
 export interface RulerMetrics {
   /** Height of the track element, px. */
   trackHeight: number;
-  /** Scrollable content height, px — `scrollDOM.scrollHeight`. */
+  /** Scrollable content height, px - `scrollDOM.scrollHeight`. */
   scrollHeight: number;
-  /** Visible height, px — `scrollDOM.clientHeight`. */
+  /** Visible height, px - `scrollDOM.clientHeight`. */
   clientHeight: number;
 }
 
 /**
  * Is there anything to scroll? A file shorter than the viewport still gets its
  * marks (a problem is worth seeing whether or not it is off-screen) but no
- * thumb — a thumb covering the whole track says nothing.
+ * thumb - a thumb covering the whole track says nothing.
  */
 export function isRulerScrollable(metrics: RulerMetrics): boolean {
   return metrics.scrollHeight - metrics.clientHeight > 1;
@@ -80,7 +80,7 @@ export interface RulerBandRect {
 }
 
 /**
- * A mark with EXTENT — a selected range — scaled onto the track.
+ * A mark with EXTENT - a selected range - scaled onto the track.
  *
  * Floored at the mark height, which is the whole reason this is not just two
  * `rulerMarkTop` calls: a three-line selection in a 5000-line file scales to a
@@ -109,7 +109,7 @@ export interface RulerThumbRect {
 
 /**
  * The viewport indicator. Its height is the visible fraction, floored at
- * `RULER_MIN_THUMB_PX` — and once floored the travel has to be rescaled against
+ * `RULER_MIN_THUMB_PX` - and once floored the travel has to be rescaled against
  * the shortened range, or the thumb runs past the bottom of the track before the
  * document reaches its end.
  */
@@ -131,7 +131,7 @@ export function rulerThumbRect(scrollTop: number, metrics: RulerMetrics): RulerT
  *
  * Centring, rather than putting it at the top: the gesture means "show me what
  * is there", and a mark landed exactly at the top edge is one where you cannot
- * see the line above it — which is usually the context that explains it.
+ * see the line above it - which is usually the context that explains it.
  */
 export function rulerScrollTopForTrackY(trackY: number, metrics: RulerMetrics): number {
   if (metrics.trackHeight <= 0) {

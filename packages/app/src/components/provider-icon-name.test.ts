@@ -31,12 +31,12 @@ describe("known provider icon names", () => {
   // Membership in the protocol registry is only ONE of the two routes to a
   // specific icon: app-only ids resolve through APP_PROVIDER_ICONS in
   // provider-icons.ts instead, which getProviderIcon consults first. The local
-  // brain host is deliberately on that route — it is Otto's own host rather
+  // brain host is deliberately on that route - it is Otto's own host rather
   // than an ACP provider, and adding it to the protocol registry would also
   // make guessTerminalProfileIcon match a command named "otto-brain".
   //
-  // So assert the outcome both routes exist for — a catalog entry that ships
-  // an icon never falls back to the generic bot — rather than membership in
+  // So assert the outcome both routes exist for - a catalog entry that ships
+  // an icon never falls back to the generic bot - rather than membership in
   // one particular route.
   it("gives every ACP catalog entry that ships an icon a specific icon", () => {
     const botFallback = getProviderIcon("provider-id-that-cannot-exist");

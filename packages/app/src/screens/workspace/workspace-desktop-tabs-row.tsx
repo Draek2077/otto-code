@@ -136,21 +136,21 @@ import {
 
 const DROPDOWN_WIDTH = 220;
 // Fixed colors for content on the forced-black chat tab (Black tab background
-// setting) — must stay readable on #000 regardless of the active theme.
-const ON_BLACK_FOREGROUND = "#e4e4e4"; // neutral off-white — matches dark themes' foreground ink
+// setting) - must stay readable on #000 regardless of the active theme.
+const ON_BLACK_FOREGROUND = "#e4e4e4"; // neutral off-white - matches dark themes' foreground ink
 const ON_BLACK_MUTED = "#a1a1aa";
 const LOADING_TAB_LABEL_SKELETON_WIDTH = 80;
 // Width math for the trailing-tools overflow. These mirror the style constants
 // below (newTabActionButton / pin buttons / the artifact trigger are 22,
 // tabsContent pads 4 per side, tabsActions pads 8 per side). The collapse
-// decision must be derived from constants — not from measuring the strip —
+// decision must be derived from constants - not from measuring the strip -
 // or hiding a button would change the measurement that decided to hide it.
 const SMALL_TOOL_WIDTH = 22;
 const TABS_CONTENT_PADDING_TOTAL = 8;
 const TOOLS_STRIP_PADDING_TOTAL = 16;
 // The orientation toggle sits to the LEFT of the tabs (so it occupies the
 // same top-left spot in both orientations and never moves under the pointer
-// when toggled) — its button (22) plus the slot's left padding (8, matching
+// when toggled) - its button (22) plus the slot's left padding (8, matching
 // the rail's styles.header paddingLeft in workspace-desktop-tabs-rail.tsx so
 // the toggle lands in the same spot in both orientations) must be reserved
 // out of the row width before tabs divide the rest.
@@ -303,7 +303,7 @@ interface WorkspacePreviewControllerInput {
   normalizedWorkspaceId: string;
   paneId?: string;
   focusedAgentId: string | null;
-  /** False when this pane offers no preview tool at all — skips the poll. */
+  /** False when this pane offers no preview tool at all - skips the poll. */
   enabled: boolean;
 }
 
@@ -323,12 +323,12 @@ interface WorkspacePreviewController {
 
 /**
  * Starts (or reuses) the focused chat's dev server and opens its designated
- * preview tab in a split pane to the right — the UI-driven counterpart to the
+ * preview tab in a split pane to the right - the UI-driven counterpart to the
  * agent-facing preview_start tool. Disabled unless the pane's active tab is a
  * chat, since the server to preview is resolved from that agent's cwd.
  *
  * The logic lives in this hook rather than the button because the tools
- * overflow may collapse the button into the more-actions menu — the menu item
+ * overflow may collapse the button into the more-actions menu - the menu item
  * then drives the same flow, with the picker opening from a hidden anchor.
  */
 function useWorkspacePreviewController({
@@ -392,7 +392,7 @@ function useWorkspacePreviewController({
    * Attach a fresh tab to a server the picker already knows is running, using
    * the url the list_config poll reported. Deliberately does not go through
    * previewStart: for a server this daemon didn't spawn, that used to port-probe
-   * and fail with "port already in use" — an error about a server the user was
+   * and fail with "port already in use" - an error about a server the user was
    * looking at in the picker. The daemon adopts such servers now, but there is
    * still no reason to round-trip a spawn attempt when we hold the url.
    */
@@ -466,8 +466,8 @@ function useWorkspacePreviewController({
       });
 
       if (workspaceKey) {
-        // Match on the exact server id, or — for a server reconciled after a
-        // daemon restart, whose tab still holds the pre-restart id — on the
+        // Match on the exact server id, or - for a server reconciled after a
+        // daemon restart, whose tab still holds the pre-restart id - on the
         // dev-server port in the tab's URL.
         const tabId = findOpenPreviewTab({ workspaceKey, serverId, port });
         if (tabId) {
@@ -510,7 +510,7 @@ function useWorkspacePreviewController({
     // Hard gate, not a hint: with the Browser tools master off the agent has no
     // preview_*/browser_* tools, so a preview it can neither start nor look at
     // is not worth opening. Offer the switch instead. Deliberately never
-    // suppressible — see utils/browser-tools-warning.ts.
+    // suppressible - see utils/browser-tools-warning.ts.
     if (
       !(await confirmPreviewNeedsBrowserTools({
         config: daemonConfig,
@@ -545,7 +545,7 @@ function useWorkspacePreviewController({
       runningServersRef.current = map;
 
       // Skip the picker only when there's a single configured server that isn't
-      // already running — otherwise fall through so the user can see it's running
+      // already running - otherwise fall through so the user can see it's running
       // and gets the option to close it, same as the multi-server case.
       if (config.servers.length === 1 && !map.has(config.servers[0]!.name)) {
         await startAndOpenPreview(focusedAgentId, cwd, config.servers[0]!.name);
@@ -567,8 +567,8 @@ function useWorkspacePreviewController({
   ]);
 
   // Reactive, not a one-time getState() snapshot: if the agent record (and its
-  // cwd) hasn't loaded into the session store yet when this button mounts —
-  // e.g. right after opening a workspace or reconnecting — an imperative read
+  // cwd) hasn't loaded into the session store yet when this button mounts -
+  // e.g. right after opening a workspace or reconnecting - an imperative read
   // would freeze at null forever and the poll below would never start until
   // something else (like focusedAgentId changing) re-ran the effect.
   const focusedAgentCwd = useSessionStore((state) =>
@@ -644,7 +644,7 @@ function useWorkspacePreviewController({
       if (!cwd) {
         return;
       }
-      // Running, but no tab here to return to — the tab was closed, or it
+      // Running, but no tab here to return to - the tab was closed, or it
       // belongs to another chat or workspace. Point a new tab at the url the
       // poll already reported rather than asking the daemon to start what is
       // demonstrably up.
@@ -830,9 +830,9 @@ function PreviewServerMenuItem({
     );
   }
 
-  // Running: a status row matching the menu item's metrics — filled green dot,
+  // Running: a status row matching the menu item's metrics - filled green dot,
   // label, and a stop button pushed to the right edge. The row itself is
-  // pressable (jumps back to / reopens the bound tab — see handlePickServer's
+  // pressable (jumps back to / reopens the bound tab - see handlePickServer's
   // "get back in" path); the stop button is a separately-hit-testable control
   // nested inside it, not a menu-item button-in-button.
   return (
@@ -891,12 +891,12 @@ export interface WorkspaceTabRowExtrasProps {
   onStripLayout: (event: LayoutChangeEvent) => void;
   /**
    * When set, this exact width is what the pinned tool buttons must fit into,
-   * bypassing the row's tabs-share-the-strip math — used by the vertical rail,
+   * bypassing the row's tabs-share-the-strip math - used by the vertical rail,
    * whose tools sit in a header above the tabs instead of beside them.
    */
   toolsAvailableWidth?: number | null;
   /**
-   * True while the pointer is over the tab bar row — tab chips and the drag
+   * True while the pointer is over the tab bar row - tab chips and the drag
    * gutter included. Tracked by the row (the reveal region is wider than this
    * strip), not by the strip itself: DOM pointerenter/leave for the no-drag
    * islands plus non-client mouse forwarding for the Electron drag gutter.
@@ -916,7 +916,7 @@ interface WorkspaceTabToolsOverflow {
 
 /**
  * Decides which pinned tool buttons fit in the tab bar. Only pinned tools
- * have buttons at all — unpinned tools live solely in the more-actions
+ * have buttons at all - unpinned tools live solely in the more-actions
  * catalog. When the pane is too narrow for the tabs at full width, pinned
  * buttons disappear left-to-right (tabs win; the catalog row is always there,
  * so nothing is lost) and come back as soon as there's room.
@@ -979,7 +979,7 @@ function useWorkspaceTabToolsOverflow(input: {
 
   const visibleToolKeys = useMemo(() => {
     if (availableWidthOverride != null) {
-      // Caller-supplied budget (the vertical rail's header) — already net of
+      // Caller-supplied budget (the vertical rail's header) - already net of
       // that surface's fixed chrome, so fit the pinned buttons into it as-is.
       return computeVisibleTabActionKeys({
         actions: pinnedButtons,
@@ -987,7 +987,7 @@ function useWorkspaceTabToolsOverflow(input: {
       });
     }
     if (tabsContainerWidth <= 0) {
-      // Not measured yet — keep everything; the strip is invisible until
+      // Not measured yet - keep everything; the strip is invisible until
       // hovered anyway, so a one-frame correction can't flash.
       return new Set(pinnedButtons.map((tool) => tool.key));
     }
@@ -1021,7 +1021,7 @@ function useWorkspaceTabToolsOverflow(input: {
 
 /**
  * The pinnable tool rows of the more-actions catalog. Always rendered in full
- * (whether or not a tool currently shows a button) — the menu is the one
+ * (whether or not a tool currently shows a button) - the menu is the one
  * stable surface where every tool can be launched, pinned, or unpinned.
  */
 function WorkspaceToolsCatalogMenuItems({
@@ -1127,7 +1127,7 @@ function WorkspaceToolsCatalogMenuItems({
 }
 
 // The catalog's terminal-profiles section (New-terminal profiles + Edit
-// profiles). Developer-only — extracted so its gate lives at one mount site and
+// profiles). Developer-only - extracted so its gate lives at one mount site and
 // the tab-row extras stay under the complexity cap. Renders nothing when hidden.
 function TerminalProfilesCatalogSection({
   visible,
@@ -1170,7 +1170,7 @@ function TerminalProfilesCatalogSection({
  * The pinned buttons inside the trailing tools strip, in the fixed order:
  * new-agent/terminal/browser launchers, preview, artifacts, split right,
  * split down. Pulled out of `WorkspaceTabRowExtras` purely to keep that
- * function's complexity under the lint cap — no logic lives here beyond
+ * function's complexity under the lint cap - no logic lives here beyond
  * ordering the same conditionals it used to inline.
  */
 function WorkspaceToolsStrip({
@@ -1244,20 +1244,20 @@ function WorkspaceToolsStrip({
 }
 
 /**
- * The trailing tools strip of a pane's tab bar. Tool order is fixed —
+ * The trailing tools strip of a pane's tab bar. Tool order is fixed -
  * pinned agent/terminal/browser launchers, preview, artifacts, split right,
- * split down — with the more-actions chevron always last. The ▾ menu is the
+ * split down - with the more-actions chevron always last. The ▾ menu is the
  * full tool catalog: every tool is always listed there with a pin toggle.
  * Three behaviors:
  *
  * - Pinning: only pinned tools/launchers have strip buttons; unpinned tools
  *   live solely in the catalog until pinned.
  * - Overflow: when the pane is too narrow for the tabs at full width, pinned
- *   buttons disappear left-to-right (see `computeVisibleTabActionKeys`) —
+ *   buttons disappear left-to-right (see `computeVisibleTabActionKeys`) -
  *   tabs win, and the catalog row is always there.
  * - Hover reveal: every button except the chevron is invisible until the
  *   pointer is over the tab-bar gutter or a strip-owned menu is open. Hidden
- *   via opacity so the geometry never changes — see docs/hover.md.
+ *   via opacity so the geometry never changes - see docs/hover.md.
  *
  * Exported for the vertical rail (workspace-desktop-tabs-rail.tsx), which
  * mounts the same strip in its header with a `toolsAvailableWidth` budget in
@@ -1291,7 +1291,7 @@ export function WorkspaceTabRowExtras({
   const isCompact = useIsCompactFormFactor();
   // User mode hides the developer catalog items (preview, terminals + profiles,
   // pane splits) and the pinned dev-tool strip. Keep New agent / Add artifact /
-  // New browser. Presentation only — see interface-modes.md surface inventory.
+  // New browser. Presentation only - see interface-modes.md surface inventory.
   const isDeveloperMode = useIsDeveloperMode();
   const splitRightKeys = useShortcutKeys("workspace-pane-split-right");
   const splitDownKeys = useShortcutKeys("workspace-pane-split-down");
@@ -1365,7 +1365,7 @@ export function WorkspaceTabRowExtras({
     availableWidthOverride: toolsAvailableWidth,
   });
 
-  // Keep the tools revealed while one of their menus is open — the pointer is
+  // Keep the tools revealed while one of their menus is open - the pointer is
   // inside the portaled menu then, which reads as "left the strip" to the
   // hover tracker. With hide-until-hover off (the default), the pinned tools
   // are always revealed.
@@ -1514,7 +1514,7 @@ export function tabKeyExtractor(tab: WorkspaceDesktopTabRowItem) {
 }
 
 /**
- * Facts about a pane's tabs that gate the tools strip — shared by the row and
+ * Facts about a pane's tabs that gate the tools strip - shared by the row and
  * the vertical rail so both feed WorkspaceTabRowExtras identical inputs.
  * Preview works by prompting a parent agent, so only attended agents count:
  * observed subagent tabs are read-only and can't be prompted (an agent
@@ -1606,17 +1606,17 @@ export interface TabOrientationToggleButtonProps {
 
 // Shared by the row and the vertical rail (workspace-desktop-tabs-rail.tsx) so
 // both surfaces expose the identical flip control. Uses the dedicated Tabs
-// glyph (not Columns2/Rows2 — those are already the split-right/split-down
+// glyph (not Columns2/Rows2 - those are already the split-right/split-down
 // icons, and reusing them here made the two unrelated actions look identical).
 // Vertical rotates the same glyph 90° rather than switching to a different icon,
 // so the control still reads as "tabs" in either orientation.
 // Rotate the glyph 90° in vertical mode. In both orientations, nudge the
 // whole button 1px left/1px down so it optically centers against its
 // neighbor. Cross-mode alignment (same top-left spot in both orientations)
-// is handled at the container level — see the row's
+// is handled at the container level - see the row's
 // ORIENTATION_TOGGLE_SLOT_STYLE paddingLeft vs the rail's styles.header
 // paddingLeft in workspace-desktop-tabs-rail.tsx, which are kept equal on
-// purpose. Don't try to re-align via button-level padding or margin here —
+// purpose. Don't try to re-align via button-level padding or margin here -
 // that fights the container fix instead of matching it.
 const verticalTabsIconStyle = { transform: [{ rotate: "90deg" as const }] };
 const toggleButtonNudgeStyle = { transform: [{ translateX: -1 }, { translateY: 1 }] };
@@ -1733,7 +1733,7 @@ function useMiddleClickClose(onClose: () => void) {
     }
 
     // Linux/X11 primary-selection paste is initiated from the middle-button
-    // PRESS, before auxclick fires — without cancelling it here, closing a tab
+    // PRESS, before auxclick fires - without cancelling it here, closing a tab
     // could paste the selection into whatever ends up under the cursor (the
     // revealed editor). Also suppresses Windows/ChromeOS middle-click
     // autoscroll starting on a tab.
@@ -1871,7 +1871,7 @@ function TabChip({
       isWeb && isDragging && ({ cursor: "grabbing" } as object),
       // "stretch" lets the chip take its width from the container instead of a
       // number. The vertical rail uses it so a resize drag only has to change
-      // the rail's own width — no per-frame re-render of every chip.
+      // the rail's own width - no per-frame re-render of every chip.
       resolvedTabWidth === "stretch"
         ? { alignSelf: "stretch" as const }
         : {
@@ -2052,7 +2052,7 @@ function TabChip({
   );
 }
 
-// The resolved menu row — a real component (not the resolver's render callback)
+// The resolved menu row - a real component (not the resolver's render callback)
 // so it can memoize the leading icon element, which the react-perf lint requires
 // for JSX-valued props.
 function HiddenTabMenuItemRow({
@@ -2115,7 +2115,7 @@ function HiddenTabMenuItem({
 /**
  * The tab-overflow control: an always-visible button at the end of the strip
  * showing the hidden-tab count, opening a menu of the tabs that didn't fit.
- * Deliberately distinct from the trailing more-actions chevron (▾) next to it —
+ * Deliberately distinct from the trailing more-actions chevron (▾) next to it -
  * a horizontal ellipsis plus a count, reading as "more tabs this way" rather
  * than "more actions". Only rendered when at least one tab is hidden.
  */
@@ -2203,7 +2203,7 @@ function useWorkspaceTabOverflow({
   const activeTabId = focusedTab?.tabId ?? tabs.find((item) => item.isActive)?.tab.tabId ?? null;
   // Width the chips share, before any overflow reserve: the content strip minus
   // the orientation toggle, the tools/actions strip, and the row's own padding
-  // (4px each side — mirrors layoutMetrics). 0 until measured.
+  // (4px each side - mirrors layoutMetrics). 0 until measured.
   const availableWidth =
     contentWidth > 0
       ? Math.max(0, contentWidth - ORIENTATION_TOGGLE_RESERVED_WIDTH - toolsStripWidth - 8)
@@ -2230,7 +2230,7 @@ function useWorkspaceTabOverflow({
 
   // Overflow-menu selection: swap the picked hidden tab into the last visible
   // slot (bumping the tab there into the menu) and focus it. Reordering the full
-  // order — not just the visible slice — keeps the persisted tab order and the
+  // order - not just the visible slice - keeps the persisted tab order and the
   // bump semantics intact.
   const handleSelectHiddenTab = useCallback(
     (tabId: string) => {
@@ -2302,7 +2302,7 @@ export function WorkspaceDesktopTabsRow({
   // Tools reveal on hover anywhere over the tab bar row, tab chips included.
   // Two trackers cover it because in the Electron desktop app the row's empty
   // gutter is a titlebar drag region (TitlebarDragRegion in split-container),
-  // whose pixels never deliver DOM pointer events — only the no-drag islands
+  // whose pixels never deliver DOM pointer events - only the no-drag islands
   // (chips, buttons, the tools strip) do. DOM pointerenter/leave covers those
   // islands; useNonClientHover covers the drag gutter via cursor positions
   // polled and forwarded by the Electron main process (Windows only; macOS
@@ -2356,7 +2356,7 @@ export function WorkspaceDesktopTabsRow({
     () => ({
       rowHorizontalInset: 0,
       // Reserve the overflow control's slot alongside the actions strip so the
-      // visible chips never render underneath it — reserve is 0 unless tabs are
+      // visible chips never render underneath it - reserve is 0 unless tabs are
       // actually hidden and the control is mounted.
       actionsReservedWidth: Math.max(
         0,
@@ -2658,7 +2658,7 @@ export interface ResolvedDesktopTabChipProps {
   dragHandleProps: DraggableListDragHandleProps | undefined;
   showDropIndicatorBefore: boolean;
   showDropIndicatorAfter: boolean;
-  /** Rotates the chip chrome 90° CCW for the vertical rail — see tabVertical. */
+  /** Rotates the chip chrome 90° CCW for the vertical rail - see tabVertical. */
   orientation?: "horizontal" | "vertical";
 }
 
@@ -2834,7 +2834,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     paddingHorizontal: theme.spacing[2],
   },
-  // Slot for the orientation toggle at the row's left edge — mirrored by the
+  // Slot for the orientation toggle at the row's left edge - mirrored by the
   // rail header's left group so the control doesn't move when the user
   // toggles between modes. Width must stay in sync with
   // ORIENTATION_TOGGLE_RESERVED_WIDTH.
@@ -2843,8 +2843,8 @@ const styles = StyleSheet.create((theme) => ({
     paddingLeft: theme.spacing[2],
   },
   // Hover-revealed tools group. Hidden via opacity (never conditional
-  // rendering or width changes) so the strip's geometry — and therefore the
-  // tab layout math — is identical whether or not the pointer is over it.
+  // rendering or width changes) so the strip's geometry - and therefore the
+  // tab layout math - is identical whether or not the pointer is over it.
   tabsTools: {
     flexDirection: "row",
     alignItems: "center",
@@ -3063,7 +3063,7 @@ const styles = StyleSheet.create((theme) => ({
         } as object)
       : {}),
   },
-  // Vertical counterpart of tabActiveBlack — same black fill, outline fade
+  // Vertical counterpart of tabActiveBlack - same black fill, outline fade
   // rotated to run left-to-right like tabActiveVertical.
   tabActiveBlackVertical: {
     backgroundColor: "#000000",
@@ -3190,7 +3190,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   // The tab-overflow control: wider than the square action buttons because it
   // pairs the ellipsis icon with the hidden-tab count. alignSelf centers it in
-  // the row (its siblings — the tabs scroll and the actions strip — stretch).
+  // the row (its siblings - the tabs scroll and the actions strip - stretch).
   tabOverflowButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -3233,7 +3233,7 @@ const styles = StyleSheet.create((theme) => ({
     width: 14,
     height: 14,
   },
-  // Running-server row — mirrors DropdownMenuItem's `item` metrics so it lines up
+  // Running-server row - mirrors DropdownMenuItem's `item` metrics so it lines up
   // with the idle menu items above/below it.
   previewServerRunningRow: {
     flexDirection: "row",
@@ -3295,7 +3295,7 @@ const TAB_DROP_INDICATOR_BELOW_STYLE = [
 ];
 const TABS_TOOLS_HIDDEN_STYLE = [styles.tabsTools, styles.tabsToolsHidden];
 // The tools strip opts out of the Electron titlebar drag region so its whole
-// area — padding and hidden buttons included — delivers hover events, not just
+// area - padding and hidden buttons included - delivers hover events, not just
 // the no-drag holes the index.html backstop punches for the buttons themselves.
 const TABS_ACTIONS_NO_DRAG_STYLE = isWeb ? ({ WebkitAppRegion: "no-drag" } as object) : null;
 const TABS_ACTIONS_STYLE = [styles.tabsActions, TABS_ACTIONS_NO_DRAG_STYLE];

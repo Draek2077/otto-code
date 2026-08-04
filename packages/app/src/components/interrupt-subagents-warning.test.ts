@@ -124,7 +124,7 @@ describe("countLiveObservedSubagents", () => {
   it("ignores attended children and terminal rows", () => {
     setAgents([
       makeAgent({ id: PARENT_ID, status: "running" }),
-      // Its own chat, spawned with create_agent — never touched by the parent's
+      // Its own chat, spawned with create_agent - never touched by the parent's
       // interrupt.
       makeAgent({ id: "attended", parentAgentId: PARENT_ID, status: "running" }),
       makeAgent({

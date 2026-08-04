@@ -1,11 +1,11 @@
 /**
- * TeamStep — the wizard's team-building step. Replaces the old passive
+ * TeamStep - the wizard's team-building step. Replaces the old passive
  * Agents + Teams steps (which only showed the existing roster and let you pick
  * it). Two ways to end up with a team, side by side on one screen:
  *
  *  - Generative (the themed team types): pick "Application", "Creative", … and
- *    Otto builds a fresh, role-complete crew — named personas, provider-bound
- *    brains, colors — that you can reshuffle and install.
+ *    Otto builds a fresh, role-complete crew - named personas, provider-bound
+ *    brains, colors - that you can reshuffle and install.
  *  - Build your own: name a team and assemble it from your available agents
  *    (the host roster + anyone you just generated), with a live role-coverage
  *    hint so you can build something balanced. Add your own agents in Settings.
@@ -19,7 +19,7 @@
  * active yet. Feature-gated on agentPersonalities + agentTeams.
  *
  * The blueprint *name* the card shows is also the name the team is saved under
- * (see `resolveBlueprintName`), so both come from one key — a card reading "Équipe
+ * (see `resolveBlueprintName`), so both come from one key - a card reading "Équipe
  * applicative" that installs a team called "Application Team" would be two
  * different answers to the same question. The prompts and persona names inside
  * `presets/` stay English: those are model input, not UI copy.
@@ -51,7 +51,7 @@ const DEFAULT_TEAM_COLOR = "#4F46E5";
  * A blueprint's user-facing name and tagline. Keyed by the blueprint's `key`
  * (`application`, `game`, …) rather than its id, so the developer and user
  * lenses can never collide. The name is what the card shows *and* what the
- * installed team is called — one string, so they cannot disagree.
+ * installed team is called - one string, so they cannot disagree.
  *
  * `blueprint.name` stays in the preset data as the fallback: `presets/` is kept
  * free of i18n so `generateTeam` remains a pure, testable provider-resolution
@@ -71,7 +71,7 @@ function blueprintTagline(blueprint: TeamBlueprint): string {
 }
 
 // A random-ish local id for a hand-built team. These are user-owned (editable,
-// deletable) — not idempotent-restore targets, so a fresh token per team is fine.
+// deletable) - not idempotent-restore targets, so a fresh token per team is fine.
 function customTeamId(): string {
   return `team_custom_${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -209,7 +209,7 @@ export const TeamStep = forwardRef<TeamStepHandle, TeamStepProps>(function TeamS
 
   // Driven by the wizard's "Continue" (see setup-wizard-screen). Commits a
   // selected-but-not-yet-added generated team so "pick a team and move forward"
-  // actually creates it. Swallows to a toast — a save hiccup must not block the
+  // actually creates it. Swallows to a toast - a save hiccup must not block the
   // wizard from advancing.
   const commitPending = useCallback(async () => {
     if (!preview || !selected || !config || installedTeamIds.has(preview.team.id)) {
@@ -281,7 +281,7 @@ export const TeamStep = forwardRef<TeamStepHandle, TeamStepProps>(function TeamS
 
 // Build the agentTeams patch for adding one team in the wizard: append it and
 // make it the active team. Picking a team in setup is a deliberate choice, so it
-// takes over as active — that's the whole point of the step (an earlier version
+// takes over as active - that's the whole point of the step (an earlier version
 // only activated when no team was active, which left users stuck on whatever
 // team they arrived with even after picking a new one).
 function buildAddTeamPatch(
@@ -802,7 +802,10 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface2,
+    // surface1, not surface2: matches `card` above - on this theme surface2 and
+    // the border token are nearly identical, so an unselected row's border was
+    // invisible until the row was selected (which swaps to an accent border).
+    backgroundColor: theme.colors.surface1,
   },
   selectableRowSelected: {
     borderColor: theme.colors.accent,

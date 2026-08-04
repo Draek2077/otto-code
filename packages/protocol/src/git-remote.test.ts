@@ -18,7 +18,7 @@ describe("isCompleteGitRemote", () => {
 
   it("rejects schemes the daemon's parser does not accept, so clients agree with the server", () => {
     // The old client-side regex matched any `scheme://`, classifying these as
-    // complete URLs while the daemon (parseGitRemoteLocation) rejected them —
+    // complete URLs while the daemon (parseGitRemoteLocation) rejected them -
     // producing a confusing "use owner/repo format" error. The shared helper
     // must classify them identically to the daemon.
     for (const repo of ["git://github.com/owner/repo", "ftp://host/repo", "file:///tmp/repo"]) {

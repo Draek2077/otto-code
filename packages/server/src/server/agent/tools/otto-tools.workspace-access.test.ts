@@ -7,8 +7,8 @@ import type { ProviderSnapshotManager } from "../provider-snapshot-manager.js";
 import { createOttoToolCatalog } from "./otto-tools.js";
 
 // The workspace-access ceiling is enforced at catalog registration so every
-// consumer — the MCP server serving CLI providers, openai-compat's native tool
-// loop — inherits it identically. These tests build the catalog the way an
+// consumer - the MCP server serving CLI providers, openai-compat's native tool
+// loop - inherits it identically. These tests build the catalog the way an
 // agent session does and ask the enforcement question directly: is the tool
 // even THERE?
 
@@ -31,7 +31,7 @@ function catalogToolNames(workspaceAccess?: string): Set<string> {
 }
 
 describe("otto tool catalog workspace-access gate", () => {
-  test("no declared access keeps the full catalog — pre-feature agents are unaffected", () => {
+  test("no declared access keeps the full catalog - pre-feature agents are unaffected", () => {
     const names = catalogToolNames();
     for (const tool of [
       "create_terminal",

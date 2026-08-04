@@ -79,7 +79,7 @@ describe("startService bind guard", () => {
       listen: { host: "0.0.0.0", port: 0 },
       auth: { mode: "token", token: "s3cret" },
     });
-    // No model is configured, so startup fails past the guard — the point is the
+    // No model is configured, so startup fails past the guard - the point is the
     // failure is NO_MODEL, not INSECURE_BIND.
     await expect(startService({ config, env: env() })).rejects.toMatchObject({
       code: "NO_MODEL",

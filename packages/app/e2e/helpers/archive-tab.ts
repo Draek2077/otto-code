@@ -60,7 +60,7 @@ export async function createIdleAgent(
     provider: "opencode",
     model: "opencode/gpt-5-nano",
     // OpenCode has no "bypassPermissions" mode (that's Claude's). Use build with
-    // auto_accept for unattended full access — mode validation now rejects modes
+    // auto_accept for unattended full access - mode validation now rejects modes
     // the provider doesn't define.
     modeId: "build",
     featureValues: { auto_accept: true },
@@ -254,7 +254,7 @@ export async function clickSessionRow(page: Page, title: string): Promise<void> 
 }
 
 export async function expectSessionsEmptyState(page: Page): Promise<void> {
-  // Guard: if session rows appear, a prior spec polluted the shared daemon — see 00-sessions-empty.spec.ts.
+  // Guard: if session rows appear, a prior spec polluted the shared daemon - see 00-sessions-empty.spec.ts.
   await expect(page.locator(AGENT_ROW_SELECTOR)).toHaveCount(0, { timeout: 5_000 });
   await expect(page.getByText("No sessions yet")).toBeVisible({ timeout: 30_000 });
 }

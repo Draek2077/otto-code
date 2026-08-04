@@ -4,14 +4,14 @@ import { absolutePathsEqual, resolveWorkspaceFilePaths } from "@/workspace/file-
  * Where a resolved definition should land. Both go-to-definition sources reach
  * here, and they answer in DIFFERENT path shapes: the ctags index reports
  * workspace-relative paths, while a language server reports absolute native
- * ones — backslashes and a drive letter on Windows, because the daemon converts
+ * ones - backslashes and a drive letter on Windows, because the daemon converts
  * the server's `file://` URI with `fileURLToPath`. Comparing those raw strings
  * against the open tab's path is how a definition in the very file you are
  * reading ends up opening a second tab of that same file.
  *
  * So both sides are resolved to one canonical absolute form before anything is
  * decided, and the path handed on for an open is re-expressed workspace-relative
- * when it lives inside the workspace — the same shape the file explorer and chat
+ * when it lives inside the workspace - the same shape the file explorer and chat
  * links use, so the tab that opens is the tab that is already there rather than
  * a duplicate keyed on the absolute spelling.
  */
@@ -22,9 +22,9 @@ export interface DefinitionJumpTarget {
 }
 
 export type DefinitionJumpPlan =
-  /** The definition is in the open buffer — move the caret, don't open a tab. */
+  /** The definition is in the open buffer - move the caret, don't open a tab. */
   | { kind: "in-file"; line: number }
-  /** The definition is in another file — open it at that line. */
+  /** The definition is in another file - open it at that line. */
   | { kind: "open"; target: DefinitionJumpTarget };
 
 export function planDefinitionJump(input: {

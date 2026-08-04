@@ -13,7 +13,7 @@ import type { Theme } from "@/styles/theme";
  * (docs/glossary.md: one label, no synonyms).
  *
  * Scope is not decoration. Editing a `global` file changes every project on the
- * machine, and a user who does not know that will be surprised later — which is
+ * machine, and a user who does not know that will be surprised later - which is
  * why it is the one scope that keeps the warning tint.
  */
 
@@ -34,7 +34,7 @@ interface ScopeIconProps {
   scope: ContextScope;
   /**
    * The tree suppresses project scope: it is the default there, and a badge on
-   * nearly every row is noise. The fix list always shows one — a finding's whole
+   * nearly every row is noise. The fix list always shows one - a finding's whole
    * question is "how far does this reach", so the common case still needs saying.
    */
   showProject?: boolean;
@@ -103,7 +103,7 @@ const SCOPE_LABEL_KEYS: Record<Exclude<ContextScope, "runtime">, string> = {
  * focus handlers onto the View instead of wrapping it in a Pressable, so a
  * click on the icon still reaches the row's own Pressable and selects the file.
  * A nested Pressable would swallow it. Same idiom as LockedAgentModeBadge.
- * Hover-only — on touch there is nothing to hover, and the label covers a11y.
+ * Hover-only - on touch there is nothing to hover, and the label covers a11y.
  */
 export function ScopeBadge({
   label,

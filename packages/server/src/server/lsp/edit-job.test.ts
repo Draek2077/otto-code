@@ -176,7 +176,7 @@ describe("undoing an edit job", () => {
     const undone = await store.undo(outcome.runId);
 
     // The file that never got written is not in the journal, so undo has nothing to say
-    // about it — reporting it as a failed undo would invent a problem.
+    // about it - reporting it as a failed undo would invent a problem.
     expect(undone?.files).toHaveLength(1);
     expect(undone?.complete).toBe(true);
   });

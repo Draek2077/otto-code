@@ -28,7 +28,7 @@ export interface FrameWindowStats {
   worstFrameMs: number;
   slowFrames: number;
   longFrames: number;
-  /** longFrames / frames — 0 when no frames were counted. */
+  /** longFrames / frames - 0 when no frames were counted. */
   jankRatio: number;
   /** Gaps over STALL_FRAME_MS: the surface was hidden or the process suspended. */
   stalls: number;
@@ -57,7 +57,7 @@ export class FrameRateSampler {
 
   /**
    * Feed one frame timestamp. The first timestamp after construction or after a
-   * flush only establishes the baseline — a delta needs two frames.
+   * flush only establishes the baseline - a delta needs two frames.
    */
   recordFrame(timestampMs: number): void {
     const previous = this.lastTimestampMs;

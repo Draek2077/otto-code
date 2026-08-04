@@ -334,7 +334,7 @@ function computePaneOverDropPreview(input: {
 // Drag-move handlers fire on every pointer move, but the computed previews
 // are new objects each time. Bailing out on structural equality keeps the
 // recursive SplitNodeView tree (every pane + tab row) from re-rendering per
-// mouse move — that re-render storm is what made the DragOverlay chip lag
+// mouse move - that re-render storm is what made the DragOverlay chip lag
 // behind fast drags.
 function reuseIfSameDropPreview(
   prev: SplitDropZoneHover | null,
@@ -1048,7 +1048,7 @@ function SplitPaneView({
   // controls. The reserve for those controls is applied *inside* the tab row (as
   // content inset on its inner strip) rather than as padding on this wrapper, so
   // the row's gutter background and bottom hairline still span the full pane
-  // width — edge to edge under the caption buttons — instead of stopping short of
+  // width - edge to edge under the caption buttons - instead of stopping short of
   // them. See WorkspaceDesktopTabsRow's `windowControlsInset`.
   const windowControlsInset = useMemo(
     () => ({ left: padding.left, right: padding.right }),
@@ -1259,7 +1259,7 @@ const styles = StyleSheet.create((theme) => ({
     maxWidth: 200,
     // The chip rides directly under the cursor, which is exactly where the drop
     // indicator and the tab it would land next to are. Translucent so the
-    // target stays readable through it — not so faint that the chip itself
+    // target stays readable through it - not so faint that the chip itself
     // stops reading as the thing being dragged.
     opacity: 0.7,
   },

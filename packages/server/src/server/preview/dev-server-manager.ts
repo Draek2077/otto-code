@@ -17,7 +17,7 @@ import {
  * pure dev-server process supervision. Spawns configured commands from
  * `.claude/launch.json`, tracks them by serverId, captures output into a
  * bounded ring buffer, polls the port for readiness, and tree-kills on stop
- * (dev servers fork children — plain proc.kill orphans them).
+ * (dev servers fork children - plain proc.kill orphans them).
  *
  * Browser-side verification (subsystem B) lives in browser-tools/ and is
  * joined to this by navigating a browser host at the returned url.
@@ -89,7 +89,7 @@ export interface StartPreviewServerResult {
   server: PreviewServerSummary;
   reused: boolean;
   logTail: string[];
-  /** Set when the result is an adopted external server — see `start()`. */
+  /** Set when the result is an adopted external server - see `start()`. */
   note?: string;
 }
 
@@ -106,7 +106,7 @@ interface PreviewServerRecord {
 }
 
 /**
- * A configured server found already listening on its port — adopted by probe
+ * A configured server found already listening on its port - adopted by probe
  * rather than spawned by us. There is no child process behind it, so it carries
  * only what a port observation can know, plus the tab bound to it.
  */
@@ -141,7 +141,7 @@ export class DevServerManager {
    *
    * Membership is also the authorization list for external stops: `ext:` stops
    * tree-kill whatever listens on the port, so only observed ports are
-   * stoppable — never an arbitrary number an agent passes to preview_stop.
+   * stoppable - never an arbitrary number an agent passes to preview_stop.
    * Observation is still only a TCP probe, though, so even an observed port
    * may be a database or another service, not a dev server; that is why
    * `stopExternal` additionally refuses agent-initiated stops entirely and
@@ -160,7 +160,7 @@ export class DevServerManager {
   /**
    * Ports the daemon must never tree-kill via an external (`ext:<port>`) stop:
    * its own listen port and the loopback origins of currently connected
-   * clients (e.g. the Metro dev server serving the Otto app itself — killing
+   * clients (e.g. the Metro dev server serving the Otto app itself - killing
    * it takes down the app issuing the request). Wired lazily from bootstrap
    * because the websocket server is constructed after this manager.
    */
@@ -188,7 +188,7 @@ export class DevServerManager {
       // so a worktree chat misses the main checkout's server), the user started
       // it by hand, or a daemon restart wiped our record while the child kept
       // serving. Refusing left the caller staring at an error over a server it
-      // could plainly see running — and looking at it was the whole request.
+      // could plainly see running - and looking at it was the whole request.
       // We can't supervise what we didn't spawn, so it comes back under an
       // `ext:<port>` id that says as much.
       return {
@@ -229,7 +229,7 @@ export class DevServerManager {
    */
   async stop(serverId: string, options?: { requireCwd?: string }): Promise<PreviewServerSummary> {
     // Externally-observed servers (see reconcileRunning) carry no in-memory
-    // record — the daemon that spawned them is gone. Address them by port:
+    // record - the daemon that spawned them is gone. Address them by port:
     // find whatever is listening and tree-kill it.
     if (serverId.startsWith(EXTERNAL_SERVER_ID_PREFIX)) {
       return this.stopExternal(serverId, options?.requireCwd);
@@ -247,7 +247,7 @@ export class DevServerManager {
   }
 
   /**
-   * Every server known to be running for a cwd — the ones this daemon spawned
+   * Every server known to be running for a cwd - the ones this daemon spawned
    * plus the externally-running ones it has adopted. Synchronous, so adopted
    * entries are only as fresh as the last probe (`reconcileRunning` prunes them
    * on the UI's poll); callers that need certainty should reconcile first.
@@ -271,8 +271,8 @@ export class DevServerManager {
    * Running servers for a cwd, reconciled against reality rather than trusting
    * the in-memory map alone. The map is authoritative for servers this daemon
    * instance spawned (it carries pid/logs/bound tab), but the map is wiped on
-   * every daemon restart while the dev server child — spawned detached / as its
-   * own process tree — keeps serving its port. In dev the daemon restarts
+   * every daemon restart while the dev server child - spawned detached / as its
+   * own process tree - keeps serving its port. In dev the daemon restarts
    * constantly (tsx watch), so without reconciliation a running preview silently
    * reverts to "not started" on the next save. We therefore also port-probe each
    * configured server we don't already track and report open ones as
@@ -290,7 +290,7 @@ export class DevServerManager {
     const external: PreviewServerSummary[] = [];
     for (const entry of input.configured) {
       if (ownedNames.has(entry.name) || ownedPorts.has(entry.port)) {
-        // We spawned it after all — any earlier adoption of this port is stale.
+        // We spawned it after all - any earlier adoption of this port is stale.
         this.forgetExternal(entry.port);
         continue;
       }
@@ -332,7 +332,7 @@ export class DevServerManager {
 
   /**
    * The adopted record behind an `ext:<port>` id, or null when the id isn't an
-   * external one. Throws when it is external but unobserved — an id nobody
+   * external one. Throws when it is external but unobserved - an id nobody
    * probed addresses no server we are willing to act on.
    */
   private externalRecord(serverId: string): ExternalServerRecord | null {
@@ -373,7 +373,7 @@ export class DevServerManager {
       );
     }
     // Only ports we ourselves observed as configured preview servers are
-    // stoppable, and the launch config must still list the port at stop time —
+    // stoppable, and the launch config must still list the port at stop time -
     // otherwise this would be a primitive for killing arbitrary local services.
     const cwd = this.externalServers.get(port)?.cwd;
     if (!cwd) {
@@ -439,7 +439,7 @@ export class DevServerManager {
     const external = this.externalRecord(serverId);
     if (external) {
       throw new Error(
-        `Otto did not start "${serverId}" — it adopted a process already listening on port ` +
+        `Otto did not start "${serverId}" - it adopted a process already listening on port ` +
           `${external.port}, so none of its output was captured. Read that process's own ` +
           `terminal, or stop it and call preview_start so Otto supervises it.`,
       );
@@ -468,7 +468,7 @@ export class DevServerManager {
 
   /**
    * Designate an Otto browser tab as this server's preview surface. One tab
-   * per server ("it") — rebinding replaces the previous designation. Adopted
+   * per server ("it") - rebinding replaces the previous designation. Adopted
    * external servers bind too, so the one-designated-tab rule covers servers
    * Otto merely found as well as the ones it spawned.
    */

@@ -21,7 +21,7 @@ import type { SolutionProvider, SolutionRefAbsolute } from "./provider.js";
  * property of this one method boundary: with the feature off, `listSolutions` returns an empty
  * array without a directory walk, and `getTree`/`loadProject` refuse without touching the pool.
  * No discovery, no `.sln` read, no `.csproj` parse, no process, no cache entry, no watcher
- * subscription — one boolean, and then nothing. Anything that moved that check downstream would
+ * subscription - one boolean, and then nothing. Anything that moved that check downstream would
  * make the guarantee a matter of every caller's discipline rather than of the design.
  *
  * Everything below this line speaks absolute paths; everything above it speaks the wire form.
@@ -43,7 +43,7 @@ const DEFAULT_SETTINGS: SolutionSettings = {
   idleMinutes: 10,
 };
 
-/** Files whose change invalidates an evaluation. `.cs` is deliberately absent — see `cache.ts`. */
+/** Files whose change invalidates an evaluation. `.cs` is deliberately absent - see `cache.ts`. */
 const EVALUATION_INPUT_EXTENSIONS = new Set([
   ".csproj",
   ".fsproj",
@@ -100,7 +100,7 @@ export class SolutionService {
   /**
    * Apply the host's policy and make the world match it. Turning the switch off stops whatever is
    * running and drops the cache now, rather than leaving a process resident until it happens to
-   * idle out — off has to mean off immediately, or the switch is decoration.
+   * idle out - off has to mean off immediately, or the switch is decoration.
    */
   async applySettings(patch: Partial<SolutionSettings>): Promise<void> {
     this.settings = { ...this.settings, ...patch };
@@ -213,14 +213,14 @@ export class SolutionService {
    * A file changed on disk, pushed by whoever noticed.
    *
    * The read-side freshness stamp already keeps a stale `.csproj` from being served, so this is
-   * not the correctness mechanism — it is the one case the stamp cannot cover. A
+   * not the correctness mechanism - it is the one case the stamp cannot cover. A
    * `Directory.Build.props`, a `.targets` or a `global.json` is an **input** to projects whose own
    * files did not change, so their stamps still match and they would keep serving an evaluation
    * made under the old configuration. Dropping everything beneath the changed file is the honest
    * answer: working out exactly which projects import it would mean re-deriving MSBuild's import
    * graph, which is precisely the domain knowledge we deliberately do not own.
    *
-   * Cheap and synchronous for everything else — a `.cs` edit returns immediately, because
+   * Cheap and synchronous for everything else - a `.cs` edit returns immediately, because
    * membership is by glob and editing a file cannot change which files are in the project.
    *
    * Returns the solutions whose cached model was dropped.
@@ -320,7 +320,7 @@ export class SolutionService {
  * Evaluated file paths into the directory/file tree the explorer renders.
  *
  * Done here rather than in the client because it is pure and deterministic, and doing it once
- * beats every client doing it again — but mostly because the interesting decision is a daemon
+ * beats every client doing it again - but mostly because the interesting decision is a daemon
  * one: directories are synthesised from the files that are actually **in the project**, so an
  * `obj/` full of build output simply has no node, with no gitignore rule and no filter anywhere.
  * That, and marking which files the SDK contributed implicitly, is the thing a filesystem tree
@@ -365,7 +365,7 @@ function buildProjectNodes(input: {
     });
   }
 
-  // Directories before files at each level, then by name — the same ordering the Files tree uses,
+  // Directories before files at each level, then by name - the same ordering the Files tree uses,
   // so switching lenses does not reshuffle everything a reader had located.
   return [...nodes.values()].sort((left, right) => {
     if (left.kind !== right.kind) {
@@ -377,7 +377,7 @@ function buildProjectNodes(input: {
 
 /**
  * Create the chain of directory nodes between the project's own folder and a file, and return the
- * id of the file's immediate parent. A file directly beside the project gets `null` — the project
+ * id of the file's immediate parent. A file directly beside the project gets `null` - the project
  * node itself is its parent, and it lives in the solution tree rather than in this list.
  */
 function ensureDirectories(input: {

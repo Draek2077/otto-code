@@ -184,8 +184,8 @@ export interface ChangesToolbarProps {
 
 /**
  * The Changes toolbar: pinned options render as an icon strip that is invisible
- * (opacity-gated, geometry preserved) until the row is hovered — matching the
- * tab bar (docs/hover.md) — followed by an always-visible ▾ menu listing every
+ * (opacity-gated, geometry preserved) until the row is hovered - matching the
+ * tab bar (docs/hover.md) - followed by an always-visible ▾ menu listing every
  * option with a pin toggle. On native/compact everything is always visible.
  */
 export function ChangesToolbar({
@@ -199,7 +199,7 @@ export function ChangesToolbar({
 }: ChangesToolbarProps): ReactElement {
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // Keep the strip revealed while the menu is open — the pointer is inside the
+  // Keep the strip revealed while the menu is open - the pointer is inside the
   // portaled menu then, which reads as "left the row" to the hover tracker.
   // With hide-until-hover off (the default), the strip is always revealed.
   const revealed = !hideUntilHover || hovered || isNative || isMobile || menuOpen;

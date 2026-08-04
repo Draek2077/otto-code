@@ -57,12 +57,12 @@ export function buildSubagentRowPresentationData(row: SubagentRow): SubagentRowP
 
 /**
  * A row is tidy-eligible (auto-collapses into the "Completed" group) once it is
- * terminal AND not flagged for attention. Attention rows — notably a failed
- * subagent (usage exhaustion) — stay in the active list so the failure signal
+ * terminal AND not flagged for attention. Attention rows - notably a failed
+ * subagent (usage exhaustion) - stay in the active list so the failure signal
  * is never buried. `idle` counts as terminal only for observed rows: a Claude
  * Task ends its run as `idle` (completed → "idle" in the provider mapping), but
  * a native `create_agent` subagent idles *between turns* and may still be
- * mid-conversation with its orchestrator — tidying it (and exposing it to
+ * mid-conversation with its orchestrator - tidying it (and exposing it to
  * "Clear all") would archive an agent still in use.
  * See docs/agent-lifecycle.md (Item 6).
  */
@@ -83,7 +83,7 @@ export interface PartitionedSubagentRows {
 
 /**
  * Split rows into the active list and the collapsed "Completed" group. Rows in
- * `pinnedIds` stay active even when tidy-eligible — the track pins a row the
+ * `pinnedIds` stay active even when tidy-eligible - the track pins a row the
  * user just stopped so it doesn't instantly vanish into the collapsed group
  * under their pointer. See docs/agent-lifecycle.md (Items 2 + 6).
  */
@@ -111,12 +111,12 @@ export const SUBAGENT_AUTO_CLEAR_SETTLE_MS = 4000;
 export interface AutoClearSelectionInput {
   settleMs: number;
   now: number;
-  /** Rows already archiving or previously attempted — never re-selected. */
+  /** Rows already archiving or previously attempted - never re-selected. */
   excludeIds?: ReadonlySet<string>;
 }
 
 /**
- * The completed rows due to auto-clear: tidy-eligible (terminal, not attention —
+ * The completed rows due to auto-clear: tidy-eligible (terminal, not attention -
  * the same set the "Completed" group shows), not excluded, and settled (terminal
  * for at least `settleMs`). Pure so the driver's timing logic is unit-testable.
  * See docs/agent-lifecycle.md (the sub-agents track) and
@@ -182,7 +182,7 @@ export function formatCompactTokenCount(tokens: number | null | undefined): stri
 /**
  * How much work the sub-agent has done, e.g. "1 tool", "89 tools". Returns null
  * for absent/zero so a provider that reports no count renders nothing rather
- * than a bare "0 tools". Raw count on purpose — unlike tokens, this number stays
+ * than a bare "0 tools". Raw count on purpose - unlike tokens, this number stays
  * legible at any size and rounding it would hide the difference between 89 and
  * 140 tool calls. See docs/chat-lifecycle.md (the subagents track).
  */
@@ -198,7 +198,7 @@ export function formatSubagentToolUseCount(count: number | null | undefined): st
 }
 
 /**
- * The tool the sub-agent is running right now — the signal that turns "spinning"
+ * The tool the sub-agent is running right now - the signal that turns "spinning"
  * into "spinning _on a Bash_". The daemon already clears it on terminal rows, so
  * this only trims and drops blanks; it never invents a value for a provider that
  * doesn't report one. See docs/chat-lifecycle.md (the subagents track).
@@ -227,7 +227,7 @@ export function sumSubagentTokens(rows: readonly SubagentRow[]): number {
 export function formatHeaderLabel(
   { active, completed }: PartitionedSubagentRows,
   // Tokens from rows already cleared (archived) out of the track. Added back into
-  // the header total so the honest fan-out cost survives the clear — whether by
+  // the header total so the honest fan-out cost survives the clear - whether by
   // the manual "Clear all completed" or the auto-clear driver.
   clearedTokens = 0,
 ): string {
@@ -255,7 +255,7 @@ export function formatHeaderLabel(
 }
 
 /**
- * True while the subagent is still doing work — the row live-ticks its elapsed
+ * True while the subagent is still doing work - the row live-ticks its elapsed
  * time. Mirrors the running set used by {@link resolveSubagentRowAction}.
  */
 export function isSubagentRowRunning(status: SubagentRow["status"]): boolean {
@@ -264,7 +264,7 @@ export function isSubagentRowRunning(status: SubagentRow["status"]): boolean {
 
 /**
  * Frozen run duration (createdAt → updatedAt) for a terminal row, e.g. "3m 12s".
- * Returns null while the row is still running — the track renders a live ticker
+ * Returns null while the row is still running - the track renders a live ticker
  * for those instead. See docs/chat-lifecycle.md (the subagents track).
  */
 export function formatSubagentElapsed(row: SubagentRow): string | null {

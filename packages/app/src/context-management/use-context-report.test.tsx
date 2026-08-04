@@ -68,7 +68,7 @@ beforeEach(() => {
 
 afterEach(() => {
   // This config does not enable vitest globals, so Testing Library never
-  // registers its own cleanup — without this, hooks from earlier cases stay
+  // registers its own cleanup - without this, hooks from earlier cases stay
   // mounted and re-fire when the next case swaps the session client.
   cleanup();
   useSessionStore.setState({ sessions: {} } as never);

@@ -92,7 +92,7 @@ describe("daemon bearer auth", () => {
       const missingToken = await fetch(`http://127.0.0.1:${daemonHandle.port}/api/files/download`);
       expect(missingToken.status).toBe(400);
 
-      // An invalid token is rejected by the token store (403, not 401) — proving
+      // An invalid token is rejected by the token store (403, not 401) - proving
       // the token, not the daemon password, is what guards this route.
       const invalidToken = await fetch(
         `http://127.0.0.1:${daemonHandle.port}/api/files/download?token=invalid-token`,

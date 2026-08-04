@@ -27,7 +27,7 @@ const MESSAGE_HEAD_SHARE = 0.8;
  * curates the *entire* parent timeline with untruncated message text, so a long
  * chat became an unbounded blob baked into the forked agent's first message.
  * Keep the head (how the conversation started) and a tail (the recent context
- * you're continuing from), eliding the middle with a marker — never drop
+ * you're continuing from), eliding the middle with a marker - never drop
  * silently.
  */
 const FORK_CONTEXT_HEAD_CHARS = 48_000;

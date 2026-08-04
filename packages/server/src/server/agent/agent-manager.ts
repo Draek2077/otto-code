@@ -140,7 +140,7 @@ const RELOAD_SESSION_CLOSE_TIMEOUT_MS = 3_000;
 const INTERRUPT_SESSION_TIMEOUT_MS = 2_000;
 // Bound at module load so it survives a later vi.useFakeTimers(): close yields one
 // event-loop turn, and a faked setImmediate never fires unless the test advances
-// timers — which it cannot, because it is awaiting the close that is doing the
+// timers - which it cannot, because it is awaiting the close that is doing the
 // yielding. Capturing the real one keeps the yield honest under both clocks.
 const yieldEventLoopTurn = setImmediate;
 const STORED_AGENT_CAPABILITIES: AgentCapabilityFlags = {
@@ -282,14 +282,14 @@ export type AgentManagerEvent =
   // the provider telling us about children it spawned itself.
   | { type: "provider_subagent"; event: ProviderSubagentStoreEvent }
   // The full current set of background shell tasks for a parent agent
-  // changed. Not Agent-shaped — forwarded to clients as background_shell_tasks_changed.
+  // changed. Not Agent-shaped - forwarded to clients as background_shell_tasks_changed.
   | {
       type: "background_shell_task_state";
       parentAgentId: string;
       tasks: BackgroundShellTaskInfo[];
     }
   // The full current set of pending suggested tasks for a parent agent changed
-  // (spawn/start/dismiss). Not Agent-shaped — forwarded to clients as
+  // (spawn/start/dismiss). Not Agent-shaped - forwarded to clients as
   // suggested_tasks_changed.
   | {
       type: "suggested_task_state";
@@ -412,8 +412,8 @@ export interface AgentManagerOptions {
   /**
    * Resolves a personality's accrued lessons into the brief injected at spawn,
    * or null when there is nothing to inject (no lessons, switch off, feature
-   * unwired). Called from prepareSessionConfig — the one point every spawn,
-   * resume and refresh path already funnels through — so memory is re-read on
+   * unwired). Called from prepareSessionConfig - the one point every spawn,
+   * resume and refresh path already funnels through - so memory is re-read on
    * every resume and no caller has to thread it.
    * See docs/agent-personalities.md § Memory (Injection).
    */
@@ -422,7 +422,7 @@ export interface AgentManagerOptions {
     personalityName: string;
     cwd: string | undefined;
   }) => Promise<string | null>;
-  /** Fun-stats counters — see packages/server/src/server/activity-stats. */
+  /** Fun-stats counters - see packages/server/src/server/activity-stats. */
   onActivity?: ActivityIncrementFn;
   /**
    * Itemized usage ledger row for one token/cost-bearing activity (usage-ledger
@@ -571,7 +571,7 @@ function resolveObservedSubagentCarriedState(
 /**
  * Carry a monotonic non-decreasing counter (cumulative tokens, model rounds)
  * across observed-subagent updates: a fresh value only ever raises the running
- * figure, and an update that omits it keeps what we had — so a final
+ * figure, and an update that omits it keeps what we had - so a final
  * status-only notification can never drop the readout.
  */
 function monotonicCount(
@@ -634,7 +634,7 @@ function observedSubagentOptionalFields(
  * Assemble the itemized ledger row for one recorded activity. Optional fields
  * attach only when meaningful: the cache-read slice so the ledger can show
  * fresh vs. cached (a Claude turn is mostly cache-read; the "in" total alone
- * overstates fresh send by ~10x — fresh derives client-side as tokensIn −
+ * overstates fresh send by ~10x - fresh derives client-side as tokensIn −
  * cached), and the sub-agent spawn-tree identity fields.
  */
 function buildUsageLedgerEvent(input: {
@@ -696,7 +696,7 @@ interface BackgroundShellTaskEntry {
 // held here (never sent to clients) and used verbatim when the user starts the
 // task. Resolved (started/dismissed) entries are retained so `dismiss_task` and
 // the start RPC stay idempotent, but are filtered out of the emitted list so the
-// chip disappears on resolution — same "terminal entries leave the wire" rule as
+// chip disappears on resolution - same "terminal entries leave the wire" rule as
 // backgroundShellTasks.
 interface SuggestedTaskEntry {
   id: string;
@@ -730,7 +730,7 @@ export interface DismissSuggestedTaskResult {
 /**
  * Merge a background_shell_task_updated event onto the existing registry
  * entry (or create one). Split out of onBackgroundShellTaskUpdated to keep
- * that method's cyclomatic complexity down — the provider only ever sends
+ * that method's cyclomatic complexity down - the provider only ever sends
  * fresher values, so a new field wins when present, otherwise the existing
  * value carries forward.
  */
@@ -770,7 +770,7 @@ type ProjectionStreamEvent = Extract<
 >;
 
 // Narrows to the subagent/background-task projection events dispatchStreamEventByType
-// routes to dispatchProjectionStreamEvent instead of its main switch — kept as a
+// routes to dispatchProjectionStreamEvent instead of its main switch - kept as a
 // standalone predicate (own complexity budget) rather than an inline `||` chain.
 function isProjectionStreamEvent(event: AgentStreamEvent): event is ProjectionStreamEvent {
   return (
@@ -780,7 +780,7 @@ function isProjectionStreamEvent(event: AgentStreamEvent): event is ProjectionSt
   );
 }
 
-/** Sum of a single turn's spend — undefined when the provider reported nothing. */
+/** Sum of a single turn's spend - undefined when the provider reported nothing. */
 function sumTurnUsageTokens(usage: AgentUsage | undefined): number | undefined {
   if (!usage) {
     return undefined;
@@ -794,7 +794,7 @@ function sumTurnUsageTokens(usage: AgentUsage | undefined): number | undefined {
 }
 
 /**
- * Roll a completed turn's usage into the agent's lifetime token total — the
+ * Roll a completed turn's usage into the agent's lifetime token total - the
  * same rollup native agents (any provider, any spawn path) and observed
  * subagents (resolveObservedSubagentDerivedState above) both feed into the
  * identical wire field, so the subagent track shows every row the same way.
@@ -802,8 +802,8 @@ function sumTurnUsageTokens(usage: AgentUsage | undefined): number | undefined {
  * Plain addition, with no per-provider branch: `usage` here is always THIS
  * TURN's spend because `recordTurnUsage` runs a cumulative reporter (Pi's whole
  * stat block, OpenCode's cost) through `toTurnSpend` first. Normalizing once at
- * the boundary is what keeps every downstream sink — this total, the activity
- * counters, the itemized ledger — from having to know which providers report a
+ * the boundary is what keeps every downstream sink - this total, the activity
+ * counters, the itemized ledger - from having to know which providers report a
  * running total. See turn-usage.ts.
  */
 function accumulateAgentTokens(
@@ -900,7 +900,7 @@ interface ManagedAgentBase {
   /**
    * Steering messages parked for delivery as this agent's next turn
    * (`delivery: "queue"`). FIFO; drained in `finalizeForegroundTurn` before the
-   * agent is allowed to go idle. Ephemeral by design — a queued nudge is about
+   * agent is allowed to go idle. Ephemeral by design - a queued nudge is about
    * the run in progress, so it does not survive a daemon restart.
    */
   steerQueue: SteerQueueEntry[];
@@ -915,7 +915,7 @@ interface ManagedAgentBase {
   /**
    * Set when a cancel (the composer's stop button, ESC, `cancel_agent`) lands
    * while messages are queued. Stop means stop, so the cancelled turn's
-   * finalize must not drain the queue into a fresh turn — but the entries
+   * finalize must not drain the queue into a fresh turn - but the entries
    * survive, so the Queue track still shows them and the user can edit or send
    * them when ready. Cleared the moment the next run starts, after which the
    * queue drains normally again.
@@ -932,7 +932,7 @@ interface ManagedAgentBase {
    * how it was spawned (create_agent, personality/team spawn, schedule run,
    * or Run orchestration) or which provider runs it. See
    * `accumulateAgentTokens` for the per-provider rollup rule. Ephemeral like
-   * `lastUsage` — not persisted, resets on daemon restart.
+   * `lastUsage` - not persisted, resets on daemon restart.
    */
   cumulativeTokens?: number;
   /**
@@ -955,7 +955,7 @@ interface ManagedAgentBase {
    * Sub-agents-track liveness for a NATIVE child agent (create_agent and the
    * other spawn paths): cumulative tool invocations and the tool it is running
    * or ran last, both derived from its own timeline because there is no provider
-   * task report to read (observed rows get theirs from the provider — see
+   * task report to read (observed rows get theirs from the provider - see
    * ObservedSubagentUpdate). Only maintained for agents that are somebody's
    * child, so main chats pay nothing. Ephemeral like `cumulativeTokens`.
    * See recordNativeSubagentToolActivity and docs/chat-lifecycle.md.
@@ -974,7 +974,7 @@ interface ManagedAgentBase {
   unsubscribeSession: (() => void) | null;
   /**
    * True when this agent was created for an unattended run (schedule/loop/
-   * artifact refresh, unattended-parent spawn — `createAgent(..., unattended:
+   * artifact refresh, unattended-parent spawn - `createAgent(..., unattended:
    * true)`). Creation-time signal, NOT derived from the permission mode. The
    * guardrail deny-responder (onStreamPermissionRequested) uses it to auto-deny
    * permission escalations instead of stalling on a prompt nobody can answer.
@@ -995,7 +995,7 @@ interface ManagedAgentBase {
   internal?: boolean;
   /**
    * Observable internal agents still forward their live `agent_stream` events
-   * to global subscribers (clients) so a user can watch them — e.g. artifact
+   * to global subscribers (clients) so a user can watch them - e.g. artifact
    * generation. `agent_state` stays filtered, so they don't appear in the
    * sidebar. See AgentSessionConfig.observable.
    */
@@ -1323,7 +1323,7 @@ export class AgentManager {
       provider: AgentProvider;
       createdAt: string;
       // Frozen row label. Set once from the first named update (task_started)
-      // and never mutated by later progress summaries — a row is a tab label,
+      // and never mutated by later progress summaries - a row is a tab label,
       // not the agent's latest output. See docs/agent-lifecycle.md (Item 4).
       title: string;
       titleFrozen: boolean;
@@ -1356,7 +1356,7 @@ export class AgentManager {
       // counts work an interrupt actually stops. See docs/chat-lifecycle.md.
       backgrounded?: boolean;
       // Watermark of what has already been written to the itemized ledger. Each
-      // time the subagent settles, only the DELTA above this is recorded — so a
+      // time the subagent settles, only the DELTA above this is recorded - so a
       // duplicate terminal update writes nothing, while a genuine second stream
       // (a continued/steered subagent, or a late frame raising its totals) gets
       // its own row instead of being dropped. One row per stream, mirroring the
@@ -1371,7 +1371,7 @@ export class AgentManager {
     }
   >();
   // Background shell tasks (Claude Bash tool run_in_background): id -> current
-  // state for the Background Tasks track. Not AI subagents — plain shell
+  // state for the Background Tasks track. Not AI subagents - plain shell
   // processes, so unlike observedSubagents there's no Agent-shaped payload;
   // the daemon pushes the full per-parent list on every change.
   private readonly backgroundShellTasks = new Map<string, BackgroundShellTaskEntry>();
@@ -1537,7 +1537,7 @@ export class AgentManager {
   /**
    * Capability token the daemon's own MCP clients must present to the Agent MCP
    * endpoint when a daemon password is configured. Read by the per-client
-   * session to authenticate its own MCP connection. Stays in the daemon — never
+   * session to authenticate its own MCP connection. Stays in the daemon - never
    * sent to remote clients.
    */
   getMcpAuthToken(): string | null {
@@ -1552,7 +1552,7 @@ export class AgentManager {
    * Hot-reload the daemon-wide agent behavior toggles. New/resumed agents pick
    * up the change on their next launch (values are injected via
    * buildLaunchContext); the notify-on-finish default is read live per tool
-   * call. Accepts the raw partial config shape — absent/undefined fields resolve
+   * call. Accepts the raw partial config shape - absent/undefined fields resolve
    * to "on".
    */
   setAgentBehaviors(
@@ -1862,7 +1862,7 @@ export class AgentManager {
    * segments. Real daemon-side accounting, provider-neutral (see
    * context-composition.ts). Skipped when the provider already supplied a
    * composition directly, or the timeline isn't available yet. This scans the
-   * whole timeline — call it at turn boundaries, not on every streaming delta
+   * whole timeline - call it at turn boundaries, not on every streaming delta
    * (see `carryContextComposition`).
    */
   private withContextComposition(
@@ -1898,7 +1898,7 @@ export class AgentManager {
   }
 
   /**
-   * Refresh the agent's context split from the PROVIDER's own accounting — the
+   * Refresh the agent's context split from the PROVIDER's own accounting - the
    * same `getContextUsage()` the `agent.context.get_usage` RPC serves, so the
    * context meter and the visualizer never show two different answers for one
    * agent. Providers that don't implement it keep the coarse timeline estimate
@@ -2010,7 +2010,7 @@ export class AgentManager {
   /**
    * Load a retained transcript's rows into the in-memory timeline store so a
    * subsequent fetchTimeline serves them (idempotent). Returns true when the id
-   * is a retained transcript, false otherwise — the caller falls back to the
+   * is a retained transcript, false otherwise - the caller falls back to the
    * normal live/persisted agent path.
    */
   async ensureRetainedTranscriptLoaded(agentId: string): Promise<boolean> {
@@ -2042,7 +2042,7 @@ export class AgentManager {
   /**
    * Observed subagents are ephemeral registry projections with no ManagedAgent,
    * so nothing runs the normal agent-registration path that seeds the timeline
-   * store — without this, every observed timeline append/fetch throws
+   * store - without this, every observed timeline append/fetch throws
    * "Unknown agent" and the subagent's transcript is silently lost (no live
    * stream, no backfill). See projects/observed-subagents/observed-subagents.md.
    */
@@ -2063,7 +2063,7 @@ export class AgentManager {
 
   /**
    * Last emitted snapshots for every observed subagent in the registry.
-   * Observed rows otherwise reach clients only as live pushes — without this
+   * Observed rows otherwise reach clients only as live pushes - without this
    * feeding the agent-list fetch, a client that (re)connects mid-run has no
    * way to learn about running subagents until the provider's next task event,
    * so a page refresh left the subagents track and the visualizer blind to
@@ -2395,7 +2395,7 @@ export class AgentManager {
   // Hot-reload an active agent session with config overrides. By default the
   // in-memory timeline is preserved (used for voice-mode toggles and similar
   // config swaps). When `rehydrateFromDisk` is set, the timeline is wiped so a
-  // new epoch is minted and provider history is re-streamed — this is what the
+  // new epoch is minted and provider history is re-streamed - this is what the
   // user-facing "Reload agent" action wants when the on-disk session was
   // mutated outside Otto.
   reloadAgentSession(
@@ -2767,7 +2767,7 @@ export class AgentManager {
    * True while an explicit config mutation is in flight for this agent.
    *
    * Providers echo their own setters back as drift events, and those echoes can
-   * land after a later explicit mutation has already been applied — setModel
+   * land after a later explicit mutation has already been applied - setModel
    * emitting a thinking_option_changed carrying the pre-mutation value, for
    * instance. Config only records drift the provider raised on its own; an echo
    * would roll the newer explicit value back.
@@ -2821,7 +2821,7 @@ export class AgentManager {
 
   /**
    * Records provider-side config drift on the agent's stored config, which is
-   * what gets persisted and replayed on resume — drift that only reached
+   * what gets persisted and replayed on resume - drift that only reached
    * runtimeInfo was silently reverted by the next restart. Skipped entirely
    * while an explicit mutation is in flight, so a provider's echo of its own
    * setter cannot roll back the newer value.
@@ -3012,7 +3012,7 @@ export class AgentManager {
   /**
    * Live-switch a running agent's personality (or clear it with null). The
    * prompt half goes through the session's applyPersonality (providers without
-   * it reject — they cannot change a system prompt mid-conversation); the brain
+   * it reject - they cannot change a system prompt mid-conversation); the brain
    * half (model/mode/effort) rides the existing setters. Identity (name/spinner)
    * follows automatically: agent_state projects it from config.personalitySnapshot.
    * The caller resolves the roster personality against the agent's cwd and
@@ -3048,7 +3048,7 @@ export class AgentManager {
     // the caller set none at spawn (mirrors applyPersonalityIdentityToConfig);
     // a caller-authored prompt survives the switch. The born team is frozen:
     // the prompt recomposes against the agent's teamSnapshot, never the
-    // currently-active team — switching to an off-team personality keeps the
+    // currently-active team - switching to an off-team personality keeps the
     // team prompt, and clearing the personality keeps team + brain, dropping
     // only the personality prompt.
     const teamSnapshot = agent.config.teamSnapshot;
@@ -3070,7 +3070,7 @@ export class AgentManager {
       : agent.config.systemPrompt;
 
     // The incoming personality brings its own lessons, so a live switch has to
-    // re-resolve the brief exactly as a spawn would — otherwise switching to a
+    // re-resolve the brief exactly as a spawn would - otherwise switching to a
     // personality mid-chat gives you its prompt and its brain but not what it
     // has learned. The augmented prompt goes to the provider; `nextSystemPrompt`
     // (memory-free) is what persists, keeping the ownership check above valid.
@@ -3091,7 +3091,7 @@ export class AgentManager {
     };
     const notices: (AgentProviderNotice | null)[] = [];
 
-    // Brain half first — only when binding a personality; clearing keeps the
+    // Brain half first - only when binding a personality; clearing keeps the
     // brain. Ordering matters for Claude: applyPersonality flags a query
     // restart, and the brain's setModel/setMode call ensureQuery, which would
     // then tear down + respawn the CLI synchronously inside this RPC. Brain
@@ -3124,7 +3124,7 @@ export class AgentManager {
     const notices: (AgentProviderNotice | null)[] = [];
     // Ordering carries two invariants:
     // 1. setMode is the fallible step (Claude rejects e.g. "auto" on
-    //    Bedrock/Vertex), so it runs FIRST — a mode failure must not leave a
+    //    Bedrock/Vertex), so it runs FIRST - a mode failure must not leave a
     //    half-applied switch (new model + old identity) behind.
     // 2. Mode and model ride the live query (Claude: ensureQuery + SDK
     //    setters) and run before setThinkingOption, which flags a query
@@ -3147,7 +3147,7 @@ export class AgentManager {
     }
     // A personality that declares no mode leaves the agent in whatever mode it
     // was already in. If that mode picks the model itself, the personality's
-    // model would silently lose to it, exactly as an explicit pick would — so
+    // model would silently lose to it, exactly as an explicit pick would - so
     // it leaves the mode on the same terms. A personality that DOES declare a
     // mode has already said what it wants, and that stands even when the mode
     // it names is the model-picking one.
@@ -3155,7 +3155,7 @@ export class AgentManager {
       notices.push(await this.exitModelSelectingMode(agent, session));
     }
     if (session.setThinkingOption) {
-      // Always set — a snapshot without an effort (degraded or unspecified)
+      // Always set - a snapshot without an effort (degraded or unspecified)
       // clears the previous personality's thinking option back to the model
       // default instead of silently carrying it onto the new model.
       notices.push((await session.setThinkingOption(snapshot.thinkingOptionId ?? null)) ?? null);
@@ -3493,7 +3493,7 @@ export class AgentManager {
   }
 
   /**
-   * Try to run a prompt out-of-band — i.e. without allocating a foreground turn
+   * Try to run a prompt out-of-band - i.e. without allocating a foreground turn
    * and without canceling any active turn. Returns true when the session
    * accepted the prompt as a side-effect command (e.g. /goal pause). Events
    * emitted by the handler flow through dispatchStream so they persist and
@@ -3568,7 +3568,7 @@ export class AgentManager {
         item: limitAgentTimelineItemContent(item),
         provider: agent.provider,
       },
-      // No `seq` — this row was never committed, and that absence is how the
+      // No `seq` - this row was never committed, and that absence is how the
       // client tells a provisional apart from a persisted row. The epoch still
       // ships: without it a reconnecting client cannot tell whether the
       // provisional it is holding predates a rewind, so it kept replaying stale
@@ -3706,7 +3706,7 @@ export class AgentManager {
     // message enqueued while the handoff is in flight sees a busy agent and is
     // buffered instead of racing into a second concurrent turn. A terminal
     // error (or a replacement already holding the slot) skips the drain: a
-    // queued turn must never run unprompted into a broken session — the queue
+    // queued turn must never run unprompted into a broken session - the queue
     // is held and surfaced so the supervisor decides. A cancel holds it for the
     // same reason: the user pressed stop, so nothing new starts on its own,
     // and the queue stays put for them to send when ready.
@@ -3762,7 +3762,7 @@ export class AgentManager {
    * Park a one-shot todo reconcile turn on the queue when a turn is about to
    * leave the agent idle with a stale todo list (rows still open). The caller
    * runs this before deciding the drain, so the parked entry is picked up as the
-   * next turn — the agent finishes the list instead of leaving a half-checked
+   * next turn - the agent finishes the list instead of leaving a half-checked
    * one for the user to dismiss. Provider-agnostic: reads Otto's own `todo`
    * timeline item, which every provider's native todo tool feeds.
    *
@@ -3812,7 +3812,7 @@ export class AgentManager {
    * Attach the passive stale-todo reminder to an outgoing turn's prompt when the
    * agent has an open todo list. Opt-in via agentBehaviors.todoNudge; never for
    * internal agents; never for system-injected turns (chat mentions, schedule
-   * fires, the idle reconcile pass carry their own envelope). Provider-agnostic —
+   * fires, the idle reconcile pass carry their own envelope). Provider-agnostic -
    * runs at the one seam every provider's startTurn flows through.
    */
   private maybeAppendTodoNudge(
@@ -3836,7 +3836,7 @@ export class AgentManager {
    * Deliver a drained batch as the agent's next turn.
    *
    * Async because the just-finalized turn's stream generator settles its
-   * pending run in a `finally` that has not run yet — `streamAgent` rejects
+   * pending run in a `finally` that has not run yet - `streamAgent` rejects
    * with "already has an active run" until it does. `pendingSteerDrain` holds
    * the agent visibly `running` across that gap.
    */
@@ -3851,14 +3851,14 @@ export class AgentManager {
       }
 
       // A closed agent is already out of `this.agents`, and prepareAgentForClosure
-      // empties its queue — nothing left to deliver.
+      // empties its queue - nothing left to deliver.
       const agent = this.agents.get(agentId);
       if (!agent || !agent.pendingSteerDrain) {
         return;
       }
       // Something else claimed the turn slot while we waited (an interrupting
       // send, a rewind). Put the batch back at the head rather than starting a
-      // second concurrent turn — the next finalize drains it.
+      // second concurrent turn - the next finalize drains it.
       if (agent.activeForegroundTurnId || this.foregroundRuns.hasPendingRun(agentId)) {
         agent.pendingSteerDrain = false;
         agent.steerQueue = [...entries, ...agent.steerQueue];
@@ -3892,7 +3892,7 @@ export class AgentManager {
    * Park a prompt for delivery as the agent's next turn instead of interrupting
    * the one in flight (`delivery: "queue"`).
    *
-   * Returns `{ queued: false }` when the agent is idle right now — the caller
+   * Returns `{ queued: false }` when the agent is idle right now - the caller
    * dispatches immediately, because "queue" means "don't interrupt", not "wait".
    * The busy check and the push happen in one synchronous block, so the answer
    * cannot go stale between them.
@@ -3984,7 +3984,7 @@ export class AgentManager {
    * everything" includes the work lined up behind it. In practice the messages
    * you queued are the ones you still want: stopping the run is how you make
    * room for them, so wiping them destroys work the user typed. So stop now
-   * means exactly what it says — nothing new starts by itself — while the
+   * means exactly what it says - nothing new starts by itself - while the
    * entries stay in the Queue track, ready to edit or send.
    *
    * Returns how many entries were held (0 when there was no queue), purely for
@@ -4000,7 +4000,7 @@ export class AgentManager {
   }
 
   /**
-   * Drop every queued message — the explicit "clear the queue" verb behind
+   * Drop every queued message - the explicit "clear the queue" verb behind
    * `agent.queue.clear`, and the way a closing agent sheds its queue. Cancel
    * does NOT come through here; see `holdSteerQueue`.
    */
@@ -4212,7 +4212,7 @@ export class AgentManager {
       this.touchUpdatedAt(agent);
       this.emitState(agent);
       // The refreshed state is out, so the ordering obligation this buffer
-      // exists to enforce is discharged — drop the marker HERE rather than in
+      // exists to enforce is discharged - drop the marker HERE rather than in
       // `finally`. Holding it across `persistSnapshot` kept buffering
       // resolutions behind a disk write, and a provider that answers faster
       // than the disk (any local one) finished its whole turn in that window,
@@ -4291,7 +4291,7 @@ export class AgentManager {
     } else if (isAutonomousRunning) {
       // An autonomous run has no foreground turn and no pending run to wait on,
       // so cancel used to return the moment the provider acknowledged the
-      // interrupt — before the agent had actually stopped. Wait for it to leave
+      // interrupt - before the agent had actually stopped. Wait for it to leave
       // the running lifecycle so a resolved cancel means stopped.
       await this.waitForAgentToLeaveRunning(agentId);
     }
@@ -4765,7 +4765,7 @@ export class AgentManager {
   }
 
   /**
-   * Wait for an agent AND its whole descendant tree to fully settle — not just
+   * Wait for an agent AND its whole descendant tree to fully settle - not just
    * the agent's first idle. A worker that spawns background sub-agents goes idle
    * with an interim message ("waiting on my helpers…"); `setupFinishNotification`
    * then re-invokes it when a child finishes, so it gets more turns. `awaitAgent`
@@ -4845,7 +4845,7 @@ export class AgentManager {
   }
 
   // True if the agent or any descendant (by parent-id label, transitively) is
-  // busy, mid-foreground-turn, or has a pending run — i.e. more work is coming.
+  // busy, mid-foreground-turn, or has a pending run - i.e. more work is coming.
   private isAgentSubtreeBusy(rootId: string): boolean {
     for (const id of this.collectAgentSubtree(rootId)) {
       const agent = this.agents.get(id);
@@ -5382,8 +5382,8 @@ export class AgentManager {
           event.timestamp ? { timestamp: event.timestamp } : undefined,
         );
         // Broadcast here too, not only on the forced path. A caller that asked
-        // for one and happened to take this branch — a second loader joining an
-        // already-primed agent, say — otherwise got a silent hydration.
+        // for one and happened to take this branch - a second loader joining an
+        // already-primed agent, say - otherwise got a silent hydration.
         if (shouldBroadcastHydration(options?.broadcast)) {
           this.dispatchStream(agent.id, event, {
             seq: row.seq,
@@ -5663,7 +5663,7 @@ export class AgentManager {
   }
 
   // Subagent/background-task projections (no ManagedAgent runtime of their
-  // own) share no state with the main event switch above — split out to keep
+  // own) share no state with the main event switch above - split out to keep
   // dispatchStreamEventByType's cyclomatic complexity down.
   private dispatchProjectionStreamEvent(
     agent: ActiveManagedAgent,
@@ -5732,7 +5732,7 @@ export class AgentManager {
   /**
    * Fold a native child agent's own tool call into its track-row liveness
    * counters. Observed rows get these from the provider's task report; a native
-   * (create_agent) child has no such report, so its transcript IS the source —
+   * (create_agent) child has no such report, so its transcript IS the source -
    * the one signal every provider produces. Returns true only when the readout
    * actually changed, so a tool call's running → completed transitions don't
    * re-emit and the row never strobes.
@@ -5772,7 +5772,7 @@ export class AgentManager {
    * `mainChat`. Compaction spend is broken out within recordUsageActivity. (WP-G)
    *
    * Everything here books THIS TURN's spend, which for a provider that reports
-   * a running session total (Pi, and OpenCode's cost) is not what it reported —
+   * a running session total (Pi, and OpenCode's cost) is not what it reported -
    * so the usage is normalized once, up front, and every sink below it is plain
    * addition. Without that step turn 3 re-books turns 1 and 2 and the error
    * grows with the chat. See turn-usage.ts.
@@ -5801,7 +5801,7 @@ export class AgentManager {
       ...(costOverrideMicroUsd !== undefined ? { costOverrideMicroUsd } : {}),
     });
     // Accumulate the cost that was ACTUALLY BOOKED (the residual for a parent),
-    // never the raw whole-tree figure — that is what makes a chat's total equal
+    // never the raw whole-tree figure - that is what makes a chat's total equal
     // the sum of its own ledger rows instead of double-counting its sub-agents.
     agent.cumulativeUsage = accumulateLifetimeUsage(agent.cumulativeUsage, usage, costMicroUsd);
   }
@@ -5810,7 +5810,7 @@ export class AgentManager {
    * A parent chat's real own-cost for this turn: the whole-tree `total_cost_usd`
    * minus the priced cost of the sub-agents that settled under it since the last
    * turn (drained here). Returns undefined when nothing was accumulated, so the
-   * normal `usage.totalCostUsd` path is used unchanged. Clamped at 0 — a negative
+   * normal `usage.totalCostUsd` path is used unchanged. Clamped at 0 - a negative
    * residual would mean the sub-agent price table over-charged, which the
    * verify-against-modelUsage diagnostic surfaces separately.
    */
@@ -5887,7 +5887,7 @@ export class AgentManager {
     const compactionIn = usage.compactionInputTokens ?? 0;
     const compactionOut = usage.compactionOutputTokens ?? 0;
 
-    // Grand headline totals — full spend (compaction included).
+    // Grand headline totals - full spend (compaction included).
     bump("tokensSent", inputTokens);
     bump("tokensReceived", outputTokens);
     bump("costMicroUsd", costMicroUsd);
@@ -5908,7 +5908,7 @@ export class AgentManager {
     bump(fields.cost, costMicroUsd);
 
     // Second sink: the itemized ledger row for this same activity (usage-ledger).
-    // Skip zero-usage measurements — an empty row is noise, not accounting.
+    // Skip zero-usage measurements - an empty row is noise, not accounting.
     if (this.onUsageEvent && (inputTokens > 0 || outputTokens > 0)) {
       this.onUsageEvent(
         buildUsageLedgerEvent({
@@ -5951,7 +5951,7 @@ export class AgentManager {
       agent.lastUsage = this.withContextComposition(agent.id, event.usage);
     }
     // Then upgrade the estimate to the provider's own split where it can report
-    // one (async, non-blocking — see `refreshContextCategories`).
+    // one (async, non-blocking - see `refreshContextCategories`).
     this.refreshContextCategories(agent);
     this.recordTurnUsage(agent, event.usage, event.provider);
     agent.lastError = undefined;
@@ -6076,8 +6076,8 @@ export class AgentManager {
     // Guardrail: an unattended run (schedule/loop/artifact) has no client
     // watching to answer approval prompts. Claude's auto-mode classifier (and
     // any other provider that escalates) would otherwise stall the run here
-    // forever. Answer immediately with DENY by policy — no attention broadcast,
-    // no notification — and let the model adapt. Keyed on the creation-time
+    // forever. Answer immediately with DENY by policy - no attention broadcast,
+    // no notification - and let the model adapt. Keyed on the creation-time
     // `unattended` flag, never the permission mode (an attended user in auto
     // mode still wants the prompt). This is Phase 4 parity for the prompt path.
     // See docs/safe-unattended.md (Phase 2).
@@ -6168,7 +6168,7 @@ export class AgentManager {
 
   private emitObservedSubagentState(input: {
     id: string;
-    /** Owning agent id — resolves to the tree parent below when the row was
+    /** Owning agent id - resolves to the tree parent below when the row was
      * spawned by another observed subagent (nested fan-out). */
     parentAgentId: string;
     parentKey?: string;
@@ -6232,7 +6232,7 @@ export class AgentManager {
     // A row nested under a backgrounded run survives whatever its ancestor
     // survives, so the flag flows down the tree. The parent row is always
     // registered before its children (it is announced by the tool call that
-    // spawns them), so one hop is enough — the parent already carries its own
+    // spawns them), so one hop is enough - the parent already carries its own
     // inherited value.
     const parentBackgrounded =
       parentKey !== undefined &&
@@ -6296,9 +6296,9 @@ export class AgentManager {
   /**
    * Write an observed subagent's real usage into the itemized ledger, once, when
    * it first settles. Returns true iff a row was written (so the caller can mark
-   * the entry recorded). No split ⇒ no row — an honest blank, never a fabricated
+   * the entry recorded). No split ⇒ no row - an honest blank, never a fabricated
    * one. The row is attributed to the OWNING chat (`agentId`) so it traces back
-   * to — and groups under — the parent chat in the Log; `subtype` carries the
+   * to - and groups under - the parent chat in the Log; `subtype` carries the
    * subagent's name and `model` its own (possibly cheaper) model for pricing.
    * Cost is left to recordUsageActivity (0 until per-subagent pricing lands).
    */
@@ -6328,7 +6328,7 @@ export class AgentManager {
     }
     const rounds = Math.max(0, (usageRounds ?? 0) - (recorded?.rounds ?? 0));
     // Spawn-tree identity: when the sub-agent was first observed (it belongs to
-    // the turn that SPAWNED it, not the turn it settled in — async sub-agents
+    // the turn that SPAWNED it, not the turn it settled in - async sub-agents
     // routinely settle turns later) and who spawned it.
     const startedAt = Date.parse(params.createdAt);
     this.recordUsageActivity(delta, {
@@ -6365,7 +6365,7 @@ export class AgentManager {
     if (!this.observedSubagents.has(id)) {
       const createdAt = new Date().toISOString();
       // Timeline arrived before any lifecycle update, so there's no name source
-      // yet — use a provisional label and leave it unfrozen so the first real
+      // yet - use a provisional label and leave it unfrozen so the first real
       // task_started can set the stable name.
       const title = deriveObservedSubagentTitle({});
       this.observedSubagents.set(id, {
@@ -6397,7 +6397,7 @@ export class AgentManager {
   async stopObservedSubagent(observedId: string): Promise<void> {
     const entry = this.observedSubagents.get(observedId);
     if (!entry) {
-      // Not a synthetic task-fan-out subagent — check for a real internal
+      // Not a synthetic task-fan-out subagent - check for a real internal
       // agent (e.g. artifact generation) rendered read-only via `attend:
       // "observed"`, and stop it the normal way instead.
       const agent = this.agents.get(observedId);
@@ -6421,7 +6421,7 @@ export class AgentManager {
   /**
    * Archive an observed subagent. These are ephemeral registry projections with
    * no ManagedAgent and no stored record, so the normal archive path
-   * (`archiveAgentCommand`) can't resolve them — this is its observed
+   * (`archiveAgentCommand`) can't resolve them - this is its observed
    * counterpart, mirroring how fetch (`getObservedSubagentPayload`) and stop
    * (`stopObservedSubagent`) already special-case the registry. A still-live
    * subagent is stopped best-effort first; the entry is then retired in place
@@ -6444,7 +6444,7 @@ export class AgentManager {
         await this.stopObservedSubagent(observedId);
       } catch (error) {
         // Best-effort: the archive proceeds even if the provider task can't be
-        // reached (parent gone, no task id) — the projection retires either way.
+        // reached (parent gone, no task id) - the projection retires either way.
         this.logger.debug({ err: error, observedId }, "agent.manager.observed.archive.stop_failed");
       }
     }
@@ -6549,7 +6549,7 @@ export class AgentManager {
    * dismiss and bulk "Clear all completed" both call this). Still-live tasks
    * are stopped best-effort first; entries are retired in place (archivedAt
    * stamped, never deleted) so a late provider update can't resurrect a
-   * cleared row — same invariant as archiveObservedSubagent.
+   * cleared row - same invariant as archiveObservedSubagent.
    */
   async clearBackgroundShellTasks(ids: readonly string[]): Promise<void> {
     const parentIds = new Set<string>();
@@ -6637,8 +6637,8 @@ export class AgentManager {
   }
 
   /**
-   * Atomically claim a suggested task for starting. Returns false — leaving no
-   * claim — when the entry is missing, is not pending, or is already being
+   * Atomically claim a suggested task for starting. Returns false - leaving no
+   * claim - when the entry is missing, is not pending, or is already being
    * started; otherwise records the claim and returns true. Synchronous so two
    * concurrent start.requests can't both pass the pending gate before the
    * (awaited) agent/worktree creation flips the state. The caller must pair a
@@ -6661,7 +6661,7 @@ export class AgentManager {
   /**
    * Dismiss a suggested task. Idempotent: a task that was already started or
    * dismissed is reported via `state` with `dismissed: false`, and an unknown
-   * task returns `found: false` — the caller decides how to surface each.
+   * task returns `found: false` - the caller decides how to surface each.
    */
   dismissSuggestedTask(taskId: string, reason?: string): DismissSuggestedTaskResult {
     const entry = this.suggestedTasks.get(taskId);
@@ -6724,7 +6724,7 @@ export class AgentManager {
     });
 
     if (item.type === "tool_call") {
-      // The one place BOTH timeline delivery paths meet — the direct stream
+      // The one place BOTH timeline delivery paths meet - the direct stream
       // event and the coalescer's flush. The liveness hook lives here so a
       // coalesced tool call still moves the row's readout. (The coalescer is
       // also what keeps the row from strobing: running tool calls arrive
@@ -6747,7 +6747,7 @@ export class AgentManager {
     return event;
   }
 
-  /** Fun-stats counters derived from timeline items — see activity-stats. */
+  /** Fun-stats counters derived from timeline items - see activity-stats. */
   private recordTimelineActivity(item: AgentTimelineItem): void {
     switch (item.type) {
       case "user_message":
@@ -6760,7 +6760,7 @@ export class AgentManager {
         this.onActivity?.("thoughts");
         break;
       case "tool_call":
-        // Count once per call, at the moment it starts — not on every
+        // Count once per call, at the moment it starts - not on every
         // running -> completed/failed/canceled status update.
         if (item.status === "running") {
           this.onActivity?.("toolsCalled");
@@ -7194,7 +7194,7 @@ export class AgentManager {
       });
       return (catalog.models.find((model) => model.isDefault) ?? catalog.models[0])?.id;
     } catch {
-      // Provider may not support model listing — leave model undefined.
+      // Provider may not support model listing - leave model undefined.
       return undefined;
     }
   }
@@ -7225,7 +7225,7 @@ export class AgentManager {
 
   /**
    * Append the personality's accrued lessons to the LAUNCH config's system
-   * prompt. Deliberately runtime-only — never written to `storedConfig` — for
+   * prompt. Deliberately runtime-only - never written to `storedConfig` - for
    * two reasons that both matter:
    *
    * 1. Memory is re-read on every resume, so a lesson recorded yesterday is
@@ -7251,7 +7251,7 @@ export class AgentManager {
   /**
    * Stack a personality's accrued lessons under a system prompt, or hand the
    * prompt back untouched. Shared by the spawn path and the live switch so both
-   * compose memory identically — a personality that behaved differently
+   * compose memory identically - a personality that behaved differently
    * depending on how you attached it would be two personalities.
    */
   private async withPersonalityMemory(
@@ -7280,7 +7280,7 @@ export class AgentManager {
     delete next.daemonAppendSystemPrompt;
 
     // A personality with respectGlobalAppendPrompt === false owns its whole
-    // system prompt — the daemon-global append must not stack on top of it.
+    // system prompt - the daemon-global append must not stack on top of it.
     const suppressGlobalAppend = config.personalitySnapshot?.respectGlobalAppendPrompt === false;
 
     return daemonAppendSystemPrompt && !suppressGlobalAppend
@@ -7302,8 +7302,8 @@ export class AgentManager {
       env: {
         ...env,
         OTTO_AGENT_ID: agentId,
-        // Alongside the id so anything the agent spawns — a hook, a workspace
-        // script, a nested tool — can find the workspace it belongs to without
+        // Alongside the id so anything the agent spawns - a hook, a workspace
+        // script, a nested tool - can find the workspace it belongs to without
         // relying on having inherited the process cwd.
         OTTO_AGENT_CWD: cwd,
       },
@@ -7431,7 +7431,7 @@ export function commandMayHaveChangedExternalState(command: string): boolean {
   return (
     // GitHub PR operations (merge, close, create, edit, comment, review)
     /\bgh\s+pr\s+(merge|close|create|edit|comment|review)\b/.test(normalized) ||
-    // Pushes to remote — local refs unchanged, but remote state (PR checks,
+    // Pushes to remote - local refs unchanged, but remote state (PR checks,
     // mergeable status) may shift immediately after.
     /\bgit\s+push\b/.test(normalized) ||
     // Fetches update refs/remotes/ which our watchers do not watch, so

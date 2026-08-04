@@ -18,7 +18,7 @@ export function formatFileSize({ size }: { size: number }): string {
  * UTF-8 byte length of the editor's baseline text, as it exists on disk.
  *
  * The buffer is LF-normalized on load, so a CRLF file is one byte per line
- * short of its real size — add those back rather than reporting a number that
+ * short of its real size - add those back rather than reporting a number that
  * disagrees with the file manager.
  */
 export function utf8ByteSize(content: string, eol: "lf" | "crlf"): number {

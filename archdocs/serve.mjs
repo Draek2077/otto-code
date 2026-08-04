@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Tiny static server for the built architecture docs (archdocs/dist).
-// No dependencies — local browsing only.
+// No dependencies - local browsing only.
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { dirname, extname, join, normalize } from "node:path";

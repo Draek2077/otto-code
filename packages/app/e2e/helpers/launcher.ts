@@ -16,7 +16,7 @@ export async function gotoWorkspace(page: Page, workspaceId: string): Promise<vo
 // layout-reconcile effect, which is gated on route focus + store hydration
 // (see workspace-screen.tsx). Under CI load that effect can miss its first
 // window on a freshly seeded workspace, leaving `workspaceLayout` null so the
-// SplitContainer — and with it workspace-tabs-row — never mounts, and the
+// SplitContainer - and with it workspace-tabs-row - never mounts, and the
 // 30s wait times out. Reloading re-runs route-focus + reconcile and recovers
 // deterministically. In-app navigation (sidebar select) doesn't hit this, so
 // only the goto path needs the fallback.
@@ -63,7 +63,7 @@ export async function countTabsOfKind(page: Page, kind: string): Promise<number>
 
 /** Return the currently active tab's test ID (the one with aria-selected or focus styling). */
 export async function getActiveTabTestId(page: Page): Promise<string | null> {
-  // Active tab has the focused highlight — check for the aria-selected or data-active attribute
+  // Active tab has the focused highlight - check for the aria-selected or data-active attribute
   const activeTab = page
     .locator(
       '[data-testid^="workspace-tab-"]:not([data-testid^="workspace-tab-context-"])[aria-selected="true"]',
@@ -90,7 +90,7 @@ export async function pressNewTabShortcut(page: Page): Promise<void> {
 /**
  * Assert the tab bar offers new-agent creation.
  *
- * There is no inline plus button any more — the tab bar's trailing strip only shows *pinned*
+ * There is no inline plus button any more - the tab bar's trailing strip only shows *pinned*
  * tools, and the always-present control is the ▾ catalog. So "can this pane make a chat" is
  * answered by opening the catalog and finding the agent row, not by a standalone button.
  */
@@ -111,7 +111,7 @@ export async function assertNewTabMenuTriggerVisible(page: Page): Promise<void> 
 
 // ─── Tab creation actions ─────────────────────────────────────────────────
 
-/** Open the tab bar's ▾ tool-catalog menu — the entry point for every new-tab action. */
+/** Open the tab bar's ▾ tool-catalog menu - the entry point for every new-tab action. */
 async function openNewTabMenu(page: Page): Promise<void> {
   const trigger = page
     .getByTestId("workspace-new-tab-menu-trigger")

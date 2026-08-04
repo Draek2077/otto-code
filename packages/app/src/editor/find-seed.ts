@@ -16,8 +16,8 @@ const MAX_SEED_LENGTH = 100;
  * already had.
  *
  * Only a single-line, non-empty selection seeds. A selection spanning lines is
- * a *region* — what you mean by it is "search inside here", never "search for
- * this whole block" — so clobbering the last search term with it would throw
+ * a *region* - what you mean by it is "search inside here", never "search for
+ * this whole block" - so clobbering the last search term with it would throw
  * away something useful in exchange for a term that matches once, at the
  * selection itself.
  */

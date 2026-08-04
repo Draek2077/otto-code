@@ -141,6 +141,40 @@ test("maxContextThatFits shrinks as the cache type grows", () => {
   assert.ok(f16! < q8!, `f16 (${f16}) should fit less than measured q8_0 (${q8})`);
 });
 
+test("fitToBudget reports the context it was asked for, not the one it settled on", () => {
+  const calibration = { kvBytesPerToken: 38.55 * 1024, baseOverheadBytes: 0.3 * vram.GIB };
+  // Far more context than the card can hold, so the fit has to cut it down.
+  const asked = 2_000_000;
+  const fit = vram.fitToBudget({
+    model: MODEL,
+    profile: { ...PROFILE, contextSize: asked },
+    calibration,
+    totalVramBytes: RTX5090,
+  });
+
+  assert.equal(fit.adjusted, true);
+  assert.ok(fit.profile.contextSize < asked, "the profile that runs was cut down");
+  // The point of the field: once the adjustment is applied, the number the user
+  // actually configured is unrecoverable from `fit.profile`, and a benchmark
+  // that stores only the effective context claims a score at a context that was
+  // never measured.
+  assert.equal(fit.requestedContextSize, asked);
+});
+
+test("fitToBudget still reports the requested context when nothing was adjusted", () => {
+  const calibration = { kvBytesPerToken: 38.55 * 1024, baseOverheadBytes: 0.3 * vram.GIB };
+  const fit = vram.fitToBudget({
+    model: MODEL,
+    profile: PROFILE,
+    calibration,
+    totalVramBytes: RTX5090,
+  });
+
+  assert.equal(fit.adjusted, false);
+  assert.equal(fit.requestedContextSize, PROFILE.contextSize);
+  assert.equal(fit.profile.contextSize, PROFILE.contextSize);
+});
+
 test("a model too large for the card fits nothing", () => {
   const huge = { ...MODEL, sizeBytes: 60 * vram.GIB };
   const max = vram.maxContextThatFits({

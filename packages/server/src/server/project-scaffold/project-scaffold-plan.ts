@@ -29,7 +29,7 @@ export type ProjectScaffoldNameError =
 // Windows forbids these in a path component; POSIX allows most of them, but a
 // project created on one host is routinely opened from another, so the stricter
 // rule is applied everywhere rather than producing names that break on sync.
-// Spaces and hyphens are legal on both and stay allowed — only the genuinely
+// Spaces and hyphens are legal on both and stay allowed - only the genuinely
 // unusable punctuation and control characters are rejected.
 const RESERVED_PUNCTUATION = /[<>:"|?*]/;
 
@@ -88,7 +88,7 @@ export function deriveFolderNameFromRepositoryUrl(url: string): string | null {
     return null;
   }
   // Handles https://host/owner/name.git, git@host:owner/name.git, and
-  // ssh://git@host/owner/name — all end in the segment we want. Backslash is in
+  // ssh://git@host/owner/name - all end in the segment we want. Backslash is in
   // the set because git also clones from a local path, which on Windows is
   // `C:\src\name`.
   const lastSegment = trimmed.split(/[/\\:]/).pop() ?? "";
@@ -158,7 +158,7 @@ export function isProjectScaffoldGitignoreTemplateId(
   return (PROJECT_SCAFFOLD_GITIGNORE_TEMPLATE_IDS as readonly string[]).includes(value);
 }
 
-// Deliberately short starters — enough that a fresh repo doesn't commit build
+// Deliberately short starters - enough that a fresh repo doesn't commit build
 // output on its first commit, not a mirror of github/gitignore.
 const GITIGNORE_TEMPLATES: Record<ProjectScaffoldGitignoreTemplateId, string> = {
   node: ["node_modules/", "dist/", "build/", ".env", ".env.local", "*.log", ".DS_Store"].join("\n"),

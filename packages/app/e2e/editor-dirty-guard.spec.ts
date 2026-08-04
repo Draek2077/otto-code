@@ -10,7 +10,7 @@ import { seedWorkspace, type SeededWorkspace } from "./helpers/seed-client";
 // panels/file-panel.tsx confirmClose): typing marks the tab dirty (●), the
 // buffer survives switching tabs without any prompt, and closing a dirty tab
 // requires an explicit discard through the in-app confirm dialog. There is no
-// autosave — nothing reaches the disk unless the user saves.
+// autosave - nothing reaches the disk unless the user saves.
 
 let workspace: SeededWorkspace;
 

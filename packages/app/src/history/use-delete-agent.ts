@@ -15,7 +15,7 @@ export interface DeleteAgentInput {
  *
  * Sibling to `markAgentArchivedInHistoryPayload` in use-archive-agent: archive
  * *patches* a row (it still exists, with a badge), delete *removes* it. Rows with
- * no `serverId` are treated as belonging to the requested host — the same
+ * no `serverId` are treated as belonging to the requested host - the same
  * assumption the archive patcher makes, since single-host pages omit the field.
  */
 export function removeAgentsFromHistoryPayload<T extends AgentHistoryQueryData | undefined>(
@@ -89,7 +89,7 @@ export interface ApplyDeletedAgentResultsInput {
  * Reconcile the react-query caches after a delete.
  *
  * The `agent_deleted` push already cleaned every Zustand slice, but it never
- * touched react-query — so a deleted row lingered in the history list and the
+ * touched react-query - so a deleted row lingered in the history list and the
  * sidebar until a manual refresh, which reads as the delete having failed. This
  * is the delete-side counterpart to `applyArchivedAgentCloseResults`, which
  * patches the same four caches for archive.
@@ -135,7 +135,7 @@ export function applyDeletedAgentResults(input: ApplyDeletedAgentResultsInput): 
  * (query caches), which the session-context handler runs for both the single and
  * bulk paths.
  *
- * Gate on `useHistoryDeleteFeature` before offering this — there is no fallback
+ * Gate on `useHistoryDeleteFeature` before offering this - there is no fallback
  * for an old daemon.
  */
 export function useDeleteAgent(): {

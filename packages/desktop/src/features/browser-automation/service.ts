@@ -71,7 +71,7 @@ export interface TabImage {
   toPNG(): Uint8Array;
   getSize(): { width: number; height: number };
   /**
-   * Optional downscale support — Electron's NativeImage provides this natively,
+   * Optional downscale support - Electron's NativeImage provides this natively,
    * so the adapter needs no wrapper. When absent, captures are returned as-is.
    */
   resize?(options: { width: number; height: number }): TabImage;
@@ -102,7 +102,7 @@ const ALLOWED_PAGE_URL_PROTOCOLS = new Set(["http:", "https:"]);
 /**
  * Vision-model legibility budget. Frontier vision APIs downscale images past
  * ~1568px on the long edge / ~1.15 megapixels before the model sees them, and
- * token cost scales with pixel area — so anything we send beyond this budget
+ * token cost scales with pixel area - so anything we send beyond this budget
  * costs more AND reads worse. Captures are normalized to CSS pixels (undoing
  * device-pixel-ratio inflation) and then scaled to fit this budget host-side,
  * where we can do it once, deliberately, instead of letting each provider's
@@ -1166,7 +1166,7 @@ async function executeNetwork(
         return fail(
           requestId,
           "browser_unknown_error",
-          `No captured request with id ${args.requestId} — call browser_network without requestId to list captured requests.`,
+          `No captured request with id ${args.requestId} - call browser_network without requestId to list captured requests.`,
         );
       }
       const truncated = body.body.length > MAX_NETWORK_BODY_CHARS;
@@ -1624,7 +1624,7 @@ async function executeNavigationAction(
 
 /**
  * Scale factor that fits width×height (CSS px) inside the legibility budget.
- * Always ≤ 1 — callers that want to zoom IN (element captures) invert it.
+ * Always ≤ 1 - callers that want to zoom IN (element captures) invert it.
  */
 function screenshotFitScale(width: number, height: number): number {
   if (width <= 0 || height <= 0) {
@@ -1816,7 +1816,7 @@ async function executeFullPageScreenshot(
       screenshot = await runPaintedPixelCapture(target.contents, async () => {
         const metrics = await getCdpLayoutMetrics(target.contents);
         // Fit the whole page into the legibility budget by rendering the CDP
-        // clip at reduced scale — cheaper and sharper than downscaling a huge
+        // clip at reduced scale - cheaper and sharper than downscaling a huge
         // capture after the fact. Very tall pages still end up unreadable;
         // the daemon warns the agent based on the reported scale.
         fit = screenshotFitScale(metrics.contentWidth, metrics.contentHeight);
@@ -2097,7 +2097,7 @@ async function executeScreenshotElement(
     };
     // Re-render the clip zoomed in until it fills the legibility budget (or
     // hits the zoom cap). Unlike magnifying captured pixels, the CDP scale
-    // re-renders vector content — small text comes out crisp.
+    // re-renders vector content - small text comes out crisp.
     const rawFit = Math.min(
       SCREENSHOT_MAX_LONG_EDGE / Math.max(clip.width, clip.height),
       Math.sqrt(SCREENSHOT_MAX_PIXELS / (clip.width * clip.height)),
@@ -2418,7 +2418,7 @@ function resolveTabTarget(input: {
   if (!contents) {
     // Registered but its webview has not attached yet. browser_list_tabs reports
     // this tab as `starting`, so the answer is "wait and use the SAME id", never
-    // "open another tab" — hence retryable.
+    // "open another tab" - hence retryable.
     return fail(
       requestId,
       "browser_tab_not_found",

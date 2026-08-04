@@ -42,7 +42,7 @@ export function useActivityStatsFeature(serverId: string): boolean {
 /**
  * Detection point for the per-category usage & cost counters (WP-G). When false
  * (old daemon), the rollups still carry the base counters but every category
- * token/cost leaf is 0 — so the Usage & Cost column hides its category/cost grid
+ * token/cost leaf is 0 - so the Usage & Cost column hides its category/cost grid
  * rather than presenting a column of zeros as if it were real accounting.
  * COMPAT(usageCostCategories): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
  */
@@ -53,7 +53,7 @@ export function useUsageCostCategoriesFeature(serverId: string): boolean {
 }
 
 /**
- * Detection point for the "Reset" capability — wiping all usage counters and
+ * Detection point for the "Reset" capability - wiping all usage counters and
  * the itemized ledger. When false (old daemon with no handler), the Metrics
  * screen hides the Reset button rather than sending a request that would hang.
  * COMPAT(statsReset): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.

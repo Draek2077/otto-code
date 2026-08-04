@@ -27,7 +27,7 @@ export async function expectWorkspaceListed(page: Page, name: string): Promise<v
 }
 
 // The workspace row kebab and its menu items carry no web ARIA role, so the sidebar
-// suite addresses them by the stable test ids the app assigns per workspace — the same
+// suite addresses them by the stable test ids the app assigns per workspace - the same
 // convention the rename flow uses. The kebab only reveals on hover.
 export async function clickArchiveWorkspaceMenuItem(
   page: Page,
@@ -42,7 +42,7 @@ export async function clickArchiveWorkspaceMenuItem(
 export async function archiveWorkspaceFromSidebar(page: Page, workspaceId: string): Promise<void> {
   // A clean workspace archives with no prompt. A worktree-backed one raises the
   // branch-aware archive sheet ("Archive <name>?" plus an "Also delete branch"
-  // checkbox), which is the in-app ConfirmDialogHost — NOT a native
+  // checkbox), which is the in-app ConfirmDialogHost - NOT a native
   // window.confirm. Accepting only the native dialog left the confirmation
   // unanswered, so the daemon saw the archive preflight and never the archive
   // itself, and the row stayed in the sidebar looking like a broken archive.

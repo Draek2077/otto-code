@@ -29,7 +29,7 @@ const SCROLL_RETRY_LIMIT = 5;
 
 interface ContextGraphTreeProps {
   report: ContextReport | null;
-  /** First scan, nothing to show yet — "empty" would be a lie until it lands. */
+  /** First scan, nothing to show yet - "empty" would be a lie until it lands. */
   isLoading: boolean;
   expandedKeys: ReadonlySet<string>;
   selectedNodeId: string | null;
@@ -40,7 +40,7 @@ interface ContextGraphTreeProps {
   revealNonce?: number;
   onToggle: (key: string) => void;
   onSelectNode: (node: ContextNode) => void;
-  /** A prompt row was opened for reading — see `isPromptSectionCategory`. */
+  /** A prompt row was opened for reading - see `isPromptSectionCategory`. */
   onSelectCategory: (category: ContextCategory) => void;
 }
 
@@ -84,7 +84,7 @@ export function ContextGraphTree({
   // Revealing switches the sidebar from the fix list to this tree, so the very
   // first attempt runs against a FlatList that has just mounted and laid out
   // nothing. `scrollToIndex` cannot resolve an offset for a row that has never
-  // been measured — it fails silently through `onScrollToIndexFailed`, which is
+  // been measured - it fails silently through `onScrollToIndexFailed`, which is
   // exactly what "the tree never scrolled" looked like. Hence: retry after
   // layout, a bounded number of times.
   const rowsRef = useRef(rows);
@@ -108,7 +108,7 @@ export function ContextGraphTree({
   const handleScrollToIndexFailed = useCallback(() => {
     if (!revealNodeId || retriesRef.current >= SCROLL_RETRY_LIMIT) return;
     retriesRef.current += 1;
-    // One frame is usually enough — the failure means layout was mid-flight,
+    // One frame is usually enough - the failure means layout was mid-flight,
     // not that the row is missing.
     requestAnimationFrame(() => scrollToReveal(revealNodeId));
   }, [revealNodeId, scrollToReveal]);
@@ -193,7 +193,7 @@ function ContextTreeRowView({
       return;
     }
     // A prompt category has no files under it, so pressing it can only mean
-    // "show me that text" — the same gesture a file row spends on the editor.
+    // "show me that text" - the same gesture a file row spends on the editor.
     if (row.category && isPromptSectionCategory(row.category)) {
       onSelectCategory(row.category);
       return;
@@ -226,7 +226,7 @@ function ContextTreeRowView({
         {row.expandable ? <TreeChevron expanded={expanded} /> : null}
       </View>
       {/* Project scope stays unbadged here: it is the default, and a badge on
-          nearly every row is noise. The fix list shows it — see scope-icon.tsx. */}
+          nearly every row is noise. The fix list shows it - see scope-icon.tsx. */}
       {row.node ? <ScopeIcon scope={row.node.scope} /> : null}
       {/* Link-only: costs nothing today. Conditional: costs only when the agent
           works in that area. Both are states of the row, so they sit with the
@@ -249,7 +249,7 @@ function ContextTreeRowView({
       </Text>
       {/* A category Otto cannot size for this provider says so in the token
           slot. Rendering "0" there would be a measurement we never made, and
-          leaving it blank reads as "nothing here" — the one wrong conclusion. */}
+          leaving it blank reads as "nothing here" - the one wrong conclusion. */}
       {row.visibility === "not_visible" ? (
         <Text style={styles.tokensUnmeasured} numberOfLines={1}>
           {t("contextManagement.visibility.notVisible")}

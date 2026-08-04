@@ -3,7 +3,7 @@
  * it): commit history, the per-commit patch, blame, and the commit that first
  * introduced the file.
  *
- * Deliberately **local git only** — nothing here talks to a hosting provider,
+ * Deliberately **local git only** - nothing here talks to a hosting provider,
  * so it works in a repo with no remote and no GitHub/Bitbucket connection. Keep
  * it out of the forge layer (`services/git-hosting/`).
  *
@@ -19,7 +19,7 @@ const READ_ONLY_GIT_ENV = {
   GIT_OPTIONAL_LOCKS: "0",
 } as const;
 
-/** ASCII record/unit separators — safe framing for `git log --format`. */
+/** ASCII record/unit separators - safe framing for `git log --format`. */
 const RECORD_SEP = "\x1e";
 const FIELD_SEP = "\x1f";
 
@@ -57,7 +57,7 @@ export function assertRepoRelativeFilePath(path: string): void {
 
 /**
  * A commit that touched the file. `path` is the file's name **at that commit**,
- * which differs from the requested path across a rename — always diff against
+ * which differs from the requested path across a rename - always diff against
  * this one, not the current name.
  */
 export interface GitFileHistoryEntry {
@@ -193,7 +193,7 @@ function applyNameStatus(entry: GitFileHistoryEntry, nameStatus: string): void {
  * `--name-status` is empty for merge commits, so a merge record has nothing to
  * read its own name from. Left to itself it would keep the requested (current)
  * name, and any diff aimed at that name would miss on the far side of a rename
- * — which is how a merge ends up showing an empty or wrong change set.
+ * - which is how a merge ends up showing an empty or wrong change set.
  */
 function resolvePathsAlongWalk(records: ParsedHistoryRecord[], requestedPath: string): void {
   let pathAtWalk = requestedPath;
@@ -285,7 +285,7 @@ export interface GitFileCommitDiffResult {
   diff: string;
   truncated: boolean;
   /**
-   * The file's previous revision — the diff's left-hand side. Absent when this
+   * The file's previous revision - the diff's left-hand side. Absent when this
    * revision has no predecessor, i.e. the commit that created the file.
    */
   previousSha?: string;
@@ -299,7 +299,7 @@ interface FileRevision {
 }
 
 /**
- * The revision of this file immediately preceding `sha` — the commit before it
+ * The revision of this file immediately preceding `sha` - the commit before it
  * that actually touched the file, and the name the file had there.
  *
  * Deliberately a second walk rather than something the client passes in: the
@@ -358,7 +358,7 @@ export function assertCommitSha(sha: string): void {
  * What one revision did to one file, as a unified diff.
  *
  * This compares the file's **previous revision against this one, blob to blob**
- * — it is not the commit's own patch narrowed to a pathspec. That distinction is
+ * - it is not the commit's own patch narrowed to a pathspec. That distinction is
  * the whole correctness story here: git applies a pathspec *before* rename
  * detection, so `git show <sha> -- <newname>` across a rename reports the file
  * as brand new (whole file added) instead of showing the handful of lines that
@@ -392,7 +392,7 @@ export async function getFileCommitDiff(
         envOverlay: READ_ONLY_GIT_ENV,
         maxOutputBytes: PATCH_MAX_BYTES,
         timeout: HISTORY_TIMEOUT_MS,
-        // A revision whose blob is missing — the commit deleted the file — exits
+        // A revision whose blob is missing - the commit deleted the file - exits
         // 128. That is a legitimate revision to inspect, so fall through to the
         // commit's own patch rather than failing the request.
         acceptExitCodes: [0, 1, 128],
@@ -426,7 +426,7 @@ export interface GitBlameLine {
   line: number;
   sha: string;
   /**
-   * The line's number in the commit that introduced it — differs from `line`
+   * The line's number in the commit that introduced it - differs from `line`
    * when the surrounding file moved.
    */
   originalLine: number;
@@ -603,7 +603,7 @@ export async function getFileBlame(cwd: string, input: GitBlameInput): Promise<G
 const ORIGIN_FORMAT = HISTORY_FORMAT;
 
 /**
- * The commit that first added the file — "who originally wrote this". Uses
+ * The commit that first added the file - "who originally wrote this". Uses
  * `--follow` so a file that was renamed reports its true origin rather than the
  * rename commit.
  */

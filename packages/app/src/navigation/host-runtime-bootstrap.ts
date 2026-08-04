@@ -234,7 +234,7 @@ function resolveReadyIndexStartupRoute(input: ResolveIndexStartupRouteInput): St
   // (migrateSetupWizardFlag), so they never see it. Wait for the flag to load so
   // the unhydrated `false` default can't flash the wizard in front of a
   // returning user. A device with no online host falls through to the welcome/pair
-  // flow below — there is nothing to configure yet (the providers step requires
+  // flow below - there is nothing to configure yet (the providers step requires
   // a live connection to fetch provider details).
   if (!input.isSetupWizardStateLoaded) {
     return { kind: "splash" };

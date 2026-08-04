@@ -400,7 +400,7 @@ describe("restoring tabs with an optional second field", () => {
     });
   });
 
-  it("drops a refine tab with nothing rewritable — there is no job left to run", () => {
+  it("drops a refine tab with nothing rewritable - there is no job left to run", () => {
     expect(restore({ kind: "refine" })).toBeNull();
     expect(restore({ kind: "refine", paths: [] })).toBeNull();
     expect(restore({ kind: "refine", references: ["/repo/b.md"] })).toBeNull();

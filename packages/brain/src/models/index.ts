@@ -9,7 +9,7 @@ import { enrichWithCatalog } from "./enrich.js";
 import { scan } from "./scan.js";
 
 export * from "./scan.js";
-export { pickModel } from "./pick.js";
+export { pickModel, pickAutoModel } from "./pick.js";
 export { resolveModelsDirs, managedModelsDir, type ModelsDir } from "./dirs.js";
 export {
   pullModel,

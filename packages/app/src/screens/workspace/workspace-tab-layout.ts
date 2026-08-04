@@ -2,11 +2,11 @@ import { WORKSPACE_TABS_RAIL_MAX_WIDTH } from "@/constants/layout";
 
 export type WorkspaceTabCloseButtonPolicy = "all";
 
-// Shared tab-chip metrics — the single source of truth for both the
+// Shared tab-chip metrics - the single source of truth for both the
 // horizontal row's shrink-to-fit math and the vertical rail's content-driven
 // width, so the two never drift apart.
 export const TAB_ICON_WIDTH = 14;
-// Mirrors the chip's paddingHorizontal (theme.spacing[2] in styles.tab) —
+// Mirrors the chip's paddingHorizontal (theme.spacing[2] in styles.tab) -
 // keep the two in sync or the width math over/under-estimates label room.
 export const TAB_HORIZONTAL_PADDING = 8;
 export const TAB_ESTIMATED_CHAR_WIDTH = 7;
@@ -18,7 +18,7 @@ export const TAB_MAX_WIDTH = 200;
 // ≈ 52px, leaving ~48px of label room), so tabs never collapse to icon-only.
 export const TAB_MIN_WIDTH = 100;
 // The rail trades horizontal room for label space (labels are all it shows),
-// so its cap is deliberately wider than a horizontal tab's — 2.25x TAB_MAX_WIDTH.
+// so its cap is deliberately wider than a horizontal tab's - 2.25x TAB_MAX_WIDTH.
 // It lives in constants/layout.ts because the settings layer clamps the saved
 // user rail width to it and must not import from `screens/`; re-exported here so
 // the tab metrics still read as one set.
@@ -124,7 +124,7 @@ export interface WorkspaceTabRailWidthInput {
 }
 
 // The vertical rail's counterpart to computeWorkspaceTabLayout: instead of
-// dividing a measured viewport width across every tab, it sizes to content —
+// dividing a measured viewport width across every tab, it sizes to content -
 // every tab in the rail shares one width, wide enough for the widest current
 // label (so short labels don't waste rail space) but never past `maxTabWidth`
 // (RAIL_TAB_MAX_WIDTH for the rail; longer labels beyond that just truncate

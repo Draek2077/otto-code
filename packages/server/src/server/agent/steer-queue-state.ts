@@ -23,7 +23,7 @@ export interface SteerQueueEntry {
   runOptions?: AgentRunOptions;
   enqueuedAt: string;
   /**
-   * `user` — a person typed it (composer, CLI). `system` — Otto injected it
+   * `user` - a person typed it (composer, CLI). `system` - Otto injected it
    * (chat mention, schedule fire, notify-on-finish, agent-to-agent send).
    * Only used to decide whether an entry may be merged with its neighbours.
    */
@@ -60,7 +60,7 @@ export function steerQueuePromptText(prompt: AgentPromptInput): string {
     .join("\n\n");
 }
 
-/** Short, wire-safe label for a queued entry — what the Queue track renders. */
+/** Short, wire-safe label for a queued entry - what the Queue track renders. */
 export function steerQueuePreview(entry: SteerQueueEntry): string {
   const text = steerQueuePromptText(entry.prompt).trim();
   if (text.length <= PREVIEW_MAX_LENGTH) {
@@ -99,7 +99,7 @@ export function steerQueuePromptParts(prompt: AgentPromptInput): {
  * Decision (resolves "Queued messages should merge into one send" from the
  * remaining-work registry): consecutive **user** messages merge. Three notes
  * dropped while an agent grinds through a refactor are one instruction set, not
- * three turns — delivering them separately makes the agent act on note 1 before
+ * three turns - delivering them separately makes the agent act on note 1 before
  * it has seen the constraint in note 3, and re-sends the whole context each
  * time. System-injected entries (`source: "system"`) never merge: they carry
  * their own envelope and each one means something on its own.
@@ -144,7 +144,7 @@ export interface SteerQueueBatch {
 /**
  * Pop the next batch off a queue without mutating it. Returns null for an empty
  * queue. The batch is the head plus every following entry that may merge with
- * it — the caller delivers the batch as ONE turn (see `mergeSteerQueueBatch`).
+ * it - the caller delivers the batch as ONE turn (see `mergeSteerQueueBatch`).
  */
 export function takeNextSteerQueueBatch(queue: readonly SteerQueueEntry[]): SteerQueueBatch | null {
   const head = queue[0];
@@ -161,7 +161,7 @@ export function takeNextSteerQueueBatch(queue: readonly SteerQueueEntry[]): Stee
 /**
  * Collapse a batch into the single prompt that gets dispatched. Text is joined
  * in FIFO order with a blank line between messages; images and attachments are
- * concatenated in the same order. The head entry's `runOptions` win — its
+ * concatenated in the same order. The head entry's `runOptions` win - its
  * `messageId` is the one the client is waiting to reconcile.
  */
 export function mergeSteerQueueBatch(entries: readonly SteerQueueEntry[]): {

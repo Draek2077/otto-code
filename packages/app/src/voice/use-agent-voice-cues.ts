@@ -1,4 +1,4 @@
-// Agent voice cues — speaks a short line in the agent's own personality voice at
+// Agent voice cues - speaks a short line in the agent's own personality voice at
 // four moments: it JOINS (spawns), it FIRST starts thinking, it finishes its own
 // turn while its observed sub-agents are still running (WAITING), and it
 // COMPLETES a turn. Only the main (root) agent speaks, only for
@@ -7,8 +7,8 @@
 // enabled it (and not muted it).
 //
 // NOT A VISUALIZER FEATURE. Cues were born there and the wire capability flag
-// still carries the old `visualizerVoiceCues` name, but everything they need —
-// agent status, the personality roster, its stored lines, a TTS voice — is agent
+// still carries the old `visualizerVoiceCues` name, but everything they need -
+// agent status, the personality roster, its stored lines, a TTS voice - is agent
 // state. Nothing here reads the graph, and disabling the Visualizer does not
 // silence them; the switch is in Settings -> <host> -> Agents.
 //
@@ -19,14 +19,14 @@
 // "every workspace on this host".
 //
 // The lines are PRE-STORED on the personality (`voiceCues`, authored/edited in
-// the personality editor) — this hook just reads them, no runtime generation.
+// the personality editor) - this hook just reads them, no runtime generation.
 // A personality with no stored cues stays silent. Audio is synthesized with the
 // personality's TTS voice via the same `previewTtsVoice` + shared voice audio
 // engine the voice-preview button uses, scaled to the cue channel's own volume.
 //
-// Attach behavior: agents that already exist when the hook starts watching —
+// Attach behavior: agents that already exist when the hook starts watching -
 // including ones a directory refresh backfills into the store moments later
-// (createdAt predates attach) — are SEEDED SILENTLY, so connecting to a host
+// (createdAt predates attach) - are SEEDED SILENTLY, so connecting to a host
 // never re-announces history. Only agents that spawn / think / finish while
 // you're watching speak. See docs/agent-personalities.md "Voice cues".
 import { Buffer } from "buffer";
@@ -57,7 +57,7 @@ interface AgentCueState {
    * Cleared when "done" finally speaks, or when a new turn starts.
    */
   doneDeferred: boolean;
-  /** "waiting" already spoke for this deferral — say it once, not per tick. */
+  /** "waiting" already spoke for this deferral - say it once, not per tick. */
   waitingAnnounced: boolean;
 }
 
@@ -82,10 +82,10 @@ const recentCue = new Map<string, number>();
 // Global rate limit. Because cues fire app-wide, the failure mode the charter
 // calls out is real: every agent in every workspace on every host hitting a cue
 // moment at the same instant. `engine.isPlaying()` already serializes playback,
-// but it only rejects cues that overlap an *in-flight* line — a burst of short
+// but it only rejects cues that overlap an *in-flight* line - a burst of short
 // lines would still queue up back-to-back into a chorus. This is the second
 // gate: at most one cue may START per window, app-wide. Dropped, never queued
-// — a stale "Done" arriving 30s late is worse than silence.
+// - a stale "Done" arriving 30s late is worse than silence.
 const CUE_GLOBAL_MIN_INTERVAL_MS = 2500;
 let lastGlobalCueAtMs = 0;
 
@@ -100,7 +100,7 @@ function claimGlobalCueSlot(nowMs: number): boolean {
 }
 
 // Per-(host, agent, moment) shuffle bag so a moment cycles through ALL of its
-// lines in a random order before any line repeats — and never repeats a line
+// lines in a random order before any line repeats - and never repeats a line
 // back-to-back across refills. Uniform random-with-replacement (the old
 // behavior) sounds biased on the short lists cues actually carry: the same line
 // recurs often and the first-heard one feels over-used. A bag fixes both.
@@ -123,7 +123,7 @@ function shuffleInPlace(items: string[]): string[] {
   return items;
 }
 
-/** Test seam — the module-level throttle/dedupe state is global by design. */
+/** Test seam - the module-level throttle/dedupe state is global by design. */
 export function __resetAgentVoiceCueThrottleForTests(): void {
   recentCue.clear();
   cueBags.clear();
@@ -185,17 +185,17 @@ async function speak(
   input: {
     text: string;
     voice?: { provider?: string; model?: string; name: string };
-    /** 0..1 — the agent voice-cue channel's volume (0 → silence). */
+    /** 0..1 - the agent voice-cue channel's volume (0 → silence). */
     gain: number;
   },
 ): Promise<void> {
-  // Never talk over an in-flight cue (or voice-mode playback) — cues are soft
+  // Never talk over an in-flight cue (or voice-mode playback) - cues are soft
   // and short; a skipped one is better than a chorus.
   if (engine.isPlaying() || input.gain <= 0) {
     return;
   }
   // Kick the AudioContext resume off early (web autoplay unlock is best-effort
-  // here — cues fire without a fresh user gesture, so the very first may be
+  // here - cues fire without a fresh user gesture, so the very first may be
   // silent until the user has interacted with the app once).
   void engine.initialize().catch(() => undefined);
   const result = await client.previewTtsVoice({
@@ -211,7 +211,7 @@ async function speak(
   if (engine.isPlaying()) {
     return;
   }
-  // The cue channel's own level, handed to the engine per play — it never
+  // The cue channel's own level, handed to the engine per play - it never
   // mixes with the spoken-reply volume or the Visualizer's effects.
   await engine.play(
     {
@@ -225,7 +225,7 @@ async function speak(
   );
 }
 
-/** Root agents on the host — every workspace when `workspaceId` is null,
+/** Root agents on the host - every workspace when `workspaceId` is null,
  * optionally scoped to a run's id set. */
 function selectRootAgents(
   serverId: string,
@@ -253,7 +253,7 @@ function selectRootAgents(
 }
 
 /**
- * True when the root agent's observed fan-out is still running — the second
+ * True when the root agent's observed fan-out is still running - the second
  * half of the "waiting" condition (the first half is its own turn finalizing).
  * Reads the same track membership the subagents rail renders from, so "still
  * running" means exactly the rows the user can see under this chat.
@@ -267,7 +267,7 @@ export interface UseAgentVoiceCuesInput {
   serverId: string;
   /** null = every workspace on this host (the app-global host's mode). */
   workspaceId: string | null;
-  /** Master gate. The app-global host passes `true` — cues are meant to fire
+  /** Master gate. The app-global host passes `true` - cues are meant to fire
    * whether or not any Visualizer surface is mounted. */
   active: boolean;
   agentIdFilter?: ReadonlySet<string> | null;
@@ -279,7 +279,7 @@ export function useAgentVoiceCues(input: UseAgentVoiceCuesInput): void {
   const engine = useVoiceAudioEngineOptional();
   // Live voice mode owns the speaker while it's on: it drives its own TTS and
   // listens for the user's reply. A cue firing over it would talk on top of the
-  // conversation and — worse — get picked up as user speech. The runtime is an
+  // conversation and - worse - get picked up as user speech. The runtime is an
   // app-global singleton, so its snapshot's `isVoiceMode` is exactly "live voice
   // active for ANY agent on ANY host"; read it at fire time so toggling voice
   // mode never re-subscribes this effect.
@@ -291,7 +291,7 @@ export function useAgentVoiceCues(input: UseAgentVoiceCuesInput): void {
 
   const features = useSessionStore((state) => state.sessions[serverId]?.serverInfo?.features);
   // COMPAT(visualizerVoiceCues): added in v0.6.3, drop the gate when floor >= v0.6.3.
-  // The flag keeps its original name because it is a wire capability — cues
+  // The flag keeps its original name because it is a wire capability - cues
   // stopped being a Visualizer feature, but renaming a `server_info.features`
   // key would break the contract with older daemons.
   const featureOk = Boolean(features?.visualizerVoiceCues && features?.ttsPreview);
@@ -336,7 +336,7 @@ export function useAgentVoiceCues(input: UseAgentVoiceCuesInput): void {
 
     const fireCue = (agent: Agent, kind: CueMoment): void => {
       // While live voice mode is active anywhere, all other agent cues stay
-      // silent — the voice conversation owns the mic and speaker.
+      // silent - the voice conversation owns the mic and speaker.
       if (voiceRuntimeRef.current?.getSnapshot().isVoiceMode) {
         return;
       }
@@ -382,14 +382,14 @@ export function useAgentVoiceCues(input: UseAgentVoiceCuesInput): void {
         // directory refresh upserts pre-existing chats
         // moments after this effect's initial seed. `createdAt` is the
         // daemon-stamped spawn time, so anything created before we started
-        // watching is history — seed it silently instead of announcing a
+        // watching is history - seed it silently instead of announcing a
         // spurious join. (Cues are soft; daemon/client clock skew at worst
         // costs or replays a single join line.)
         if (agent.createdAt.getTime() <= watchStartMs) {
           seedSilently(agent);
           return;
         }
-        // Genuinely new agent that spawned while watching — announce its join.
+        // Genuinely new agent that spawned while watching - announce its join.
         state = newCueState();
         states.set(agent.id, state);
       }
@@ -397,7 +397,7 @@ export function useAgentVoiceCues(input: UseAgentVoiceCuesInput): void {
         state.joined = true;
         state.prevStatus = agent.status;
         fireCue(agent, "join");
-        return; // one cue per tick — thinking follows on the next reconcile
+        return; // one cue per tick - thinking follows on the next reconcile
       }
       if (agent.status === "running") {
         // A new turn supersedes any deferred "done" from the previous one.
@@ -410,7 +410,7 @@ export function useAgentVoiceCues(input: UseAgentVoiceCuesInput): void {
         fireCue(agent, "thinking");
         return;
       }
-      // Finalizing a turn puts the agent in debt for a "done" cue — but the
+      // Finalizing a turn puts the agent in debt for a "done" cue - but the
       // fan-out it spawned may still be running, and an agent whose helpers are
       // out isn't done, it's WAITING. So the edge only records the debt; the
       // block below decides whether to pay it now or hold it.
@@ -423,7 +423,7 @@ export function useAgentVoiceCues(input: UseAgentVoiceCuesInput): void {
         if (hasRunningSubagents(serverId, agent.id)) {
           // Announce the wait once per idle stretch (observed rows land over
           // several store ticks, so this branch runs repeatedly), then hold the
-          // "done" — a later tick finds the fan-out drained and pays it.
+          // "done" - a later tick finds the fan-out drained and pays it.
           if (!state.waitingAnnounced) {
             state.waitingAnnounced = true;
             fireCue(agent, "waiting");

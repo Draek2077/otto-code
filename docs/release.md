@@ -6,7 +6,7 @@ All workspaces share one version and release together.
 
 A release has exactly two steps. The agent does the first, the user authorizes the second.
 
-**Preparation** (local, reversible — agent does this):
+**Preparation** (local, reversible - agent does this):
 
 - format, lint, typecheck all green
 - ACP provider catalog drift checked with `npm run acp:version-drift:check`;
@@ -41,26 +41,26 @@ There are two supported ways to ship from `main`:
 Before running any stable patch release command:
 
 - Make sure the intended release commit is already committed to `main` and the working tree is clean.
-- **Run `npm run format`, `npm run lint`, and `npm run typecheck` and commit any resulting changes BEFORE you start any `release:*` command.** `release:check` runs `npm install --workspaces --include-workspace-root` as part of `release:prepare`, which can mutate `package-lock.json` (e.g. churning `"dev": true` markers on optional deps). The next step, `version:all:*`, runs `npm version` which aborts when the working tree is dirty. If this happens mid-flight you have to commit the lockfile churn before retrying — and the pre-commit format hook will reject a lockfile-only commit because oxfmt internally skips `package-lock.json` while lefthook's glob still matches it. Avoid the whole mess by running format/lint/typecheck first, then `release:prepare` once on its own to absorb any lockfile churn into a normal commit, then start the release.
+- **Run `npm run format`, `npm run lint`, and `npm run typecheck` and commit any resulting changes BEFORE you start any `release:*` command.** `release:check` runs `npm install --workspaces --include-workspace-root` as part of `release:prepare`, which can mutate `package-lock.json` (e.g. churning `"dev": true` markers on optional deps). The next step, `version:all:*`, runs `npm version` which aborts when the working tree is dirty. If this happens mid-flight you have to commit the lockfile churn before retrying - and the pre-commit format hook will reject a lockfile-only commit because oxfmt internally skips `package-lock.json` while lefthook's glob still matches it. Avoid the whole mess by running format/lint/typecheck first, then `release:prepare` once on its own to absorb any lockfile churn into a normal commit, then start the release.
 - Do not use `npm run release:patch` as a substitute for checking whether the current commit is actually ready.
 
 > **npm publish is live.** The `otto-code` npm org was claimed and all six packages
 > (`@otto-code/{highlight,relay,protocol,client,server,cli}`) were first published at 0.5.0
-> on 2026-07-11, so the full `release:patch` chain — including `release:publish` — now works
+> on 2026-07-11, so the full `release:patch` chain - including `release:publish` - now works
 > end to end. Publishing requires being logged in (`npm whoami`) as a member of the
 > `otto-code` org. **If publish fails mid-chain** (auth expired, registry hiccup), the
-> version commit and tag exist but are unpushed — fix the cause, then resume manually with
+> version commit and tag exist but are unpushed - fix the cause, then resume manually with
 > `npm run release:publish` followed by `npm run release:push`; don't re-run the full chain.
 
 ```bash
 npm run release:patch
 ```
 
-This bumps the version across all workspaces, runs checks, publishes to npm, and pushes the branch + tag. The tag push triggers `Desktop Release`, `Android APK Release`, `Docker`, `Deploy App` (web app to Cloudflare Pages), and `Release Notes Sync` on GitHub Actions; `Deploy Website` redeploys when the GitHub release is published (stable only). See "Mobile builds (EAS)" below for what does — and on this fork does **not** — happen on the store side.
+This bumps the version across all workspaces, runs checks, publishes to npm, and pushes the branch + tag. The tag push triggers `Desktop Release`, `Android APK Release`, `Docker`, `Deploy App` (web app to Cloudflare Pages), and `Release Notes Sync` on GitHub Actions; `Deploy Website` redeploys when the GitHub release is published (stable only). See "Mobile builds (EAS)" below for what does - and on this fork does **not** - happen on the store side.
 
 The Docker workflow builds images from the checked-out source tree on pull requests and on `main` as non-publishing checks. Stable `vX.Y.Z` tag pushes publish `ghcr.io/draek2077/otto:X.Y.Z` and `ghcr.io/draek2077/otto:latest`; beta `vX.Y.Z-beta.N` tag pushes publish only `ghcr.io/draek2077/otto:X.Y.Z-beta.N` and never move `latest`.
 
-**Releases are always patch.** "Release otto", "release stable", "ship stable", and similar always mean a patch bump from the previous stable. Never bump minor or major to trigger a build, ever — minor and major bumps are reserved for genuinely larger product cuts and require an explicit user instruction with the word "minor" or "major". If you find yourself reaching for `release:minor` to retrigger a failed build, you are doing the wrong thing — push a retry tag instead (see "Fixing a failed release build" below).
+**Releases are always patch.** "Release otto", "release stable", "ship stable", and similar always mean a patch bump from the previous stable. Never bump minor or major to trigger a build, ever - minor and major bumps are reserved for genuinely larger product cuts and require an explicit user instruction with the word "minor" or "major". If you find yourself reaching for `release:minor` to retrigger a failed build, you are doing the wrong thing - push a retry tag instead (see "Fixing a failed release build" below).
 
 **Stable means stable.** If the user says "stable" or "ship stable", do not ask whether they want a beta first. They picked stable; treat it as a direct stable release. Only run the beta flow when the user explicitly says "beta".
 
@@ -100,7 +100,7 @@ Use the beta path when you need to:
 
 ## Staged rollout (stable channel)
 
-Stable desktop releases go out via a linear time-based rollout for automatic update checks: 0% admitted when the updater manifests appear, 100% admitted 36 hours later, linear ramp in between. Manual checks bypass the rollout so a user can install immediately when they click **Check**. Beta releases bypass the rollout entirely — beta users always receive updates immediately.
+Stable desktop releases go out via a linear time-based rollout for automatic update checks: 0% admitted when the updater manifests appear, 100% admitted 36 hours later, linear ramp in between. Manual checks bypass the rollout so a user can install immediately when they click **Check**. Beta releases bypass the rollout entirely - beta users always receive updates immediately.
 
 The rollout is driven by a `rolloutHours` field stamped into the GitHub Release manifests (`latest-mac.yml`, `latest-linux.yml`, `latest.yml`) by the `finalize-rollout` job in `desktop-release.yml`.
 
@@ -115,7 +115,7 @@ Updater clients only discover a release through those `.yml` manifests, so there
 
 `npm run release:patch` → tag push → 36h ramp. No extra action needed.
 
-The `rollout_hours` input on `desktop-release.yml` is **only read on `workflow_dispatch`** — tag-push runs always default to 36. To get any other rollout duration on a fresh release, use the post-publish flip below.
+The `rollout_hours` input on `desktop-release.yml` is **only read on `workflow_dispatch`** - tag-push runs always default to 36. To get any other rollout duration on a fresh release, use the post-publish flip below.
 
 ### Instant-admit release (rollout_hours=0 from publish)
 
@@ -125,7 +125,7 @@ For a fresh release that should admit everyone immediately (low-risk change, doc
 # 1. Cut and publish (default 36h ramp from tag push).
 npm run release:patch
 
-# 2. Immediately queue the flip — runs as soon as finalize-rollout completes.
+# 2. Immediately queue the flip - runs as soon as finalize-rollout completes.
 gh workflow run desktop-rollout.yml \
   -f tag=v0.1.64 \
   -f rollout_hours=0
@@ -137,7 +137,7 @@ Run the dispatch right after `release:patch` returns. Don't wait for the tag-pus
 
 ### Adjusting an already-published release
 
-To change the rollout duration on a release that's already shipped — e.g. flip a hotfix to instant admit, or slow a release down — use the dedicated `desktop-rollout.yml` workflow. It edits the manifests in place on the GitHub release without rebuilding anything. It only rewrites `rolloutHours`; `releaseDate` is preserved, so the rollout clock keeps ticking from the original publish time.
+To change the rollout duration on a release that's already shipped - e.g. flip a hotfix to instant admit, or slow a release down - use the dedicated `desktop-rollout.yml` workflow. It edits the manifests in place on the GitHub release without rebuilding anything. It only rewrites `rolloutHours`; `releaseDate` is preserved, so the rollout clock keeps ticking from the original publish time.
 
 **Hotfix (instant admit) on an already-shipped release:**
 
@@ -171,11 +171,11 @@ gh workflow run desktop-release.yml \
   -f rollout_hours=6
 ```
 
-This does **not** apply to fresh releases cut via `npm run release:patch` — that path always tag-pushes and stamps 36. For a fresh release with a custom ramp, cut normally and then dispatch `desktop-rollout.yml` (same pattern as the instant-admit flow above, with your chosen `rollout_hours`).
+This does **not** apply to fresh releases cut via `npm run release:patch` - that path always tag-pushes and stamps 36. For a fresh release with a custom ramp, cut normally and then dispatch `desktop-rollout.yml` (same pattern as the instant-admit flow above, with your chosen `rollout_hours`).
 
 ### Releasing during an active rollout
 
-If you ship N+1 while N is still ramping, N+1 starts a fresh rollout from its own publish timestamp. N's rollout effectively ends — the newer manifest supersedes it.
+If you ship N+1 while N is still ramping, N+1 starts a fresh rollout from its own publish timestamp. N's rollout effectively ends - the newer manifest supersedes it.
 
 If N+1 is a hotfix for a bug in N, dispatch `desktop-rollout.yml -f tag=v0.1.<N+1> -f rollout_hours=0` after N+1 publishes so the users who already got N reach the fix fast.
 
@@ -190,11 +190,11 @@ If N+1 is a hotfix for a bug in N, dispatch `desktop-rollout.yml -f tag=v0.1.<N+
 
 > **Fork reality (Draek2077/otto-code, updated 2026-07-27):** this fork's mobile release paths
 > live in this repo's own workflows, not upstream's EAS-GitHub-app-triggered flow. The paths that
-> still call EAS draw on **one shared EAS free-plan budget of 15 Android builds a month** — see
+> still call EAS draw on **one shared EAS free-plan budget of 15 Android builds a month** - see
 > [fork-release-guide.md](fork-release-guide.md)'s infrastructure inventory for how that budget was
 > exhausted on 2026-07-12. **The APK no longer spends it:**
 >
-> - **Android APK (GitHub Release asset)** — `.github/workflows/android-apk-release.yml`. Live and
+> - **Android APK (GitHub Release asset)** - `.github/workflows/android-apk-release.yml`. Live and
 >   active on `v*`, betas included. **Built on the GitHub runner** (`expo prebuild` + `gradle
 assembleRelease`), not on EAS, so it is unlimited and no longer rations releases against the
 >   monthly budget. Needs the four `ANDROID_KEYSTORE_*` secrets (the same keystore EAS uses, so the
@@ -202,23 +202,23 @@ assembleRelease`), not on EAS, so it is unlimited and no longer rations releases
 >   `versionCode` is derived from the version as `major*10000 + minor*100 + patch` (0.7.2 → 702)
 >   rather than from EAS's remote counter, which drifted past 50 because quota-refused builds still
 >   incremented it.
-> - **Android (Play Store internal track)** — `.github/workflows/android-play-release.yml`. Wired
+> - **Android (Play Store internal track)** - `.github/workflows/android-play-release.yml`. Wired
 >   but **off `v*`** as of 2026-07-27: it has never completed a submit from CI, and leaving it on
 >   every tag spent half the monthly Android budget. Trigger it with an `android-play-v*` tag or
 >   `workflow_dispatch`. Needs `EXPO_TOKEN` + `GOOGLE_SERVICE_ACCOUNT_KEY`.
-> - **iOS (TestFlight)** — `.github/workflows/ios-release.yml`. Wired but **gated off**: no Apple
+> - **iOS (TestFlight)** - `.github/workflows/ios-release.yml`. Wired but **gated off**: no Apple
 >   Developer account or App Store Connect app exists yet, so the workflow's signing gate skips it
 >   cleanly on every tag push. See [fork-release-guide.md](fork-release-guide.md)'s "iOS release"
 >   section for the one-time Apple/ASC setup that turns it on.
 >
 > Everything below describing upstream's EAS-GitHub-app flow (`submit_ios_for_review`,
 > `submit_android` to production, Fastlane review submission) is **upstream's flow**, kept as
-> reference — this fork does not have that GitHub app installed and does not use Fastlane.
+> reference - this fork does not have that GitHub app installed and does not use Fastlane.
 
-Upstream's iOS and Android store builds are not in `.github/workflows` — they're triggered by the EAS GitHub app the moment the `v*` tag is pushed, which this fork does not use:
+Upstream's iOS and Android store builds are not in `.github/workflows` - they're triggered by the EAS GitHub app the moment the `v*` tag is pushed, which this fork does not use:
 
-- **Android (Play Store)** — EAS builds with profile `production` and auto-submits to the Play Store via `eas submit` (EAS-managed credentials, no Fastlane).
-- **iOS (TestFlight + App Store)** — EAS builds with profile `production`, uploads to TestFlight, and a Fastlane lane submits the build for App Store review.
+- **Android (Play Store)** - EAS builds with profile `production` and auto-submits to the Play Store via `eas submit` (EAS-managed credentials, no Fastlane).
+- **iOS (TestFlight + App Store)** - EAS builds with profile `production`, uploads to TestFlight, and a Fastlane lane submits the build for App Store review.
 
 This fork instead drives all three mobile release paths from its own `.github/workflows/*.yml` files (listed above), triggered directly by `v*` tag pushes like every other release workflow in this repo.
 
@@ -259,11 +259,11 @@ Once a build is `FINISHED`, EAS still has release-critical work to do: Android m
 
 For the `Release Mobile` EAS workflow, these jobs must pass:
 
-- `build_ios` — iOS binary built
-- `submit_ios` — iOS binary uploaded to App Store Connect/TestFlight
-- `submit_ios_for_review` — iOS build submitted for App Store review via Fastlane
-- `build_android` — Android store binary built
-- `submit_android` — Android binary submitted to the Play Store
+- `build_ios` - iOS binary built
+- `submit_ios` - iOS binary uploaded to App Store Connect/TestFlight
+- `submit_ios_for_review` - iOS build submitted for App Store review via Fastlane
+- `build_android` - Android store binary built
+- `submit_android` - Android binary submitted to the Play Store
 
 Do not treat `build_ios: SUCCESS` or `submit_ios: SUCCESS` as a completed iOS release. `submit_ios_for_review: FAILURE` means the iOS release is blocked even if the build is visible in TestFlight.
 
@@ -272,9 +272,9 @@ To confirm the submission landed, inspect the EAS workflow with `npx eas workflo
 ### Babysitting mobile after a release
 
 > **Fork scope:** babysit GitHub Actions (`Desktop Release`, `Android APK Release`, `Docker`,
-> `Deploy App`, `Release Notes Sync`) only — the APK now builds inside `Android APK Release`
+> `Deploy App`, `Release Notes Sync`) only - the APK now builds inside `Android APK Release`
 > itself, so there is no separate EAS build to watch for it. The `Release Mobile`
-> workflow and the store submit/review jobs below don't exist on this fork — don't wait for
+> workflow and the store submit/review jobs below don't exist on this fork - don't wait for
 > them. `Desktop Release` shows red on `publish-macos` until Apple signing is configured;
 > Windows/Linux artifacts and the `finalize-rollout` manifests are the signal that matters.
 
@@ -294,18 +294,18 @@ Pattern:
 }
 ```
 
-Tight cadence on purpose. The first run fires immediately, giving a near-real-time status check before the conversation closes. Subsequent runs at 15-minute intervals catch transitions quickly: a failed EAS build or failed App Store review submission at +20m should not wait until +50m to surface. Keep the prompt short — the heartbeat is a status probe, not a research task — and have it bail out as soon as every platform is actually on its store path so the remaining runs do not generate noise.
+Tight cadence on purpose. The first run fires immediately, giving a near-real-time status check before the conversation closes. Subsequent runs at 15-minute intervals catch transitions quickly: a failed EAS build or failed App Store review submission at +20m should not wait until +50m to surface. Keep the prompt short - the heartbeat is a status probe, not a research task - and have it bail out as soon as every platform is actually on its store path so the remaining runs do not generate noise.
 
 ## Release notes on GitHub
 
-The GitHub Release body is populated automatically by the `Release Notes Sync` workflow (`.github/workflows/release-notes-sync.yml`). It triggers on every `v*` tag push and on any push to `main` that touches `CHANGELOG.md`, then runs `scripts/sync-release-notes-from-changelog.mjs` to mirror the matching changelog entry into the release body. You don't need to write release notes on GitHub manually — keep `CHANGELOG.md` correct and the workflow will sync it. To force a re-sync, dispatch the workflow with the tag input.
+The GitHub Release body is populated automatically by the `Release Notes Sync` workflow (`.github/workflows/release-notes-sync.yml`). It triggers on every `v*` tag push and on any push to `main` that touches `CHANGELOG.md`, then runs `scripts/sync-release-notes-from-changelog.mjs` to mirror the matching changelog entry into the release body. You don't need to write release notes on GitHub manually - keep `CHANGELOG.md` correct and the workflow will sync it. To force a re-sync, dispatch the workflow with the tag input.
 
 ## Website behavior
 
 - The website download page points to GitHub's latest published **stable** release.
 - Published beta prereleases are public on GitHub Releases, but they do **not** become the website download target.
 - The download target only moves when you publish the final stable release tag like `v0.1.41`.
-- The public `/changelog` page renders `CHANGELOG.md` as-is, so the in-flight `-beta.N` entry shows there once it lands on `main` — that's intended, it's where beta users check what's coming. Only the **download target** stays pinned to the latest stable; the download links read GitHub's releases API, not the changelog, so a `-beta.N` heading on top never affects them.
+- The public `/changelog` page renders `CHANGELOG.md` as-is, so the in-flight `-beta.N` entry shows there once it lands on `main` - that's intended, it's where beta users check what's coming. Only the **download target** stays pinned to the latest stable; the download links read GitHub's releases API, not the changelog, so a `-beta.N` heading on top never affects them.
 - The website itself is deployed by `Deploy Website` (Cloudflare Workers), which redeploys on `release: published` for non-prerelease releases and on pushes to `main` that touch `CHANGELOG.md` or `packages/website/**`.
 
 ## Fixing a failed release build
@@ -369,8 +369,8 @@ This ensures the checkout ref matches the actual code on `main` with the fix inc
 - `version:all:*` bumps root + syncs workspace versions and `@otto-code/*` dependency versions
 - `release:prepare` refreshes workspace `node_modules` links to prevent stale types
 - `npm run dev:desktop` and `npm run build:desktop` target the Electron desktop package in `packages/desktop`
-- If `release:publish` partially fails, re-run it — npm skips already-published versions
-- If `release:publish:beta` partially fails, re-run it — npm skips already-published versions and keeps prereleases off `latest` because every publish uses `--tag beta`
+- If `release:publish` partially fails, re-run it - npm skips already-published versions
+- If `release:publish:beta` partially fails, re-run it - npm skips already-published versions and keeps prereleases off `latest` because every publish uses `--tag beta`
 - The website uses GitHub's latest published release API for download links, so published beta prereleases do not replace the stable download target.
 
 ## Changelog format
@@ -388,57 +388,57 @@ No prefix (`v`), no extra text. `Release Notes Sync` matches the `## X.Y.Z` (or 
 
 - `CHANGELOG.md` includes stable releases and the current beta line.
 - The first beta of a version inserts a top entry like `## 0.1.60-beta.1 - YYYY-MM-DD`.
-- Each subsequent beta updates that same top entry in place — bump the heading (`0.1.60-beta.1` → `0.1.60-beta.2`) and fold in whatever else landed.
+- Each subsequent beta updates that same top entry in place - bump the heading (`0.1.60-beta.1` → `0.1.60-beta.2`) and fold in whatever else landed.
 - Stable promotion updates that same entry in place one last time: heading to `0.1.60`, date to the promotion day.
-- One entry per version line. The `-beta.N` heading is intermediary — overwrite it, never append. Don't leave stale `-beta.N` entries behind and don't create a duplicate entry per beta.
+- One entry per version line. The `-beta.N` heading is intermediary - overwrite it, never append. Don't leave stale `-beta.N` entries behind and don't create a duplicate entry per beta.
 - It always covers the full diff from the previous stable tag, regardless of how many betas were cut in between.
 
 ## Changelog ownership
 
-- **The agent running the release writes the changelog entry — beta or stable.** Do not hand the changelog to another model or agent. The release agent has the release context and owns the final wording.
+- **The agent running the release writes the changelog entry - beta or stable.** Do not hand the changelog to another model or agent. The release agent has the release context and owns the final wording.
 - Draft the entry from the previous-stable-to-`HEAD` diff, review it against the changelog policy below, show it to the user, and wait for approval before committing it. Each beta refreshes the same entry; promotion refreshes it one last time from the full previous-stable-to-`HEAD` diff.
 
 ## Changelog voice
 
 The changelog is shown on the Otto homepage. Write it for **end users**, not developers.
 
-- **Frame everything from the user's perspective.** Describe what changed in the app, not what changed in the code. Users care that "workspaces load instantly" — not that a component no longer remounts.
-- **Never mention component names, internal modules, or implementation details.** No `WorkingIndicator`, no `accumulatedUsage`, no `reconcileAndEmitWorkspaceUpdates`. Also no "virtualized lists", no "remount", no "memoization", no "debounced", no "fuzzy ranking", no "controlled input", no "uncontrolled input" — these are implementation words masquerading as user-facing copy.
+- **Frame everything from the user's perspective.** Describe what changed in the app, not what changed in the code. Users care that "workspaces load instantly" - not that a component no longer remounts.
+- **Never mention component names, internal modules, or implementation details.** No `WorkingIndicator`, no `accumulatedUsage`, no `reconcileAndEmitWorkspaceUpdates`. Also no "virtualized lists", no "remount", no "memoization", no "debounced", no "fuzzy ranking", no "controlled input", no "uncontrolled input" - these are implementation words masquerading as user-facing copy.
 - **Concrete WRONG → RIGHT examples** (real mistakes from past releases):
 
   | Wrong (implementation-facing)                                                       | Right (user-facing)                                         |
   | ----------------------------------------------------------------------------------- | ----------------------------------------------------------- |
   | Switching layouts no longer remounts the active chat                                | Splitting a pane no longer loses your scroll position       |
-  | Model, mode, and thinking pickers — searchable virtualized lists with fuzzy ranking | Mobile model selector is faster and more straightforward    |
+  | Model, mode, and thinking pickers - searchable virtualized lists with fuzzy ranking | Mobile model selector is faster and more straightforward    |
   | Text inputs in mobile sheets no longer flicker while typing fast                    | Typing in mobile sheets no longer flickers                  |
   | Compact web sheets no longer crash when swiped to dismiss                           | Sheets on mobile web no longer crash when swiped to dismiss |
   | Reduced re-renders in the chat list                                                 | Chat list scrolls smoothly                                  |
   | Added debouncing to the search input                                                | Search results no longer lag behind typing                  |
 
-  Test: would a non-developer reader recognise what changed when using the app? If they'd need an engineer to translate ("what's a remount?"), the bullet is still implementation-facing — rewrite it as the symptom the user experiences.
+  Test: would a non-developer reader recognise what changed when using the app? If they'd need an engineer to translate ("what's a remount?"), the bullet is still implementation-facing - rewrite it as the symptom the user experiences.
 
 - **Collapse internal iterations.** If a feature was added and then fixed within the same release, just list the feature as working. Users never saw the broken version.
-- **Only list changes relative to the previous stable release.** The diff is `v(previous)..HEAD`. If something was introduced and fixed between those two tags, it never shipped — don't mention the fix.
-  - **Common trap:** when drafting from `git log`, every commit looks like a separate bullet — including the "fix X" commits that landed on top of a brand-new feature in the same release window. Before listing a Fixed entry, check whether the thing being fixed was itself added in this same release. If so, drop the fix and fold it into the feature bullet.
+- **Only list changes relative to the previous stable release.** The diff is `v(previous)..HEAD`. If something was introduced and fixed between those two tags, it never shipped - don't mention the fix.
+  - **Common trap:** when drafting from `git log`, every commit looks like a separate bullet - including the "fix X" commits that landed on top of a brand-new feature in the same release window. Before listing a Fixed entry, check whether the thing being fixed was itself added in this same release. If so, drop the fix and fold it into the feature bullet.
   - **Example:** if the release adds an in-app browser and also contains a commit "fix: browser pane keyboard handling no longer steals shortcuts", do **not** list the keyboard fix under Fixed. The browser is shipping for the first time, so users will only ever see the working version. The Added entry covers it.
 - **Cut low-signal entries.** "Toolbar buttons have consistent sizing" is too granular. Combine small polish items or drop them.
 
 ## Changelog conciseness
 
-Every bullet must be scannable at a glance. The changelog is not release documentation — it's a list.
+Every bullet must be scannable at a glance. The changelog is not release documentation - it's a list.
 
 - **One sentence per bullet, max.** If a bullet contains two sentences, the second one is doing work that belongs in product docs, not the changelog. Cut it.
 - **No trailing periods.** Bullets are list items, not prose. Drop the period at the end of every bullet, including the period inside any bolded lead-in. `**Configurable terminal scrollback**` not `**Configurable terminal scrollback.**`.
 - **One line per bullet.** If a bullet wraps to three lines in a narrow column, it's too long.
-- **Split bullets that pack multiple distinct changes.** If a bullet uses "and", "plus", a comma list, or an em-dash to chain several independent improvements, break them into separate bullets — even when they share a theme or author. One bullet = one user-facing change.
+- **Split bullets that pack multiple distinct changes.** If a bullet uses "and", "plus", a comma list, or an em-dash to chain several independent improvements, break them into separate bullets - even when they share a theme or author. One bullet = one user-facing change.
 - **Trim qualifying clauses.** Drop "with a hint shown when…", "matching the CLI's behaviour", "across common install shapes". If the detail doesn't change whether a user cares, cut it.
-- **Lead with what the user can do, not the mechanism.** The reader cares about the capability, not how it works under the hood. Do not explain LAN vs WAN, TLS handshakes, IPC, the daemon-relay topology, or any internal concept the user has not asked about. "Self-hosted relays can use a different TLS setting for the public endpoint" — not "Self-hosted relays support a separate TLS setting for the public endpoint, so the daemon can reach the relay over the LAN while the phone reaches it over the public secure address." If a feature genuinely needs background to be understood, it belongs in product docs, with a one-line teaser in the changelog.
+- **Lead with what the user can do, not the mechanism.** The reader cares about the capability, not how it works under the hood. Do not explain LAN vs WAN, TLS handshakes, IPC, the daemon-relay topology, or any internal concept the user has not asked about. "Self-hosted relays can use a different TLS setting for the public endpoint" - not "Self-hosted relays support a separate TLS setting for the public endpoint, so the daemon can reach the relay over the LAN while the phone reaches it over the public secure address." If a feature genuinely needs background to be understood, it belongs in product docs, with a one-line teaser in the changelog.
 - **Lead with the outcome.** "Windows: agents launch reliably from npm `.cmd` shims…" is better than "Windows: agents launch reliably across common install shapes. Claude, Codex, and OpenCode now start correctly…".
 - **Attribution follows the split.** When you split a dense bullet, move each PR/author to the bullet it belongs to. Never duplicate the same PR across multiple bullets.
 
 ## Changelog attribution
 
-Every changelog bullet must credit contributors and link to the PR(s) that delivered the change. This is not one-PR-per-line — a single bullet describes a user-facing change and may reference multiple PRs.
+Every changelog bullet must credit contributors and link to the PR(s) that delivered the change. This is not one-PR-per-line - a single bullet describes a user-facing change and may reference multiple PRs.
 
 Format: append `([#123](https://github.com/Draek2077/otto-code/pull/123) by [@user](https://github.com/user))` at the end of each bullet. For changes spanning multiple PRs or contributors:
 
@@ -452,8 +452,8 @@ Rules:
 - **Always link the contributor's GitHub profile** as `[@user](https://github.com/user)`.
 - **One bullet = one user-facing change**, regardless of how many PRs went into it. Group related PRs on the same bullet.
 - **De-duplicate contributors.** If the same person authored multiple PRs in one bullet, list them once.
-- **Only credit external contributors.** Skip attribution for [@boudra](https://github.com/boudra). The changelog credits community contributions — core team work is the default.
-- **Credit the commit author, not the PR opener.** A maintainer often opens a PR that lands work authored by someone else (cherry-pick, rebase of a contributor's branch, manual extraction from a stacked PR). The squash commit preserves the original commit's author, but `gh pr view N --json author` returns the PR opener — using that field will silently mis-credit the work to the maintainer (and then the "skip @boudra" rule drops the attribution entirely). Always resolve attribution from commit authors.
+- **Only credit external contributors.** Skip attribution for [@boudra](https://github.com/boudra). The changelog credits community contributions - core team work is the default.
+- **Credit the commit author, not the PR opener.** A maintainer often opens a PR that lands work authored by someone else (cherry-pick, rebase of a contributor's branch, manual extraction from a stacked PR). The squash commit preserves the original commit's author, but `gh pr view N --json author` returns the PR opener - using that field will silently mis-credit the work to the maintainer (and then the "skip @boudra" rule drops the attribution entirely). Always resolve attribution from commit authors.
 
   Use this command to get the GitHub logins for each PR:
 
@@ -469,19 +469,19 @@ Rules:
 
 Entries within each section (Added, Improved, Fixed) are ordered by user impact:
 
-1. **User-facing features and changes first** — things users will notice, want to try, or that change their workflow.
-2. **Quality-of-life improvements** — polish, performance, smoother interactions.
-3. **Internal/infra changes last** — only include if they have a tangible user benefit (e.g. "faster startup" is user-facing even if the fix was internal).
+1. **User-facing features and changes first** - things users will notice, want to try, or that change their workflow.
+2. **Quality-of-life improvements** - polish, performance, smoother interactions.
+3. **Internal/infra changes last** - only include if they have a tangible user benefit (e.g. "faster startup" is user-facing even if the fix was internal).
 
 ## Pre-release sanity check
 
-Before cutting a **stable** release, the release agent reviews the diff as a last line of defence against shipping bugs. Skip this for betas — the beta itself is the smoke test, and gating each beta on a code review defeats the point of using betas as fast release candidates.
+Before cutting a **stable** release, the release agent reviews the diff as a last line of defence against shipping bugs. Skip this for betas - the beta itself is the smoke test, and gating each beta on a code review defeats the point of using betas as fast release candidates.
 
 Review the diff between the latest release tag and `HEAD`. Focus on:
 
-1. **Breaking changes** — especially in the WebSocket protocol, agent lifecycle, and any server↔client contract.
-2. **Backward compatibility** — the important direction is old app clients talking to newly updated daemons. Users update desktop and daemon first, then keep running the old app for a while. Flag anything that breaks old clients against new daemons or requires both sides to update in lockstep.
-3. **Regressions** — anything that looks like it could break existing functionality.
+1. **Breaking changes** - especially in the WebSocket protocol, agent lifecycle, and any server↔client contract.
+2. **Backward compatibility** - the important direction is old app clients talking to newly updated daemons. Users update desktop and daemon first, then keep running the old app for a while. Flag anything that breaks old clients against new daemons or requires both sides to update in lockstep.
+3. **Regressions** - anything that looks like it could break existing functionality.
 
 Use `git diff <latest-release-tag>..HEAD` as the review input. This is a deep sanity check, not a full code review. If anything looks risky, investigate before proceeding and surface the finding to the user.
 
@@ -500,9 +500,9 @@ Betas are checkpoints along the way; the entry is the single record for the jump
 
 - [ ] Working tree is clean and the intended commit is on `main`
 - [ ] Update the in-place beta entry in `CHANGELOG.md` (heading `## X.Y.Z-beta.N - YYYY-MM-DD`), review it against the changelog policy, get approval, and commit it before cutting the release
-- [ ] `release:beta:*` completes successfully (includes `release:publish:beta` — be logged into npm as an `otto-code` org member first; see the npm note under "Standard release" if publish fails mid-chain)
+- [ ] `release:beta:*` completes successfully (includes `release:publish:beta` - be logged into npm as an `otto-code` org member first; see the npm note under "Standard release" if publish fails mid-chain)
 - [ ] npm shows the version under the `beta` dist-tag, not `latest` (`npm view @otto-code/cli dist-tags`)
-- [ ] GitHub `Desktop Release` workflow for the `v*-beta.N` tag is green (macOS jobs excepted until Apple signing is configured — Windows/Linux artifacts plus `finalize-rollout` manifests are what count)
+- [ ] GitHub `Desktop Release` workflow for the `v*-beta.N` tag is green (macOS jobs excepted until Apple signing is configured - Windows/Linux artifacts plus `finalize-rollout` manifests are what count)
 - [ ] GitHub `Android APK Release` workflow for the same tag is green
 - [ ] GitHub `Release Notes Sync` mirrored the beta entry into the prerelease body
 
@@ -511,13 +511,13 @@ Betas are checkpoints along the way; the entry is the single record for the jump
 - [ ] Run the pre-release sanity check (see above) and address any findings
 - [ ] Ensure the intended release commit is already committed and the git worktree is clean before running any `release:*` patch/promote command
 - [ ] Ensure local `npm run typecheck` passes on that exact commit before running any `release:*` patch/promote command
-- [ ] Update `CHANGELOG.md` with user-facing release notes (features, fixes — not refactors). When promoting from beta, overwrite the existing `## X.Y.Z-beta.N` heading in place (heading → `X.Y.Z`, date → promotion day) — do not add a new entry on top of the beta one
+- [ ] Update `CHANGELOG.md` with user-facing release notes (features, fixes - not refactors). When promoting from beta, overwrite the existing `## X.Y.Z-beta.N` heading in place (heading → `X.Y.Z`, date → promotion day) - do not add a new entry on top of the beta one
 - [ ] Verify the changelog heading follows strict `## X.Y.Z - YYYY-MM-DD` format
-- [ ] `release:patch`/`release:promote` completes successfully (includes `release:publish` — be logged into npm as an `otto-code` org member first; see the npm note under "Standard release" if publish fails mid-chain)
+- [ ] `release:patch`/`release:promote` completes successfully (includes `release:publish` - be logged into npm as an `otto-code` org member first; see the npm note under "Standard release" if publish fails mid-chain)
 - [ ] npm shows the new version on `latest` (`npm view @otto-code/cli version`)
-- [ ] GitHub `Desktop Release` workflow for the `v*` tag is green (macOS jobs excepted until Apple signing is configured — Windows/Linux artifacts plus `finalize-rollout` manifests are what count)
+- [ ] GitHub `Desktop Release` workflow for the `v*` tag is green (macOS jobs excepted until Apple signing is configured - Windows/Linux artifacts plus `finalize-rollout` manifests are what count)
 - [ ] GitHub `Android APK Release` workflow for the same tag is green and the APK is attached to the release
 - [ ] GitHub `Deploy App` workflow for the same tag is green (web app on Cloudflare Pages)
 - [ ] GitHub `Docker` workflow published `ghcr.io/draek2077/otto:X.Y.Z` + `:latest`
 - [ ] `Deploy Website` ran on the published release
-- [ ] ~~EAS `Release Mobile` workflow / `build_ios` / `submit_ios` / `submit_ios_for_review` / `build_android` / `submit_android`~~ — N/A on this fork; no store accounts exist yet (see "Mobile builds (EAS)" fork-reality note)
+- [ ] ~~EAS `Release Mobile` workflow / `build_ios` / `submit_ios` / `submit_ios_for_review` / `build_android` / `submit_android`~~ - N/A on this fork; no store accounts exist yet (see "Mobile builds (EAS)" fork-reality note)

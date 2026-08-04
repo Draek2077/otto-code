@@ -31,8 +31,8 @@ function diffLineCode(line: DiffLine): string {
 
 // Attach syntax-highlight tokens to each diff line. Language comes from the file
 // path (extension only). We reconstruct the old and new document text from the
-// diff lines by position — counting context/remove into "old" and context/add
-// into "new" — so this works regardless of whether the source diff carried real
+// diff lines by position - counting context/remove into "old" and context/add
+// into "new" - so this works regardless of whether the source diff carried real
 // `@@ -n,m +n,m @@` line ranges (Codex emits bare `@@`). Each document is
 // highlighted as a whole so the parser has cross-line context (multi-line
 // strings, template literals, comments). Returns the input unchanged when the

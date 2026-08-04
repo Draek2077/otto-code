@@ -330,7 +330,7 @@ describe("DirectorySync session readiness", () => {
     });
 
     // The rename was issued on another session, so `project.update` never
-    // arrives here — only the host-global notification does.
+    // arrives here - only the host-global notification does.
     client.emit({
       type: "project.updated.notification",
       payload: {

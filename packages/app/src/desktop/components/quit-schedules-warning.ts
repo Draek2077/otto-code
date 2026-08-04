@@ -27,7 +27,7 @@ export const useQuitSchedulesWarningPrefStore = create<QuitSchedulesWarningPrefS
 );
 
 /**
- * Count of enabled (active) schedules on the desktop-managed daemon — the host
+ * Count of enabled (active) schedules on the desktop-managed daemon - the host
  * the quit flow is about to stop. Resolves 0 when the local daemon can't be
  * identified or reached, so a broken lookup never blocks quitting.
  */
@@ -53,7 +53,7 @@ export async function countEnabledLocalDaemonSchedules(serverId: string): Promis
 // The quit dialog blocks on this lookup, so it must stay near-instant: with
 // the serverId already cached, the only async step is one scheduleList RPC to
 // the local daemon. The deadline is a fail-open safety net for a busy or hung
-// daemon — better to skip an advisory warning than to stall the quit dialog.
+// daemon - better to skip an advisory warning than to stall the quit dialog.
 const SCHEDULES_WARNING_DEADLINE_MS = 750;
 
 /**
@@ -64,7 +64,7 @@ const SCHEDULES_WARNING_DEADLINE_MS = 750;
  * there are no enabled schedules, or the lookup misses the deadline.
  *
  * `localDaemonServerId` comes from the caller's `useLocalDaemonServerId()`
- * subscription — the cached query — rather than being resolved here, because
+ * subscription - the cached query - rather than being resolved here, because
  * resolving it fresh spawns the external CLI and takes seconds.
  */
 export async function getQuitSchedulesWarningCount(

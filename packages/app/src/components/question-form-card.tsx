@@ -89,7 +89,7 @@ function QuestionOptionRow({
   const accessibilityState = useMemo(() => ({ checked: isSelected }), [isSelected]);
 
   // Static left-side control: square for multi-select, circle for single-select.
-  // Always rendered so toggling only swaps fill/border — the row never reflows.
+  // Always rendered so toggling only swaps fill/border - the row never reflows.
   const controlStyle = useMemo(
     () => [
       styles.selectionControl,
@@ -219,7 +219,7 @@ interface QuestionNavProps {
 }
 
 // Titled tabs (one per question header) with a check on answered ones. Hidden for
-// a lone question — a single "1 of 1" tab carries no information.
+// a lone question - a single "1 of 1" tab carries no information.
 function QuestionNav({
   questions,
   activeIndex,

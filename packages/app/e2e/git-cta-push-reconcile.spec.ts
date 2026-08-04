@@ -57,11 +57,11 @@ test("commit CTA reconciles across commit and re-dirty instead of vanishing", as
   expect(gitOutput(workspace.repoPath, ["log", "-1", "--pretty=%s"])).toBe("reconcile commit");
 
   // Clean tree on the base branch of a remote-less checkout has no primary
-  // action by policy — the CTA leaving here is expected, not the regression.
+  // action by policy - the CTA leaving here is expected, not the regression.
   await expect(page.getByTestId("changes-primary-cta")).toHaveCount(0, { timeout: 30_000 });
 
   // Re-dirty the tree out of band. The uncommitted-diff subscription must heal
-  // the push-only checkout-status cache so the Commit CTA returns — the
+  // the push-only checkout-status cache so the Commit CTA returns - the
   // regression was the split button staying vanished at exactly this point.
   //
   // NOTE (Windows local): the daemon's git file-watcher fails with EPERM on

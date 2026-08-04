@@ -322,7 +322,7 @@ describe("find references", () => {
 
     const partial = await service.references({ rootPath, filePath, line: 2, column: 7 });
     expect(partial.status).toBe("indexing");
-    // The partial set still comes back — a provisional list beats an empty one, as long as
+    // The partial set still comes back - a provisional list beats an empty one, as long as
     // the caller is told it is provisional.
     expect(partial.locations).toHaveLength(1);
 
@@ -337,7 +337,7 @@ describe("rename, as a dry run", () => {
     const rootPath = await createRoot();
     const service = createService([stubRow("stub")]);
     const filePath = path.join(rootPath, "a.ts");
-    // `use12(` is six characters, so `target` starts at column 7 on BOTH lines — which is
+    // `use12(` is six characters, so `target` starts at column 7 on BOTH lines - which is
     // where the stub plans its edits. The alignment matters: the plan is grounded against the
     // real file, so a position that landed mid-word would faithfully capture the mid-word
     // text, and the run would then correctly refuse it.
@@ -644,7 +644,7 @@ describe("reporting activity so a cold start is visible", () => {
 });
 
 describe("document lifecycle through the service", () => {
-  // Revised deliberately in Phase 5b. This used to assert the opposite — that a sync
+  // Revised deliberately in Phase 5b. This used to assert the opposite - that a sync
   // started nothing and only a query did. Diagnostics are pushed, so a file whose server
   // is not running has no diagnostics at all, and waiting for a hover would mean a broken
   // file looked clean until the user happened to point at it. Opening a file IS the
@@ -837,7 +837,7 @@ describe("rename, applied", () => {
       planId: plan.planId,
     });
 
-    // The run still HAPPENS — that is the point of the status. This file contributed one
+    // The run still HAPPENS - that is the point of the status. This file contributed one
     // edit and it moved, so the file itself failed while the run reports honestly on it.
     expect(applied.status).toBe("ok");
     expect(applied.complete).toBe(false);
@@ -897,7 +897,7 @@ describe("rename, applied", () => {
   });
 
   // A language server is a foreign process that answers in paths. One naming a file outside
-  // the workspace must not turn the daemon into a write primitive for it — and it is refused
+  // the workspace must not turn the daemon into a write primitive for it - and it is refused
   // at PLAN time, so an unrunnable plan is never shown as if it could run.
   it("refuses to plan at all when the server names a file outside the workspace", async () => {
     const rootPath = await createRoot();

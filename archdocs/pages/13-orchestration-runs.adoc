@@ -1,11 +1,11 @@
-= Orchestration — Phase Runs
-:description: The conductor-declared engine — typed phases, role resolution, fan-out with structured judging, the keep-best loop, and human gates.
+= Orchestration - Phase Runs
+:description: The conductor-declared engine - typed phases, role resolution, fan-out with structured judging, the keep-best loop, and human gates.
 
 A *phase run* is an orchestration a conducting agent declares at runtime rather than one a
 user draws in advance. The conductor decides the work is team-shaped, writes a plan, and hands
 it to the daemon through the `start_run` tool; the daemon executes it deterministically.
 
-The engine is `packages/server/src/server/orchestration/run-engine.ts` — pure control flow over
+The engine is `packages/server/src/server/orchestration/run-engine.ts` - pure control flow over
 an injected port, no daemon dependencies. Its sibling is
 link:14-orchestration-graphs.html[Graph Execution]; both project into the same `Run`. Who fills
 a seat and what it may touch is link:16-orchestration-agents.html[Agent Binding].
@@ -15,7 +15,7 @@ a seat and what it may touch is link:16-orchestration-agents.html[Agent Binding]
 *Direction:* once the graph engine gains a gate node and candidate fan-out, this engine's
 vocabulary survives as a preset graph template rather than a second scheduler
 (link:12-orchestration-data-model.html[Data Model] §"Decided, not built"). Until both land,
-this page describes the phase engine as built — and the fan-out/judge/keep-best shape below is
+this page describes the phase engine as built - and the fan-out/judge/keep-best shape below is
 the capability the collapse must preserve.
 ====
 
@@ -34,7 +34,7 @@ readable when a team is re-cast.
 |`implement` |`coder` |Build the feature.
 |`design` |`designer` |Styling, layout, and human-skill text.
 |`verify` |`judger` |Grade work against criteria; returns a structured verdict.
-|`gate` |— (human) |Stop and ask the user.
+|`gate` |- (human) |Stop and ask the user.
 |`deliver` |`coder` |Produce the final artifact.
 |===
 
@@ -50,7 +50,7 @@ which is what lets execution be a simple forward pass.
 
 Unlike the graph engine, this engine walks `phases[]` in declared order. `dependsOn` is a
 **guard, not a scheduler**: a phase whose dependency did not reach `done` is marked `skipped`
-and the pass continues. Parallelism lives *inside* a phase, as fan-out — never across phases.
+and the pass continues. Parallelism lives *inside* a phase, as fan-out - never across phases.
 
 [mermaid]
 ----
@@ -70,7 +70,7 @@ stateDiagram-v2
 
 Roles are resolved *before* spawning: the engine asks the port for the personality filling each
 required role in the active team, including the judger. **A missing role hard-fails the run and
-names the gap** — no silent fallback to a bare provider. Fix the team; don't paper over it.
+names the gap** - no silent fallback to a bare provider. Fix the team; don't paper over it.
 
 === Threading results forward
 
@@ -126,7 +126,7 @@ Mechanics worth stating exactly:
 [NOTE]
 ====
 Structured judging here is **prompt-and-parse**: the judge is a full agent and its verdict is
-recovered from prose. Graph nodes get a stronger contract — a `submit_output` tool with
+recovered from prose. Graph nodes get a stronger contract - a `submit_output` tool with
 in-session self-correction (link:14-orchestration-graphs.html[Graph Execution]). Phase runs do
 not use it.
 ====
@@ -150,8 +150,8 @@ buffers a decision registered against a phase that has not blocked yet.
 
 [WARNING]
 ====
-*A paused run does not survive a daemon restart.* Orphan recovery marks every in-flight run —
-including one `paused` at a gate — as `failed`. See
+*A paused run does not survive a daemon restart.* Orphan recovery marks every in-flight run -
+including one `paused` at a gate - as `failed`. See
 link:15-orchestration-durability.html[Durability].
 ====
 
@@ -175,7 +175,7 @@ carried on the run as `summary` with a `summaryStatus` lifecycle.
 [IMPORTANT]
 ====
 *Not built here.* Phase runs have no per-phase retry, no time limit, no declared output fields,
-no conditional routing, and no per-node authority — those are graph-node capabilities. There is
+no conditional routing, and no per-node authority - those are graph-node capabilities. There is
 no token or cost ceiling on either engine, and no resume.
 ====
 
@@ -184,18 +184,18 @@ no token or cost ceiling on either engine, and no resume.
 . A plan is validated before any agent spawns: unique ids, and `dependsOn` referencing only
   earlier phases.
 . A missing role fails the run and names the gap. There is no fallback seat.
-. `dependsOn` is a guard, not a scheduler — phases run in declared order.
+. `dependsOn` is a guard, not a scheduler - phases run in declared order.
 . A dependency's output reaches its dependants through the prompt, never through shared memory.
 . A candidate with no verdict counts as passing.
 . An unparseable judge verdict is a fail, never an accidental pass.
 . A rejected gate cancels the run; it never silently continues.
-. Every spawned child — worker or judge — counts against the run's caps.
+. Every spawned child - worker or judge - counts against the run's caps.
 
 == Change checklist
 
 * Added a phase type? Give it a default role, or state why it has none (`gate` is the only one).
-* Changed judging? Re-check both directions of invariant 5 and 6 — unjudged must not fail, and
+* Changed judging? Re-check both directions of invariant 5 and 6 - unjudged must not fail, and
   unparseable must not pass.
 * Added a spawn path? It must count against `maxAgents` and pass through the concurrency bound.
-* Touching gates? Confirm the pre-registration buffer still works — a decision can arrive before
+* Touching gates? Confirm the pre-registration buffer still works - a decision can arrive before
   the engine waits.

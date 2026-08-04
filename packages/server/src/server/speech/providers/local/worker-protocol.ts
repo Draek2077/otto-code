@@ -24,7 +24,7 @@ export type LocalSpeechWorkerRequest =
       config: LocalSpeechWorkerConfig;
       text: string;
       // Per-utterance voice override (e.g. a personality voice). Passed as a
-      // generate-time arg — NOT part of `config` — so it doesn't fragment the
+      // generate-time arg - NOT part of `config` - so it doesn't fragment the
       // worker's provider cache keyed on config.
       voice?: SpeechVoiceOverride;
     }

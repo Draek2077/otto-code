@@ -7,8 +7,8 @@ import { createJSONStorage, persist } from "zustand/middleware";
  * shares of the pane height.
  *
  * Deliberately **one global setting**, not per file, per tab, or per workspace.
- * A developer arranges this pane once to suit how they read history — commit
- * list short, diff tall — and expects the next file they investigate to open the
+ * A developer arranges this pane once to suit how they read history - commit
+ * list short, diff tall - and expects the next file they investigate to open the
  * same way. Keying it per file would mean re-dragging the splitters on every
  * new tab, which is the opposite of a saved layout.
  */

@@ -14,10 +14,10 @@ import { resolveDemoProvider } from "../helpers/provider";
 import { seedDemoWorkspace, type DemoWorkspace } from "../staging/seed";
 
 /**
- * Scenario 02 — Preview verification (the founding feature): launch config ->
+ * Scenario 02 - Preview verification (the founding feature): launch config ->
  * dev server -> browser pane -> agent proof. This is the scenario that
  * unblocked itself on the Electron capture lane (electron-smoke.electron.ts
- * proved the plumbing) — the `<webview>`-backed Preview browser pane only has
+ * proved the plumbing) - the `<webview>`-backed Preview browser pane only has
  * runtime behavior inside Electron, so the plain-Chromium demo pipeline
  * (playwright.demo.config.ts) can never show it. See docs/preview.md.
  *
@@ -26,7 +26,7 @@ import { seedDemoWorkspace, type DemoWorkspace } from "../staging/seed";
  *    configured in .claude/launch.json, not running yet -> click starts it
  *    directly, no bootstrap prompt, no picker (runPreviewFlow).
  *  - the agent's OWN autonomous use of its preview_start/browser_* tools to
- *    verify its own fix (shot 4) — the actual differentiating capability,
+ *    verify its own fix (shot 4) - the actual differentiating capability,
  *    not just a human clicking a button.
  *
  * Sequencing decision: the human clicks Preview and the pane is confirmed
@@ -35,12 +35,12 @@ import { seedDemoWorkspace, type DemoWorkspace } from "../staging/seed";
  *  1. It avoids a race where the human's button click and the agent's own
  *     preview_start call both try to spawn the same launch-config server at
  *     once.
- *  2. It keeps shot 1 an honest "genuinely the first start" — if the agent's
+ *  2. It keeps shot 1 an honest "genuinely the first start" - if the agent's
  *     tool call had started the server first, the later human click would
  *     just be reusing an already-running server, undercutting the
  *     zero-friction-*start* story shot 1 is supposed to tell.
  *  Once the server is already running, the agent's own `preview_start` call
- *  is a spawn-or-reuse against the exact same launch config — DevServerManager
+ *  is a spawn-or-reuse against the exact same launch config - DevServerManager
  *  recognizes it's already up and the agent's browser tools attach to the
  *  same daemon-bound tab the human's click opened (findPreviewServerForUrl
  *  enforces one designated tab per server), so its verification is still
@@ -60,30 +60,30 @@ test.skip(
 // Real-run + Electron is the most expensive combination in the pipeline
 // (tokens per capture AND Electron boot overhead). Following hero-shot's
 // precedent: build and verify Twilight only for the first pass. A Daylight
-// take is a manual follow-up — flip this const to "daylight" and rerun
+// take is a manual follow-up - flip this const to "daylight" and rerun
 // `npm run demo:electron -- 02-preview-verify` whenever that capture is
 // wanted; there's no separate npm script for it yet since the Electron lane
 // doesn't have twilight/daylight Playwright projects the way the web lane does.
 const THEME: DemoThemeName = "twilight";
 
 const PROMPT =
-  "The hero heading is unreadable in dark mode — fix the CSS contrast, then use your " +
+  "The hero heading is unreadable in dark mode - fix the CSS contrast, then use your " +
   "preview_start and browser tools to open the live preview and take a screenshot " +
   "confirming the heading is readable before you finish.";
 
 /**
  * The unattended (no-human-watching) permission mode is NOT the same id
- * across providers — each provider defines its own mode list, and only
+ * across providers - each provider defines its own mode list, and only
  * Claude happens to call its guarded-unattended mode "dontAsk". The
  * openai-compatible provider's mode list (`OPENAI_COMPAT_MODES` in
  * openai-compat-agent.ts) is `default` / `acceptEdits` / `plan` /
- * `bypassPermissions` — there is no "dontAsk" id at all. Passing
+ * `bypassPermissions` - there is no "dontAsk" id at all. Passing
  * `modeId: "dontAsk"` to an openai-compatible agent doesn't error; it just
  * fails `VALID_MODE_IDS.has(...)` and silently falls back to `default`
  * (Always Ask), so the very first `edit_file` call parks on an unanswered
- * permission prompt forever (confirmed empirically — see runbook gotcha).
+ * permission prompt forever (confirmed empirically - see runbook gotcha).
  * `bypassPermissions` is openai-compat's only `isUnattended: true` mode, and
- * — unlike Claude's CLI-level bypass, which the daemon can't see or guard —
+ * - unlike Claude's CLI-level bypass, which the daemon can't see or guard -
  * openai-compat's tool loop is daemon-owned end to end, so "bypass" here
  * just means the daemon's own in-process permission check auto-allows; every
  * call is still fully visible/logged, not routed around the daemon.
@@ -92,7 +92,7 @@ function resolveUnattendedModeId(provider: string): string {
   return provider === "claude" ? "dontAsk" : "bypassPermissions";
 }
 
-// The daemon client is untyped JS loaded from dist (see personalities.ts) —
+// The daemon client is untyped JS loaded from dist (see personalities.ts) -
 // these two extensions mirror electron-smoke.electron.ts's own
 // PreviewCapableClient plus the config get/patch pair personalities.ts uses
 // for agentPersonalities/agentTeams (same RPC, different top-level config
@@ -138,7 +138,7 @@ const execFileAsync = promisify(execFile);
 
 /**
  * The materializer (staging/materialize.ts) only copies file trees and
- * builds git history — it never runs a template's own otto.json
+ * builds git history - it never runs a template's own otto.json
  * `worktree.setup` (that only fires for worktree-creation, not a
  * directly-opened workspace like seedDemoWorkspace produces). mango-storefront's
  * launch.json runs `npm run dev` (Vite), so without a real install here the
@@ -147,7 +147,7 @@ const execFileAsync = promisify(execFile);
  * call. Install once, eagerly, before either happens.
  */
 async function installStorefrontDeps(cwd: string): Promise<void> {
-  // Windows can't execFile a .cmd directly (spawn EINVAL) — npm ships as
+  // Windows can't execFile a .cmd directly (spawn EINVAL) - npm ships as
   // npm.cmd there, so this needs shell:true (routes through cmd.exe/sh)
   // rather than the `npm.cmd` vs `npm` platform-name branch other scripts in
   // this repo use for plain execFileSync of real .exe/binary targets.
@@ -168,7 +168,7 @@ test.beforeAll(async () => {
     originOwner: "mango-labs",
     title: "Storefront contrast fix",
   });
-  // Seeded purely so the sidebar shows both staged repos (whole-frame rule) —
+  // Seeded purely so the sidebar shows both staged repos (whole-frame rule) -
   // never used for an agent run in this scenario.
   pulseApi = await seedDemoWorkspace({
     template: "pulse-api",
@@ -193,14 +193,14 @@ test("preview verification: fix the contrast, prove it in the preview", async ()
   const serverId = process.env.E2E_SERVER_ID;
   if (!metroPort || !serverId) {
     throw new Error(
-      "E2E_METRO_PORT / E2E_SERVER_ID not set — globalSetup must run first (via playwright.demo-electron.config.ts).",
+      "E2E_METRO_PORT / E2E_SERVER_ID not set - globalSetup must run first (via playwright.demo-electron.config.ts).",
     );
   }
 
   const client = storefront.client as unknown as DemoElectronPreviewClient;
 
   // On a fresh daemon (fresh OTTO_HOME, no config.json), Claude Code agents
-  // get NO Otto MCP tools at all by default — mcp.injectIntoAgents defaults
+  // get NO Otto MCP tools at all by default - mcp.injectIntoAgents defaults
   // false, so preview_start/browser_* are never registered regardless of the
   // prompt. browserTools.enabled additionally gates browser_* specifically
   // (preview_* is unconditional on it). Both flip live, no daemon restart,
@@ -218,7 +218,7 @@ test("preview verification: fix the contrast, prove it in the preview", async ()
       metroPort,
       daemonPort,
       serverId,
-      // Logical (DIP) window size — the app lays out at a normal laptop
+      // Logical (DIP) window size - the app lays out at a normal laptop
       // density here, not as if on a giant 2560-wide screen (which renders
       // every control tiny). The screenshot still comes out at full QHD via
       // the machine's display scale factor + the targetSize resize below.
@@ -227,20 +227,20 @@ test("preview verification: fix the contrast, prove it in the preview", async ()
     const { window } = electronHandle;
 
     // Registers an addInitScript; takes effect on the next navigation, which
-    // is the goto() below — no extra reload needed here.
+    // is the goto() below - no extra reload needed here.
     await applyDemoAppearance(window, demoThemeAppearance(THEME));
     // targetSize: the real Electron window reflects this machine's actual
     // display scale factor (e.g. 2x on a HiDPI dev box), so a DESKTOP_LAYOUT_VIEWPORT
     // (1024×576 DIP) window screenshots at 2048×1152 on a 2x box, 3072×1728 on a
-    // 3x one — DemoRecorder resizes every shot to the exact target, matching the
+    // 3x one - DemoRecorder resizes every shot to the exact target, matching the
     // web lane's output pixel-for-pixel regardless of which machine ran it.
     const recorder = await DemoRecorder.start(window, `02-preview-verify-${THEME}`, {
       targetSize: DESKTOP_CAPTURE_RESOLUTION,
     });
 
-    // Create the agent WITHOUT a prompt yet — the human Preview-button flow
+    // Create the agent WITHOUT a prompt yet - the human Preview-button flow
     // (shots 1-2) runs first, uncontested (see file header for why).
-    // Provider/model are never hardcoded — see demo/helpers/provider.ts.
+    // Provider/model are never hardcoded - see demo/helpers/provider.ts.
     // Default is Claude on Sonnet 5 (user decision, 2026-07-18: cheap
     // relative to Opus, full feature set). DEMO_PROVIDER=local-ai opts into
     // the local-AI tier explicitly (the "openai-compatible" provider
@@ -254,9 +254,9 @@ test("preview verification: fix the contrast, prove it in the preview", async ()
       workspaceId: storefront.workspaceId,
       title: "Storefront contrast fix",
       model,
-      // No client is watching to answer permission prompts — the default
+      // No client is watching to answer permission prompts - the default
       // "Always Ask" mode would stall on the first edit tool call forever.
-      // The unattended mode id is provider-specific — see
+      // The unattended mode id is provider-specific - see
       // resolveUnattendedModeId's comment above.
       modeId: resolveUnattendedModeId(provider),
     });
@@ -300,10 +300,10 @@ test("preview verification: fix the contrast, prove it in the preview", async ()
     await recorder.shot(
       "preview-server-start",
       "One click, dev server up",
-      "The Preview button reads mango-storefront's launch config and starts its dev server directly — one server configured, so there's no picker or setup prompt.",
+      "The Preview button reads mango-storefront's launch config and starts its dev server directly - one server configured, so there's no picker or setup prompt.",
     );
 
-    // Shot 2: wait for the <webview> to actually navigate before shooting —
+    // Shot 2: wait for the <webview> to actually navigate before shooting -
     // don't capture a spinner.
     await expect(async () => {
       const navigated = await window.evaluate(hasNavigatedWebview);
@@ -314,7 +314,7 @@ test("preview verification: fix the contrast, prove it in the preview", async ()
     await recorder.shot(
       "preview-pane",
       "The storefront, live in Otto",
-      "A real browser tab renders the running dev server inline — the hero heading is still unreadable, the bug the agent is about to fix.",
+      "A real browser tab renders the running dev server inline - the hero heading is still unreadable, the bug the agent is about to fix.",
     );
 
     // Now the real turn: fix the CSS, then verify with the agent's OWN
@@ -330,7 +330,7 @@ test("preview verification: fix the contrast, prove it in the preview", async ()
     // Non-fatal probe: does the agent's own tool use ever render a visible
     // proof row (preview_start / browser_navigate / browser_screenshot) in
     // the transcript? This is the actual capability being showcased, so it's
-    // worth knowing honestly whether it fired — but the scenario must not
+    // worth knowing honestly whether it fired - but the scenario must not
     // fake a pass if it doesn't; waitForFinish below is the real completion
     // signal either way.
     const proofBadge = window
@@ -358,7 +358,7 @@ test("preview verification: fix the contrast, prove it in the preview", async ()
     // The human-opened preview tab may not have picked up Vite's client-side
     // CSS HMR push for an edit the agent made after that tab was already
     // open (observed: the agent's own verification narrated success while
-    // this tab still rendered the pre-fix color) — refresh it explicitly,
+    // this tab still rendered the pre-fix color) - refresh it explicitly,
     // the same action a human would take to check the latest state, before
     // the payoff shot. This is not manufacturing proof: it's checking the
     // real file state through the same UI control a viewer could click.
@@ -376,7 +376,7 @@ test("preview verification: fix the contrast, prove it in the preview", async ()
       // at the bottom, which leaves the tool-call badge proving the agent's
       // own preview/browser tool use scrolled just above the visible frame.
       // Center it so the badge and the finish summary below it land in the
-      // same shot — the actual tool-driven proof, not just text describing it.
+      // same shot - the actual tool-driven proof, not just text describing it.
       await proofBadge
         .evaluate((el) => el.scrollIntoView({ block: "center", behavior: "instant" }))
         .catch(() => undefined);
@@ -384,12 +384,12 @@ test("preview verification: fix the contrast, prove it in the preview", async ()
     }
 
     // Shot 4 (the payoff): whatever the transcript genuinely shows once the
-    // turn settles — the agent's own tool-driven proof if it fired, or its
+    // turn settles - the agent's own tool-driven proof if it fired, or its
     // finish summary either way. Never faked.
     await recorder.shot(
       "preview-proof",
       "Verified, right in the chat",
-      "The agent's own preview and browser tools confirm the fix — the proof lands in the conversation, not a manual check.",
+      "The agent's own preview and browser tools confirm the fix - the proof lands in the conversation, not a manual check.",
     );
 
     await recorder.finish(testInfo);

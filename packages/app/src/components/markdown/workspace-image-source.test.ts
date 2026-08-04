@@ -40,7 +40,7 @@ describe("resolveWorkspaceImagePath", () => {
     expect(resolveWorkspaceImagePath("%2e%2e/%2e%2e/%2e%2e/etc/passwd.png", DOCS)).toBeNull();
   });
 
-  it("leaves remote and data srcs alone — they are not ours to resolve", () => {
+  it("leaves remote and data srcs alone - they are not ours to resolve", () => {
     expect(resolveWorkspaceImagePath("https://img.shields.io/x.svg", DOCS)).toBeNull();
     expect(resolveWorkspaceImagePath("http://example.com/x.png", DOCS)).toBeNull();
     expect(resolveWorkspaceImagePath("//img.shields.io/x.svg", DOCS)).toBeNull();
@@ -117,7 +117,7 @@ describe("createWorkspaceImageBase", () => {
     ).toEqual({ serverId: "s1", workspaceRoot: "c:/Users/me/project", documentDir: "docs" });
   });
 
-  it("has no base for a document outside the workspace — nothing to contain against", () => {
+  it("has no base for a document outside the workspace - nothing to contain against", () => {
     expect(
       createWorkspaceImageBase({
         serverId: "s1",

@@ -33,7 +33,7 @@ const DEFAULT_COMMANDS_RPC_NAME = "get_commands";
 /**
  * Pi RPC timeout policy:
  * - Control-plane / accept-and-stream (`prompt`, `get_state`, `abort`, …): default 30s
- * - Long-running blocking LLM jobs (`compact`): no wall-clock timeout — complete on
+ * - Long-running blocking LLM jobs (`compact`): no wall-clock timeout - complete on
  *   response, process death, or session close (`JsonlRpcProcess.failAll` / `close`).
  */
 const PI_COMPACT_REQUEST_TIMEOUT_MS = JSONL_RPC_NO_TIMEOUT;
@@ -169,7 +169,7 @@ class PiCliRuntimeSession implements PiRuntimeSession {
   }
 
   async getSessionStats(): Promise<PiSessionStats> {
-    // COMPAT(piGetStateFallback): added in v0.1.105 — older Oh My Pi binaries
+    // COMPAT(piGetStateFallback): added in v0.1.105 - older Oh My Pi binaries
     // lack the `get_session_stats` RPC command; fall back to extracting
     // context window usage from `get_state`. Remove after 2027-01-10 once the
     // supported Oh My Pi floor includes `get_session_stats`.
@@ -177,7 +177,7 @@ class PiCliRuntimeSession implements PiRuntimeSession {
     try {
       stats = (await this.request({ type: "get_session_stats" })) as PiSessionStats;
     } catch {
-      // get_session_stats not supported by this binary — will try get_state below
+      // get_session_stats not supported by this binary - will try get_state below
     }
     if (stats?.tokens == null && stats?.cost == null && stats?.contextUsage == null) {
       try {
@@ -194,7 +194,7 @@ class PiCliRuntimeSession implements PiRuntimeSession {
           };
         }
       } catch {
-        // get_state also failed — nothing we can do
+        // get_state also failed - nothing we can do
       }
     }
     return stats ?? {};

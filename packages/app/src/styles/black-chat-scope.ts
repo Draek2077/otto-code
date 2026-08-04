@@ -6,7 +6,7 @@ import { isWeb } from "@/constants/platform";
  *
  * Why this exists: on web, Unistyles emits every theme's variables under
  * `:root.<name>` and every generated style class references `var(--...)`.
- * `ScopedTheme` alone is not enough there — it only affects styles registered
+ * `ScopedTheme` alone is not enough there - it only affects styles registered
  * during renders that pass through its markers, so any deep child that
  * re-renders on its own (the chat stream does, constantly) recomputes its
  * class against the app theme and the scope silently unwinds. Re-declaring
@@ -26,7 +26,7 @@ const UNISTYLES_STYLE_TAG_ID = "unistyles-web";
  * ourselves) guarantees the variable names match whatever the installed
  * Unistyles version emits.
  *
- * Call after every repaint of the `black` theme key — `applyColorScheme` and
+ * Call after every repaint of the `black` theme key - `applyColorScheme` and
  * `applyAppearance` both do. No-op on native and during SSR.
  */
 export function syncBlackChatScopeVars(): void {

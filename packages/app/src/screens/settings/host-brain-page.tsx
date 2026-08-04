@@ -20,15 +20,15 @@ import {
   Square,
   Waypoints,
 } from "@/components/icons/material-icons";
-import { BrainDashboardSheet } from "@/components/brain-dashboard-sheet";
-import { BrainModelsSection, BrainOperationsSection } from "@/screens/settings/host-brain-models";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { SelectField, type SelectFieldOption } from "@/components/ui/select-field";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
+import { useRouter } from "expo-router";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
+import { buildBrainRoute } from "@/utils/host-routes";
 import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import type { Theme } from "@/styles/theme";
@@ -61,7 +61,7 @@ function generateAccessKey(): string {
 }
 
 // ---------------------------------------------------------------------------
-// Themed leaf helpers (no useUnistyles: banned — see docs/unistyles.md)
+// Themed leaf helpers (no useUnistyles: banned - see docs/unistyles.md)
 // ---------------------------------------------------------------------------
 
 const ThemedPlay = withUnistyles(Play);
@@ -167,7 +167,7 @@ function BrainStatusSection({ serverId, isConnected }: { serverId: string; isCon
   const status = query.data ?? null;
   const running = status?.running === true;
   // Three states, not two. The daemon reports `state: "starting"` (running:
-  // false) while the child is up but the host API isn't answering yet — which is
+  // false) while the child is up but the host API isn't answering yet - which is
   // exactly what a big model load looks like for its first several seconds. A
   // two-state running/stopped pill renders that window as "Stopped", so a brain
   // that is loading correctly reads as one that keeps dying. Give "starting" its
@@ -219,7 +219,7 @@ function BrainStatusSection({ serverId, isConnected }: { serverId: string; isCon
           </View>
         ) : null}
 
-        <BrainDashboardLauncher serverId={serverId} supported={statusSupported} />
+        <BrainConsoleLink supported={statusSupported} />
 
         {isRemote ? null : (
           <BrainLifecycleControls serverId={serverId} isConnected={isConnected} running={running} />
@@ -367,36 +367,36 @@ function BrainLifecycleControls({
   );
 }
 
-// Owns the dashboard sheet's open state so BrainStatusSection stays simple. The
-// row opens the live-status & evals dashboard; the sheet renders alongside it.
-function BrainDashboardLauncher({ serverId, supported }: { serverId: string; supported: boolean }) {
-  const [open, setOpen] = useState(false);
-  const handleOpen = useCallback(() => setOpen(true), []);
-  const handleClose = useCallback(() => setOpen(false), []);
+/**
+ * The way out of Settings and into the Brain page, which is where the live
+ * dashboard, the model library and the per-model profiles now live. This used to
+ * open a modal dashboard sheet; the sheet is gone, because a modal is the wrong
+ * container for a surface you work in rather than glance at.
+ */
+function BrainConsoleLink({ supported }: { supported: boolean }) {
+  const router = useRouter();
+  const handleOpen = useCallback(() => router.push(buildBrainRoute()), [router]);
   if (!supported) {
     return null;
   }
   return (
-    <>
-      <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
-        <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>Dashboard</Text>
-          <Text style={settingsStyles.rowHint}>
-            Watch live status, telemetry, and benchmark rankings.
-          </Text>
-        </View>
-        <Button
-          variant="outline"
-          size="sm"
-          leftIcon={dashboardIcon}
-          onPress={handleOpen}
-          testID="host-brain-open-dashboard-button"
-        >
-          Open dashboard
-        </Button>
+    <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>Brain</Text>
+        <Text style={settingsStyles.rowHint}>
+          Models, downloads, benchmarks, logs and live status.
+        </Text>
       </View>
-      <BrainDashboardSheet serverId={serverId} visible={open} onClose={handleClose} />
-    </>
+      <Button
+        variant="outline"
+        size="sm"
+        leftIcon={dashboardIcon}
+        onPress={handleOpen}
+        testID="host-brain-open-console-button"
+      >
+        Open Brain
+      </Button>
+    </View>
   );
 }
 
@@ -644,7 +644,7 @@ function TailscaleDiscoverRow({
   );
 }
 
-// The "Server" section: the whole server definition in one group — mode, the two
+// The "Server" section: the whole server definition in one group - mode, the two
 // independent lifecycle switches, and (local) how it binds and which model it
 // serves, or (remote) where to reach it. Authentication and Security follow in
 // their own sections below Status.
@@ -700,7 +700,7 @@ function BrainServerSection({ serverId }: { serverId: string }) {
       if (next) {
         // Enable and Start automatically are independent switches that are meant
         // to be on TOGETHER. Turning Start automatically on must never turn
-        // Enable off — it turns it on, so the two light up side by side and the
+        // Enable off - it turns it on, so the two light up side by side and the
         // setting actually does something (autoStart is a no-op while disabled).
         enabled.set(true);
         patchBrain({ autoStart: true, enabled: true });
@@ -908,7 +908,7 @@ function BrainServerSection({ serverId }: { serverId: string }) {
 }
 
 // A boolean that shows the user's just-clicked value immediately and defers to
-// the server value once it agrees — so a controlled Switch backed by a slow,
+// the server value once it agrees - so a controlled Switch backed by a slow,
 // non-optimistic round-trip doesn't visibly bounce back mid-flight.
 function useOptimisticFlag(serverValue: boolean): { value: boolean; set: (next: boolean) => void } {
   const [pending, setPending] = useState<boolean | null>(null);
@@ -921,8 +921,8 @@ function useOptimisticFlag(serverValue: boolean): { value: boolean; set: (next: 
 const CUSTOM_BIND = "__custom__";
 
 // Picker for `listen.host`: nobody wants to hand-type an interface IP, so we
-// offer the choices they actually mean — Local only, All interfaces, each
-// detected LAN address, and Tailscale — with a Custom escape hatch. Local-only
+// offer the choices they actually mean - Local only, All interfaces, each
+// detected LAN address, and Tailscale - with a Custom escape hatch. Local-only
 // and All are static so the picker works even on a daemon that can't run the
 // discovery probe; detection just enriches the list.
 function HostBindPicker({
@@ -1185,8 +1185,8 @@ function BrainConfigSection({ serverId }: { serverId: string }) {
   );
 }
 
-// The Sharing section (local brains only): opt this brain into being reachable —
-// and optionally reconfigurable — by other Otto hosts. Off by default (loopback).
+// The Sharing section (local brains only): opt this brain into being reachable -
+// and optionally reconfigurable - by other Otto hosts. Off by default (loopback).
 function BrainSharingSection({ serverId }: { serverId: string }) {
   const { config, patchConfig } = useDaemonConfig(serverId);
   const brain = config?.brain ?? null;
@@ -1328,7 +1328,7 @@ function BrainSharingSection({ serverId }: { serverId: string }) {
                   <View style={settingsStyles.rowContent}>
                     <Text style={settingsStyles.rowTitle}>Access key</Text>
                     <Text style={settingsStyles.rowHint}>
-                      {brain.authToken ? "A key is set." : "No key yet — generate one."}
+                      {brain.authToken ? "A key is set." : "No key yet - generate one."}
                     </Text>
                   </View>
                   <Button
@@ -1540,10 +1540,15 @@ export function HostBrainPage({ serverId }: { serverId: string }) {
 
   return (
     <View>
+      {/* This page is SETUP: how to reach the brain and how it is secured, plus
+          the lifecycle you often want while already in here. Everything
+          operational (models, downloads, per-model profiles, calibrate, sweep,
+          benchmarks, logs) lives on the Brain page, reachable from the Brain
+          icon in the bottom-left rail. Those are work, not settings: they are
+          long-running, progress-bearing and result-producing, and they do not
+          belong next to a TLS certificate path. */}
       <BrainServerSection serverId={serverId} />
       <BrainStatusSection serverId={serverId} isConnected={isConnected} />
-      <BrainModelsSection serverId={serverId} />
-      <BrainOperationsSection serverId={serverId} />
       <BrainSharingSection serverId={serverId} />
       <BrainRemoteConfigSection serverId={serverId} />
       <BrainConfigSection serverId={serverId} />

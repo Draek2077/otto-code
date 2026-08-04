@@ -77,7 +77,7 @@ export interface ResolvedEffortOption {
 }
 
 /**
- * Resolve a requested effort — an exact option id or a canonical level —
+ * Resolve a requested effort - an exact option id or a canonical level -
  * against a model's advertised `thinkingOptions`. Exact ids always win, so
  * provider-special options (e.g. Claude's "ultracode") stay reachable even
  * though they have no place on the canonical scale.
@@ -123,7 +123,7 @@ export function resolveEffortOption(input: {
   }
   if (best === null) {
     // None of the model's options map onto the canonical scale (fully custom
-    // option ids) — only exact ids can address them.
+    // option ids) - only exact ids can address them.
     throw new EffortResolutionError(requested, availableIds);
   }
   return {

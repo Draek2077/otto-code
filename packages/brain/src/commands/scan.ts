@@ -1,5 +1,5 @@
 /**
- * `otto brain scan` — list detected models with their arch, quant, size, native
+ * `otto brain scan` - list detected models with their arch, quant, size, native
  * context, vision, calibration state, and source. Returns a typed list the output
  * layer renders as a table (default), json, or yaml.
  */
@@ -8,6 +8,7 @@ import type { Command } from "commander";
 import { getCalibration, forModel, loadBrainConfig, loadProfilesStore } from "../config/index.js";
 import { formatBytes, scanModels } from "../models/index.js";
 import type { AnyCommandResult, OutputSchema } from "../output/index.js";
+import { withActivity } from "../service/activity.js";
 
 export interface ScanRow {
   model: string;
@@ -53,7 +54,13 @@ export async function runScanCommand(
 ): Promise<AnyCommandResult<ScanRow>> {
   const config = loadBrainConfig();
   const store = loadProfilesStore();
-  const catalog = scanModels(config, process.env, { withMetadata: options.metadata !== false });
+  // Announced because a metadata scan opens and reads the GGUF header of every
+  // model on disk, which on a large library is seconds of I/O, not milliseconds.
+  // Only the explicit `scan` command announces: the other commands call
+  // `scanModels` too, and each announcing would fight over the one record.
+  const catalog = await withActivity("scan", {}, async () =>
+    scanModels(config, process.env, { withMetadata: options.metadata !== false }),
+  );
 
   const rows: ScanRow[] = catalog.map((model) => {
     const profile = forModel(store, model, config.defaults);

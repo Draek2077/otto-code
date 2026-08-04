@@ -36,7 +36,7 @@ import {
   type WorkspaceFileOpenRequest,
 } from "@/workspace/file-open";
 
-// The demo scenario (the vendored bundle's built-in mock run — see
+// The demo scenario (the vendored bundle's built-in mock run - see
 // docs/visualizer.md "Risks / gotchas") is retained in the bundle and reachable
 // through the config protocol; it just no longer has a floating on-canvas
 // button. To re-surface it later, post `config: { mode: "replay", autoPlay:
@@ -46,7 +46,7 @@ import {
 // mock scenario). A `{ type: "reset" }` on each transition clears stale state.
 
 // The shell caps the devicePixelRatio the page sees (emit-bundle.mjs
-// placeholder) — the canvas backing store and bloom buffers scale with it.
+// placeholder) - the canvas backing store and bloom buffers scale with it.
 // Measured on a maximized 2x pane: 1 → 52 FPS, 1.5 → 25 FPS, native 2 → 14
 // FPS. "native" passes a high cap so min(native, cap) resolves to the
 // display's own ratio.
@@ -59,14 +59,14 @@ const RENDER_SCALE_BY_QUALITY: Record<string, number> = {
 
 // The guest posts `ready` before its first paint, but the settings config
 // (panels/render/hudHidden) only lands a frame or two AFTER the HUD has
-// already painted its defaults — visible as a flash of the default HUD on
+// already painted its defaults - visible as a flash of the default HUD on
 // open. An opaque cover (painted the stage background) hides the guest until
 // the config has settled, then fades out. The delay gives the page time to
 // receive + apply the config effect's message post-ready.
 const LOAD_COVER_SETTLE_MS = 150;
 const LOAD_COVER_FADE_MS = 200;
 
-// A guest that never loads emits nothing — no `ready`, no error — leaving the
+// A guest that never loads emits nothing - no `ready`, no error - leaving the
 // opaque load cover up forever (the silent-blank-tab failure seen on machines
 // running the Linux GPU software-rendering fallback). If the handshake hasn't
 // arrived after this long of the pane being visible, surface a failure state
@@ -76,7 +76,7 @@ const READY_HANDSHAKE_TIMEOUT_MS = 15_000;
 /** The visualizer session id a workspace chat tab maps to: a root-agent session
  * for a started chat, or an empty draft session (see `sessionIdForDraft`) for a
  * chat that hasn't started an agent yet. Non-chat tabs (terminal / file /
- * visualizer / browser / …) have no session — returns null. */
+ * visualizer / browser / …) have no session - returns null. */
 function chatSessionIdForTab(tab: WorkspaceTab | undefined): string | null {
   if (tab?.target.kind === "agent") {
     return sessionIdForRootAgent(tab.target.agentId);
@@ -92,7 +92,7 @@ export interface VisualizerSurfaceProps {
   workspaceId: string;
   /** Which surface this guest is: the full TAB, or the picture-in-picture
    * viewport pinned over the conversation. The only differences are chrome
-   * (toolbar / HUD parts / panels) and camera framing — the simulation, the
+   * (toolbar / HUD parts / panels) and camera framing - the simulation, the
    * adapter, the theme and the fonts are identical, which is exactly why both
    * render this one component instead of forking it. */
   surface: VisualizerSurfaceKind;
@@ -107,7 +107,7 @@ export interface VisualizerSurfaceProps {
   onOpenFile: (request: WorkspaceFileOpenRequest) => void;
   /** Follow-the-active-chat, lifted. Omit for the tab, which owns the state
    * internally and drives it from its own toolbar. PIP renders the pin control
-   * in its own strip (it has no toolbar), so it passes the state down —
+   * in its own strip (it has no toolbar), so it passes the state down -
    * "pinning still works in PIP" is a charter requirement, and it has to be the
    * SAME follow state, not a parallel one. */
   followActive?: boolean;
@@ -115,7 +115,7 @@ export interface VisualizerSurfaceProps {
 }
 
 // Exported so the thin registration modules (visualizer-panel-registration.tsx,
-// visualizer-pip-lazy.tsx) can pull it via React.lazy — the boundary that keeps
+// visualizer-pip-lazy.tsx) can pull it via React.lazy - the boundary that keeps
 // this whole module (and the vendored render bundle it transitively loads) out
 // of the startup graph.
 export function VisualizerSurface({
@@ -132,7 +132,7 @@ export function VisualizerSurface({
   const isPip = surface === "pip";
   const { settings } = useSettings();
   // The in-page mute toggle persists through this store (visualizer settings
-  // are device-local AppSettings, written directly — they don't round-trip the
+  // are device-local AppSettings, written directly - they don't round-trip the
   // merged useSettings updater, which only routes a subset of fields).
   const { updateSettings: updateAppSettings } = useAppSettings();
   const viewRef = useRef<VisualizerViewHandle>(null);
@@ -156,11 +156,11 @@ export function VisualizerSurface({
   // tracks what you're actually looking at. Pinning (the toolbar Pin toggle, or
   // manually picking a chat from the dropdown) freezes it on one chat until you
   // unpin. The focused chat tab maps to a page session id via
-  // `chatSessionIdForTab` — an agent tab → `sessionIdForRootAgent`, a draft tab
-  // → `sessionIdForDraft` — the named seam for that keying contract.
+  // `chatSessionIdForTab` - an agent tab → `sessionIdForRootAgent`, a draft tab
+  // → `sessionIdForDraft` - the named seam for that keying contract.
   const [uncontrolledFollowActive, setUncontrolledFollowActive] = useState(true);
   // Controlled when the caller supplies both halves (PIP), uncontrolled
-  // otherwise (the tab). One follow state either way — never two.
+  // otherwise (the tab). One follow state either way - never two.
   const followActive = followActiveProp ?? uncontrolledFollowActive;
   const setFollowActive = useCallback(
     (next: boolean | ((previous: boolean) => boolean)) => {
@@ -176,7 +176,7 @@ export function VisualizerSurface({
 
   // The workspace's tab set + focused tab drive both the chats dropdown (every
   // draft tab becomes an empty session) and follow-the-active-chat. Reading the
-  // tabs store directly — not the session store's focusedAgentId — is what lets
+  // tabs store directly - not the session store's focusedAgentId - is what lets
   // a DRAFT tab drive selection: a draft has no agent, so focusedAgentId is null
   // and the old logic froze on the previous chat (the /clear-doesn't-reset bug).
   const tabPersistenceKey = useMemo(
@@ -185,7 +185,7 @@ export function VisualizerSurface({
   );
   // Read from the LAYOUT store, which is what actually tracks open tabs and
   // focus. The tabs store's uiTabsByWorkspace/focusedTabIdByWorkspace have no
-  // writer — the Visualizer was their only reader — so following them meant
+  // writer - the Visualizer was their only reader - so following them meant
   // following dead state: switching chats never moved the Visualizer, which in
   // turn made the Pin toggle look inert (there was nothing to freeze). See
   // use-workspace-chat-focus.ts.
@@ -193,7 +193,7 @@ export function VisualizerSurface({
   const focusedTabId = useFocusedTabIdFromLayout(tabPersistenceKey);
 
   // Each draft chat tab (a chat with no agent yet) surfaced as an empty session
-  // for the adapter — it shows in the dropdown and reads "Waiting for chat
+  // for the adapter - it shows in the dropdown and reads "Waiting for chat
   // activity" when selected. Started chats already come through as agent
   // sessions, so together the dropdown mirrors every chat tab.
   const draftSessions = useMemo<DraftSessionInput[]>(() => {
@@ -226,7 +226,7 @@ export function VisualizerSurface({
   }, [focusedChatSessionId]);
 
   // Theme colors (docs/visualizer.md "Theme colors"): the guest palette is
-  // derived from the active variant, resolved exactly like applyColorScheme —
+  // derived from the active variant, resolved exactly like applyColorScheme -
   // settings picks plus the OS scheme for System mode. Baked into the guest
   // html per load (the vendor page consumes it at module init), so a theme
   // change remounts the guest, same as a quality change.
@@ -243,7 +243,7 @@ export function VisualizerSurface({
   );
 
   // A quality or theme change reloads the guest (new dpr cap / palette baked
-  // into the html), so the handshake state must reset — the fresh page
+  // into the html), so the handshake state must reset - the fresh page
   // re-sends `ready`, which re-runs connection-status + config and
   // re-activates the adapter. The load cover snaps back opaque too: the fresh
   // page would flash its default HUD again before the re-sent config lands.
@@ -257,7 +257,7 @@ export function VisualizerSurface({
     loadCoverOpacity.setValue(1);
   }, [renderScale, visualizerTheme.json, loadCoverOpacity]);
 
-  // Ready-handshake watchdog. Counts only while the pane is visible — a tab
+  // Ready-handshake watchdog. Counts only while the pane is visible - a tab
   // mounted in a hidden pane/workspace legitimately hasn't loaded yet (hidden
   // webviews may not attach at all), and the timer restarts from zero on every
   // visibility flip. A late `ready` clears the failure state (see
@@ -293,7 +293,7 @@ export function VisualizerSurface({
   // Runs "Visualize" scoping (target.runId set): restrict sessions to that
   // run's agent set. The adapter compares agentIdFilter by reference (see
   // use-visualizer-event-adapter.ts), and every runs.updated push replaces
-  // the query array — even for patches that don't touch membership — so the
+  // the query array - even for patches that don't touch membership - so the
   // Set must be keyed on the actual membership (sorted, joined), not on the
   // runs array, or an active run resets + re-backfills the page on every
   // status/progress push.
@@ -320,7 +320,7 @@ export function VisualizerSurface({
   // pushes to the page, so the page stays the single config-driven follower.
   const handleSelectSession = useCallback(
     (sessionId: string) => {
-      // Manually picking a chat pins the Visualizer to it — otherwise the next
+      // Manually picking a chat pins the Visualizer to it - otherwise the next
       // focus change would immediately yank it back to the active chat.
       setFollowActive(false);
       viewRef.current?.postMessage({ type: "select-session", sessionId });
@@ -335,7 +335,7 @@ export function VisualizerSurface({
     void updateAppSettings({ visualizerPanelTimeline: !settings.visualizerPanelTimeline });
   }, [settings.visualizerPanelTimeline, updateAppSettings]);
   const handleToggleFiles = useCallback(() => {
-    // Files/Cost are a mutually exclusive pair in the page — enabling one
+    // Files/Cost are a mutually exclusive pair in the page - enabling one
     // disables the other so the toolbar's active states stay truthful.
     void updateAppSettings({
       visualizerPanelFileAttention: !settings.visualizerPanelFileAttention,
@@ -360,7 +360,7 @@ export function VisualizerSurface({
   const handleToggleStats = useCallback(() => {
     void updateAppSettings({ visualizerPanelStats: !settings.visualizerPanelStats });
   }, [settings.visualizerPanelStats, updateAppSettings]);
-  // Zoom to Fit + Restart are stateless one-shot viewport actions — the page
+  // Zoom to Fit + Restart are stateless one-shot viewport actions - the page
   // owns the simulation, so these just remote-control it (no device-local
   // setting to persist), mirroring how the chats dropdown drives selection.
   const handleZoomToFit = useCallback(() => {
@@ -390,7 +390,7 @@ export function VisualizerSurface({
         return;
       }
       if (message.type === "sound-muted") {
-        // The in-page speaker button was toggled — persist it so the choice
+        // The in-page speaker button was toggled - persist it so the choice
         // survives reopening the tab and restarting the app. The settings
         // change flows back out as config.soundVolume via the effect above.
         void updateAppSettings({ visualizerSoundMuted: message.muted });
@@ -399,11 +399,11 @@ export function VisualizerSurface({
       if (message.type === "panel-toggle") {
         // A page keyboard shortcut asked to toggle a panel. Host settings are
         // the source of truth for panel visibility, so flip the same
-        // device-local setting the matching toolbar button does — the change
+        // device-local setting the matching toolbar button does - the change
         // flows back to the page via the config.panels push, keeping the
         // toolbar's selected state and the page in sync.
         // While the HUD is hidden the panels are force-hidden and their toolbar
-        // toggles are disabled, so ignore the shortcut too — otherwise it would
+        // toggles are disabled, so ignore the shortcut too - otherwise it would
         // silently flip the stored setting and surprise the user on re-show.
         if (settings.visualizerHudHidden) {
           return;
@@ -431,7 +431,7 @@ export function VisualizerSurface({
       }
       if (message.type === "open-file") {
         // Paths come from tool-call telemetry (visualizer-event-adapter's
-        // inputData.file_path) — could be absolute or workspace-relative;
+        // inputData.file_path) - could be absolute or workspace-relative;
         // normalizeWorkspaceFileLocation tolerates both.
         const location = normalizeWorkspaceFileLocation({
           path: message.filePath,
@@ -439,7 +439,7 @@ export function VisualizerSurface({
           lineEnd: message.line,
         });
         if (location) {
-          // The Visualizer is a canvas that doesn't share its pane well — a file
+          // The Visualizer is a canvas that doesn't share its pane well - a file
           // opened on top of it would cover the graph the user is watching. Open
           // beside it instead (focus an adjacent pane, else split one out), the
           // same "side" disposition chat file links use.
@@ -460,23 +460,23 @@ export function VisualizerSurface({
 
   // Device-local prefs (Settings -> Visualizer): panel visibility seeds
   // (vendor `config.panels` patch) and render-layer toggles (`config.render`
-  // patch) — sent when the page becomes ready and re-sent live whenever a
+  // patch) - sent when the page becomes ready and re-sent live whenever a
   // setting changes. Both are partial configs, so they never disturb
   // mode/showMockData (safe during the dev demo scenario).
   // Software rendering (no GPU acceleration) force-disables bloom regardless
-  // of the setting: it's three full-canvas blur passes per frame — the single
-  // most expensive draw stage — which a CPU rasterizer can't afford. The
+  // of the setting: it's three full-canvas blur passes per frame - the single
+  // most expensive draw stage - which a CPU rasterizer can't afford. The
   // Settings toggle shows the same forced-off state (visualizer-section.tsx).
   const isSoftwareRendering = useIsSoftwareRendering();
   // Hiding the HUD hides the informational panels too (Timeline / Files / Cost
   // / Stats), not just the vendor's top+bottom bars: the HUD-eye is meant to
   // give a clean canvas view, so a stale slide-in panel left open would defeat
-  // it. Force config.panels off while hudden — but read from the stored panel
+  // it. Force config.panels off while hudden - but read from the stored panel
   // settings, never write them, so re-showing the HUD restores exactly the
   // panels that were open before (same preserve-the-preference pattern as
   // software-rendering forcing bloom off). The toolbar's panel toggles are
   // disabled + unselected to match (visualizer-toolbar.tsx).
-  // Chrome + framing differ per surface, and ONLY per surface — see
+  // Chrome + framing differ per surface, and ONLY per surface - see
   // visualizer-chrome-profile.ts. PIP is "top HUD, nothing else" with a tighter
   // auto-fit profile; the tab keeps the HUD-eye behavior it always had.
   const hudHidden = settings.visualizerHudHidden;
@@ -511,16 +511,16 @@ export function VisualizerSurface({
         // toggle gates the slider level, so muting sends 0 and unmuting restores
         // exactly the current slider value. Stored as a 0-100 percent.
         soundVolume: settings.visualizerSoundMuted ? 0 : settings.visualizerSoundVolume / 100,
-        // Whole-HUD visibility — one device-local setting shared by every
+        // Whole-HUD visibility - one device-local setting shared by every
         // Visualizer tab, toggled by the toolbar HUD-eye.
         hudHidden: chrome.hudHidden,
         // Bottom control bar alone (OTTO PATCH). PIP drops the transport
         // controls but keeps the top stats readout.
         hudBottomHidden: chrome.hudBottomHidden,
-        // Compact HUD layout (OTTO PATCH) — PIP splits the stats readout across
+        // Compact HUD layout (OTTO PATCH) - PIP splits the stats readout across
         // both top corners and drops the FPS meter to the bottom-left.
         hudCompact: chrome.hudCompact,
-        // Absent for the tab — an omitted `camera` key keeps the vendor's
+        // Absent for the tab - an omitted `camera` key keeps the vendor's
         // tab-tuned auto-fit constants untouched.
         ...(chrome.camera ? { camera: chrome.camera } : {}),
       },
@@ -547,11 +547,11 @@ export function VisualizerSurface({
   // Fonts + type scale: the guest page renders in Otto's interface/code fonts
   // at the chat prose size instead of the vendor's own mono-everywhere look
   // (docs/visualizer.md "Fonts & type scale"). Consumed by the Otto shell
-  // script (emit-bundle.mjs), not the vendor bridge — sent on ready and
+  // script (emit-bundle.mjs), not the vendor bridge - sent on ready and
   // re-sent live when the appearance settings (or the compact bump) change.
   const isCompact = useIsCompactFormFactor();
   // Surface switching for the tab's toolbar. Null on compact, where the PIP does
-  // not exist at all (visualizer-pip-host.tsx) — the toolbar then simply has no
+  // not exist at all (visualizer-pip-host.tsx) - the toolbar then simply has no
   // PIP control rather than one that would do nothing.
   const { collapseToPip } = useVisualizerSurface(serverId, workspaceId);
   const handleCollapseToPip = isPip || isCompact ? null : collapseToPip;
@@ -571,7 +571,7 @@ export function VisualizerSurface({
   }, [ready, settings.uiFontFamily, settings.monoFontFamily, settings.uiFontSize, isCompact]);
 
   // Every transition to active (ready + this pane actually visible) does a
-  // full reset + replay — including recovery from a hidden-webview rAF stall
+  // full reset + replay - including recovery from a hidden-webview rAF stall
   // (visualizer.md Risks: "Hidden panes stop the world").
   useVisualizerEventAdapter({
     serverId,
@@ -583,7 +583,7 @@ export function VisualizerSurface({
   });
 
   // NOTE: voice cues are NOT mounted here. They are an agent feature, not a
-  // Visualizer one — `AgentVoiceCuesHost` (_layout.tsx) plays them app-wide,
+  // Visualizer one - `AgentVoiceCuesHost` (_layout.tsx) plays them app-wide,
   // including while the Visualizer is closed or disabled, which is the entire
   // point of a notification channel. Mounting them here as well would
   // double-fire for the focused workspace. The only thing this surface still
@@ -591,7 +591,7 @@ export function VisualizerSurface({
 
   // Follow the focused chat: whenever follow is on, drive the page's selection
   // to the workspace's focused chat. Guards keep it inert unless there's real
-  // work to do — the target must be a session the page actually knows about
+  // work to do - the target must be a session the page actually knows about
   // (run-scoped tabs filter the set) and must differ from the current
   // selection. The page echoes the new selection back via `session-state`,
   // which satisfies the `=== selectedId` guard and stops any feedback loop.
@@ -619,10 +619,10 @@ export function VisualizerSurface({
 
   return (
     <View style={styles.container}>
-      {/* Native Otto toolbar at the top of the tab — chats switcher + panel/
+      {/* Native Otto toolbar at the top of the tab - chats switcher + panel/
           audio/HUD toggles pulled out of the in-webview HUD. Always visible;
           the HUD-eye here hides only the in-webview HUD. PIP has NO controls at
-          all (charter), so it renders none of this — its only chrome is the
+          all (charter), so it renders none of this - its only chrome is the
           host-side strip drawn by visualizer-pip.tsx. */}
       {isPip ? null : (
         <VisualizerToolbar
@@ -659,12 +659,12 @@ export function VisualizerSurface({
         <Animated.View pointerEvents="none" style={loadCoverStyle} />
         {/* Above the (still-opaque) load cover: without this, a guest that never
             loads presents as a silent solid-color tab with no evidence anywhere
-            (docs/visualizer.md "Risks / gotchas" — software-rendering machines). */}
+            (docs/visualizer.md "Risks / gotchas" - software-rendering machines). */}
         {loadFailure !== null && !ready ? (
           <View pointerEvents="none" style={styles.loadFailure}>
             <Text style={styles.loadFailureTitle}>{t("workspace.visualizer.loadFailedTitle")}</Text>
             {/* The explanatory paragraph and the raw reason don't fit a PIP
-                box — the title alone still says what happened, and expanding
+                box - the title alone still says what happened, and expanding
                 to the tab shows the full diagnostic. */}
             {isPip ? null : (
               <>
@@ -694,7 +694,7 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     position: "relative",
   },
-  // Opaque boot cover over the guest, painted the stage background — hides
+  // Opaque boot cover over the guest, painted the stage background - hides
   // the default-HUD flash between the page's first paint and the settings
   // config landing (see LOAD_COVER_SETTLE_MS above). Faded out post-settle;
   // pointerEvents:none so it never eats input even mid-fade.

@@ -1,7 +1,7 @@
 // Which chat the Visualizer should be showing, and which chat tabs exist.
 //
 // BUG THIS FIXES (2026-07-20): both were read from `useWorkspaceTabsStore`'s
-// `uiTabsByWorkspace` / `focusedTabIdByWorkspace`. Nothing writes those fields —
+// `uiTabsByWorkspace` / `focusedTabIdByWorkspace`. Nothing writes those fields -
 // grep the app and the Visualizer is their ONLY reader, while every real tab
 // open/focus/close goes through `useWorkspaceLayoutStore` (panes own their tabs
 // and their `focusedTabId`). So follow-the-active-chat was watching dead state:
@@ -38,7 +38,7 @@ export function useWorkspaceTabsFromLayout(workspaceKey: string | null): readonl
 }
 
 /**
- * The tab that currently holds focus — the focused pane's own focused tab.
+ * The tab that currently holds focus - the focused pane's own focused tab.
  *
  * Falls back to the single pane's focused tab when `focusedPaneId` hasn't been
  * set yet (a fresh workspace, or the mobile/fallback single-pane layout), so

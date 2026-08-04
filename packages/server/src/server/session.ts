@@ -65,6 +65,8 @@ import {
 import { redactDaemonConfigForClient } from "./daemon-config-store.js";
 import type { DaemonConfigStore } from "./daemon-config-store.js";
 import { listConnectorTools } from "./connectors/connector-tools.js";
+import type { ConnectorOAuthBroker } from "./connectors/connector-oauth.js";
+import type { ConnectorsOauthAuthorizeResponse } from "@otto-code/protocol/messages";
 import { getErrorMessage, getErrorMessageOr } from "@otto-code/protocol/error-utils";
 import { getAgentStatusPriority } from "@otto-code/protocol/agent-state-bucket";
 import { getParentAgentIdFromLabels } from "@otto-code/protocol/agent-labels";
@@ -73,6 +75,15 @@ import {
   ActivityCountersSchema,
 } from "@otto-code/protocol/messages";
 import type { BrainHostStatus, BrainJob } from "@otto-code/protocol/messages";
+import {
+  BrainBudgetSchema,
+  BrainCalibrationInfoSchema,
+  BrainDiskUsageSchema,
+  BrainInventoryModelSchema,
+  BrainProfileFieldSchema,
+  BrainProfileSchema,
+  BrainProfileWarningSchema,
+} from "@otto-code/protocol/messages";
 import { loadPersistedConfig } from "./persisted-config.js";
 import { releaseWorkspaceServicePortPlan } from "./workspace-service-port-registry.js";
 import type { WorkspaceGitRuntimeSnapshot, WorkspaceGitService } from "./workspace-git-service.js";
@@ -391,7 +402,7 @@ function coalesceToNull<T>(value: T | null | undefined): T | null {
 /**
  * A personality-memory scope arrives as a plain string (forward compat, like
  * roles and effort levels), so an unrecognized value is dropped here rather than
- * coerced — "project" and "global" are different claims, and guessing between
+ * coerced - "project" and "global" are different claims, and guessing between
  * them would silently widen or narrow a lesson's reach.
  */
 function readPersonalityMemoryScope(value: string | undefined): "project" | "global" | undefined {
@@ -628,6 +639,9 @@ export interface SessionOptions {
   // limiting) is never split across sessions. Falls back to a local instance.
   agentAutoTitle?: AgentAutoTitle;
   daemonConfigStore: DaemonConfigStore;
+  // Optional so the many test harnesses need not build one; when absent the
+  // connector OAuth RPCs answer with a clear "not available on this host".
+  connectorOAuthBroker?: ConnectorOAuthBroker | null;
   mcpBaseUrl?: string | null;
   stt: Resolvable<SpeechToTextProvider | null>;
   sttLanguage?: string;
@@ -775,6 +789,44 @@ function describeRegistryTransition(record: ArchivedRecordSnapshot | null): Regi
 /** Shown when the daemon lacks the brain-ops manager (feature not built in). */
 const BRAIN_OPS_UNAVAILABLE = "Managing models is not available on this daemon.";
 
+/** Shown when the daemon has no brain manager at all. */
+const BRAIN_UNAVAILABLE = "The local AI host is not available on this daemon.";
+
+/** True for a JSON object (not an array, not null). */
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Validate each element of an array the brain returned, dropping the ones that
+ * do not parse. A single malformed row must not blank the whole list: the brain
+ * is a separate process on a possibly older version, and partial data beats an
+ * empty table with no explanation.
+ */
+function parseBrainArray<T>(
+  value: unknown,
+  schema: { safeParse: (v: unknown) => { success: true; data: T } | { success: false } },
+): T[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const rows: T[] = [];
+  for (const entry of value) {
+    const parsed = schema.safeParse(entry);
+    if (parsed.success) {
+      rows.push(parsed.data);
+    }
+  }
+  return rows;
+}
+
+/** The string members of an array the brain returned. */
+function parseBrainStrings(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
+}
+
 /**
  * Session represents a single connected client session.
  * It owns all state management, orchestration logic, and message processing.
@@ -782,7 +834,7 @@ const BRAIN_OPS_UNAVAILABLE = "Managing models is not available on this daemon."
  */
 /**
  * Fills in the optional transport/reporting callbacks a Session may be built
- * without. Kept out of the constructor so the constructor is assignment only —
+ * without. Kept out of the constructor so the constructor is assignment only -
  * the fields are readonly, so the assignments themselves cannot move.
  */
 function resolveSessionOptionDefaults(options: SessionOptions) {
@@ -824,7 +876,7 @@ export class Session {
   private readonly worktreesRoot: string | undefined;
   /** Daemon-scoped, shared with every other session. Held here for archive teardown. */
   private readonly lspService: LspService;
-  /** Same, for the solution sidecars — a directory nobody points at any more must not keep one. */
+  /** Same, for the solution sidecars - a directory nobody points at any more must not keep one. */
   private readonly solutionService: SolutionService;
 
   private agentManager: AgentManager;
@@ -854,6 +906,7 @@ export class Session {
   private readonly workspaceProvisioning: WorkspaceProvisioningService;
   private readonly workspaceRecovery: WorkspaceRecoveryService;
   private readonly daemonConfigStore: DaemonConfigStore;
+  private readonly connectorOAuthBroker: ConnectorOAuthBroker | null;
   private readonly getSpeechSettingsOptions: (() => SpeechSettingsOptions) | null;
   private readonly previewTts:
     | ((params: {
@@ -873,7 +926,7 @@ export class Session {
   private readonly voiceCueGenerator: VoiceCueGenerator;
   private readonly personalityProfileGenerator: PersonalityProfileGenerator;
   // Refine's one-shot document rewriter. It lives on the session rather than on
-  // WorkspaceFilesSession because that class is deliberately file I/O only —
+  // WorkspaceFilesSession because that class is deliberately file I/O only -
   // it reaches no agent, and this is a model call that touches no file.
   private readonly refineGenerator: RefineGenerator;
   private readonly pushTokenStore: PushTokenStore;
@@ -969,6 +1022,7 @@ export class Session {
       workspaceAutoName,
       agentAutoTitle,
       daemonConfigStore,
+      connectorOAuthBroker,
       stt,
       sttLanguage,
       tts,
@@ -1042,7 +1096,7 @@ export class Session {
       ottoHome,
       logger: this.sessionLogger,
       // Cross-workspace file access is bounded to the distinct paths of every
-      // known Otto workspace (and its project root) — the client may open files
+      // known Otto workspace (and its project root) - the client may open files
       // from any of them, not just the active one, but nothing outside them.
       resolveAllowedRoots: async () => {
         const [workspaces, projects] = await Promise.all([
@@ -1174,7 +1228,7 @@ export class Session {
             unarchive: false,
             // A room mention is a message, not an emergency. Interrupting threw
             // away whatever the mentioned agent was doing on behalf of someone
-            // who only meant to say something to it — and `@everyone` did that
+            // who only meant to say something to it - and `@everyone` did that
             // to a roomful at once. See docs/chat-lifecycle.md (Delivery).
             delivery: "queue",
             source: "system",
@@ -1281,6 +1335,7 @@ export class Session {
         })
       : null;
     this.daemonConfigStore = daemonConfigStore;
+    this.connectorOAuthBroker = connectorOAuthBroker ?? null;
     this.terminalManager = terminalManager;
     this.previewDevServers = previewDevServers ?? null;
     // Coalesced via a helper so this already-at-limit constructor gains no
@@ -1415,7 +1470,7 @@ export class Session {
         }
 
         // `listAgents()` only sees agents loaded into memory, so a freshly
-        // restarted daemon has none until a chat is opened — and without a
+        // restarted daemon has none until a chat is opened - and without a
         // provider the whole report is null and the tab reads as broken. The
         // workspace's persisted agents answer the same question from disk.
         // Only `systemPrompt` survives there (the daemon append is composed at
@@ -1440,7 +1495,7 @@ export class Session {
         }
 
         // A workspace nobody has chatted in yet is the common case for this tab
-        // — you open it precisely to see what a *first* chat would carry. The
+        // - you open it precisely to see what a *first* chat would carry. The
         // provider only selects which filenames the scan looks for, so refusing
         // to answer without an agent meant a project full of context files
         // reported nothing at all, instantly and with no way to recover.
@@ -2059,7 +2114,7 @@ export class Session {
         }
 
         if (event.type === "background_shell_task_state") {
-          // Not Agent-shaped (no ManagedAgent, no tab/pane) — push the full
+          // Not Agent-shaped (no ManagedAgent, no tab/pane) - push the full
           // current list for this parent directly instead of routing through
           // the live-agent forwarding path.
           this.emit({
@@ -2070,7 +2125,7 @@ export class Session {
         }
 
         if (event.type === "suggested_task_state") {
-          // Suggested-task chips (spawn_task) — push the full current pending
+          // Suggested-task chips (spawn_task) - push the full current pending
           // list for this parent, same direct path as background shell tasks.
           this.emit({
             type: "suggested_tasks_changed",
@@ -2587,14 +2642,14 @@ export class Session {
       return;
     }
 
-    // Apply the same mode to each task independently — one agent/chat each, no
+    // Apply the same mode to each task independently - one agent/chat each, no
     // combining. Failures are collected so a partial success still starts the
     // rest; each failed task's chip stays pending.
     let succeeded = 0;
     const errors: string[] = [];
     for (const taskId of taskIds) {
       const task = this.agentManager.getSuggestedTaskEntry(taskId);
-      // Never act on a task that belongs to a different parent — treat a
+      // Never act on a task that belongs to a different parent - treat a
       // mismatched (or missing) id as not found rather than starting it.
       if (!task || task.parentAgentId !== parentAgentId) {
         errors.push(`${taskId}: suggested task not found`);
@@ -2660,13 +2715,13 @@ export class Session {
   /**
    * Create a new agent for a started suggested task, reusing the MCP branch of
    * createAgentCommand (worktree provisioning + workspace resolution baked in).
-   * The new agent inherits the parent agent's brain — provider/model plus its
+   * The new agent inherits the parent agent's brain - provider/model plus its
    * full config (personality snapshot, mode, features) minus the parent's
-   * title — so a started task reads as a continuation of the suggesting agent.
+   * title - so a started task reads as a continuation of the suggesting agent.
    *
    * Only `subagent` links the new agent to the parent (bound child in the
    * Subagents track, archive-cascades). `new_chat` and `worktree` are `detached`
-   * — independent top-level agents that outlive the parent's cancel/archive. We
+   * - independent top-level agents that outlive the parent's cancel/archive. We
    * keep `callerAgentId` set even when detached so the new agent still inherits
    * the parent's cwd/workspace/config; only the parent-id label is dropped.
    */
@@ -2728,7 +2783,7 @@ export class Session {
   ): Promise<void> {
     const { parentAgentId, taskIds, requestId } = msg;
     // Idempotent for the user: chips already gone are a no-op. Individual and
-    // "Dismiss all" both flow through here — one id or the whole queue.
+    // "Dismiss all" both flow through here - one id or the whole queue.
     let succeeded = 0;
     for (const taskId of taskIds) {
       // Only dismiss tasks that belong to this parent. A mismatched (or unknown)
@@ -2889,6 +2944,94 @@ export class Session {
     }
   }
 
+  /**
+   * Start a connector's OAuth login and answer with the URL to open.
+   *
+   * Two timescales, which is why this is not a plain request/response: the
+   * response says "here is where to sign in", and the outcome lands minutes
+   * later on the pushed status channel once the user is back from the browser.
+   */
+  private handleConnectorOauthAuthorize(
+    requestId: string,
+    connectorId: string,
+    scope: string | undefined,
+  ): void {
+    const respond = (
+      payload: Omit<ConnectorsOauthAuthorizeResponse["payload"], "connectorId" | "requestId">,
+    ): void => {
+      this.emit({
+        type: "connectors.oauth.authorize.response",
+        payload: { connectorId, requestId, ...payload },
+      });
+    };
+    const broker = this.connectorOAuthBroker;
+    if (!broker) {
+      respond({
+        authorizationUrl: null,
+        status: "error",
+        error: "This host cannot sign connectors in. Update the host to use this.",
+      });
+      return;
+    }
+    const connector = (this.daemonConfigStore.get().connectors ?? []).find(
+      (entry) => entry.id === connectorId,
+    );
+    if (!connector) {
+      respond({
+        authorizationUrl: null,
+        status: "error",
+        error: `No connector with id '${connectorId}'.`,
+      });
+      return;
+    }
+    const watchCompletion = (): void => {
+      void broker
+        .waitForCompletion(connectorId)
+        .then(() => this.emitConnectorOauthStatus(connectorId, { ok: true }))
+        .catch((err: unknown) => {
+          this.emitConnectorOauthStatus(connectorId, { ok: false, error: getErrorMessage(err) });
+        });
+    };
+    void broker
+      .beginAuthorization({ connector, ...(scope ? { scope } : {}) })
+      .then((result) => {
+        if (result.status === "authorized") {
+          respond({ authorizationUrl: null, status: "authorized", error: null });
+          this.emitConnectorOauthStatus(connectorId, { ok: true });
+          return undefined;
+        }
+        respond({ authorizationUrl: result.authorizationUrl, status: "redirect", error: null });
+        watchCompletion();
+        return undefined;
+      })
+      .catch((err: unknown) => {
+        respond({ authorizationUrl: null, status: "error", error: getErrorMessage(err) });
+      });
+  }
+
+  /**
+   * Push the settled outcome of a connector login. Reads the account label back
+   * from config rather than taking it from the flow: the broker writes it there,
+   * and config is the copy every client will reconcile against anyway.
+   */
+  private emitConnectorOauthStatus(
+    connectorId: string,
+    result: { ok: true } | { ok: false; error: string },
+  ): void {
+    const connector = (this.daemonConfigStore.get().connectors ?? []).find(
+      (entry) => entry.id === connectorId,
+    );
+    this.emit({
+      type: "connectors.oauth.status",
+      payload: {
+        connectorId,
+        status: result.ok ? "connected" : "failed",
+        account: connector?.auth?.account ?? null,
+        error: result.ok ? null : result.error,
+      },
+    });
+  }
+
   private dispatchAgentConfigMessage(msg: SessionInboundMessage): Promise<void> | undefined {
     switch (msg.type) {
       case "set_agent_mode_request":
@@ -2947,6 +3090,19 @@ export class Session {
               },
             });
           });
+        return undefined;
+      }
+      case "connectors.oauth.authorize.request":
+        this.handleConnectorOauthAuthorize(msg.requestId, msg.connectorId, msg.scope);
+        return undefined;
+      case "connectors.oauth.disconnect.request": {
+        const disconnectRequestId = msg.requestId;
+        const disconnectId = msg.connectorId;
+        this.connectorOAuthBroker?.disconnect(disconnectId);
+        this.emit({
+          type: "connectors.oauth.disconnect.response",
+          payload: { connectorId: disconnectId, requestId: disconnectRequestId },
+        });
         return undefined;
       }
       case "agentPersonalities.get_stats.request": {
@@ -3042,7 +3198,7 @@ export class Session {
 
   // Stream a full message aloud on demand (per-message playback button). Async
   // work is fire-and-forget; the correlated response is emitted from the promise
-  // once playback finishes, is canceled, or errors — mirroring the preview path.
+  // once playback finishes, is canceled, or errors - mirroring the preview path.
   private handleTtsSpeakRequest(
     requestId: string,
     text: string,
@@ -3281,7 +3437,7 @@ export class Session {
 
   // Connection check for the host Git providers settings section: resolves a
   // provider's host-level credentials and performs a single forced auth probe.
-  // User-initiated only — never called from polling or reconciliation paths.
+  // User-initiated only - never called from polling or reconciliation paths.
   private async handleHostingAuthStatusRequest(
     msg: Extract<SessionInboundMessage, { type: "hosting.auth_status.request" }>,
   ): Promise<void> {
@@ -3524,8 +3680,8 @@ export class Session {
   // The brain.host.* lifecycle RPCs, each answering with the derived host status
   // plus an error string. A start/stop/restart returns a best-effort status even
   // on failure so the dashboard can show what state the brain landed in.
-  private async handleBrainHostStatusRequest(requestId: string): Promise<void> {
-    const { status, error } = await this.resolveBrainStatus();
+  private async handleBrainHostStatusRequest(requestId: string, resources: boolean): Promise<void> {
+    const { status, error } = await this.resolveBrainStatus({ resources });
     this.emit({ type: "brain.host.status.response", payload: { status, error, requestId } });
   }
 
@@ -3917,18 +4073,182 @@ export class Session {
     }
   }
 
-  private async resolveBrainStatus(): Promise<{
+  // --- Brain Console: proxied management RPCs -------------------------------
+  // These forward to the brain's own /__host/* API through BrainManager, which
+  // already resolves its endpoint by mode, so local and remote share one path.
+  //
+  // Every response the brain returns is untrusted JSON crossing a process (and
+  // possibly a network) boundary, so each handler re-validates it through the
+  // wire schema before emitting. A brain that grew a field we do not know about
+  // rides through on passthrough; a brain that returned nonsense degrades to the
+  // empty default rather than putting an unparseable payload on the socket.
+
+  /** Run one management call, collapsing "no brain" and a throw into an error string. */
+  private async callBrainConsole(
+    call: (manager: BrainManager) => Promise<Record<string, unknown> | null>,
+  ): Promise<{ data: Record<string, unknown>; error: string | null }> {
+    if (!this.brainManager) {
+      return { data: {}, error: BRAIN_UNAVAILABLE };
+    }
+    try {
+      return { data: (await call(this.brainManager)) ?? {}, error: null };
+    } catch (err) {
+      return { data: {}, error: getErrorMessage(err) };
+    }
+  }
+
+  private async handleBrainModelsInventoryRequest(requestId: string): Promise<void> {
+    const { data, error } = await this.callBrainConsole((manager) => manager.inventory());
+    const disk = BrainDiskUsageSchema.safeParse(data.disk);
+    this.emit({
+      type: "brain.models.inventory.response",
+      payload: {
+        models: parseBrainArray(data.models, BrainInventoryModelSchema),
+        disk: disk.success ? disk.data : null,
+        error,
+        requestId,
+      },
+    });
+  }
+
+  private async handleBrainModelProfileGetRequest(
+    modelId: string,
+    requestId: string,
+  ): Promise<void> {
+    const { data, error } = await this.callBrainConsole((manager) => manager.modelProfile(modelId));
+    const profile = BrainProfileSchema.safeParse(data.profile);
+    const calibration = BrainCalibrationInfoSchema.safeParse(data.calibration);
+    this.emit({
+      type: "brain.model.profile.get.response",
+      payload: {
+        profile: profile.success ? profile.data : null,
+        fields: parseBrainArray(data.fields, BrainProfileFieldSchema),
+        warnings: parseBrainArray(data.warnings, BrainProfileWarningSchema),
+        calibration: calibration.success ? calibration.data : null,
+        error,
+        requestId,
+      },
+    });
+  }
+
+  private async handleBrainModelProfileSetRequest(
+    modelId: string,
+    patch: Record<string, unknown>,
+    requestId: string,
+  ): Promise<void> {
+    const { data, error } = await this.callBrainConsole((manager) =>
+      manager.setModelProfile(modelId, patch),
+    );
+    const profile = BrainProfileSchema.safeParse(data.profile);
+    const calibration = BrainCalibrationInfoSchema.safeParse(data.calibration);
+    const budget = BrainBudgetSchema.safeParse(data.budget);
+    this.emit({
+      type: "brain.model.profile.set.response",
+      payload: {
+        profile: profile.success ? profile.data : null,
+        adjustments: parseBrainStrings(data.adjustments),
+        warnings: parseBrainArray(data.warnings, BrainProfileWarningSchema),
+        calibration: calibration.success ? calibration.data : null,
+        budget: budget.success ? budget.data : null,
+        maxContextThatFits:
+          typeof data.maxContextThatFits === "number" ? data.maxContextThatFits : null,
+        requiresRestart: data.requiresRestart === true,
+        error,
+        requestId,
+      },
+    });
+  }
+
+  private async handleBrainModelBudgetGetRequest(
+    modelId: string,
+    overrides: Record<string, string>,
+    requestId: string,
+  ): Promise<void> {
+    const { data, error } = await this.callBrainConsole((manager) =>
+      manager.modelBudget(modelId, overrides),
+    );
+    const profile = BrainProfileSchema.safeParse(data.profile);
+    const budget = BrainBudgetSchema.safeParse(data.budget);
+    this.emit({
+      type: "brain.model.budget.get.response",
+      payload: {
+        profile: profile.success ? profile.data : null,
+        budget: budget.success ? budget.data : null,
+        maxContextThatFits:
+          typeof data.maxContextThatFits === "number" ? data.maxContextThatFits : null,
+        gpu: isPlainRecord(data.gpu) ? data.gpu : null,
+        warnings: parseBrainArray(data.warnings, BrainProfileWarningSchema),
+        error,
+        requestId,
+      },
+    });
+  }
+
+  private async handleBrainModelLoadRequest(modelId: string, requestId: string): Promise<void> {
+    const { data, error } = await this.callBrainConsole((manager) => manager.loadModel(modelId));
+    const profile = BrainProfileSchema.safeParse(data.profile);
+    // The load reply carries the brain's own status; re-derive ours so the client
+    // sees the daemon's view (pid, endpoint) rather than the brain's partial one.
+    const { status } = await this.resolveBrainStatus();
+    this.emit({
+      type: "brain.model.load.response",
+      payload: {
+        status,
+        profile: profile.success ? profile.data : null,
+        error,
+        requestId,
+      },
+    });
+  }
+
+  private async handleBrainModelUnloadRequest(requestId: string): Promise<void> {
+    const { error } = await this.callBrainConsole((manager) => manager.unloadModel());
+    const { status } = await this.resolveBrainStatus();
+    this.emit({ type: "brain.model.unload.response", payload: { status, error, requestId } });
+  }
+
+  private async handleBrainModelDeleteRequest(modelId: string, requestId: string): Promise<void> {
+    const { data, error } = await this.callBrainConsole((manager) => manager.deleteModel(modelId));
+    this.emit({
+      type: "brain.model.delete.response",
+      payload: {
+        deleted: parseBrainStrings(data.deleted),
+        freedBytes: typeof data.freedBytes === "number" ? data.freedBytes : 0,
+        includesProjector: data.includesProjector === true,
+        remaining: typeof data.remaining === "number" ? data.remaining : 0,
+        error,
+        requestId,
+      },
+    });
+  }
+
+  private async handleBrainLogsTailRequest(limit: number | null, requestId: string): Promise<void> {
+    const { data, error } = await this.callBrainConsole((manager) => manager.hostLogs(limit));
+    this.emit({
+      type: "brain.logs.tail.response",
+      payload: {
+        lines: parseBrainStrings(data.lines),
+        total: typeof data.total === "number" ? data.total : 0,
+        state: typeof data.state === "string" ? data.state : null,
+        command: typeof data.command === "string" ? data.command : null,
+        error,
+        requestId,
+      },
+    });
+  }
+
+  private async resolveBrainStatus(options?: { resources?: boolean }): Promise<{
     status: BrainHostStatus;
     error: string | null;
   }> {
     if (!this.brainManager) {
       return {
         status: { running: false },
-        error: "The local AI host is not available on this daemon.",
+        error: BRAIN_UNAVAILABLE,
       };
     }
     try {
-      return { status: await this.brainManager.status(), error: null };
+      return { status: await this.brainManager.status(options), error: null };
     } catch (err) {
       return { status: { running: false }, error: getErrorMessage(err) };
     }
@@ -4123,7 +4443,7 @@ export class Session {
   /**
    * The code-intelligence half: the ctags index (`code.symbols`/`code.outline`) and the
    * language-server family. Split from the file dispatcher above purely so neither
-   * switch grows past the complexity cap — one flat switch of every file-ish RPC was
+   * switch grows past the complexity cap - one flat switch of every file-ish RPC was
    * over it.
    */
   private dispatchCodeIntelligenceMessage(msg: SessionInboundMessage): Promise<void> | undefined {
@@ -4278,7 +4598,7 @@ export class Session {
               : {}),
             ...(entry.transferredFrom ? { transferredFrom: entry.transferredFrom } : {}),
           })),
-          // The exact injected text, never a reconstruction — the whole point of
+          // The exact injected text, never a reconstruction - the whole point of
           // the visibility requirement is that these two cannot differ.
           brief: view.brief.text,
           briefTokens: view.brief.estTokens,
@@ -4322,7 +4642,7 @@ export class Session {
 
   /**
    * The repo root a cwd belongs to, so a worktree and its main checkout share
-   * one project's lessons — the same resolution the spawn path uses.
+   * one project's lessons - the same resolution the spawn path uses.
    */
   private async resolveMemoryProjectRoot(cwd: string): Promise<string> {
     try {
@@ -4770,6 +5090,9 @@ export class Session {
     if (await this.dispatchBrainManageMessage(msg)) {
       return;
     }
+    if (await this.dispatchBrainConsoleMessage(msg)) {
+      return;
+    }
     switch (msg.type) {
       case "list_commands_request":
         await this.handleListCommandsRequest(msg);
@@ -4780,7 +5103,7 @@ export class Session {
       case "register_push_token":
         this.handleRegisterPushToken(msg.token);
         return;
-      // Host-level disk the agents filled — no per-agent or per-workspace
+      // Host-level disk the agents filled - no per-agent or per-workspace
       // family to belong to, so it lands here rather than growing the dispatch
       // chain. Both are synchronous: a directory listing, not IO worth awaiting.
       case "attachments.images.get_stats.request":
@@ -4793,7 +5116,7 @@ export class Session {
       // per-workspace family to belong to, so it lands here rather than growing
       // the dispatch chain.
       case "brain.host.status.request":
-        await this.handleBrainHostStatusRequest(msg.requestId);
+        await this.handleBrainHostStatusRequest(msg.requestId, msg.resources);
         return;
       case "brain.host.start.request":
         await this.handleBrainHostStartRequest(msg.model, msg.requestId);
@@ -4864,6 +5187,42 @@ export class Session {
         return true;
       case "brain.jobs.cancel.request":
         await this.handleBrainJobsCancelRequest(msg.jobId, msg.requestId);
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  // Brain Console dispatch: the RPCs that proxy the brain's own /__host/*
+  // management API. Kept separate from the manage/job family above because they
+  // reach the brain a different way (HTTP proxy, not a CLI shell-out) and so
+  // work against a remote brain, and because one switch over both families
+  // exceeds the complexity ceiling.
+  private async dispatchBrainConsoleMessage(msg: SessionInboundMessage): Promise<boolean> {
+    switch (msg.type) {
+      case "brain.models.inventory.request":
+        await this.handleBrainModelsInventoryRequest(msg.requestId);
+        return true;
+      case "brain.model.profile.get.request":
+        await this.handleBrainModelProfileGetRequest(msg.modelId, msg.requestId);
+        return true;
+      case "brain.model.profile.set.request":
+        await this.handleBrainModelProfileSetRequest(msg.modelId, msg.patch, msg.requestId);
+        return true;
+      case "brain.model.budget.get.request":
+        await this.handleBrainModelBudgetGetRequest(msg.modelId, msg.overrides, msg.requestId);
+        return true;
+      case "brain.model.load.request":
+        await this.handleBrainModelLoadRequest(msg.modelId, msg.requestId);
+        return true;
+      case "brain.model.unload.request":
+        await this.handleBrainModelUnloadRequest(msg.requestId);
+        return true;
+      case "brain.model.delete.request":
+        await this.handleBrainModelDeleteRequest(msg.modelId, msg.requestId);
+        return true;
+      case "brain.logs.tail.request":
+        await this.handleBrainLogsTailRequest(msg.limit, msg.requestId);
         return true;
       default:
         return false;
@@ -4950,10 +5309,10 @@ export class Session {
    *
    * It deletes **Otto's record only.** The provider's own transcript on disk
    * (Claude's `<projects>/<sessionId>.jsonl` and its sibling subagent tree, Codex
-   * threads, OpenCode sessions) is left in place by design — Otto never created
+   * threads, OpenCode sessions) is left in place by design - Otto never created
    * it, `claude --resume` still reads it, and deleting another tool's state is
    * not ours to do. The UI discloses that rather than staying silent about it.
-   * See docs/chat-lifecycle.md — Delete.
+   * See docs/chat-lifecycle.md - Delete.
    *
    * Returns the workspace id the record belonged to, so the caller can refresh
    * workspace counts once per affected workspace instead of once per chat.
@@ -5019,7 +5378,7 @@ export class Session {
    *
    * `dryRun` exists so the confirm dialog can quote a real number back to the
    * user before anything is destroyed. Same rule as the single delete: Otto's
-   * records only, never a provider's transcript — clearing in bulk is not a back
+   * records only, never a provider's transcript - clearing in bulk is not a back
    * door around that.
    */
   private async handleHistoryAgentsClearArchivedRequest(
@@ -5161,7 +5520,7 @@ export class Session {
   /**
    * Reclaim, dry-run by default. A cleared image is not recoverable and the
    * message that referenced it falls back to alt text, so the client previews
-   * first and quotes the real count and size back before committing — the same
+   * first and quotes the real count and size back before committing - the same
    * contract as `history.agents.clear_archived`.
    */
   private handleAttachmentsImagesClearRequest(
@@ -5211,7 +5570,7 @@ export class Session {
     agentId: string,
   ): Promise<{ agentId: string; archivedAt: string }> {
     // Observed subagents (Claude Task / ultracode fan-out) have no ManagedAgent
-    // and no stored record, so `archiveAgentCommand` would 404 them — the same
+    // and no stored record, so `archiveAgentCommand` would 404 them - the same
     // root cause the fetch path special-cases above. Archive them through the
     // registry instead (best-effort stop + retire the projection).
     // See docs/agent-lifecycle.md (Items 2 + 6).
@@ -5557,7 +5916,7 @@ export class Session {
 
       // The project's name is host-global state, and a project with no active
       // workspaces has no workspace descriptor to carry it. Announce the project
-      // itself on the project channel, to every session — that is what makes the
+      // itself on the project channel, to every session - that is what makes the
       // rename land instantly regardless of workspace count or which client asked.
       this.broadcastToAllSessions({
         type: "project.updated.notification",
@@ -5722,7 +6081,7 @@ export class Session {
 
   /**
    * The link set, filtered to pairs whose both endpoints are still live
-   * projects — so a link "disappears" the moment either project is removed or
+   * projects - so a link "disappears" the moment either project is removed or
    * archived, without needing the cascade to have run yet (gated-multi-root).
    */
   private async buildLiveProjectLinks(): Promise<{ projectAId: string; projectBId: string }[]> {
@@ -5846,12 +6205,12 @@ export class Session {
   }
 
   /**
-   * Refine — propose rewrites of the documents the client pinned.
+   * Refine - propose rewrites of the documents the client pinned.
    *
    * Nothing here reads or writes the filesystem: every document arrives on the
    * wire and every proposal goes back on it. Accepted results come back later
    * as ordinary `file.write.request`s, one per file, so the conditional-write
-   * precondition — not this handler — is what protects them.
+   * precondition - not this handler - is what protects them.
    */
   private async handleFileRefineRequest(msg: FileRefineRequest): Promise<void> {
     const respond = (result: FileRefineResult): void => {
@@ -6054,7 +6413,7 @@ export class Session {
   /**
    * UI-initiated preview RPCs behind the Preview toolbar button. Mirrors what
    * the agent-facing preview_* tools do (packages/server/src/server/preview/preview-tools.ts)
-   * but is driven by the app directly instead of an agent tool call — the
+   * but is driven by the app directly instead of an agent tool call - the
    * caller creates and places the browser tab itself, then reports the
    * binding back via preview.bind_tab so a later agent preview_start call
    * finds the same designated tab.
@@ -6290,7 +6649,7 @@ export class Session {
    * snapshot and fold its identity onto the create config. Availability is
    * re-checked here (the cwd may differ from where the picker resolved it); an
    * unavailable or unknown personality is skipped with a warning rather than
-   * failing the create — the agent still runs with the chosen brain, just
+   * failing the create - the agent still runs with the chosen brain, just
    * without personality identity. The brain fields are never overridden; only
    * `personalitySnapshot` and (when the caller set none) `systemPrompt` are added.
    */
@@ -6325,7 +6684,7 @@ export class Session {
     const snapshot: ResolvedPersonalitySnapshot = resolution.snapshot;
     // The one team rule: a member of the active team at spawn time carries the
     // frozen team layer, and the team prompt stacks directly ahead of the
-    // personality prompt. Caller-authored prompts still win — nothing composes.
+    // personality prompt. Caller-authored prompts still win - nothing composes.
     const teamSnapshot = resolveTeamSnapshotForPersonality(
       this.daemonConfigStore.get().agentTeams,
       snapshot.personalityId,
@@ -6348,7 +6707,7 @@ export class Session {
   /**
    * Resolve a roster personality against a *running* agent's cwd for a live
    * switch (agent.personality.set). Unlike the spawn-time soft-skip above, an
-   * unknown or unavailable personality throws — the RPC rejects with the reason
+   * unknown or unavailable personality throws - the RPC rejects with the reason
    * instead of half-applying.
    */
   private async resolvePersonalitySnapshotForAgent(
@@ -6364,7 +6723,7 @@ export class Session {
     if (!personality) {
       throw new Error(`Personality not found: ${personalityId}`);
     }
-    // Warm only the personality's own provider — a cold workspace snapshot
+    // Warm only the personality's own provider - a cold workspace snapshot
     // would otherwise fan out to every registered provider (network probes)
     // and stall the switch for seconds.
     const entries = await this.providerSnapshotManager.listProviders({
@@ -7393,7 +7752,7 @@ export class Session {
       .map((record) => this.buildStoredAgentPayload(record, registeredProviderIds));
 
     // Observed subagents are ephemeral registry projections (no ManagedAgent,
-    // no stored record) that otherwise reach clients only as live pushes —
+    // no stored record) that otherwise reach clients only as live pushes -
     // include them so a client that fetches mid-run (page refresh, reconnect)
     // learns about in-flight children instead of waiting for the provider's
     // next task event. The shared archived/label filters below apply to them
@@ -7439,7 +7798,7 @@ export class Session {
     // projections with no ManagedAgent record and are never written to
     // storage. A track row can still reference one after the client store
     // dropped it (placement remove, reconnect), so resolve the synthetic id
-    // straight from the registry — otherwise fetch_agent 404s a run that is
+    // straight from the registry - otherwise fetch_agent 404s a run that is
     // fine. See docs/agent-lifecycle.md (Item 1).
     if (this.agentManager.getObservedSubagentPayload(trimmed)) {
       return { ok: true, agentId: trimmed };
@@ -7512,7 +7871,7 @@ export class Session {
     }
 
     // Retained generation transcripts (schedule / artifact) are internal agents
-    // that were closed after their run — no live agent, no stored record — but
+    // that were closed after their run - no live agent, no stored record - but
     // we snapshotted their final payload so the read-only viewer can open them.
     // See docs/safe-unattended.md.
     const retained = await this.agentManager.getRetainedTranscriptPayload(agentId);
@@ -8079,7 +8438,7 @@ export class Session {
         return null;
       }
       // Recreate the worktree directory from its kept branch BEFORE clearing
-      // archivedAt — the reconciler re-archives workspaces whose directory is
+      // archivedAt - the reconciler re-archives workspaces whose directory is
       // missing, so the record must point at a real directory first.
       await this.recreateOwningWorktreeForRestore(workspace, workspace.branch);
     }
@@ -8110,7 +8469,7 @@ export class Session {
 
     // Archiving through the default path (scope "workspace", worktreePath only)
     // resolves repoRoot=null, so deleteOttoWorktree's `git worktree remove`/
-    // `prune` is skipped and the admin registration survives — pinning the
+    // `prune` is skipped and the admin registration survives - pinning the
     // branch as "already checked out". Prune here frees any stale registration
     // whose working dir is missing (a no-op for live worktrees) so the recreate
     // below succeeds regardless of how the worktree was archived.
@@ -8175,7 +8534,7 @@ export class Session {
    *
    * Named for what it does rather than for the language servers it started as: the archive
    * teardown's last-reference rule is the same for both subsystems, and a second parallel hook
-   * would be a second thing to forget when a third subsystem starts a process. Never throws — a
+   * would be a second thing to forget when a third subsystem starts a process. Never throws - a
    * child that refuses to die must not fail an archive that has already happened.
    */
   private async stopWorkspaceProcesses(rootPath: string): Promise<void> {
@@ -8359,7 +8718,7 @@ export class Session {
     event: TerminalWorkspaceContributionChangedEvent,
   ): Promise<void> {
     // A terminal's activity contributes only to the workspace it carries. A
-    // terminal with no workspaceId attributes to nothing — status is per-id.
+    // terminal with no workspaceId attributes to nothing - status is per-id.
     if (!event.workspaceId) {
       return;
     }
@@ -9506,7 +9865,7 @@ export class Session {
       const repoRoot = gitSnapshot?.git?.repoRoot ?? null;
 
       // The backing directory is removed only when no other active workspace
-      // still references it — the same last-reference rule archiveByScope applies.
+      // still references it - the same last-reference rule archiveByScope applies.
       const targetDir = resolve(existing.cwd);
       const activeWorkspaces = await this.listActiveWorkspaceRefs();
       const directoryWillBeRemoved = !activeWorkspaces.some(
@@ -9726,7 +10085,7 @@ export class Session {
         throw new Error(`Workspace not found: ${target.workspaceId}`);
       }
       if (!workspace.archivedAt) {
-        // Already live — reattach is idempotent.
+        // Already live - reattach is idempotent.
         return workspace;
       }
       const restored = await this.restoreArchivedWorkspaceRecord(workspace);
@@ -9802,7 +10161,7 @@ export class Session {
         }
 
         // Clearing attention is scoped to the workspace that OWNS the agent, by
-        // workspaceId — never by comparing cwd strings. A sibling workspace
+        // workspaceId - never by comparing cwd strings. A sibling workspace
         // sharing the same directory keeps its own agents' attention.
         const clearableAgentIds = agents
           .filter((agent) => !agent.archivedAt)
@@ -10035,7 +10394,7 @@ export class Session {
       const observedPayload = this.agentManager.getObservedSubagentPayload(msg.agentId);
       // Retained generation transcripts (schedule / artifact) are closed internal
       // agents: seed their snapshotted rows into the timeline store so fetchTimeline
-      // serves them, and return the stored payload — a pure read, no resume. See
+      // serves them, and return the stored payload - a pure read, no resume. See
       // docs/safe-unattended.md.
       let retainedPayload: AgentSnapshotPayload | null = null;
       if (
@@ -10455,7 +10814,7 @@ export class Session {
         return;
       }
 
-      // A queued message deliberately starts no run — waiting for one would
+      // A queued message deliberately starts no run - waiting for one would
       // stall for the whole turn and then time out. The entry id lets the
       // sender find its own message in the agent's queuedMessages.
       if (dispatchResult.queued) {
@@ -10916,7 +11275,7 @@ export class Session {
     if (msg.type !== "rpc_error" && !isSessionRpcAllowed(this.scopes, msg.type)) {
       return;
     }
-    // JSON.stringify(msg) is only computed when trace is enabled — it runs for
+    // JSON.stringify(msg) is only computed when trace is enabled - it runs for
     // every outbound message otherwise, and trace is disabled by default.
     // Optional-chained because test logger stubs don't implement isLevelEnabled.
     if (this.sessionLogger.isLevelEnabled?.("trace")) {

@@ -190,7 +190,7 @@ describe("workspace-pane-state", () => {
 
   it("reuses an existing left pane when the source is the rightmost pane", () => {
     // The Visualizer opens as a split to the RIGHT of the chat, so its only
-    // neighbor is to the left — it must reuse that pane, not split a new one.
+    // neighbor is to the left - it must reuse that pane, not split a new one.
     const layout: WorkspaceLayout = {
       root: {
         kind: "group",
@@ -228,7 +228,7 @@ describe("workspace-pane-state", () => {
 
   it("splits a pane between the chat and the Visualizer instead of reusing it", () => {
     // The document must never displace the Visualizer. With the Visualizer to
-    // the right of the chat, a fresh pane is split off the chat (source) — it
+    // the right of the chat, a fresh pane is split off the chat (source) - it
     // lands between the chat and the Visualizer.
     const layout: WorkspaceLayout = {
       root: {

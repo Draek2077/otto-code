@@ -1,5 +1,5 @@
 // The one place that knows how to move the Visualizer between its two
-// mutually-exclusive surfaces — the full workspace TAB and the picture-in-
+// mutually-exclusive surfaces - the full workspace TAB and the picture-in-
 // picture viewport. Every control that opens, closes, or switches surfaces goes
 // through here.
 //
@@ -9,8 +9,8 @@
 // route (the header's Visualizer button, the Runs "Visualize" action, a restored
 // layout) the setting stayed `true` but parked, and the button became dead
 // chrome: click, click, click, nothing on screen. Mutual exclusion enforced by
-// *hiding* one surface is unobservable state; enforced by a transition — retire
-// one, start the other — it is always visible in the UI. That is the shape here,
+// *hiding* one surface is unobservable state; enforced by a transition - retire
+// one, start the other - it is always visible in the UI. That is the shape here,
 // and `useReconcileVisualizerSurface` below sweeps up any tab opened by a caller
 // that never had a hook to call.
 import { useCallback, useEffect, useMemo } from "react";
@@ -50,7 +50,7 @@ function resolveShowing(input: { hasTab: boolean; pipOpen: boolean }): Visualize
 export interface VisualizerSurfaceControls {
   /** Which surface is on screen right now, or null when the Visualizer is closed. */
   showing: VisualizerSurface | null;
-  /** The surface the header button will open — the last one used. */
+  /** The surface the header button will open - the last one used. */
   remembered: VisualizerSurface;
   /** Header button: close what's showing, or open the remembered surface. */
   toggle: () => void;
@@ -69,7 +69,7 @@ export function useVisualizerSurface(
   const { settings, updateSettings } = useAppSettings();
   // The PIP does not exist on a compact layout (see visualizer-pip-host.tsx), so
   // a remembered "pip" must fall back to the tab there. Without this the toggle
-  // would set `visualizerPipOpen` on a surface that never mounts — the same
+  // would set `visualizerPipOpen` on a surface that never mounts - the same
   // dead-button state this hook exists to kill. The setting is left untouched,
   // so crossing back to a wide layout still gets the PIP back.
   const isCompact = useIsCompactFormFactor();
@@ -92,7 +92,7 @@ export function useVisualizerSurface(
   }, [updateSettings, workspaceKey]);
 
   const expandToTab = useCallback(() => {
-    // Order matters — retire the PIP first so only one guest is ever alive.
+    // Order matters - retire the PIP first so only one guest is ever alive.
     void updateSettings({ visualizerPipOpen: false, visualizerSurface: "tab" });
     if (workspaceId) {
       openVisualizerTab({ serverId, workspaceId });
@@ -128,7 +128,7 @@ export function useVisualizerSurface(
 
 /**
  * Keeps `visualizerPipOpen` honest when a Visualizer tab appears by a route that
- * never went through `useVisualizerSurface` — the Runs "Visualize" action, a
+ * never went through `useVisualizerSurface` - the Runs "Visualize" action, a
  * restored workspace layout, a dropped tab. Without this the PIP setting would
  * sit `true`-but-parked again, which is the exact state the old bug lived in.
  * Mount once per workspace (the PIP host does it).

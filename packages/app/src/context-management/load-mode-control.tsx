@@ -12,7 +12,7 @@ interface LoadModeControlProps {
   inbound: InboundEdge;
   /** Tokens this file would add to, or remove from, every request. */
   estTokens: number;
-  /** False on providers with no import mechanism — the control explains why. */
+  /** False on providers with no import mechanism - the control explains why. */
   supportsImports: boolean;
   busy: boolean;
   onConvert: (target: "import" | "reference") => void;
@@ -32,7 +32,7 @@ interface LoadModeControlProps {
  * syntax to control their own bill, and the delta is stated up front so the
  * choice is informed rather than a leap.
  *
- * On desktop it rides inside the file pane's toolbar — a second full-width bar
+ * On desktop it rides inside the file pane's toolbar - a second full-width bar
  * cost a row of height to say two words. On a phone that toolbar is already at
  * its limit, so the strip comes back rather than squeezing both into one row.
  */
@@ -89,7 +89,7 @@ export function LoadModeControl({
         onValueChange={handleChange}
         size="sm"
       />
-      {/* The delta is the whole point — "saves 4.2K per request" is what makes
+      {/* The delta is the whole point - "saves 4.2K per request" is what makes
           this an informed choice rather than a leap. */}
       <Text style={styles.delta} numberOfLines={1}>
         {isAlwaysLoaded
@@ -101,7 +101,7 @@ export function LoadModeControl({
 }
 
 const styles = StyleSheet.create((theme) => ({
-  // Toolbar form: no padding or border of its own — the toolbar owns the
+  // Toolbar form: no padding or border of its own - the toolbar owns the
   // chrome. It shrinks before the toolbar's own buttons do.
   root: {
     flexDirection: "row",

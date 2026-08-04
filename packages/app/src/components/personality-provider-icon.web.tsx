@@ -10,7 +10,7 @@ const HIDDEN_DEFS_STYLE = { position: "absolute" as const };
 /**
  * Web path for {@link PersonalityProviderIcon}. MaskedView is a no-op on web, so
  * instead we render a hidden gradient `<defs>` and point the provider icon's
- * fill at it via `url(#id)` — browsers resolve gradient refs across `<svg>`
+ * fill at it via `url(#id)` - browsers resolve gradient refs across `<svg>`
  * elements document-wide. The id is per-instance (useId) so multiple triggers
  * with different personality colors don't collide.
  */

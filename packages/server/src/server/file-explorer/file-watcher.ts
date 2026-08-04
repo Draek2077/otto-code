@@ -5,7 +5,7 @@ import { resolveExplorerFileIdentity, type ExplorerFileIdentity } from "./servic
 
 // Per-session watcher for files open in editor/viewer tabs. Uses fs.watch on
 // the parent directory (survives atomic rename-replace writes and detects
-// delete/recreate) with a batch polling fallback — the proven pattern from
+// delete/recreate) with a batch polling fallback - the proven pattern from
 // artifact-watcher.ts. Events fire only when the content identity actually
 // changed: a bare mtime touch with an identical hash is swallowed.
 

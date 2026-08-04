@@ -75,7 +75,7 @@ describe("usageDayHeaderLabel", () => {
 });
 
 describe("formatUsageEventStamp", () => {
-  // The gutter never prints a date — the day header above the group owns it.
+  // The gutter never prints a date - the day header above the group owns it.
   // Assert the shape (h:mm with an optional meridiem) rather than a literal, so
   // the test holds under both 12h and 24h runtime locales.
   const CLOCK = /^\d{1,2}:\d{2}(\s?[AaPp]\.?[Mm]\.?)?$/;
@@ -116,7 +116,7 @@ describe("computeUsageRowStamps", () => {
   it("anchors a same-time run's label on its LAST row, where the minute began", () => {
     // Rows render newest-first, so this is a turn at 9:05:41 with two sub-agents
     // that settled earlier in the same minute, then an older turn at 9:03. The
-    // 9:05 label belongs on the bottom of that run — the moment it started.
+    // 9:05 label belongs on the bottom of that run - the moment it started.
     const stamps = computeUsageRowStamps(
       [at(9, 5, 41), at(9, 5, 12), at(9, 5, 0), at(9, 3, 0)],
       now,
@@ -135,7 +135,7 @@ describe("computeUsageRowStamps", () => {
   });
 
   it("re-stamps when the time returns to a value seen further up", () => {
-    // Dedupe is against the adjacent row, not everything seen — spawn-tree order
+    // Dedupe is against the adjacent row, not everything seen - spawn-tree order
     // can revisit a minute, and that run needs its own label.
     const stamps = computeUsageRowStamps([at(9, 5), at(9, 9), at(9, 5)], now, "absolute");
     expect(stamps[0]).not.toBe(USAGE_STAMP_REPEAT);
@@ -192,7 +192,7 @@ describe("groupUsageRowsByParent", () => {
     // (startedAt 40/42), each of which spawned a child (startedAt 60/61, i.e.
     // after the spawn turn was already booked). Everything settled while the
     // NEXT turn (at=100) was underway, so settle-time adjacency scattered the
-    // family across two turns. Expected: the whole tree under the spawn turn —
+    // family across two turns. Expected: the whole tree under the spawn turn -
     // middle A, its child, middle B, its child, in launch order.
     const events = [
       row("turn-2", { kind: "chat", agentId: "chat-a", at: 100 }),
@@ -346,7 +346,7 @@ describe("computeParentRowTotals", () => {
     ];
     const totals = computeParentRowTotals(ordered);
     expect(totals.get("turn")).toEqual({ fresh: 65, cached: 95, out: 16, costMicroUsd: 800 });
-    // Sub-agent rows themselves get no rollup — only parent rows carry it.
+    // Sub-agent rows themselves get no rollup - only parent rows carry it.
     expect(totals.has("sub-1")).toBe(false);
     expect(totals.has("sub-of-sub")).toBe(false);
   });

@@ -13,12 +13,12 @@
 
 /**
  * Declarative sign-in recipe for a forge. The client renders install/sign-in
- * hints from this data alone — no per-CLI switch — so a new forge wires its auth
+ * hints from this data alone - no per-CLI switch - so a new forge wires its auth
  * UX entirely from the manifest. Behavioural auth (the actual host probe) stays
  * in the server adapter; this is only what the user is told to run.
  */
 export interface ForgeSignInCommand {
-  /** Binary the user installs, e.g. "gh" — shown in the install-CLI hint. */
+  /** Binary the user installs, e.g. "gh" - shown in the install-CLI hint. */
   cli: string;
   /** Full sign-in command, e.g. "gh auth login". */
   command: string;
@@ -49,7 +49,7 @@ export interface ForgeDefinition {
   signIn: ForgeSignInCommand | null;
   /**
    * Public cloud hosts this forge owns exactly. A BOUNDED list, never an
-   * allowlist for self-hosted detection — self-hosted/Enterprise instances are
+   * allowlist for self-hosted detection - self-hosted/Enterprise instances are
    * recognized at runtime by the adapter's host probe, not by this field.
    */
   cloudHosts?: string[];

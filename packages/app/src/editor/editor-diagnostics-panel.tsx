@@ -9,7 +9,7 @@ import { useIconSize, type Theme } from "@/styles/theme";
 
 /**
  * The problems panel: a tinted strip between the document and the status bar, matching the
- * out-of-project banner's idiom — outside the scroll region, so it states something about
+ * out-of-project banner's idiom - outside the scroll region, so it states something about
  * the file rather than about the part of it you happen to be looking at.
  *
  * **Errors and warnings only.** `tsserver` emits hint-severity suggestions by the dozen on
@@ -17,7 +17,7 @@ import { useIconSize, type Theme } from "@/styles/theme";
  * permanent furniture is invisible. Hints and info live in the gutter and the status bar,
  * where they cost nothing.
  *
- * Dismissal is deliberately not persisted — see `dismissedFingerprint` in the host. The
+ * Dismissal is deliberately not persisted - see `dismissedFingerprint` in the host. The
  * panel is keyed on the *content* of the problem set, so dismissing hides these problems
  * and a re-evaluation that finds different ones brings it back on its own.
  *
@@ -65,7 +65,7 @@ export function countBySeverity(diagnostics: readonly CodeDiagnostic[]): Diagnos
  *
  * Positions are deliberately excluded. Typing above an error moves it without changing it,
  * and a fingerprint that shifted with every line would make the panel reappear on the next
- * keystroke — which is the one behaviour that would make dismissal useless.
+ * keystroke - which is the one behaviour that would make dismissal useless.
  */
 export function diagnosticsFingerprint(diagnostics: readonly CodeDiagnostic[]): string {
   return diagnostics
@@ -91,7 +91,7 @@ function summarize(counts: DiagnosticCounts): string {
   return parts.join(", ");
 }
 
-/** The message without the `help:` continuation — the panel is a list, not the detail view. */
+/** The message without the `help:` continuation - the panel is a list, not the detail view. */
 function headline(message: string): string {
   const newline = message.indexOf("\n");
   return (newline === -1 ? message : message.slice(0, newline)).trim();
@@ -161,8 +161,8 @@ function DiagnosticRow({
           </Text>
         ) : null}
       </TooltipTrigger>
-      {/* The row truncates to one line, so the whole message — including the `help:`
-          continuation a row cannot show — lives here. */}
+      {/* The row truncates to one line, so the whole message - including the `help:`
+          continuation a row cannot show - lives here. */}
       <TooltipContent side="top" align="start" offset={8} maxWidth={480}>
         <View style={styles.tooltipBody}>
           <Text style={styles.tooltipText}>{entry.message}</Text>
@@ -175,7 +175,7 @@ function DiagnosticRow({
   );
 }
 
-/** `Error · oxc · eslint(no-unused-vars)` — mirrors the editor hover card's own line. */
+/** `Error · oxc · eslint(no-unused-vars)` - mirrors the editor hover card's own line. */
 function attributionOf(entry: CodeDiagnostic): string {
   const label = entry.severity === "error" ? "Error" : "Warning";
   return [label, entry.source, entry.code]

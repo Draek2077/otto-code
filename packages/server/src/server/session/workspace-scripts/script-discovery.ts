@@ -10,7 +10,7 @@ import {
 
 /**
  * Every script provider, in the order their groups appear beneath Otto's own.
- * Adding a source is a line here plus one file — that is the whole point of the
+ * Adding a source is a line here plus one file - that is the whole point of the
  * contract. See projects/script-discovery/script-discovery.md.
  */
 export function createScriptProviders(): ScriptProvider[] {
@@ -26,8 +26,8 @@ export interface DeclaredScriptSummary {
  * The source a qualified script name belongs to, or `null` for a bare
  * otto.json name.
  *
- * Lets the descriptor's orphan path — which sees only a running runtime entry,
- * with no discovery run behind it — still label "npm:dev" as `dev` under npm
+ * Lets the descriptor's orphan path - which sees only a running runtime entry,
+ * with no discovery run behind it - still label "npm:dev" as `dev` under npm
  * instead of leaking the qualified key into the sidebar. It reports the
  * provider's own label, so a per-entry override (pnpm) is not reflected here;
  * the dropdown's fetched list is where that detail lives.
@@ -49,7 +49,7 @@ export function resolveScriptSourceFromName(
  * Run every provider over one workspace and return the entries that survive
  * de-duplication against the workspace's declared (otto.json) Scripts.
  *
- * A provider that throws is logged and dropped — one bad source never takes the
+ * A provider that throws is logged and dropped - one bad source never takes the
  * others down with it.
  */
 export async function discoverWorkspaceScripts(input: {
@@ -103,7 +103,7 @@ export async function discoverWorkspaceScripts(input: {
  * that it must not appear twice. The escape hatch is renaming the otto.json
  * entry.
  *
- * Two providers offering the same bare name do not collide with each other —
+ * Two providers offering the same bare name do not collide with each other -
  * their qualified names differ, and they are genuinely different things.
  */
 function dedupeAgainstDeclared(input: {

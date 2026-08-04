@@ -28,9 +28,9 @@ Local and public routes use one combined leftmost label (`script--branch--projec
 
 ## Scripts are terminals
 
-Every `otto.json` script — `"type": "service"` or plain — runs as a real terminal that is handed its command on launch. Two invariants follow from that, and both are load-bearing:
+Every `otto.json` script - `"type": "service"` or plain - runs as a real terminal that is handed its command on launch. Two invariants follow from that, and both are load-bearing:
 
-**A started script always opens a focused terminal tab.** Background running is not a mode; an invisible script is a useless script. `WorkspaceScriptsButton` requires an `onScriptTerminalStarted` callback (not optional) and every call site — the workspace header, the mobile header, the sidebar tools cluster — opens the tab through it. The catch is that the workspace layout prunes terminal tabs whose id isn't in the terminals query yet (`collapseStaleEntityTabs`), and the daemon's terminals list lags the `start_workspace_script_response` by a refetch. `stores/script-terminal-pending-store.ts` bridges that window: mark the id pending **before** opening the tab. It is a shared store rather than screen-local state because the sidebar starts scripts from outside the screen that owns the terminals query — "invalidate, then open" is a race there, not a fix.
+**A started script always opens a focused terminal tab.** Background running is not a mode; an invisible script is a useless script. `WorkspaceScriptsButton` requires an `onScriptTerminalStarted` callback (not optional) and every call site - the workspace header, the mobile header, the sidebar tools cluster - opens the tab through it. The catch is that the workspace layout prunes terminal tabs whose id isn't in the terminals query yet (`collapseStaleEntityTabs`), and the daemon's terminals list lags the `start_workspace_script_response` by a refetch. `stores/script-terminal-pending-store.ts` bridges that window: mark the id pending **before** opening the tab. It is a shared store rather than screen-local state because the sidebar starts scripts from outside the screen that owns the terminals query - "invalidate, then open" is a race there, not a fix.
 
 **A script runs in its own workspace's folder.** The daemon spawns the pty with `cwd = workspace.cwd` (the worktree path for a worktree workspace, the checkout otherwise) and reads that workspace's `otto.json`. The subtle half is environment: a terminal inherits the daemon's whole `process.env`, and the daemon is very often started _by another workspace's `daemon` script_, which exports `OTTO_WORKTREE_PATH`. `spawnWorkspaceScript` therefore always stamps the workspace's own location env (`OTTO_WORKTREE_PATH`, `OTTO_SOURCE_CHECKOUT_PATH`, `OTTO_ROOT_PATH`, `OTTO_BRANCH_NAME`, `PWD`) over whatever it inherited, for plain scripts as well as services. Without it a `${OTTO_WORKTREE_PATH:-$PWD}` command quietly operates on the daemon's directory.
 
@@ -85,7 +85,7 @@ For generated URLs to be reachable, you need wildcard DNS pointing to the machin
 
 2. Set `publicBaseUrl` to `https://ottoapps.my.domain.com` in your config.
 
-3. If you put a reverse proxy (nginx, Caddy, Traefik, etc.) in front of Otto, point it at either the daemon listener or the optional service-only listener and ensure it forwards the `Host` header unchanged. The proxy uses the `Host` header to route requests to the correct service — rewriting it will break routing.
+3. If you put a reverse proxy (nginx, Caddy, Traefik, etc.) in front of Otto, point it at either the daemon listener or the optional service-only listener and ensure it forwards the `Host` header unchanged. The proxy uses the `Host` header to route requests to the correct service - rewriting it will break routing.
 
 Public service URLs expose the workspace service itself. Daemon password authentication protects daemon APIs; it does not protect proxied dev services.
 
@@ -117,7 +117,7 @@ server {
 }
 ```
 
-Nginx's `$host` drops the port. If you terminate on a non-default port, use `$http_host` instead so the port survives — that is what "forwards the `Host` header unchanged" means here.
+Nginx's `$host` drops the port. If you terminate on a non-default port, use `$http_host` instead so the port survives - that is what "forwards the `Host` header unchanged" means here.
 
 ## Forwarded headers
 
@@ -130,13 +130,13 @@ Otto sets these when it forwards a request to a workspace service:
 | `X-Forwarded-For`   | The immediate peer address. Replaces any existing chain, so behind your own reverse proxy this is the proxy's address, not the client's |
 | `X-Forwarded-Port`  | The port from the `Host` header when it has one, otherwise whatever your proxy already set                                              |
 
-`X-Forwarded-Port` follows the same trust rule as `X-Forwarded-Host`: the authority Otto observed wins. When the `Host` header carries a port, that port is reported and replaces any inbound `X-Forwarded-Port`, so a client cannot forge one. When `Host` carries no port there is nothing to observe, so a value your reverse proxy set survives untouched — that is the case where nginx's `$host` drops the port and `X-Forwarded-Port` is the only source. Otto never derives the port from the scheme. Any other `X-Forwarded-*` header your proxy sends is passed through untouched.
+`X-Forwarded-Port` follows the same trust rule as `X-Forwarded-Host`: the authority Otto observed wins. When the `Host` header carries a port, that port is reported and replaces any inbound `X-Forwarded-Port`, so a client cannot forge one. When `Host` carries no port there is nothing to observe, so a value your reverse proxy set survives untouched - that is the case where nginx's `$host` drops the port and `X-Forwarded-Port` is the only source. Otto never derives the port from the scheme. Any other `X-Forwarded-*` header your proxy sends is passed through untouched.
 
 Services that build absolute URLs should prefer `Host` or `X-Forwarded-Host`.
 
 ### The forwarded authority is not authenticated
 
-Route lookup normalizes the port away before matching a service hostname, so a client can address the daemon with any port in `Host` and still reach the service. That port is what lands in `X-Forwarded-Host` and `X-Forwarded-Port`. Otto also does not check whether an inbound `X-Forwarded-Port` came from a proxy in `trustedProxies` — when `Host` carries no port, a client-supplied value is passed through.
+Route lookup normalizes the port away before matching a service hostname, so a client can address the daemon with any port in `Host` and still reach the service. That port is what lands in `X-Forwarded-Host` and `X-Forwarded-Port`. Otto also does not check whether an inbound `X-Forwarded-Port` came from a proxy in `trustedProxies` - when `Host` carries no port, a client-supplied value is passed through.
 
 Treat the forwarded authority as client-influenced input. A service that builds password reset links, absolute redirects, or cached URLs from it should pin its own public origin in configuration rather than deriving one from request headers. This is not specific to `X-Forwarded-Port`: the `Host` header has always carried a client-chosen port.
 

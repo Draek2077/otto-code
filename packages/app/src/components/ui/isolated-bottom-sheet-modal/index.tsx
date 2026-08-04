@@ -28,7 +28,7 @@ export const IsolatedBottomSheetModal = forwardRef<
 >(function IsolatedBottomSheetModal(props, ref) {
   const { children, presentation = "push", containerStyle, ...bottomSheetProps } = props;
   // Gorhom sheets render through @gorhom/portal INSIDE #root, outside both
-  // no-drag backstop rules in index.html — without this carve-out a presented
+  // no-drag backstop rules in index.html - without this carve-out a presented
   // sheet is click-dead wherever it overlaps an Electron drag rect (titlebar
   // strips, the New Workspace screen's full-screen drag overlay). The hosting
   // container is a full-screen view that exists only while the sheet is

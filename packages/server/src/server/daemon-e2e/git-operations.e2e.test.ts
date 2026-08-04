@@ -807,7 +807,7 @@ test.skipIf(isPlatform("win32"))(
     expect(archive.removedAgents).toContain(agent.id);
 
     // Archiving tears down the workspace's terminals but never deletes the
-    // worktree from disk and never runs teardown commands — on-disk removal is a
+    // worktree from disk and never runs teardown commands - on-disk removal is a
     // separate, explicit step.
     expect(existsSync(agent.cwd)).toBe(true);
     expect(existsSync(teardownMarkerPath)).toBe(false);

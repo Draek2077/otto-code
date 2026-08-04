@@ -10,7 +10,7 @@ import { ClaudeAgentClient } from "./agent.js";
 import type { ClaudeQueryInput } from "./query.js";
 
 // Workspace access is a boundary a user relies on when deciding to run a graph
-// unattended, so these tests assert on the options actually handed to the SDK —
+// unattended, so these tests assert on the options actually handed to the SDK -
 // not on the mapping helper, which is tested separately. The question each one
 // answers is "could this session still write?".
 
@@ -156,7 +156,7 @@ describe("Claude workspace access", () => {
 
   test("the dontAsk allowlist cannot hand back a tool the level denied", async () => {
     // dontAsk pre-approves Edit/Write so unattended coding schedules can work.
-    // A node that declared "read" must not get them back through that door —
+    // A node that declared "read" must not get them back through that door -
     // this is the interaction most likely to silently defeat the boundary.
     const options = await captureOptions({ workspaceAccess: "read", modeId: "dontAsk" });
     expect(options.disallowedTools ?? []).toContain("Edit");

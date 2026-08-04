@@ -344,7 +344,7 @@ function findWorkspaceBrowserTab(input: {
 
 /**
  * Pane to split right when opening a preview tab, or null if there's nothing
- * to split from (fresh/empty workspace layout — the tab can just take the
+ * to split from (fresh/empty workspace layout - the tab can just take the
  * focused pane as-is).
  */
 function findSplitRightTarget(workspaceKey: string): string | null {
@@ -387,7 +387,7 @@ async function openBrowserTabForRequest(params: {
 
   const url = command.args.url ?? "https://example.com";
   // preview_start sends preview metadata so the tab is born as the server's
-  // designated preview tab (icon, lifecycle) — "ready" because the daemon only
+  // designated preview tab (icon, lifecycle) - "ready" because the daemon only
   // opens the tab once the dev server is already up.
   const preview = command.args.preview;
   const { browserId, url: normalizedUrl } = createWorkspaceBrowser({

@@ -1,18 +1,18 @@
 /**
- * WelcomeStep — the setup wizard's animated brand cover, the first thing a
+ * WelcomeStep - the setup wizard's animated brand cover, the first thing a
  * user sees on their first host connection (first-time-wizard charter,
  * "Brand bookends").
  *
- * Renders WizardBrandBackdrop with the hero cluster — the Otto glyph and the
- * live BlobLoader plasma ring, composed like the marketing feature graphic —
+ * Renders WizardBrandBackdrop with the hero cluster - the Otto glyph and the
+ * live BlobLoader plasma ring, composed like the marketing feature graphic -
  * plus a headline, subtitle, and the primary "Start" button.
  *
- * Motion: the glyph fades in with a slight rise, holds, then winks once — a
+ * Motion: the glyph fades in with a slight rise, holds, then winks once - a
  * crossfade OttoLogo → OttoLogoWink → OttoLogo (~180ms each way), two glyph
  * layers stacked absolutely. The entry/wink use reanimated's default
  * ReduceMotion.System, so under prefers-reduced-motion they collapse to a
  * plain appear (the charter's reduced-motion fallback). BlobLoader is never
- * gated on reduce-motion — it hard-codes ReduceMotion.Never itself.
+ * gated on reduce-motion - it hard-codes ReduceMotion.Never itself.
  *
  * Layout: mobile-first. On compact form factors the hero stacks in a column
  * (glyph above ring) and type bumps +2px per the app's compact conventions;
@@ -21,11 +21,11 @@
  * full-width within a capped column (≥44px tap targets via Button's own
  * compact geometry).
  *
- * API (presentational only — no routing, no persistence):
+ * API (presentational only - no routing, no persistence):
  *   <WelcomeStep onStart={advanceToModeStep} onSkip={skipWizard} />
  *
- *   - onStart: () => void  — called when "Start" is pressed (required).
- *   - onSkip?: () => void  — optional; renders a ghost "Skip setup" button
+ *   - onStart: () => void  - called when "Start" is pressed (required).
+ *   - onSkip?: () => void  - optional; renders a ghost "Skip setup" button
  *     when provided. The wizard shell owns what skipping means.
  *
  * Per the unistyles gotcha (docs/unistyles.md): every Animated.View node uses
@@ -60,9 +60,9 @@ interface WelcomeStepProps {
 // Hero sizing. The glyph sits ON TOP of the ring (the ring is the halo behind
 // it). The ring is sized to frame the visible mark (the 512-unit viewBox
 // carries big empty margins, so the mark is smaller than the box). Both center
-// on the same point — see the hero stack in the JSX. The ring size is the
-// visible ring diameter basis regardless of blur — BlobLoader keeps the bloom
-// inside its own over-scanned canvas — so these need no blur compensation.
+// on the same point - see the hero stack in the JSX. The ring size is the
+// visible ring diameter basis regardless of blur - BlobLoader keeps the bloom
+// inside its own over-scanned canvas - so these need no blur compensation.
 const GLYPH_SIZE_WIDE = 250;
 const GLYPH_SIZE_COMPACT = 200;
 const GLYPH_SIZE_EXTRA_COMPACT = 150;
@@ -70,7 +70,7 @@ const RING_SIZE_WIDE = 300;
 const RING_SIZE_COMPACT = 225;
 const RING_SIZE_EXTRA_COMPACT = 170;
 
-// Gaussian bloom on the plasma ring — the "black hole" halo behind the glyph.
+// Gaussian bloom on the plasma ring - the "black hole" halo behind the glyph.
 // stdDeviation in the ring's 0..100 viewBox space (resolution-independent, so
 // it reads the same at both ring sizes). Bumped to 5 for a softer, wider bloom
 // now that the ring glows behind the logo. Tuned 2026-07-12.
@@ -83,7 +83,7 @@ const WINK_DELAY_AFTER_ENTRY_MS = 800;
 const WINK_FADE_MS = 250;
 const WINK_HOLD_MS = 200;
 
-// Plain RN styles for reanimated nodes — never unistyles on an Animated.View
+// Plain RN styles for reanimated nodes - never unistyles on an Animated.View
 // (docs/unistyles.md, "Reanimated Animated.View + Dynamic Styles Crashes").
 const glyphStyles = RNStyleSheet.create({
   layer: {
@@ -98,7 +98,7 @@ const glyphStyles = RNStyleSheet.create({
 /**
  * The winking glyph: fades/rises in, then crossfades OttoLogo → OttoLogoWink
  * → OttoLogo once. Both faces are stacked absolutely so only opacity moves.
- * No explicit `color` — the glyphs use their themed foreground mapping, so the
+ * No explicit `color` - the glyphs use their themed foreground mapping, so the
  * mark is dark on a light field and light on a dark field.
  */
 function WinkingGlyph({ size }: { size: number }) {
@@ -230,7 +230,7 @@ export function WelcomeStep({ onStart, onSkip }: WelcomeStepProps) {
 // Layout/type. Colors are theme tokens so the cover inverts with the app
 // theme; the breakpoint records carry the compact +2px font convention
 // (xs/sm = compact). The CTA and ghost buttons use Button's own themed
-// variants (accent fill / muted ghost) — no per-button color overrides.
+// variants (accent fill / muted ghost) - no per-button color overrides.
 const styles = StyleSheet.create((theme) => ({
   container: {
     width: "100%",

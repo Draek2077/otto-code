@@ -2,7 +2,7 @@ import { PERSONALITY_ROLES, type AgentPersonality, type PersonalityRole } from "
 
 // Pure, dependency-free personality helpers shared by the daemon (spawn-time
 // resolution) and the app (picker availability + role filtering). Effort
-// resolution is NOT here — it needs the model's advertised thinking options and
+// resolution is NOT here - it needs the model's advertised thinking options and
 // lives with the daemon's effort resolver; availability does not depend on it.
 
 const ROLE_SET: ReadonlySet<string> = new Set(PERSONALITY_ROLES);
@@ -47,7 +47,7 @@ export function personalityHasRole(
   return normalizePersonalityRoles(personality.roles).includes(role);
 }
 
-// Two behavioral tiers, not a hard gate. Coordinators delegate — they converse,
+// Two behavioral tiers, not a hard gate. Coordinators delegate - they converse,
 // plan, and launch other agents/personalities. Focused workers lift a single
 // thing someone is waiting on and should stay on task. A personality that
 // carries ANY coordinator role counts as a coordinator (a chatter+coder can
@@ -57,7 +57,7 @@ export type PersonalityRoleTier = "coordinator" | "focused";
 
 interface PersonalityRoleInfo {
   tier: PersonalityRoleTier;
-  // "Why you'd choose me" — a one-line decision aid surfaced in
+  // "Why you'd choose me" - a one-line decision aid surfaced in
   // list_personalities so a deciding agent can self-select a role by intent.
   guidance: string;
 }
@@ -67,7 +67,7 @@ export const PERSONALITY_ROLE_INFO: Readonly<Record<PersonalityRole, Personality
   chatter: {
     tier: "coordinator",
     guidance:
-      "Interactive driver — converse, plan, and delegate. Pick to run a chat or coordinate work.",
+      "Interactive driver - converse, plan, and delegate. Pick to run a chat or coordinate work.",
   },
   artificer: {
     tier: "coordinator",
@@ -83,44 +83,44 @@ export const PERSONALITY_ROLE_INFO: Readonly<Record<PersonalityRole, Personality
   researcher: {
     tier: "focused",
     guidance:
-      "Read-only surveyor — maps the code or domain and reports files, types, patterns, and gotchas. Pick to gather facts; proposes no solutions and edits nothing.",
+      "Read-only surveyor - maps the code or domain and reports files, types, patterns, and gotchas. Pick to gather facts; proposes no solutions and edits nothing.",
   },
   planner: {
     tier: "focused",
     guidance:
-      "Planning specialist — turns a goal into a typed, sequenced phase plan for others to execute. Pick to draft an actionable plan; stays on the plan and doesn't dispatch.",
+      "Planning specialist - turns a goal into a typed, sequenced phase plan for others to execute. Pick to draft an actionable plan; stays on the plan and doesn't dispatch.",
   },
   judger: {
     tier: "focused",
     guidance:
-      "Review specialist — evaluates work or a plan against criteria and returns a structured verdict. Pick for a focused review; stays on task.",
+      "Review specialist - evaluates work or a plan against criteria and returns a structured verdict. Pick for a focused review; stays on task.",
   },
   advisor: {
     tier: "focused",
     guidance:
-      "Read-only second opinion — weighs the trade-offs and returns one recommendation. Pick for advice; never edits and does not fan out.",
+      "Read-only second opinion - weighs the trade-offs and returns one recommendation. Pick for advice; never edits and does not fan out.",
   },
   // ── Making workers (produce code, design, or text) ────────────────────────
   coder: {
     tier: "focused",
     guidance:
-      "Focused implementer — writes code for one sub-task others are waiting on. Pick to get a coding job done; stays on task.",
+      "Focused implementer - writes code for one sub-task others are waiting on. Pick to get a coding job done; stays on task.",
   },
   designer: {
     tier: "focused",
     guidance:
-      "Design maker — styling and layout plus the human-skill text (copy, naming). Pick for the look-and-feel or the words; stays on task.",
+      "Design maker - styling and layout plus the human-skill text (copy, naming). Pick for the look-and-feel or the words; stays on task.",
   },
   writer: {
     tier: "focused",
     guidance:
-      "Fast small-text specialist — commit messages, summaries, names. Pick for quick text; stays on the one task.",
+      "Fast small-text specialist - commit messages, summaries, names. Pick for quick text; stays on the one task.",
   },
   // ── Conductor ─────────────────────────────────────────────────────────────
   orchestrator: {
     tier: "coordinator",
     guidance:
-      "The sole conductor — plans team-shaped work, dispatches typed tasks to the right teammates, gathers, and synthesizes. Pick to run a multi-agent workflow.",
+      "The sole conductor - plans team-shaped work, dispatches typed tasks to the right teammates, gathers, and synthesizes. Pick to run a multi-agent workflow.",
   },
 };
 
@@ -139,7 +139,7 @@ export function personalityCanLaunch(personality: Pick<AgentPersonality, "roles"
 export interface PersonalitySelectionSummary {
   tier: PersonalityRoleTier;
   canLaunch: boolean;
-  /** The "why you'd choose me" blurb — each of the personality's roles, joined. */
+  /** The "why you'd choose me" blurb - each of the personality's roles, joined. */
   guidance: string;
 }
 
@@ -161,23 +161,23 @@ export function summarizePersonalityForSelection(
   };
 }
 
-// The conductor's standing directive — the distilled `/epic` method taught to
+// The conductor's standing directive - the distilled `/epic` method taught to
 // the sole orchestrator role at spawn, so orchestration is emergent (the agent
 // recognizes team-shaped work and runs it) rather than something a user must
 // invoke. Kept here as one exported constant so the wording is testable and
 // shared. See projects/agent-orchestration/agent-orchestration.md.
 export const ORCHESTRATOR_METHOD_DIRECTIVE =
-  "You are the orchestrator — the team's sole conductor. Team-shaped work is yours to run, and you should reach for it naturally, not only when asked. " +
-  "First apply the complexity gate: if a task is small and not splittable, just do it — no ceremony. Only orchestrate when the work is large, parallelizable, or benefits from independent perspectives. " +
-  "When you do orchestrate: (1) if the shape is unclear, dispatch a researcher to survey and a planner to draft a typed plan; (2) declare that plan as a Run with start_run — phases typed research/plan/implement/design/verify/gate/deliver, fanning out candidates where several angles help and attaching a judger to grade them, looping until enough pass; (3) put a gate before irreversible or costly steps so the user approves; (4) synthesize the passing results into the deliverable. " +
-  "Prefer start_run over hand-spawning and tracking agents yourself — the runtime fans out, gathers typed verdicts, and enforces the loop for you. Every phase maps to a teammate's role; if the active team lacks a role a phase needs, say so plainly and stop rather than papering over the gap.";
+  "You are the orchestrator - the team's sole conductor. Team-shaped work is yours to run, and you should reach for it naturally, not only when asked. " +
+  "First apply the complexity gate: if a task is small and not splittable, just do it - no ceremony. Only orchestrate when the work is large, parallelizable, or benefits from independent perspectives. " +
+  "When you do orchestrate: (1) if the shape is unclear, dispatch a researcher to survey and a planner to draft a typed plan; (2) declare that plan as a Run with start_run - phases typed research/plan/implement/design/verify/gate/deliver, fanning out candidates where several angles help and attaching a judger to grade them, looping until enough pass; (3) put a gate before irreversible or costly steps so the user approves; (4) synthesize the passing results into the deliverable. " +
+  "Prefer start_run over hand-spawning and tracking agents yourself - the runtime fans out, gathers typed verdicts, and enforces the loop for you. Every phase maps to a teammate's role; if the active team lacks a role a phase needs, say so plainly and stop rather than papering over the gap.";
 
 /**
  * The in-context "role directive" injected into a personality's system prompt at
  * spawn. The orchestrator gets the full conductor method; other coordinators
  * (chatter/artificer/scheduler) get a lighter delegate nudge; focused workers
  * are told to stay on the task someone is waiting on. Roleless spawns get
- * nothing. This is guidance, not a gate — the tools stay available either way.
+ * nothing. This is guidance, not a gate - the tools stay available either way.
  */
 export function composeRoleFocusDirective(
   roles: readonly string[] | undefined,
@@ -193,7 +193,7 @@ export function composeRoleFocusDirective(
   if (normalized.some((role) => PERSONALITY_ROLE_INFO[role].tier === "coordinator")) {
     return `You are a coordinator personality (roles: ${roleList}). You front interactive work and may delegate: use list_personalities to see who else is available, and spawn other agents or hand off to the team's orchestrator whenever delegating gets the work done faster or better.`;
   }
-  return `You are a focused worker personality (roles: ${roleList}). Someone is waiting on this specific task — stay on it and finish it. You can still call list_personalities to see the roster, but don't spawn sub-agents or start side workflows unless it is genuinely essential to completing this job.`;
+  return `You are a focused worker personality (roles: ${roleList}). Someone is waiting on this specific task - stay on it and finish it. You can still call list_personalities to see the roster, but don't spawn sub-agents or start side workflows unless it is genuinely essential to completing this job.`;
 }
 
 export type PersonalityUnavailableCode =

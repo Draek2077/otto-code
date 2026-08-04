@@ -9,7 +9,7 @@
   makeDesktopItem,
   electron,
   libuv,
-  # Reuse the daemon's prebuilt npm-deps FOD. Same lockfile, same content —
+  # Reuse the daemon's prebuilt npm-deps FOD. Same lockfile, same content -
   # without this, the desktop drv produces a separately-named store path
   # (`otto-desktop-<v>-npm-deps`) and refetches the entire registry. Override
   # the upstream hash via `otto.override { npmDepsHash = "..."; }`.
@@ -82,7 +82,7 @@ buildNpmPackage rec {
     # Expo web export for the Electron renderer
     ( cd packages/app && OTTO_WEB_PLATFORM=electron npx expo export --platform web )
 
-    # Desktop main process (tsc only — NOT electron-builder)
+    # Desktop main process (tsc only - NOT electron-builder)
     npm run build:main --workspace=@otto-code/desktop
 
     runHook postBuild
@@ -123,7 +123,7 @@ buildNpmPackage rec {
     #
     # EXPO_DEV_URL: We run unpackaged via `electron path/to/main.js`, so
     # `app.isPackaged` is false. In that mode main.ts loads `DEV_SERVER_URL`
-    # (defaults to http://localhost:8081 — the Expo dev server, which doesn't
+    # (defaults to http://localhost:8081 - the Expo dev server, which doesn't
     # exist here). Point it at the `otto://` protocol handler instead, which
     # serves from `__dirname/../../app/dist` (our install layout matches).
     makeWrapper ${electron}/bin/electron $out/bin/otto-desktop \

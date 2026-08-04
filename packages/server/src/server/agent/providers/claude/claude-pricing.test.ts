@@ -22,7 +22,7 @@ function split(over: Partial<SubagentUsageTotals> = {}): SubagentUsageTotals {
 
 describe("claudeModelRates", () => {
   it("prices known models with cache multipliers derived from the input rate", () => {
-    // Haiku 4.5 — $1 in / $5 out; cache-read 0.1×, cache-write 1.25×.
+    // Haiku 4.5 - $1 in / $5 out; cache-read 0.1×, cache-write 1.25×.
     expect(claudeModelRates(HAIKU)).toEqual({
       inputPerMTok: 1,
       outputPerMTok: 5,

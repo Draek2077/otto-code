@@ -3,6 +3,11 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
+import {
+  createConnectorAuthProvider,
+  type ConnectorAuthStore,
+} from "../../connectors/connector-oauth.js";
 
 import type { ConnectorConfig } from "@otto-code/protocol/provider-config";
 import type { McpServerConfig } from "../agent-sdk-types.js";
@@ -15,7 +20,7 @@ import { capToolOutput } from "./openai-compat-tools.js";
  * MCP client host for the OpenAI-compatible provider. The daemon owns that
  * provider's tool loop (there is no agent binary to host an MCP client), so
  * this manager connects to the configured MCP servers, snapshots their tools,
- * and routes tool calls — one manager per agent session.
+ * and routes tool calls - one manager per agent session.
  *
  * Security posture:
  * - stdio servers spawn with a scrubbed environment (Otto control vars
@@ -24,7 +29,7 @@ import { capToolOutput } from "./openai-compat-tools.js";
  *   managed-process registry so daemon-restart reaping covers leaks.
  * - Configured header and env values are secrets: they are redacted from all
  *   error text this module returns, and never logged.
- * - A server that fails to connect is skipped and recorded as a failure —
+ * - A server that fails to connect is skipped and recorded as a failure -
  *   never fatal to the session.
  * - Tool names are namespaced `mcp_{server}_{tool}` so a server cannot shadow
  *   the builtin coding tools or Otto's injected catalog.
@@ -46,7 +51,7 @@ export interface McpToolBinding {
   description: string;
   parameters: Record<string, unknown>;
   /**
-   * The server's self-declared readOnlyHint annotation. Untrusted — only
+   * The server's self-declared readOnlyHint annotation. Untrusted - only
    * consulted in acceptEdits mode when the provider opts into
    * mcpToolPermissions: "trust-read-only".
    */
@@ -113,25 +118,36 @@ function flattenContentText(content: unknown): string {
  * Resolve the daemon's connector registry into the two inputs the MCP manager
  * consumes: a servers map (enabled connectors only, keyed by connector id) and
  * the per-connector disabled-tool sets. A connector with `enabled === false` is
- * dropped entirely here, so it never spawns a process or advertises a tool —
+ * dropped entirely here, so it never spawns a process or advertises a tool -
  * global on/off and per-tool disable both collapse into what the manager sees.
  */
 export function resolveEnabledConnectors(
   connectors: readonly ConnectorConfig[] | null | undefined,
+  // Optional so existing callers and tests keep working: without a store the
+  // result is exactly what it was before, minus any OAuth attachment.
+  authStore?: ConnectorAuthStore,
 ): {
   servers: Record<string, McpServerConfig>;
   disabledTools: Record<string, ReadonlySet<string>>;
+  authProviders: Record<string, OAuthClientProvider>;
 } {
   const servers: Record<string, McpServerConfig> = {};
   const disabledTools: Record<string, ReadonlySet<string>> = {};
+  const authProviders: Record<string, OAuthClientProvider> = {};
   for (const connector of connectors ?? []) {
     if (connector.enabled === false) continue;
     servers[connector.id] = connector.server;
     if (connector.disabledTools && connector.disabledTools.length > 0) {
       disabledTools[connector.id] = new Set(connector.disabledTools);
     }
+    if (authStore) {
+      const provider = createConnectorAuthProvider({ connector, store: authStore });
+      if (provider) {
+        authProviders[connector.id] = provider;
+      }
+    }
   }
-  return { servers, disabledTools };
+  return { servers, disabledTools, authProviders };
 }
 
 export interface OpenAICompatMcpManagerOptions {
@@ -145,9 +161,16 @@ export interface OpenAICompatMcpManagerOptions {
    * Per-connector set of tool names (as the server reports them) to withhold
    * from the model, keyed by server name. A tool listed here is never entered
    * into the binding map, so it is never told to the model and cannot be called
-   * — the same total-enforcement property the snapshot already gives.
+   * - the same total-enforcement property the snapshot already gives.
    */
   disabledTools?: Record<string, ReadonlySet<string>>;
+  /**
+   * Per-server OAuth provider, keyed by server name. Present only for connectors
+   * the user has signed into: the SDK attaches the access token and refreshes it
+   * on 401 without any prompting. Absent means the server needs no auth or
+   * carries a static credential in its transport already.
+   */
+  authProviders?: Record<string, OAuthClientProvider>;
 }
 
 export class OpenAICompatMcpManager {
@@ -159,6 +182,8 @@ export class OpenAICompatMcpManager {
   private readonly connectTimeoutMs: number;
   /** Server name → disabled tool names; withheld from the model at snapshot. */
   private readonly disabledTools: Record<string, ReadonlySet<string>>;
+  /** Server name → OAuth provider for signed-in connectors. */
+  private readonly authProviders: Record<string, OAuthClientProvider>;
   /** Every configured header/env value, replaced with *** in outgoing text. */
   private readonly secrets: string[];
 
@@ -176,6 +201,7 @@ export class OpenAICompatMcpManager {
     this.managedProcesses = options.managedProcesses ?? null;
     this.connectTimeoutMs = options.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS;
     this.disabledTools = options.disabledTools ?? {};
+    this.authProviders = options.authProviders ?? {};
     this.secrets = collectSecrets(options.servers);
   }
 
@@ -202,7 +228,7 @@ export class OpenAICompatMcpManager {
   }
 
   private async connectAll(): Promise<void> {
-    // Connect in parallel — sequential connects stack the 10s timeout per
+    // Connect in parallel - sequential connects stack the 10s timeout per
     // unreachable server ahead of the session's first turn. Tool snapshots
     // still run in config order so namespaced-name dedup suffixes stay
     // deterministic.
@@ -254,7 +280,7 @@ export class OpenAICompatMcpManager {
       try {
         await client.connect(transport, { timeout: this.connectTimeoutMs });
       } catch (error) {
-        // The SDK spawned the process before the handshake failed — reap it.
+        // The SDK spawned the process before the handshake failed - reap it.
         const pid = transport.pid;
         if (typeof pid === "number") {
           void killPidTree(pid);
@@ -287,10 +313,19 @@ export class OpenAICompatMcpManager {
     const requestInit: RequestInit | undefined = config.headers
       ? { headers: config.headers }
       : undefined;
+    // The OAuth provider, when the user has signed this connector in. Without it
+    // the SDK sends no bearer token and an OAuth-protected server answers 401 on
+    // every request - which is exactly what every remote connector did before.
+    const authProvider = this.authProviders[name];
+    const transportOptions = {
+      ...(requestInit ? { requestInit } : {}),
+      ...(authProvider ? { authProvider } : {}),
+    };
+    const hasOptions = Object.keys(transportOptions).length > 0;
     const transport =
       config.type === "http"
-        ? new StreamableHTTPClientTransport(url, requestInit ? { requestInit } : undefined)
-        : new SSEClientTransport(url, requestInit ? { requestInit } : undefined);
+        ? new StreamableHTTPClientTransport(url, hasOptions ? transportOptions : undefined)
+        : new SSEClientTransport(url, hasOptions ? transportOptions : undefined);
     await client.connect(transport, { timeout: this.connectTimeoutMs });
     return { name, client, stdioPid: null, managedRecordId: null };
   }
@@ -381,7 +416,7 @@ export class OpenAICompatMcpManager {
           });
         }
       } catch (error) {
-        // Servers without prompt support reply with "method not found" — normal.
+        // Servers without prompt support reply with "method not found" - normal.
         this.logger?.debug(
           { provider: this.providerId, mcpServer: server.name, err: error },
           "MCP prompts listing unavailable",

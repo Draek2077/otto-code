@@ -5,7 +5,7 @@ import type { EditorFindState, EditorThemeSpec } from "./editor-contract";
 import { createEditorCore, type EditorCore } from "./editor-core";
 
 // Find highlighting, against a real CM6 in a real browser. The decorations are
-// the whole point of the feature and they are pure DOM — a mocked view would
+// the whole point of the feature and they are pure DOM - a mocked view would
 // assert nothing about whether a match is actually painted, or still painted
 // after the strip closes.
 

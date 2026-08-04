@@ -1207,7 +1207,7 @@ interface DepthPoint {
  * so the depth task stops probing rather than zeroing the whole category.
  */
 function isContextLimitError(message: string): boolean {
-  // Specific to a context-length rejection — a bare "context" would misclassify
+  // Specific to a context-length rejection - a bare "context" would misclassify
   // any unrelated 500 whose body happens to mention the word.
   return /exceed|n_ctx|context (?:length|window|size)|too (?:many|long|large)|larger than|prompt is too long/i.test(
     message,
@@ -1348,7 +1348,7 @@ const contextDepthTask: Task = {
 // ---------------------------------------------------------------- concurrency
 
 /**
- * Aggregate throughput with several requests in flight at once — the load a
+ * Aggregate throughput with several requests in flight at once - the load a
  * shared host actually sees when multiple chats or a model's own sub-agents hit
  * it together. Reports tokens/sec in (prompt) and out (generation) summed across
  * the concurrent requests; the score is how many returned real content, which

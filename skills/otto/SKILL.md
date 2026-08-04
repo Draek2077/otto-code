@@ -7,7 +7,7 @@ Otto is a daemon that supervises AI coding agents on your machine. Control it th
 
 ## Worktrees
 
-**`create_worktree`** — same target union as `create_agent.workspace.source.worktree.target`:
+**`create_worktree`** - same target union as `create_agent.workspace.source.worktree.target`:
 
 - From a PR: `{ target: { kind: "checkout-pr", githubPrNumber: 503 } }`.
 - Branch off a base: `{ target: { kind: "branch-off", worktreeSlug: "foo", branchName: "fix/foo", baseBranch: "main" } }`.
@@ -17,12 +17,12 @@ Returns `{ branchName, worktreePath, workspaceId }`. Pass `cwd` to target a spec
 
 In `branch-off`, `worktreeSlug` controls the worktree path slug and `branchName` controls the git branch. If `branchName` is omitted, Otto defaults it from `worktreeSlug`. The returned `branchName` is authoritative; checkout and PR flows may return a branch name that differs from any requested slug.
 
-**`list_worktrees`** — current repo (or pass `cwd`).
-**`archive_worktree`** — `{ worktreePath }` or `{ worktreeSlug }`. Removes worktree and branch.
+**`list_worktrees`** - current repo (or pass `cwd`).
+**`archive_worktree`** - `{ worktreePath }` or `{ worktreeSlug }`. Removes worktree and branch.
 
 ## Agents
 
-**`create_agent`** — required: `relationship`, `workspace`, and **either** `provider` (`claude/opus`, `codex/gpt-5.4`, …) **or** `personality` (a host-configured personality name — see [Personalities](#personalities)). `title` and `initialPrompt` are **optional** — omit both to just open a new chat (the agent greets the user and asks what to work on); don't refuse to spawn merely because there's no task yet. Common: `notifyOnFinish`, `settings`, `labels`. Returns `{ agentId, … }`.
+**`create_agent`** - required: `relationship`, `workspace`, and **either** `provider` (`claude/opus`, `codex/gpt-5.4`, …) **or** `personality` (a host-configured personality name - see [Personalities](#personalities)). `title` and `initialPrompt` are **optional** - omit both to just open a new chat (the agent greets the user and asks what to work on); don't refuse to spawn merely because there's no task yet. Common: `notifyOnFinish`, `settings`, `labels`. Returns `{ agentId, … }`.
 
 Initial runtime settings live under `settings`: `modeId`, `thinkingOptionId`, and provider-specific `features`. For Codex fast mode, pass `settings: { features: { "fast_mode": true } }` when creating the agent.
 
@@ -32,55 +32,55 @@ To create a new worktree and launch an agent in it, use `create_agent.workspace.
 
 `relationship` controls parentage only:
 
-- `{ kind: "subagent" }` — child under your subagents track. Use for advisors, committee members, planners, implementers, auditors, loop workers, and any agent whose lifetime belongs to your task.
-- `{ kind: "detached" }` — root/sibling agent. Use for handoffs and fire-and-forget delegations the user may continue after you are archived.
+- `{ kind: "subagent" }` - child under your subagents track. Use for advisors, committee members, planners, implementers, auditors, loop workers, and any agent whose lifetime belongs to your task.
+- `{ kind: "detached" }` - root/sibling agent. Use for handoffs and fire-and-forget delegations the user may continue after you are archived.
 
 `workspace` controls placement only:
 
-- `{ kind: "current" }` — same workspace as the caller, with optional `cwd`.
-- `{ kind: "existing", workspaceId: string, cwd?: string }` — attach to an existing workspace, usually from `create_worktree`.
-- `{ kind: "create", source: { kind: "directory", path?: string } }` — new workspace rooted at a directory.
+- `{ kind: "current" }` - same workspace as the caller, with optional `cwd`.
+- `{ kind: "existing", workspaceId: string, cwd?: string }` - attach to an existing workspace, usually from `create_worktree`.
+- `{ kind: "create", source: { kind: "directory", path?: string } }` - new workspace rooted at a directory.
 - `{ kind: "create", source: { kind: "worktree", cwd?: string, target: { kind: "branch-off", worktreeSlug?: string, branchName?: string, baseBranch?: string } } }`
 - `{ kind: "create", source: { kind: "worktree", cwd?: string, target: { kind: "checkout-branch", branch: string } } }`
 - `{ kind: "create", source: { kind: "worktree", cwd?: string, target: { kind: "checkout-pr", githubPrNumber: number } } }`
 
 Agent-scoped `create_agent` defaults `notifyOnFinish` to true. Set it to `false` only for truly fire-and-forget agents.
 
-**`send_agent_prompt`** — `{ agentId, prompt }`. Use for follow-ups to an existing agent. Agent-scoped prompt calls default to `background: true` and `notifyOnFinish: true`; top-level calls default to blocking with no callback. For a synchronous follow-up, pass `background: false` and use the returned result.
+**`send_agent_prompt`** - `{ agentId, prompt }`. Use for follow-ups to an existing agent. Agent-scoped prompt calls default to `background: true` and `notifyOnFinish: true`; top-level calls default to blocking with no callback. For a synchronous follow-up, pass `background: false` and use the returned result.
 
-**`update_agent`** — `{ agentId, name?, labels?, settings? }`. Use `settings` for runtime changes on an existing agent: `modeId`, `model`, `thinkingOptionId`, and provider-specific `features`. For Codex fast mode, pass `settings: { features: { "fast_mode": true } }`.
+**`update_agent`** - `{ agentId, name?, labels?, settings? }`. Use `settings` for runtime changes on an existing agent: `modeId`, `model`, `thinkingOptionId`, and provider-specific `features`. For Codex fast mode, pass `settings: { features: { "fast_mode": true } }`.
 
-**`list_agents`** — filter by `cwd`, `statuses`, `sinceHours`, `includeArchived`.
+**`list_agents`** - filter by `cwd`, `statuses`, `sinceHours`, `includeArchived`.
 
-**`archive_agent`** — `{ agentId }`. Interrupts if running, removes from active list.
+**`archive_agent`** - `{ agentId }`. Interrupts if running, removes from active list.
 
 ## Provider discovery
 
-**`list_providers`** — compact provider availability and modes.
+**`list_providers`** - compact provider availability and modes.
 
-**`list_models`** — full model list for one provider. Use only when you need model IDs or thinking options; the list can be large.
+**`list_models`** - full model list for one provider. Use only when you need model IDs or thinking options; the list can be large.
 
-**`inspect_provider`** — compact provider capability and feature inspection. Required: `provider`; pass `cwd` when you are not in an agent-scoped session. Optional: `settings` with draft `model`, `modeId`, `thinkingOptionId`, and `features`.
+**`inspect_provider`** - compact provider capability and feature inspection. Required: `provider`; pass `cwd` when you are not in an agent-scoped session. Optional: `settings` with draft `model`, `modeId`, `thinkingOptionId`, and `features`.
 
 Only set feature IDs returned by `inspect_provider`. For Codex fast mode, look for `fast_mode` and pass `settings: { features: { "fast_mode": true } }` to `create_agent` or `update_agent`.
 
 ## Personalities
 
-Agent Personalities are named, host-configured templates that bind a provider→model, effort, permission mode, a personality prompt, one or more **roles**, and a visual/audio identity (spinner colors + a TTS voice). When the host has them, prefer them over hand-picking a raw provider/model — the user curated them for exactly this.
+Agent Personalities are named, host-configured templates that bind a provider→model, effort, permission mode, a personality prompt, one or more **roles**, and a visual/audio identity (spinner colors + a TTS voice). When the host has them, prefer them over hand-picking a raw provider/model - the user curated them for exactly this.
 
-**`list_personalities`** — enumerate the host's personalities: `{ id, name, roles, provider, model, available, tier, canLaunch, guidance, unavailableReason?, modeId?, thinkingOptionId?, effortLevel? }`. Filter with `role` (e.g. `worker`, `judger`, `advisor`) and pass `cwd` to resolve availability against a workspace. **Any agent may call this** — every personality can see the others and spawn them by name; the roster is shared, not orchestrator-only. Read each entry's `guidance` (why you'd choose it) and `tier` to pick the right teammate. Fall back to provider strings from orchestration preferences only when the host has no personalities.
+**`list_personalities`** - enumerate the host's personalities: `{ id, name, roles, provider, model, available, tier, canLaunch, guidance, unavailableReason?, modeId?, thinkingOptionId?, effortLevel? }`. Filter with `role` (e.g. `worker`, `judger`, `advisor`) and pass `cwd` to resolve availability against a workspace. **Any agent may call this** - every personality can see the others and spawn them by name; the roster is shared, not orchestrator-only. Read each entry's `guidance` (why you'd choose it) and `tier` to pick the right teammate. Fall back to provider strings from orchestration preferences only when the host has no personalities.
 
 The eight roles: `chatter` (chat), `artificer` (artifacts), `scheduler` (schedules), `writer` (fast small-text: commit messages, summaries, names), `coder` (sub-agent/implementer), `judger` (review), `advisor` (read-only second opinion), `orchestrator` (drives multi-agent work). They split into two **tiers**: **coordinators** (chatter, artificer, scheduler, advisor, orchestrator) converse, plan, and delegate; **focused workers** (writer, coder, judger) lift one thing someone's waiting on and stay on task. If you're a focused worker, finish your task rather than spawning helpers; if you're a coordinator, delegate freely. Coder/Judger/Advisor are the ones you'll usually spawn.
 
-**Spawning by personality** — pass `personality: "<name>"` to `create_agent` instead of `provider`. It expands to that personality's provider/model/effort/mode/prompt. Explicit `provider`/`settings` still override per-field. If the named personality is missing or out of commission on the target host+cwd, the call **fails loudly** — there is no silent fallback, so surface the error rather than guessing a provider.
+**Spawning by personality** - pass `personality: "<name>"` to `create_agent` instead of `provider`. It expands to that personality's provider/model/effort/mode/prompt. Explicit `provider`/`settings` still override per-field. If the named personality is missing or out of commission on the target host+cwd, the call **fails loudly** - there is no silent fallback, so surface the error rather than guessing a provider.
 
 Prefer a personality whose role matches the work (a `coder` for implementation, a `judger` for review, an `advisor` for a read-only opinion). Only when no suitable personality exists (or `list_personalities` is unavailable) resolve a raw provider from orchestration preferences below.
 
 ## Schedules and heartbeats
 
-**`create_schedule`** — starts a new agent on a cron cadence. Required: `prompt`, `cron`, `provider`. Optional: `timezone`, `name`, `cwd`, `maxRuns`, `expiresIn`. Use when the recurring work should live in fresh agents.
+**`create_schedule`** - starts a new agent on a cron cadence. Required: `prompt`, `cron`, `provider`. Optional: `timezone`, `name`, `cwd`, `maxRuns`, `expiresIn`. Use when the recurring work should live in fresh agents.
 
-**`create_heartbeat`** — sends you a prompt on a cron cadence. Required: `prompt`, `cron`. Optional: `timezone`, `name`, `maxRuns`, `expiresIn`. Use for reminders, PR/build babysitting, and status checks that should return to this conversation.
+**`create_heartbeat`** - sends you a prompt on a cron cadence. Required: `prompt`, `cron`. Optional: `timezone`, `name`, `maxRuns`, `expiresIn`. Use for reminders, PR/build babysitting, and status checks that should return to this conversation.
 
 ## Models
 
@@ -88,12 +88,12 @@ Prefer a personality whose role matches the work (a `coder` for implementation, 
 
 ## Orchestration preferences
 
-User-specific configuration at `~/.otto/orchestration-preferences.json`. **Before any Otto skill chooses a provider or creates an agent, it must read this file** (unless it is spawning by [personality](#personalities), which supersedes provider categories — a personality already carries its own provider/model). Reading means an actual file read, not relying on these examples or defaults. Never hardcode a provider string in another skill — resolve through this file.
+User-specific configuration at `~/.otto/orchestration-preferences.json`. **Before any Otto skill chooses a provider or creates an agent, it must read this file** (unless it is spawning by [personality](#personalities), which supersedes provider categories - a personality already carries its own provider/model). Reading means an actual file read, not relying on these examples or defaults. Never hardcode a provider string in another skill - resolve through this file.
 
 Two parts:
 
-- `providers` — map of role categories to provider strings. Pass straight to `create_agent`'s `provider` field.
-- `preferences` — freeform string array. Read on startup; weave into agent prompts contextually.
+- `providers` - map of role categories to provider strings. Pass straight to `create_agent`'s `provider` field.
+- `preferences` - freeform string array. Read on startup; weave into agent prompts contextually.
 
 Categories: `impl`, `ui`, `research`, `planning`, `audit`. Skills pick the category that matches the role they're launching.
 
@@ -116,7 +116,7 @@ If the file is missing, use sensible defaults and tell the user once.
 
 ## Waiting
 
-Agents take time — 10–30+ minutes is routine. Favor asynchronous workflows.
+Agents take time - 10–30+ minutes is routine. Favor asynchronous workflows.
 
 For agent-scoped `create_agent` and background `send_agent_prompt`, leave `notifyOnFinish` omitted or set it to `true` unless the work is truly fire-and-forget. You will get notified when the target agent finishes, errors, or needs permission. Move on to other work. The notification arrives on its own.
 
@@ -142,7 +142,7 @@ Discover with `otto --help` and `otto <cmd> --help`.
 - Linux: `<install-dir>/resources/bin/otto`
 - Windows: `C:\Program Files\Otto\resources\bin\otto.cmd`
 
-The desktop app's first-run hook (`installCli`) symlinks this to `~/.local/bin/otto` (macOS/Linux) or drops a `.cmd` trampoline (Windows) and adds `~/.local/bin` to PATH via shell rc files. If that didn't take, offer to symlink it — don't do it silently.
+The desktop app's first-run hook (`installCli`) symlinks this to `~/.local/bin/otto` (macOS/Linux) or drops a `.cmd` trampoline (Windows) and adds `~/.local/bin` to PATH via shell rc files. If that didn't take, offer to symlink it - don't do it silently.
 
 ## Ops and debugging
 
@@ -164,4 +164,4 @@ Debug order:
 2. `otto daemon status` for liveness.
 3. `curl -s localhost:6868/api/health` if the CLI itself is suspect.
 
-**Never restart the daemon without explicit user approval** — it kills every running agent, including, often, the one asking.
+**Never restart the daemon without explicit user approval** - it kills every running agent, including, often, the one asking.

@@ -692,7 +692,7 @@ describe("ClaudeAgentSession features", () => {
     ).resolves.toEqual([]);
 
     // Opus 4.7's fast mode was withdrawn (`speed: "fast"` errors) and Opus 4.6
-    // never had it — neither should offer the toggle.
+    // never had it - neither should offer the toggle.
     await expect(
       client.listFeatures({
         provider: "claude",
@@ -2625,7 +2625,7 @@ describe("ClaudeAgentSession context window usage", () => {
     expect(live.filter((event) => event.type === "observed_subagent_updated")).toEqual([]);
 
     // task_notification lost; the next level payload no longer lists the task
-    // — the reconcile settles the row instead of leaving it running forever.
+    // - the reconcile settles the row instead of leaving it running forever.
     const settled = session.translateMessageToEvents({
       type: "system",
       subtype: "background_tasks_changed",
@@ -2694,7 +2694,7 @@ describe("ClaudeAgentSession context window usage", () => {
     expect(startedUpdate).toBeDefined();
     expect(startedUpdate).not.toHaveProperty("update.backgrounded");
 
-    // The tool_result comes back. On its own this is ambiguous — it settles the
+    // The tool_result comes back. On its own this is ambiguous - it settles the
     // row, and a genuinely finished sub-agent stops here.
     session.translateMessageToEvents({
       type: "user",
@@ -2752,7 +2752,7 @@ describe("ClaudeAgentSession context window usage", () => {
         update: expect.objectContaining({ taskId: "mon-1", status: "running" }),
       }),
     );
-    // A monitor is NOT an observable AI run — it must not land on the observed
+    // A monitor is NOT an observable AI run - it must not land on the observed
     // subagent track.
     expect(started.filter((event) => event.type === "observed_subagent_updated")).toEqual([]);
   });

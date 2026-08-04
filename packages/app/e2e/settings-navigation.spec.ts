@@ -122,7 +122,7 @@ test.describe("Settings sidebar navigation", () => {
   });
 });
 
-test.describe("Settings — compact master-detail", () => {
+test.describe("Settings - compact master-detail", () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
   test("/settings renders only the sidebar list (no section content)", async ({ page }) => {

@@ -1,5 +1,5 @@
-= Orchestration — Graph Execution
-:description: How a graph runs — DAG scheduling, edge gating, prompt assembly from templates and inputs, structured output, validation, retry and iteration.
+= Orchestration - Graph Execution
+:description: How a graph runs - DAG scheduling, edge gating, prompt assembly from templates and inputs, structured output, validation, retry and iteration.
 
 The engine is pure control flow over an injected port
 (`packages/server/src/server/orchestration/graph-engine.ts`): no daemon dependencies, unit
@@ -73,7 +73,7 @@ flowchart TD
     M -->|yes / no loop| N[done]
 ----
 
-== Edge resolution — the gate before dispatch
+== Edge resolution - the gate before dispatch
 
 A node result is three-valued: `done`, `failed`, or `skipped`. **A skip is control flow, never
 an error**, and always carries a machine-readable reason.
@@ -102,11 +102,11 @@ pruned side arrives as `upstream-skipped` rather than as a veto.
 
 Conditions are JSONata (`edge-conditions.ts`), evaluated against the upstream node's output
 fields at the top level plus `output` carrying its prose. JSONata because it is parsed and
-evaluated, never `eval`'d — **a graph is user-authored data and must never become code the
+evaluated, never `eval`'d - **a graph is user-authored data and must never become code the
 daemon executes.** Nothing else is in scope: a condition cannot reach the filesystem, the run,
 or another node.
 
-A condition that throws **fails the node**. It is never a quiet false — a typo would otherwise
+A condition that throws **fails the node**. It is never a quiet false - a typo would otherwise
 silently prune half the graph. Syntax is checked before the run starts; the shared client
 validator stays parser-free, so expression checking is daemon-side.
 
@@ -149,7 +149,7 @@ marked `snippet: true` is meant to be included by others.
 
 A node binds one with `{ templateId, variables }`. A variable is a literal, `$inputs.<key>`, or
 `$output.<nodeId>.<field>`. **An unresolvable reference renders empty rather than leaking its
-own syntax** — `$output.classify.missing` sitting in a prompt would read to the model as an
+own syntax** - `$output.classify.missing` sitting in a prompt would read to the model as an
 instruction.
 
 **Failure degrades, never blocks.** A deleted template, a syntax error, or a host with no
@@ -164,7 +164,7 @@ on every dispatch.
 [WARNING]
 ====
 *EJS compiles templates to JavaScript that runs in the daemon process.* Acceptable today
-because templates are authored locally by the machine's own user — the same trust level as a
+because templates are authored locally by the machine's own user - the same trust level as a
 workspace script. **The day templates become shareable or importable this is a code-execution
 vector and needs an explicit trust gate.**
 ====
@@ -173,7 +173,7 @@ vector and needs an explicit trust gate.**
 
 Satisfied edges contribute a labelled JSON block of carried fields **first**, then the prose.
 Fields are what a downstream node can act on without re-reading anything; the prose still
-carries the reasoning the fields deliberately don't. A skipped branch contributes nothing —
+carries the reasoning the fields deliberately don't. A skipped branch contributes nothing -
 not an empty section.
 
 Rule: **references, not contents.** Fields carry values and paths; anything large is a file the
@@ -181,7 +181,7 @@ next node reads with its own tools.
 
 == Structured output: declare, submit, validate, harvest
 
-A node declares `output.fields` — plain JSON descriptors (`key`, `type`, `description?`,
+A node declares `output.fields` - plain JSON descriptors (`key`, `type`, `description?`,
 `required?`), never a serialized Zod schema, because the same descriptor must be wire-safe,
 renderable as a designer form, and compilable to both Zod and JSON Schema. `type` is an open
 vocabulary: **an unknown type validates as "anything" rather than failing**, so an old daemon
@@ -217,10 +217,10 @@ Two details are load-bearing and easy to undo by accident:
 
 * **The advertised tool input schema is permissive.** The catalog parses a tool's input before
   the handler runs and *throws* on failure, so a strict shape would turn the most common
-  mistake — a missing field — into a thrown parse error instead of a correctable tool error.
+  mistake - a missing field - into a thrown parse error instead of a correctable tool error.
   Every field is advertised optional; requiredness is enforced in the handler.
 * **`submit_output` is registered past the group and policy gates.** Those gates decide which
-  Otto *capabilities* a node may use. This is not a capability — it is the node's own
+  Otto *capabilities* a node may use. This is not a capability - it is the node's own
   deliverable channel, and a deterministic node (the kind most likely to declare fields) would
   otherwise have it stripped along with the `agents` group.
 
@@ -233,7 +233,7 @@ then failure. The prose fallback exists because small local models often write c
 instead of calling the tool, and discarding that work would be the wrong kind of strict. A node
 that declares fields and delivers neither fails, naming the contract.
 
-The submitted-value store is in-memory by design — an entry is meaningful only between
+The submitted-value store is in-memory by design - an entry is meaningful only between
 submission and harvest moments later. The durable copy is the phase candidate's `outputFields`
 on the Run record.
 
@@ -246,11 +246,11 @@ node boundary.
 [mermaid]
 ----
 flowchart TB
-    subgraph RETRY["Retry envelope — maxAttempts · backoff · every attempt charged to run caps"]
-        subgraph LOOP["Loop envelope — times N, or until + max"]
+    subgraph RETRY["Retry envelope - maxAttempts · backoff · every attempt charged to run caps"]
+        subgraph LOOP["Loop envelope - times N, or until + max"]
             W["Worker agent<br/>seat · authority · task"] --> H["Harvest:<br/>tool → prose → fail"]
             H --> J{"until?<br/>Judge agent grades"}
-            J -->|"fail — feedback forward"| W
+            J -->|"fail - feedback forward"| W
         end
         F["Attempt threw"] -->|"backoff, re-enter from the top"| W
     end
@@ -263,16 +263,16 @@ Reading the envelope from the inside out:
 * **One iteration** spawns a worker with the node's seat, authority and assembled task, awaits
   it (bounded by `timeoutMs`, which really cancels), and harvests its output. Under `until`, a
   separate judge agent grades the output against the declared criteria; the judge is spawned
-  with no workspace reach of its own — it grades output, it does not need the node's authority.
+  with no workspace reach of its own - it grades output, it does not need the node's authority.
 * **The loop** is quality: `times` re-runs work that succeeded, feeding each iteration the
   previous output; `until` re-runs until the judge passes, feeding the failure reasoning
   forward. Self-grading is not an exit test.
-* **Retry** is resilience: it wraps the whole loop and re-enters only from the top — never from
-  the failure path — with every attempt charged to the run's caps.
+* **Retry** is resilience: it wraps the whole loop and re-enters only from the top - never from
+  the failure path - with every attempt charged to the run's caps.
 
 What crosses the boundary is deliberately small: in, the material carried by satisfied edges
 (fields first, prose second); out, the declared fields and the final prose. Iterations, judge
-feedback, retries and timeouts stay inside — downstream nodes never see a node's drafts.
+feedback, retries and timeouts stay inside - downstream nodes never see a node's drafts.
 
 This is also the right mental model for designing new node kinds: a kind is a different
 *envelope* (a gate waits for a human instead of a worker; a check runs a command instead of a
@@ -295,7 +295,7 @@ one's output.
 |`loop.until`
 |Quality iteration. A structured judge grades each iteration against declared criteria; a pass
 ends the loop, a fail feeds its reasoning into the next attempt. Never passing within `max`
-fails the node — self-grading is not an exit test.
+fails the node - self-grading is not an exit test.
 
 |**Retry**
 |`retry`
@@ -312,7 +312,7 @@ Two invariants protect the counters:
   as any other agent, counting against `maxAgents` and the concurrency semaphore. A retry is
   never a private allowance.
 
-**Time limit** (`timeoutMs`) must *cancel*, not merely stop waiting — an abandoned agent keeps
+**Time limit** (`timeoutMs`) must *cancel*, not merely stop waiting - an abandoned agent keeps
 running and keeps spending. On expiry the engine calls the port's `cancelAgent`, marks
 `RunPhase.timedOut`, and fails the node; its retry policy may then catch it, and independent
 branches finish normally. Otto can do this because node agents are managed processes.
@@ -324,7 +324,7 @@ ceiling that stops the run rather than letting it sprawl; loop and retry bounds 
 
 A run settles `canceled` if the signal aborted, `failed` on the first node failure, otherwise
 `done`. Failure does not stop independent branches already in flight. The wrap-up names every
-skipped node and its reason, and the graph's *deliverables* — nodes nothing else consumes —
+skipped node and its reason, and the graph's *deliverables* - nodes nothing else consumes -
 carry their full output into it.
 
 [IMPORTANT]
@@ -335,13 +335,13 @@ per node, no per-node worktree isolation (parallel writing nodes share one tree)
 shared state, and no resume: a graph run in flight when the daemon stops is marked failed on
 restart. `GraphEdge.fromPort` / `toPort` are reserved in the schema and unused.
 
-Three review-found holes were **fixed 2026-07-25**: cancel now cascades — aborting a run
+Three review-found holes were **fixed 2026-07-25**: cancel now cascades - aborting a run
 really cancels its in-flight children on both engines, not just the awaits; and the cast and
 the prompt templates are **snapshotted at run start**, so a mid-run team or template edit
 cannot re-cast or reword a running orchestration (see
 link:16-orchestration-agents.html[Agent Binding]).
 
-Shipped per-node behaviour and its gotchas: `docs/orchestration-node-capabilities.md` — that
+Shipped per-node behaviour and its gotchas: `docs/orchestration-node-capabilities.md` - that
 page owns the subsystem detail; this one owns the flow.
 ====
 
@@ -352,7 +352,7 @@ page owns the subsystem detail; this one owns the flow.
 . A node decides only after every upstream promise has settled.
 . A condition that cannot be evaluated fails its node; it is never a quiet false.
 . An unknown output-field type accepts; it never fails a run.
-. `submit_output` reaches every provider through the per-agent Otto tool catalog — no provider
+. `submit_output` reaches every provider through the per-agent Otto tool catalog - no provider
   branch in the engine.
 . Validation failure is a correctable tool error, not a thrown parse error.
 . A template that cannot render degrades to the inline prompt; nothing else in the engine
@@ -365,10 +365,10 @@ page owns the subsystem detail; this one owns the flow.
 == Change checklist
 
 * Added a node or edge property? Confirm it survives the designer round-trip
-  (`graph-doc.test.ts`) — a property in the canvas-owned set with no control is **deleted on
+  (`graph-doc.test.ts`) - a property in the canvas-owned set with no control is **deleted on
   save**.
 * Changed harvest, validation, or the tool's advertised shape? Re-check that a missing field is
   still a *correctable tool error* on every provider, not a thrown parse error.
-* Added a fallback? Justify it against invariant 8 — the template path is the only sanctioned
+* Added a fallback? Justify it against invariant 8 - the template path is the only sanctioned
   one.
 * Added a spawn path? It must go through the semaphore and the agent cap.

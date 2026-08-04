@@ -1,5 +1,5 @@
 /**
- * `otto brain bench` — score a model's agentic coding ability on this machine.
+ * `otto brain bench` - score a model's agentic coding ability on this machine.
  * Either benchmarks an endpoint that is already serving (`--endpoint`) or loads
  * each requested model itself. A long streaming run, so it prints a formatted
  * report directly rather than going through the output layer.
@@ -13,6 +13,7 @@ import { query as queryGpu } from "../gpu.js";
 import { pickModel, scanModels } from "../models/index.js";
 import { CommandError } from "../output/types.js";
 import { resolveRuntime } from "../runtime/index.js";
+import { withActivity } from "../service/activity.js";
 import { createRouter, Telemetry } from "../service/router.js";
 import { Supervisor } from "../service/supervisor.js";
 import * as bench from "../bench/index.js";
@@ -83,7 +84,17 @@ export function addBenchOptions(cmd: Command): Command {
     );
 }
 
-export async function runBenchCommand(options: BenchOptions, _command: Command): Promise<void> {
+export async function runBenchCommand(options: BenchOptions, command: Command): Promise<void> {
+  // Announced so the Brain rail can show the host as busy. A benchmark loads and
+  // unloads models and drives completions through them for minutes at a time,
+  // and it is the one op most likely to be running while somebody wonders why
+  // their prompt is slow.
+  return withActivity("benchmark", { target: options.model ?? options.endpoint ?? null }, () =>
+    runBenchSuite(options, command),
+  );
+}
+
+async function runBenchSuite(options: BenchOptions, _command: Command): Promise<void> {
   const config = loadBrainConfig();
   const execute = options.execute !== false;
   const depths = options.depths
@@ -205,17 +216,26 @@ export async function runBenchCommand(options: BenchOptions, _command: Command):
     const model = pickModel(catalog, needle);
     let profile = forModel(store, model, config.defaults);
 
+    // Both are recorded with the run: the fit is what says whether the profile
+    // that ran is the profile that was configured, and the calibration is what
+    // says whether the fit's own VRAM figures were measured or guessed. A score
+    // read without them is a score nobody can diagnose.
+    const calibration = getCalibration(store, model, profile);
+    let fit: vram.FitResult | null = null;
     const gpu = await queryGpu();
     if (gpu) {
-      const fit = vram.fitToBudget({
+      fit = vram.fitToBudget({
         model,
         profile,
-        calibration: getCalibration(store, model, profile),
+        calibration,
         totalVramBytes: gpu.totalBytes,
       });
       if (!fit.adjusted && !fit.budget.fits) {
         process.stderr.write(`\nskipping ${model.displayName}: ${fit.reason}\n`);
         continue;
+      }
+      if (fit.adjusted) {
+        process.stderr.write(`\n${model.displayName}: ${fit.reason}\n`);
       }
       profile = fit.profile;
     }
@@ -259,6 +279,12 @@ export async function runBenchCommand(options: BenchOptions, _command: Command):
         gpu,
         runtime: runtimeLabel,
         archiveId,
+        // Straight off the supervisor rather than rebuilt here: this is the argv
+        // the child was spawned with, so it cannot drift from what actually ran.
+        args: supervisor.args,
+        fit,
+        calibration,
+        suite: { execute, concurrency, depths: depths ?? null, only, mined: Boolean(repoTasks) },
       });
       process.stderr.write(`  saved to results/${path.basename(file)}\n`);
       entries.push({ modelName: model.displayName, report });

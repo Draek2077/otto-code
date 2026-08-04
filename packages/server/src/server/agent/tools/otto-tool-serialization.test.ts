@@ -16,7 +16,7 @@ function modelVisibleText(structuredContent: unknown): string {
 }
 
 describe("addModelVisibleStructuredContent", () => {
-  it("serializes compactly — indentation is token inflation replayed every round", () => {
+  it("serializes compactly - indentation is token inflation replayed every round", () => {
     const text = modelVisibleText({ agents: [], nested: { a: 1, b: 2 } });
 
     expect(text).toContain('{"agents":[],"nested":{"a":1,"b":2}}');

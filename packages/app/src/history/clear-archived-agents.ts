@@ -41,14 +41,14 @@ export interface ClearArchivedOutcome {
  * Bulk clear of archived chats across one or more hosts.
  *
  * Two passes on purpose. The first is a **dry run**, so the confirm dialog can
- * quote a real count instead of "some chats" — you cannot meaningfully consent to
+ * quote a real count instead of "some chats" - you cannot meaningfully consent to
  * an irreversible action whose size you were not told. The second pass deletes.
  *
  * A host whose dry run fails is **skipped entirely**, never swept blind: not
  * knowing how many a host would delete is exactly the case where "just send it"
  * is wrong. Its id comes back in `skippedHosts`.
  *
- * Returns `null` when nothing was destroyed — no matches, or the user cancelled.
+ * Returns `null` when nothing was destroyed - no matches, or the user cancelled.
  * Provider transcripts are never touched; see delete-dialogs.ts.
  */
 export async function requestClearArchivedAgents(
@@ -81,7 +81,7 @@ export async function requestClearArchivedAgents(
   const matched = sweepable.reduce((total, preview) => total + preview.matched, 0);
 
   if (matched === 0) {
-    // Nothing to destroy — don't put a destructive confirm in front of a no-op.
+    // Nothing to destroy - don't put a destructive confirm in front of a no-op.
     await deps.alert(resolveClearArchivedEmptyDialog());
     return null;
   }

@@ -4,7 +4,7 @@
  * fixture solution in both formats, and assert on what comes back.
  *
  * This runs in CI right after the publish step because the interesting failures are not compile
- * errors — they are "the payload will not start on this runtime" (a roll-forward policy that got
+ * errors - they are "the payload will not start on this runtime" (a roll-forward policy that got
  * dropped) and "the payload starts but cannot find an SDK". Both produce a green build and a
  * broken feature, and neither is visible without executing the thing.
  */
@@ -19,7 +19,7 @@ const fixtures = PROBE_FIXTURES_DIR;
 
 if (!existsSync(entry)) {
   console.error(
-    `verify-dotnet-probe: no payload at ${entry} — run npm run build:dotnet-probe first`,
+    `verify-dotnet-probe: no payload at ${entry} - run npm run build:dotnet-probe first`,
   );
   process.exit(1);
 }
@@ -30,7 +30,7 @@ function check(label, condition, detail) {
   if (condition) {
     console.log(`  ok   ${label}`);
   } else {
-    console.error(`  FAIL ${label}${detail === undefined ? "" : ` — ${detail}`}`);
+    console.error(`  FAIL ${label}${detail === undefined ? "" : ` - ${detail}`}`);
     failures.push(label);
   }
 }

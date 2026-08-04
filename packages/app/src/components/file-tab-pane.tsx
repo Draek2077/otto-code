@@ -130,8 +130,8 @@ import { isAbsolutePath } from "@/utils/path";
 import type { WorkspaceFileLocation } from "@/workspace/file-open";
 import type { Theme } from "@/styles/theme";
 
-// One pane per file tab. Hosts the three views — editor, editor+preview
-// split, read-only preview — behind the FileViewModeBar. The editor buffer
+// One pane per file tab. Hosts the three views - editor, editor+preview
+// split, read-only preview - behind the FileViewModeBar. The editor buffer
 // outlives mode switches (only closing the tab discards it), and in split
 // view the two sides stay proportionally aligned: scrolling one side scrolls
 // the other to the same content fraction, and a click carries the equivalent
@@ -145,7 +145,7 @@ const SPLIT_DOC_SYNC_DEBOUNCE_MS = 250;
 const foregroundMutedIconColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
 });
-// The alert glyph on a sync banner carries the banner's own tone — a muted grey
+// The alert glyph on a sync banner carries the banner's own tone - a muted grey
 // triangle on an amber bar reads as decoration rather than a warning.
 const warningIconColorMapping = (theme: Theme) => ({
   color: theme.colors.statusWarningStrong,
@@ -393,7 +393,7 @@ interface PreviewFindStripHandlers {
 }
 
 /**
- * The read-only preview's find bar — the editor's find strip minus replace
+ * The read-only preview's find bar - the editor's find strip minus replace
  * (there is no buffer to write to here). It drives a plain text scan over the
  * previewed file rather than CodeMirror, but wears the same chrome so the two
  * views feel like one editor.
@@ -534,7 +534,7 @@ function PreviewOnlyView({
   const toggleWordWrap = useEditorPrefsStore((state) => state.toggleWordWrap);
 
   // The outline reads the daemon's symbol index, which knows nothing about the
-  // view it is driving — so preview gets the same jump list the editor has, it
+  // view it is driving - so preview gets the same jump list the editor has, it
   // just scrolls instead of moving a caret.
   const hasCodeIndex = useCodeIndexFeature(serverId);
   const [outlineOpen, setOutlineOpen] = useState(false);
@@ -625,7 +625,7 @@ function PreviewOnlyView({
   return (
     <View style={styles.container} testID="workspace-file-tab-pane">
       {/* Same shape as the editor toolbar: file actions, a separator, then the
-          navigate-within-the-file tools — so the two views don't move the
+          navigate-within-the-file tools - so the two views don't move the
           buttons around under the user when they switch mode. */}
       <View style={styles.previewToolbar}>
         <FileGitToolbarGroup
@@ -690,7 +690,7 @@ function PreviewOnlyView({
         onFindMatchCount={setMatchCount}
         syncRef={previewSyncRef}
       />
-      {/* Null until the preview has read the file — the bar appears with real
+      {/* Null until the preview has read the file - the bar appears with real
           values rather than flashing zeroes. No caret: there is no editor. */}
       {fileInfo ? (
         <EditorStatusBar
@@ -720,13 +720,13 @@ function PreviewOnlyView({
 /**
  * The AI cluster: every action that hands this document to a model.
  *
- * Its own fenced section rather than a button loose among the git tools — this
+ * Its own fenced section rather than a button loose among the git tools - this
  * is the part of the toolbar where a model sees your file, and that is worth
  * marking even while Refine is the only thing in it.
  *
  * Everything here is about THIS file. A surface's own model-facing action goes
  * here only if that is true of it too; Context Management's "Compact with AI"
- * is not — it opens a job carrying the whole context graph — so it lives beside
+ * is not - it opens a job carrying the whole context graph - so it lives beside
  * the graph's tabs instead. Two AI buttons in one bar, one file-scoped and one
  * graph-scoped, read as the same button rendered twice.
  *
@@ -770,7 +770,7 @@ function FileExportToolbarGroup({
       {/* Desktop only: printing is `webContents.printToPDF`, and there is no
           browser or native equivalent worth a second renderer. The button is
           absent elsewhere rather than present and broken. The spinner is the
-          pending state — a print spins up a window and lays the document out,
+          pending state - a print spins up a window and lays the document out,
           which is long enough to need one. */}
       {onExportPdf ? (
         <ToolbarIconButton
@@ -817,7 +817,7 @@ function FileAiToolbarGroup({
  *
  * A component rather than an inline conditional so both toolbars (editor and
  * preview) spell it the same way. `showLeadingSeparator` fences the cluster off
- * from whatever precedes it — save and revert act on what you typed, these ask
+ * from whatever precedes it - save and revert act on what you typed, these ask
  * what git knows. A separator with nothing on its left divides nothing, so the
  * caller passes false when this cluster opens the bar.
  */
@@ -862,11 +862,11 @@ function FileGitToolbarGroup({
  *
  * Go to Definition lives here rather than in the toolbar: it acts on the word
  * you are pointing at, so the pointer is the natural place to ask for it (the
- * core moves the caret to the click first — see its `contextmenu` handler).
+ * core moves the caret to the click first - see its `contextmenu` handler).
  *
  * Because claiming the right-click suppresses the platform's own menu, this
  * menu owes the user the edit actions that menu had. On Electron the native one
- * is suppressed to match, via `shouldShowDefaultContextMenu` — two menus for
+ * is suppressed to match, via `shouldShowDefaultContextMenu` - two menus for
  * one click is worse than either. Web-only: on a phone, long-press belongs to
  * the platform's text selection menu.
  */
@@ -889,7 +889,7 @@ function EditorContextMenu({
   cursor: EditorCursorPosition | null;
   canGoToDefinition: boolean;
   onGoToDefinition: () => void;
-  /** Null when no language server covers this file — references have no ctags fallback. */
+  /** Null when no language server covers this file - references have no ctags fallback. */
   onFindReferences: (() => void) | null;
   /** Null for the same reason: a rename with no server behind it is a find-and-replace. */
   onRenameSymbol: (() => void) | null;
@@ -988,7 +988,7 @@ function EditorContextMenu({
 /**
  * Save/revert own the far left of the editor toolbar; a host's own controls sit
  * right after them behind a separator, ahead of the generic editor tools.
- * Renders nothing — not even the separator — when the host supplied none.
+ * Renders nothing - not even the separator - when the host supplied none.
  */
 function ToolbarLeadingSlot({ children }: { children: ReactNode }) {
   if (!children) return null;
@@ -1028,7 +1028,7 @@ function focusAndSelectFindInput(input: TextInput | null, termLength: number): v
   input.focus();
   if (isWeb) {
     // The web ref is the host <input> (sometimes behind getNativeRef), which
-    // selects itself — same reach-through the composer and the browser URL bar
+    // selects itself - same reach-through the composer and the browser URL bar
     // use. `setSelection` is native-only.
     const handle = input as TextInput & { getNativeRef?: () => unknown };
     const native = handle.getNativeRef?.() ?? input;
@@ -1094,7 +1094,7 @@ function EditorFindStrip({
           )}
         </Pressable>
         {/* No autoFocus: the focusSignal effect owns focus, and it has to run on
-            every open anyway — two mechanisms would just race on mount. */}
+            every open anyway - two mechanisms would just race on mount. */}
         <ThemedFindInput
           ref={searchInputRef}
           style={styles.findInput}
@@ -1306,7 +1306,7 @@ function EditorModeView({
   findRef.current = find;
 
   // Bumped on every open so the strip re-focuses and selects its term even when
-  // it was already on screen — Mod-F is "take me to the find box", not just
+  // it was already on screen - Mod-F is "take me to the find box", not just
   // "show it".
   const [findFocusSignal, setFindFocusSignal] = useState(0);
 
@@ -1363,7 +1363,7 @@ function EditorModeView({
    * a new controller method: those are the same two calls any other edit makes,
    * so the change lands in the editor's own history and Ctrl+Z undoes a tick
    * exactly like it undoes a keystroke. `reveal: false` because the line is
-   * already on screen in the other pane — scrolling the editor to it would move
+   * already on screen in the other pane - scrolling the editor to it would move
    * the page out from under the reader.
    *
    * The transform declines when the line is no longer a task item, which is
@@ -1421,7 +1421,7 @@ function EditorModeView({
   }, []);
 
   // Every time an editor becomes available, honour the location it was opened
-  // at — not just the first one. The editor remounts whenever the file changes
+  // at - not just the first one. The editor remounts whenever the file changes
   // (the buffer goes through a loading state), so a once-only guard here meant
   // the *second* file you jumped to opened at line 1 with nothing focused.
   const handleReady = useCallback(
@@ -1507,7 +1507,7 @@ function EditorModeView({
   }, [keepMyChanges]);
 
   // The outline and go-to-definition both ride on `code.*`, so they share the
-  // code-index gate. Absent capability hides both outright — no fallback path.
+  // code-index gate. Absent capability hides both outright - no fallback path.
   const { hasCodeIndex, hasLsp, canGoToDefinition } = useDefinitionSources(serverId);
   const [outlineOpen, setOutlineOpen] = useState(false);
   const openOutline = useCallback(() => setOutlineOpen(true), []);
@@ -1634,7 +1634,7 @@ function EditorModeView({
   const [editorMenuAnchor, setEditorMenuAnchor] = useState<{ x: number; y: number } | null>(null);
   const closeEditorMenu = useCallback(() => setEditorMenuAnchor(null), []);
   // Supplying the handler at all is what suppresses the platform menu, so the
-  // web gate lives here rather than at the call site — native must receive
+  // web gate lives here rather than at the call site - native must receive
   // undefined and keep its own long-press text menu.
   const handleEditorContextMenu = useMemo(
     () => (isWeb ? (point: { x: number; y: number }) => setEditorMenuAnchor(point) : undefined),
@@ -1652,7 +1652,7 @@ function EditorModeView({
   } = useEditorClipboardActions(controllerRef);
 
   // No AI action edits *in this editor*. The one AI entry point in the toolbar
-  // is Refine, and it opens a job tab that can only propose — see
+  // is Refine, and it opens a job tab that can only propose - see
   // FileAiToolbarGroup. The `@/editor/refactor-*` modules stay on disk but
   // remain unwired: they hand a prompt to a full agent with complete tool
   // access and no diff, which is exactly what Refine replaced.
@@ -2020,7 +2020,7 @@ function EditorModeView({
 
 /**
  * Open git investigation scoped to whatever is selected right now, or to the
- * whole file when nothing is. A failed selection read is not worth an error —
+ * whole file when nothing is. A failed selection read is not worth an error -
  * the whole file is always a valid, useful answer.
  */
 async function openHistoryForSelection(
@@ -2096,7 +2096,7 @@ export function FileTabPane({
   const toast = useToast();
   const persistenceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
 
-  // Editing an out-of-project file is no longer gated behind a confirm dialog —
+  // Editing an out-of-project file is no longer gated behind a confirm dialog -
   // it just works, with a persistent red banner making the trade-off plain (the
   // file is outside this project, so its edits are not part of the agent's
   // context and not part of this workspace's Git changes). Rendered formats
@@ -2184,11 +2184,11 @@ export function FileTabPane({
     [editorAllowed, effectiveMode, formattedToggle, handleModeChange, splitAllowed],
   );
 
-  // Git file investigation — history, per-commit diffs, blame, origin commit.
+  // Git file investigation - history, per-commit diffs, blame, origin commit.
   // No per-provider rollout to gate on (it is git, not an agent): the host
   // either serves the RPCs or it doesn't. It is limited to in-project files
   // because the queries run `git` in this workspace with a workspace-relative
-  // pathspec — a linked or outside-project file belongs to a different repo, so
+  // pathspec - a linked or outside-project file belongs to a different repo, so
   // asking here would be a question about the wrong tree.
   const hostServesGitFileHistory = useGitFileHistoryFeature(serverId);
   const gitFileHistorySupported = hostServesGitFileHistory && editGate.kind === "free";
@@ -2209,7 +2209,7 @@ export function FileTabPane({
   const onOpenHistory = gitFileHistorySupported ? openHistory : null;
 
   // "View changes" sits beside history because it answers the neighbouring
-  // question — not what this file has been, but what it is right now against the
+  // question - not what this file has been, but what it is right now against the
   // base. Same in-project restriction: an outside file's diff belongs to another
   // repo. Offered only while the file is actually in the diff, so the button
   // never sends the user to a Changes tab that does not list it.
@@ -2228,7 +2228,7 @@ export function FileTabPane({
     };
   }, [changedPaths, editGate.kind, location.path, serverId, workspaceRoot]);
 
-  // Refine — the AI rewrite, as a reviewable job in its own tab.
+  // Refine - the AI rewrite, as a reviewable job in its own tab.
   //
   // In-project only, for the same reason as history and changes: the job runs
   // against this workspace's root with a workspace-relative path, so a linked
@@ -2237,7 +2237,7 @@ export function FileTabPane({
   // A dirty buffer blocks entry. Refine pins its base from DISK, so starting it
   // over unsaved edits would show a diff against something the user is not
   // looking at, and accepting it would write a document those edits were never
-  // part of. Save or revert first — the toast says so rather than silently
+  // part of. Save or revert first - the toast says so rather than silently
   // picking one.
   const hasRefine = useRefineFeature(serverId);
   const onRefine = useMemo(() => {
@@ -2245,7 +2245,7 @@ export function FileTabPane({
     // whole-document text rewrite with no symbol awareness, so over source code
     // it would produce a plausible diff that silently breaks a call site. That
     // is the objection that pulled the old "Refactor with AI" button, and a
-    // review loop does not answer it — nobody spots a broken import in a
+    // review loop does not answer it - nobody spots a broken import in a
     // 400-line diff.
     if (!hasRefine || !editorAllowed || editGate.kind !== "free") {
       return null;
@@ -2332,8 +2332,8 @@ export function FileTabPane({
    * implementation), the daemon has to serve the binary write (the text write
    * refuses binary targets outright), and the file has to be markdown.
    *
-   * Slower than the HTML export by enough to need a pending state — a print
-   * loads the document in a window and lays it out — so the button spins, and
+   * Slower than the HTML export by enough to need a pending state - a print
+   * loads the document in a window and lays it out - so the button spins, and
    * spinning also disables it, which is what stops a second export racing the
    * first onto the same path.
    */
@@ -2417,7 +2417,7 @@ export function FileTabPane({
   );
 }
 
-// A file opened from another project — or from no project at all — shows a
+// A file opened from another project - or from no project at all - shows a
 // persistent, red banner across the top of the pane: editing works, but this
 // is a constant reminder that the file is outside this workspace, so its edits
 // are not part of the agent's context and not part of this workspace's Git
@@ -2562,8 +2562,8 @@ const styles = StyleSheet.create((theme) => {
     findToggleTextActive: {
       color: theme.colors.foreground,
     },
-    // Both sync banners say the same kind of thing — "the file on disk and your
-    // buffer disagree, and you must choose" — so both carry the semantic
+    // Both sync banners say the same kind of thing - "the file on disk and your
+    // buffer disagree, and you must choose" - so both carry the semantic
     // warning tint rather than reading as neutral chrome. `statusWarningSurface`
     // is alpha, so it tints whichever surface the active theme provides instead
     // of replacing it, and it is already calibrated per scheme (heavier on dark,

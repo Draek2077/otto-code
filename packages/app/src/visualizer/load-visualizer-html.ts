@@ -13,7 +13,7 @@ export function loadVisualizerHtml(): Promise<string> {
 
 /** Substitutes the shell's devicePixelRatio-cap placeholder (emit-bundle.mjs)
  * with the render-quality setting's scale. The page reads dpr once at boot,
- * so a scale change requires reloading the guest — the views achieve that by
+ * so a scale change requires reloading the guest - the views achieve that by
  * deriving their html from this and letting the document remount. */
 export function applyVisualizerRenderScale(html: string, scale: number): string {
   return html.replace("__OTTO_DPR_CAP__", String(scale));
@@ -23,7 +23,7 @@ export function applyVisualizerRenderScale(html: string, scale: number): string 
  * palette JSON from resolveVisualizerTheme. Double-encoded so the shell's
  * `JSON.parse("...")` sees a valid JS string literal; `<` is escaped so the
  * payload can never terminate the shell's inline <script>. Like the dpr cap,
- * the palette is baked per load — the vendor page consumes it at module init
+ * the palette is baked per load - the vendor page consumes it at module init
  * (COLORS merge), so a theme change reloads the guest. */
 export function applyVisualizerTheme(html: string, themeJson: string): string {
   const literal = JSON.stringify(themeJson).replace(/</g, "\\u003c");

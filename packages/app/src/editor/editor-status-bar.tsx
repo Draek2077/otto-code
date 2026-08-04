@@ -19,12 +19,12 @@ import type { EditorBufferState } from "./editor-buffer-state";
 import type { EditorCursorPosition } from "./editor-contract";
 
 // The strip along the bottom of the editor: what the file is on the left, how
-// it is encoded and where the caret sits on the right. Read-only — every item
+// it is encoded and where the caret sits on the right. Read-only - every item
 // reports state rather than offering an action, so nothing here is pressable.
 
 // Text is decoded as UTF-8 by the daemon unconditionally (file-explorer
 // service), with no charset sniffing anywhere in the stack. This label states
-// what we actually did, so it is a constant rather than a detected value — if
+// what we actually did, so it is a constant rather than a detected value - if
 // real detection ever lands, this is the one place that has to change.
 const ENCODING_LABEL = "UTF-8";
 
@@ -37,7 +37,7 @@ const ThemedAbc = withUnistyles(Abc);
 const ThemedTextSelectStart = withUnistyles(TextSelectStart);
 const ThemedImage = withUnistyles(ImageIcon);
 
-/** Ln/Col, plus a selection summary when there is one — VS Code's phrasing. */
+/** Ln/Col, plus a selection summary when there is one - VS Code's phrasing. */
 function formatCursor(cursor: EditorCursorPosition): string {
   const position = `Ln ${cursor.line}, Col ${cursor.column}`;
   if (cursor.selectedChars === 0) {
@@ -55,7 +55,7 @@ function formatCursor(cursor: EditorCursorPosition): string {
  * Keyed on the baseline (load/save/rebaseline), not the live document: this is
  * the size on disk, and recomputing it per keystroke would walk the whole file
  * for a number that describes the file rather than the draft. A hook rather
- * than a plain call so the host carries neither the memo nor the null branch —
+ * than a plain call so the host carries neither the memo nor the null branch -
  * `file-tab-pane` has no cyclomatic-complexity budget to spare.
  */
 export function useBufferByteSize(buffer: EditorBufferState | null): number {
@@ -69,7 +69,7 @@ interface EditorStatusBarProps {
   /** Bytes on disk. */
   byteSize: number;
   /**
-   * Null hides the item — either the file has no line endings (image, binary)
+   * Null hides the item - either the file has no line endings (image, binary)
    * or the read path never reported them.
    */
   eol: FileEol | null;
@@ -81,14 +81,14 @@ interface EditorStatusBarProps {
   /** Null in preview mode, and until the editor reports its first position. */
   cursor: EditorCursorPosition | null;
   /**
-   * Natural pixel size of a previewed image. Null for everything else — and for
+   * Natural pixel size of a previewed image. Null for everything else - and for
    * an image whose container we could not measure, where an invented size would
    * be worse than a missing one.
    */
   imageDimensions?: { width: number; height: number } | null;
   /**
    * Problems the language servers found. Rendered as per-severity totals at the far right,
-   * behind a divider, and absent entirely when there are none — a clean file earns no
+   * behind a divider, and absent entirely when there are none - a clean file earns no
    * chrome, and a count of zero would be indistinguishable from a file nothing analysed.
    */
   diagnostics?: readonly CodeDiagnostic[];
@@ -109,7 +109,7 @@ function diagnosticTotals(
 
 /**
  * Same tokens the squiggle and the gutter glyph use, so one problem is one colour wherever
- * it appears. `hint` is the muted foreground rather than a fifth hue, on purpose — a hint is
+ * it appears. `hint` is the muted foreground rather than a fifth hue, on purpose - a hint is
  * the server being helpful, and giving it its own colour would let advice compete with
  * failures for attention.
  */
@@ -122,7 +122,7 @@ const SEVERITY_DOT_STYLE: Readonly<
   hint: "dotHint",
 };
 
-// Written into each variant rather than composed at the call site — an inline style array
+// Written into each variant rather than composed at the call site - an inline style array
 // is a new array per render, which the react-perf rule rejects as a prop.
 const SEVERITY_DOT = { width: 7, height: 7, borderRadius: 999, flexShrink: 0 } as const;
 
@@ -136,7 +136,7 @@ const SEVERITY_NOUN: Readonly<Record<CodeDiagnostic["severity"], [string, string
 /**
  * One severity's total, with a tooltip that says what it is.
  *
- * A coloured dot and a number is unreadable on its own — the whole reason this bar needed
+ * A coloured dot and a number is unreadable on its own - the whole reason this bar needed
  * fixing was that severity was being carried by colour alone. `info` reads as "suggestion"
  * rather than "info", which is what a language server actually means by it.
  */
@@ -258,7 +258,7 @@ const styles = StyleSheet.create((theme) => ({
     borderTopColor: theme.colors.border,
     // Chrome, not content: every item here reports state, so there is nothing
     // worth selecting and the plain arrow is the honest pointer. Cast because
-    // RN's CursorValue only admits "auto" | "pointer" — the repo idiom for a
+    // RN's CursorValue only admits "auto" | "pointer" - the repo idiom for a
     // web-only cursor (see explorer-sidebar's resize handle).
     ...(isWeb ? ({ cursor: "default", userSelect: "none" } as object) : {}),
   },

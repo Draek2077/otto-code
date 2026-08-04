@@ -4,7 +4,7 @@ import log from "electron-log/main";
 import { writeSoftwareRenderingMarker } from "./gpu-fallback.js";
 
 // When a window's renderer dies, Electron leaves a blank frame with nothing to
-// tell the user what happened — the "it just froze / went blank" report. This
+// tell the user what happened - the "it just froze / went blank" report. This
 // surfaces a native dialog (which does not depend on Chromium or the GPU, so it
 // works even when the graphics stack is the thing that died) offering to reload,
 // restart with GPU acceleration off, or quit.
@@ -32,7 +32,7 @@ export function buildCrashDialogDetail(input: {
   const lines = [
     `The Otto window stopped unexpectedly (${input.reason}, exit code ${input.exitCode}).`,
     "",
-    "Reload restarts the view. If the window keeps failing to appear, Restart in Safe Mode turns off GPU acceleration — the usual fix on virtual machines and systems without 3D drivers.",
+    "Reload restarts the view. If the window keeps failing to appear, Restart in Safe Mode turns off GPU acceleration - the usual fix on virtual machines and systems without 3D drivers.",
   ];
   if (input.logFilePath) {
     lines.push("", `Full details were written to:\n${input.logFilePath}`);
@@ -54,7 +54,7 @@ export function registerCrashDialog(options: CrashDialogOptions = {}): void {
       return;
     }
     if (options.isSuppressed?.()) {
-      log.info("[crash-dialog] suppressed — recovery already in progress", details);
+      log.info("[crash-dialog] suppressed - recovery already in progress", details);
       return;
     }
     log.error("[crash-dialog] renderer process gone", details);

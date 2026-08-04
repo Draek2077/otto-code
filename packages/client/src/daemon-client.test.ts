@@ -1941,7 +1941,7 @@ test("writeBinaryFile declares the size and sends the bytes as binary chunks", a
     chunkSize: 3,
   });
 
-  // The request is metadata only. No `contentBase64` — that is the whole point
+  // The request is metadata only. No `contentBase64` - that is the whole point
   // of the change, and a base64 field that crept back in would show up here.
   expect(JSON.parse(assertStr(mock.sent[0]))).toEqual({
     type: "session",

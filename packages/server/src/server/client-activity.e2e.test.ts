@@ -103,7 +103,7 @@ describe("client activity tracking", () => {
    * attention at the source (`isTargetActivelyWatched` in
    * agent-attention-policy.ts): the manager returns before it ever raises the
    * flag, so there is no event to carry a `shouldNotify: false`. Proving that
-   * means proving an absence, so collect instead of awaiting — the turn is
+   * means proving an absence, so collect instead of awaiting - the turn is
    * pinned down separately by waiting on the assistant timeline, which keeps
    * "nothing arrived" from passing vacuously when the turn never ran.
    */
@@ -328,7 +328,7 @@ describe("client activity tracking", () => {
       attention2.stop();
 
       // client2 is watching the agent, so attention is suppressed for the whole
-      // daemon — not merely delivered to client1 with shouldNotify false.
+      // daemon - not merely delivered to client1 with shouldNotify false.
       expect(attention1.events).toEqual([]);
       expect(attention2.events).toEqual([]);
       expect(pushNotifications.sent).toEqual([]);

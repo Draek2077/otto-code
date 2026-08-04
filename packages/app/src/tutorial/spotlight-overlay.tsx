@@ -30,9 +30,9 @@ export interface SpotlightOverlayProps {
   stepKey: string;
   title: string;
   body: string;
-  // e.g. "2 / 5" — a small progress hint in the card.
+  // e.g. "2 / 5" - a small progress hint in the card.
   stepLabel?: string;
-  // e.g. "Tap the highlighted button to continue" — action-slide affordance.
+  // e.g. "Tap the highlighted button to continue" - action-slide affordance.
   hint?: string;
   exitLabel: string;
   // Informational slides advance when the dimmed area (or card) is tapped.
@@ -45,7 +45,7 @@ export interface SpotlightOverlayProps {
 }
 
 // Renders above all in-window app content as a high-zIndex absolute-fill sibling
-// inside the app surface (the same mechanism as QuittingOverlay — NOT a Portal,
+// inside the app surface (the same mechanism as QuittingOverlay - NOT a Portal,
 // whose gorhom root host sits behind the app chrome's zIndex stacking contexts,
 // and NOT an RN Modal, a separate native window whose transparent hole cannot
 // pass touches through to the real target beneath it). The dim is a four-rect
@@ -246,12 +246,12 @@ export function SpotlightOverlay({
           <AnimatedPressable style={leftDim} onPress={dimPress} />
           <AnimatedPressable style={rightDim} onPress={dimPress} />
           {/* Corner fillers round off the square hole to match the ring. Purely
-              visual — touch pass-through is owned by the four rects above. */}
+              visual - touch pass-through is owned by the four rects above. */}
           <Animated.View pointerEvents="none" style={cornerTL} />
           <Animated.View pointerEvents="none" style={cornerTR} />
           <Animated.View pointerEvents="none" style={cornerBL} />
           <Animated.View pointerEvents="none" style={cornerBR} />
-          {/* Emphasis ring — never captures touches. */}
+          {/* Emphasis ring - never captures touches. */}
           <Animated.View pointerEvents="none" style={ringCombined} />
         </>
       ) : (

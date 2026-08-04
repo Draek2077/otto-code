@@ -22,7 +22,7 @@ describe("isWidgetWebviewAttach", () => {
 
 describe("getWidgetPreloadPath", () => {
   // Regression: the path used to resolve against this module's own directory,
-  // which is dist/features/ once compiled — one level below where
+  // which is dist/features/ once compiled - one level below where
   // src/widget-preload.ts is emitted. Electron ignores a missing preload
   // silently, so the only symptom was every widget stuck at its initial height.
   it("resolves to a sibling of the preload source, not into this module's directory", () => {

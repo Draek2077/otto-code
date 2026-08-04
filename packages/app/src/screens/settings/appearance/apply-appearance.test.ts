@@ -133,7 +133,7 @@ describe("applyAppearance", () => {
     };
 
     const { fontSize } = updater(alreadyScaled);
-    expect(fontSize.base).toBe(14); // not 4 * 0.875 — rebuilt from FONT_SIZE
+    expect(fontSize.base).toBe(14); // not 4 * 0.875 - rebuilt from FONT_SIZE
     expect(fontSize.lg).toBe(16);
   });
 

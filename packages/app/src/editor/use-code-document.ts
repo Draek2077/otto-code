@@ -8,12 +8,12 @@ import { useCodeDiagnostics, useLspDiagnosticsStore } from "@/stores/lsp-diagnos
  * problems the language servers find in it.
  *
  * The mirror is what makes diagnostics live. Before this, the buffer reached the daemon only
- * on the way into a definition or hover request — so a file could be broken for as long as
+ * on the way into a definition or hover request - so a file could be broken for as long as
  * you avoided pointing at it. Syncing on every change means the servers re-lint as you type,
  * which is the behaviour the whole feature is for.
  *
  * The text comes in already debounced: it is the buffer store's draft, written by the
- * editor's own 750ms doc-sync. There is deliberately no second debounce here — two
+ * editor's own 750ms doc-sync. There is deliberately no second debounce here - two
  * independent timers on the same signal is how a keystroke ends up mirrored twice.
  */
 
@@ -21,7 +21,7 @@ export interface UseCodeDocumentInput {
   serverId: string;
   /** Absolute workspace root. */
   workspaceRoot: string;
-  /** The file as the tab knows it — workspace-relative, or absolute. */
+  /** The file as the tab knows it - workspace-relative, or absolute. */
   path: string;
   /**
    * Current buffer text, or null while the file is still loading. Null mirrors nothing:
@@ -34,7 +34,7 @@ export interface UseCodeDocumentInput {
 }
 
 /**
- * The text to mirror for a buffer that may not have loaded yet — the draft while dirty,
+ * The text to mirror for a buffer that may not have loaded yet - the draft while dirty,
  * otherwise what is on disk.
  *
  * Lives here rather than at the call site so the file pane's already-large view function
@@ -54,8 +54,8 @@ export function mirrorableText(
  *
  * The daemon resolves a relative request path against the workspace root and then addresses
  * everything by that absolute result, so the client has to predict the same string to match
- * a push to a tab. Cheap to do here and deterministic; the alternative — having the daemon
- * echo the requested spelling back — would put a client concern in the protocol.
+ * a push to a tab. Cheap to do here and deterministic; the alternative - having the daemon
+ * echo the requested spelling back - would put a client concern in the protocol.
  */
 export function resolveDocumentPath(workspaceRoot: string, path: string): string {
   const isAbsolute = path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path);
@@ -90,7 +90,7 @@ export function useCodeDocument(input: UseCodeDocumentInput): readonly CodeDiagn
   }, [active, client, path, workspaceRoot, text]);
 
   // Closing on unmount is what keeps the daemon's mirror bounded to the tabs that are
-  // actually open — and it releases the diagnostics store entry with it.
+  // actually open - and it releases the diagnostics store entry with it.
   useEffect(() => {
     if (!active || client === null) {
       return;

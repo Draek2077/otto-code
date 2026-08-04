@@ -5,7 +5,7 @@ import type { NativeScrollEvent, NativeSyntheticEvent, ScrollView } from "react-
  * Scroll offsets retained across remounts, keyed by surface.
  *
  * Module scope is the point: the value has to outlive the component that owns
- * the ScrollView. Session-lifetime only — nothing here is written to disk.
+ * the ScrollView. Session-lifetime only - nothing here is written to disk.
  */
 const retainedOffsets = new Map<string, number>();
 
@@ -24,7 +24,7 @@ export function readRetainedScrollOffset(key: string): number {
   return retainedOffsets.get(key) ?? 0;
 }
 
-/** Test seam — production code never needs to reset the map. */
+/** Test seam - production code never needs to reset the map. */
 export function clearRetainedScrollOffsets(): void {
   retainedOffsets.clear();
 }
@@ -45,7 +45,7 @@ export interface RetainedScrollOffset {
  * The first attempt runs in a layout effect, before the browser paints: on web
  * the children are already in the DOM by then, so the surface's very first
  * frame is drawn at the restored offset. Restoring from `onContentSizeChange`
- * alone paints the top first and jumps a frame later — the flash.
+ * alone paints the top first and jumps a frame later - the flash.
  * `onContentSizeChange` stays as the retry for content that is still filling in
  * (and for native, where nothing is measured during the layout effect). Once
  * the reader scrolls by hand the restore is abandoned.
@@ -86,7 +86,7 @@ export function useRetainedScrollOffset(key: string): RetainedScrollOffset {
       }
       const requested = requestedOffsetRef.current;
       // Landing short of what we asked for is the ScrollView clamping to a
-      // content height that has not finished growing — still our scroll, and
+      // content height that has not finished growing - still our scroll, and
       // worth another attempt. Anything past it is the reader taking over.
       const isOurOwnScroll = requested !== null && offset <= requested + OFFSET_EPSILON;
       if (!isOurOwnScroll) {

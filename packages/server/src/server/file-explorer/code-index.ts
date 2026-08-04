@@ -64,7 +64,7 @@ interface CachedIndex {
 /**
  * Per-workspace symbol index. Lazily built and cached with a short TTL; an
  * explicit `invalidate(root)` (fired on writes into that workspace) forces the
- * next lookup to rebuild. A full rebuild is a bounded gitignore-aware walk —
+ * next lookup to rebuild. A full rebuild is a bounded gitignore-aware walk -
  * acceptable for v1 since lookups are user-initiated, not per-keystroke.
  */
 export class WorkspaceSymbolIndex {

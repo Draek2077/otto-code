@@ -32,7 +32,7 @@ import type { AggregatedArtifact } from "@/artifacts/use-artifacts";
 
 // Themed lucide wrappers so menu icons can live as module-scope constants
 // (avoids the react-perf jsx-as-prop rule) without calling useUnistyles in
-// render — see docs/unistyles.md and the schedule-row precedent.
+// render - see docs/unistyles.md and the schedule-row precedent.
 const ThemedEye = withUnistyles(Eye);
 const ThemedFileText = withUnistyles(FileText);
 const ThemedMessageSquare = withUnistyles(MessageSquare);
@@ -324,7 +324,7 @@ function ArtifactKebabMenu({
 
 // Chrome for the header's inline controls (star, kebab). The hovered card is
 // already surface2, so the control's own hover/press states step up to
-// surface3/surface4 — anything lower is invisible against the card.
+// surface3/surface4 - anything lower is invisible against the card.
 function headerActionStyle({
   hovered = false,
   pressed,

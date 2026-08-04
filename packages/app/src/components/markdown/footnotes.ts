@@ -3,8 +3,8 @@
  *
  * **A core-ruler rewrite cannot do this, unlike task lists and alerts.** By the
  * time core rules run, markdown-it has already consumed `[^1]: the note` as a
- * *link reference definition* — that is exactly what the syntax looks like to
- * CommonMark — and turned every `[^1]` in the body into a link to it. The
+ * *link reference definition* - that is exactly what the syntax looks like to
+ * CommonMark - and turned every `[^1]` in the body into a link to it. The
  * definition is gone from the token stream and the reference is a `link_open` /
  * `text` / `link_close` triple, so there is nothing left to rewrite.
  *

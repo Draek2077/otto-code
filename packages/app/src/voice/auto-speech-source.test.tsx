@@ -81,7 +81,7 @@ afterEach(() => {
 
 describe("ChatAutoSpeechSource", () => {
   it("reads a reply paragraph by paragraph while the chat is not on screen", async () => {
-    // Nothing here renders the chat — that is the point. The source is mounted
+    // Nothing here renders the chat - that is the point. The source is mounted
     // on its own and the queue still fills.
     setStream({ tail: [user("u1")] });
     setStatus("running");
@@ -103,7 +103,7 @@ describe("ChatAutoSpeechSource", () => {
 
   it("never recites history that lands after it mounts", async () => {
     // The failure this pins: the source mounts against empty buffers (its chat
-    // has not been opened yet), and the timeline arrives later — as a history
+    // has not been opened yet), and the timeline arrives later - as a history
     // page, a reconnect replay, or a catch-up after eviction. A watermark taken
     // at mount would have read the whole chat aloud.
     setStatus("idle");

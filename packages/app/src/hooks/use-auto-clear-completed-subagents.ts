@@ -9,7 +9,7 @@ function selectAutoClearCompletedSubagents(settings: AppSettings): boolean {
 // Reads the device-local "auto-clear completed sub-agents" preference through the
 // settings query cache with a `select`, so the per-chat auto-clear driver
 // (use-auto-clear-completed-subagents in subagents/) only re-runs when the flag
-// actually flips — never on unrelated settings writes. Mirrors use-wrap-code-lines.ts.
+// actually flips - never on unrelated settings writes. Mirrors use-wrap-code-lines.ts.
 export function useAutoClearCompletedSubagentsSetting(): boolean {
   const { data } = useReplicaQuery({
     queryKey: APP_SETTINGS_QUERY_KEY,

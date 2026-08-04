@@ -65,7 +65,7 @@ export function collectResourceMetrics(
     try {
       censusContainers(store.getState(), { prefix, collapseKeysAt: COLLAPSE_KEYS_AT }, stores);
     } catch {
-      // A store that throws on read must not take the whole census with it —
+      // A store that throws on read must not take the whole census with it -
       // the point of the instrument is to keep reporting.
     }
   }
@@ -149,7 +149,7 @@ export function collectTrafficHotspots(limit = 15): TrafficHotspot[] {
 }
 
 export interface QueryHotspot {
-  /** First segment of the query key — the family, e.g. "agent-history". */
+  /** First segment of the query key - the family, e.g. "agent-history". */
   key: string;
   queries: number;
   observers: number;
@@ -158,7 +158,7 @@ export interface QueryHotspot {
 /**
  * Which query families hold the observers. A count alone says "something is
  * subscribing too much"; this says which hook to go read. Not part of the metric
- * series — query keys are unbounded, so folding them into trended metric names
+ * series - query keys are unbounded, so folding them into trended metric names
  * would let the key space grow with the data.
  */
 export function collectQueryHotspots(limit = 12): QueryHotspot[] {
@@ -242,7 +242,7 @@ function readHeap(): ResourceMetricsInput["heap"] {
   if (typeof performance === "undefined") {
     return null;
   }
-  // Chromium-only, and absent on native — the census degrades to counts there.
+  // Chromium-only, and absent on native - the census degrades to counts there.
   const memory = (performance as Performance & { memory?: PerformanceMemory }).memory;
   if (!memory || typeof memory.usedJSHeapSize !== "number") {
     return null;

@@ -6,11 +6,11 @@
  *
  *  - Requests for the resident model run concurrently, up to that model's
  *    `parallelSlots` (the same number of sequence slots llama-server was
- *    launched with — sending more would only queue inside llama-server). Extra
+ *    launched with - sending more would only queue inside llama-server). Extra
  *    same-model requests wait for a free slot; they never trigger a load.
  *  - Requests for a *different* model wait for a model switch. When the resident
  *    model's current batch drains, the scheduler switches and serves the other
- *    model's batch — so two clients wanting different models share the GPU by
+ *    model's batch - so two clients wanting different models share the GPU by
  *    taking turns.
  *
  * Fairness: after a model finishes a turn, the next turn prefers a *different*
@@ -140,7 +140,7 @@ export class Scheduler {
             this.logger?.(`switching to ${pick.model.displayName}`);
             await this.loadModel(pick.model);
           } catch (error) {
-            // The model would not load — fail exactly its queued jobs and move on.
+            // The model would not load - fail exactly its queued jobs and move on.
             for (const job of this.#take((j) => j.modelId === turnId)) job.reject(error);
             continue;
           }

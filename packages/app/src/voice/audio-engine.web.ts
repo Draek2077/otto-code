@@ -18,7 +18,7 @@ interface QueuedAudio {
 // `onaudioprocess` the moment its AudioContext is suspended (tab/OS audio-focus
 // changes) or its MediaStream track ends (Bluetooth switch, device unplug, OS
 // reclaim). Nothing wakes it back up on its own, so the mic goes silent and the
-// user has to stop + restart voice mode — exactly the "input dropped" wedge.
+// user has to stop + restart voice mode - exactly the "input dropped" wedge.
 // While capturing we poll: resume a suspended context, and if no audio frame has
 // arrived within the stall window, rebuild the capture graph in place so voice
 // self-heals instead of dying.
@@ -142,7 +142,7 @@ export function createAudioEngine(
 
   async function ensurePlaybackContext(): Promise<AudioContext> {
     // A closed context (e.g. after a prior voice session was torn down) can never
-    // produce sound again — resume() is a no-op on it and source.start() throws.
+    // produce sound again - resume() is a no-op on it and source.start() throws.
     // Drop it and build a fresh one instead of silently returning the dead one.
     if (refs.playbackContext && refs.playbackContext.state !== "closed") {
       if (refs.playbackContext.state === "suspended") {
@@ -201,7 +201,7 @@ export function createAudioEngine(
     const durationSec = audioBuffer.duration;
     const source = context.createBufferSource();
     source.buffer = audioBuffer;
-    // Full volume stays a direct connection — a GainNode is only inserted when
+    // Full volume stays a direct connection - a GainNode is only inserted when
     // the channel actually asks to be quieter, so the common path is unchanged.
     // Gain 0 still plays (silently) for its full duration: callers ack chunks
     // and advance queues on completion, so skipping would desync those.
@@ -328,7 +328,7 @@ export function createAudioEngine(
       if (!refs.started) {
         return;
       }
-      // Proof of life for the watchdog — updated even while muted (audio still
+      // Proof of life for the watchdog - updated even while muted (audio still
       // flows; mute only suppresses the upstream send), so muting never looks
       // like a stall.
       refs.lastCaptureTickAt = Date.now();
@@ -351,7 +351,7 @@ export function createAudioEngine(
     };
 
     // A track that ends (device change/unplug/OS reclaim) will never emit audio
-    // again — recover immediately rather than waiting out the stall window.
+    // again - recover immediately rather than waiting out the stall window.
     for (const track of stream.getTracks()) {
       track.addEventListener(
         "ended",
@@ -386,7 +386,7 @@ export function createAudioEngine(
     refs.recovering = true;
     try {
       teardownCaptureNodes();
-      // A closed context can never resume — drop it so a fresh one is made.
+      // A closed context can never resume - drop it so a fresh one is made.
       if (refs.captureContext && refs.captureContext.state === "closed") {
         refs.captureContext = null;
       }

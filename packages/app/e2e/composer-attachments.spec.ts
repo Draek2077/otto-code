@@ -262,7 +262,7 @@ test.describe("Composer attachments", () => {
 
   // Escape never touches the composer text: typed-but-unsent text is unrecoverable, so a single
   // Escape interrupts the running agent while leaving the draft intact. (The contract is pinned by
-  // composer-suggestions-history.spec.ts — this test covers the attachment-composer path.)
+  // composer-suggestions-history.spec.ts - this test covers the attachment-composer path.)
   test("Escape interrupts the running agent and preserves the draft", async ({ page }) => {
     test.setTimeout(120_000);
     const agent = await startRunningMockAgent(page, {

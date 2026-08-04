@@ -10,11 +10,11 @@ import {
 
 // P0: opening the Visualizer tab boots the vendored canvas page. Headless
 // Chromium runs WebGL/canvas through swiftshader, so nothing here asserts on
-// rendered pixels — the boot proof is bridge/DOM state only (docs/visualizer.md
+// rendered pixels - the boot proof is bridge/DOM state only (docs/visualizer.md
 // "The bridge contract"):
 //   1. the native Otto toolbar renders above the tab,
 //   2. the sandboxed guest iframe attaches (visualizer-view.web.tsx),
-//   3. the toolbar's chats dropdown lists the workspace's chat — which requires
+//   3. the toolbar's chats dropdown lists the workspace's chat - which requires
 //      the guest to have booted, sent `ready`, received the adapter's
 //      `session-started`, and mirrored `session-state` back to the host.
 
@@ -25,7 +25,7 @@ test.describe("Visualizer open + boot", () => {
     page,
   }) => {
     // Session labels are capped at 24 chars in the toolbar mirror
-    // (truncateSessionLabel) — keep the title short so it survives verbatim.
+    // (truncateSessionLabel) - keep the title short so it survives verbatim.
     const title = `VisBoot ${Date.now().toString(36).slice(-6)}`;
     const mock = await seedMockAgentWorkspace({
       repoPrefix: "vis-boot-",

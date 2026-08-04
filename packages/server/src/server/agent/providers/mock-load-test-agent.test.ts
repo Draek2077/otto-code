@@ -63,7 +63,7 @@ describe("MockLoadTestAgentClient", () => {
 
   // The corpus seeder pins this so a re-seed rebuilds the same conversations.
   // Without it the seed is derived from a per-turn UUID, and two seeding runs
-  // produce different corpora — which would let an A/B measurement attribute a
+  // produce different corpora - which would let an A/B measurement attribute a
   // corpus difference to the code change under test.
   test("a pinned synthetic-seed reproduces the same conversation", async () => {
     vi.useFakeTimers();

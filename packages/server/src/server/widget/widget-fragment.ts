@@ -12,7 +12,7 @@ import {
  *
  * Deliberately not `artifact/html-validator.ts`. That one is written for whole
  * documents: it trims everything after `</html>` and its `isValidHtmlContent`
- * requires a DOCTYPE or an `<html>` tag. Both are exactly wrong here — a widget
+ * requires a DOCTYPE or an `<html>` tag. Both are exactly wrong here - a widget
  * that legitimately has neither would be judged invalid, and a widget that
  * wrongly has an `</html>` would be silently truncated. Same problem, opposite
  * shape, so it gets its own pass.
@@ -35,7 +35,7 @@ function unwrapDocument(content: string): string {
   const withoutDoctype = content.replace(/^\s*<!DOCTYPE[^>]*>/i, "").trim();
   const bodyMatch = withoutDoctype.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
   if (!bodyMatch) {
-    // No <body>, but possibly a stray <html> wrapper — strip the tags and keep
+    // No <body>, but possibly a stray <html> wrapper - strip the tags and keep
     // everything, head styles included.
     return withoutDoctype
       .replace(/<\/?html[^>]*>/gi, "")
@@ -78,7 +78,7 @@ export function sanitizeWidgetFragment(rawCode: string): SanitizedWidgetFragment
   }
   if (!code.includes("<")) {
     throw new WidgetFragmentError(
-      "widget_code must be HTML or SVG markup — plain text is not a widget.",
+      "widget_code must be HTML or SVG markup - plain text is not a widget.",
     );
   }
 

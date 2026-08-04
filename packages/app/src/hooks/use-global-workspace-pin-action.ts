@@ -10,7 +10,7 @@ import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 const WORKSPACE_PIN_ACTIONS: readonly KeyboardActionId[] = ["workspace.pin"];
 
 // The pin shortcut used to live on the sidebar row, so it disappeared whenever the row was not
-// rendered — a collapsed project or status group, a collapsed Pinned section, or focus mode.
+// rendered - a collapsed project or status group, a collapsed Pinned section, or focus mode.
 // It belongs here instead: one registration keyed on the active route selection.
 //
 // "Active workspace" means the route selection, not a focused pane. Those are equivalent today

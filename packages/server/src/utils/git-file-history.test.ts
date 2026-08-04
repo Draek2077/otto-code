@@ -278,7 +278,7 @@ describe("getFileBlame", () => {
     expect(page.reachedEndOfFile).toBe(false);
   });
 
-  // Paging past EOF is normal, not an error — git exits 128 and we report empty.
+  // Paging past EOF is normal, not an error - git exits 128 and we report empty.
   it("reports an empty page past the end of the file", async () => {
     write("a.txt", "one\n");
     commit("seed");
@@ -319,7 +319,7 @@ describe("getFileOriginCommit", () => {
 
 describe("parseBlamePorcelain", () => {
   // Porcelain emits commit metadata once per sha and omits it on later lines
-  // from the same commit — the reason results carry a commit dictionary.
+  // from the same commit - the reason results carry a commit dictionary.
   it("carries metadata forward for repeated commits", () => {
     const sha = "a".repeat(40);
     const stdout = [

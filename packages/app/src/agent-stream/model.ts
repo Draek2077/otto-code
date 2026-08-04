@@ -101,7 +101,7 @@ function splitOrderedTail(params: {
   // Native is excluded because FlatList already virtualizes: strategy-native
   // merges both segments back into one `data` array and renders every row the
   // same way, so splitting here would buy nothing and double-virtualizing would
-  // wreck its height measurement. Mobile web has no such fallback — it used to
+  // wreck its height measurement. Mobile web has no such fallback - it used to
   // be excluded too, which left a phone browser mounting the entire transcript,
   // the heaviest case on the weakest device.
   const shouldSplitHistory =
@@ -190,7 +190,7 @@ export function buildAgentStreamRenderModel(
     isMobileBreakpoint: input.isMobileBreakpoint,
   });
   // Grouping happens on the chronological tail, before strategy ordering can
-  // reverse it, and only ever on the render path — stores stay ungrouped.
+  // reverse it, and only ever on the render path - stores stay ungrouped.
   const tailSource = input.groupConsecutiveActions ? getGroupedTail(input.tail) : input.tail;
   const orderingCacheKey = `${input.platform}:${input.isMobileBreakpoint}`;
   const orderedTail = getOrderedItems({

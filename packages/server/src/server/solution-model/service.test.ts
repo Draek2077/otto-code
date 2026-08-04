@@ -16,17 +16,17 @@ const logger = pino({ level: "silent" });
 
 /**
  * A directory that is definitively not inside the temporary workspace, spelled the way this OS
- * spells an absolute path — on Windows `/elsewhere` resolves onto the current drive.
+ * spells an absolute path - on Windows `/elsewhere` resolves onto the current drive.
  */
 const OUTSIDE_ROOT = toPosixAbsolute(process.platform === "win32" ? "C:/elsewhere" : "/elsewhere");
 
 /**
  * A provider that records every call. The point of most of these tests is what the service does
- * NOT ask it — "disabled does no work" is only checkable against something that would have been
+ * NOT ask it - "disabled does no work" is only checkable against something that would have been
  * asked.
  */
 function createProviderSpy(overrides: Partial<SolutionProvider> = {}) {
-  // The spies WRAP the overrides rather than being replaced by them — a test that supplies a
+  // The spies WRAP the overrides rather than being replaced by them - a test that supplies a
   // `loadTree` still needs to assert how many times it was reached, which is the whole point.
   const calls = {
     detect: vi.fn(overrides.detect ?? (async (): Promise<SolutionRefAbsolute[]> => [])),
@@ -48,7 +48,7 @@ function createProviderSpy(overrides: Partial<SolutionProvider> = {}) {
   return { provider, calls };
 }
 
-/** `[kind, path]` per node — the shape assertions read against. */
+/** `[kind, path]` per node - the shape assertions read against. */
 function nodeShape(nodes: SolutionProjectResult["nodes"]): [string, string][] {
   return nodes.map((node) => [node.kind, node.path]);
 }
@@ -70,7 +70,7 @@ function structureFor(root: string): SolutionStructure {
     ],
     projects: [
       { id: "p1", name: "Core", path: `${root}/src/Core/Core.csproj`, folderPath: "/Src/" },
-      // Declared by the solution outside the workspace root — the settled policy case.
+      // Declared by the solution outside the workspace root - the settled policy case.
       {
         id: "p2",
         name: "Shared",
@@ -143,7 +143,7 @@ describe("SolutionService with the switch off", () => {
 
     await service.applySettings({ enabled: false });
 
-    // Not "eventually, when it idles out" — a feature that keeps a process alive after being
+    // Not "eventually, when it idles out" - a feature that keeps a process alive after being
     // disabled is not disabled.
     expect(calls.stopAll).toHaveBeenCalledTimes(1);
   });
@@ -220,7 +220,7 @@ describe("SolutionService with the switch on", () => {
       {
         id: "p2",
         name: "Shared",
-        // Absolute, because there is no sensible relative form — and flagged, so the client never
+        // Absolute, because there is no sensible relative form - and flagged, so the client never
         // has to work that out by inspecting the string.
         path: `${OUTSIDE_ROOT}/Shared/Shared.csproj`,
         outsideWorkspace: true,
@@ -281,7 +281,7 @@ describe("SolutionService with the switch on", () => {
         projectPath: "Core.csproj",
       });
 
-      // No `obj/` node exists because no evaluated item is in `obj/` — not because anything
+      // No `obj/` node exists because no evaluated item is in `obj/` - not because anything
       // filters it. That is the thing a filesystem tree structurally cannot do.
       expect(nodeShape(project.nodes)).toEqual([
         ["directory", "Models"],
@@ -375,7 +375,7 @@ describe("SolutionService with the switch on", () => {
 
   describe("staleness", () => {
     it("drops every solution beneath a changed Directory.Build.props", async () => {
-      // The projects' own files did not change, so their freshness stamps still match — this is
+      // The projects' own files did not change, so their freshness stamps still match - this is
       // the one case the read-side check cannot see, and the reason the push path exists.
       await writeFile(join(root, "App.slnx"), "<Solution />");
       const { service } = await enabledService({ loadTree: async () => structureFor(root) });

@@ -206,7 +206,7 @@ export function NewProjectPickerRow({
   // Only "create + remote" earns a second row. It adds four pills on top of
   // mode/host/git-setup/gitignore, which wraps arbitrarily mid-group and reads
   // as noise. Clone adds just two (provider, repository) to a row that has at
-  // most mode and host — that fits, so it stays inline.
+  // most mode and host - that fits, so it stays inline.
   const remotePickers = (
     <RemotePickers
       form={form}

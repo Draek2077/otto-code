@@ -1,7 +1,7 @@
 // The boilerplate-project corpus: reads templates from test-documents/projects,
 // materializes them as real git repos, and runs their declared build.
 //
-// Imported by BOTH callers — scripts/dev-agent-bootstrap.mjs (the usage
+// Imported by BOTH callers - scripts/dev-agent-bootstrap.mjs (the usage
 // playbooks) and the Playwright E2E suites. That sharing is the point, not a
 // convenience: an agent driving Otto by hand and a spec asserting about Otto have
 // to be working against identical ground truth, or a green suite stops being
@@ -103,7 +103,7 @@ function commitAll(cwd, message) {
  * Creates the template's repo at `targetDir`.
  *
  * Returns { dir, template, created, branches }. When the directory already holds
- * a git repo and `force` is false, nothing is touched and `created` is false —
+ * a git repo and `force` is false, nothing is touched and `created` is false -
  * re-running a playbook must land in the same state, not rebuild it.
  */
 export function materializeTemplate({ name, targetDir, force = false }) {
@@ -165,7 +165,7 @@ function runStep(dir, argv) {
  * Runs the template's build and test in `dir`. Both are argv arrays, so there is
  * no shell to quote for and nothing that behaves differently on Windows.
  *
- * `expectFailure: true` inverts the verdict — used on a break branch, where a
+ * `expectFailure: true` inverts the verdict - used on a break branch, where a
  * build that *passes* means the error scenario has silently stopped working.
  */
 export function runTemplateChecks({ dir, template, expectFailure = false }) {

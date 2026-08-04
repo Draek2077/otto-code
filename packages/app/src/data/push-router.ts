@@ -139,7 +139,7 @@ const reconnectSubscriptionRepairsByServerId = new Map<string, Set<() => void>>(
  * How long a workspace's terminal subscription outlives its last observer.
  *
  * The terminals query is `enabled` on route focus, so leaving a workspace drops
- * its observers and coming back adds them again — and the daemon answers every
+ * its observers and coming back adds them again - and the daemon answers every
  * subscribe with a full `terminals_changed` snapshot. Twelve workspace
  * round-trips that changed nothing therefore produced 51-67 of them, which was
  * the largest inbound cost on the navigation path once the redundant timeline
@@ -149,7 +149,7 @@ const reconnectSubscriptionRepairsByServerId = new Map<string, Set<() => void>>(
  * unsubscribe, so a round-trip inside the window costs nothing and a workspace
  * genuinely left still stops pushing shortly after. Deliberately short enough
  * that it never becomes a second, competing answer to "how long do we keep
- * workspace state alive" — that question belongs to the workspace deck's
+ * workspace state alive" - that question belongs to the workspace deck's
  * mounted set (`screens/workspace/workspace-deck-retention.ts`).
  */
 export const TERMINAL_SUBSCRIPTION_LINGER_MS = 15_000;
@@ -491,7 +491,7 @@ function reconcileTerminalSubscriptions(input: {
   for (const [key, current] of input.active) {
     const desired = input.desired.get(key);
     if (desired && areWorkspaceTerminalsRoutesEqual(current, desired)) {
-      // Wanted again — if it was on its way out, it isn't any more, and no
+      // Wanted again - if it was on its way out, it isn't any more, and no
       // subscribe is needed because it was never actually torn down.
       input.cancelPendingUnsubscribe(key);
       continue;

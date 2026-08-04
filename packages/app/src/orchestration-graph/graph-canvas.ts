@@ -26,17 +26,17 @@ import {
 
 // The DOM half of the graph designer (projects/orchestration-graphs): a
 // Drawflow instance wrapped with the editor design ported from Draekz Forge's
-// orch-canvas.js + 14-orchestration.css — the inner node card (title bar with
+// orch-canvas.js + 14-orchestration.css - the inner node card (title bar with
 // type prefix, inline editable name, soft-red delete), arrow-shaped ports
 // riding OUTSIDE the card border (output = accent, input = the warm counter
 // hue; hollow until wired, solid once connected), orthogonal rounded-elbow
-// wiring, cursor-anchored wheel zoom — re-skinned with Otto theme tokens.
+// wiring, cursor-anchored wheel zoom - re-skinned with Otto theme tokens.
 // DOM-only: imported exclusively from the `.web.tsx` panel (CM6 precedent).
 //
 // Semantics the canvas encodes:
 // - The single Orchestrator root hosts the chat and is the graph's entry point:
 //   it takes the orchestration's own prompt automatically, so it has an OUTPUT
-//   (kickoff) and no input. It can't be deleted either — if anything removes it
+//   (kickoff) and no input. It can't be deleted either - if anything removes it
 //   (Delete key, Drawflow's own bubble), it comes straight back where it was.
 //   Nodes nobody consumes are the graph's final answers.
 // - Declared graph inputs surface inside nodes: prompts reference
@@ -106,7 +106,7 @@ const SNAP_RADIUS = 110;
 
 export interface CreateGraphCanvasOptions {
   theme: GraphCanvasTheme;
-  /** Fired on any user edit — node fields, moves, wires, deletes. */
+  /** Fired on any user edit - node fields, moves, wires, deletes. */
   onChange(): void;
 }
 
@@ -124,7 +124,7 @@ export function createGraphCanvas(
 
   const ed = new Drawflow(canvasEl);
   // Orthogonal wiring (ported from Forge): replace the cubic bezier with a
-  // rounded elbow — H → V → H through the horizontal midpoint. Reroute
+  // rounded elbow - H → V → H through the horizontal midpoint. Reroute
   // sub-segments are each one call, so they inherit the same routing.
   ed.createCurvature = (sx: number, sy: number, ex: number, ey: number) => {
     const midX = sx + (ex - sx) / 2;
@@ -150,7 +150,7 @@ export function createGraphCanvas(
   ed.zoom_min = 0.4;
   ed.zoom_max = 1.5;
   ed.zoom_value = 0.08;
-  // Neutralize Drawflow's ctrl+wheel zoom — the cursor-anchored handler below owns it.
+  // Neutralize Drawflow's ctrl+wheel zoom - the cursor-anchored handler below owns it.
   ed.zoom_enter = () => {};
   ed.start();
 
@@ -180,7 +180,7 @@ export function createGraphCanvas(
   const syncGrid = () => paintGrid(ed.canvas_x, ed.canvas_y);
   // Mid-drag, Drawflow transforms the precanvas from a local offset and only
   // writes canvas_x/canvas_y back on drag END, so the live pan is in the event
-  // payload — reading ed.canvas_x here would leave the dots a whole drag behind.
+  // payload - reading ed.canvas_x here would leave the dots a whole drag behind.
   ed.on("translate", (payload) => {
     const pos = payload as { x: number; y: number };
     paintGrid(pos.x, pos.y);
@@ -289,7 +289,7 @@ export function createGraphCanvas(
   canvasEl.addEventListener("mousedown", handleConnectionClick);
 
   // Easy snap: while a wire is in flight, the nearest input port within
-  // SNAP_RADIUS becomes "attached" — it lights up, the wire's loose end jumps
+  // SNAP_RADIUS becomes "attached" - it lights up, the wire's loose end jumps
   // to it, and releasing anywhere lands the connection there. Move away and it
   // detaches again. Drawflow itself only connects on a pixel-perfect drop onto
   // the port, which is a miserable target at 13px.
@@ -373,7 +373,7 @@ export function createGraphCanvas(
   canvasEl.addEventListener("mouseup", handleSnapUp, true);
 
   // Ports read hollow until wired, solid once connected (Forge's empty→filled
-  // language). Drawflow doesn't manage a class for that — recompute from its
+  // language). Drawflow doesn't manage a class for that - recompute from its
   // export after every wiring change.
   const refreshConnectedPorts = () => {
     const exported = ed.export().drawflow.Home.data;
@@ -499,7 +499,7 @@ export function createGraphCanvas(
     if (note) {
       note.textContent = source?.outputFields.trim()
         ? "Leave the condition blank to always deliver."
-        : `"${fromTitle}" declares no output fields — a condition here can only test its prose as \`output\`.`;
+        : `"${fromTitle}" declares no output fields - a condition here can only test its prose as \`output\`.`;
     }
     edgeInspector.classList.remove("og-hidden");
   };
@@ -658,7 +658,7 @@ export function createGraphCanvas(
             const to = nodeIdByDfid.get(String(connection.node));
             if (to && to !== from) {
               // Re-attach whatever this edge carried (condition, fields, ports,
-              // label) — the canvas draws wires, it doesn't own their meaning.
+              // label) - the canvas draws wires, it doesn't own their meaning.
               edges.push({ ...carriedEdgeFields.get(graphEdgeKey(from, to)), from, to });
             }
           }
@@ -763,8 +763,8 @@ function buildNodeInfo(node: GraphNode): CanvasNodeInfo {
     outputFields: formatOutputFields(node.output?.fields),
     retryAttempts: node.retry?.maxAttempts ?? 1,
     timeLimitSeconds: node.timeoutMs ? Math.round(node.timeoutMs / 1000) : 0,
-    // An absent `tools` means "whatever the policy allows"; a present one —
-    // including an empty array — is a deliberate narrowing.
+    // An absent `tools` means "whatever the policy allows"; a present one -
+    // including an empty array - is a deliberate narrowing.
     toolGroupsMode: node.tools ? "only" : "",
     toolGroups: new Set(node.tools ?? []),
     queryTools: formatQueryTools(node.queryTools),
@@ -873,7 +873,7 @@ function applyField(info: CanvasNodeInfo, field: string, element: HTMLElement): 
     return;
   }
   // Tool-group checkboxes all share one field name and name their group in a
-  // data attribute, so the set — not a scalar — is what they mutate.
+  // data attribute, so the set - not a scalar - is what they mutate.
   if (field === "toolGroup") {
     const group = element.dataset.ogGroup;
     if (group) {
@@ -925,8 +925,8 @@ function buildGraphNode(
       ? { retry: { maxAttempts: info.retryAttempts, backoffMs: 2000 } }
       : {}),
     ...(info.timeLimitSeconds > 0 ? { timeoutMs: info.timeLimitSeconds * 1000 } : {}),
-    // "Only these groups" with nothing checked is a real declaration — no Otto
-    // tools at all — so the empty array is written, not dropped.
+    // "Only these groups" with nothing checked is a real declaration - no Otto
+    // tools at all - so the empty array is written, not dropped.
     ...(info.toolGroupsMode === "only" ? { tools: [...info.toolGroups] } : {}),
     ...(queryTools.length > 0 ? { queryTools } : {}),
     ...(info.templateId
@@ -1035,7 +1035,7 @@ function buildToolGroupsHtml(info: CanvasNodeInfo): string {
 }
 
 function buildTemplateOptions(current: string, templates: readonly PromptTemplate[]): string {
-  // Snippets are meant to be included by other templates, not bound to a node —
+  // Snippets are meant to be included by other templates, not bound to a node -
   // offering them here would invite a node whose whole prompt is a fragment.
   // One a node is already bound to still shows, or the select would silently
   // misreport what the node does.
@@ -1068,7 +1068,7 @@ function buildRootNodeHtml(info: CanvasNodeInfo): string {
   );
 }
 
-/** Whether anything only the Advanced disclosure shows is set — if so it opens,
+/** Whether anything only the Advanced disclosure shows is set - if so it opens,
  * because a collapsed card that hides a real constraint reads as a plain node. */
 function hasAdvancedSettings(info: CanvasNodeInfo): boolean {
   return (
@@ -1122,14 +1122,14 @@ function buildCatalogControlsHtml(
     `<option value="only"${info.toolGroupsMode === "only" ? " selected" : ""}>Only these groups</option>` +
     `</select>` +
     `<div class="og-tool-groups${info.toolGroupsMode === "only" ? "" : " og-hidden"}">${buildToolGroupsHtml(info)}</div>` +
-    `<div class="og-inputs-hint">Narrowing intersects with the policy — a node can hand itself less authority, never more. Nothing checked means no Otto tools at all.</div>` +
+    `<div class="og-inputs-hint">Narrowing intersects with the policy - a node can hand itself less authority, never more. Nothing checked means no Otto tools at all.</div>` +
     `<label class="og-label">Query tools <span class="og-hint">(name | kind | spec | description)</span></label>` +
     `<textarea class="og-prompt" data-og-field="queryTools" rows="2" placeholder="recent_commits | command | git log --oneline -n {{count}} | Recent commits">${escapeHtml(info.queryTools)}</textarea>` +
     `<div class="og-inputs-hint">Read-only lookups only this node gets. Kind is command (argv, no shell), http-get or file-read. Each {{name}} in the spec becomes a parameter.</div>` +
     `<label class="og-label">Prompt template</label>` +
     `<select class="og-select" data-og-field="templateId">${buildTemplateOptions(info.templateId, templates)}</select>` +
     `<textarea class="og-prompt og-template-vars${info.templateId ? "" : " og-hidden"}" data-og-field="templateVariables" rows="2" placeholder="topic = $inputs.subject">${escapeHtml(info.templateVariables)}</textarea>` +
-    `<div class="og-inputs-hint">A bound template replaces this node's own prompt. Values are literals, $inputs.key, or $output.nodeId.field — one binding per line.</div>`
+    `<div class="og-inputs-hint">A bound template replaces this node's own prompt. Values are literals, $inputs.key, or $output.nodeId.field - one binding per line.</div>`
   );
 }
 
@@ -1185,13 +1185,13 @@ function buildAgentNodeHtml(
   );
 }
 
-// Base Drawflow CSS (vendored min.css, verbatim) + the Otto skin — the Forge
+// Base Drawflow CSS (vendored min.css, verbatim) + the Otto skin - the Forge
 // design (14-orchestration.css) mapped onto Otto tokens. Injected as one style
 // element per canvas; setTheme swaps it wholesale.
 const DRAWFLOW_BASE_CSS = `.drawflow,.drawflow .parent-node{position:relative}.parent-drawflow{display:flex;overflow:hidden;touch-action:none;outline:0}.drawflow{width:100%;height:100%;user-select:none;perspective:0}.drawflow .drawflow-node{display:flex;align-items:center;position:absolute;background:#0ff;width:160px;min-height:40px;border-radius:4px;border:2px solid #000;color:#000;z-index:2;padding:15px}.drawflow .drawflow-node.selected{background:red}.drawflow .drawflow-node:hover{cursor:move}.drawflow .drawflow-node .inputs,.drawflow .drawflow-node .outputs{width:0}.drawflow .drawflow-node .drawflow_content_node{width:100%;display:block}.drawflow .drawflow-node .input,.drawflow .drawflow-node .output{position:relative;width:20px;height:20px;background:#fff;border-radius:50%;border:2px solid #000;cursor:crosshair;z-index:1;margin-bottom:5px}.drawflow .drawflow-node .input{left:-27px;top:2px;background:#ff0}.drawflow .drawflow-node .output{right:-3px;top:2px}.drawflow svg{z-index:0;position:absolute;overflow:visible!important}.drawflow .connection{position:absolute;pointer-events:none;aspect-ratio:1/1}.drawflow .connection .main-path{fill:none;stroke-width:5px;stroke:#4682b4;pointer-events:all}.drawflow .connection .main-path:hover{stroke:#1266ab;cursor:pointer}.drawflow .connection .main-path.selected{stroke:#43b993}.drawflow .connection .point{cursor:move;stroke:#000;stroke-width:2;fill:#fff;pointer-events:all}.drawflow .connection .point.selected,.drawflow .connection .point:hover{fill:#1266ab}.drawflow .main-path{fill:none;stroke-width:5px;stroke:#4682b4}.drawflow-delete{position:absolute;display:block;width:30px;height:30px;background:#000;color:#fff;z-index:4;border:2px solid #fff;line-height:30px;font-weight:700;text-align:center;border-radius:50%;font-family:monospace;cursor:pointer}.drawflow>.drawflow-delete{margin-left:-15px;margin-top:15px}.parent-node .drawflow-delete{right:-15px;top:-15px}`;
 
 // Arrow-shaped ports (Forge's data-port-shape="arrow" variant, the default
-// here): right-pointing triangles cut from the hue via an SVG alpha mask —
+// here): right-pointing triangles cut from the hue via an SVG alpha mask -
 // hollow outline until a wire lands, solid once connected or hover-previewed.
 const ARROW_OUTLINE_MASK = `url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2 2 L10 6 L2 10 Z' fill='none' stroke='black' stroke-width='2' stroke-linejoin='round'/></svg>") center / contain no-repeat`;
 const ARROW_FILLED_MASK = `url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2 2 L10 6 L2 10 Z' fill='black' stroke='black' stroke-width='2' stroke-linejoin='round'/></svg>")`;
@@ -1230,7 +1230,7 @@ function buildCanvasCss(theme: GraphCanvasTheme): string {
 .og-canvas .og-del:hover{background:color-mix(in srgb, ${theme.danger} 14%, transparent);}
 .og-canvas .og-del:hover .og-del-icon{background:${theme.danger};}
 
-/* port labels row — sits beside the dots so In/Out (Answers/Kickoff) read at a glance */
+/* port labels row - sits beside the dots so In/Out (Answers/Kickoff) read at a glance */
 .og-canvas .og-ports-row{display:flex;justify-content:space-between;padding:5px 10px 0;font-size:10px;color:${theme.foregroundMuted};letter-spacing:0.04em;text-transform:uppercase;}
 .og-canvas .og-ports-row-out{justify-content:flex-end;}
 
@@ -1252,7 +1252,7 @@ function buildCanvasCss(theme: GraphCanvasTheme): string {
 .og-canvas .og-hidden{display:none;}
 .og-hidden{display:none;}
 
-/* Edge inspector — floats over the canvas while a wire is selected. */
+/* Edge inspector - floats over the canvas while a wire is selected. */
 .og-edge-inspector{position:absolute;top:12px;right:12px;z-index:6;width:250px;display:flex;flex-direction:column;gap:5px;padding:10px;border:1px solid ${theme.border};border-radius:10px;background:${theme.surface};box-shadow:0 10px 28px rgba(0,0,0,0.28);}
 .og-edge-inspector .og-edge-title{font-size:11.5px;font-weight:700;color:${theme.foreground};margin-bottom:2px;}
 .og-edge-inspector .og-label{font-size:10.5px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:${theme.foregroundMuted};}
@@ -1270,7 +1270,7 @@ function buildCanvasCss(theme: GraphCanvasTheme): string {
 .og-canvas .og-adv[open] > summary .og-caret{transform:rotate(0deg);}
 .og-canvas .og-adv-body{padding-top:0;}
 
-/* ports — arrow-shaped, riding OUTSIDE the card border (Forge arrow variant).
+/* ports - arrow-shaped, riding OUTSIDE the card border (Forge arrow variant).
    Output = accent (flow onward), input = the warm counter hue. Hollow until a
    wire lands; solid on hover-preview and once connected. */
 .og-canvas .drawflow-node .inputs,.og-canvas .drawflow-node .outputs{margin-top:36px;}
@@ -1281,7 +1281,7 @@ function buildCanvasCss(theme: GraphCanvasTheme): string {
 /* attached-while-near: the port a released wire would land on */
 .og-canvas .drawflow-node .input.og-snap{-webkit-mask-image:${ARROW_FILLED_MASK};mask-image:${ARROW_FILLED_MASK};background:${theme.accent};transform:scale(1.35);}
 
-/* wires — accent elbows, thicker + brighter on hover/selection (Forge) */
+/* wires - accent elbows, thicker + brighter on hover/selection (Forge) */
 .og-canvas .connection{aspect-ratio:auto;height:100%;}
 .og-canvas .connection .main-path{stroke:${theme.accent};stroke-width:3px;opacity:0.9;}
 .og-canvas .connection .main-path:hover{stroke:${theme.accent};opacity:1;filter:brightness(1.2);cursor:pointer;}

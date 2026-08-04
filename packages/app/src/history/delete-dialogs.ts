@@ -6,14 +6,14 @@ import type { ConfirmDialogInput } from "@/utils/confirm-dialog";
  * clearing the archive in bulk.
  *
  * Both say the same two things, and both have to. Deleting a chat in Otto removes
- * **Otto's record** — the row, the title, the metadata. It does **not** remove the
+ * **Otto's record** - the row, the title, the metadata. It does **not** remove the
  * agent provider's own transcript, which stays on disk exactly where the provider
  * wrote it. Leaving that data is the point (Otto never created it, and another
  * tool still reads it), but leaving it silently would be worse than deleting it:
  * data the user cannot find is not recoverable data. So the dialog says where the
  * conversation still lives, and it says the Otto side cannot be undone.
  *
- * Still pure — it just reads its sentences from `sessions.dialogs.*` rather than
+ * Still pure - it just reads its sentences from `sessions.dialogs.*` rather than
  * holding them. These are confirmations, which docs/i18n.md puts squarely inside
  * the translation scope, and a destructive dialog is the last place to make the
  * user read a second language. Resolvers are pure helpers, so they call
@@ -75,8 +75,8 @@ export function resolveDeleteAgentDialog(input: DeleteAgentDialogInput): Confirm
 
 /**
  * Bulk clear, after the server-side dry run has reported a real count. Same rule
- * as the single delete — clearing many at once is not a back door to deleting
- * provider data in aggregate — so the copy repeats the disclosure rather than
+ * as the single delete - clearing many at once is not a back door to deleting
+ * provider data in aggregate - so the copy repeats the disclosure rather than
  * assuming the user read it on a previous dialog.
  */
 export function resolveClearArchivedDialog(input: { matched: number }): ConfirmDialogInput {
@@ -110,7 +110,7 @@ export function resolveClearArchivedEmptyDialog(): Omit<ConfirmDialogInput, "kin
 }
 
 /**
- * No host could be swept — disconnected, or none advertising `historyDelete`.
+ * No host could be swept - disconnected, or none advertising `historyDelete`.
  * Distinct from "nothing matched", because "there are no archived chats" would be
  * a claim we are in no position to make.
  */
@@ -123,7 +123,7 @@ export function resolveClearArchivedNoHostDialog(): Omit<ConfirmDialogInput, "ki
 }
 
 /**
- * Outcome report. Shown only when the sweep did not fully succeed — a clean run
+ * Outcome report. Shown only when the sweep did not fully succeed - a clean run
  * needs no dialog, the rows just disappear.
  */
 export function resolveClearArchivedFailureDialog(input: {
@@ -142,7 +142,7 @@ export function resolveClearArchivedFailureDialog(input: {
 
 /**
  * The daemon predates hard delete. Per the feature contract there is no fallback
- * path — say so plainly instead of quietly doing nothing (the old behaviour here
+ * path - say so plainly instead of quietly doing nothing (the old behaviour here
  * was to re-archive an already-archived chat, which is a no-op that reads as a
  * bug).
  */

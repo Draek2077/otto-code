@@ -152,11 +152,11 @@ export function FeedbackSheet({ visible, onClose }: FeedbackSheetProps): ReactEl
     >
       {sent ? (
         <View style={styles.sentBlock} testID="feedback-sent">
-          <Text style={styles.sentTitle}>Thanks — your feedback was sent.</Text>
+          <Text style={styles.sentTitle}>Thanks - your feedback was sent.</Text>
           <Text style={styles.sentBody}>
             {contact.trim().length > 0
               ? "Every report gets read, and you may hear back at the contact you left."
-              : "Every report gets read. You sent this anonymously, so there's no way to reply — reopen this sheet with a contact if you'd like an answer."}
+              : "Every report gets read. You sent this anonymously, so there's no way to reply - reopen this sheet with a contact if you'd like an answer."}
           </Text>
         </View>
       ) : (

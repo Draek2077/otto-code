@@ -9,7 +9,7 @@ import {
 
 /**
  * Tier-2 flagship: proves the openai-compat daemon-owned tool loop end to end
- * with real local inference — prompt in, native tool call out, file written to
+ * with real local inference - prompt in, native tool call out, file written to
  * the workspace, change visible in the UI. Asserts side effects only, never
  * model prose.
  */
@@ -20,7 +20,7 @@ const TARGET_CONTENT = "hello-e2e";
 test("live agent loop: prompt → tool call → file on disk → change visible", async ({ page }) => {
   const prompt =
     `Create a file named ${TARGET_FILE} in the current directory containing exactly ` +
-    `"${TARGET_CONTENT}" (without the quotes) and nothing else — no trailing newline is fine. ` +
+    `"${TARGET_CONTENT}" (without the quotes) and nothing else - no trailing newline is fine. ` +
     `Use your file tools. Do not run shell commands. Do not explain anything.`;
 
   const seeded = await seedLocalAiAgent({

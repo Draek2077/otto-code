@@ -5,24 +5,24 @@
  *
  * Every rendered surface in the app (chat, file viewer, pull-request panel) is
  * one pipeline: markdown-it tokens → React Native primitives. Converting
- * AsciiDoc into that pipeline — rather than rendering Asciidoctor's HTML in a
- * webview — is what buys theme tokens, text selection, code highlighting and,
+ * AsciiDoc into that pipeline - rather than rendering Asciidoctor's HTML in a
+ * webview - is what buys theme tokens, text selection, code highlighting and,
  * above all, **one** mermaid host: a `[mermaid]` block here becomes a
  * ```mermaid fence, which `MarkdownFence` already routes to `MermaidBlock`. A
  * diagram in a `.adoc` therefore looks identical to the same diagram in a `.md`.
- * The alternative — Asciidoctor HTML + mermaid.min.js in a webview — would draw
+ * The alternative - Asciidoctor HTML + mermaid.min.js in a webview - would draw
  * the same diagram through a second engine with its own theming, which is
  * exactly what `mermaid-document.ts` exists to avoid.
  *
  * ## What this is not
  *
  * This is a *preview-fidelity* converter, not a publishing pipeline. It targets
- * the constructs specs actually use — sections, lists, delimited blocks,
+ * the constructs specs actually use - sections, lists, delimited blocks,
  * tables, admonitions, macros, attribute references. It deliberately does not
  * resolve `include::` (no file-system access on this side of the wire; the
  * directive is surfaced rather than silently dropped) and it flattens
  * constructs markdown cannot express (description lists, sidebars, cell spans).
- * Anything it cannot map degrades to visible text — never to an empty box and
+ * Anything it cannot map degrades to visible text - never to an empty box and
  * never to raw markup, the same policy the HTML translation follows
  * (docs/markdown-rendering.md).
  */
@@ -159,7 +159,7 @@ function parseDocumentHeader(lines: string[]): DocumentHeader {
           entries.push([name, value]);
         }
       } else if (!isComment(line)) {
-        // Author / revision line — metadata, not body content.
+        // Author / revision line - metadata, not body content.
         entries.push(["", line.trim()]);
       }
       index += 1;
@@ -266,7 +266,7 @@ function convertBlocks(
       continue;
     }
 
-    // `NOTE: text` — the single-paragraph admonition form.
+    // `NOTE: text` - the single-paragraph admonition form.
     const inlineAdmonition = trimmed.match(/^([A-Z]{3,9}):\s+(.*)$/);
     if (inlineAdmonition && ADMONITION_LABELS[inlineAdmonition[1]]) {
       takeAttributes();
@@ -343,7 +343,7 @@ function convertStandaloneLine(trimmed: string, attributes: Map<string, string>)
   if (include) {
     // Honest degradation: the preview cannot resolve includes, so it says so
     // rather than silently rendering an incomplete document.
-    return [`> **Include** \`${include[1].trim()}\` — not resolved in preview.`];
+    return [`> **Include** \`${include[1].trim()}\` - not resolved in preview.`];
   }
 
   const attributeEntry = trimmed.match(ATTRIBUTE_ENTRY);
@@ -392,7 +392,7 @@ function matchListItem(trimmed: string, attributes: Map<string, string>): ListIt
   if (numbered) {
     return { indent: 0, text: `1. ${convertInline(numbered[1], attributes)}` };
   }
-  // `term:: definition` — markdown has no description list, so it becomes a
+  // `term:: definition` - markdown has no description list, so it becomes a
   // bullet whose term is bold, which reads the same way.
   const description = trimmed.startsWith("|") ? null : trimmed.match(DESCRIPTION_ITEM);
   if (description) {
@@ -400,7 +400,7 @@ function matchListItem(trimmed: string, attributes: Map<string, string>): ListIt
     const definition = description[3]?.trim();
     return {
       indent: Math.max(0, description[2].length - 2),
-      text: definition ? `- ${term} — ${convertInline(definition, attributes)}` : `- ${term}`,
+      text: definition ? `- ${term} - ${convertInline(definition, attributes)}` : `- ${term}`,
     };
   }
   return null;
@@ -520,7 +520,7 @@ function renderDelimitedBlock(
           ? [`**${convertInline(title, attributes)}**`, "", ...inner]
           : inner,
       );
-      return attribution ? [...quoted, `> — ${convertInline(attribution, attributes)}`] : quoted;
+      return attribution ? [...quoted, `> - ${convertInline(attribution, attributes)}`] : quoted;
     }
 
     case "open":
@@ -542,7 +542,7 @@ function fence(content: string[], language: string): string[] {
 
 function quote(lines: string[]): string[] {
   // A converted paragraph is one entry carrying embedded newlines, so split
-  // before prefixing — otherwise only its first physical line gets the `>`.
+  // before prefixing - otherwise only its first physical line gets the `>`.
   const trimmed = lines.flatMap((line) => line.split("\n"));
   while (trimmed.length > 0 && trimmed[0] === "") {
     trimmed.shift();
@@ -566,7 +566,7 @@ function renderTable(
   attributes: Map<string, string>,
 ): string[] {
   const cells: string[] = [];
-  /** Cells on the first cell-bearing line — the width fallback when `cols` is absent. */
+  /** Cells on the first cell-bearing line - the width fallback when `cols` is absent. */
   let firstLineCellCount = 0;
   let sawBlankAfterFirstRow = false;
   let current: string[] | null = null;
@@ -653,7 +653,7 @@ function splitTableLine(line: string): string[] | null {
     return null;
   }
   // Anything before the first `|` must be a spec, otherwise this is prose that
-  // happens to contain a pipe — a continuation line, not a new row.
+  // happens to contain a pipe - a continuation line, not a new row.
   const lead = line.slice(0, boundaries[0]).trim();
   if (lead !== "" && !CELL_SPEC_ONLY.test(lead)) {
     return null;
@@ -756,7 +756,7 @@ function firstPositional(raw: string): string {
  * AsciiDoc's own convention is that image targets are relative to `imagesdir`
  * rather than to the document, so `:imagesdir: images` + `image::flow.png[]`
  * means `images/flow.png`. Folding it in here is what lets the markdown side
- * resolve one kind of relative path — from there an AsciiDoc image and a
+ * resolve one kind of relative path - from there an AsciiDoc image and a
  * markdown one take the identical route. A URL or a root-relative target ignores
  * `imagesdir`, as Asciidoctor does.
  */
@@ -841,7 +841,7 @@ export function convertInline(text: string, attributes: Map<string, string>): st
   result = result.replace(/__(\S(?:.*?\S)?)__/g, (_match, inner: string) => protect(`*${inner}*`));
   // Constrained bold: AsciiDoc `*text*` is bold, markdown `*text*` is italic.
   result = result.replace(
-    /(^|[\s([{>—-])\*(\S(?:[^*\n]*?\S)?)\*(?=$|[\s)\]}.,;:!?—-])/g,
+    /(^|[\s([{>-])\*(\S(?:[^*\n]*?\S)?)\*(?=$|[\s)\]}.,;:!?-])/g,
     (_match, before: string, inner: string) => `${before}${protect(`**${inner}**`)}`,
   );
   result = result.replace(/\[.underline\]#(.*?)#/g, "$1");
@@ -858,7 +858,7 @@ export function convertInline(text: string, attributes: Map<string, string>): st
   );
 }
 
-/** Never more than one blank line in a row — markdown treats runs the same. */
+/** Never more than one blank line in a row - markdown treats runs the same. */
 function collapseBlankRuns(lines: string[]): string[] {
   const out: string[] = [];
   for (const line of lines) {

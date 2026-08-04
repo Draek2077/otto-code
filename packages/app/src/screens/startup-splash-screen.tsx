@@ -57,7 +57,7 @@ const pulseStyles = RNStyleSheet.create({
 });
 
 // The robot layer breathes in and out of the wordmark: OTTO stays solid while the
-// face hardware fades — the letterforms are the loading pulse.
+// face hardware fades - the letterforms are the loading pulse.
 function LogoPulse() {
   const robotOpacity = useSharedValue(1);
 

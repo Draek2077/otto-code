@@ -79,7 +79,7 @@ test.describe("Chat auto title", () => {
     const workspace = await seedWorkspace({ repoPrefix: "chat-auto-title-explicit-" });
     try {
       // Same pinned writer as above: if auto-titling ran at all for this chat,
-      // it would succeed and rename it — the explicit title must win instead.
+      // it would succeed and rename it - the explicit title must win instead.
       await patchMetadataGenerationProviders(workspace.client, [
         { provider: "mock", model: "ten-second-stream" },
       ]);

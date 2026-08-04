@@ -348,7 +348,7 @@ const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMut
 const accentColorMapping = (theme: Theme) => ({ color: theme.colors.accentBright });
 // Size-folding variants: `uniProps` mappings read the live theme, so folding
 // `theme.iconSize.*` into the mapping keeps these icons reactive to the compact
-// (mobile) icon-doubling patch — a plain `size={16}` prop is a frozen literal.
+// (mobile) icon-doubling patch - a plain `size={16}` prop is a frozen literal.
 const mutedSmMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
   size: theme.iconSize.sm,
@@ -373,7 +373,7 @@ const MENU_ADD_ARTIFACT_ICON = <ThemedFileText uniProps={mutedMdMapping} />;
 const MENU_IMPORT_ICON = <ThemedImport uniProps={mutedMdMapping} />;
 const MENU_COPY_ICON = <ThemedCopy uniProps={mutedMdMapping} />;
 const MENU_SETTINGS_ICON = <ThemedSettings uniProps={mutedMdMapping} />;
-// Matches the Context Management tab's own icon and the sidebar row's item —
+// Matches the Context Management tab's own icon and the sidebar row's item -
 // one thing, one glyph, wherever you meet it.
 const MENU_CONTEXT_ICON = <ThemedBookOpen uniProps={mutedMdMapping} />;
 // Leading icons for the compact-fit fallback items (see
@@ -1198,7 +1198,7 @@ function HeaderMenuProfileItem({
 }
 
 // The "..." trigger sits beside the diff toggle in the mobile header, both using
-// the menu button's auto-sized chrome — a 2x icon would overflow that chrome, so
+// the menu button's auto-sized chrome - a 2x icon would overflow that chrome, so
 // this scales at 1.5x instead of the usual compact doubling (see `useIconSize`).
 function WorkspaceHeaderMenuTriggerIcon({
   hovered,
@@ -1640,11 +1640,11 @@ function WorkspaceHeaderMenu({
         </DropdownMenuContent>
       </DropdownMenu>
       {/* Host for the "Add artifact" flow (added in fb74fb6b2). There is NO
-          visible artifact button here — the entry point is the "Add artifact"
+          visible artifact button here - the entry point is the "Add artifact"
           item in the "..." menu above, which flips `artifactsOpen` on. On compact
           form factors that opens a bottom sheet (the feature's original purpose),
           which needs no anchor. On desktop the same controlled menu renders as a
-          dropdown, and a dropdown must position against an on-screen element —
+          dropdown, and a dropdown must position against an on-screen element -
           this is that anchor. `hideTrigger` renders it with no glyph; its style is
           `position: absolute` so it stays out of the button row's flex flow and
           can't distort the gap between the buttons. */}
@@ -1847,8 +1847,8 @@ function WorkspaceHeaderTitleBar({
           />
         ) : null}
         {/* There is no second header button for the PIP any more. The Visualizer
-            button above is the single entry point — it opens the surface you
-            last used — and switching surfaces lives inside the Visualizer
+            button above is the single entry point - it opens the surface you
+            last used - and switching surfaces lives inside the Visualizer
             itself (the tab toolbar's PIP control, the PIP's expand control).
             See use-visualizer-surface.ts. */}
         {isMobile && showPlayAction ? (
@@ -2243,7 +2243,7 @@ function useWorkspaceTerminalTabActions({
 
 /** The workspace's center column body plus the overlays that float above the
  * whole pane tree. Extracted from WorkspaceScreenContent purely to keep that
- * function inside the repo's complexity/JSX-depth budgets — it holds no state. */
+ * function inside the repo's complexity/JSX-depth budgets - it holds no state. */
 function WorkspaceCenterContent({
   serverId,
   workspaceId,
@@ -2264,7 +2264,7 @@ function WorkspaceCenterContent({
           content so it sits over the conversation without belonging to any one
           pane. Mounted here rather than inside the chat panel on purpose: a
           per-pane mount would remount (and, on Electron, RELOAD) its guest every
-          time you switched chats — see visualizer-pip.tsx. Renders nothing
+          time you switched chats - see visualizer-pip.tsx. Renders nothing
           unless the PIP is open and no Visualizer tab exists. */}
       <VisualizerPipHost
         serverId={serverId}
@@ -2293,7 +2293,7 @@ function WorkspaceScreenContent({
   useCloseDisabledFeatureTabs();
   const isMobile = useIsCompactFormFactor();
   // User interface mode hides the developer surfaces (explorer, terminals, file
-  // tabs, git actions, scripts). Presentation only — the stores/daemon are
+  // tabs, git actions, scripts). Presentation only - the stores/daemon are
   // untouched (see projects/first-time-wizard/interface-modes.md).
   const isDeveloperMode = useIsDeveloperMode();
   // The mobile diff/explorer toggle sits in the menu button's auto-sized chrome,
@@ -2571,7 +2571,7 @@ function WorkspaceScreenContent({
   );
 
   const hasDiffStat = useMemo(() => Boolean(workspaceDescriptor?.diffStat), [workspaceDescriptor]);
-  // The open sidebar already shows the diff stats on the workspace row — hide
+  // The open sidebar already shows the diff stats on the workspace row - hide
   // the header copy to avoid the duplicate; they reappear when it's closed.
   const showExplorerDiffStat = useMemo(
     () => hasDiffStat && !isSidebarOpen,
@@ -2613,7 +2613,7 @@ function WorkspaceScreenContent({
   );
   const hasHydratedWorkspaceLayoutStore = useWorkspaceLayoutStoreHydrated();
   // Report pane-content readiness for the app-wide route-fade veil. A workspace
-  // is "ready" to reveal once it has a layout — the tab strip and panes render
+  // is "ready" to reveal once it has a layout - the tab strip and panes render
   // from it (see desktopSplitContent). On a cold or freshly-seeded workspace this
   // flips null -> populated a beat after the shell mounts, so the veil holds its
   // reveal until this fires (RouteFadeContainer) instead of lifting on the bare
@@ -2642,7 +2642,7 @@ function WorkspaceScreenContent({
   // What actually renders (tab strip + pane content). In User mode the
   // developer-only tab kinds (terminal, file) are filtered out; the unfiltered
   // `uiTabs` still drives store reconciliation and file-open, so nothing is
-  // closed or mutated — switching back to Developer restores everything.
+  // closed or mutated - switching back to Developer restores everything.
   const visibleUiTabs = useMemo(
     () => hideDeveloperTabs(uiTabs, isDeveloperMode),
     [uiTabs, isDeveloperMode],
@@ -2679,7 +2679,7 @@ function WorkspaceScreenContent({
   const { closingTabIds, closeTab } = useCloseTabs();
   // One measurement drives two header decisions: whether desktop tool buttons
   // show their labels, and (compact) which action buttons still fit. Measured on
-  // the header row, whose width doesn't depend on what we decide to render — a
+  // the header row, whose width doesn't depend on what we decide to render - a
   // narrower container like the title cluster would oscillate.
   const { onLayout: onHeaderLayout, width: headerRowWidth } = useContainerWidth();
   // Unmeasured (0) counts as narrow, matching the label-first initial render.
@@ -2732,8 +2732,8 @@ function WorkspaceScreenContent({
         useSessionStore.getState().releaseClosedChat(normalizedServerId, input.target.agentId);
       }
       if (input.target?.kind === "file") {
-        // Every close path funnels through here — single close, "Close all" /
-        // "Close others" (workspace-bulk-close.ts), and pane close — so this is
+        // Every close path funnels through here - single close, "Close all" /
+        // "Close others" (workspace-bulk-close.ts), and pane close - so this is
         // where a file tab's editor buffer is released. Only a CLEAN one:
         // unsaved text is never discarded without the confirm in
         // panels/file-panel.tsx, so a dirty or conflicted buffer stays retained.
@@ -2834,7 +2834,7 @@ function WorkspaceScreenContent({
   // the route before the daemon connection has created that entry. Without the
   // session's existence in the dependency list nothing here changes again, so
   // that one dropped write left `focusedAgentId` null for the rest of the
-  // session — which silently takes "Add to context" out of Changes, Files and
+  // session - which silently takes "Add to context" out of Changes, Files and
   // Search, since all three only offer it while a chat is focused.
   const hasSessionEntry = useSessionStore(
     (state) => state.sessions[normalizedServerId] !== undefined,
@@ -2960,7 +2960,7 @@ function WorkspaceScreenContent({
         return;
       }
       // Same handoff a submitted draft gets: the tab that requested the import
-      // becomes the imported chat. Only still-draft tabs qualify — the user may
+      // becomes the imported chat. Only still-draft tabs qualify - the user may
       // have retargeted or closed it while the import was in flight.
       const requestingTabId = importRequestTabIdRef.current;
       importRequestTabIdRef.current = null;
@@ -3238,7 +3238,7 @@ function WorkspaceScreenContent({
   });
 
   // A file opened from the PIP graph. PIP belongs to no pane, so there is no
-  // source pane to open beside and no parent tab to hang it off — route it
+  // source pane to open beside and no parent tab to hang it off - route it
   // through the plain chat opener, which lands it in the focused pane.
   const handleOpenWorkspaceFileFromPip = useStableEvent(function handleOpenWorkspaceFileFromPip(
     request: WorkspaceFileOpenRequest,
@@ -3316,11 +3316,11 @@ function WorkspaceScreenContent({
 
   // Mobile collapses the workspace to a single visible pane, but a tab can live
   // in a *different* pane (e.g. the Visualizer, which splits into its own pane on
-  // desktop/web — see open-visualizer-tab). Those tabs are absent from the
+  // desktop/web - see open-visualizer-tab). Those tabs are absent from the
   // focused-pane `tabs` above, so the mobile switcher enumerates every pane's
   // tabs as one flat list. Selecting one cross-pane-focuses it (focusTabInLayout
   // moves `focusedPaneId` to the tab's pane), after which the focused-pane render
-  // shows it — so only the *list* needs widening, not the mount/select paths.
+  // shows it - so only the *list* needs widening, not the mount/select paths.
   const mobileSwitcherTabs = useMemo<WorkspaceTabDescriptor[]>(
     () =>
       visibleUiTabs.map((tab) => ({
@@ -3356,7 +3356,7 @@ function WorkspaceScreenContent({
       }
 
       // A "New chat" must never open as a second tab inside the Visualizer's
-      // pane — the Visualizer is a companion view that owns its pane. Redirect
+      // pane - the Visualizer is a companion view that owns its pane. Redirect
       // the draft to a sibling pane instead: reuse one that's already on screen,
       // or split a fresh pane to the left of the Visualizer when it stands alone.
       const placement = resolveWorkspaceNewChatPlacement({
@@ -3422,7 +3422,7 @@ function WorkspaceScreenContent({
 
   // Every user-driven "new browser tab" path funnels through here, so this is
   // the one place the Browser-tools-off heads-up has to live. Informational
-  // only — the tab is still useful to the human — so it proceeds on "Not now"
+  // only - the tab is still useful to the human - so it proceeds on "Not now"
   // and can be silenced for good. Agent-driven tab creation
   // (browser-automation/handler.ts) never reaches this and must not warn.
   const handleCreateBrowserTab = useCallback(
@@ -3476,7 +3476,7 @@ function WorkspaceScreenContent({
   });
 
   // While this workspace is mounted, the global openLink() helper can route
-  // "in-app" link opens into a normal Otto browser tab here (Electron only —
+  // "in-app" link opens into a normal Otto browser tab here (Electron only -
   // handleOpenUrlInBrowserTab is a no-op elsewhere). See utils/open-link.ts.
   useEffect(() => {
     if (!persistenceKey || !getIsElectron()) {
@@ -3559,7 +3559,7 @@ function WorkspaceScreenContent({
         // Consult both maps: an opened observed subagent is an ephemeral
         // projection that lives in agentDetails (fetched, no projectPlacement),
         // not agents. Reading only `agents` would miss its parentAgentId and
-        // wrongly fall through to archive-on-close — cancelling a run the user
+        // wrongly fall through to archive-on-close - cancelling a run the user
         // only meant to close. See docs/agent-lifecycle.md (Item 5).
         const session = useSessionStore.getState().sessions[normalizedServerId];
         const agent = session?.agents?.get(agentId) ?? session?.agentDetails?.get(agentId) ?? null;
@@ -3999,7 +3999,7 @@ function WorkspaceScreenContent({
           return true;
         case "sidebar.open.files":
           // Mod+F means "find" everywhere else in the app, so outside an editor
-          // it opens the Files tab AND its filename finder — the tab on its own
+          // it opens the Files tab AND its filename finder - the tab on its own
           // is a destination, not an answer. Find-in-*project* (text, not
           // names) stays on Mod+Shift+F.
           handleOpenExplorerTab("files");
@@ -4577,7 +4577,7 @@ function WorkspaceScreenContent({
     explorerOpen: isExplorerOpen,
   });
   // In focus mode the header is hidden and the desktop tab row becomes the top
-  // strip under the native window controls — publish that so the caption strip
+  // strip under the native window controls - publish that so the caption strip
   // color follows the tab-row gutter (surfaceSidebar) rather than surface0.
   usePublishFocusModeTabStripVisibility({
     isFocusModeEnabled,
@@ -4913,7 +4913,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   headerTitleTextGroup: {
     // Compact floors the project/workspace labels so the action strip can never
-    // squeeze them out entirely — `fitCompactHeaderActions` reserves the same
+    // squeeze them out entirely - `fitCompactHeaderActions` reserves the same
     // width when deciding which buttons still fit.
     minWidth: {
       xs: MIN_TITLE_WIDTH,
@@ -4966,12 +4966,12 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: compactUp(theme.spacing[2]),
     borderRadius: theme.borderRadius.lg,
   },
-  // Hover and selection colors are shared with `headerIconSlotStyle` — see the
+  // Hover and selection colors are shared with `headerIconSlotStyle` - see the
   // comments there, and the token derivations in `theme.ts`.
   headerActionButtonHovered: {
     backgroundColor: theme.colors.surfaceToggleHover,
   },
-  // Fixed touch-target box for the mobile "..." trigger — doubled alongside the
+  // Fixed touch-target box for the mobile "..." trigger - doubled alongside the
   // icon it wraps (`theme.iconSize.md`/`.lg`) so the icon keeps breathing room
   // instead of filling the box edge-to-edge once it doubles in compact mode.
   compactHeaderActionButton: {
@@ -4989,7 +4989,7 @@ const styles = StyleSheet.create((theme) => ({
     // On desktop every chrome boundary in the header series is separated by the
     // standard `spacing[2]` gap (matching the `left`/`right`/headerRight
     // containers). This cluster sits flush against headerRight, which lives in a
-    // different container, so no shared container-gap spans that seam — the
+    // different container, so no shared container-gap spans that seam - the
     // trailing padding supplies that one standard gap itself. Compact drops it:
     // the "..."/Visualizer/Play/Explorer run is a single flush strip there, so
     // the doubled touch targets fit without crowding the title.
@@ -5098,7 +5098,7 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     color: theme.colors.foreground,
     // Matches the +2 the switcher's own option rows already carry
-    // (workspace-tab-presentation.tsx `optionLabel`) — the collapsed trigger
+    // (workspace-tab-presentation.tsx `optionLabel`) - the collapsed trigger
     // shows the same label and had been left at the base size.
     fontSize: {
       xs: theme.fontSize.sm + 2,

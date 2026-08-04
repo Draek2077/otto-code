@@ -105,7 +105,7 @@ describe("lists", () => {
   });
 
   it("renders a description list as bolded terms", () => {
-    expect(convert("Term:: The definition.")).toBe("- **Term** — The definition.");
+    expect(convert("Term:: The definition.")).toBe("- **Term** - The definition.");
   });
 });
 
@@ -201,7 +201,7 @@ describe("inline formatting", () => {
 describe("degradation", () => {
   it("surfaces an unresolved include rather than dropping it", () => {
     expect(convert("include::shared/setup.adoc[]")).toBe(
-      "> **Include** `shared/setup.adoc` — not resolved in preview.",
+      "> **Include** `shared/setup.adoc` - not resolved in preview.",
     );
   });
 
@@ -241,7 +241,7 @@ describe("archdocs corpus", () => {
   });
 });
 
-// The hand-authored fixture is deliberately construct-dense — it carries
+// The hand-authored fixture is deliberately construct-dense - it carries
 // constructs the architecture pages happen not to use (callout lists, literal
 // blocks, description lists, sidebars, an unresolved include). Keeping it under
 // test means the file people open to eyeball the viewer is also the file that
@@ -272,7 +272,7 @@ describe("test-documents fixture", () => {
     expect(body).toContain("[the AsciiDoc site](https://asciidoc.org)");
     expect(body).toContain("`literal {monospace}`");
 
-    // Both image macros reach the markdown image path, targets intact — that is
+    // Both image macros reach the markdown image path, targets intact - that is
     // what the renderer then resolves against the document's own directory.
     expect(body).toContain("![Orbit via the block macro](logo.svg)");
     expect(body).toContain("![Orbit inline](logo.svg)");

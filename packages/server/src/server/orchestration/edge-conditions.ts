@@ -7,14 +7,14 @@ import type { GraphEdge } from "@otto-code/protocol/orchestration";
 // A condition is a JSONata expression evaluated against the upstream node's
 // result. JSONata rather than a bespoke DSL because it is parsed and evaluated
 // (never eval'd), covers comparisons, boolean logic, array and string
-// functions, and is small — and rather than raw JS because a graph is data a
+// functions, and is small - and rather than raw JS because a graph is data a
 // user authored in a designer, and data must never become code the daemon
 // executes.
 //
 // Evaluation context: the upstream node's output fields at the top level, so
 // `complexity = "simple"` reads naturally, plus `output` carrying its prose so
 // a node that declared no fields can still be tested (`$contains(output,
-// "ready")`). Nothing else is in scope — a condition cannot reach the
+// "ready")`). Nothing else is in scope - a condition cannot reach the
 // filesystem, the run, or another node.
 
 export interface EdgeConditionContext {
@@ -57,7 +57,7 @@ export async function resolveEdgeCondition(
 }
 
 // JSONata returns `undefined` for a path that matched nothing, which is the
-// most common "no" — treat it, empty sequences, and empty strings as false, so
+// most common "no" - treat it, empty sequences, and empty strings as false, so
 // a condition on a field the upstream never produced reads as not-taken rather
 // than as an error.
 function isTruthy(value: unknown): boolean {

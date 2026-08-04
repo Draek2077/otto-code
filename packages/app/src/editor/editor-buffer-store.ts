@@ -133,7 +133,7 @@ export function removeEditorBuffer(input: {
 }
 
 /**
- * Drops a buffer on tab close when it holds nothing the user could lose — a
+ * Drops a buffer on tab close when it holds nothing the user could lose - a
  * buffer is the whole file's text, twice over once it is dirty, so a session
  * that opens a few hundred files never gives that memory back otherwise.
  *

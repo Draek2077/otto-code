@@ -737,7 +737,7 @@ describe("WorkspaceDirectory hidden workspaces", () => {
 });
 
 // A rebuild for named workspaceIds must fetch only those workspaces' agents
-// instead of projecting every live and persisted agent in the home — while
+// instead of projecting every live and persisted agent in the home - while
 // producing byte-identical descriptors. The subtle half is parent resolution: a
 // subagent counts as its workspace's root only when its parent RESOLVES to a
 // different workspace, so a scoped fetch that simply dropped out-of-scope

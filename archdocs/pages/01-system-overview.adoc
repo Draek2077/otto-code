@@ -36,7 +36,7 @@ flowchart LR
 
 Three deployment models, one architecture: a locally started daemon (default,
 `127.0.0.1:6868`), a desktop app that supervises its own embedded daemon, and a
-firewalled daemon reached through the relay. The relay routes ciphertext only — it
+firewalled daemon reached through the relay. The relay routes ciphertext only - it
 cannot read agent traffic.
 
 == The eight governing systems
@@ -50,7 +50,7 @@ rest of this documentation set uses.
 
 |*1. Contract & Transport*
 |One append-only wire protocol every client speaks: message schemas, binary terminal
-frames, RPC namespacing, capability negotiation, relay E2EE. Governs compatibility —
+frames, RPC namespacing, capability negotiation, relay E2EE. Governs compatibility -
 old clients must parse new daemons and vice versa.
 |`packages/protocol`, `packages/client`, daemon `websocket-server.ts` / `session.ts`,
 `packages/relay`
@@ -98,11 +98,11 @@ link:05-audit-architecture.html[Audit Architecture].
 |*8. Client Experience*
 |The app itself: Expo Router shell, host runtime, Zustand + push-fed React Query
 state, the virtualized chat surface, platform gating across iOS/Android/web/Electron.
-|`packages/app/src` — `runtime/`, `contexts/`, `stores/`, `agent-stream/`,
+|`packages/app/src` - `runtime/`, `contexts/`, `stores/`, `agent-stream/`,
 `components/`
 |===
 
-Cross-cutting all eight: *Security* (auth, pairing, E2EE — `SECURITY.md`),
+Cross-cutting all eight: *Security* (auth, pairing, E2EE - `SECURITY.md`),
 *Configuration* (link:03-configuration.html[its own page]), and *Delivery*
 (build graph, release, testing).
 

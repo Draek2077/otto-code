@@ -42,7 +42,7 @@ import {
  *
  * 2. **Regeneration feeds the current result back in.** What the user kept is
  *    already in the documents handed to the model, so the next round builds on
- *    it without a constraint-prompt the model may ignore — and because it is
+ *    it without a constraint-prompt the model may ignore - and because it is
  *    baked in, decisions do not need to survive a round. Each new diff arrives
  *    with every change kept, and no change identity has to be matched across
  *    regenerations. A dropped change reappearing is correct behaviour, not a
@@ -99,7 +99,7 @@ export interface RefineSession {
   setWritable: (fileId: string, writable: boolean) => void;
   /**
    * Widen the blast radius to the whole set, or narrow it back to the primary.
-   * Narrowing never empties it — a set with nothing rewritable is a request the
+   * Narrowing never empties it - a set with nothing rewritable is a request the
    * daemon cannot answer.
    */
   setAllWritable: (writable: boolean) => void;
@@ -148,7 +148,7 @@ async function pinFile(client: RefineFileReader, file: RefineSetFile): Promise<R
  *
  * References are tolerant where documents are not, and deliberately so. A
  * reference is context: a stale entry in the context graph, or a link into a
- * file that has since moved, should cost that one file's worth of context — not
+ * file that has since moved, should cost that one file's worth of context - not
  * the session. A document that cannot be read is the opposite: the job is about
  * it, so failing loudly is the only honest answer.
  *

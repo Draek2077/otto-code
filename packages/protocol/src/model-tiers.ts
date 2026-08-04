@@ -1,12 +1,12 @@
 /**
  * Model → tier classification, shared by the daemon (stamps `model.tier` at
- * ingest) and the app (reads `model.tier`). Pure and dependency-free — no zod,
+ * ingest) and the app (reads `model.tier`). Pure and dependency-free - no zod,
  * no I/O.
  *
  * Deliberately NO name-pattern guessing: the official model ids are public
  * record, so we classify what we KNOW (the shipped catalog) and leave everything
  * else `undefined` = "Unknown". Size-in-the-name heuristics are unreliable
- * (a Qwen-32B coder ≠ a Qwen-32B instruct), so we don't pretend — the user tags
+ * (a Qwen-32B coder ≠ a Qwen-32B instruct), so we don't pretend - the user tags
  * an Unknown model with an override and that's it.
  *
  * Resolution order for a single model:
@@ -23,7 +23,7 @@ import type { AgentModelDefinition, ModelTier } from "./agent-types.js";
 // case-insensitively against the exact model id; decorated ids that miss here
 // fall through to patterns.
 export const KNOWN_MODEL_TIERS: Readonly<Record<string, ModelTier>> = {
-  // Anthropic (Claude) — the full Claude Code manifest. Tiering rule: 1M-context
+  // Anthropic (Claude) - the full Claude Code manifest. Tiering rule: 1M-context
   // Opus variants are "deep", non-1M Opus and Sonnet are "standard", Haiku is
   // "fast". Fable (1M, most powerful) is "deep".
   "claude-fable-5": "deep",
@@ -89,7 +89,7 @@ export function catalogTier(modelId: string): ModelTier | undefined {
 
 /**
  * Infer a model's tier from the shipped catalog alone (no guessing). Undefined
- * for models we don't ship an id for — those read as "Unknown" until the user
+ * for models we don't ship an id for - those read as "Unknown" until the user
  * tags one.
  */
 export function inferModelTier(model: Pick<AgentModelDefinition, "id">): ModelTier | undefined {

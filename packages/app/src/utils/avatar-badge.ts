@@ -58,7 +58,7 @@ function normalizeHexColor(value: string): string | null {
 }
 
 /**
- * Dark or white ink — whichever contrasts better against `hexColor`.
+ * Dark or white ink - whichever contrasts better against `hexColor`.
  * Delegates to the design system's `accentFillInk` formula so avatar badges
  * and accent chips always agree about black-vs-white ink on the same color.
  * Falls back to white for input that can't be parsed as a hex color.

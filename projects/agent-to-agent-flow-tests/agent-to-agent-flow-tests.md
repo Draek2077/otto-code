@@ -11,14 +11,14 @@ which is exactly where nothing was looking.
 
 1. The prompt arrives while the target agent is still finishing a turn, so it lands in the **steer
    queue** instead of dispatching.
-2. The agent is archived or closed before that queue drains. The entry is **silently discarded** —
+2. The agent is archived or closed before that queue drains. The entry is **silently discarded** -
    no error, no notification to the sender, no dead letter.
 3. The orphaned entry keeps rendering in the composer's send queue for an agent that no longer
    exists, which is how a human notices.
 
 The tool returns `{"success":true,"status":"running"}` at _enqueue_ time. That is not a status, it
 is a hope: the agent may be neither running nor ever going to run it. The snapshot evidence pattern
-is `lastUserMessageAt` (prompt accepted), `archivedAt` a few seconds later, `lastError: null` —
+is `lastUserMessageAt` (prompt accepted), `archivedAt` a few seconds later, `lastError: null` -
 accepted, then dropped, never failed.
 
 Three or four orphans accumulated in a single session before anyone noticed, and the sender kept
@@ -69,7 +69,7 @@ whole exchange rather than on individual calls.
 
 The `mock` provider is the right vehicle and already has most of what is needed. It is a registered
 provider with a real session lifecycle, it is deterministic, it costs nothing, and it already parses
-prompt directives to trigger specific behaviours — including **asking questions**
+prompt directives to trigger specific behaviours - including **asking questions**
 (`MockQuestionPromptRequest` / `MockQuestionPromptQuestion`), which is what makes a question/answer
 round trip testable without a model.
 
@@ -101,6 +101,6 @@ Design notes worth honouring:
 ## Working around it until then
 
 Verify the artifacts after every agent-to-agent send; never trust the return value. A file left
-untouched plus a cheerful `success: true` is this bug, not a model that stopped early — an early
+untouched plus a cheerful `success: true` is this bug, not a model that stopped early - an early
 stop leaves work on disk with a truncated reply. Check `get_agent_status` for `status: "closed"` or
 a non-null `archivedAt` before re-prompting, and respawn rather than boot when the agent is gone.

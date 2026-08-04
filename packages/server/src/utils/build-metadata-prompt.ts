@@ -12,7 +12,7 @@ export interface RepoRootResolver {
 
 // A style section carries the default guidance for one artifact. The project
 // owner replaces it wholesale via otto.json metadataGeneration.<configKey>.instructions
-// — their text is used instead of the default, never appended alongside it, so the
+// - their text is used instead of the default, never appended alongside it, so the
 // two never conflict. The contract block (what to produce, the JSON shape, and any
 // correctness/safety rules) lives outside the sections and is never overridable.
 export interface MetadataStyleSection {

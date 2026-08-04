@@ -71,8 +71,8 @@ interface ParentCandidate {
  * candidates, take the one whose merge-base with HEAD is the **latest** commit. That merge-base
  * is the nearest branch point, so the fewest commits the branch did not author can leak in.
  *
- * Returns `null` when nothing plausibly forks — an orphan branch, a single-branch repo, or the
- * default branch itself — and the caller falls back to the repository default.
+ * Returns `null` when nothing plausibly forks - an orphan branch, a single-branch repo, or the
+ * default branch itself - and the caller falls back to the repository default.
  */
 export async function inferParentBranchRef(
   cwd: string,
@@ -85,7 +85,7 @@ export async function inferParentBranchRef(
 
   // The default branch does not fork from anything, and asking anyway produces a confidently
   // wrong answer. Every branch ever merged into it has a tip that is an ancestor of HEAD, which
-  // is graph-identical to a stacked parent — and since the default branch is excluded from its
+  // is graph-identical to a stacked parent - and since the default branch is excluded from its
   // own candidate list, one of those merged branches would always win. Observed on this repo:
   // standing on `main` proposed a long-merged feature branch as main's parent.
   if (defaultBranch && isSameBranch(currentBranch, defaultBranch)) {
@@ -113,7 +113,7 @@ export async function inferParentBranchRef(
   for (const [index, ref] of candidateRefs.entries()) {
     const forkPoint = forkPoints[index];
     if (!forkPoint) {
-      // Unrelated history — no common ancestor at all, so it cannot be a parent.
+      // Unrelated history - no common ancestor at all, so it cannot be a parent.
       continue;
     }
     // A merge-base equal to HEAD means the candidate *contains* HEAD: it is a child branch, or
@@ -148,8 +148,8 @@ function isSameBranch(left: string, right: string): boolean {
  * origin/main" for someone who simply branched off `main`, and the comparison resolver already
  * chooses between `main` and `origin/main` by fork point, so the qualifier buys nothing.
  *
- * The qualifier survives only when there is no local branch — a parent that exists solely as a
- * remote-tracking ref — and when the user pins one explicitly, which is a separate decision the
+ * The qualifier survives only when there is no local branch - a parent that exists solely as a
+ * remote-tracking ref - and when the user pins one explicitly, which is a separate decision the
  * resolver honours verbatim.
  */
 async function preferLocalBranchName(cwd: string, ref: string, logger?: Logger): Promise<string> {
@@ -185,7 +185,7 @@ async function listCandidateRefs(
       `--count=${MAX_PARENT_CANDIDATES}`,
       // Full refnames, not `%(refname:short)`. Git shortens `refs/remotes/origin/HEAD` to the
       // bare remote name `origin`, which then looks like an ordinary branch candidate and wins
-      // on merge-base against anything — it is a symbolic ref to the default branch, not a
+      // on merge-base against anything - it is a symbolic ref to the default branch, not a
       // branch of its own. Shortening here instead keeps that case identifiable.
       "--format=%(refname)",
       "refs/heads",
@@ -226,7 +226,7 @@ function shortenCandidateRef(refName: string): string | null {
  * How many times the fork points are re-scanned looking for a strictly later one.
  *
  * Fork points are all ancestors of HEAD, but ancestors of a commit form a DAG rather than a
- * chain — two of them are incomparable whenever HEAD's history contains a merge. So a single
+ * chain - two of them are incomparable whenever HEAD's history contains a merge. So a single
  * greedy max-scan is not guaranteed to land on a maximal element and its answer depends on the
  * order refs came back in. Re-scanning until nothing moves fixes that for a few subprocess
  * calls; the cap stops a pathological graph from spinning.

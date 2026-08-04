@@ -330,7 +330,7 @@ describe("inferred diff base", () => {
     const { userRepo, ottoHome } = createStackedPlainCheckout();
 
     // Every diff-derived number in the UI reads one base resolution, so detecting the parent has
-    // to move all of them together — not just the Changes list. Against `main` these would be
+    // to move all of them together - not just the Changes list. Against `main` these would be
     // 2 commits and 2 additions, counting the parent's work as the child's.
     const status = await getCheckoutStatus(userRepo, { ottoHome });
     expect(status).toMatchObject({
@@ -353,7 +353,7 @@ describe("inferred diff base", () => {
     });
 
     // `parent` merges and is deleted. Every diff against it would now fail, so the stored base
-    // has to re-resolve — once — to the repository default.
+    // has to re-resolve - once - to the repository default.
     git(userRepo, ["branch", "-D", "parent"]);
 
     const healed = await getCheckoutStatus(userRepo, { ottoHome });
@@ -392,7 +392,7 @@ describe("inferred diff base", () => {
   it("compares the default branch against its remote-tracking ref", async () => {
     const { userRepo, tempDir } = createStackFixture();
     const ottoHome = join(tempDir, "otto-home");
-    // Standing on `main`, "vs main" is empty by definition — merge-base(main, HEAD) is HEAD.
+    // Standing on `main`, "vs main" is empty by definition - merge-base(main, HEAD) is HEAD.
     // The useful comparison is against origin/main, which surfaces unpushed work.
     commitFile(userRepo, "unpushed.txt", "unpushed\n", "unpushed work");
 

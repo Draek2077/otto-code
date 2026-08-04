@@ -49,7 +49,7 @@ function scheduleClient(workspace: SeededWorkspace): UnattendedScheduleClient {
   return workspace.client as unknown as UnattendedScheduleClient;
 }
 
-// A cadence that never fires on its own during a test run — manual run-once
+// A cadence that never fires on its own during a test run - manual run-once
 // does not advance it (finishRun's `manual` branch), so the schedule only ever
 // runs when the spec says so.
 const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
@@ -63,7 +63,7 @@ export interface CreatedMockSchedule {
  * Creates a mock-provider new-agent schedule in the seeded workspace's repo.
  * Schedule runs are always unattended (`unattended: true` + internal agent in
  * packages/server/src/server/schedule/service.ts), which is the only wire-
- * reachable path to an unattended agent — `unattended` is not a create_agent
+ * reachable path to an unattended agent - `unattended` is not a create_agent
  * field. `personality` may name a nonexistent personality to force a failed
  * run deterministically (resolveSchedulePersonalityBrain throws after the
  * hidden run workspace exists, exercising promote-on-error).
@@ -107,7 +107,7 @@ export async function createMockUnattendedSchedule(
 /**
  * Triggers a manual run and returns the settled run record. `schedule/run-once`
  * awaits the whole run daemon-side (ScheduleService.runOnce), so the returned
- * schedule already carries the finished run — no polling.
+ * schedule already carries the finished run - no polling.
  */
 export async function runScheduleOnce(
   workspace: SeededWorkspace,

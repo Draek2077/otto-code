@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react";
 // split into several assistant_message rows sharing a blockGroupId that butt
 // together and paint as one continuous bubble (see spacing.ts). The
 // BubbleCornerSheen gradient must span that whole visual bubble, but each row
-// can only paint inside its own bounds — so every grouped segment reports its
+// can only paint inside its own bounds - so every grouped segment reports its
 // bubble height here, and continuation segments read the summed height of the
 // segments above them to shift the shared gradient into group space.
 //

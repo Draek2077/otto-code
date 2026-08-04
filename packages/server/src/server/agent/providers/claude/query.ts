@@ -64,7 +64,7 @@ function applyRuntimeSettingsToClaudeOptions(
     spawnClaudeCodeProcess: (spawnOptions) => {
       const resolved = resolveClaudeSpawnCommand(spawnOptions, runtimeSettings);
       // When the SDK passes a default JS runtime ("node"/"bun"), replace it with
-      // process.execPath — the actual node binary running the daemon. This avoids
+      // process.execPath - the actual node binary running the daemon. This avoids
       // PATH lookup failures in the managed runtime bundle.
       // When the SDK passes a native binary path (from pathToClaudeCodeExecutable)
       // or the user overrides the command via runtime settings, use that directly.

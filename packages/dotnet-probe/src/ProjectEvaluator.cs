@@ -7,7 +7,7 @@ namespace Otto.DotnetProbe;
 ///
 /// Evaluation, not a design-time build, is the whole decision here (Phase 0's remaining spike,
 /// measured on a 12-project solution): a warm collection pays SDK resolution and the import graph
-/// once — 227 ms for the first project, ~33 ms for each one after — where Buildalyzer's
+/// once - 227 ms for the first project, ~33 ms for each one after - where Buildalyzer's
 /// design-time build cost ~1.4 s per project, 19.3 s for the same twelve, on a 31 MB payload that
 /// also raises the runtime floor to .NET 9. Evaluation is additionally the <i>more correct</i>
 /// answer for a file tree: a design-time build reports generated <c>obj/*.AssemblyInfo.cs</c> as
@@ -90,7 +90,7 @@ internal sealed class ProjectEvaluator : IDisposable
 
     /// <summary>
     /// Drop one project's evaluation so the next request re-reads it. Called when the watcher sees
-    /// the project — or something it imports — change; keeping the stale evaluation would make the
+    /// the project - or something it imports - change; keeping the stale evaluation would make the
     /// tree quietly wrong, which is worse than making it slow.
     /// </summary>
     public void Invalidate(string projectPath)
@@ -118,7 +118,7 @@ internal sealed class ProjectEvaluator : IDisposable
     }
 
     /// <summary>
-    /// True when something other than this project file declared the item — an SDK default glob,
+    /// True when something other than this project file declared the item - an SDK default glob,
     /// or a <c>Directory.Build.props</c>. Phase 2 turns on exactly this: for an implicit item,
     /// creating the file already adds it to the project and no <c>.csproj</c> edit exists to make.
     /// </summary>

@@ -24,7 +24,7 @@ const EMPTY_SNAPSHOT: ResourceSnapshot = {
 /**
  * Live view of the resource monitor for UI surfaces.
  *
- * Re-renders once per census tick (10s by default), not per frame — a readout
+ * Re-renders once per census tick (10s by default), not per frame - a readout
  * that repainted every frame would be measuring itself. The trend fit runs on
  * the same tick because it is over at most a few thousand samples of plain
  * numbers, which is cheaper than the census that produced them.

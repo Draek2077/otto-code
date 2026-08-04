@@ -47,7 +47,7 @@ try {
     // `chat wait` reads "latest message id" then subscribes for newer ones.
     // Under CI load the subprocess can take >1s to bootstrap, so a single
     // delayed post races against the read. Post repeatedly and race against
-    // wait — every post is newer than the snapshot wait took, so one of them
+    // wait - every post is newer than the snapshot wait took, so one of them
     // always wakes it up.
     const waitPromise = ctx.otto(["chat", "wait", "coord-room", "--timeout", "30s"]);
     const waitSentinel = waitPromise.then(() => "settled" as const);

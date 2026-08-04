@@ -69,7 +69,7 @@ export interface FilePreviewFileInfo {
   kind: "text" | "image" | "binary";
   /**
    * The preview renders this file through the markdown pipeline (`.md`,
-   * `.markdown`, `.mmd`, `.mermaid`) rather than as highlighted lines — so
+   * `.markdown`, `.mmd`, `.mermaid`) rather than as highlighted lines - so
    * there is no line mapping for find-in-file to highlight.
    */
   isRenderedDocument: boolean;
@@ -79,7 +79,7 @@ export interface FilePreviewFileInfo {
   eol: FileEol | null;
   /**
    * Natural pixel size, for images whose container we could parse. Null for
-   * every other kind, and for an image format we have no header reader for —
+   * every other kind, and for an image format we have no header reader for -
    * in which case the viewer keeps working, minus the zoom controls.
    */
   imageDimensions: ImageDimensions | null;
@@ -108,7 +108,7 @@ function readPreviewFileFacts(file: ExplorerFile | null | undefined): {
  *
  * A hook rather than an inline effect so `FilePreview` keeps its
  * cyclomatic-complexity budget for the query itself. Every dependency is a
- * primitive — including the two halves of the dimensions — because a refetch
+ * primitive - including the two halves of the dimensions - because a refetch
  * hands back equal-but-new objects, and depending on those would re-report on
  * every poll.
  */
@@ -167,7 +167,7 @@ export interface FilePreviewSyncHandle {
   /** Scroll so content Y `contentY` sits `viewportOffsetY` px below the viewport top. */
   scrollToContentY(contentY: number, viewportOffsetY: number): void;
   /**
-   * Scroll a 1-based line just below the top of the viewport — the preview's
+   * Scroll a 1-based line just below the top of the viewport - the preview's
    * answer to the editor's `goToLine`, so the outline can drive both views.
    * Exact over the code view, whose lines are a fixed height. Rendered markdown
    * has no line→pixel mapping, so it lands proportionally: the same
@@ -188,7 +188,7 @@ interface FilePreviewBodyProps {
   /** Where a rendered document's own relative image srcs resolve; null outside a workspace. */
   workspaceImages: WorkspaceImageSource | null;
   /**
-   * Soft-wrap long code lines instead of scrolling sideways — the same
+   * Soft-wrap long code lines instead of scrolling sideways - the same
    * preference the editor toolbar toggles, so the two views agree. Compact
    * always wraps: there is no room to scroll sideways on a phone.
    */
@@ -486,7 +486,7 @@ function FilePreviewBody({
   const { t } = useTranslation();
   const filePath = location.path;
   // Which files render through the markdown pipeline instead of as highlighted
-  // source. A deep link to a line always wins — you asked for that line.
+  // source. A deep link to a line always wins - you asked for that line.
   const documentKind = useMemo(
     () => (preview?.kind === "text" && !location.lineStart ? renderedDocumentKind(filePath) : null),
     [filePath, location.lineStart, preview?.kind],
@@ -676,7 +676,7 @@ function FilePreviewBody({
           return;
         }
         // Rendered markdown: prose has no line height, so place the line
-        // proportionally through the rendered document — close enough to land
+        // proportionally through the rendered document - close enough to land
         // on the heading the outline named.
         const lineCount = effectiveContent ? effectiveContent.split("\n").length : 0;
         if (lineCount <= 0) {
@@ -753,7 +753,7 @@ function FilePreviewBody({
                   </Text>
                 </View>
               ) : null}
-              {/* A repo document must not be able to reach the network just by being previewed —
+              {/* A repo document must not be able to reach the network just by being previewed -
                   but it may show its own images, read back through the daemon. */}
               <MarkdownRenderer
                 text={body}
@@ -866,7 +866,7 @@ function FilePreviewBody({
 /**
  * The end of the line for a file nothing can render: a plain statement plus the
  * facts a file manager would show. It stays a statement rather than becoming a
- * hex dump on purpose — a hex view of an arbitrary binary answers a question
+ * hex dump on purpose - a hex view of an arbitrary binary answers a question
  * almost nobody opening a file tab is asking, and the honest read here is
  * "there is nothing to see", said clearly.
  */
@@ -874,7 +874,7 @@ function BinaryPreview({ file }: { file: ExplorerFile }) {
   const { t } = useTranslation();
   const extension = useMemo(() => {
     // `getFileNameFromPath` returns null for a path that is empty or all
-    // separators — a shape the explorer should never hand us, but the facts row
+    // separators - a shape the explorer should never hand us, but the facts row
     // simply omits the extension rather than asserting it away.
     const name = getFileNameFromPath(file.path);
     if (!name) {
@@ -1022,7 +1022,7 @@ export function FilePreview({
   const imagePreviewUri = useAttachmentPreviewUrl(query.data?.imageAttachment ?? null);
 
   // What a rendered document resolves `![](docs/x.png)` against. Reads go out with
-  // the workspace root as their cwd, and only for paths contained under it — a
+  // the workspace root as their cwd, and only for paths contained under it - a
   // document outside the workspace gets no base at all, and keeps showing alt text.
   const workspaceImages = useMemo<WorkspaceImageSource | null>(() => {
     if (!client || !normalizedFilePath) {

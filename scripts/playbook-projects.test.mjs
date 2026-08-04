@@ -8,7 +8,7 @@
 //
 // What this catches is the authoring mistake that actually happens: declaring a break
 // variant and forgetting its overlay, or an overlay that no longer matches any file in
-// the tree — which would silently produce a break branch identical to main, i.e. an
+// the tree - which would silently produce a break branch identical to main, i.e. an
 // error scenario that has quietly stopped being one.
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";

@@ -14,9 +14,9 @@ The purpose is to step back, not double down. The committee may propose a comple
 
 ## Prerequisites
 
-Read the **otto** skill. Before choosing committee members, call `list_personalities` (role `advisor` or `judger`) — if the host has suitable personalities, spawn the members by `personality` name and skip provider selection. Otherwise read `~/.otto/orchestration-preferences.json` unless the user explicitly named providers in this request. Do not create committee agents until you have done one of these.
+Read the **otto** skill. Before choosing committee members, call `list_personalities` (role `advisor` or `judger`) - if the host has suitable personalities, spawn the members by `personality` name and skip provider selection. Otherwise read `~/.otto/orchestration-preferences.json` unless the user explicitly named providers in this request. Do not create committee agents until you have done one of these.
 
-Contrast is the point of a committee, so pick two deliberately contrasting members — by personality when available, otherwise across providers using the configured preferences rather than hardcoded defaults.
+Contrast is the point of a committee, so pick two deliberately contrasting members - by personality when available, otherwise across providers using the configured preferences rather than hardcoded defaults.
 
 ## Composition
 
@@ -49,9 +49,9 @@ Write a problem-level prompt:
 - Explicit: "do root cause analysis"
 - Explicit: "state assumptions, ask why three levels deep, check whether you're patching a symptom or removing the problem"
 
-Create both agents in parallel via Otto with `[Committee] <task>` titles and the same prompt. Wait for both — not just whichever finishes first.
+Create both agents in parallel via Otto with `[Committee] <task>` titles and the same prompt. Wait for both - not just whichever finishes first.
 
-Read both responses. Challenge them — do not accept at face value:
+Read both responses. Challenge them - do not accept at face value:
 
 - "Why does <underlying thing> happen? Symptom or cause?"
 - Verify any assumption the plan makes about the code.
@@ -70,7 +70,7 @@ Confirm the merged plan with both members. Multi-turn until consensus.
 
 Default: implement yourself. If the user said **"delegate"**, launch one impl agent and pass the merged plan.
 
-The committee stays clean — not involved in implementation.
+The committee stays clean - not involved in implementation.
 
 ## Phase 3: Review
 
@@ -80,4 +80,4 @@ Send the diff to the committee:
 
 Apply feedback yourself, or send to the impl agent. Repeat 2 → 3 until consensus.
 
-After ~10 iterations without convergence, start a fresh committee with the full history of what was tried — the current committee's context may have drifted too far.
+After ~10 iterations without convergence, start a fresh committee with the full history of what was tried - the current committee's context may have drifted too far.

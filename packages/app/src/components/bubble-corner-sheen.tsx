@@ -20,7 +20,7 @@ const DARK_MODE_SHEEN_OPACITY = 0.2;
 // Resolution-independent drawing space: the Svg stretches to fill its square
 // wrapper, so gradient coordinates are fixed viewBox units instead of
 // measured pixels. Keeps the proven userSpaceOnUse numeric coords (percentage
-// strings don't mirror reliably in react-native-svg) without any onLayout —
+// strings don't mirror reliably in react-native-svg) without any onLayout -
 // which RN-web only fires on mount/window-resize, so a measured size would
 // freeze while a streaming bubble grows.
 const VIEWBOX_SIZE = 100;
@@ -45,7 +45,7 @@ interface SheenOverlayProps extends BubbleCornerSheenProps {
   /**
    * Black chat background is on. The chat pane is scoped to the `black` theme
    * (always a dark surface) regardless of the app-wide light/dark mode, but
-   * `withUnistyles`/`uniProps` below resolves against the app theme — not the
+   * `withUnistyles`/`uniProps` below resolves against the app theme - not the
    * `ScopedTheme`, which silently unwinds for self-re-rendering descendants on
    * web (docs/unistyles.md, black-chat-scope.ts). So when this is set we ignore
    * the resolved `sheenOpacity` and force the dark-surface strength.
@@ -72,7 +72,7 @@ function SheenOverlay({ corner, sheenOpacity, forceDark, offsetTop = 0 }: SheenO
     <View pointerEvents="none" style={fillStyle}>
       <View style={squareStyle}>
         {/* The wrapper is a bubbleWidth-sided square, so the square viewBox
-            maps onto it 1:1 — no measurement needed for the gradient's own
+            maps onto it 1:1 - no measurement needed for the gradient's own
             size, and the sheen's extent is anchored to the bubble's width
             (identical for every segment of a group) rather than any one
             segment's height. */}
@@ -111,7 +111,7 @@ function SheenOverlay({ corner, sheenOpacity, forceDark, offsetTop = 0 }: SheenO
   );
 }
 
-// uniProps resolves a concrete number through React on mount and theme flips —
+// uniProps resolves a concrete number through React on mount and theme flips -
 // unlike a themed stylesheet opacity, there is no class/ShadowRegistry update
 // path to go stale (docs/unistyles.md welcome-screen gotcha). colorScheme is a
 // plain string, not a color token, so web CSSVars mode is not a concern.
@@ -122,12 +122,12 @@ const sheenOpacityMapping = (theme: Theme) => ({
 });
 
 /**
- * Diagonal white sheen pinned to a chat bubble's top corner — white at the
+ * Diagonal white sheen pinned to a chat bubble's top corner - white at the
  * anchor corner fading to fully transparent by the diagonal midpoint.
  * The gradient is always square (1:1) with its side pinned to the bubble's
  * width: the wrapper sizes itself with `width: 100%` + `aspectRatio: 1`, so
  * the square viewBox maps 1:1 with no measurement, the overhang below a short
- * bubble cropped by the bubble's overflow: "hidden". Pure layout — it tracks
+ * bubble cropped by the bubble's overflow: "hidden". Pure layout - it tracks
  * the bubble as it grows, and its extent doesn't change with message length.
  *
  * A streamed reply split into several butted segments (blockGroupId) passes

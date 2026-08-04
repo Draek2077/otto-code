@@ -1,7 +1,7 @@
 // Lightweight subsequence fuzzy matcher for the file finder. Client-side per
 // the charter (the daemon just hands back the file list). Scores favor
 // contiguous runs, matches right after a separator (path/camelCase boundary),
-// basename hits, and earlier positions — enough to feel right without a
+// basename hits, and earlier positions - enough to feel right without a
 // heavyweight ranking library.
 
 export interface FuzzyMatch<T> {

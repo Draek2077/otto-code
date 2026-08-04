@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Reports how far Otto has drifted from upstream Otto since the last merge.
 //
-// Git already knows *what* we last took — it's `git merge-base HEAD upstream/main`,
+// Git already knows *what* we last took - it's `git merge-base HEAD upstream/main`,
 // and it stays accurate as long as upstream is ingested with a real merge (never a
 // squash or rebase). This script reads that baseline and answers the two questions
 // that actually gate a merge decision:
@@ -11,7 +11,7 @@
 //
 // (2) is the expensive failure mode. The forge abstraction (upstream #1913) shipped
 // the same concern as our git-hosting layer while we were building it, and nobody
-// noticed until the merge. WATCHLIST exists so that never happens silently again —
+// noticed until the merge. WATCHLIST exists so that never happens silently again -
 // read docs/upstream-merges.md for the intent ledger that records what we
 // deliberately skipped and why.
 //
@@ -22,7 +22,7 @@ import { execFileSync } from "node:child_process";
 const VERBOSE = process.argv.includes("--verbose");
 
 // Subsystems this fork owns a rival or heavily-extended implementation of. An
-// upstream commit touching these needs a human read, not a merge driver — it may
+// upstream commit touching these needs a human read, not a merge driver - it may
 // be reinventing something we already ship. Keep in sync with the initiative list
 // in CLAUDE.md; a path here costs one line of output and saves a rewrite.
 const WATCHLIST = [
@@ -124,7 +124,7 @@ const tipDescribe = (() => {
 })();
 
 // A release tag exactly at the tip means upstream is at a clean, shipped point.
-// Anything else means the tip is mid-flight — see the cadence section of
+// Anything else means the tip is mid-flight - see the cadence section of
 // docs/upstream-merges.md for why we wait for the tag.
 const tipIsTagged = !/-\d+-g[0-9a-f]+$/.test(tipDescribe) && tipDescribe !== "(no tag)";
 
@@ -168,7 +168,7 @@ console.log(`  clean new files  : ${upstreamAdds.filter((f) => !ourFiles.has(f))
 
 heading("Release tags available to merge at");
 if (availableTags.length === 0) {
-  console.log("  none — upstream has not tagged a release since our baseline");
+  console.log("  none - upstream has not tagged a release since our baseline");
 } else {
   for (const tag of availableTags) console.log(`  ${tag}`);
 }
@@ -179,13 +179,13 @@ if (!tipIsTagged) {
 }
 
 // The headline check: did upstream touch anything we've independently rebuilt?
-heading("Watchlist — upstream work in subsystems we own");
+heading("Watchlist - upstream work in subsystems we own");
 let anyHits = false;
 for (const { label, paths } of WATCHLIST) {
   const hits = gitLines("log", "--format=%h\t%s", `${baseline}..upstream/main`, "--", ...paths);
   if (hits.length === 0) continue;
   anyHits = true;
-  console.log(`\n  \x1b[33m${label}\x1b[0m — ${hits.length} commit(s)`);
+  console.log(`\n  \x1b[33m${label}\x1b[0m - ${hits.length} commit(s)`);
   const shown = VERBOSE ? hits : hits.slice(0, 5);
   for (const line of shown) {
     const [sha, subject] = line.split("\t");
@@ -195,14 +195,14 @@ for (const { label, paths } of WATCHLIST) {
     console.log(`    … ${hits.length - shown.length} more (--verbose)`);
   }
 }
-if (!anyHits) console.log("  clear — no upstream work in our differentiated subsystems");
+if (!anyHits) console.log("  clear - no upstream work in our differentiated subsystems");
 
 // Upstream deleting or renaming a file we've modified will not auto-resolve, and
 // the rebrand makes it worse: every `otto-*`-named file we renamed shows up here
 // the moment upstream touches it.
 if (deletedButOursChanged.length > 0) {
   heading(
-    `Delete/modify hazards — upstream removed these, we changed them (${deletedButOursChanged.length})`,
+    `Delete/modify hazards - upstream removed these, we changed them (${deletedButOursChanged.length})`,
   );
   const shown = VERBOSE ? deletedButOursChanged : deletedButOursChanged.slice(0, 15);
   for (const f of shown) console.log(`  ${f}`);
@@ -229,7 +229,7 @@ for (const f of intersection) {
 churn.sort((a, b) => b.o + b.t - (a.o + a.t));
 
 if (churn.length > 0) {
-  heading(`Hand-merge hotspots — both sides changed >200 lines (${churn.length})`);
+  heading(`Hand-merge hotspots - both sides changed >200 lines (${churn.length})`);
   const shown = VERBOSE ? churn : churn.slice(0, 12);
   for (const { f, o, t } of shown) {
     console.log(`  ours:${String(o).padStart(5)}  theirs:${String(t).padStart(5)}   ${f}`);

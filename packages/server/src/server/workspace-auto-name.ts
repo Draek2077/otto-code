@@ -114,7 +114,7 @@ export class WorkspaceAutoName {
     let generated: GeneratedWorkspaceName | null = null;
     // Whether the branch-rename path actually invoked the generator. A null
     // result from a generation that DID run must not re-trigger the whole
-    // ladder — only a short-circuit that never generated (e.g. the branch was
+    // ladder - only a short-circuit that never generated (e.g. the branch was
     // already renamed, so attemptFirstAgentBranchAutoName skipped the callback)
     // should fall through to the direct generation below for the title.
     let generatorInvoked = false;
@@ -149,7 +149,7 @@ export class WorkspaceAutoName {
     // K4: re-read from the registry before writing so any concurrent upsert
     // that happened between workspace creation and this async path is not clobbered.
     // When the first-agent rename changed the git branch too, persist that branch
-    // alongside the title — both are this path's own fields.
+    // alongside the title - both are this path's own fields.
     await this.applyGeneratedWorkspaceTitle(input.workspace.workspaceId, {
       title: generatedTitle,
       ...(result.renamed ? { branch: result.branchName } : {}),
@@ -180,7 +180,7 @@ export class WorkspaceAutoName {
       return;
     }
     // K4: applyGeneratedWorkspaceTitle re-reads from the registry before writing.
-    // Directory workspaces have no branch — write only the title.
+    // Directory workspaces have no branch - write only the title.
     await this.applyGeneratedWorkspaceTitle(input.workspaceId, {
       title,
       promptTitle: resolveFirstAgentPromptTitle(input.firstAgentContext),
@@ -213,7 +213,7 @@ export class WorkspaceAutoName {
 
   // Host opt-out (WP-A metadataGeneration.enabled=false): skip workspace/branch
   // auto-naming entirely. User-initiated generations (commit/PR/voice) are
-  // unaffected — this gate only covers the automatic naming paths.
+  // unaffected - this gate only covers the automatic naming paths.
   private isMetadataGenerationEnabled(): boolean {
     return this.readDaemonConfig().metadataGeneration?.enabled !== false;
   }

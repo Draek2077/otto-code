@@ -3,7 +3,7 @@ import { StyleSheet } from "react-native-unistyles";
 
 /**
  * A pipe (|) that separates logical groups of controls within a horizontal
- * toolbar — e.g. "modify" vs "navigate" buttons in the editor toolbar, or
+ * toolbar - e.g. "modify" vs "navigate" buttons in the editor toolbar, or
  * "panels" vs "presentation" toggles in the visualizer toolbar. Purely
  * decorative (hidden from assistive tech); reach for it instead of hand-rolling
  * per-toolbar spacers so every toolbar groups its options the same way.

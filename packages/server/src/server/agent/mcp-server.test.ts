@@ -1219,7 +1219,7 @@ describe("create_agent MCP tool", () => {
       provider: "codex/gpt-5.4",
       title: "Short title",
     });
-    // Omitting both title and initialPrompt is the "open a bare new chat" path — the agent gets
+    // Omitting both title and initialPrompt is the "open a bare new chat" path - the agent gets
     // DEFAULT_BARE_AGENT_INITIAL_PROMPT and greets the user. An empty string is still rejected.
     expect(parsed.success).toBe(true);
 
@@ -1509,7 +1509,7 @@ describe("create_agent MCP tool", () => {
 
     // `provider` is optional at the schema level because a personality can
     // supply the brain instead. "One of provider/personality" is enforced at
-    // resolution (resolveCreateAgentBrain), not by the schema — so a create with
+    // resolution (resolveCreateAgentBrain), not by the schema - so a create with
     // neither still parses...
     const missingBrain = await tool.inputSchema.safeParseAsync({
       ...detachedDirectoryWorkspace(existingCwd),
@@ -3673,7 +3673,7 @@ describe("send_agent_prompt MCP tool", () => {
     // background still schema-defaults to true for agent-scoped sends;
     // notifyOnFinish is no longer schema-defaulted (WP-E moved that default to
     // the handler so it can honor agentBehaviors.notifyOnFinishDefault). The
-    // handler still resolves it on by default — asserted via the guidance below.
+    // handler still resolves it on by default - asserted via the guidance below.
     expect(parsed.data).toMatchObject({
       background: true,
     });

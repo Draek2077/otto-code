@@ -286,7 +286,7 @@ export async function readExplorerFile({
 /**
  * Conditional, atomic save for the text editor. Refuses to write unless the
  * on-disk file still matches the identity the client last read (hash when
- * provided, mtime otherwise) — a mismatch returns a conflict and leaves the
+ * provided, mtime otherwise) - a mismatch returns a conflict and leaves the
  * file untouched. Content arrives LF-normalized; the file's detected EOL is
  * re-applied so uniform CRLF files round-trip byte-identical.
  */
@@ -302,7 +302,7 @@ export async function writeExplorerFile({
   const filePath = await resolveScopedPath({ root, relativePath });
 
   // The editor only saves files it opened; a missing target is never an
-  // invitation to create one through this RPC — except the explicit
+  // invitation to create one through this RPC - except the explicit
   // deleted-file "save re-creates" flow.
   let handle: FileHandle;
   try {
@@ -369,7 +369,7 @@ export async function writeExplorerFile({
  * The sibling of `writeExplorerFile` for content that is not text. It shares
  * that function's path scoping and its atomic replace, and deliberately shares
  * none of its text handling: no EOL detection, no EOL re-application, and none
- * of the `isLikelyBinary` refusal — a PNG or a PDF *is* the binary file that
+ * of the `isLikelyBinary` refusal - a PNG or a PDF *is* the binary file that
  * check exists to protect, so re-exporting one has to be allowed.
  *
  * There is no conditional-write precondition here either; see
@@ -389,7 +389,7 @@ export async function writeExplorerBinaryFile({
 
   // `resolveMutationPath`, not `resolveScopedPath`. This call CREATES files, and
   // for a target that does not exist yet `resolveScopedPath` has nothing to
-  // resolve — its realpath throws ENOENT and it falls back to returning the
+  // resolve - its realpath throws ENOENT and it falls back to returning the
   // requested path unchecked, leaving only the lexical `..` test. A parent
   // directory that is a symlink out of the workspace passes that and the bytes
   // land wherever it points. `resolveMutationPath` resolves the parent's REAL
@@ -510,7 +510,7 @@ export async function createExplorerEntry({
     if (kind === "directory") {
       await fs.mkdir(target.resolvedPath);
     } else {
-      // "wx" — exclusive create. `writeFile` would happily truncate an existing
+      // "wx" - exclusive create. `writeFile` would happily truncate an existing
       // file, which is the one thing this must never do.
       const handle = await fs.open(target.resolvedPath, "wx");
       await handle.close();
@@ -533,7 +533,7 @@ export async function createExplorerEntry({
 }
 
 /**
- * Permanently remove an entry. This is an unlink, not a move to any trash — see
+ * Permanently remove an entry. This is an unlink, not a move to any trash - see
  * `FileDeleteRequestSchema` for why the daemon does not pretend to have one.
  *
  * `lstat` and `unlink`, never `stat`: a symlink is deleted as the link it is,
@@ -576,7 +576,7 @@ export async function deleteExplorerEntry({
 }
 
 /**
- * Rename, which is also move — the destination may sit in a different parent.
+ * Rename, which is also move - the destination may sit in a different parent.
  *
  * Never clobbers. POSIX `rename` silently replaces an existing destination
  * while Windows refuses it; the explicit pre-check is what makes both hosts
@@ -641,7 +641,7 @@ export async function renameExplorerEntry({
  *
  * Reads resolve the *target's* realpath, which is right for reading: a symlink
  * to a file inside the workspace should serve that file. A mutation must not do
- * that — deleting a link would delete its target, and renaming one would move
+ * that - deleting a link would delete its target, and renaming one would move
  * the target instead. So the final component is never followed. What is
  * resolved is the **parent**, because a symlinked parent directory is exactly
  * how `a/../..` style traversal sneaks past a lexical check: `root/link/x` is
@@ -713,7 +713,7 @@ async function resolveMutationPath({
  * there. Walking down and re-resolving each segment means the first escape
  * stops the walk before anything beyond it exists.
  *
- * Runs BEFORE `resolveMutationPath`, which requires the parent to be on disk —
+ * Runs BEFORE `resolveMutationPath`, which requires the parent to be on disk -
  * it reports a missing one as an error rather than creating it, because for
  * create/delete/rename a missing parent really is a mistake.
  *

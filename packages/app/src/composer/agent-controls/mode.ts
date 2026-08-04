@@ -3,7 +3,7 @@ import type { AgentMode } from "@otto-code/protocol/agent-types";
 import { isUserSelectableMode } from "@otto-code/protocol/provider-manifest";
 
 export interface ModeSelection {
-  /** Modes the user may pick — the dropdown options (excludes hidden modes). */
+  /** Modes the user may pick - the dropdown options (excludes hidden modes). */
   selectableModes: AgentMode[];
   /** The active mode, resolved from the full set so a hidden active mode still shows. */
   selectedMode: AgentMode | null;

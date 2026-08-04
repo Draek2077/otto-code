@@ -9,7 +9,7 @@ function selectTextEffectTheme(settings: AppSettings): TextEffectThemeId {
 
 // Reads the device-local text-effect theme through the settings query cache
 // with a `select`, so subscribers (every ExpandableBadge in a chat stream)
-// only re-render when the picked theme actually changes — never on unrelated
+// only re-render when the picked theme actually changes - never on unrelated
 // settings writes, and never per frame. Do NOT swap this for useAppSettings()
 // in hot chat components; that observer notifies on every settings change.
 export function useTextEffectThemeId(): TextEffectThemeId {

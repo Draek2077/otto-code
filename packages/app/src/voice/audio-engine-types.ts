@@ -14,7 +14,7 @@ export interface AudioPlaybackSource {
 export interface AudioPlaybackOptions {
   /**
    * Linear amplitude 0..1 for THIS play call, defaulting to 1 (untouched).
-   * The engine has no master volume on purpose — the caller names the channel's
+   * The engine has no master volume on purpose - the caller names the channel's
    * level, because assistant speech and agent voice cues share one engine and
    * have separate sliders. See voice/audio-gain.ts.
    */

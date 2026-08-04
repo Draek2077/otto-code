@@ -1,13 +1,13 @@
 import { z } from "zod";
 
 /**
- * The widget message bridge — the contract between a widget guest (WebView /
+ * The widget message bridge - the contract between a widget guest (WebView /
  * iframe / Electron <webview>) and its host renderer.
  *
  * Three transports carry the same two message shapes:
- *   native   — `window.ReactNativeWebView.postMessage` + `onMessage`
- *   web      — a `MessageChannel` port transferred in at load
- *   electron — a preload's `ipcRenderer.sendToHost` + the `ipc-message` event
+ *   native   - `window.ReactNativeWebView.postMessage` + `onMessage`
+ *   web      - a `MessageChannel` port transferred in at load
+ *   electron - a preload's `ipcRenderer.sendToHost` + the `ipc-message` event
  *
  * The schema lives here, once, so a transport cannot quietly drift. Everything
  * arriving from a guest is untrusted model-generated content: parse, never
@@ -71,7 +71,7 @@ export type WidgetGuestMessage = z.infer<typeof WidgetGuestMessageSchema>;
 /**
  * Parse a raw guest frame. Accepts the JSON string the native and Electron
  * transports deliver as well as an already-structured object (web's
- * MessageChannel). Returns null for anything unrecognized — including frames
+ * MessageChannel). Returns null for anything unrecognized - including frames
  * for a different widget, which the caller filters by id.
  */
 export function parseWidgetGuestMessage(raw: unknown): WidgetGuestMessage | null {

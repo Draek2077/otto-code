@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { _electron as electron, type ElectronApplication, type Page } from "playwright";
 // `electron`'s package.json `main` is a CJS module whose default export is
-// the path string to the platform binary — the same value
+// the path string to the platform binary - the same value
 // packages/desktop/scripts/dev-runner.mjs gets from `require("electron")`.
 import electronPath from "electron";
 import { buildCreateAgentPreferences, buildSeededHost } from "./daemon-registry";
@@ -13,7 +13,7 @@ import { resizePngToTarget, type ImageSize } from "./image";
 const EXTRA_HOSTS_KEY = "@otto:e2e-extra-hosts";
 
 export interface LaunchDesktopElectronInput {
-  /** Metro dev server port — must have been started with OTTO_WEB_PLATFORM=electron. */
+  /** Metro dev server port - must have been started with OTTO_WEB_PLATFORM=electron. */
   metroPort: number;
   /** Isolated E2E daemon port to seed as the only registered host. */
   daemonPort: number;
@@ -21,7 +21,7 @@ export interface LaunchDesktopElectronInput {
   serverId: string;
   /**
    * Sets the real BrowserWindow's content area to this logical size right
-   * after launch (via BrowserWindow.setContentSize in the main process — not
+   * after launch (via BrowserWindow.setContentSize in the main process - not
    * Playwright's setViewportSize, which for Electron only overrides what the
    * page's JS reports and never touches the actual OS window desktopCapturer
    * sees). Omit to use whatever size a fresh, unpersisted window state
@@ -32,7 +32,7 @@ export interface LaunchDesktopElectronInput {
 
 export interface LaunchedDesktopElectron {
   app: ElectronApplication;
-  /** The main window's Page — a real Playwright Page, same API as a browser page. */
+  /** The main window's Page - a real Playwright Page, same API as a browser page. */
   window: Page;
   /** Scratch userData dir created for this launch; removed by close(). */
   userDataDir: string;
@@ -47,16 +47,16 @@ export interface CaptureWindowWithChromeResult {
 }
 
 /**
- * Captures the app's main window exactly as composited on screen — including
+ * Captures the app's main window exactly as composited on screen - including
  * OS-drawn window chrome (Windows Window Controls Overlay minimize/maximize/
- * close buttons, or whatever the platform actually paints there) — and writes
+ * close buttons, or whatever the platform actually paints there) - and writes
  * it to `outputPath` as a PNG.
  *
  * Standard Playwright `page.screenshot()` (CDP's `Page.captureScreenshot`)
  * only rasterizes the web content surface; it can never show WCO buttons
  * because those are painted by Electron/Chromium's native window-chrome
  * compositor layer, not the DOM. This instead uses Electron's `desktopCapturer`
- * — real screen/window capture (DXGI/GDI-backed on Windows) — which sees the
+ * - real screen/window capture (DXGI/GDI-backed on Windows) - which sees the
  * window's true visible surface. `desktopCapturer` only exists in Electron's
  * main process (not the renderer, as of Electron 21+), so the capture runs
  * inside `electronApp.evaluate()`.
@@ -79,7 +79,7 @@ export async function captureWindowWithChrome(
     const bounds = win.getBounds();
     // getSources() downscales its thumbnail to fit within thumbnailSize while
     // preserving aspect ratio, so this must be at least as large as the
-    // window's real pixel size — pad generously to cover HiDPI scale factors
+    // window's real pixel size - pad generously to cover HiDPI scale factors
     // the main process doesn't need to compute exactly here.
     const thumbnailSize = {
       width: Math.max(bounds.width * 3, 1920),
@@ -117,7 +117,7 @@ export async function captureWindowWithChrome(
 }
 
 function buildSeededDesktopSettingsDocument(): string {
-  // manageBuiltInDaemon: false is the load-bearing bit — it keeps
+  // manageBuiltInDaemon: false is the load-bearing bit - it keeps
   // shouldStartBuiltInDaemon() (packages/app/src/app/_layout.tsx) from ever
   // calling start_desktop_daemon at boot, so this Electron instance never
   // tries to spawn its own daemon alongside the isolated e2e one.
@@ -140,8 +140,8 @@ function buildSeededDesktopSettingsDocument(): string {
 /**
  * Launches the real packaged-shape Electron desktop app (packages/desktop's
  * built dist/main.js) against an already-running Metro dev server (built with
- * OTTO_WEB_PLATFORM=electron so browser-pane.electron.tsx — the real
- * <webview>-backed component — is what actually ships in the bundle) and an
+ * OTTO_WEB_PLATFORM=electron so browser-pane.electron.tsx - the real
+ * <webview>-backed component - is what actually ships in the bundle) and an
  * already-running isolated e2e daemon. Callers must build packages/desktop's
  * main process first (`npm run build:main --workspace=@otto-code/desktop`);
  * this function only fails fast with a clear error if that wasn't done.
@@ -187,7 +187,7 @@ export async function launchDesktopElectron(
 
   if (input.windowSize) {
     // setContentSize (not setSize/setBounds) targets the renderable content
-    // area specifically — this app's frameless/WCO chrome config (see
+    // area specifically - this app's frameless/WCO chrome config (see
     // window-manager.ts's getMainWindowChromeOptions) draws its title-bar
     // overlay INSIDE that content area rather than adding to it, so content
     // size is what determines what actually renders on screen here. Applied
@@ -202,7 +202,7 @@ export async function launchDesktopElectron(
 
   // The main process already kicked off its own loadURL(DEV_SERVER_URL) before
   // firstWindow() resolved here (main.ts calls it unconditionally in dev).
-  // Let that first navigation finish — it may be Metro's first request for
+  // Let that first navigation finish - it may be Metro's first request for
   // the bundle (cold compile of the whole module graph), which can
   // comfortably exceed Playwright's 30s default action timeout.
   await window.waitForLoadState("load", { timeout: 120_000 });
@@ -217,7 +217,7 @@ export async function launchDesktopElectron(
   const createAgentPreferences = buildCreateAgentPreferences(seededHost.serverId);
 
   // Mirrors fixtures.ts's ottoE2ESetup seeding. addInitScript applies to every
-  // subsequent navigation — the reload() below is what actually makes it take
+  // subsequent navigation - the reload() below is what actually makes it take
   // effect, since the first navigation (awaited above) already ran unseeded.
   await window.addInitScript(
     (seedInput: {

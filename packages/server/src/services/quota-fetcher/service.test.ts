@@ -1447,7 +1447,7 @@ describe("ClaudeQuotaProvider scoped limit reconciliation", () => {
     ]);
   });
 
-  it("which representation carries the limit: both, same limit — one bar, scoped identity", async () => {
+  it("which representation carries the limit: both, same limit - one bar, scoped identity", async () => {
     const windows = await windowsFor({
       seven_day_omelette: { utilization: 12, resets_at: RESETS },
       limits: [scoped(model("Omelette"), 30)],
@@ -1457,7 +1457,7 @@ describe("ClaudeQuotaProvider scoped limit reconciliation", () => {
     ]);
   });
 
-  it("which representation carries the limit: both, different limits — two bars", async () => {
+  it("which representation carries the limit: both, different limits - two bars", async () => {
     const windows = await windowsFor({
       seven_day_opus: { utilization: 8, resets_at: RESETS },
       limits: [scoped(model("Fable"), 2)],

@@ -264,8 +264,8 @@ export interface ResolveTerminalSpawnCommandOptions {
  * (`ERROR_FILE_NOT_FOUND`). Worse, conpty completes the spawn asynchronously on
  * its own conout worker thread, so that failure surfaces as an uncaught
  * exception that takes down the whole terminal worker process. Resolving the
- * real path up front — and routing `.cmd`/`.bat` shims through `cmd.exe /c`
- * (node-pty has no `shell` option) — keeps the profile launchable.
+ * real path up front - and routing `.cmd`/`.bat` shims through `cmd.exe /c`
+ * (node-pty has no `shell` option) - keeps the profile launchable.
  *
  * Non-Windows and the default-shell path (no explicit command) are unchanged.
  */
@@ -593,8 +593,8 @@ function extractScrollback(
 }
 
 // xterm marks a line `isWrapped` when it is a continuation of the PREVIOUS line.
-// The snapshot carries the inverse, tmux-style flag — "this row continues onto the
-// next row" — so the client can rejoin and reflow logical lines. So row y's flag is
+// The snapshot carries the inverse, tmux-style flag - "this row continues onto the
+// next row" - so the client can rejoin and reflow logical lines. So row y's flag is
 // whether line y+1 is a wrapped continuation.
 function lineContinuesToNext(terminal: TerminalType, absoluteRow: number): boolean {
   return terminal.buffer.active.getLine(absoluteRow + 1)?.isWrapped === true;
@@ -938,7 +938,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   }
   emitTitleChange(initialTitle);
 
-  // Respond to DA1 queries (CSI c or CSI 0 c) — apps like nvim query terminal capabilities
+  // Respond to DA1 queries (CSI c or CSI 0 c) - apps like nvim query terminal capabilities
   terminal.parser.registerCsiHandler({ final: "c" }, (params) => {
     if (params.length === 0 || (params.length === 1 && params[0] === 0)) {
       ptyProcess.write("\x1b[?62;4;22c");

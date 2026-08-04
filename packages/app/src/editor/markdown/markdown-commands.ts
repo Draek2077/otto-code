@@ -37,7 +37,7 @@ type Transform = (doc: string, range: DocRange) => MarkdownEdit | null;
  * Whether markdown markup is what the given position actually is.
  *
  * `isActiveAt` walks the parse tree, so this is false inside a fenced code
- * block even in a `.md` file — bold in the middle of a ```ts fence would be
+ * block even in a `.md` file - bold in the middle of a ```ts fence would be
  * corrupting code, not formatting prose. It is also what makes every command
  * here decline in a `.ts` file, letting the shared keymap fall through to the
  * File Editor binding for the same key.
@@ -122,7 +122,7 @@ export function getMarkdownCommand(name: MarkdownCommandName): StateCommand {
  * same event. Returning false leaves CodeMirror's own paste to run, which is
  * what handles plain text, and what handles every non-markdown file.
  *
- * The conversion is deliberately skipped for HTML that carries no structure —
+ * The conversion is deliberately skipped for HTML that carries no structure -
  * copying out of a plain-text editor still puts a `<span>` on the clipboard, and
  * round-tripping that through a converter can only lose whitespace.
  */
@@ -159,7 +159,7 @@ export const markdownPasteHandler = EditorView.domEventHandlers({
  *
  * The split is forced by the architecture rather than chosen. On native the
  * editor runs inside a webview and cannot reach the daemon, and on web the
- * client never touches a workspace file either — so the only thing the core can
+ * client never touches a workspace file either - so the only thing the core can
  * do with a dropped image is recognise it and pass it on. That is also why the
  * bytes are base64: this crosses a JSON bridge.
  *
@@ -190,7 +190,7 @@ export function markdownImageDropHandler(
       return false;
     }
     // The reads are asynchronous, so this hands the host a batch once every
-    // image has resolved rather than one message per file — several images in
+    // image has resolved rather than one message per file - several images in
     // one gesture must insert in the order they were dropped, and independent
     // reads finish in whatever order they please.
     void Promise.all(images.map(readImageAsBase64)).then((results) => {
@@ -218,7 +218,7 @@ export function markdownImageDropHandler(
       event.preventDefault();
       // Put the caret where the image was actually dropped. Without this the
       // link lands wherever the caret happened to be, which is rarely the place
-      // the user aimed at — and by the time the read resolves there is no
+      // the user aimed at - and by the time the read resolves there is no
       // pointer position left to consult.
       const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
       if (position !== null) {

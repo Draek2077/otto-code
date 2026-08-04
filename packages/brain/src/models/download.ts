@@ -26,7 +26,7 @@ function resolveUrl(repo: string, file: string): string {
 
 /**
  * The GGUF filename to download. Prefer an explicit override, then the catalog
- * entry's `quantFile`, then the basename of the catalog `id` — which for the
+ * entry's `quantFile`, then the basename of the catalog `id` - which for the
  * seeded catalog is `<hfRepo>/<file>.gguf`, so the id already names the file.
  * Only if none of those yields a `.gguf` do we give up: community repos name
  * files inconsistently, so a bare id with no gguf basename still needs --file.

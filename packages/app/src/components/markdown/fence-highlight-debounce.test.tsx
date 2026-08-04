@@ -11,7 +11,7 @@ import { FENCE_HIGHLIGHT_DEBOUNCE_MS, useSettledFenceCode } from "./fence-highli
 
 // Every distinct value the hook has handed downstream. One entry is one
 // tokenization the highlighter would have run, which is the quantity F2 is
-// about — not the number of renders.
+// about - not the number of renders.
 let commits: string[] = [];
 
 function Probe({ code }: { code: string }) {

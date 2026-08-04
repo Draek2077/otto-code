@@ -33,7 +33,7 @@ const GENERATION_CANCELLED_MESSAGE = "Generation cancelled";
 // How long a generation may run before we give up, cancel the agent, and mark
 // the artifact as timed out. Local models are slow, so the default is generous;
 // override with OTTO_ARTIFACT_TIMEOUT_MS (milliseconds) to tune without a
-// rebuild. Keep this as the single source of truth — the watcher's timer and
+// rebuild. Keep this as the single source of truth - the watcher's timer and
 // the user-facing message both derive from it.
 const DEFAULT_GENERATION_TIMEOUT_MS = 960_000;
 const GENERATION_TIMEOUT_MS =
@@ -249,7 +249,7 @@ export class ArtifactService {
 
   /**
    * Edit an artifact's metadata WITHOUT regenerating. Only provided fields are
-   * overwritten. Editing never re-runs the agent — the user regenerates
+   * overwritten. Editing never re-runs the agent - the user regenerates
    * separately once they're happy with the changes.
    */
   async update(input: UpdateArtifactInput): Promise<ArtifactMetadata> {
@@ -357,7 +357,7 @@ export class ArtifactService {
   }
 
   /**
-   * Shared teardown for a generation that must stop early — user cancel or
+   * Shared teardown for a generation that must stop early - user cancel or
    * timeout. Stops the watcher (so a partial/late file can't flip status back
    * to "ready"), cancels the generation agent so nothing lingers, and lands the
    * artifact in an error state so it can be regenerated or deleted. Safe to call
@@ -398,7 +398,7 @@ export class ArtifactService {
 
   /** Move the current HTML aside so a regeneration can't be mistaken for
    * "ready" by the watcher. No-ops (leaves nothing to restore) when there's
-   * no prior file — a first-ever generation has none. */
+   * no prior file - a first-ever generation has none. */
   private async backupBeforeRegenerate(artifactId: string, filePath: string): Promise<void> {
     const backupPath = `${filePath}.bak`;
     try {
@@ -523,7 +523,7 @@ export class ArtifactService {
     // Creating the agent only spins up the session; the prompt must be run to
     // actually generate the file. The watcher flips the artifact to "ready"
     // when the HTML lands. Close (not archive) the ephemeral internal agent
-    // afterward — internal agents are never persisted, matching how other
+    // afterward - internal agents are never persisted, matching how other
     // one-shot internal agents (branch-name/git-metadata generators) tear down.
     try {
       await this.agentManager.runAgent(agent.id, agentPrompt);

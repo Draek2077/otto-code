@@ -2011,7 +2011,7 @@ export class HostRuntimeStore {
       useWorkspaceSetupStore.getState().clearResolvedEmpty(serverId);
       void queryClient.invalidateQueries({ queryKey: schedulesQueryBaseKey });
       // The cached local desktop-daemon serverId (["desktop-daemon-server-id"]) never
-      // refetches on its own — staleTime: Infinity, refetchOnMount/Reconnect false. If the
+      // refetches on its own - staleTime: Infinity, refetchOnMount/Reconnect false. If the
       // local daemon restarts with a new serverId it would keep serving the stale id,
       // stranding Settings on a ghost host ("Host not found"). Force a re-read on any
       // reconnect so it self-heals. refetchType "all" is required: marking it stale alone
@@ -2029,7 +2029,7 @@ export class HostRuntimeStore {
     if (didTransitionOnline || didTransitionOffline) {
       // The aggregated host queries (projects, schedules, artifacts) skip
       // non-online hosts at fetch time, so any online flip changes their
-      // results. Invalidation lives here — not in component effects — so it
+      // results. Invalidation lives here - not in component effects - so it
       // cannot miss a transition that happens while no screen is mounted or
       // during a mount/re-render window.
       invalidateHostAggregateQueries(queryClient);

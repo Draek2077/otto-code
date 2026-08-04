@@ -46,7 +46,7 @@ describe("applyRefineSet", () => {
 
   // The decision key is what keeps two files' `h0` hunks apart. Without the
   // namespace, keeping one file's first change would silently keep every
-  // file's first change — a cross-file write nobody asked for.
+  // file's first change - a cross-file write nobody asked for.
   it("scopes a decision to its own file", () => {
     const onlyIndex = new Set([refineDecisionKey("d0", "h0")]);
     const results = applyRefineSet(SET, onlyIndex);
@@ -56,7 +56,7 @@ describe("applyRefineSet", () => {
 
   /**
    * Accept skips unchanged files, so a file whose every change was dropped must
-   * report `changed: false` — otherwise the session would write a byte-identical
+   * report `changed: false` - otherwise the session would write a byte-identical
    * file and leave the user unable to tell "kept nothing" from "wrote nothing".
    */
   it("marks a file unchanged when all of its hunks are dropped", () => {

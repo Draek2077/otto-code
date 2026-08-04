@@ -1,4 +1,4 @@
-// Pure Otto -> SimulationEvent mapping. No I/O, no store/client access — the
+// Pure Otto -> SimulationEvent mapping. No I/O, no store/client access - the
 // stateful side (name registry, backfill fetch, live-stream cursor dedup)
 // lives in use-visualizer-event-adapter.ts, which calls into these functions.
 // See docs/visualizer.md for the mapping table this file implements.
@@ -26,10 +26,10 @@ export type VisualizerRuntime =
 
 /** `runtime` only picks the node logo; unmapped providers (e.g. a
  * user-defined custom openai-compatible provider with an arbitrary id) omit
- * the field so the page falls back to its default (claude) logo — matching
+ * the field so the page falls back to its default (claude) logo - matching
  * vendor/agent-flow/OTTO-PATCHES.md's "generic diamond mark" patch, which
  * only fires for these known literals. "omp" is Otto's builtin id for the
- * bundled openai-compatible provider (Oh My Pi) — see
+ * bundled openai-compatible provider (Oh My Pi) - see
  * packages/protocol/src/provider-manifest.ts. */
 export function resolveVisualizerRuntime(provider: string): VisualizerRuntime | undefined {
   if (provider === "claude") {
@@ -56,7 +56,7 @@ function truncate(text: string, max: number = MAX_SUMMARY_LENGTH): string {
 /** Session tab labels render in a cramped horizontal strip at the page's
  * top-left (vendor session-tabs.tsx pins each tab `whiteSpace: nowrap` +
  * `flexShrink: 0` with no max-width/ellipsis), so a long agent title blows the
- * tab out and crowds the others off. Cap the *label* host-side — the node
+ * tab out and crowds the others off. Cap the *label* host-side - the node
  * `name` (graph key, must stay unique/stable) is deliberately left full. */
 const MAX_SESSION_LABEL_LENGTH = 24;
 
@@ -90,7 +90,7 @@ export interface AgentNodeContext {
   name: string;
   sessionId: string;
   /** The agent's own working directory (root of its file operations). When
-   * present, tool-call file paths are displayed relative to it (root → `.`) —
+   * present, tool-call file paths are displayed relative to it (root → `.`) -
    * a Read of `C:\Users\me\proj\src\foo.ts` shows as `src\foo.ts` (Windows
    * separators preserved) instead of a truncated `C:\Users\me\pr...`. Absent ⇒
    * paths are shown verbatim. See `relativizeStringPaths`. */
@@ -102,20 +102,20 @@ function escapeRegExp(value: string): string {
 }
 
 /**
- * Rewrites the workspace root wherever it literally appears in a string — a
- * structured file path (`detail.filePath`) OR a freeform command/search string —
+ * Rewrites the workspace root wherever it literally appears in a string - a
+ * structured file path (`detail.filePath`) OR a freeform command/search string -
  * to a workspace-relative form, so a tool node reads `cd "."` /
  * `read_file: src\foo.ts` instead of `cd "C:/…/proj"` /
  * `read_file: C:\…\proj\src\foo.ts`. A child path drops the root entirely
  * (`…\proj\src\foo.ts` → `src\foo.ts`); a bare root collapses to `.`.
  *
  * SEPARATOR FIDELITY (load-bearing): the match is separator-agnostic but the
- * output preserves whatever separators the path was AUTHORED with — a Windows
+ * output preserves whatever separators the path was AUTHORED with - a Windows
  * `C:\…\proj\src\foo.ts` becomes `src\foo.ts` (backslashes kept), a POSIX
  * `/home/me/proj/src/foo.ts` becomes `src/foo.ts`. We deliberately do NOT run
  * paths through `resolveWorkspaceFilePaths`/`normalizeWorkspaceFileLocation`
  * here: those normalize `\` → `/` for host resolution, which is correct for
- * OPENING a file but wrong for DISPLAY — it mixed backslash (out-of-workspace,
+ * OPENING a file but wrong for DISPLAY - it mixed backslash (out-of-workspace,
  * shown verbatim) and forward-slash (relativized) rows in the same panel.
  * Windows paths stay Windows; POSIX paths stay POSIX. Only the root prefix (plus
  * its trailing separator, for a child path) is removed; separators in the
@@ -124,11 +124,11 @@ function escapeRegExp(value: string): string {
  * Other rules (root → `.`, root+`sep`+rest → `rest`):
  * - Matches the root in EITHER separator style, case-insensitively for a
  *   Windows drive path (the reported path and the `cwd` can disagree on case).
- * - Requires a path BOUNDARY right after the root — a separator, a delimiter
- *   like a quote/space/paren, or end-of-string — so the bare/quoted root
+ * - Requires a path BOUNDARY right after the root - a separator, a delimiter
+ *   like a quote/space/paren, or end-of-string - so the bare/quoted root
  *   collapses AND a sibling dir that merely shares the prefix (`…/proj-backup`,
  *   `…/project`) is never touched.
- * - Never tries to *detect* arbitrary paths, so it can't mangle non-path prose —
+ * - Never tries to *detect* arbitrary paths, so it can't mangle non-path prose -
  *   a full absolute root is effectively never a false-positive substring. Files
  *   outside the workspace have no matching prefix and are left verbatim.
  */
@@ -147,7 +147,7 @@ function relativizeStringPaths(text: string, workspaceRoot: string | undefined):
     .split(/[\\/]+/)
     .map(escapeRegExp)
     .join("[\\\\/]");
-  // Consume the root and, when a child follows, its leading separator too — so
+  // Consume the root and, when a child follows, its leading separator too - so
   // `C:\…\proj\src\foo.ts` collapses straight to `src\foo.ts` rather than the
   // noisier `.\src\foo.ts`. Two boundary cases, in one pass:
   //   - root followed by a separator → capture the separator and drop it with the
@@ -169,7 +169,7 @@ export interface PersonalityNodeColors {
  * node's idle (muted) / thinking (vivid) states in these when both are present
  * (see vendor draw-agents.ts `resolveNodeAppearance`); a node with no
  * personality omits them and stays state-colored. Both must be present to
- * count — a partial pair is dropped. */
+ * count - a partial pair is dropped. */
 function personaColorPayload(colors: PersonalityNodeColors | null | undefined):
   | {
       colorA: string;
@@ -226,7 +226,7 @@ export function buildObservedSubagentSpawnEvent(input: {
 
 /** Relabel an already-spawned node's DISPLAY name (the vendor page keeps the
  * node keyed on its original spawn `name`, so this only changes the drawn
- * label — see the `agent_rename` handler in handle-agent-events.ts). Emitted
+ * label - see the `agent_rename` handler in handle-agent-events.ts). Emitted
  * when a root chat's title changes after spawn (the auto-title writer rewrites
  * the provisional first-line title), so the graph node tracks the chat title
  * the same way the toolbar's `session-updated` label does. `agent` is the
@@ -271,16 +271,16 @@ export interface VisualizerTerminalInput {
  * subagents/track-presentation.ts) so a subagent leaves the graph at exactly
  * the moment the track collapses it into its "Completed" group:
  *
- * - `closed` or archived is always terminal (roots included — a session that
+ * - `closed` or archived is always terminal (roots included - a session that
  *   ends stops rendering as active).
  * - A provider-managed (`observed`) subagent is also done at `idle` or `error`:
  *   a Claude Task ends its run at `idle` and never resumes, so idle-observed is
  *   genuinely finished, whereas a native subagent idles *between turns* and may
- *   still be mid-conversation — so only `observed` idle counts. Attention rows
+ *   still be mid-conversation - so only `observed` idle counts. Attention rows
  *   (e.g. a usage-exhausted failure) stay visible so the signal isn't buried.
  *
  * Without this an idle Claude Task node lingered forever, because the old test
- * was `status === "closed" || archived` only — an observed subagent that
+ * was `status === "closed" || archived` only - an observed subagent that
  * completes to `idle` matched neither and never faded. */
 export function isVisualizerAgentTerminal(input: VisualizerTerminalInput): boolean {
   if (input.status === "closed" || input.archived) {
@@ -307,7 +307,7 @@ export function buildAgentCompleteEvent(input: {
 export function buildAgentIdleEvent(input: {
   ctx: AgentNodeContext;
   time: number;
-  /** True marks a real turn end — the page rests the node at its dim 'idle'
+  /** True marks a real turn end - the page rests the node at its dim 'idle'
    * state (Otto vendor patch) instead of the upstream "back to thinking"
    * transition, so an idle agent no longer looks identical to one reasoning. */
   resting?: boolean;
@@ -386,7 +386,7 @@ function scaleSegmentsToOccupancy(
   };
 }
 
-/** The provider's OWN reported split — the same numbers the context meter
+/** The provider's OWN reported split - the same numbers the context meter
  * shows. Deferred categories are dropped: they are not counted in the window
  * total (the meter renders them separately with no percentage), so including
  * them would over-fill the ring. */
@@ -398,7 +398,7 @@ function segmentsFromCategories(
     .map((category) => ({ label: category.name, tokens: category.tokens }));
 }
 
-/** The daemon's coarse timeline estimate — the fallback tier for providers that
+/** The daemon's coarse timeline estimate - the fallback tier for providers that
  * can't report their real split. */
 function segmentsFromComposition(composition: ContextComposition): VisualizerContextSegment[] {
   return COMPOSITION_SEGMENT_LABELS.map(({ key, label }) => ({
@@ -434,9 +434,9 @@ function buildContextBreakdown(
 
 /** `tokens`/`tokensMax` are context OCCUPANCY (drives the ring/bar fill);
  * `cumulativeTokens` is the agent's honest lifetime total (drives the page's
- * token sums — Otto vendor patch); `costUsd` is the provider's OWN reported
+ * token sums - Otto vendor patch); `costUsd` is the provider's OWN reported
  * cost for that lifetime, which the page uses instead of pricing tokens from a
- * rate table — absent means unpriceable and the page shows no dollar figure at
+ * rate table - absent means unpriceable and the page shows no dollar figure at
  * all, which is the honest answer for a local model; `breakdown` is the agent's
  * context split (drives the colored ring/bar segments), preferring the
  * provider's own reported categories over the daemon's estimate and absent when
@@ -667,7 +667,7 @@ function shellDiscovery(
   const test = detail.output ? summarizeTestOutput(detail.output) : null;
   if (test)
     return { type: test.failed ? "error" : "finding", label: test.label, content: test.content };
-  // A failed command is still a card — but typed "error" so it renders red,
+  // A failed command is still a card - but typed "error" so it renders red,
   // matching the failed tool-call card it accompanies.
   if (!isError && !(detail.exitCode != null && detail.exitCode !== 0)) return null;
   return {
@@ -701,7 +701,7 @@ function fetchDiscovery(
 
 /** Heuristic: turn a *notable* completed tool call into a discovery card, or
  * null for the ordinary majority. Deliberately excludes Read (the most frequent
- * tool — reads would spray low-value cards) and anything already represented as
+ * tool - reads would spray low-value cards) and anything already represented as
  * its own node (sub_agent → subagent_return particle). Locked to "heuristic on
  * notable results" (docs/visualizer.md, "Discovery cards"). Pure over `detail`;
  * paths are relativized to the agent cwd, matching the rest of the graph. */
@@ -732,7 +732,7 @@ export function deriveToolCallDiscovery(
 }
 
 /** Estimated tokens a finished tool call consumed, at ~4 chars/token over the
- * serialized detail payload — the same heuristic as turn-time.ts. Otto's
+ * serialized detail payload - the same heuristic as turn-time.ts. Otto's
  * protocol carries no per-tool usage (providers only report it at request
  * boundaries), so this estimate is what feeds the page's `tokenCost` (the
  * "N tok" line on completed cards, file-attention totals). The page's context
@@ -768,7 +768,7 @@ function stringifyToolCallError(error: unknown): string {
 /**
  * Child label for subagent_dispatch/subagent_return. MUST resolve to the same
  * string as the observed child agent's node name (which is the daemon-frozen
- * row title) — the page renders dispatch/return particles on the parent→child
+ * row title) - the page renders dispatch/return particles on the parent→child
  * edge keyed by that name, so any mismatch makes them silently invisible.
  * Both sides therefore share `deriveObservedSubagentTitle`. Exported so the
  * stateful layer can re-dispatch when a running item's streaming input
@@ -787,7 +787,7 @@ function toolCallSubAgentLabel(detail: Extract<ToolCallDetail, { type: "sub_agen
   return resolveSubAgentChildLabel(detail);
 }
 
-/** A dispatch spark alone — for a long-running sub_agent call whose first
+/** A dispatch spark alone - for a long-running sub_agent call whose first
  * running item predated the sub_agent detail (or whose start was already
  * emitted); the stateful layer dedupes per callId. */
 export function buildSubagentDispatchEvent(input: {
@@ -809,7 +809,7 @@ export function buildSubagentDispatchEvent(input: {
  * synthesize the start for a terminal item whose running snapshot never
  * reached the client (the daemon's stream coalescer collapses running ->
  * terminal within its flush window into a single terminal item, live AND
- * persisted — the page drops a `tool_call_end` with no running match). */
+ * persisted - the page drops a `tool_call_end` with no running match). */
 function toolCallStartEvents(input: {
   ctx: AgentNodeContext;
   item: ToolCallTimelineItem;
@@ -820,7 +820,7 @@ function toolCallStartEvents(input: {
   const filePath = rawFilePath ? relativizeStringPaths(rawFilePath, ctx.workspaceRoot) : undefined;
   // For a file tool (read/edit/write) the args summary IS the file path, so
   // reuse the same workspace-relative form. Other tools carry a freeform summary
-  // (shell command, search query) that may EMBED an absolute path — the same
+  // (shell command, search query) that may EMBED an absolute path - the same
   // rewrite handles both. Separators are preserved either way.
   const args =
     filePath ?? relativizeStringPaths(summarizeToolCallArgs(item.detail), ctx.workspaceRoot);
@@ -832,7 +832,7 @@ function toolCallStartEvents(input: {
       payload: {
         agent: ctx.name,
         // Friendly, namespace-stripped label ("mcp__otto__spawn_task" ->
-        // "Spawn Task") — shared with the chat rows so nodes read the same way.
+        // "Spawn Task") - shared with the chat rows so nodes read the same way.
         tool: getToolDisplayName(item.name),
         args,
         ...(filePath ? { inputData: { file_path: filePath } } : {}),
@@ -882,7 +882,7 @@ function toolCallToSimulationEvents(input: {
     payload: {
       agent: ctx.name,
       // Friendly, namespace-stripped label ("mcp__otto__spawn_task" ->
-      // "Spawn Task") — shared with the chat rows so nodes read the same way.
+      // "Spawn Task") - shared with the chat rows so nodes read the same way.
       tool: getToolDisplayName(item.name),
       result: summarizeToolCallResult(item.detail),
       isError,
@@ -914,7 +914,7 @@ export function timelineItemToSimulationEvents(input: {
   time: number;
   /** Prepend the tool_call_start (+ subagent_dispatch) a terminal tool_call
    * item would have been preceded by. Set by the stateful layer when it has
-   * never seen a running item for this callId — see the coalescer note on
+   * never seen a running item for this callId - see the coalescer note on
    * {@link toolCallStartEvents}. No effect on non-tool_call items. */
   synthesizeToolCallStart?: boolean;
 }): SimulationEvent[] {
@@ -992,7 +992,7 @@ export function streamEventToSimulationEvents(input: {
     case "permission_requested":
       return [buildPermissionRequestedEvent({ ctx, time })];
     case "permission_resolved":
-      // The agent resumes its turn — back to reasoning, not resting.
+      // The agent resumes its turn - back to reasoning, not resting.
       return [buildAgentIdleEvent({ ctx, time })];
     case "thread_started":
     case "turn_started":

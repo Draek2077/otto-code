@@ -3,7 +3,7 @@ import { collectAppSettingsUpdates } from "./index";
 
 // APP_SETTINGS_UPDATE_KEYS is the only thing that lets an AppSettings field
 // through `useSettings()`. A field missing from it does not fail to compile and
-// does not throw — the write is just silently dropped, which is exactly how
+// does not throw - the write is just silently dropped, which is exactly how
 // toolCallDetailLevel shipped unreachable. These cases pin the routing.
 describe("collectAppSettingsUpdates", () => {
   it("routes toolCallDetailLevel through to the AppSettings store", () => {

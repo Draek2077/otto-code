@@ -28,7 +28,7 @@ export interface UseFileMutationsParams {
  * Create, rename and delete, bound to one workspace.
  *
  * Two shapes on purpose. Create and rename return an error **string** so the
- * name sheet can show it next to the field the user is still editing — a
+ * name sheet can show it next to the field the user is still editing - a
  * "there is already a file called that" toast that fires after the sheet closes
  * is a worse version of the same sentence. Delete has no field to sit next to,
  * so it confirms first and toasts on failure.
@@ -104,7 +104,7 @@ export function useFileMutations({
   );
 
   /**
-   * Confirm, delete, and — when the target turns out to be a non-empty folder —
+   * Confirm, delete, and - when the target turns out to be a non-empty folder -
    * confirm a second time before recursing. The daemon refuses to recurse unless
    * asked, so nothing has been removed at the point the second dialog appears:
    * "this folder is not empty" is discovered by trying, not by pre-counting.

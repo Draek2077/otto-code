@@ -2,8 +2,8 @@
 
 Chat delivery has two paths:
 
-1. **Live stream** — `agent_stream` WebSocket messages for immediacy. These may be delta-shaped lifecycle updates.
-2. **Authoritative history** — `fetch_agent_timeline_request` for correctness. This always returns full projected timeline items, never lifecycle deltas.
+1. **Live stream** - `agent_stream` WebSocket messages for immediacy. These may be delta-shaped lifecycle updates.
+2. **Authoritative history** - `fetch_agent_timeline_request` for correctness. This always returns full projected timeline items, never lifecycle deltas.
 
 The invariant is:
 
@@ -81,7 +81,7 @@ version.
 ## Projected pages reconcile with live presentation
 
 A projected page is canonical state, not a sequence of live deltas. One projected item can overlap
-rows already received live—for example, a tool call retained at its original display position while
+rows already received live-for example, a tool call retained at its original display position while
 its completion advances `seqEnd`, followed by a merged assistant message. The app uses
 `sourceSeqRanges` to replace overlapping assistant and reasoning projections before applying the
 remaining page through the existing stream reducer. It must not append full projected text to a

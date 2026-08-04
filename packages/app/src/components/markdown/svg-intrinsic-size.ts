@@ -10,7 +10,7 @@ const VIEW_BOX_ATTRIBUTE = /\bviewBox\s*=\s*["']([^"']+)["']/i;
  * `viewBox`.
  *
  * `Image.getSize` answers this for every other format, but native renders SVG
- * through `SvgXml` rather than `Image` — so without this an inline SVG has no
+ * through `SvgXml` rather than `Image` - so without this an inline SVG has no
  * dimensions to lay out against and falls back to a 16px square. Percentage and
  * unit-bearing sizes (`100%`, `2em`) are deliberately not matched: they are
  * relative to a viewport this document does not have, and the `viewBox` behind

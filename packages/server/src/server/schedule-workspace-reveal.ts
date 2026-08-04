@@ -5,7 +5,7 @@ import type { WorkspaceRegistry } from "./workspace-registry.js";
 export interface RevealScheduleRunWorkspaceDeps {
   workspaceRegistry: Pick<WorkspaceRegistry, "get" | "list" | "upsert">;
   agentStorage: Pick<AgentStorage, "list" | "upsert">;
-  /** Record-only archive (no directory removal) — the transient record's disposal. */
+  /** Record-only archive (no directory removal) - the transient record's disposal. */
   archiveWorkspaceRecord: (workspaceId: string) => Promise<void>;
   now?: () => Date;
 }
@@ -25,7 +25,7 @@ export type RevealScheduleRunWorkspaceOutcome =
  *
  * Schedule runs mint their workspace `hidden: true` and are therefore exempt
  * from the occupancy guard (`WorkspaceDirectoryOccupiedError`). That exemption
- * is granted on the promise that the record stays invisible — so revealing one
+ * is granted on the promise that the record stays invisible - so revealing one
  * onto a directory a visible workspace already backs would break the promise and
  * mint exactly the duplicate the guard refuses at creation time. One directory
  * is one physical git checkout; two visible workspaces on it can never be
@@ -35,7 +35,7 @@ export type RevealScheduleRunWorkspaceOutcome =
  * run's agents move to the occupying workspace and the transient record is
  * archived. The run is already over by the time either caller reaches here
  * (post-run disposal, or interrupted-run recovery at startup), so nothing is
- * mid-flight. The outcome stays visible — in the workspace the user already has
+ * mid-flight. The outcome stays visible - in the workspace the user already has
  * open on that folder, which is where they would look for it anyway.
  *
  * Worktree-isolation runs get a fresh directory that nothing else can occupy, so

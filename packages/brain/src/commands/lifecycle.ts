@@ -1,7 +1,7 @@
 /**
  * Service lifecycle commands. `serve` runs the brain in the foreground; `start`
  * launches it detached (the shape the Otto daemon uses to supervise a managed
- * child); `stop`/`status` operate on the pid file. All honor the opt-in config —
+ * child); `stop`/`status` operate on the pid file. All honor the opt-in config -
  * they are always explicit user actions, never auto-started.
  */
 import { spawn } from "node:child_process";

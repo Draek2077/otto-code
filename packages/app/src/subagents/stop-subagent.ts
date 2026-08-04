@@ -4,7 +4,7 @@ import type { Agent } from "@/stores/session-store";
  * Stop is the running-state counterpart to archive (see archive-subagent.ts):
  * it transitions a live subagent to a terminal state without removing the row.
  * Observed subagents resolve to the provider `stopTask`; native subagents
- * cancel their run. Neither confirms — stopping is a benign, reversible-in-kind
+ * cancel their run. Neither confirms - stopping is a benign, reversible-in-kind
  * gesture, matching the observed pane's Stop button.
  * See docs/agent-lifecycle.md (Item 2).
  */
@@ -20,7 +20,7 @@ export interface StopSubagentDeps {
   cancelAgent: (subagentId: string) => Promise<{ cancelled?: boolean } | void>;
   reportError: (error: unknown) => void;
   // Called when the daemon reports there was no run to interrupt (the row was
-  // already finished, or still initializing) — otherwise Stop is a dead click
+  // already finished, or still initializing) - otherwise Stop is a dead click
   // with no feedback. See docs/agent-lifecycle.md (Item 2).
   reportNothingToStop: () => void;
 }

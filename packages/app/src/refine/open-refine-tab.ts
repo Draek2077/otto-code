@@ -24,7 +24,7 @@ export interface OpenRefineTabInput {
  * Set the rewrite up as a job in its own tab.
  *
  * The tab is opened *beside* the file rather than over it, so the document the
- * proposal is about stays one click away while it is being reviewed — the same
+ * proposal is about stays one click away while it is being reviewed - the same
  * reason references and rename are tabs. One tab per primary path: refining a
  * document a second time supersedes the first job, since the second request is
  * a fresh pin of the same file.

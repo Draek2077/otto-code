@@ -41,7 +41,7 @@ export interface GenerateAgentTitleFromFirstAgentContextOptions {
 
 // A chat title lives in a cramped list row and in the visualizer's tab strip, so
 // it must be genuinely tiny. The 40-char ceiling is a hard backstop for a
-// 1–3-word label — the prompt does the real shaping.
+// 1–3-word label - the prompt does the real shaping.
 const AgentTitleSchema = z.object({
   title: z.string().min(1).max(40),
 });
@@ -66,9 +66,9 @@ async function buildPrompt(
         configKey: "title",
         label: "Title style",
         default: [
-          "1–3 words MAXIMUM. This is a hard limit — only use a 4th word when three genuinely cannot name the topic.",
+          "1–3 words MAXIMUM. This is a hard limit - only use a 4th word when three genuinely cannot name the topic.",
           "Name the subject as a short noun phrase. Sentence case. No punctuation, no quotes, no trailing period.",
-          "Do not start with a generic verb (Fix, Add, Implement, Update, Change, Create, Make, Set, Diagnose) — every task is implicitly one of these, so the verb is wasted words. Name the thing instead.",
+          "Do not start with a generic verb (Fix, Add, Implement, Update, Change, Create, Make, Set, Diagnose) - every task is implicitly one of these, so the verb is wasted words. Name the thing instead.",
           "Keep a verb only when it is the specific operation itself (Swap, Split, Extract, Rename, Merge, Inline).",
           'Good titles: "Sidebar icon", "Keyboard shift", "Chat auto-naming", "Worktree memory", "Split browser pane".',
           'Bad titles: "Fix the composer being pushed up by the keyboard", "Chat names writer", "Change sidebar clock icon to a history icon".',
@@ -98,7 +98,7 @@ export async function generateAgentTitleFromFirstAgentContext(
           cwd: options.cwd,
           providerSnapshotManager: options.providerSnapshotManager,
           daemonConfig: options.daemonConfig,
-          // Chat titles are fast small-text generation — prefer an available
+          // Chat titles are fast small-text generation - prefer an available
           // Writer personality before the legacy substring fallback.
           role: "writer",
           currentSelection: options.currentSelection,

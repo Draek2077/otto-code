@@ -9,7 +9,7 @@ import { beat, resetPacingSeed } from "../helpers/pacing";
 import { seedDemoWorkspace, type DemoWorkspace } from "../staging/seed";
 
 /**
- * Scenario 09 — Composer intelligence (one feature pair that lives in the
+ * Scenario 09 - Composer intelligence (one feature pair that lives in the
  * composer: ghost-text prompt suggestions and suggested-task chips). One real
  * Claude turn produces both honestly: the staged pulse-api carries a
  * deliberate out-of-scope TODO (unvalidated `limit` in /events/recent) for
@@ -17,7 +17,7 @@ import { seedDemoWorkspace, type DemoWorkspace } from "../staging/seed";
  * suggestion when the turn ends.
  *
  * Non-determinism: the agent may not flag the task or emit a suggestion on a
- * given run — the waits fail loudly and the take is re-recorded (playbook).
+ * given run - the waits fail loudly and the take is re-recorded (playbook).
  */
 
 const REAL = process.env.DEMO_REAL === "1" || Boolean(process.env.E2E_FORK_OTTO_HOME_FROM);
@@ -59,7 +59,7 @@ test("composer intelligence walkthrough", async ({ page }, testInfo) => {
     workspaceId: workspace.workspaceId,
     model: "opus",
     title: "Health counter",
-    // No client is watching to answer permission prompts — the default "Always
+    // No client is watching to answer permission prompts - the default "Always
     // Ask" mode would stall on the first edit forever. dontAsk is the Agent
     // SDK's headless posture (docs/safe-unattended.md): runs without
     // prompting, anything not pre-approved is denied rather than stalling.
@@ -81,7 +81,7 @@ test("composer intelligence walkthrough", async ({ page }, testInfo) => {
   await recorder.shot(
     "task-chip",
     "Out-of-scope work becomes a chip",
-    "The agent noticed something worth fixing — and flagged it as a task instead of bloating the change.",
+    "The agent noticed something worth fixing - and flagged it as a task instead of bloating the change.",
   );
 
   const caret = overlay.locator('[data-testid$="-caret"]').first();
@@ -91,7 +91,7 @@ test("composer intelligence walkthrough", async ({ page }, testInfo) => {
     await recorder.shot(
       "task-chip-menu",
       "Spin it off in one click",
-      "Start the task in its own chat — attended, unattended, or in a fresh worktree.",
+      "Start the task in its own chat - attended, unattended, or in a fresh worktree.",
     );
     await page.keyboard.press("Escape");
   }
@@ -123,7 +123,7 @@ test("composer intelligence walkthrough", async ({ page }, testInfo) => {
   await recorder.shot(
     "ghost-accepted",
     "Tab to accept",
-    "One keystroke turns the suggestion into your draft — edit it or just hit send.",
+    "One keystroke turns the suggestion into your draft - edit it or just hit send.",
   );
 
   await recorder.finish(testInfo);

@@ -1,17 +1,18 @@
 # Upstream subagent convergence
 
-**Status:** Charter, 2026-07-20. Nothing built. **No longer blocked** — upstream tagged `v0.2.0`,
+**Status:** Charter, 2026-07-20. Nothing built. **No longer blocked** - upstream tagged `v0.2.0`,
 `v0.2.1` and `v0.2.2` on 2026-07-24/25, and the `upstream` remote exists in this checkout. Sequencing
 belongs to [`projects/README.md` → Build order](../README.md#build-order), not here.
 
 **Measured 2026-07-25 ([findings](../../findings/upstream/2026-07-25-paseo-merge-gap.md)): this
 charter's subject is the cheapest part of the merge, not the expensive one.** Upstream's daemon-side
-ingestion — 47 files across `agent/provider-subagents/`, `agent/providers/omp/` and the protocol test
-— lands with **zero conflicts**. The client-presentation half Otto keeps costs **14 conflict hunks in
-five files** (`track.tsx` 6, `agent.sub-agent-sidechain.test.ts` 3, `track-presentation.ts` 2,
-`select.test.ts` 2, `track-presentation.test.ts` 1). The split-by-layer below is not just the right
-design — it is also almost free. It should ride along with the Phase 1 merge rather than being
-sequenced as a wave behind it.
+ingestion - 47 files across `agent/provider-subagents/`, `agent/providers/omp/` and the protocol test
+
+- lands with **zero conflicts**. The client-presentation half Otto keeps costs **14 conflict hunks in
+  five files** (`track.tsx` 6, `agent.sub-agent-sidechain.test.ts` 3, `track-presentation.ts` 2,
+  `select.test.ts` 2, `track-presentation.test.ts` 1). The split-by-layer below is not just the right
+  design - it is also almost free. It should ride along with the Phase 1 merge rather than being
+  sequenced as a wave behind it.
 
 Otto and Paseo independently built the same feature. Upstream shipped provider
 subagents in `v0.1.107` ([#2013](https://github.com/getpaseo/paseo/pull/2013));
@@ -28,14 +29,14 @@ capabilities upstream's model has no room for**.
 
 ## The problem, stated precisely
 
-Not "whose design is better." Otto's model is better _for Otto_ — it carries
+Not "whose design is better." Otto's model is better _for Otto_ - it carries
 per-subagent usage accounting, arbitrary nesting, and stop control that upstream's
 descriptor cannot express. The problem is **cost of divergence over time**:
 
 Every upstream fix to provider-subagent ingestion lands in files Otto has also
 rewritten. Their five subagent commits since our baseline concentrate in
 `codex-app-server-agent.ts` (×4), `claude/agent.ts` (×2), and
-`claude/sidechain-tracker.ts` (×2) — all correctness fixes for exactly the failure
+`claude/sidechain-tracker.ts` (×2) - all correctness fixes for exactly the failure
 modes Otto also has (phantom parents, stuck parent sessions, hidden Codex rows).
 Carrying a rival ingestion path means hand-merging that stream forever, and
 declining it means re-discovering the same bugs independently.
@@ -59,7 +60,7 @@ declining it means re-discovering the same bugs independently.
 accounting. Project one into the other.**
 
 The split follows where each side's churn actually lives. Upstream's recurring
-value is provider ingestion — that's where their bug fixes land. Otto's value is
+value is provider ingestion - that's where their bug fixes land. Otto's value is
 everything downstream of it. So:
 
 ```
@@ -77,28 +78,28 @@ provider (Claude/Codex/OpenCode)
 
 1. **Upstream's ingestion files are read-only to us.** `ProviderSubagentStore`,
    the `agent.provider_subagents.*` handlers, and every provider adapter are taken
-   unmodified and never edited. If one needs a change, it goes upstream as a PR —
+   unmodified and never edited. If one needs a change, it goes upstream as a PR -
    a local edit re-opens the conflict stream this whole charter exists to close.
 2. **Identity is a deterministic bijection**, not a new namespace. Otto's
    synthetic id becomes a pure function of upstream's tuple:
-   `${parentAgentId}::sub::${subagentId}` — invertible, so every existing Otto RPC
+   `${parentAgentId}::sub::${subagentId}` - invertible, so every existing Otto RPC
    (`archiveAgent`, `fetchAgent`, `fetchAgentTimeline`, the `agent_stream`
    forwarding path) keeps working with no signature change. This is the load-
    bearing decision: get it right and the rest of Otto is untouched.
 3. **What upstream's descriptor can't hold lives in our files, keyed by their id.**
    Usage/cost, nesting, and stop state go in a side table. `TaskTranscriptWatcher`
-   already reads usage from transcripts on disk — it keys off upstream's descriptor
+   already reads usage from transcripts on disk - it keys off upstream's descriptor
    instead of minting its own identity, and the disk stays authoritative
    (see [subagent-accounting.md](../../docs/subagent-accounting.md)).
 4. **The client carries a small, permanent, documented patch:** don't register
    upstream's `provider-subagent-panel`, don't take their `select.ts` discriminated
    union. Without this, every subagent renders twice in the same track. This is a
-   real carried cost — but it is ~3 files of presentation, which churns
+   real carried cost - but it is ~3 files of presentation, which churns
    cosmetically, not for correctness.
 
 ### What Otto deletes
 
-Otto's own **ingestion** — the Claude sidechain path that mints observed rows
+Otto's own **ingestion** - the Claude sidechain path that mints observed rows
 directly. Otto's projection, protocol surface, accounting, and UI all stay. This
 is the point: one ingestion truth, not two.
 
@@ -107,7 +108,7 @@ is the point: one ingestion truth, not two.
 ## What this buys, and what it costs
 
 **Buys:** upstream's Codex and OpenCode child-session coverage lands for free
-(Otto's own adapter work for those is currently unstarted —
+(Otto's own adapter work for those is currently unstarted -
 [provider-adapters.md](../observed-subagents/provider-adapters.md)); their
 ongoing correctness fixes merge clean indefinitely; the worst files in the merge
 (`agent-manager.ts`, `claude/agent.ts`, `sidechain-tracker.ts`) stop conflicting
@@ -116,15 +117,15 @@ on this feature.
 **Costs, honestly:**
 
 - A real refactor of observed-subagents internals, touching the accounting path.
-  Sequence it _after_ the Phase 1 merge — doing both at once makes failures
+  Sequence it _after_ the Phase 1 merge - doing both at once makes failures
   unattributable.
 - Otto loses provider-neutral ingestion for providers upstream doesn't cover.
-  Today upstream covers Claude, Codex, and OpenCode, which is Otto's set — but
+  Today upstream covers Claude, Codex, and OpenCode, which is Otto's set - but
   a provider Otto adds first (a natively-tooled openai-compat model spawning
   sub-tasks) needs its own ingestion, which then lives in Otto files. Keep the
   projection layer's input contract provider-neutral so that path exists.
 - Upstream may later add usage to their descriptor in a shape incompatible with
-  the side table. Acceptable — reconcile then, and prefer upstreaming Otto's
+  the side table. Acceptable - reconcile then, and prefer upstreaming Otto's
   shape before they design their own.
 
 ---
@@ -137,10 +138,10 @@ The convergence is done when all of these hold:
   (`git diff upstream/main -- <paths>` is empty), and a subsequent upstream merge
   touching them produces no conflict.
 - A Claude `Task` fan-out produces the same track rows, nesting, and Metrics
-  ledger totals as before the refactor — the existing observed-subagent tests
+  ledger totals as before the refactor - the existing observed-subagent tests
   (`agent.sub-agent-sidechain.test.ts`, `agent-manager.observed-*.test.ts`,
   `wire-compat.test.ts`) pass unchanged, since the id scheme is preserved.
-- A Codex or OpenCode subagent — never previously visible in Otto — appears as a
+- A Codex or OpenCode subagent - never previously visible in Otto - appears as a
   track row with working timeline and stop.
 - No subagent renders twice.
 

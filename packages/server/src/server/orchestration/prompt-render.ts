@@ -11,7 +11,7 @@ import type { PromptTemplate } from "@otto-code/protocol/orchestration";
 //
 // SECURITY: EJS compiles templates to JavaScript that runs in the daemon
 // process. That is acceptable today because templates are authored locally by
-// the machine's own user — the same trust level as a workspace script. The day
+// the machine's own user - the same trust level as a workspace script. The day
 // templates become shareable or importable, this becomes a code-execution
 // vector and needs an explicit trust gate before an unfamiliar template is
 // rendered. Do not add an import path without one.

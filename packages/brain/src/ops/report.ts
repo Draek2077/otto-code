@@ -76,7 +76,7 @@ function escapeHtml(text: string): string {
 }
 
 function formatGiB(bytes: number | null): string {
-  return bytes ? `${(bytes / 1024 ** 3).toFixed(1)} GB` : "—";
+  return bytes ? `${(bytes / 1024 ** 3).toFixed(1)} GB` : "-";
 }
 
 /**
@@ -147,9 +147,9 @@ function groupedBars(
             y,
             score * chartWidth,
             "scorebar",
-            `${label}: ${(score * 100).toFixed(0)}%${weight ? ` (weight ${weight})` : ""} — ${escapeHtml(task ? task.summary : "not run")}`,
+            `${label}: ${(score * 100).toFixed(0)}%${weight ? ` (weight ${weight})` : ""} - ${escapeHtml(task ? task.summary : "not run")}`,
           ) +
-          `<text x="${labelWidth + chartWidth + 8}" y="${y + barHeight - 2}" class="val">${task ? `${(score * 100).toFixed(0)}%` : "—"}</text>`,
+          `<text x="${labelWidth + chartWidth + 8}" y="${y + barHeight - 2}" class="val">${task ? `${(score * 100).toFixed(0)}%` : "-"}</text>`,
       );
     });
 
@@ -239,7 +239,7 @@ function depthChart(
       parts.push(
         `<circle cx="${sx(p.promptTokens || 0).toFixed(1)}" cy="${sy(v).toFixed(1)}" r="4.5" ` +
           `fill="var(--series-${i + 1})" stroke="var(--surface-1)" stroke-width="2">` +
-          `<title>${escapeHtml(s.name)} — ${(p.promptTokens || 0).toLocaleString()} tokens: ` +
+          `<title>${escapeHtml(s.name)} - ${(p.promptTokens || 0).toLocaleString()} tokens: ` +
           `${formatValue(v)} ${escapeHtml(unit)}</title></circle>`,
       );
     }
@@ -295,7 +295,7 @@ function runsChart(series: RunSeries[]): string {
       parts.push(
         `<circle cx="${sx(p.runIndex).toFixed(1)}" cy="${sy(p.score).toFixed(1)}" r="4.5" ` +
           `fill="var(--series-${i + 1})" stroke="var(--surface-1)" stroke-width="2">` +
-          `<title>${escapeHtml(s.name)} — run ${p.runIndex}: ${(p.score * 100).toFixed(0)}%</title></circle>`,
+          `<title>${escapeHtml(s.name)} - run ${p.runIndex}: ${(p.score * 100).toFixed(0)}%</title></circle>`,
       );
     }
   });
@@ -398,13 +398,13 @@ function build(records: RunRecord[], allRuns: RunRecord[] = records): string {
       const cells = columns
         .map((c) => {
           const task = r.tasks.find((t) => t.id === c.id);
-          return `<td class="num">${task ? `${(task.score * 100).toFixed(0)}%` : "—"}</td>`;
+          return `<td class="num">${task ? `${(task.score * 100).toFixed(0)}%` : "-"}</td>`;
         })
         .join("");
       return (
-        `<tr><td>${escapeHtml(r.model.displayName)}</td><td>${escapeHtml(r.model.quant || "—")}</td>` +
+        `<tr><td>${escapeHtml(r.model.displayName)}</td><td>${escapeHtml(r.model.quant || "-")}</td>` +
         `<td class="num">${(r.profile?.contextSize || 0).toLocaleString()}</td>` +
-        `<td class="num">${r.profile?.reasoningBudget ?? "—"}</td>` +
+        `<td class="num">${r.profile?.reasoningBudget ?? "-"}</td>` +
         `${cells}<td class="num strong">${(r.overall * 100).toFixed(0)}%</td>` +
         `<td class="num">${formatGiB(r.vramBytes)}</td>` +
         `<td class="muted">${escapeHtml(r.ranAt.slice(0, 16).replace("T", " "))}</td></tr>`
@@ -438,18 +438,18 @@ function build(records: RunRecord[], allRuns: RunRecord[] = records): string {
   </header>
 
   <section class="tiles">
-    ${statTile("Best model", best.model.displayName.slice(0, 26), `${(best.overall * 100).toFixed(0)}% — ${best.grade}`)}
+    ${statTile("Best model", best.model.displayName.slice(0, 26), `${(best.overall * 100).toFixed(0)}% - ${best.grade}`)}
     ${statTile("Runs recorded", records.length, `${columns.length} task categories`)}
-    ${statTile("Peak generation", fastest ? `${fastest.toFixed(0)} tok/s` : "—", "at shallowest depth measured")}
+    ${statTile("Peak generation", fastest ? `${fastest.toFixed(0)} tok/s` : "-", "at shallowest depth measured")}
     ${statTile("VRAM at load", formatGiB(best.vramBytes), best.loadSeconds ? `loaded in ${best.loadSeconds.toFixed(1)}s` : "")}
   </section>
 
   <section class="card">
     <h2>Scores by task</h2>
-    <p class="cap">Each row is one task, scored 0–100% from objectively verifiable outcomes — tool calls
+    <p class="cap">Each row is one task, scored 0–100% from objectively verifiable outcomes - tool calls
       checked against expected name and arguments, generated code compiled and its tests executed. The
       <b>×N</b> after a task is its weight. <b>Overall</b> is the weighted mean of the task scores,
-      <span class="mono">Σ(score × weight) ÷ Σ(weight)</span> — so a heavier task moves the headline
+      <span class="mono">Σ(score × weight) ÷ Σ(weight)</span> - so a heavier task moves the headline
       number more, and it is not the plain average of the bars above it.</p>
     ${groupedBars(ranked, columns, weightOf)}
   </section>
@@ -474,7 +474,7 @@ function build(records: RunRecord[], allRuns: RunRecord[] = records): string {
   <section class="card">
     <h2>Throughput against prompt depth</h2>
     <p class="cap">Generation speed at the same depths. A collapse here usually means the KV cache
-      spilled out of VRAM — the failure this tool's budget check exists to prevent.</p>
+      spilled out of VRAM - the failure this tool's budget check exists to prevent.</p>
     ${legend(depthSeries.map((s) => s.name.slice(0, 30)))}
     ${depthChart(depthSeries, {
       valueOf: (p) => p.generatePerSecond,
@@ -490,7 +490,7 @@ function build(records: RunRecord[], allRuns: RunRecord[] = records): string {
   <section class="card">
     <h2>Does each task actually tell us anything?</h2>
     <p class="cap">A task every model passes cannot rank them, however hard it looks. This is the
-      score spread across all runs — low spread means the task is saturated and its contribution to
+      score spread across all runs - low spread means the task is saturated and its contribution to
       the overall figure is inflating everyone equally. The weight is how hard that task pulls on the
       overall score, so a saturated <em>heavy</em> task matters most.</p>
     <div class="scroll">
@@ -503,9 +503,9 @@ function build(records: RunRecord[], allRuns: RunRecord[] = records): string {
             return (
               `<tr><td>${escapeHtml(s.category)}</td>` +
               `<td class="num">×${weightOf.get(s.id) ?? "?"}</td>` +
-              `<td class="num">${s.min === undefined ? "—" : `${(s.min * 100).toFixed(0)}%`}</td>` +
-              `<td class="num">${s.max === undefined ? "—" : `${(s.max * 100).toFixed(0)}%`}</td>` +
-              `<td class="num strong">${s.spread === null ? "—" : `${(s.spread * 100).toFixed(0)} pts`}</td>` +
+              `<td class="num">${s.min === undefined ? "-" : `${(s.min * 100).toFixed(0)}%`}</td>` +
+              `<td class="num">${s.max === undefined ? "-" : `${(s.max * 100).toFixed(0)}%`}</td>` +
+              `<td class="num strong">${s.spread === null ? "-" : `${(s.spread * 100).toFixed(0)} pts`}</td>` +
               `<td class="v-${tone}">${escapeHtml(s.verdict)}</td></tr>`
             );
           })
@@ -515,7 +515,7 @@ function build(records: RunRecord[], allRuns: RunRecord[] = records): string {
     ${
       saturated.length
         ? `<ul class="notes"><li><strong>${saturated.map((s) => escapeHtml(s.category)).join(", ")}</strong>
-      ${saturated.length === 1 ? "is" : "are"} saturated — every model scores the same, so
+      ${saturated.length === 1 ? "is" : "are"} saturated - every model scores the same, so
       ${saturated.length === 1 ? "it needs" : "they need"} to get harder before
       ${saturated.length === 1 ? "it" : "they"} can contribute to a ranking.</li></ul>`
         : ""
@@ -526,7 +526,7 @@ function build(records: RunRecord[], allRuns: RunRecord[] = records): string {
     <h2>Is the benchmark consistent?</h2>
     <p class="cap">The same model + settings, measured more than once. A method you can trust holds a
       flat line across runs; a jagged one means the score is noisy and small gaps between models are
-      not real. Runs are numbered, not dated — only how many times we have measured matters.</p>
+      not real. Runs are numbered, not dated - only how many times we have measured matters.</p>
     ${
       consistencySeries.length
         ? `
@@ -535,7 +535,7 @@ function build(records: RunRecord[], allRuns: RunRecord[] = records): string {
       <p class="axl">run number</p>`
         : `
       <p class="empty">No config has been run more than once yet. Re-run a model a few times to see
-      its spread — the table below shows mean ± spread as repeats accumulate.</p>`
+      its spread - the table below shows mean ± spread as repeats accumulate.</p>`
     }
     <div class="scroll">
       <table>
@@ -549,9 +549,9 @@ function build(records: RunRecord[], allRuns: RunRecord[] = records): string {
             return (
               `<tr><td>${escapeHtml(v.model.displayName)}</td>` +
               `<td class="num">${v.count}</td>` +
-              `<td class="num strong">${o.mean === undefined ? "—" : `${(o.mean * 100).toFixed(0)}%`}</td>` +
-              `<td class="num ${tone}">${v.count < 2 ? "—" : `${spreadPts.toFixed(1)} pts`}</td>` +
-              `<td class="num">${v.count < 2 ? "—" : `${((o.min ?? 0) * 100).toFixed(0)}–${((o.max ?? 0) * 100).toFixed(0)}%`}</td></tr>`
+              `<td class="num strong">${o.mean === undefined ? "-" : `${(o.mean * 100).toFixed(0)}%`}</td>` +
+              `<td class="num ${tone}">${v.count < 2 ? "-" : `${spreadPts.toFixed(1)} pts`}</td>` +
+              `<td class="num">${v.count < 2 ? "-" : `${((o.min ?? 0) * 100).toFixed(0)}–${((o.max ?? 0) * 100).toFixed(0)}%`}</td></tr>`
             );
           })
           .join("")}</tbody>
@@ -565,7 +565,7 @@ function build(records: RunRecord[], allRuns: RunRecord[] = records): string {
   <section class="card">
     <h2>System health during runs</h2>
     <p class="cap">The machine state each score was measured under. A throttled or power-capped run is
-      slower and lower for reasons that have nothing to do with the model — read those scores with
+      slower and lower for reasons that have nothing to do with the model - read those scores with
       suspicion, or re-run them once the GPU has cooled.</p>
     <div class="scroll">
       <table>
@@ -578,10 +578,10 @@ function build(records: RunRecord[], allRuns: RunRecord[] = records): string {
             const label = h.thermalThrottle ? "thermal" : h.powerThrottle ? "power" : "no";
             return (
               `<tr><td>${escapeHtml(r.model.displayName)}</td>` +
-              `<td class="num">${h.tempC ? `${h.tempC.max}°C` : "—"}</td>` +
-              `<td class="num">${h.powerW ? `${h.powerW.avg.toFixed(0)} W` : "—"}</td>` +
-              `<td class="num">${h.gpuUtilPct ? `${h.gpuUtilPct.avg.toFixed(0)}%` : "—"}</td>` +
-              `<td class="num">${h.vramUsedMiB ? `${(h.vramUsedMiB.max / 1024).toFixed(1)} GB` : "—"}</td>` +
+              `<td class="num">${h.tempC ? `${h.tempC.max}°C` : "-"}</td>` +
+              `<td class="num">${h.powerW ? `${h.powerW.avg.toFixed(0)} W` : "-"}</td>` +
+              `<td class="num">${h.gpuUtilPct ? `${h.gpuUtilPct.avg.toFixed(0)}%` : "-"}</td>` +
+              `<td class="num">${h.vramUsedMiB ? `${(h.vramUsedMiB.max / 1024).toFixed(1)} GB` : "-"}</td>` +
               `<td class="${throttled ? "v-bad" : "v-good"}">${throttled ? `⚠ ${label}` : "no"}</td></tr>`
             );
           })

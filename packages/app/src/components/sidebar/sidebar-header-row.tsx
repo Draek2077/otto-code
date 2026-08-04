@@ -29,7 +29,7 @@ interface SidebarHeaderRowProps {
   nativeID?: string;
   accessibilityLabel?: string;
   /**
-   * "header" (default): a sidebar-height row with its own bottom separator —
+   * "header" (default): a sidebar-height row with its own bottom separator -
    * the lone header at the top of a sidebar (settings "Back to workspace").
    * "compact": a workspace-row-height row with no separator, for entries that
    * sit in a header group whose wrapper owns the single divider.

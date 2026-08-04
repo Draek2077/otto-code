@@ -240,9 +240,9 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   });
   useEffect(() => {
     // Overriding this replaces TanStack's default guard entirely, so the
-    // "is the row above the reader" half has to be restored here alongside the
-    // follow/detach half. See shouldAbsorbVirtualRowResize for what dropping
-    // either one costs.
+    // "is the row above the reader" test has to be restored here rather than
+    // inherited. See shouldAbsorbVirtualRowResize for what dropping it costs, in
+    // both the detached and the following state.
     rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item) => {
       const scrollContainer = scrollContainerRef.current;
       const virtualizedBlock = virtualizedBlockRef.current;
@@ -250,7 +250,6 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
         return false;
       }
       return shouldAbsorbVirtualRowResize({
-        isFollowingOutput: followOutputRef.current,
         blockViewportRelativeTop: measureViewportRelativeTop(scrollContainer, virtualizedBlock),
         rowStart: item.start,
       });
@@ -494,8 +493,8 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
 
   // `onNearHistoryStart` above is reachable only from the scroll handler, and a
   // transcript shorter than its viewport never produces a scroll event. A first
-  // page that does not fill the window — a tall viewport, a short page, a
-  // collapsed run of turns — therefore leaves older history unrequested with no
+  // page that does not fill the window - a tall viewport, a short page, a
+  // collapsed run of turns - therefore leaves older history unrequested with no
   // scrollbar to ask for it, and the reader sees a conversation that starts in
   // the middle of itself.
   //

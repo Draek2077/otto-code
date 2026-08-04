@@ -365,7 +365,7 @@ export const selectModel = async (page: Page, model: string) => {
     .or(page.getByRole("textbox", { name: /search model/i }))
     .first();
 
-  // The picker opens on the ALL-PROVIDERS list, which has no search box — that
+  // The picker opens on the ALL-PROVIDERS list, which has no search box - that
   // only exists once a provider is opened (see combined-model-selector's
   // per-provider header). Waiting for the search box straight away therefore
   // timed out against a dialog that was open and healthy. Drill into providers
@@ -392,7 +392,7 @@ export const selectModel = async (page: Page, model: string) => {
       if (await candidate.isVisible({ timeout: 3000 }).catch(() => false)) {
         break;
       }
-      // Wrong provider — step back out and try the next one.
+      // Wrong provider - step back out and try the next one.
       await page
         .getByRole("button", { name: /back/i })
         .first()

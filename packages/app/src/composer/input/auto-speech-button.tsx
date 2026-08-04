@@ -1,4 +1,4 @@
-// The composer's auto-speech toggle — the only UI for the read-aloud mode.
+// The composer's auto-speech toggle - the only UI for the read-aloud mode.
 //
 // It sits next to the dictation mic and is deliberately the same 28px round icon
 // button, because the two are the same idea pointing opposite ways: the mic
@@ -6,7 +6,7 @@
 // rather than a press-and-hold action, so its state is legible at rest: muted
 // crossed-out speaker when off, accent speaker when on.
 //
-// Pressing it also initializes the shared audio engine. That is not incidental —
+// Pressing it also initializes the shared audio engine. That is not incidental -
 // browsers only resume a suspended AudioContext inside a live user activation,
 // and every later utterance is triggered by an arriving message, not by a click.
 // This press is the one gesture auto-speech gets, so it has to spend it here.
@@ -38,11 +38,11 @@ interface AutoSpeechButtonProps {
   buttonIconSize: number;
 }
 
-// Optical size correction — the button box still matches its neighbours exactly,
+// Optical size correction - the button box still matches its neighbours exactly,
 // only the glyph inside is trimmed. The speaker glyphs ink far more of their 960
 // viewBox than the mic sitting next to them: 720 units wide for `Volume2`, about
 // 810 for the slashed `VolumeX`, against the mic's 560. At the same nominal size
-// the toggle therefore reads as a visibly bigger control than the mic — barely
+// the toggle therefore reads as a visibly bigger control than the mic - barely
 // noticeable at desktop's 16px icons, obvious at compact's 32px, which is where
 // it shows. One factor for both states, keyed to the wider muted glyph, so the
 // toggle does not change size when you flip it.
@@ -72,7 +72,7 @@ export function AutoSpeechButton({ serverId, agentId, buttonIconSize }: AutoSpee
     }
     // Off DELETES the key instead of storing `false`. The record is persisted
     // for the life of the install and nothing prunes it, so a chat you muted
-    // once must not cost a row forever — and an absent key already means off.
+    // once must not cost a row forever - and an absent key already means off.
     const { [agentKey]: _cleared, ...rest } = enabledAgents;
     void updateSettings({
       agentAutoSpeechEnabled: next ? { ...rest, [agentKey]: true } : rest,
@@ -133,7 +133,7 @@ export function AutoSpeechButton({ serverId, agentId, buttonIconSize }: AutoSpee
 }
 
 const styles = StyleSheet.create((theme: Theme) => ({
-  // Matches the mic and send buttons exactly — this row reads as one control
+  // Matches the mic and send buttons exactly - this row reads as one control
   // strip, and a button that sizes itself differently breaks that.
   button: {
     width: compactUp(28),

@@ -10,7 +10,7 @@ export interface OpenContextManagementTabInput {
 }
 
 /**
- * Open (or focus) the Context Management tab. One per workspace — the report
+ * Open (or focus) the Context Management tab. One per workspace - the report
  * describes the workspace and its provider, so a second tab would only ever
  * show the same thing. Lands next to the tab the user is looking at, the same
  * as the git log pane.

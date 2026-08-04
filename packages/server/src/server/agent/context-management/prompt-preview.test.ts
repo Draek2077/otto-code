@@ -92,7 +92,7 @@ describe("buildPromptPreview", () => {
     });
 
     // Reading Otto's own injected stack must not drag every context file in
-    // with it — not in the text, and not in the token figure above it.
+    // with it - not in the text, and not in the token figure above it.
     expect(preview.sections).toEqual([
       expect.objectContaining({ category: "otto_injected", text: "team + personality" }),
     ]);
@@ -108,7 +108,7 @@ describe("buildPromptPreview", () => {
     });
 
     const section = preview.sections.find((entry) => entry.category === "system_prompt");
-    // Present, explained, and carrying no body — an omitted section would read
+    // Present, explained, and carrying no body - an omitted section would read
     // as "the provider sends nothing before your files", which is false.
     expect(section).toMatchObject({ visibility: "not_visible" });
     expect(section?.text).toBeUndefined();

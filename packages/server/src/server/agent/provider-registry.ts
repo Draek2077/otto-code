@@ -44,6 +44,7 @@ import { PiRpcAgentClient } from "./providers/pi/agent.js";
 import { TraeACPAgentClient } from "./providers/trae-acp-agent.js";
 import { MockLoadTestAgentClient } from "./providers/mock-load-test-agent.js";
 import { MockSlowProviderClient } from "./providers/mock-slow-provider.js";
+import type { BrainProviderEndpoint } from "../brain/brain-manager.js";
 import {
   AGENT_PROVIDER_DEFINITIONS,
   BUILTIN_PROVIDER_IDS,
@@ -91,13 +92,27 @@ export interface BuildProviderRegistryOptions {
   connectors?: readonly ConnectorConfig[];
   isDev?: boolean;
   ompRuntime?: OmpRuntime;
+  /**
+   * Where the built-in `otto-brain` provider gets its endpoint: the daemon's
+   * brain settings, never per-provider URL/API-key fields. Absent (tests, the
+   * CLI) leaves the provider registered but permanently unavailable.
+   */
+  brainEndpoint?: BrainProviderEndpointResolver;
 }
+
+/**
+ * Resolves the local AI host's OpenAI-compatible endpoint from the brain
+ * settings. Synchronous: the provider calls it per request so a host that was
+ * just stopped reports unavailable immediately.
+ */
+export type BrainProviderEndpointResolver = () => BrainProviderEndpoint;
 
 interface ProviderClientFactoryOptions extends Pick<
   BuildProviderRegistryOptions,
-  "workspaceGitService" | "managedProcesses" | "ompRuntime"
+  "workspaceGitService" | "managedProcesses" | "ompRuntime" | "connectors" | "brainEndpoint"
 > {
   providerParams?: unknown;
+  providerOverride?: ProviderOverride;
   customProvider?: {
     id: string;
     label: string;
@@ -164,7 +179,48 @@ const PROVIDER_CLIENT_FACTORIES: Record<string, ProviderClientFactory> = {
     }),
   mock: (logger) => new MockLoadTestAgentClient(logger),
   "mock-slow": () => new MockSlowProviderClient(),
+  // The local AI host. An OpenAI-compatible client like any custom endpoint,
+  // except the URL and credential come from the brain settings rather than
+  // provider config, so there is nothing for the operator to configure here.
+  "otto-brain": (logger, _runtimeSettings, options) =>
+    new OpenAICompatAgentClient({
+      logger,
+      providerId: OTTO_BRAIN_PROVIDER_ID,
+      label: OTTO_BRAIN_LABEL,
+      resolveEndpoint: () => resolveBrainEndpoint(options?.brainEndpoint),
+      ottoToolGroups: options?.providerOverride?.ottoToolGroups,
+      mcpServers: options?.providerOverride?.mcpServers,
+      connectors: options?.connectors,
+      mcpToolPermissions: options?.providerOverride?.mcpToolPermissions,
+      compaction: options?.providerOverride?.compaction,
+      maxToolRounds: options?.providerOverride?.maxToolRounds,
+      managedProcesses: options?.managedProcesses,
+    }),
 };
+
+export const OTTO_BRAIN_PROVIDER_ID = "otto-brain";
+const OTTO_BRAIN_LABEL = "Otto Brain";
+
+/**
+ * The brain endpoint, or a throw carrying the operator-facing reason it is
+ * unreachable. Throwing is the contract: the snapshot manager turns it into the
+ * provider's error state, which is what shows a red dot and an empty model list
+ * instead of a stale "available".
+ */
+function resolveBrainEndpoint(resolver: BrainProviderEndpointResolver | undefined) {
+  const endpoint = resolver?.() ?? {
+    state: "unavailable" as const,
+    reason: "Otto Brain is not available on this host.",
+  };
+  if (endpoint.state === "unavailable") {
+    throw new Error(endpoint.reason);
+  }
+  return {
+    baseUrl: endpoint.baseUrl,
+    apiKey: endpoint.apiKey,
+    dispatcher: endpoint.dispatcher,
+  };
+}
 
 function getCursorACPCommand(
   runtimeSettings: ProviderRuntimeSettings | undefined,
@@ -593,7 +649,7 @@ function buildResolvedBuiltinProviders(
   runtimeSettings: AgentProviderRuntimeSettingsMap | undefined,
   options: Pick<
     BuildProviderRegistryOptions,
-    "workspaceGitService" | "managedProcesses" | "ompRuntime"
+    "workspaceGitService" | "managedProcesses" | "ompRuntime" | "connectors" | "brainEndpoint"
   >,
   isDev: boolean,
 ): Map<string, ResolvedProvider> {
@@ -625,7 +681,10 @@ function buildResolvedBuiltinProviders(
           workspaceGitService: options.workspaceGitService,
           managedProcesses: options.managedProcesses,
           ompRuntime: options.ompRuntime,
+          connectors: options.connectors,
+          brainEndpoint: options.brainEndpoint,
           providerParams: override?.params,
+          providerOverride: override,
         }),
     });
   }
@@ -796,6 +855,8 @@ export function buildProviderRegistry(
       workspaceGitService: options?.workspaceGitService,
       managedProcesses: options?.managedProcesses,
       ompRuntime: options?.ompRuntime,
+      connectors: options?.connectors,
+      brainEndpoint: options?.brainEndpoint,
     },
     options?.isDev === true,
   );

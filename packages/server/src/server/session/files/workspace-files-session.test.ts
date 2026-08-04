@@ -869,7 +869,7 @@ describe("WorkspaceFilesSession file.replace", () => {
         {
           path: "a.txt",
           expectedHash: hash,
-          // Only lines 1 and 3 selected — line 2's "old" must survive.
+          // Only lines 1 and 3 selected - line 2's "old" must survive.
           matches: [
             { line: 1, column: 1, length: 3 },
             { line: 3, column: 1, length: 3 },

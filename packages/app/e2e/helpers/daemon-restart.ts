@@ -110,7 +110,7 @@ function spawnSupervisor(args: {
   // The restarted daemon outlives the worker that spawned it, so its stdio must NOT be a pipe
   // back into that worker. Playwright recycles a worker as soon as one of its tests fails; the
   // pipe then has no reader, the daemon's (very chatty) logger fills the 64 KB kernel buffer,
-  // and every subsequent write blocks forever. The port stays open, so nothing looks dead —
+  // and every subsequent write blocks forever. The port stays open, so nothing looks dead -
   // every later daemon-dependent test in the shard just hangs to its own timeout. That is
   // exactly how one failing test used to poison the ~2 hours of shard 3 that followed it.
   //

@@ -7,8 +7,8 @@ import { FeatureDisabledPanel } from "@/features/feature-disabled-panel";
 import { useFeatureEnabled } from "@/features/use-feature-enabled";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
 
-// The heavy Visualizer panel — the event adapter, the toolbar, the tri-platform
-// webview embed, and (transitively) the ~1 MB vendored render bundle — lives
+// The heavy Visualizer panel - the event adapter, the toolbar, the tri-platform
+// webview embed, and (transitively) the ~1 MB vendored render bundle - lives
 // behind this React.lazy boundary. register-panels.ts imports THIS thin module,
 // not visualizer-panel.tsx, so the heavy module is code-split out of the startup
 // graph. It is import()-ed only when an enabled Visualizer tab actually renders.
@@ -33,7 +33,7 @@ function useVisualizerPanelDescriptor(): PanelDescriptor {
 
 // Host wrapper: the feature flag decides whether the heavy panel is ever
 // referenced. While the Visualizer is disabled we render a light placeholder and
-// never touch LazyVisualizerPanel, so React.lazy never triggers its import() —
+// never touch LazyVisualizerPanel, so React.lazy never triggers its import() -
 // the render bundle + adapter + toolbar stay entirely out of memory (the "not
 // even loaded" guarantee). The Suspense fallback covers the one-time chunk fetch
 // on first open when enabled; the panel paints its own opaque load cover after.

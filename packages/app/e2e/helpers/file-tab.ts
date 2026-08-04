@@ -1,7 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 
 // Shared locators for the unified file tab (see components/file-tab-pane.tsx
-// and components/file-view-mode-bar.tsx). Kept additive — text-editor.spec.ts
+// and components/file-view-mode-bar.tsx). Kept additive - text-editor.spec.ts
 // keeps its own local copies.
 
 /**
@@ -13,8 +13,8 @@ export function editorTabCloseTestId(path: string): string {
   return `workspace-file-close-${Buffer.from(path, "utf-8").toString("base64url")}`;
 }
 
-// Inactive tabs stay mounted (useMountedTabSet), so multiple file-tab panes —
-// and their nested CM editors / preview surfaces — coexist in the DOM. Scope
+// Inactive tabs stay mounted (useMountedTabSet), so multiple file-tab panes -
+// and their nested CM editors / preview surfaces - coexist in the DOM. Scope
 // every locator to the visible (active) pane so assertions never resolve
 // against a hidden background tab.
 

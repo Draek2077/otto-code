@@ -53,7 +53,7 @@
     <style>
       /* Scoped no-drag backstop for Electron titlebar strips.
          Chromium computes -webkit-app-region rects from UNCLIPPED bounding
-         boxes of every annotated element in the document — overflow clipping
+         boxes of every annotated element in the document - overflow clipping
          and z-order are ignored (electron/electron#7605). A global no-drag
          rule therefore lets interactive chat content scrolled BEHIND the
          titlebar punch invisible holes in the drag strip. Unannotated
@@ -61,7 +61,7 @@
          on interactive elements that live inside a titlebar strip: either a
          container that itself is a drag region ([data-app-region-drag] on the
          workspace header label) or a container that holds a drag overlay
-         (:has(> [data-app-region-drag]) — TitlebarDragRegion's parent).
+         (:has(> [data-app-region-drag]) - TitlebarDragRegion's parent).
          Everything else in the app stays unannotated. */
       :is([data-app-region-drag], :has(> [data-app-region-drag]))
         :is(
@@ -87,12 +87,12 @@
 
       /* Portaled overlays are the second place no-drag is required. Popup
          menus, dialogs, and sheets render in react-native-web Modal layers
-         appended directly to <body> (plus the #overlay-root portal host) —
+         appended directly to <body> (plus the #overlay-root portal host) -
          outside #root and outside any drag-region container, so the scoped
          rule above never reaches them. Drag regions hit-test ahead of DOM
          z-order, so without no-drag an open menu is click-dead wherever it
          overlaps a titlebar strip or a pane tab-bar gutter (context menus
-         open at the cursor — inside that gutter). Unlike app content, these
+         open at the cursor - inside that gutter). Unlike app content, these
          layers exist only while an overlay is open, so they cannot punch
          persistent holes in the drag strip. */
       body
@@ -118,7 +118,7 @@
         -webkit-app-region: no-drag !important;
       }
 
-      /* Suppress the browser's default focus outline — it appears on mouse
+      /* Suppress the browser's default focus outline - it appears on mouse
          clicks and looks out of place against our themed surfaces. Keep a
          themed ring for keyboard users via :focus-visible. This is the
          pre-mount shell ring; once React themes the app the live accent takes

@@ -95,7 +95,7 @@ export interface AttachmentMenuItem {
 /**
  * Submit handler result: a `false` resolution means the submit was vetoed
  * downstream (e.g. the interrupt-a-running-agent confirm was cancelled) and
- * the composer text stayed put — callers must not collapse the input height.
+ * the composer text stayed put - callers must not collapse the input height.
  * `void`/`true` (sync or async) means the message is on its way.
  */
 export type SubmitMessageHandler = (
@@ -189,14 +189,14 @@ export interface MessageInputRef {
 // to hit; the row is allowed to overflow-clip instead of scaling further.
 const MIN_TOOLBAR_SCALE = 0.7;
 // One toolbar button's footprint (matches attachButton/voiceButton/sendButton/
-// etc. — see `compactUp(28)` below) — the minimum shrink is pushed this much
+// etc. - see `compactUp(28)` below) - the minimum shrink is pushed this much
 // further so there's always at least one whole icon's worth of extra room at
 // the narrowest size, rather than clipping right at the `MIN_TOOLBAR_SCALE` edge.
 const TOOLBAR_BUTTON_WIDTH = 28;
 const TOOLBAR_BUTTON_WIDTH_COMPACT = TOOLBAR_BUTTON_WIDTH * 2;
 // Minimum separation between the left and right toolbar groups. `space-between`
 // keeps them at opposite ends while the row fits, but the uniform shrink below
-// switches to `flex-start` — and there the two groups butt together, leaving the
+// switches to `flex-start` - and there the two groups butt together, leaving the
 // first right-side button (the auto-speech toggle) flush against the last
 // left-side control with nothing between them. It is counted into the row's
 // needed width so the shrink makes room for it rather than pushing it under
@@ -1056,11 +1056,11 @@ function sendMessageImpl(ctx: SendMessageContext): void {
     forceSend: ctx.isAgentRunning || undefined,
   });
   // When the host preserves and locks the composer (e.g. new-workspace creation),
-  // the text stays put — collapsing the height would clip it. Keep it grown.
+  // the text stays put - collapsing the height would clip it. Keep it grown.
   if (ctx.preserveHeightOnSubmit) {
     return;
   }
-  // A submit can be vetoed downstream (interrupt-confirm cancelled) — in that
+  // A submit can be vetoed downstream (interrupt-confirm cancelled) - in that
   // case the text is still in the box, so collapsing would clip it.
   void (async () => {
     const committed = await result;
@@ -2165,7 +2165,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
     // onLayout so the toolbarScale overlap check below can see it coming.
     // Letting flexbox itself shrink the group hides the overflow from that
     // check (the box quietly compresses below its children's natural size)
-    // while the fixed-size buttons inside it still overflow and overlap —
+    // while the fixed-size buttons inside it still overflow and overlap -
     // exactly the bug the check exists to prevent.
     flexShrink: 0,
     flexDirection: "row",

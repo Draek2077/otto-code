@@ -8,13 +8,13 @@ import {
 } from "@otto-code/protocol/orchestration";
 import { JudgeVerdictSchema, judgeVerdictPassed } from "@otto-code/protocol/judge-verdict";
 
-// The orchestration execution engine — pure control flow over injected seams, so
+// The orchestration execution engine - pure control flow over injected seams, so
 // it is unit-testable with fakes and reusable across whatever spawns the agents.
 // The daemon RunService implements the RunEnginePort with real primitives
 // (createAgentCommand / waitForAgentEvent / active-team role resolution); tests
 // implement it with in-memory fakes.
 //
-// Design: phases run in DECLARED ORDER (a valid topo order — dependsOn only
+// Design: phases run in DECLARED ORDER (a valid topo order - dependsOn only
 // references earlier phases, validated at build). The parallelism that matters
 // for the litmus test lives WITHIN a phase (fanOut candidates + per-candidate
 // judging), not across phases. Cross-phase parallelism is deliberately deferred;
@@ -70,7 +70,7 @@ export interface RunEngineAwaitResult {
   /**
    * What the child submitted through submit_output, when its node declared
    * output fields (graph runs only). Already validated against the node's
-   * contract by the tool itself — the engine only has to notice it arrived.
+   * contract by the tool itself - the engine only has to notice it arrived.
    * Absent/null means the tool was never called successfully, which sends the
    * engine to its prose fallback.
    */
@@ -89,7 +89,7 @@ export interface RunEngineGateDecision {
 export interface RunEnginePort {
   /**
    * Resolve the personality that fills `role` in this run's active team. Returns
-   * null when no team member has the role — the engine hard-fails the run and
+   * null when no team member has the role - the engine hard-fails the run and
    * names the gap (the repo's no-fallback rule). Idempotent per role.
    */
   resolveRole(role: string): Promise<{ personalityId: string } | null>;
@@ -98,7 +98,7 @@ export interface RunEnginePort {
   /** Wait for a spawned child to reach a terminal state and return its output. */
   awaitAgent(input: { agentId: string; signal: AbortSignal }): Promise<RunEngineAwaitResult>;
   /**
-   * Really stop one child agent — the cancel cascade. A canceled run must
+   * Really stop one child agent - the cancel cascade. A canceled run must
    * terminate its in-flight children, not merely stop awaiting them (an
    * abandoned agent keeps running and keeps spending). Optional so in-memory
    * test ports keep working; absent means cancel only stops the await.
@@ -134,7 +134,7 @@ export class RunEngineError extends Error {
 /**
  * Build the initial Run projection from a declared plan. Pure. Validates that
  * `dependsOn` only references earlier phases (keeps declared order a valid topo
- * order) and that ids are unique — a malformed plan is rejected here, before any
+ * order) and that ids are unique - a malformed plan is rejected here, before any
  * agent is spawned.
  */
 export function buildRunFromPlan(input: {
@@ -240,7 +240,7 @@ export function buildJudgeTask(input: {
 
 // Pull a JudgeVerdict out of an agent's final message. The message may wrap the
 // JSON in prose or a code fence; we extract the first balanced JSON object and
-// validate it. Anything unparseable is a FAIL — a gate must never advance on a
+// validate it. Anything unparseable is a FAIL - a gate must never advance on a
 // verdict it cannot read (mirrors normalizeJudgeOutcome). Exported for the
 // graph engine (same contract for loop-until exit tests).
 export function parseVerdict(finalMessage: string | null): RunPhaseCandidate["verdict"] {
@@ -312,7 +312,7 @@ interface ExecuteRunContext {
 /**
  * Execute a run to completion, driving the injected port. Mutates a working copy
  * of `run`, emitting on every state change, and returns the terminal Run. Never
- * throws for expected outcomes (gate rejection, missing role, cap trip) — those
+ * throws for expected outcomes (gate rejection, missing role, cap trip) - those
  * become a terminal run status with an `error`/notes; it only throws if the port
  * itself throws unexpectedly.
  */
@@ -523,7 +523,7 @@ function phaseOutput(phase: RunPhase): string | null {
 }
 
 // Appended to every worker task. Two nudges: (1) return a finished result, not a
-// status update — so a judger grades real work; (2) don't fan out to sub-agents
+// status update - so a judger grades real work; (2) don't fan out to sub-agents
 // unless the task genuinely needs it, and if you do, wait for them and fold their
 // results in before finishing. Pairs with waitForAgentFullySettled on the daemon
 // side: that guarantees we WAIT for a worker's sub-agents; this discourages
@@ -536,7 +536,7 @@ const WORKER_TASK_FRAMING =
 // Compose the task an assignee actually receives: the declared task, prefixed
 // with the outputs of the phases it depends on and suffixed with the worker
 // framing. Threading upstream results into the downstream prompt is what makes
-// `dependsOn` mean "build on this", not just "run after this" — the child agent
+// `dependsOn` mean "build on this", not just "run after this" - the child agent
 // starts a fresh session with no memory of sibling phases, so their output must
 // travel in the prompt. Dep blocks are kept terse: a labeled block per dependency.
 function composePhaseTask(ctx: ExecuteRunContext, phase: RunPhase): string {
@@ -586,7 +586,7 @@ function describePhaseForSummary(phase: RunPhase): string {
     parts.push(`(${passed}/${candidates.length} candidates passed)`);
   }
   if (phase.notes) {
-    parts.push(`— ${phase.notes}`);
+    parts.push(`- ${phase.notes}`);
   }
   const output = phaseOutput(phase);
   const line = parts.join(" ");
@@ -597,15 +597,15 @@ function describePhaseForSummary(phase: RunPhase): string {
  * Build the prompt a Writer uses to summarize a terminal run for the Runs
  * display. Feeds the run's shape (title, outcome, requirements, agent count) and
  * a compact per-phase digest with truncated outputs, and asks for a few plain
- * sentences — what it set out to do, what happened, the outcome, and why it
+ * sentences - what it set out to do, what happened, the outcome, and why it
  * failed if it did.
  */
 export function buildRunSummaryPrompt(run: Run): string {
   const header = [
     "Summarize this completed multi-agent orchestration run for a status display.",
     "Write 2–4 plain, concrete sentences covering: what the run set out to do, what happened",
-    "across its phases at a high level, the final outcome, and — if it failed — the reason.",
-    "Neutral tone. No preamble, no markdown, no headings — just the sentences.",
+    "across its phases at a high level, the final outcome, and - if it failed - the reason.",
+    "Neutral tone. No preamble, no markdown, no headings - just the sentences.",
   ].join(" ");
   const facts = [
     `Run: "${run.title}"`,

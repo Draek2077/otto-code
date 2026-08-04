@@ -109,7 +109,7 @@ describe("UsageLogStore", () => {
     const store = new UsageLogStore(filePath);
     const count = 6000;
     for (let i = 0; i < count; i++) {
-      // All well within 30 days — spread over the last day.
+      // All well within 30 days - spread over the last day.
       await store.append(evt(`e${i}`, now - (count - i) * 1000));
     }
     // Page back through all of them; nothing is dropped for being numerous.
@@ -149,7 +149,7 @@ describe("UsageLogStore", () => {
 
     await store.reset();
 
-    // No flush needed — reset writes synchronously.
+    // No flush needed - reset writes synchronously.
     const page = await store.getPage();
     expect(page.events).toEqual([]);
     expect(page.hasMore).toBe(false);

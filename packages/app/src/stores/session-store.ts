@@ -130,7 +130,7 @@ export interface Agent {
   cumulativeTokens?: number;
   /**
    * The same lifetime spend as `cumulativeTokens`, as the real in / cached /
-   * cache-write / out split plus the provider's OWN cost — never a rate-table
+   * cache-write / out split plus the provider's OWN cost - never a rate-table
    * estimate. Feeds the chat total (see chat-totals.ts). Absent ⇒ an old daemon
    * or a provider that reported nothing; `costUsd` absent ⇒ genuinely
    * unpriceable, which surfaces as a blank rather than a guess.
@@ -139,9 +139,9 @@ export interface Agent {
   cumulativeUsage?: AgentCumulativeUsage;
   /**
    * Sub-agents-track liveness: how much work this agent has done
-   * (`toolUseCount`, cumulative — it survives on a finished row) and what it is
+   * (`toolUseCount`, cumulative - it survives on a finished row) and what it is
    * doing right now (`currentTool`, which the daemon clears once the agent is
-   * terminal). Absent ⇒ the row omits that readout — an old daemon or a
+   * terminal). Absent ⇒ the row omits that readout - an old daemon or a
    * provider that can't report it, never a guessed value.
    * See docs/chat-lifecycle.md (the subagents track).
    */
@@ -150,7 +150,7 @@ export interface Agent {
   /**
    * Messages the daemon is holding to run as this agent's next turn
    * (`delivery: "queue"`). Absent ⇒ nothing queued, or a host without
-   * `features.steerQueue` — in which case the composer's own queue is the one
+   * `features.steerQueue` - in which case the composer's own queue is the one
    * in play. See packages/app/src/composer/queue.ts.
    */
   queuedMessages?: QueuedAgentMessagePayload[];
@@ -463,7 +463,7 @@ export interface SessionState {
   workspaceAgentActivity: Map<string, WorkspaceAgentActivity>;
   agentDetails: Map<string, Agent>;
   // Background shell tasks (Claude Bash tool run_in_background) keyed by task
-  // id — not AI agents/subagents, plain shell processes for the Background
+  // id - not AI agents/subagents, plain shell processes for the Background
   // Tasks track. See packages/app/src/background-tasks/.
   backgroundShellTasks: Map<string, BackgroundShellTaskInfo>;
   // Suggested tasks (spawn_task chips) keyed by taskId. Full per-parent pending
@@ -604,7 +604,7 @@ interface SessionStoreActions {
   retainAgentStream: (serverId: string, agentId: string) => () => void;
   /**
    * Drop an agent's stream buffers *and* the resume state that would otherwise
-   * make the next open a no-op catch-up. The two always move together — see
+   * make the next open a no-op catch-up. The two always move together - see
    * timeline/agent-stream-retention.ts.
    */
   releaseAgentStreams: (serverId: string, agentIds: readonly string[]) => void;
@@ -617,7 +617,7 @@ interface SessionStoreActions {
    * Drop what a closed chat tab owned and nothing else does: the hydrated
    * snapshot an archived chat was opened from (`agentDetails`) and its
    * cleared-sub-agent tally. Call it when the TAB closes, not when a pane
-   * unmounts — a background pane can be unmounted by mounted-tab retention or
+   * unmounts - a background pane can be unmounted by mounted-tab retention or
    * a workspace-deck eviction while its tab is very much still open, and the
    * tab strip renders its title straight out of this map.
    */
@@ -639,7 +639,7 @@ interface SessionStoreActions {
     agents: Map<string, Agent> | ((prev: Map<string, Agent>) => Map<string, Agent>),
   ) => void;
   // Replaces every background shell task belonging to `parentAgentId` with
-  // the pushed list — mirrors the full-list reconciliation the daemon sends
+  // the pushed list - mirrors the full-list reconciliation the daemon sends
   // on background_shell_tasks_changed.
   setBackgroundShellTasksForParent: (
     serverId: string,
@@ -647,7 +647,7 @@ interface SessionStoreActions {
     tasks: readonly BackgroundShellTaskInfo[],
   ) => void;
   // Replace the pending suggested tasks for a parent agent with the pushed list
-  // — mirrors the full-list reconciliation the daemon sends on
+  // - mirrors the full-list reconciliation the daemon sends on
   // suggested_tasks_changed.
   setSuggestedTasksForParent: (
     serverId: string,
@@ -1206,7 +1206,7 @@ export const useSessionStore = create<SessionStore>()(
       setAgentStreamState: (serverId, agentId, state) => {
         // The cap can only be crossed when a *new* agent starts holding
         // buffers, so the sweep runs there rather than on every stream flush
-        // (~1400 per session in a 2-minute soak — a per-event sweep would cost
+        // (~1400 per session in a 2-minute soak - a per-event sweep would cost
         // more than the retention it reclaims).
         let addedAgent = false;
         set((prev) => {
@@ -1311,8 +1311,8 @@ export const useSessionStore = create<SessionStore>()(
           }
           released = true;
           adjust(-1);
-          // Closing the last pane on a chat that is no longer a live agent —
-          // archived, deleted, or removed while it was open — is the "release
+          // Closing the last pane on a chat that is no longer a live agent -
+          // archived, deleted, or removed while it was open - is the "release
           // on chat close" half of the rule. Membership in `agents` is only
           // consulted here, at unmount, where nothing can be rendering it: the
           // planner still filters by retainers, so a copy open elsewhere is
@@ -1354,7 +1354,7 @@ export const useSessionStore = create<SessionStore>()(
             // The cursor and the applied flag are dropped with the buffers on
             // purpose: leaving them would tell planInitialAgentTimelineSync the
             // client is caught up, so the next open would issue an `after`
-            // catch-up that returns nothing onto an empty tail — a blank chat.
+            // catch-up that returns nothing onto an empty tail - a blank chat.
             // Clearing them makes the next open plan a full `tail` fetch, and
             // dropping the sync generation with them keeps that family whole.
             changed =
@@ -1428,7 +1428,7 @@ export const useSessionStore = create<SessionStore>()(
       releaseClosedChat: (serverId, agentId) => {
         // A chat that is still in the active directory keeps its snapshot: the
         // directory owns that entry, not the tab. Only the by-id projection an
-        // archived or deleted chat was opened with is the tab's to release —
+        // archived or deleted chat was opened with is the tab's to release -
         // and it is the one nothing else ever removes, so browsing History
         // accumulates one full Agent per chat visited.
         if (get().sessions[serverId]?.agents.has(agentId)) {

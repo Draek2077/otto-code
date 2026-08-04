@@ -122,7 +122,7 @@ function SchedulesScreenContent(): ReactElement {
     [scheduleProjectTargets],
   );
 
-  // Every known project, whether or not it currently has schedules — mirrors
+  // Every known project, whether or not it currently has schedules - mirrors
   // the Artifacts project filter so the two screens stay consistent.
   const projectOptions = useMemo<ProjectFilterOption[]>(() => {
     const byId = new Map<string, ProjectFilterOption>();

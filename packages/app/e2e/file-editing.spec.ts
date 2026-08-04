@@ -16,8 +16,8 @@ import { seedWorkspace } from "./helpers/seed-client";
 // the merge brought `packages/app/src/file-pane/` in as DEAD CODE: nothing
 // outside that directory imports it, and none of its exports (FilePanelBar,
 // FileConflictAlert, useLiveFile) are referenced anywhere. Every testID this
-// spec reached for — file-source-editor, file-panel-bar, file-mode-source,
-// file-mode-preview, file-markdown-mode, file-conflict-alert — exists ONLY in
+// spec reached for - file-source-editor, file-panel-bar, file-mode-source,
+// file-mode-preview, file-markdown-mode, file-conflict-alert - exists ONLY in
 // that unmounted tree, so all ten tests failed on the first selector that
 // touched it. That is a naming mismatch against a replaced surface, not a
 // regression: Otto's file editing works and is covered elsewhere (see the
@@ -159,7 +159,7 @@ test.describe("CodeMirror workspace file editing", () => {
 
       // NOT asserted here, because Otto does not currently do it: clicking the
       // same `path:line` link again, with the tab already open and scrolled
-      // elsewhere, does NOT re-apply the jump — the view stays at the top. The
+      // elsewhere, does NOT re-apply the jump - the view stays at the top. The
       // Paseo original asserted a re-jump and that assertion is what failed when
       // this test was retargeted (verified by run: the first-open jump above
       // passes, the re-click does not). Treat it as a real gap rather than a
@@ -176,7 +176,7 @@ test.describe("CodeMirror workspace file editing", () => {
   // `fileTabEditorContent()` (helpers/file-tab.ts). The pane-focus half is real
   // Otto behaviour and Alt+Shift+W is a live binding
   // (workspace-tab-close-current-alt-shift-w-web in keyboard-shortcuts.ts), so
-  // this one is portable — retarget the locator rather than deleting it. Check
+  // this one is portable - retarget the locator rather than deleting it. Check
   // first whether split-pane focus is already asserted elsewhere before adding
   // a duplicate.
   test.skip("clicking the editor focuses its pane beside an agent", async ({ page }) => {
@@ -208,13 +208,13 @@ test.describe("CodeMirror workspace file editing", () => {
   });
 
   // DEFERRED(paseoFilePane): needs three things Otto does not have. (1)
-  // `workspace-tab-tooltip-<tabId>` — the tab's TooltipContent carries no
+  // `workspace-tab-tooltip-<tabId>` - the tab's TooltipContent carries no
   // testID (workspace-desktop-tabs-row.tsx, the TooltipContent under the
-  // ContextMenuTrigger). (2) file-panel-bar / file-markdown-mode — Otto's bar is
+  // ContextMenuTrigger). (2) file-panel-bar / file-markdown-mode - Otto's bar is
   // `file-view-mode-bar` with file-view-mode-{editor,split,preview} and
   // file-view-formatted. (3) the cursor-position readout the mode-stability
   // assertion pins against; Otto renders no Ln/Col status. Adding a testID to
-  // the tab tooltip is a small, legitimate product change if this is wanted —
+  // the tab tooltip is a small, legitimate product change if this is wanted -
   // start there.
   test.skip("shows the full file path and keeps editor controls stable", async ({
     page,
@@ -275,7 +275,7 @@ test.describe("CodeMirror workspace file editing", () => {
   });
 
   // DEFERRED(paseoFilePane): blocked only by the missing
-  // `workspace-tab-tooltip-<tabId>` testID above — the uiFontFamily behaviour it
+  // `workspace-tab-tooltip-<tabId>` testID above - the uiFontFamily behaviour it
   // checks is real and Otto's tab tooltip does render the path. This is the
   // cheapest of the nine to revive: add the testID to the tab's TooltipContent
   // and this test should pass close to as written.
@@ -303,7 +303,7 @@ test.describe("CodeMirror workspace file editing", () => {
   // DEFERRED(paseoFilePane): file-mode-source and file-source-editor are both
   // Paseo-only names. The wrap-vs-scroll distinction is worth covering on
   // Otto's surface, but check `preview-wordwrap-toggle` (file-tab-pane.tsx)
-  // first — Otto makes word wrap an explicit user control, so the per-language
+  // first - Otto makes word wrap an explicit user control, so the per-language
   // default this asserts may not be Otto's model at all.
   test.skip("wraps Markdown while source code remains horizontally scrollable", async ({
     page,
@@ -335,14 +335,14 @@ test.describe("CodeMirror workspace file editing", () => {
     await expect.poll(() => sourceScroller.evaluate(hasHorizontalOverflow)).toBe(true);
   });
 
-  // DEFERRED(paseoFilePane): do NOT revive this one as written — its first
+  // DEFERRED(paseoFilePane): do NOT revive this one as written - its first
   // assertion contradicts Otto on purpose. It expects the buffer to autosave to
   // disk on a timer; Otto's editor deliberately does not autosave, and
   // `editor-dirty-guard.spec.ts` asserts that absence ("no-autosave" in the
   // coverage matrix). The conflict half maps cleanly onto real Otto UI
   // (editor-conflict-banner with editor-conflict-overwrite /
   // editor-conflict-reload, plus editor-disk-banner) and the reconnect
-  // resubscribe half is genuinely uncovered — those two are worth splitting out
+  // resubscribe half is genuinely uncovered - those two are worth splitting out
   // into a new spec against Otto's names. The autosave half should be dropped.
   test.skip("autosaves, saves immediately, resolves conflicts, and restores live updates after reconnect", async ({
     page,
@@ -412,7 +412,7 @@ test.describe("CodeMirror workspace file editing", () => {
   // DEFERRED(paseoFilePane): this is a missing CAPABILITY, not a missing
   // selector. BOM and line-separator preservation live in
   // `src/file-pane/editor/model.ts` (FileLineSeparator, the dead tree); Otto's
-  // live editor has no BOM or CRLF handling anywhere — grep for `lineSeparator`
+  // live editor has no BOM or CRLF handling anywhere - grep for `lineSeparator`
   // or `BOM` outside src/file-pane and there are zero hits. So a Windows file
   // edited in Otto is very likely rewritten LF and de-BOM'd. Worth confirming
   // and filing as a product bug; this test is the ready-made regression proof
@@ -440,7 +440,7 @@ test.describe("CodeMirror workspace file editing", () => {
     await expect.poll(async () => (await readFile(sourcePath)).toString("hex")).toBe(expected);
   });
 
-  // DEFERRED(paseoFilePane): already covered on Otto's surface —
+  // DEFERRED(paseoFilePane): already covered on Otto's surface -
   // `editor-dirty-guard.spec.ts` asserts the dirty dot, the confirm-on-close
   // prompt, and buffer survival across a tab switch. This version additionally
   // wants file-conflict-alert (Otto: editor-conflict-banner) and
@@ -485,7 +485,7 @@ test.describe("CodeMirror workspace file editing", () => {
   // DEFERRED(paseoFilePane): the mode-switching half is covered by
   // `file-tab-mode-bar.spec.ts` (markdown opens in preview, all three surfaces
   // switch, per-file mode memory), just under file-view-mode-* instead of
-  // file-mode-*. The genuinely uncovered part is the live-refresh behaviour —
+  // file-mode-*. The genuinely uncovered part is the live-refresh behaviour -
   // markdown and image panes updating when the file changes on disk. Note
   // `workspace-file-pane` DOES resolve here (components/file-pane.tsx), so the
   // image half is close to portable on its own.
@@ -523,13 +523,13 @@ test.describe("CodeMirror workspace file editing", () => {
   });
 
   // DEFERRED(paseoFilePane): half real, half absent. The setting exists and
-  // persists — settings/editor renders a `vim-keybindings-toggle` switch
-  // labelled "Vim keybindings" (screens/settings/editor-section.tsx) — so the
+  // persists - settings/editor renders a `vim-keybindings-toggle` switch
+  // labelled "Vim keybindings" (screens/settings/editor-section.tsx) - so the
   // first block should pass. What is missing is the readout: "Vim mode NORMAL"
   // and "Line 1, column 1" come from `panels.file.editor.vimMode` / `.cursor`,
   // which only the dead `file-pane/bar.tsx` renders. Whether the toggle
   // actually wires Vim into Otto's live CM6 editor is unverified and is the
-  // first thing to check — the setting may currently be inert.
+  // first thing to check - the setting may currently be inert.
   test.skip("persists Vim keybindings and reports Vim mode with cursor position", async ({
     page,
     withWorkspace,

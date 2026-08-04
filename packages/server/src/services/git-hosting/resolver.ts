@@ -23,7 +23,7 @@ const READ_ONLY_GIT_ENV = { GIT_TERMINAL_PROMPT: "0" } as const;
 
 // The outcome of "which hosting provider serves this directory/provider?". A
 // provider can be selected but unusable (host credentials not configured yet)
-// — that is a features-off state, not an error.
+// - that is a features-off state, not an error.
 export type ResolvedGitHosting =
   | {
       providerId: GitHostingProviderId;
@@ -41,7 +41,7 @@ export type ResolvedGitHosting =
 export interface GitHostingResolver {
   resolveForCwd(cwd: string): Promise<ResolvedGitHosting>;
   resolveForProvider(providerId: GitHostingProviderId): ResolvedGitHosting;
-  // Drops cached resolutions and provider read caches for a cwd — call after
+  // Drops cached resolutions and provider read caches for a cwd - call after
   // local mutations or settings changes affecting that checkout.
   invalidate(cwd: string): void;
   // Drops all cached resolutions (provider credentials changed).

@@ -9,7 +9,7 @@ import type {
 // Pure helpers for orchestration graph documents (projects/orchestration-graphs)
 // shared by the New Orchestration dialog and the designer tab.
 
-/** Roles a graph node can dispatch to — the worker subset of PERSONALITY_ROLES
+/** Roles a graph node can dispatch to - the worker subset of PERSONALITY_ROLES
  * (surfaces like chatter/artificer/scheduler don't fill graph seats, and the
  * orchestrator seat is the root node itself). */
 export const GRAPH_NODE_ROLES = [
@@ -49,7 +49,7 @@ export function buildRootNode(): GraphNode {
 // The designer rebuilds every node and edge from its own state on export, so
 // anything it can't edit has to be carried across explicitly. Without this,
 // opening a graph that uses a newer capability and pressing Save would quietly
-// delete it — a designer that can't show a property must still be incapable of
+// delete it - a designer that can't show a property must still be incapable of
 // destroying it.
 
 /** Node properties the canvas owns outright. Keep in step with buildGraphNode. */
@@ -125,7 +125,7 @@ export function parseOutputFields(text: string): GraphOutputField[] {
     }
     fields.push({
       key,
-      // A line that names only a field is a string field — the common case
+      // A line that names only a field is a string field - the common case
       // shouldn't require remembering the syntax.
       type: rawType || "string",
       ...(description ? { description } : {}),
@@ -181,7 +181,7 @@ function parseQueryToolLine(line: string): GraphQueryTool | null {
   return {
     name,
     kind,
-    // The protocol requires a description — it is what the model reads to know
+    // The protocol requires a description - it is what the model reads to know
     // when to call this. Naming the tool is a poor one, but it beats refusing
     // to save a half-written line.
     description: description || name,

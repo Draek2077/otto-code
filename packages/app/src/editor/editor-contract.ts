@@ -1,7 +1,7 @@
 import type { SyntaxColors } from "@otto-code/highlight";
 
 // Shared contract between the editor hosts (web DOM mount, native webview) and
-// the CM6 core. This module is bundled into the native webview HTML — keep it
+// the CM6 core. This module is bundled into the native webview HTML - keep it
 // free of React, React Native, and app-store imports.
 
 export interface EditorThemeSpec {
@@ -20,10 +20,10 @@ export interface EditorThemeSpec {
   gutterBorder: string;
   /** Character column for the line-length ruler; null hides it entirely. */
   rulerColumn: number | null;
-  /** Ruler stripe color — the gutter divider at half strength. */
+  /** Ruler stripe color - the gutter divider at half strength. */
   rulerColor: string;
   /**
-   * Width of the overview ruler — the annotation lane down the right edge — in px.
+   * Width of the overview ruler - the annotation lane down the right edge - in px.
    * `0` removes it entirely, lane reservation included, which is the off switch:
    * the same idiom as `rulerColumn: null`.
    *
@@ -34,7 +34,7 @@ export interface EditorThemeSpec {
   overviewRulerWidth: number;
   /** Lane fill. The gutter colour, so the lane reads as the margin's continuation. */
   overviewRulerBackground: string;
-  /** Hairline on the lane's inner edge — the gutter divider, mirrored. */
+  /** Hairline on the lane's inner edge - the gutter divider, mirrored. */
   overviewRulerBorder: string;
   /**
    * Viewport indicator fill. MUST stay translucent: it is painted over the marks,
@@ -45,7 +45,7 @@ export interface EditorThemeSpec {
   overviewRulerCursor: string;
   /**
    * Selected-range bands in the lane. The editor's own selection fill, so the band
-   * is recognisably the selection rather than a fifth kind of mark — and translucent
+   * is recognisably the selection rather than a fifth kind of mark - and translucent
    * for the same reason as the thumb: it is painted behind the marks, and a problem
    * inside the selection has to stay visible.
    */
@@ -65,7 +65,7 @@ export interface EditorThemeSpec {
    * app's elevated-surface token, which is lighter than the well.
    */
   tooltipBackground: string;
-  /** Border for those surfaces — the real border colour, not the ruler half-strength. */
+  /** Border for those surfaces - the real border colour, not the ruler half-strength. */
   tooltipBorder: string;
   /**
    * CSS `box-shadow` for those surfaces, composed from the app's `md` elevation
@@ -77,13 +77,13 @@ export interface EditorThemeSpec {
   cursor: string;
   /**
    * Caret width in px. A 1px hairline is genuinely hard to find in a wall of
-   * monospace text — this is the one dimension that makes the caret locatable
+   * monospace text - this is the one dimension that makes the caret locatable
    * at a glance, so it is themeable rather than left at CM6's 1.2px default.
    */
   cursorWidth: number;
   activeLineBackground: string;
   /**
-   * Search-match fills. These must NOT resemble `selectionBackground` — a match
+   * Search-match fills. These must NOT resemble `selectionBackground` - a match
    * that looks like a selection is invisible while you are also selecting, which
    * is precisely when you are searching. They are amber (the semantic warning
    * tone) against the neutral selection, and each fill is paired with an outline
@@ -93,7 +93,7 @@ export interface EditorThemeSpec {
   searchMatchBorder: string;
   activeSearchMatchBackground: string;
   activeSearchMatchBorder: string;
-  /** CSS font-family stack; must end in a generic mono fallback — the native
+  /** CSS font-family stack; must end in a generic mono fallback - the native
    * webview document cannot resolve Expo-registered font names. */
   fontFamily: string;
   fontSize: number;
@@ -106,7 +106,7 @@ export interface EditorThemeSpec {
 export type EditorDiagnosticSeverity = "error" | "warning" | "info" | "hint";
 
 /**
- * One problem a language server reported, 1-based — the editor's mirror of the protocol's
+ * One problem a language server reported, 1-based - the editor's mirror of the protocol's
  * `CodeDiagnostic`, restated here because this module is the webview's contract and may not
  * import from the protocol package.
  */
@@ -117,7 +117,7 @@ export interface EditorDiagnostic {
   endColumn: number;
   severity: EditorDiagnosticSeverity;
   message: string;
-  /** Which tool says so — `ts`, `oxc`. */
+  /** Which tool says so - `ts`, `oxc`. */
   source?: string;
   /** That tool's rule or error code. */
   code?: string;
@@ -140,7 +140,7 @@ export interface EditorMatchInfo {
 }
 
 /**
- * Where the caret is, for the status bar. Pushed on every selection change —
+ * Where the caret is, for the status bar. Pushed on every selection change -
  * unlike `EditorSelection` (pull-only) and `EditorPointerSelect` (pointer only),
  * both of which miss plain keyboard movement.
  */
@@ -220,7 +220,7 @@ export type EditorHoverAnswer =
   | { kind: "content"; markdown: string }
   /** The server answered and had nothing to say about this position. */
   | { kind: "none" }
-  /** A server is bound but still starting or indexing — the same ask will work later. */
+  /** A server is bound but still starting or indexing - the same ask will work later. */
   | { kind: "warming" }
   /** No server covers this file, or the request failed. Asking again will not help. */
   | { kind: "unavailable" };
@@ -232,7 +232,7 @@ export type EditorHoverAnswer =
  *
  * Not in here: CodeMirror's `defaultKeymap` (select line, undo, indent, the
  * clipboard) and Escape-closes-find. Those are the platform's editor bindings
- * rather than Otto's, and they keep working untouched — see editor-core's keymap.
+ * rather than Otto's, and they keep working untouched - see editor-core's keymap.
  */
 export type EditorKeyAction =
   | "save"
@@ -285,7 +285,7 @@ export type MarkdownCommandName =
 
 export interface EditorKeyBinding {
   action: EditorKeyAction;
-  /** A CodeMirror key name — "Mod-s", "Shift-F12", "F2". */
+  /** A CodeMirror key name - "Mod-s", "Shift-F12", "F2". */
   key: string;
 }
 
@@ -294,7 +294,7 @@ export interface EditorKeyBinding {
  * native webview, which has no shortcut registry to read, and tests.
  *
  * These MUST stay in step with the File Editor section of `SHORTCUT_BINDINGS`
- * (keyboard/keyboard-shortcuts.ts) — the registry is the source of truth and
+ * (keyboard/keyboard-shortcuts.ts) - the registry is the source of truth and
  * this is its restatement for hosts that cannot reach it. editor-key-bindings.test.ts
  * asserts the two agree, so a default changed in one place fails there rather
  * than silently giving phones a different editor from desktops.
@@ -329,7 +329,7 @@ export interface EditorController {
   getSelection(): Promise<EditorSelection>;
   /**
    * The identifier under the caret, or `""` when the caret is not in one.
-   * Drives go-to-definition, whose daemon-side index is name-based — see
+   * Drives go-to-definition, whose daemon-side index is name-based - see
    * word-at-cursor.ts for why nothing smarter belongs here.
    */
   getWordAtCursor(): Promise<string>;
@@ -345,26 +345,26 @@ export interface EditorController {
   goToLine(line: number): void;
   /**
    * Scroll to and *select* an inclusive 1-based line range, then focus. Where
-   * `goToLine` says "you are here", this says "this is the thing" — the span is
+   * `goToLine` says "you are here", this says "this is the thing" - the span is
    * highlighted and a single keystroke replaces it. Used when a caller knows
    * the extent of what it sent you to (a finding, a diff hunk).
    */
   /**
    * `reveal` (default true) is what makes this a jump. Pass false when the
-   * range is already what the user is looking at — selecting the line under the
+   * range is already what the user is looking at - selecting the line under the
    * pointer must not scroll the page out from under them.
    */
   selectLines(startLine: number, endLine: number, options?: { reveal?: boolean }): void;
   /** Select the whole document, then focus (context menu "Select all"). */
   selectAll(): void;
   /**
-   * Overwrite the primary selection — insertion when it is empty. The host owns
+   * Overwrite the primary selection - insertion when it is empty. The host owns
    * the clipboard (one API across web and native), so cut and paste are this
    * plus a clipboard read or write.
    */
   replaceSelection(text: string): void;
   /**
-   * Run a markdown formatting command — the formatting toolbar's entry point,
+   * Run a markdown formatting command - the formatting toolbar's entry point,
    * and the same code the keymap runs, so a button and a key can never diverge.
    *
    * Deliberately fire-and-forget rather than reporting whether the command
@@ -390,7 +390,7 @@ export interface EditorController {
   /** Scroll so the given 1-based line sits `viewportOffsetY` px below the viewport top. */
   scrollToLineAtOffset?(line: number, viewportOffsetY: number): void;
   /**
-   * Replace the problem markers. Always the document's whole current set — the daemon
+   * Replace the problem markers. Always the document's whole current set - the daemon
    * pushes snapshots, not deltas, so there is nothing to merge and nothing to retract.
    */
   setDiagnostics(diagnostics: readonly EditorDiagnostic[]): void;
@@ -404,8 +404,8 @@ export interface CodeEditorProps {
    * The saved text the document is dirty *against*, kept live: whenever the
    * buffer's baseline moves (a save lands, the disk version is adopted) pass the
    * new one and the editor re-derives dirty from it. It is the only way the
-   * editor is told what clean means, which is what lets undoing an edit — or a
-   * cut put back by a paste — report not-dirty again.
+   * editor is told what clean means, which is what lets undoing an edit - or a
+   * cut put back by a paste - report not-dirty again.
    *
    * Differs from `initialDoc` only when a recovered draft is mounted: then the
    * document is the draft and this is what is on disk.
@@ -433,7 +433,7 @@ export interface CodeEditorProps {
   /**
    * Which key runs which of the callbacks below. Comes from the user's effective
    * shortcut registry (see editor/editor-key-bindings.ts), so a rebind in
-   * Settings reaches the editor. Omitted means `DEFAULT_EDITOR_KEY_BINDINGS` —
+   * Settings reaches the editor. Omitted means `DEFAULT_EDITOR_KEY_BINDINGS` -
    * which is what the native webview host uses, since a phone has no shortcuts
    * screen to rebind from.
    */
@@ -444,7 +444,7 @@ export interface CodeEditorProps {
   onFindShortcut?: () => void;
   /**
    * Escape inside the editor while find is running; the host closes the find
-   * strip. Never fires when find is idle — Escape keeps its editing meaning
+   * strip. Never fires when find is idle - Escape keeps its editing meaning
    * then. Not a rebindable binding for exactly that reason.
    */
   onCloseFindShortcut?: () => void;
@@ -454,7 +454,7 @@ export interface CodeEditorProps {
   onGoToDefinitionShortcut?: () => void;
   /**
    * The `findReferences` binding fired; the host opens the references tab. Wired
-   * even when no language server covers the file — like go-to-definition, the
+   * even when no language server covers the file - like go-to-definition, the
    * keystroke reaches the editor whether or not the menu item is offered, so the
    * capability gate lives in the host's handler.
    */
@@ -468,7 +468,7 @@ export interface CodeEditorProps {
    *
    * **Omitting this is the capability gate.** Without it the core registers no
    * handler at all, so the drop keeps whatever the platform does with it rather
-   * than being swallowed by a feature that cannot finish — which is what a host
+   * than being swallowed by a feature that cannot finish - which is what a host
    * on a daemon without `features.binaryFileWrite` passes.
    */
   onImageDrop?: (images: readonly EditorDroppedImage[]) => void;
@@ -486,19 +486,19 @@ export interface CodeEditorProps {
   /**
    * Right-click inside the editor, in viewport coordinates. Web host only:
    * supplying it suppresses the platform menu, so the host must offer the edit
-   * actions itself. Native keeps the platform's own text menu — a long-press
+   * actions itself. Native keeps the platform's own text menu - a long-press
    * selection menu is what a phone user expects there.
    */
   onContextMenu?: (point: { x: number; y: number }) => void;
   /**
    * Resolve the language server's explanation for a 1-based position.
-   * **Web/desktop only by construction** — CM6 drives this from pointer rest, and
+   * **Web/desktop only by construction** - CM6 drives this from pointer rest, and
    * pointer events do not fire on native (see CLAUDE.md); a touch equivalent would be
    * a long-press affordance, which is a different feature.
    */
   hoverProvider?: (position: { line: number; column: number }) => Promise<EditorHoverAnswer>;
   /**
-   * Problems for this document. Unlike `hoverProvider` this works on every platform —
+   * Problems for this document. Unlike `hoverProvider` this works on every platform -
    * diagnostics are pushed, so they need no pointer.
    */
   diagnostics?: readonly EditorDiagnostic[];
@@ -517,7 +517,7 @@ export type EditorWebViewInbound =
       wordWrap: boolean;
       markdownLivePreview?: boolean;
       /**
-       * Whether the host can write a dropped image into the workspace — the
+       * Whether the host can write a dropped image into the workspace - the
        * `features.binaryFileWrite` answer, which the webview cannot ask for
        * itself. Read at mount only: a daemon that gains the capability
        * mid-session reaches the editor at its next mount, and a capability that
@@ -562,6 +562,6 @@ export type EditorWebViewOutbound =
   | { type: "selection"; requestId: number; selection: EditorSelection }
   | { type: "wordAtCursor"; requestId: number; word: string }
   // Debounced buffer mirror so a webview render-process death cannot lose
-  // edits; the host remounts from the last synced doc. Saves never read it —
+  // edits; the host remounts from the last synced doc. Saves never read it -
   // they always round-trip getDoc for the exact buffer.
   | { type: "docSync"; doc: string };

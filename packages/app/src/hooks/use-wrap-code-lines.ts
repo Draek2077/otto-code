@@ -8,7 +8,7 @@ function selectWrapCodeLines(settings: AppSettings): boolean {
 
 // Reads the device-local "wrap long code lines" preference through the settings
 // query cache with a `select`, so subscribers (every tool-call detail block in a
-// chat stream) only re-render when the flag actually flips — never on unrelated
+// chat stream) only re-render when the flag actually flips - never on unrelated
 // settings writes, and never per streamed chunk. Do NOT swap this for
 // useAppSettings() in hot chat components; that observer notifies on every
 // settings change. Mirrors use-text-effect-theme.ts.

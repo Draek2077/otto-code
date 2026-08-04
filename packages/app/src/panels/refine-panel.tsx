@@ -56,7 +56,7 @@ import type { WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import { compactFont, type Theme } from "@/styles/theme";
 
 /**
- * An AI rewrite as an auditable job — the document half of what the rename tab
+ * An AI rewrite as an auditable job - the document half of what the rename tab
  * does for symbols.
  *
  * The shape is the same on purpose, down to the chrome: one toolbar at the file
@@ -88,7 +88,7 @@ const ThemedCheckSquare = withUnistyles(CheckSquare);
 // The field, not the `TextArea` wrapper. `withUnistyles` applies a wrapped
 // component's style through a `.hash > *` child selector, so wrapping a
 // composite lands the style on its outer frame and the real `<textarea>` keeps
-// the browser's defaults — which is how this box shipped with black 16px text
+// the browser's defaults - which is how this box shipped with black 16px text
 // on a dark panel. See docs/unistyles.md.
 const ThemedInstructionInput = withUnistyles(TextInput, (theme: Theme) => ({
   placeholderTextColor: theme.colors.foregroundMuted,
@@ -100,7 +100,7 @@ type RefineTarget = Extract<WorkspaceTabTarget, { kind: "refine" }>;
  * The tab names itself after the job it was opened for, not after the module
  * that implements it. Compaction and a plain rewrite are the same loop, but a
  * user who pressed "Compact with AI" and got a tab called "Refine" has to work
- * out that those are the same thing — so the title and the glyph follow the
+ * out that those are the same thing - so the title and the glyph follow the
  * preset, exactly as the toolbar button that opened it does.
  */
 function useRefinePanelDescriptor(target: RefineTarget): PanelDescriptor {
@@ -177,7 +177,7 @@ function RefinePanel() {
   const editInstruction = useCallback((next: string) => {
     setInstruction(next);
     // Once the text is the user's, the preset is only a description of where it
-    // started — so stop claiming the tab is running that preset.
+    // started - so stop claiming the tab is running that preset.
     setActivePresetId(null);
   }, []);
 
@@ -228,7 +228,7 @@ function RefinePanel() {
  * what it would do, and the controls that decide it.
  *
  * Accept is only ever live against proposals that are on screen with at least
- * one change kept — accepting nothing would write the files back exactly as
+ * one change kept - accepting nothing would write the files back exactly as
  * they were, which is a no-op dressed up as a decision. There is no Abandon
  * button because abandoning is free and the tab already has a close control;
  * spending toolbar width on a second way to do nothing would crowd out the
@@ -328,7 +328,7 @@ function acceptLabel(phase: RefinePhase, stats: RefineSetStats): string {
 }
 
 /**
- * Keep or drop everything at once — the fast path for "all of it" or "none of
+ * Keep or drop everything at once - the fast path for "all of it" or "none of
  * it". One button rather than two, like the expand toggle beside it: the list
  * is either all kept or it isn't, so only one of the two actions is ever the
  * one you want, and the highlight carries which state you are in.
@@ -352,12 +352,12 @@ function KeepAllToggle({ session }: { session: RefineSession }) {
  *
  * This strip is the blast radius made visible and editable. A model that can
  * see a file but not change it is the difference between "understand this in
- * the context of the project" and "let it loose on the project" — too important
+ * the context of the project" and "let it loose on the project" - too important
  * to leave implicit, so every file in the session is listed with its role, and
  * the role is one tap from changing.
  *
  * Shown for a set of one too. A single-file rewrite is not a different feature
- * with different controls, it is this one with nothing added — and a tab whose
+ * with different controls, it is this one with nothing added - and a tab whose
  * chrome appears and disappears depending on how it was opened teaches the user
  * that Refine and Compact are two tools when they are one.
  */
@@ -407,7 +407,7 @@ function describeWorkingSet(writable: number, total: number): string {
  * Widen the rewrite to the whole set in one press, and back again.
  *
  * A compaction seeded from the context graph arrives with a dozen references,
- * and "actually, rewrite all of these" is a real request — one that costs a
+ * and "actually, rewrite all of these" is a real request - one that costs a
  * dozen taps without this. Going back leaves the primary rewritable rather than
  * emptying the set, because a set with nothing to rewrite is a round that
  * cannot run.
@@ -711,7 +711,7 @@ function ProposalList({
  * One file's proposal: the same heading the rename and references tabs use, so
  * the three read as one family, plus a switch that keeps or drops the whole
  * file at once. The two-level shape mirrors the rename tab's file-then-edit
- * list, because it answers the same question in the same order — which files,
+ * list, because it answers the same question in the same order - which files,
  * then what inside them.
  */
 function FileProposalGroup({
@@ -786,7 +786,7 @@ function FileProposalGroup({
 /**
  * One change, with its decision.
  *
- * The switch is the decision and the chevron is the folding — separate
+ * The switch is the decision and the chevron is the folding - separate
  * controls, because a group you have folded away is not a group you have
  * dropped, and conflating them would make "I've read this one" destructive. A
  * dropped group stays on screen, dimmed: what you refused is part of the
@@ -850,7 +850,7 @@ function HunkGroup({
 /**
  * What the accept actually did, file by file.
  *
- * Every file is listed, including the ones that went cleanly — a report showing
+ * Every file is listed, including the ones that went cleanly - a report showing
  * only problems would leave the user unable to tell "nothing went wrong" from
  * "nothing ran". The `stale` row is the important one: that file changed
  * underneath the session, so it was deliberately left exactly as it is.
@@ -968,7 +968,7 @@ export const refinePanelRegistration: PanelRegistration<"refine"> = {
   component: RefinePanel,
   useDescriptor: useRefinePanelDescriptor,
   confirmClose() {
-    // Abandoning is free — no file was touched — so closing never asks.
+    // Abandoning is free - no file was touched - so closing never asks.
     return Promise.resolve(true);
   },
 };
@@ -1008,7 +1008,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: compactFont(theme.fontSize.sm),
     flexShrink: 1,
   },
-  // Shrinks before the file name does — the document being refined is what
+  // Shrinks before the file name does - the document being refined is what
   // identifies the tab, so it is the last thing that should be truncated.
   impactText: {
     color: theme.colors.foregroundMuted,

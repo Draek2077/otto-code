@@ -35,7 +35,7 @@ test.describe("Settings host page", () => {
   });
 
   // Otto tools and browser tools moved off the Agents page onto their own Tools
-  // section — see HostToolsPage in screens/settings/host-page.tsx.
+  // section - see HostToolsPage in screens/settings/host-page.tsx.
   test("tools section shows the inject MCP toggle", async ({ page }) => {
     const serverId = getServerId();
 

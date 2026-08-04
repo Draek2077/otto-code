@@ -4,7 +4,7 @@
 // text rewrite: it has no parser, no symbol table, and no language server. The
 // rename tab can safely touch code because an LSP tells it what a symbol is and
 // where every reference lives; Refine knows none of that, so over source code it
-// would produce a plausible-looking diff that silently breaks a call site — and
+// would produce a plausible-looking diff that silently breaks a call site - and
 // a plausible-looking diff is exactly what gets rubber-stamped.
 //
 // That is the same objection that got the old "Refactor with AI" button pulled

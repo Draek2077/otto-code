@@ -10,7 +10,7 @@
  *
  * The check is deliberately not "just run `playwright install`". That command
  * takes a global lock under the shared user-level browser cache, so on the
- * common path — the browser is already there — an unconditional install turns a
+ * common path - the browser is already there - an unconditional install turns a
  * lock left behind by an interrupted run in *another* checkout into a hard
  * failure of this one. So: ask Playwright where the browsers it wants should
  * live, look, and only shell out when something is actually missing.
@@ -39,8 +39,8 @@ const INSTALL_TIMEOUT_MS = 5 * 60_000;
  * Whether a browser is really installed at `path`.
  *
  * **An existing directory is not proof.** Playwright creates the target
- * directory before it unpacks into it, so a run that is interrupted — or whose
- * detached download child is killed — leaves an *empty* directory behind. A
+ * directory before it unpacks into it, so a run that is interrupted - or whose
+ * detached download child is killed - leaves an *empty* directory behind. A
  * bare `existsSync` reads that as installed, the launch then fails with
  * "Executable doesn't exist", and no amount of re-running the installer fixes
  * it because the installer agrees the directory is there.

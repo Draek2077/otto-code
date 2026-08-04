@@ -20,7 +20,7 @@ async function cleanupSeededRunState(client: SeedDaemonClient, projectId: string
 // "Visualize" action that opens a run-scoped Visualizer tab in the run's
 // workspace. Runs have no client-side create RPC (only the conductor `start_run`
 // tool makes them), so this spec seeds one deterministically by writing a
-// terminal run file into $OTTO_HOME/runs and restarting the isolated daemon —
+// terminal run file into $OTTO_HOME/runs and restarting the isolated daemon -
 // RunService.init reloads persisted runs on startup. The restart is safe here:
 // the app E2E project runs with workers=1 and helpers/daemon-restart.ts
 // preserves the global-setup environment.

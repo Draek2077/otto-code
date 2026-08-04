@@ -33,7 +33,7 @@ import { resolveBrainBinPath } from "./brain-manager.js";
  *    parse the CLI's `--json` stdout.
  *  - Long operations (pull, runtime install, calibrate, sweep, bench) run as
  *    tracked JOBS. The child's stderr carries progress (`<pct>%`, phase lines);
- *    the client polls jobs() and renders it. Only one job runs at a time — the
+ *    the client polls jobs() and renders it. Only one job runs at a time - the
  *    ops load models and hold the GPU, and serializing downloads too keeps the
  *    surface simple and predictable.
  *
@@ -82,25 +82,25 @@ export class BrainOpsManager {
 
   // --- Reads ---------------------------------------------------------------
 
-  /** Installed local models — `otto-brain scan --json`. */
+  /** Installed local models - `otto-brain scan --json`. */
   async scanModels(): Promise<BrainInstalledModel[]> {
     const rows = await this.runJson(["scan", "--json"]);
     return this.parseRows(rows, BrainInstalledModelSchema);
   }
 
-  /** Downloadable catalog with installed flags — `otto-brain catalog --json`. */
+  /** Downloadable catalog with installed flags - `otto-brain catalog --json`. */
   async listCatalog(): Promise<BrainCatalogModel[]> {
     const rows = await this.runJson(["catalog", "--json"]);
     return this.parseRows(rows, BrainCatalogModelSchema);
   }
 
-  /** Installed llama.cpp runtimes — `otto-brain runtime list --json`. */
+  /** Installed llama.cpp runtimes - `otto-brain runtime list --json`. */
   async listRuntimes(): Promise<BrainRuntime[]> {
     const rows = await this.runJson(["runtime", "list", "--json"]);
     return this.parseRows(rows, BrainRuntimeSchema);
   }
 
-  /** Search Hugging Face for GGUF models — `otto-brain search <query> --json`. */
+  /** Search Hugging Face for GGUF models - `otto-brain search <query> --json`. */
   async searchHf(query: string, limit: number | null): Promise<BrainHfSearchResult[]> {
     if (!query.trim()) {
       return [];
@@ -141,7 +141,7 @@ export class BrainOpsManager {
     return out;
   }
 
-  /** Quantizations a repo offers — `otto-brain add <repo> --list-quants --json`. */
+  /** Quantizations a repo offers - `otto-brain add <repo> --list-quants --json`. */
   async repoQuants(repo: string): Promise<BrainRepoQuant[]> {
     if (!repo.trim()) {
       return [];
@@ -168,7 +168,7 @@ export class BrainOpsManager {
   /** Download a chosen quant of an arbitrary HF repo (a `pull` job). */
   addModel(repo: string, quant: string): BrainJob {
     // An empty quant makes the CLI list quants instead of downloading, so the job
-    // would report success while writing nothing — reject it up front.
+    // would report success while writing nothing - reject it up front.
     if (!repo.trim() || !quant.trim()) {
       throw new Error("A repo and a quant are required.");
     }
@@ -377,6 +377,13 @@ export class BrainOpsManager {
         if (Number.isFinite(pct)) {
           job.percent = Math.max(0, Math.min(100, pct));
         }
+      }
+      // `bench` prints "=".repeat(74) rules around each model's section
+      // header - a divider carries no information on its own, so keeping it
+      // out of `message` means the surrounding line (the model name, a phase,
+      // a percentage) survives as what the client actually shows.
+      if (/^=+$/u.test(line)) {
+        continue;
       }
       job.message = truncateMessage(line);
     }

@@ -1,8 +1,8 @@
-# Changes view — what the diff is measured against
+# Changes view - what the diff is measured against
 
 The Changes tab has two modes. **Uncommitted** diffs the working tree against `HEAD` and needs
 no base. **Committed** diffs against a _base branch_, and everything below is about how that
-base is chosen. Get it wrong and the view fills with commits the user never wrote — which is
+base is chosen. Get it wrong and the view fills with commits the user never wrote - which is
 the single most common way this feature stops being usable.
 
 The engine is `packages/server/src/utils/checkout-git.ts`. Per-worktree state lives in
@@ -16,13 +16,13 @@ per-branch base lives beside it in `<gitdir>/otto/diff-base.json`
 computed in two places; that is exactly how you get two different answers to the same question, so
 `resolveBaseRefForCwd` and `getCheckoutSnapshotFacts` both call the one ladder now.
 
-1. **The branch's remembered base** — `diff-base.json`, keyed by branch name. Either a user pick
+1. **The branch's remembered base** - `diff-base.json`, keyed by branch name. Either a user pick
    or a parent detected earlier. **Sticky by design**: see below.
-2. **An Otto worktree's creation-time base** — the `baseRefName` in `worktree.json`, which already
+2. **An Otto worktree's creation-time base** - the `baseRefName` in `worktree.json`, which already
    records the branch the worktree was cut from.
 3. **The inferred parent branch** (`checkout-git-parent-branch.ts`), then written to
    `diff-base.json` so step 1 answers from here on.
-4. **The repository default branch** — `resolveRepositoryDefaultBranch`, which reads
+4. **The repository default branch** - `resolveRepositoryDefaultBranch`, which reads
    `refs/remotes/origin/HEAD` and prefers the local branch name over the remote-tracking one.
 5. **`origin/<branch>` when steps 1-4 land on the branch you are standing on.** On the default
    branch `merge-base(main, HEAD)` is HEAD, so "vs main" is empty by definition. Comparing against
@@ -31,12 +31,12 @@ computed in two places; that is exactly how you get two different answers to the
 Then, as before:
 
 - **Local ref or remote-tracking ref?** `resolveBestComparisonBaseRef` picks between `<name>` and
-  `origin/<name>` — unless the base is remote-qualified, which is a pin it honours verbatim.
+  `origin/<name>` - unless the base is remote-qualified, which is a pin it honours verbatim.
 - **Which commit?** `git merge-base <chosen ref> HEAD`. The diff is `merge-base..HEAD`, so commits
   that are only on the base branch never appear.
 
-Everything that measures against the base — the diff (`getCheckoutDiff`), ahead/behind
-(`getAheadBehind`), and the shortstat badge (`getCheckoutShortstat`) — funnels through the
+Everything that measures against the base - the diff (`getCheckoutDiff`), ahead/behind
+(`getAheadBehind`), and the shortstat badge (`getCheckoutShortstat`) - funnels through the
 comparison step, either directly or via the cached `comparisonBaseRef` on
 `getCheckoutSnapshotFacts`. Keep it that way: three copies of this logic is three different answers
 to "what changed?".
@@ -47,13 +47,13 @@ the server that count anything (the `--numstat` in `getCheckoutDiff` and the `--
 snapshot, rendered by `sidebar-workspace-row.tsx` / `sidebar-status-list.tsx`), the ahead/behind
 counts behind the git actions, and the Changes list all report against the same base. When detection
 repoints a stacked branch at its parent, all of them shrink to that branch's own work in the same
-pass — there is no surface that keeps counting against the default branch. There is a regression
+pass - there is no surface that keeps counting against the default branch. There is a regression
 test asserting the badge and ahead/behind specifically, not just the diff, because they are the
 numbers users notice first.
 
 One pre-existing subtlety worth knowing when reading the badge: `getCheckoutShortstat` diffs the
 **working tree** against the merge-base and adds untracked lines, so it is "everything since the
-fork point, committed or not" — not the committed diff alone.
+fork point, committed or not" - not the committed diff alone.
 
 ## Parent detection is a heuristic, and has to look like one
 
@@ -67,7 +67,7 @@ Four things about this are load-bearing, and each has a regression test:
 
 - **The default branch has no parent, and must not be asked.** This is the one that bit in
   practice: on `main` the scan proposed a long-merged feature branch. Every branch ever merged into
-  `main` has a tip that is an ancestor of HEAD, which is **graph-identical to a stacked parent** —
+  `main` has a tip that is an ancestor of HEAD, which is **graph-identical to a stacked parent** -
   and since `main` is excluded from its own candidate list, a merged branch always wins. So
   `currentBranch === defaultBranch` returns `null` up front and the ladder falls to step 5.
   Off the default branch the ambiguity resolves itself: once a branch merges, the default branch's
@@ -93,7 +93,7 @@ Detection is **sticky**: the first computed answer is written down and never rec
 when it came from the step-4/5 fallback rather than the graph. Two reasons. A heuristic that
 silently re-decides itself every read is worse than no heuristic, because the base moves under the
 user between two views of the same branch. And without persisting the negative case, the 50-candidate
-scan would re-run on every snapshot refresh for every branch with no detectable parent — the default
+scan would re-run on every snapshot refresh for every branch with no detectable parent - the default
 branch most of all, which is where most sessions sit.
 
 Because sticky makes a wrong guess _persistent_, the provenance is on the wire (`baseSource`:
@@ -101,8 +101,8 @@ Because sticky makes a wrong guess _persistent_, the provenance is on the wire (
 branch"** row (`redetect` on the RPC) clears the stored entry and runs the ladder again. Treat those
 two as part of the feature, not polish: they are what makes a heuristic acceptable.
 
-**Self-healing.** If a stored base names a branch that no longer resolves on either side — the
-ordinary case where a parent merges and someone deletes it — the entry re-resolves **once** to the
+**Self-healing.** If a stored base names a branch that no longer resolves on either side - the
+ordinary case where a parent merges and someone deletes it - the entry re-resolves **once** to the
 repository default and is rewritten. Guarded on the current branch itself resolving, so a repo
 mid-fetch or mid-clone does not trade a good base for the default permanently.
 
@@ -118,10 +118,10 @@ read path, so it works with whatever refs the repo already has.
 
 The rule is **not** "prefer origin" and **not** "prefer the fresher branch". It is: compute
 `merge-base` with `HEAD` for both candidates and take the candidate whose merge-base is the
-_later_ commit (`resolveLatestForkPointBaseRef` — ordering via `git merge-base --is-ancestor`).
+_later_ commit (`resolveLatestForkPointBaseRef` - ordering via `git merge-base --is-ancestor`).
 That commit is the real branch point, so nothing the branch didn't author can leak in.
 
-Only when both candidates fork at the same commit — where the choice cannot change the diff —
+Only when both candidates fork at the same commit - where the choice cannot change the diff -
 does it fall back to `pickMoreAdvancedBaseRef`, which prefers whichever ref carries more
 commits the other lacks. That fallback exists for the ahead/behind counts, which _do_ want the
 fresher ref so "behind by N" reflects reality.
@@ -130,8 +130,8 @@ Merge and pull targets deliberately do not use this. `resolveMostAheadBaseRef` (
 `mergeFromBase`) always wants the freshest ref, because merging into a stale one silently drops
 the other side's commits.
 
-**Known gap:** if `origin/<name>` does not exist at all — never fetched, or a `remote.origin.fetch`
-refspec that excludes it — there is only one candidate and merge-base math cannot help. A stale
+**Known gap:** if `origin/<name>` does not exist at all - never fetched, or a `remote.origin.fetch`
+refspec that excludes it - there is only one candidate and merge-base math cannot help. A stale
 base ref that nobody updates stays stale. Auto-fetching on workspace open is the obvious fix and
 is deliberately not built: it puts network traffic on a read-only view.
 
@@ -168,18 +168,18 @@ remote qualifier is _comparison-only_. Merge and PR targets collapse back to the
 (`mergeToBase` normalizes, `resolveMostAheadBaseRef` wants the freshest ref, and an Otto worktree's
 `worktree.json` always stores the local name) because **there is no such thing as opening a pull
 request against a remote-tracking ref**. If you find that asymmetry and think it is a bug, it is
-not — deleting it breaks PR creation for anyone who pinned `origin/<branch>`.
+not - deleting it breaks PR creation for anyone who pinned `origin/<branch>`.
 
 Otherwise the stored base remains one source of truth: `mergeToBase` and `createPullRequest` read
 the same ladder, so repointing a stacked branch at its parent also makes "Create PR" target the
 parent (the Bitbucket behavior). Clients echo the base back on `compare.baseRef` and PR creation,
-and the daemon rejects a mismatch with `Base ref mismatch` — but only for a base someone actually
+and the daemon rejects a mismatch with `Base ref mismatch` - but only for a base someone actually
 chose (`baseSource` of `user` or `worktree`), per the ladder section above.
 
 Gated by `server_info.features.worktreeDiffBase` (`COMPAT(worktreeDiffBase)`, added v0.6.8).
 Repointing a plain checkout, detection, the `origin/` pin and the re-detect action additionally need
 `server_info.features.checkoutDiffBaseAnyRepo` (`COMPAT(checkoutDiffBaseAnyRepo)`, added v0.7.4).
-Without them the client shows the label and hides the picker — there is no client-side fallback,
+Without them the client shows the label and hides the picker - there is no client-side fallback,
 since only the daemon can write the stored base.
 
 ## UI
@@ -189,14 +189,14 @@ dropdown in the Changes toolbar, visible only in Committed mode. Naming the base
 value on its own: before this existed, the view never said what it was comparing against.
 
 Capability detection lives in one place in that file (`checkoutQualifies`), per the feature-contract
-rule — downstream code reads a single boolean rather than branching on daemon version. Branch rows
+rule - downstream code reads a single boolean rather than branching on daemon version. Branch rows
 come from `getBranchSuggestions`, whose `branchDetails` already carry `hasLocal` / `hasRemote`, which
 is what lets the picker render `main` and `origin/main` as separate rows without a new RPC.
 
 ## Crossing between Files and Changes
 
 The two directions are symmetric, and both go through ephemeral request slots on the panel store
-rather than through props — the destination pane is usually not mounted when the request is made,
+rather than through props - the destination pane is usually not mounted when the request is made,
 since the explorer shows one tab at a time.
 
 | Direction       | Producer                                                        | Slot                   | Consumer                            |
@@ -212,8 +212,8 @@ reachable. The scroll then re-asserts once after 100ms, because rows above the t
 estimated heights until they render and measure themselves.
 
 **"View changes" is offered only for files actually in the diff**, so it can never land on a tab
-that does not list the file. There is no lightweight "which paths changed" RPC — the daemon serves
-the whole diff or nothing — so `git/changes-reveal.ts` mounts the _same_ `useCheckoutDiffQuery`
+that does not list the file. There is no lightweight "which paths changed" RPC - the daemon serves
+the whole diff or nothing - so `git/changes-reveal.ts` mounts the _same_ `useCheckoutDiffQuery`
 the Changes pane mounts, deriving mode/baseRef/ignoreWhitespace identically so both resolve to one
 query key: one cache entry, one daemon subscription however many surfaces ask. The cost is that an
 open file tab or the Files tab now keeps that subscription alive, where before only the Changes

@@ -12,7 +12,7 @@ import { resolveEffortOption } from "./effort-levels.js";
 import type { AgentSelectOption, ProviderSnapshotEntry } from "./agent-sdk-types.js";
 
 /**
- * A personality resolved against a provider snapshot for one cwd — the concrete
+ * A personality resolved against a provider snapshot for one cwd - the concrete
  * settings blob snapshotted onto an agent at spawn. Everything here is frozen at
  * spawn time; later edits to the personality never mutate an already-spawned
  * agent (see the lifecycle section of the charter).
@@ -29,7 +29,7 @@ export interface ResolvedPersonalitySnapshot {
   effortLevel?: string;
   effortMatch?: "exact-id" | "level" | "nearest";
   /**
-   * True when the model could not honor the requested effort exactly — either
+   * True when the model could not honor the requested effort exactly - either
    * the nearest option was substituted, or the model advertises options that
    * don't map to the canonical scale. Callers surface this as a warning; it is
    * NOT an availability failure.
@@ -57,7 +57,7 @@ export type PersonalityResolution =
  * Resolve a personality to a concrete settings snapshot against the provider
  * entries for a target cwd, or report why it is out of commission. Effort is
  * mapped from the stored canonical level to the bound model's nearest advertised
- * option here, at resolution time — never stored pre-resolved.
+ * option here, at resolution time - never stored pre-resolved.
  */
 export function resolvePersonality(
   personality: AgentPersonality,
@@ -169,7 +169,7 @@ function resolvePersonalityEffort(
   } catch {
     // The model advertises thinking options but none map to the canonical scale
     // (fully custom option ids). Leave effort unset rather than failing the
-    // personality — the agent still runs, just without a matched thinking level.
+    // personality - the agent still runs, just without a matched thinking level.
     return { degraded: true };
   }
 }

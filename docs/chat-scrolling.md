@@ -20,6 +20,13 @@ Route entry, the jump-to-bottom button and sending a message are the explicit
 "take me to the bottom" requests. Everything else the app does (content arriving,
 content collapsing, the viewport resizing) is not a reason to move the view.
 
+**Queueing counts as sending.** Pressing Enter against a busy agent puts the
+message on the steer queue instead of the wire, but the reader did the same thing
+and expects the same answer: show me where my words landed. The queue path was
+left out of this originally, so a reader who had scrolled up stayed scrolled up
+with no sign the message had gone anywhere. Every path that accepts a composer
+submission calls `onMessageSent`, sent or queued.
+
 The reported symptom when this breaks is unmistakable: scroll up in a live chat,
 and the view flips back and forth on every flush, sometimes ending up at the very
 top of the transcript.
@@ -103,11 +110,31 @@ Two regions, two mechanisms, and they must not both claim the same correction:
   its `data-stream-virtualized-block` attribute; anchoring to it would count the
   same correction twice.
 
-That override takes **two** conditions, and it is not enough to ask "are we
-detached". Overriding the hook replaces TanStack's default guard
+That override asks **one** question: is the resized row above the viewport.
+Overriding the hook replaces TanStack's default guard
 (`item.start < scrollOffset`) outright, so an override that returns one global
 answer opts in every row it measures, including the overscan **below** the
 viewport. Growth the reader cannot see must not move them.
+
+It must **not** also ask "are we detached". It used to, on the reasoning that
+while following the app is heading to the bottom anyway and a correction would
+only fight the stick. It does not fight the stick, and skipping it is what threw
+the reader to the top of the transcript on send.
+
+Sending is a bottom request, so it drops the mounted-window pin below, which
+hands a read-back turn to the virtualizer at estimated heights in a single
+commit. `scrollTop` clamps into the collapsed range, and then the virtualizer
+re-measures those rows in overscan-sized batches and grows the document back by
+thousands of pixels, **all of it above the viewport**. The stick-to-bottom rAF
+fires once per frame against whatever the document is at that instant, so with
+nothing subtracting the growth back off it is left chasing a document that grows
+faster than it can catch. Deep history is the bad case, because none of it has
+cached block heights: a reply estimated at 220px measuring 800 is a 580px shove
+per row.
+
+Absorbing costs nothing in the following state, and that is why the two compose.
+The stick writes an **absolute** position (`scrollTop = scrollHeight`), so a
+relative correction applied before it is overwritten rather than doubled.
 
 Scrolling up is what feeds the virtualizer never-measured rows, and their
 estimates undershoot badly: history nobody has mounted has no cached block
@@ -186,5 +213,7 @@ Tests that encode the rules above: `strategy-web.test.tsx` (scrollbar drag
 detaches, clamping does not, the anchor holds a row still, a reader scroll is not
 written back when a commit lands before the scroll event),
 `web-virtualization.test.ts` (a row resized below the fold does not move the
-reader) and `bottom-anchor-controller.test.ts` (drag beats a pending
-verification, a single layout jump does not).
+reader, a row resized above it is absorbed in **both** states, and the re-measure
+that follows a pin release leaves nothing over to push the reader up) and
+`bottom-anchor-controller.test.ts` (drag beats a pending verification, a single
+layout jump does not).

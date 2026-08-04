@@ -10,8 +10,8 @@ import { useSessionStore } from "@/stores/session-store";
 // dispatches rather than orchestrating three async sources.
 
 // Providers Otto can create a remote repository on. Bitbucket Cloud has no
-// implicit "authenticated user's namespace" — the workspace is part of the REST
-// path — so it is the one provider that must be given an owner up front.
+// implicit "authenticated user's namespace" - the workspace is part of the REST
+// path - so it is the one provider that must be given an owner up front.
 export const REMOTE_CAPABLE_PROVIDERS = ["github", "bitbucket-cloud"] as const;
 export const PROVIDERS_REQUIRING_OWNER = ["bitbucket-cloud"] as const;
 

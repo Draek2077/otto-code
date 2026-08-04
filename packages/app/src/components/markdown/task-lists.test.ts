@@ -8,7 +8,7 @@ import {
 } from "./task-lists";
 
 // Deliberately unannotated. Two copies of markdown-it's types are resolvable
-// from here — the app's own and the hoisted `@types/markdown-it` — so naming
+// from here - the app's own and the hoisted `@types/markdown-it` - so naming
 // the token type picks one and then fails to accept the other's tokens.
 // Inference takes whichever the parser actually is.
 function parse(markdown: string) {
@@ -78,7 +78,7 @@ describe("task list markers", () => {
     ]);
   });
 
-  // A plain item is not a task, so it carries no state at all — which is how
+  // A plain item is not a task, so it carries no state at all - which is how
   // the renderer tells "unchecked" from "not a checkbox".
   it("marks a plain list item with no state", () => {
     expect(itemAttributes("- plain item\n")).toEqual([[null, null]]);

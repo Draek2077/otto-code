@@ -61,7 +61,7 @@ export interface StartRunResult {
 }
 
 // The daemon-integration half of the graph engine port (projects/
-// orchestration-graphs) — spawn/await plus routing node completions into the
+// orchestration-graphs) - spawn/await plus routing node completions into the
 // orchestrator agent's chat. Role resolution happens inside `spawn` (the graph
 // engine passes role/model through and never resolves personalities itself).
 export interface GraphSpawnPort {
@@ -119,7 +119,7 @@ function generateRunId(): string {
 /**
  * Owns orchestration runs: persistence (via RunStore), the in-memory live map,
  * the change broadcast (for the snapshot session), gate resolution, and driving
- * the engine. Deliberately does NOT know how to spawn agents — that comes in as
+ * the engine. Deliberately does NOT know how to spawn agents - that comes in as
  * a RunSpawnPort, so this class is unit-testable and the daemon wiring stays in
  * the tool layer.
  */
@@ -199,8 +199,8 @@ export class RunService {
   }
 
   /**
-   * Delete every terminal (done/failed/canceled) run — and any abandoned
-   * drafts — from memory and disk. Active/paused runs are left untouched.
+   * Delete every terminal (done/failed/canceled) run - and any abandoned
+   * drafts - from memory and disk. Active/paused runs are left untouched.
    * Returns the deleted run ids.
    */
   async clearFinishedRuns(): Promise<string[]> {
@@ -224,7 +224,7 @@ export class RunService {
   }
 
   /**
-   * Delete one run from memory and disk. Terminal and draft runs only — an
+   * Delete one run from memory and disk. Terminal and draft runs only - an
    * active/paused run is refused so a cleanup click can't orphan its agents;
    * the caller cancels first. Returns why nothing was deleted, if anything.
    */
@@ -299,12 +299,12 @@ export class RunService {
   }
 
   /**
-   * Create a Draft graph run — the record the New Orchestration dialog mints
+   * Create a Draft graph run - the record the New Orchestration dialog mints
    * before the user finishes designing the graph. Not executed; no orchestrator
    * agent exists yet. Executing later (startGraphRun with this id) replaces the
    * record in place, keeping the id stable for clients.
    *
-   * With `runId`, this re-saves an existing draft in place instead — the Edit
+   * With `runId`, this re-saves an existing draft in place instead - the Edit
    * Orchestration flow, where the dialog reopens on a draft and saves without
    * running. Only a draft may be rewritten; anything else is a loud error.
    */
@@ -434,7 +434,7 @@ export class RunService {
   }
 
   // Generate a Writer summary for a terminal run (done/failed/canceled) and land
-  // it on the run via broadcast. Best-effort — a failed generation just marks the
+  // it on the run via broadcast. Best-effort - a failed generation just marks the
   // summary status "failed" and is otherwise silent.
   private async maybeSummarize(run: Run): Promise<void> {
     if (!this.summarize || !isTerminalRunStatus(run.status)) {
@@ -462,8 +462,8 @@ export class RunService {
   }
 
   /**
-   * Resolve when a run first reaches a terminal state OR pauses at a gate —
-   * whichever comes first — so the conductor can relay the outcome in one turn
+   * Resolve when a run first reaches a terminal state OR pauses at a gate -
+   * whichever comes first - so the conductor can relay the outcome in one turn
    * without hanging on a human gate. Falls back to the latest projection after
    * `timeoutMs` (default 5 min) so a stuck child can't block the caller forever.
    */

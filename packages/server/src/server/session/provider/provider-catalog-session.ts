@@ -54,7 +54,7 @@ export interface ProviderCatalogSessionOptions {
  * A client's provider catalog surface: model / mode / feature listing, the providers
  * snapshot push + pull, provider diagnostics, and usage. The snapshot PUSH (start) and
  * every PULL handler gate visibility and downgrade mode icons through the SAME predicates,
- * so an older client sees one consistent provider set across both paths — the COMPAT
+ * so an older client sees one consistent provider set across both paths - the COMPAT
  * invariant the shell could only enforce by code proximity before this carve.
  */
 export class ProviderCatalogSession {

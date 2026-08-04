@@ -31,7 +31,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 // Kiro reports built-in slash commands under `commands` (names arrive with a
 // leading "/", e.g. "/agent") and skills/prompts under `prompts` (names without
 // a slash, tagged with a `skill:` serverName). Otto stores command names
-// without the leading slash — the composer prepends it on insertion.
+// without the leading slash - the composer prepends it on insertion.
 function mapKiroAvailableCommands(params: Record<string, unknown>): AgentSlashCommand[] {
   const result: AgentSlashCommand[] = [];
   const seen = new Set<string>();

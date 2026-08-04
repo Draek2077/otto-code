@@ -52,7 +52,7 @@ const seamShadowOpacityMapping = (theme: Theme) => ({
  * Inset shadow along a pinned sidebar's seam with the main view, so the
  * sidebar reads as sitting below it. `seam` names the sidebar edge that
  * touches the main view: "right" for the left sidebar, "left" for the
- * explorer sidebar. Desktop-only callers — the mobile drawers overlay the
+ * explorer sidebar. Desktop-only callers - the mobile drawers overlay the
  * content and have no seam.
  */
 export function SidebarSeamShadow({ seam }: { seam: "left" | "right" }) {

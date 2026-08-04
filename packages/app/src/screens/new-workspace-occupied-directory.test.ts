@@ -105,7 +105,7 @@ describe("runOccupiedDirectorySteer", () => {
     expect(h.onError).not.toHaveBeenCalled();
   });
 
-  test("does nothing on cancel — no navigation, no retry, no error surface", async () => {
+  test("does nothing on cancel - no navigation, no retry, no error surface", async () => {
     const h = harness({ confirm: confirmReturning("cancel") });
 
     const outcome = await runOccupiedDirectorySteer(h.input);

@@ -7,6 +7,7 @@ import { networkInterfaces } from "node:os";
 import path from "node:path";
 import type stream from "node:stream";
 import tls from "node:tls";
+import { Agent, type Dispatcher } from "undici";
 import type { Logger } from "pino";
 
 import type {
@@ -59,6 +60,13 @@ export interface BrainManagerOptions {
   logger: Logger;
   managedProcesses: ManagedProcessRegistry;
   ottoHome: string;
+  /**
+   * Called whenever the brain's reachability may have changed (settings
+   * applied, child started/stopped/crashed). The `otto-brain` provider's models
+   * and status are derived from that reachability, so its snapshot entry has to
+   * be re-probed rather than left showing a stale green dot.
+   */
+  onReachabilityChanged?: () => void;
 }
 
 /**
@@ -91,8 +99,48 @@ interface BrainEndpoint {
   trust: BrainTlsTrust;
 }
 
+/**
+ * What the `otto-brain` agent provider needs to talk to the brain's
+ * OpenAI-compatible surface, derived entirely from the brain settings. There is
+ * no provider-level URL or API key: "unavailable" carries the operator-facing
+ * reason (off, not started, no remote host) that the provider surfaces as its
+ * error, which is what turns the Providers row red.
+ */
+export type BrainProviderEndpoint =
+  | {
+      state: "ready";
+      /** Already `/v1`-suffixed, ready for the OpenAI-compatible client. */
+      baseUrl: string;
+      /** The brain's auth token, presented as a bearer credential. */
+      apiKey: string | null;
+      /**
+       * undici dispatcher carrying this endpoint's TLS trust (see BrainTlsTrust),
+       * or null when the platform default is correct (plain HTTP, or HTTPS with a
+       * chain-of-trust certificate). Built here so the agent provider stays free
+       * of TLS policy.
+       */
+      dispatcher: Dispatcher | null;
+    }
+  | { state: "unavailable"; reason: string };
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Options for a status read. */
+export interface BrainStatusOptions {
+  /**
+   * Ask the brain for live CPU/RAM/GPU/slot telemetry alongside the status.
+   * Off by default and deliberately so: this costs an `nvidia-smi` spawn plus a
+   * /slots round trip on the brain, and the daemon's own liveness polling hits
+   * this route far more often than any UI does. Only the Brain page's Overview
+   * tab, which actually renders the numbers, turns it on.
+   */
+  resources?: boolean;
+}
+
+function statusPath(options?: BrainStatusOptions): string {
+  return options?.resources ? "/__host/status?resources=1" : "/__host/status";
 }
 
 /**
@@ -110,6 +158,7 @@ export class BrainManager {
   private readonly logger: Logger;
   private readonly managedProcesses: ManagedProcessRegistry;
   private readonly ottoHome: string;
+  private readonly onReachabilityChanged: (() => void) | null;
 
   private child: ChildProcess | null = null;
   private managedProcessId: string | null = null;
@@ -119,6 +168,10 @@ export class BrainManager {
   private desiredModel: string | null = null;
   /** "local": we spawn/supervise a child. "remote": we only probe another host. */
   private mode: "local" | "remote" = "local";
+  /** The last-applied `brain.enabled`. False = the operator turned the host off. */
+  private enabled = false;
+  /** False until applySettings has run once; the brain block may not be loaded yet. */
+  private settingsApplied = false;
   /** Signature of the last-applied restart-requiring fields (see applySettings). */
   private lastStructuralSig: string | null = null;
   private endpoint: BrainEndpoint = {
@@ -131,11 +184,118 @@ export class BrainManager {
   private readonly log: string[] = [];
   private restartCount = 0;
   private restartWindowStart = 0;
+  /** Connection-pooling dispatcher for the otto-brain provider; see resolveProviderDispatcher. */
+  private providerDispatcher: { signature: string; dispatcher: Agent } | null = null;
 
   constructor(options: BrainManagerOptions) {
     this.logger = options.logger.child({ module: "brain-manager" });
     this.managedProcesses = options.managedProcesses;
     this.ottoHome = options.ottoHome;
+    this.onReachabilityChanged = options.onReachabilityChanged ?? null;
+  }
+
+  /**
+   * The `otto-brain` provider's connection, derived from the brain settings
+   * alone. Synchronous by design: the provider resolves it on every request, so
+   * a brain that was stopped a moment ago immediately reports unavailable
+   * instead of waiting on a connection refusal.
+   */
+  getProviderEndpoint(): BrainProviderEndpoint {
+    if (!this.settingsApplied) {
+      return { state: "unavailable", reason: "Otto Brain settings have not loaded yet." };
+    }
+    if (this.mode === "remote") {
+      if (!this.endpoint.probeHost) {
+        return {
+          state: "unavailable",
+          reason:
+            "No remote Otto Brain host is configured. Set one under Settings → Host → Otto Brain.",
+        };
+      }
+      return this.readyEndpoint();
+    }
+    if (!this.enabled) {
+      return {
+        state: "unavailable",
+        reason: "Otto Brain is turned off. Turn it on under Settings → Host → Otto Brain.",
+      };
+    }
+    if (!this.isChildAlive()) {
+      return {
+        state: "unavailable",
+        reason: "Otto Brain is not running. Start it under Settings → Host → Otto Brain.",
+      };
+    }
+    return this.readyEndpoint();
+  }
+
+  private readyEndpoint(): BrainProviderEndpoint {
+    const scheme = this.endpoint.secure ? "https" : "http";
+    const host = this.endpoint.probeHost.includes(":")
+      ? `[${this.endpoint.probeHost}]`
+      : this.endpoint.probeHost;
+    return {
+      state: "ready",
+      baseUrl: `${scheme}://${host}:${this.endpoint.port}/v1`,
+      apiKey: this.endpoint.token,
+      dispatcher: this.resolveProviderDispatcher(),
+    };
+  }
+
+  /**
+   * The undici dispatcher for the current endpoint's TLS trust, or null when
+   * the default is right. Cached per endpoint signature: an Agent owns a
+   * connection pool, so rebuilding one per request would leak sockets.
+   */
+  private resolveProviderDispatcher(): Dispatcher | null {
+    if (!this.endpoint.secure) {
+      return null;
+    }
+    const trust = this.endpoint.trust;
+    if (trust.kind === "system") {
+      // A chain-of-trust certificate verifies against the system store.
+      return null;
+    }
+    const signature = `${this.endpoint.probeHost}:${this.endpoint.port}:${
+      trust.kind === "pinned" ? `pinned:${trust.fingerprint}` : trust.kind
+    }`;
+    const cached = this.providerDispatcher;
+    if (cached && cached.signature === signature) {
+      return cached.dispatcher;
+    }
+    void cached?.dispatcher.close().catch(() => undefined);
+
+    const host = this.endpoint.probeHost;
+    const port = this.endpoint.port;
+    const dispatcher =
+      trust.kind === "pinned"
+        ? new Agent({
+            connect: (_options, callback) => {
+              connectPinned(
+                { host, port, fingerprint: trust.fingerprint, timeoutMs: HTTP_PROBE_TIMEOUT_MS },
+                (error, socket) => {
+                  if (error) {
+                    callback(error, null);
+                    return;
+                  }
+                  callback(null, socket as tls.TLSSocket);
+                },
+              );
+            },
+          })
+        : // Loopback child: a certificate can never validate for 127.0.0.1 and
+          // the traffic never leaves this machine.
+          new Agent({ connect: { rejectUnauthorized: false } });
+    this.providerDispatcher = { signature, dispatcher };
+    return dispatcher;
+  }
+
+  private notifyReachabilityChanged(): void {
+    try {
+      this.onReachabilityChanged?.();
+    } catch (error) {
+      this.logger.warn({ err: error }, "Brain reachability listener failed");
+    }
   }
 
   /**
@@ -151,7 +311,19 @@ export class BrainManager {
    * a mode switch left behind. status()/evals() then read the remote /__host/*.
    */
   async applySettings(brain: MutableBrainConfig): Promise<void> {
+    try {
+      await this.applySettingsInner(brain);
+    } finally {
+      // Every path through applySettings can change where (or whether) the
+      // otto-brain provider can reach a host, including the failing ones.
+      this.notifyReachabilityChanged();
+    }
+  }
+
+  private async applySettingsInner(brain: MutableBrainConfig): Promise<void> {
     this.mode = brain.mode;
+    this.enabled = brain.enabled;
+    this.settingsApplied = true;
 
     if (brain.mode === "remote") {
       this.endpoint = {
@@ -237,6 +409,7 @@ export class BrainManager {
       });
     }
     await this.removeManagedRecord();
+    this.notifyReachabilityChanged();
   }
 
   /** Stop then start again onto the given model. Keeps the running intent. */
@@ -248,6 +421,9 @@ export class BrainManager {
   /** For daemon teardown: kill the child so it never outlives the daemon. */
   async shutdown(): Promise<void> {
     await this.stop();
+    const dispatcher = this.providerDispatcher;
+    this.providerDispatcher = null;
+    await dispatcher?.dispatcher.close().catch(() => undefined);
   }
 
   /**
@@ -256,21 +432,22 @@ export class BrainManager {
    * telemetry/scheduler/recent) is merged in; the schema is passthrough so the
    * brain can evolve those sub-objects without a protocol bump.
    */
-  async status(): Promise<BrainHostStatus> {
+  async status(options?: BrainStatusOptions): Promise<BrainHostStatus> {
     if (this.mode === "remote") {
-      return this.remoteStatus();
+      return this.remoteStatus(options);
     }
     const child = this.child;
     if (!child || !this.isChildAlive()) {
-      return { running: false };
+      return { running: false, reachable: false };
     }
     const pid = child.pid ?? null;
-    const hostStatus = await this.fetchHostJson("/__host/status");
+    const hostStatus = await this.fetchHostJson(statusPath(options));
     if (!hostStatus) {
       // Child is up but the host API is not answering yet (still binding or
       // loading a model). Report it as coming up rather than as running.
       return {
         running: false,
+        reachable: false,
         pid,
         host: this.endpoint.probeHost,
         port: this.endpoint.port,
@@ -285,6 +462,9 @@ export class BrainManager {
       secure: this.endpoint.secure,
       ...hostStatus,
       running: true,
+      // The probe just answered, so by definition. Set after the spread: the
+      // brain does not know whether the daemon can see it, only the daemon does.
+      reachable: true,
       pid,
     };
     const parsed = BrainHostStatusSchema.safeParse(merged);
@@ -296,19 +476,23 @@ export class BrainManager {
    * brain's host API answers. No pid; the host/port/secure reflect the remote
    * target so the UI shows where it is pointed even when unreachable.
    */
-  private async remoteStatus(): Promise<BrainHostStatus> {
+  private async remoteStatus(options?: BrainStatusOptions): Promise<BrainHostStatus> {
     const endpointFields = {
       host: this.endpoint.probeHost,
       port: this.endpoint.port,
       secure: this.endpoint.secure,
     };
     if (!this.endpoint.probeHost) {
-      return { running: false, ...endpointFields, state: "unconfigured" };
+      return { running: false, reachable: false, ...endpointFields, state: "unconfigured" };
     }
-    const hostStatus = await this.fetchHostJson("/__host/status");
+    const hostStatus = await this.fetchHostJson(statusPath(options));
     if (!hostStatus) {
       return {
         running: false,
+        // Configured and pointed somewhere, but nothing answered - which is a
+        // different thing from a brain that is deliberately off, and the rail
+        // shows it differently.
+        reachable: false,
         ...endpointFields,
         state: "unreachable",
         lastError: "The remote brain did not answer.",
@@ -318,6 +502,7 @@ export class BrainManager {
       ...endpointFields,
       ...hostStatus,
       running: true,
+      reachable: true,
       pid: null,
     };
     const parsed = BrainHostStatusSchema.safeParse(merged);
@@ -326,7 +511,7 @@ export class BrainManager {
 
   /**
    * Detected model names, read from the brain's /v1/models when it is reachable
-   * (local child up, or remote). Returns [] when unreachable — the client shows
+   * (local child up, or remote). Returns [] when unreachable - the client shows
    * a disabled picker rather than a text box. Never throws.
    */
   async listModels(): Promise<string[]> {
@@ -348,7 +533,7 @@ export class BrainManager {
 
   /**
    * The remote brain's own effective config (its GET /__host/config), or null
-   * when unreachable. Remote mode only — the local brain's config is the daemon's
+   * when unreachable. Remote mode only - the local brain's config is the daemon's
    * own `brain` block, not this.
    */
   async getRemoteConfig(): Promise<Record<string, unknown> | null> {
@@ -382,6 +567,102 @@ export class BrainManager {
     }
     const parsed = BrainEvalsSchema.safeParse(json);
     return parsed.success ? parsed.data : null;
+  }
+
+  // --- Brain Console: the management API, proxied ---------------------------
+  // Every method below is a straight proxy of the brain's own `/__host/*`, which
+  // is the whole point: `this.endpoint` already resolves by mode, so a local
+  // child and a remote host go down the same code path. Nothing here shells out
+  // to the CLI, because that path cannot reach a remote brain at all.
+
+  /** Local needs a live child; remote just needs a configured endpoint. */
+  private isReachable(): boolean {
+    return this.mode === "remote" ? Boolean(this.endpoint.probeHost) : this.isChildAlive();
+  }
+
+  /** Throw the one message the UI shows when the brain is not there to ask. */
+  private requireReachable(): void {
+    if (this.isReachable()) {
+      return;
+    }
+    throw new Error(
+      this.mode === "remote"
+        ? "The remote brain is not configured or did not answer."
+        : "The brain is not running on this host.",
+    );
+  }
+
+  /** Build a `/__host/*` path with an encoded model id and optional extras. */
+  private modelPath(route: string, modelId: string, extra?: Record<string, string>): string {
+    const params = new URLSearchParams({ id: modelId, ...extra });
+    return `${route}?${params.toString()}`;
+  }
+
+  /**
+   * The joined model inventory (scan, metadata, profile, calibration, budget,
+   * bench score) plus disk usage. One call feeds the whole Models tab.
+   */
+  async inventory(): Promise<Record<string, unknown> | null> {
+    this.requireReachable();
+    return this.requestHostJson("GET", "/__host/models");
+  }
+
+  /** One model's saved profile, its field descriptors, and its warnings. */
+  async modelProfile(modelId: string): Promise<Record<string, unknown> | null> {
+    this.requireReachable();
+    return this.requestHostJson("GET", this.modelPath("/__host/model/profile", modelId));
+  }
+
+  /** Write the editable profile fields; returns the recomputed budget too. */
+  async setModelProfile(
+    modelId: string,
+    patch: Record<string, unknown>,
+  ): Promise<Record<string, unknown> | null> {
+    this.requireReachable();
+    return this.requestHostJson("POST", this.modelPath("/__host/model/profile", modelId), patch);
+  }
+
+  /**
+   * The VRAM budget for a hypothetical profile, so the UI can show it updating
+   * as a field is scrubbed without persisting a value mid-drag.
+   */
+  async modelBudget(
+    modelId: string,
+    overrides?: Record<string, string>,
+  ): Promise<Record<string, unknown> | null> {
+    this.requireReachable();
+    return this.requestHostJson("GET", this.modelPath("/__host/model/budget", modelId, overrides));
+  }
+
+  /**
+   * Load a model into the running brain.
+   *
+   * This is not `ensureRunning`: that restarts the daemon's child process, which
+   * a remote brain has no equivalent for. The brain swaps the model inside its
+   * own supervisor, so the same call works against either.
+   */
+  async loadModel(modelId: string): Promise<Record<string, unknown> | null> {
+    this.requireReachable();
+    return this.requestHostJson("POST", this.modelPath("/__host/model/load", modelId));
+  }
+
+  /** Unload the resident model, leaving the brain up and serving nothing. */
+  async unloadModel(): Promise<Record<string, unknown> | null> {
+    this.requireReachable();
+    return this.requestHostJson("POST", "/__host/model/unload");
+  }
+
+  /** Delete a model's files. The brain refuses while that model is loaded. */
+  async deleteModel(modelId: string): Promise<Record<string, unknown> | null> {
+    this.requireReachable();
+    return this.requestHostJson("DELETE", this.modelPath("/__host/model", modelId));
+  }
+
+  /** Tail the brain's llama-server log. */
+  async hostLogs(limit?: number | null): Promise<Record<string, unknown> | null> {
+    this.requireReachable();
+    const query = limit && limit > 0 ? `?limit=${Math.floor(limit)}` : "";
+    return this.requestHostJson("GET", `/__host/logs${query}`);
   }
 
   /**
@@ -488,6 +769,7 @@ export class BrainManager {
         { pid: child.pid, port: this.endpoint.port, model },
         "otto-brain host is ready",
       );
+      this.notifyReachabilityChanged();
     } catch (error) {
       // Readiness failed: kill the half-started child so it is never left orphaned.
       this.child = null;
@@ -530,6 +812,7 @@ export class BrainManager {
     }
     this.child = null;
     void this.removeManagedRecord();
+    this.notifyReachabilityChanged();
     if (!this.wantRunning) {
       return;
     }
@@ -755,7 +1038,7 @@ export class BrainManager {
       case "loopback-child":
         return https.request({ ...options, rejectUnauthorized: false }, onResponse);
       case "system":
-        // Node's default rejectUnauthorized: true — full chain + hostname checks.
+        // Node's default rejectUnauthorized: true - full chain + hostname checks.
         return https.request(options, onResponse);
       case "pinned":
         // http.request (not https): the createConnection hook hands over an
@@ -802,6 +1085,23 @@ export class BrainManager {
 
   /** POST a JSON body and resolve the parsed 200 response; reject on non-200. */
   private postHostJson(pathname: string, body: unknown): Promise<Record<string, unknown> | null> {
+    return this.requestHostJson("POST", pathname, body);
+  }
+
+  /**
+   * A management-API call that reports WHY it failed.
+   *
+   * `fetchHostJson` deliberately swallows every failure into `null`, which is
+   * right for a liveness probe and wrong for an operator action: "could not
+   * delete the model" with no reason is not a usable error message. This one
+   * rejects with the brain's own message, including the 403 a write gate
+   * produces when remote configuration is switched off.
+   */
+  private requestHostJson(
+    method: "GET" | "POST" | "DELETE",
+    pathname: string,
+    body?: unknown,
+  ): Promise<Record<string, unknown> | null> {
     return new Promise((resolve, reject) => {
       let settled = false;
       const settle = (fn: () => void) => {
@@ -810,16 +1110,22 @@ export class BrainManager {
           fn();
         }
       };
-      const payload = Buffer.from(JSON.stringify(body), "utf8");
+      const payload = body === undefined ? null : Buffer.from(JSON.stringify(body), "utf8");
       const options: http.RequestOptions = {
         host: this.endpoint.probeHost,
         port: this.endpoint.port,
         path: pathname,
-        method: "POST",
+        method,
+        // A load can start a model and an inventory read walks GGUF headers, so
+        // these get the write timeout rather than the 2s liveness one.
         timeout: CONFIG_WRITE_TIMEOUT_MS,
         headers: {
-          "content-type": "application/json",
-          "content-length": String(payload.length),
+          ...(payload
+            ? {
+                "content-type": "application/json",
+                "content-length": String(payload.length),
+              }
+            : {}),
           ...(this.endpoint.token ? { "x-otto-brain-token": this.endpoint.token } : {}),
         },
       };
@@ -845,7 +1151,9 @@ export class BrainManager {
       const request = this.dispatchRequest(options, onResponse);
       request.on("timeout", () => request.destroy(new Error("the remote brain timed out")));
       request.on("error", (err: Error) => settle(() => reject(err)));
-      request.write(payload);
+      if (payload) {
+        request.write(payload);
+      }
       request.end();
     });
   }
@@ -989,8 +1297,19 @@ function connectPinned(
 function remoteErrorDetail(data: string, status: number): string {
   try {
     const parsed: unknown = JSON.parse(data);
-    if (isRecord(parsed) && typeof parsed.error === "string") {
-      return `the remote brain returned ${status}: ${parsed.error}`;
+    if (isRecord(parsed)) {
+      // Two shapes in the wild: the flat `{error: "..."}` the config write
+      // returns, and the Anthropic-shaped `{error: {type, message}}` envelope
+      // the management API uses (so clients parse one error format across both
+      // the completion proxy and /__host/*). Without the nested case, a 403 from
+      // a write gate reads as a bare status code and the operator never learns
+      // that remote configuration is simply switched off.
+      if (typeof parsed.error === "string") {
+        return `the remote brain returned ${status}: ${parsed.error}`;
+      }
+      if (isRecord(parsed.error) && typeof parsed.error.message === "string") {
+        return `the remote brain returned ${status}: ${parsed.error.message}`;
+      }
     }
   } catch {
     // Not JSON; fall through to the bare status.

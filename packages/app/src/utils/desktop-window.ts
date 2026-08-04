@@ -125,7 +125,7 @@ export function resolveOverlayInsets(input: {
   const left = Math.max(0, Math.round(input.rect.x));
   const right = Math.max(0, Math.round(input.innerWidth - input.rect.x - input.rect.width));
   // A rect spanning the full window means the platform draws no overlay
-  // controls — treat as "no geometry" so callers fall back to the constants.
+  // controls - treat as "no geometry" so callers fall back to the constants.
   if (left <= 0 && right <= 0) return null;
   return { left, right };
 }
@@ -162,8 +162,8 @@ function startOverlayInsetsSubscription() {
 // breakpoints, sidebar sizing, and tab thresholds all stay frozen at the
 // pre-maximize width until the next real resize. The main process emits a
 // resized signal on maximize/unmaximize (see setupWindowResizeEvents); on it we
-// dispatch a single synthetic window resize — the event every web layout
-// consumer already listens to — plus refresh our own overlay insets, deferred a
+// dispatch a single synthetic window resize - the event every web layout
+// consumer already listens to - plus refresh our own overlay insets, deferred a
 // frame so window.innerWidth and the native overlay rect have both settled.
 let resizeReflowSubscriptionStarted = false;
 

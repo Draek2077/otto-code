@@ -10,14 +10,14 @@ import { expect, test, type Page } from "./fixtures";
 //
 // Why existing specs never hit it: every Playwright test gets a fresh browser
 // context (so the flag IS false), but specs either boot straight into host
-// routes (openAgentRoute and friends — the gate only runs on the index
+// routes (openAgentRoute and friends - the gate only runs on the index
 // pathname) or resolve "/" before the seeded host's WebSocket finishes
 // connecting, so the index redirects to the host root instead. That same race
 // is why this spec enters the wizard deterministically through "/setup" rather
 // than by sitting on "/".
 //
 // State safety: the wizard's only writes on this path are device-local
-// localStorage settings (interfaceMode + completion flags) — the Team step
+// localStorage settings (interfaceMode + completion flags) - the Team step
 // commits nothing unless a generated team is selected, and this walk selects
 // none. localStorage is per-test-context, so later specs are unaffected.
 const APP_SETTINGS_KEY = "@otto:app-settings";

@@ -39,7 +39,7 @@ interface AgentInputDraftComposerOptions {
   initialPersonalityId?: string | null;
 }
 
-// The synthetic "Team's Chatter" picker entry — the composer's binding of the
+// The synthetic "Team's Chatter" picker entry - the composer's binding of the
 // shared team-role picker pattern (mirrors the artifact sheet's "Team's
 // Artificer"). New chat runs immediately, so there is no persisted sentinel;
 // selecting it resolves the active team's Chatter NOW and applies its values.

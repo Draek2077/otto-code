@@ -345,7 +345,7 @@ describe("corrupt persisted settings self-heal", () => {
   it("resets to defaults and rewrites storage when the blob is unparseable", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({
-        // Truncated write, e.g. an interrupted upgrade — JSON.parse throws.
+        // Truncated write, e.g. an interrupted upgrade - JSON.parse throws.
         [APP_SETTINGS_KEY]: '{"chatWidth":"wide",',
       }),
     });
@@ -1081,7 +1081,7 @@ describe("agent voice cues", () => {
     expect((await loadAppSettingsFromStorage(deps)).agentVoiceCues).toBe(true);
   });
 
-  // Cues are their own audio channel — the Visualizer's volume must not reach
+  // Cues are their own audio channel - the Visualizer's volume must not reach
   // them, in either direction.
   it("defaults agentVoiceCuesVolume to 50 independently of the visualizer volume", async () => {
     const deps = makeDeps({
@@ -1134,7 +1134,7 @@ describe("agent voice cues", () => {
 
 describe("voice playback volume", () => {
   // All three audio channels start at the same level. Spoken replies used to
-  // have none at all — they played at whatever the host synthesized — so this
+  // have none at all - they played at whatever the host synthesized - so this
   // default deliberately makes speech quieter than it was.
   it("defaults voicePlaybackVolume to 50, level with the other channels", async () => {
     const settings = await loadAppSettingsFromStorage(makeDeps());

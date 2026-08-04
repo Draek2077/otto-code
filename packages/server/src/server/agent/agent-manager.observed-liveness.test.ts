@@ -51,7 +51,7 @@ test("the tool-use count only ever rises, and survives a status-only settle", ()
   ingest({ key: "task-1", status: "running", toolUseCount: 40 });
   expect(manager.getObservedSubagentPayload(OBSERVED_ID)?.toolUseCount).toBe(89);
 
-  // The terminal notification carries no count of its own — the row keeps the
+  // The terminal notification carries no count of its own - the row keeps the
   // work it did rather than blanking at the finish line.
   ingest({ key: "task-1", status: "idle" });
   expect(manager.getObservedSubagentPayload(OBSERVED_ID)?.toolUseCount).toBe(89);
@@ -63,7 +63,7 @@ test("the current tool tracks the latest, sticks through a scalar-only refresh, 
   ingest({ key: "task-1", status: "running", subAgentType: "code-explorer", currentTool: "Read" });
   expect(manager.getObservedSubagentPayload(OBSERVED_ID)?.currentTool).toBe("Read");
 
-  // Not monotonic like the counters — the latest tool wins.
+  // Not monotonic like the counters - the latest tool wins.
   ingest({ key: "task-1", status: "running", currentTool: "Bash" });
   expect(manager.getObservedSubagentPayload(OBSERVED_ID)?.currentTool).toBe("Bash");
 

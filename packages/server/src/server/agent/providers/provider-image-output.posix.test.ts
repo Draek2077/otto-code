@@ -6,7 +6,7 @@ import { withTemporaryOttoHome } from "../../../test-utils/temp-otto-home.js";
 import { materializeProviderImage } from "./provider-image-output.js";
 
 describe.skipIf(process.platform === "win32")("materializeProviderImage", () => {
-  // Images land under $OTTO_HOME now, so the suite has to own one — otherwise a
+  // Images land under $OTTO_HOME now, so the suite has to own one - otherwise a
   // test run writes into (and this test's cleanup deletes from) the developer's
   // real ~/.otto.
   const getOttoHome = withTemporaryOttoHome("otto-home-image-posix-test");

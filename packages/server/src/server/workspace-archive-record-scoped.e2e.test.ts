@@ -211,7 +211,7 @@ test("archiving one of two workspaces sharing a cwd spares the sibling and the d
   expect((await terminalIdsForWorkspace(cwd, workspaceA)).has(terminalAId)).toBe(false);
   expect((await terminalIdsForWorkspace(cwd, workspaceB)).has(terminalBId)).toBe(true);
 
-  // The shared directory is never deleted — a sibling still references it.
+  // The shared directory is never deleted - a sibling still references it.
   expect(existsSync(cwd)).toBe(true);
 
   await ctx.client.killTerminal(terminalBId);

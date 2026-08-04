@@ -10,13 +10,13 @@ import { beat, pause, resetPacingSeed } from "../helpers/pacing";
 import { seedDemoWorkspace, type DemoWorkspace } from "../staging/seed";
 
 /**
- * The flagship "everything at once" shot — not a feature tutorial (see the
+ * The flagship "everything at once" shot - not a feature tutorial (see the
  * numbered scenarios), the source image for the website's og-image and the
  * hero-mockup used across the alternatives pages. Both currently show stale
  * pre-fork Otto screenshots.
  *
  * One real Claude turn, started with the shipped starter personality Atlas
- * (not the demo cast — this is the site's default "meet your agent" moment),
+ * (not the demo cast - this is the site's default "meet your agent" moment),
  * chat and the Visualizer split side by side. openVisualizerFromHeader
  * auto-splits to the right of the focused pane whenever that pane has a
  * companion tab (see src/visualizer/open-visualizer-tab.ts), so opening the
@@ -65,7 +65,7 @@ test("hero shot: chat and visualizer, Atlas on the case", async ({ page }, testI
     workspaceId: workspace.workspaceId,
     title: "Rate counter",
     personality: ATLAS_PERSONALITY_ID,
-    // No client is watching to answer permission prompts — the default "Always
+    // No client is watching to answer permission prompts - the default "Always
     // Ask" mode would stall on the first edit forever. dontAsk is the Agent
     // SDK's headless posture (docs/safe-unattended.md): runs without
     // prompting, anything not pre-approved is denied rather than stalling.
@@ -81,7 +81,7 @@ test("hero shot: chat and visualizer, Atlas on the case", async ({ page }, testI
   // No wait on "turn underway" here: dontAsk auto-approves every pre-approved
   // tool call with no round trip, so a small task like this can finish before
   // any single-state assertion would reliably catch it mid-flight (confirmed
-  // empirically — see runbook gotcha 19). Whether the turn is still running or
+  // empirically - see runbook gotcha 19). Whether the turn is still running or
   // already idle by this point, the Visualizer still opens and the chat pane
   // still shows real content either way (mirrors 08-visualizer's approach).
   await openVisualizerFromHeader(page);
@@ -93,7 +93,7 @@ test("hero shot: chat and visualizer, Atlas on the case", async ({ page }, testI
   await recorder.shot(
     "hero",
     "Chat and the Visualizer, side by side",
-    "Atlas works the request while the Visualizer shows the run live — the same split any agent gets.",
+    "Atlas works the request while the Visualizer shows the run live - the same split any agent gets.",
   );
 
   await recorder.finish(testInfo);

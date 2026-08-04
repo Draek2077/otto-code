@@ -6,8 +6,8 @@ import type { WidgetFrameProps } from "./widget-frame-types";
 // Native guests never navigate: the fragment renders itself and every link is
 // intercepted by the bootstrap and routed to the host as an `open_link`
 // message. An empty whitelist blocks anything that tries anyway. (RN WebView
-// always permits "about:blank" — the origin of the initial `source={{ html }}`
-// document — regardless of this list.)
+// always permits "about:blank" - the origin of the initial `source={{ html }}`
+// document - regardless of this list.)
 const ORIGIN_WHITELIST: string[] = [];
 
 /**
@@ -50,7 +50,7 @@ export function WidgetFrame({
       allowFileAccess={false}
       allowFileAccessFromFileURLs={false}
       allowUniversalAccessFromFileURLs={false}
-      // A widget is a fragment in a conversation, not a page — no zooming,
+      // A widget is a fragment in a conversation, not a page - no zooming,
       // no text-size drift away from the surrounding chat.
       setBuiltInZoomControls={false}
       textZoom={100}

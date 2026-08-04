@@ -14,7 +14,7 @@ import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 // implementations. A single hit never reaches here; it jumps.
 
 /**
- * A location the picker can show. `kind` is present only for ctags hits — a
+ * A location the picker can show. `kind` is present only for ctags hits - a
  * language server answers with positions, and inventing a glyph for one would be
  * showing the user something we do not know.
  */
@@ -24,7 +24,7 @@ export interface DefinitionCandidate {
   column: number;
   kind?: CodeSymbolLocation["kind"];
   /**
-   * Which source produced this row — a language server id, or the name index. Shown
+   * Which source produced this row - a language server id, or the name index. Shown
    * because it changes how much the list is worth trusting: a server resolved real
    * overloads, the index only matched a name.
    */
@@ -46,7 +46,7 @@ export function DefinitionPickerDialog({
   onSelect,
 }: {
   name: string;
-  /** Empty means closed — the picker only ever exists with hits to show. */
+  /** Empty means closed - the picker only ever exists with hits to show. */
   candidates: DefinitionCandidate[];
   onClose: () => void;
   onSelect: (candidate: DefinitionCandidate) => void;

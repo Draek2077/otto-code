@@ -21,7 +21,7 @@ import {
 import { useSolutionProjectQuery, useSolutionTreeQuery } from "./use-solution-queries";
 
 // Icon colours have to reach React as props, so each icon is wrapped individually rather than the
-// component subscribing to the whole runtime. `useUnistyles()` is banned — see docs/unistyles.md.
+// component subscribing to the whole runtime. `useUnistyles()` is banned - see docs/unistyles.md.
 const ThemedBoxes = withUnistyles(Boxes);
 const ThemedBlocks = withUnistyles(Blocks);
 const ThemedFolderOpen = withUnistyles(FolderOpen);
@@ -36,7 +36,7 @@ const destructiveColor = (theme: Theme) => ({ color: theme.colors.destructive })
  * The Solution lens: the tree as the build system sees it.
  *
  * Its own component rather than more branches inside `file-explorer-pane.tsx`, which is already
- * near its complexity cap — but deliberately **inside the Files tab**, not a fourth tab. It is a
+ * near its complexity cap - but deliberately **inside the Files tab**, not a fourth tab. It is a
  * second view of the same thing, and the precedent is the Changes pane's tree-vs-flat toggle.
  *
  * Row chrome, indent guides, chevrons and file icons are reused unchanged from
@@ -320,7 +320,7 @@ function RowIcon({
   }
   switch (node.kind) {
     case "folder":
-      // A solution folder is virtual — it has no filesystem location — so it deliberately does
+      // A solution folder is virtual - it has no filesystem location - so it deliberately does
       // not borrow the file explorer's folder glyph.
       return <ThemedBoxes size={iconSize.md} uniProps={mutedColor} />;
     case "solutionProject":
@@ -338,7 +338,7 @@ function RowIcon({
 
 /**
  * The small facts worth carrying on the row itself: a project's target framework, and the badge
- * for a project the solution names outside this workspace. Everything else stays out — a tree row
+ * for a project the solution names outside this workspace. Everything else stays out - a tree row
  * that reads like a table is a tree nobody scans.
  */
 function RowSuffix({ node }: { node: SolutionViewNode }) {

@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 
-// Cross-row text registry for assistant bubble groups — a sibling of
+// Cross-row text registry for assistant bubble groups - a sibling of
 // bubble-group-offsets.ts, and it exists for the same structural reason.
 //
 // A streamed reply is promoted one markdown block at a time into separate
@@ -8,15 +8,15 @@ import { useCallback, useSyncExternalStore } from "react";
 // types/stream.ts). Those rows butt together visually into a single bubble, so
 // what the reader calls "a message" is the GROUP, not the row. The playback
 // button lives on the group's last row but has to read the whole group aloud,
-// and a row cannot see its siblings — hence a registry: every segment reports
+// and a row cannot see its siblings - hence a registry: every segment reports
 // its text under (groupId, blockIndex), and the button reads them back joined
 // in block order.
 //
 // Text is reported from the store item, never from the typewriter-revealed
 // slice, so playback is always full fidelity even if the reveal is mid-flight.
 //
-// Subscriptions are per group, and the only thing subscribers read — "does this
-// group have anything to say" — is kept as a count rather than recomputed. Both
+// Subscriptions are per group, and the only thing subscribers read - "does this
+// group have anything to say" - is kept as a count rather than recomputed. Both
 // are for the same reason: the live group re-reports on every reveal tick, and a
 // global notification made every mounted bubble in the transcript rejoin its
 // whole group's text just to re-derive a boolean that had not changed.
@@ -50,7 +50,7 @@ export function subscribeAssistantBubbleText(groupId: string, listener: () => vo
   bucket.add(listener);
   return () => {
     bucket.delete(listener);
-    // Only drop the bucket if it is still the live one — a resubscribe between
+    // Only drop the bucket if it is still the live one - a resubscribe between
     // these two lines would otherwise lose its listeners.
     if (bucket.size === 0 && listenersByGroup.get(groupId) === bucket) {
       listenersByGroup.delete(groupId);
@@ -99,7 +99,7 @@ export function reportAssistantBubbleText(input: {
 }
 
 /**
- * The group's blocks rejoined in block order, blank-line separated — the same
+ * The group's blocks rejoined in block order, blank-line separated - the same
  * shape `splitMarkdownBlocks` took them apart from. Empty string for an unknown
  * group.
  */
@@ -130,7 +130,7 @@ function subscribeNothing(): () => void {
 
 /**
  * Subscribe to a bubble group's full text. Used only to decide whether the
- * playback button has anything to read — the button resolves the text itself on
+ * playback button has anything to read - the button resolves the text itself on
  * press, so a mid-stream change does not need to re-render it.
  */
 export function useAssistantBubbleHasText(groupId: string | undefined): boolean {

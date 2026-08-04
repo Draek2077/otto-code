@@ -23,7 +23,7 @@ describe("renderTerminalSnapshotToAnsi", () => {
     const ansi = renderTerminalSnapshotToAnsi(state);
 
     // The rows must arrive unbroken so xterm re-wraps them itself (and can later
-    // reflow them) — no hard newline injected between "...IJ" and "KL...".
+    // reflow them) - no hard newline injected between "...IJ" and "KL...".
     expect(ansi).toContain("ABCDEFGHIJKLMNOP");
     // Auto-wrap must stay enabled; disabling it (ESC[?7l) is what makes xterm mark
     // the rows non-wrapped and refuse to reflow them on resize.

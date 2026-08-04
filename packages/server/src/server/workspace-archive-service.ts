@@ -45,7 +45,7 @@ interface BackingDirectory {
 
 interface ArchiveTarget {
   backing: BackingDirectory | null;
-  // The exact directories teardown must run from — one per archived record, since
+  // The exact directories teardown must run from - one per archived record, since
   // teardown commands are read from the otto.json at that directory.
   teardownTargets: Array<{ workspaceId: string | null; cwd: string }>;
   workspaceIds: string[];
@@ -207,7 +207,7 @@ export async function archiveByScope(
 
     if (target.backing !== null && archivedWorkspaceIds.length > 0) {
       // A language server is rooted at the directory a session opened, so the
-      // archived records' own cwds are the roots to stop — plus the backing
+      // archived records' own cwds are the roots to stop - plus the backing
       // directory itself, which is about to go away.
       const archivedIds = new Set(archivedWorkspaceIds);
       await stopLanguageServersForArchivedDirectories(dependencies, {
@@ -316,7 +316,7 @@ async function resolveArchiveTarget(
   }
 
   // Archiving by path takes every record the directory backs, not only the ones
-  // whose cwd is spelled exactly like it — a record nested inside the worktree is
+  // whose cwd is spelled exactly like it - a record nested inside the worktree is
   // just as dead once the directory is gone.
   const backing = await resolveBackingDirectory(scope.targetPath, backingDependencies);
   const matchesBackingDirectory = createRealpathAwarePathMatcher(backing.path);
@@ -670,7 +670,7 @@ export type StopLanguageServersDependencies = Pick<
 >;
 
 // A language server is keyed by DIRECTORY, not by workspace record, so it may only be
-// stopped once no active workspace still points at that directory — the same
+// stopped once no active workspace still points at that directory - the same
 // last-reference rule the directory removal uses. Exported because project removal
 // archives its workspaces without going through archiveByScope and owes the same
 // teardown.
@@ -716,7 +716,7 @@ export async function stopLanguageServersForArchivedDirectories(
 
 // EXACTLY one last-reference predicate in the module. True when, after archiving
 // the in-scope records, no active workspace still points at targetDir. Derived
-// from records each call — no stored counter.
+// from records each call - no stored counter.
 //
 // A workspace points at BOTH its own cwd and the directory backing it, and those
 // differ whenever a record sits in a subdirectory of a worktree. Checking only the

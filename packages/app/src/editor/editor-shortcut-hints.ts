@@ -36,7 +36,7 @@ const NO_KEYS: ShortcutKey[][] = [];
 
 export function useEditorShortcutHints(): EditorShortcutHints {
   const isMac = getShortcutOs() === "mac";
-  // Help-row ids, not action ids — `useShortcutKeys` resolves a row to the
+  // Help-row ids, not action ids - `useShortcutKeys` resolves a row to the
   // binding serving this platform, which is also what the Settings screen does.
   const save = useShortcutKeys("editor-save");
   const find = useShortcutKeys("editor-find");
@@ -60,7 +60,7 @@ export function useEditorShortcutHints(): EditorShortcutHints {
     paste: [["mod", "V"]],
     selectAll: [["mod", "A"]],
     // CodeMirror's own `selectLine`, which is Ctrl-l on macOS and Alt-l
-    // elsewhere — the one editor command here that is not Mod-something.
+    // elsewhere - the one editor command here that is not Mod-something.
     selectLine: isMac ? [["ctrl", "L"]] : [["alt", "L"]],
   };
 }

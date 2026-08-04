@@ -4,7 +4,7 @@ import { pinnedTargetKey } from "../../src/workspace-pins/target";
 
 // The new-tab dropdown menu items carry no stable web ARIA role for the inline
 // pin toggle (it lives inside a reveal-on-hover slot), so the pins flow is
-// addressed through the test ids the feature assigns per target key — the same
+// addressed through the test ids the feature assigns per target key - the same
 // escape-hatch convention the sidebar kebab and tab context menus use.
 
 function pinToggle(page: Page, target: PinnedTabTarget) {
@@ -22,7 +22,7 @@ export function tabRowPin(page: Page, target: PinnedTabTarget) {
 // The tab-bar tools strip is hover-revealed: until the pointer is over the
 // tab row the strip has pointer-events: none, so Playwright's pre-click
 // hit-target check fails before it ever moves the mouse (the move is what
-// would reveal the strip). Raw mouse.move first — no actionability check —
+// would reveal the strip). Raw mouse.move first - no actionability check -
 // then the strip is revealed and a normal click passes.
 export async function clickTabRowPin(page: Page, target: PinnedTabTarget): Promise<void> {
   const pin = tabRowPin(page, target);

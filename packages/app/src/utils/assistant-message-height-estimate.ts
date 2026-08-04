@@ -117,7 +117,7 @@ function estimateAssistantMarkdownBlockHeightFromCache(markdown: string): number
 
   // Measured block heights include each block's own trailing markdown margin
   // (child margins contribute to the measuring View's layout height), so no
-  // per-block gap is added here — the block containers render margin-less.
+  // per-block gap is added here - the block containers render margin-less.
   return ASSISTANT_MESSAGE_VERTICAL_PADDING + blockHeight;
 }
 

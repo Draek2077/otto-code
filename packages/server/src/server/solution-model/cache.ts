@@ -6,8 +6,8 @@ import type { SolutionProjectContents, SolutionStructure } from "./provider.js";
  * What the daemon remembers between requests, and how it knows the memory is still true.
  *
  * The libraries evaluate a point in time; keeping the tree honest as files change is ours. The
- * mechanism is a **freshness stamp checked on read** — mtime and size of the file the answer was
- * derived from — rather than a watcher subscription.
+ * mechanism is a **freshness stamp checked on read** - mtime and size of the file the answer was
+ * derived from - rather than a watcher subscription.
  *
  * That is a deliberate departure from the original plan of reusing `file-explorer/file-watcher.ts`.
  * That watcher is subscription-scoped: it watches the files a client has open in a tab. A

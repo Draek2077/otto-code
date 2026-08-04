@@ -8,7 +8,7 @@ import { shortenPath } from "@/utils/shorten-path";
 export const ALL_PROJECTS_OPTION_ID = "__all_projects__";
 
 export interface ProjectFilterOption {
-  /** Stable id used as the filter value — the project's repo-root path. */
+  /** Stable id used as the filter value - the project's repo-root path. */
   id: string;
   /** Human-readable project name. */
   label: string;

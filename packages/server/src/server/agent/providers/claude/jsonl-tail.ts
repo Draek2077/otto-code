@@ -19,7 +19,7 @@ export class JsonlTail {
       return [];
     }
     if (size < this.offset) {
-      // Truncated/rewritten — restart from the top.
+      // Truncated/rewritten - restart from the top.
       this.offset = 0;
       this.partial = "";
     }

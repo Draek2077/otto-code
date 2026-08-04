@@ -8,8 +8,8 @@ import { getServerId } from "./helpers/server-id";
 import { waitForSidebarHydration } from "./helpers/workspace-ui";
 import { getVisibleWorkspaceAgentTabIds } from "./helpers/workspace-tabs";
 
-// Model B sidebar shape: every project — git or non-git, single- or
-// multi-workspace — renders as the same expandable parent, the deepest sidebar
+// Model B sidebar shape: every project - git or non-git, single- or
+// multi-workspace - renders as the same expandable parent, the deepest sidebar
 // level is the workspace row, and tabs/agents/terminals NEVER appear in the
 // sidebar. These specs prove all three invariants end to end.
 
@@ -36,7 +36,7 @@ interface SecondWorkspace {
  * It gets its **own** directory on purpose. One directory backs exactly one
  * visible workspace (WorkspaceDirectoryOccupiedError / wire
  * `workspace_directory_occupied`): a directory is one physical checkout, so two
- * workspaces sharing it could never be independent — branch, diff and status
+ * workspaces sharing it could never be independent - branch, diff and status
  * all fan out across them. Re-using `seeded.repoPath` here used to be accepted
  * and now fails the create outright, which read as a sidebar bug rather than a
  * rejected fixture.
@@ -84,7 +84,7 @@ test.describe("Model B sidebar shape", () => {
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
 
-      // Both projects are expandable parents — the non-git one is NOT flattened
+      // Both projects are expandable parents - the non-git one is NOT flattened
       // into a bare workspace link.
       await expect(projectRow(page, gitProject.projectKey)).toBeVisible({ timeout: 30_000 });
       await expect(projectRow(page, nonGitProject.projectKey)).toBeVisible({ timeout: 30_000 });
@@ -107,7 +107,7 @@ test.describe("Model B sidebar shape", () => {
         timeout: 30_000,
       });
 
-      // The global new-workspace button is the universal entry — present for both
+      // The global new-workspace button is the universal entry - present for both
       // kinds regardless of their per-row affordance.
       await expect(page.getByTestId("sidebar-global-new-workspace")).toBeVisible({
         timeout: 30_000,
@@ -183,7 +183,7 @@ test.describe("Model B sidebar shape", () => {
         timeout: 60_000,
       });
 
-      // Only workspace rows are shown — no tab/agent/terminal leaves leak into
+      // Only workspace rows are shown - no tab/agent/terminal leaves leak into
       // the status view.
       await expect(sidebar.locator('[data-testid^="workspace-tab-"]')).toHaveCount(0);
 
@@ -197,7 +197,7 @@ test.describe("Model B sidebar shape", () => {
       await expect(
         doneRows.getByTestId(`sidebar-workspace-row-${getServerId()}:${idleProject.workspaceId}`),
       ).toBeVisible({ timeout: 30_000 });
-      // The busy workspace is NOT also sitting in the Done bucket — only its own
+      // The busy workspace is NOT also sitting in the Done bucket - only its own
       // row moved.
       await expect(
         doneRows.getByTestId(`sidebar-workspace-row-${getServerId()}:${activeMock.workspaceId}`),

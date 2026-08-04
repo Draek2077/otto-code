@@ -160,7 +160,7 @@ describe("normalizePersistedState", () => {
           { id: "bad", filePath: "src/example.ts" },
         ],
       },
-      // Old persisted field — must be tolerated and ignored, not migrated.
+      // Old persisted field - must be tolerated and ignored, not migrated.
       activeModesByScope: {
         "review:scope:base": "base",
         "review:scope:dirty": "uncommitted",

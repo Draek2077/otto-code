@@ -474,7 +474,7 @@ test.describe("New workspace flow", () => {
       });
 
       // Occupied-directory guard: `openedProject` already holds this checkout, so a second
-      // visible local workspace is refused. Isolation is incidental here — take the worktree.
+      // visible local workspace is refused. Isolation is incidental here - take the worktree.
       await selectWorkspaceIsolation(page, "worktree");
 
       const composer = page.getByRole("textbox", { name: "Message agent..." });

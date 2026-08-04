@@ -19,5 +19,21 @@ export {
   geometryKey,
   getCalibration,
   putCalibration,
+  hasStaleCalibration,
 } from "./profiles.js";
+export {
+  calibrationInfo,
+  nativeContextLimit,
+  profileFieldDescriptors,
+  profileWarnings,
+  sanitizeProfilePatch,
+  formatReasoningBudget,
+  CACHE_TYPE_CYCLE,
+  REASONING_BUDGET_CYCLE,
+  UNRESTRICTED_REASONING_BUDGET,
+  type CalibrationInfo,
+  type CalibrationState,
+  type ProfileFieldDescriptor,
+  type ProfileWarning,
+} from "./profile-edit.js";
 export * from "./schema.js";

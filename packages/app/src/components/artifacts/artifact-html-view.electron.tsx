@@ -20,7 +20,7 @@ const HOST_STYLE: CSSProperties = {
 // A dedicated, non-persistent partition puts the artifact guest on its own
 // Electron session, separate from the app shell's defaultSession. The shell's
 // strict CSP (script-src 'self') is injected only onto defaultSession
-// (packages/desktop/src/main.ts) and is inherited by same-document iframes —
+// (packages/desktop/src/main.ts) and is inherited by same-document iframes -
 // which is why the plain srcDoc iframe in artifact-html-view.web.tsx gets its
 // inline <script> tags blocked. A <webview> guest on its own session escapes
 // that CSP, exactly like browser tabs do via their persist:otto-browser-*

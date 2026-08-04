@@ -312,7 +312,7 @@ describe("DaemonConfigStore", () => {
       },
     });
 
-    // Survives a full reload from disk — the merge whitelist must persist the
+    // Survives a full reload from disk - the merge whitelist must persist the
     // section, not just hold it in memory.
     const persisted = loadPersistedConfig(ottoHome);
     expect(persisted.agents?.agentPersonalities?.personalities).toEqual([
@@ -493,7 +493,7 @@ describe("DaemonConfigStore", () => {
     store.seedDefaultPersonalitiesIfAbsent(DEFAULT_AGENT_PERSONALITIES);
 
     // The patch schema must not inject `personalities: []` into a patch that
-    // touches the section without the array — the injected default would
+    // touches the section without the array - the injected default would
     // deep-merge over the stored roster and silently wipe every personality.
     const next = store.patch({ agentPersonalities: {} });
     expect(next.agentPersonalities.personalities).toHaveLength(DEFAULT_AGENT_PERSONALITIES.length);
@@ -570,7 +570,7 @@ describe("DaemonConfigStore", () => {
       },
     });
 
-    // Survives a full reload from disk — the merge whitelist must persist the
+    // Survives a full reload from disk - the merge whitelist must persist the
     // section, not just hold it in memory.
     const persisted = loadPersistedConfig(ottoHome).agents?.agentTeams;
     expect(persisted?.teams).toEqual([
@@ -614,7 +614,7 @@ describe("DaemonConfigStore", () => {
       undefined,
     );
 
-    // Unrelated patches must not materialize an empty teams section — its
+    // Unrelated patches must not materialize an empty teams section - its
     // absence is the "never initialized" marker future seeding keys off.
     store.patch({ appendSystemPrompt: "hello" });
     expect(loadPersistedConfig(ottoHome).agents?.agentTeams).toBeUndefined();
@@ -1116,7 +1116,7 @@ describe("DaemonConfigStore", () => {
       DAEMON_CONFIG_SECRET_SENTINEL,
     );
     expect(clientView.gitHosting?.providers?.bitbucketCloud?.email).toBe("dev@example.com");
-    // get() itself is untouched — internal consumers still see the real secret.
+    // get() itself is untouched - internal consumers still see the real secret.
     expect(store.get().gitHosting?.providers?.bitbucketCloud?.apiToken).toBe("real-bb-token");
 
     // Saving the config unchanged sends the sentinel back; the stored secret must

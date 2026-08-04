@@ -48,7 +48,7 @@ for i in $(seq 1 "$ITERATIONS"); do
   if (cd "$ITER_DIR" && maestro test "$FLOW") 2>&1 | tee "$ITER_DIR/test.log"; then
     echo "  -> PASS (iteration $i)"
   else
-    echo "  -> FAIL (iteration $i) — bug reproduced!"
+    echo "  -> FAIL (iteration $i) - bug reproduced!"
     FAILURES=$((FAILURES + 1))
     xcrun simctl io booted screenshot "$ITER_DIR/failure-state.png" 2>/dev/null || true
   fi

@@ -54,7 +54,7 @@ export class ProbeRequestError extends Error {
 export interface DotnetProbeOptions {
   runtime: DotnetRuntimeInfo;
   logger: Logger;
-  /** Working directory for the process — the workspace, so relative diagnostics read sensibly. */
+  /** Working directory for the process - the workspace, so relative diagnostics read sensibly. */
   cwd: string;
   handshakeTimeoutMs: number;
   requestTimeoutMs: number;
@@ -91,7 +91,7 @@ export class DotnetProbe {
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk: string) => {
       // The sidecar writes nothing to stderr in normal operation, so anything here is worth
-      // seeing — it is where "no SDK" and an unhandled MSBuild fault come out.
+      // seeing - it is where "no SDK" and an unhandled MSBuild fault come out.
       this.logger.debug({ output: chunk.trim() }, "dotnet probe stderr");
     });
     child.on("exit", (code, signal) => {

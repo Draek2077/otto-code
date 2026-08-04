@@ -1,7 +1,7 @@
 // A self-contained HSV color wheel picker: a hue/saturation wheel plus a
 // brightness slider. Built on react-native-svg + React Native's responder
 // system so it runs identically on iOS, Android, and web (no gesture-handler
-// worklets, no platform branches). Meant for "click a color and go" — the
+// worklets, no platform branches). Meant for "click a color and go" - the
 // caller keeps a hex text field alongside for people who want to be precise.
 //
 // The wheel is a fan of thin hue wedges (angle = hue) with a white radial
@@ -53,7 +53,7 @@ const clamp = (n: number, lo: number, hi: number): number => Math.max(lo, Math.m
 
 /**
  * Inline HSV color wheel. Keeps its own HSV state so dragging stays smooth even
- * though the parent only round-trips a lossy hex string — we re-derive from the
+ * though the parent only round-trips a lossy hex string - we re-derive from the
  * incoming value only when it changes from something other than our own last
  * emission (e.g. the user typed a new hex).
  */
@@ -181,7 +181,7 @@ export function ColorWheelPicker({
           <Circle cx={radius} cy={radius} r={radius} fill={`url(#${satGradId})`} />
           {/* Value: black disc whose opacity rises as brightness falls. */}
           <Circle cx={radius} cy={radius} r={radius} fill="#000000" opacity={1 - hsv.v} />
-          {/* Selection marker — dark halo + white ring so it reads on any hue. */}
+          {/* Selection marker - dark halo + white ring so it reads on any hue. */}
           <Circle
             cx={markerX}
             cy={markerY}

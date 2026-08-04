@@ -39,7 +39,7 @@ export type GitOperationLogListener = (append: GitOperationLogAppend) => void;
 interface RunOperationInput {
   cwd: string;
   operation: GitOperationId;
-  // Plain-English heading for the log itself. Log content is not localized —
+  // Plain-English heading for the log itself. Log content is not localized -
   // it sits next to raw git output; the pane's *title* is localized client-side.
   label: string;
 }
@@ -49,7 +49,7 @@ interface RunOperationInput {
  * (cwd, operation). Feeds the app's "Git Commit"/"Git Pull"/"Git Push" log
  * panes: backfill reads the buffer, live updates flow through listeners that
  * sessions fan out as checkout.git.log_appended.notification. Deliberately not
- * persisted — it is operational visibility, not history.
+ * persisted - it is operational visibility, not history.
  */
 export class GitOperationLogService {
   private readonly buffers = new Map<string, GitOperationLogEntry[]>();
@@ -156,7 +156,7 @@ function bufferKey(cwd: string, operation: string): string {
 }
 
 // The operation id is a fixed identifier that never contains "::", so the last
-// separator is the one the key was built with — a Windows cwd may well contain
+// separator is the one the key was built with - a Windows cwd may well contain
 // colons of its own.
 function cwdOfBufferKey(key: string): string {
   return key.slice(0, key.lastIndexOf("::"));

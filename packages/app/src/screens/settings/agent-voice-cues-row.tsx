@@ -2,7 +2,7 @@
 // grouped card.
 //
 // Cues are an agent notification channel, not a Visualizer feature, so this is
-// where they are switched off and where their level is set — see
+// where they are switched off and where their level is set - see
 // voice/use-agent-voice-cues.ts. They are their OWN audio channel: the
 // Visualizer's Sound slider and speaker button drive the graph's ambience, the
 // Voice volume row below drives spoken replies, and neither has any say here.
@@ -57,7 +57,7 @@ export function AgentVoiceCuesRow({ serverId }: { serverId: string }) {
           <Text style={settingsStyles.rowHint}>
             Speak a short line in the agent&apos;s personality voice when it starts, first starts
             thinking, waits on its sub-agents, and finishes. Only the main agent speaks, and only
-            for personality-backed agents — write the lines in the personality&apos;s Voice tab.
+            for personality-backed agents - write the lines in the personality&apos;s Voice tab.
             Plays wherever you are in the app, whether or not the Visualizer is open. To silence
             them temporarily, use the speech button in the workspace header instead.
           </Text>
@@ -72,7 +72,7 @@ export function AgentVoiceCuesRow({ serverId }: { serverId: string }) {
       {settings.agentVoiceCues ? (
         <SettingsVolumeRow
           title="Voice cue volume"
-          hint="How loud cues are. Separate from the Visualizer's sound effects — muting the Visualizer does not silence cues. 0% is silence."
+          hint="How loud cues are. Separate from the Visualizer's sound effects - muting the Visualizer does not silence cues. 0% is silence."
           value={settings.agentVoiceCuesVolume}
           onCommit={onVolumeCommit}
           accessibilityLabel="Agent voice cue volume"

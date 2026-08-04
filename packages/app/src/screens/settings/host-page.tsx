@@ -109,7 +109,7 @@ const ThemedDynamicProviderIcon = withUnistyles(DynamicProviderIcon);
 
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 // These two module-level icon consts can't call `useIconSize()` (not components), so
-// `size` is folded into a dedicated mapping instead — repaints from the live,
+// `size` is folded into a dedicated mapping instead - repaints from the live,
 // compact-doubled `theme.iconSize` the same way `color` already does.
 const mutedIconSmMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
@@ -366,7 +366,7 @@ export function HostToolsPage({ serverId }: { serverId: string }) {
   );
 }
 
-// Teams host section: agent personalities and teams — split out of the Agents
+// Teams host section: agent personalities and teams - split out of the Agents
 // page onto their own sidebar section (after Agents) so each stays a clean
 // grouped card.
 export function HostTeamsPage({ serverId }: { serverId: string }) {
@@ -394,7 +394,7 @@ export function HostTeamsPage({ serverId }: { serverId: string }) {
   );
 }
 
-// Git-provider settings are folded into the Workspaces page as a "Git" panel —
+// Git-provider settings are folded into the Workspaces page as a "Git" panel -
 // too few options to warrant their own sidebar category.
 // Daemon-side language servers. Its own section rather than a card under Tools:
 // the running-servers table needs the width, and the off-switch has to be findable.
@@ -422,7 +422,7 @@ export function HostCodePage({ serverId }: { serverId: string }) {
 
 // Storage host section: what the agents on this host have accumulated on disk,
 // and the way to get it back. Its own section rather than a footnote under Code
-// or Workspaces — "where did my space go" is a question people arrive with.
+// or Workspaces - "where did my space go" is a question people arrive with.
 export function HostStoragePage({ serverId }: { serverId: string }) {
   const { t } = useTranslation();
   const host = useHostProfile(serverId);
@@ -728,7 +728,7 @@ function ConnectionRow({
     if (latencyLoading) return "...";
     if (latencyError) return t("settings.host.connections.timeout");
     if (latencyMs != null) return formatLatency(latencyMs);
-    return "—";
+    return "-";
   })();
   const latencyColor = latencyError ? theme.colors.palette.red[300] : theme.colors.foregroundMuted;
 
@@ -994,7 +994,7 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
   const waitForDaemonRestart = useCallback(
     async (startGeneration: number | null) => {
       const disconnectTimeoutMs = 15000;
-      const reconnectTimeoutMs = 120000; // 2 minutes — npm update + restart can take a while
+      const reconnectTimeoutMs = 120000; // 2 minutes - npm update + restart can take a while
       if (!hasReconnectedAfter(startGeneration) && isHostConnected()) {
         await waitForCondition(
           () => !isHostConnected() || hasReconnectedAfter(startGeneration),
@@ -1080,7 +1080,7 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
               );
               return undefined;
             }
-            // Update succeeded — wait for daemon to restart and reconnect
+            // Update succeeded - wait for daemon to restart and reconnect
             void waitForDaemonRestart(startGeneration);
             return undefined;
           })
@@ -2100,7 +2100,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
   },
   // Action row handed to a sheet's `footer` slot. The sheet's footer wrapper
-  // already owns the padding, top border, and outer alignment — this only
+  // already owns the padding, top border, and outer alignment - this only
   // lays the buttons out inside it.
   sheetFooterRow: {
     flex: 1,

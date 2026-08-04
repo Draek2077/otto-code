@@ -1,5 +1,5 @@
 // Puts the agent lane's OTTO_HOME into a known starting state, so an agent does
-// not have to click through setup on every run. Idempotent — safe to re-run.
+// not have to click through setup on every run. Idempotent - safe to re-run.
 //
 // Usage: node scripts/dev-agent-bootstrap.mjs [--stage <stage>] [options]
 //
@@ -17,15 +17,15 @@
 //   --prompt <text>    initial prompt for the created chat (default: none)
 //   --host <host:port> daemon to drive (default: the agent lane's own)
 //
-// The five stages are cumulative — each is the previous one plus one more step —
+// The five stages are cumulative - each is the previous one plus one more step -
 // so they answer "what state do I want Otto to be in before I start looking at
 // it?" See docs/development.md → "Playbooks: starting states".
 //
 // **Every run starts from a clean slate.** Stages that touch the daemon first tear
 // down the lane's chats, workspaces, projects and sandbox, so a scenario is never
 // reached with the previous one still in the way. `--keep` opts out and composes
-// instead. Clean-slate is the default because the alternative — remembering a flag
-// — fails silently and leaves you debugging leftover state instead of the feature.
+// instead. Clean-slate is the default because the alternative - remembering a flag
+// - fails silently and leaves you debugging leftover state instead of the feature.
 //
 //   fresh      no providers, no wizard flags, no projects → the first-run experience
 //   defaults   providers and keys seeded, wizard and tour flags set
@@ -35,19 +35,19 @@
 //
 // `fresh` and `defaults` are pure file writes and need no daemon. The last three
 // drive the *running* daemon over its WebSocket, because a project, a workspace
-// and an agent are daemon-owned records — hand-writing them into $OTTO_HOME
+// and an agent are daemon-owned records - hand-writing them into $OTTO_HOME
 // would duplicate registry logic that already exists and would rot the first time
 // it changed.
 //
 // What this script copies is the *durable, machine-local* half of a source home's
-// config.json — provider endpoints and API keys, model tier overrides,
+// config.json - provider endpoints and API keys, model tier overrides,
 // personalities, teams, feature flags. It deliberately does NOT copy `daemon.*`:
 // the lane's listen address and CORS allowlist are its own, and inheriting the
 // source's `daemon.listen` is exactly how a lane ends up answering on someone
 // else's port (see scripts/seed-dev-daemon-config.mjs).
 //
 // The other half of a bootstrap is device-local app settings (the first-run
-// wizard and tour flags), which live in the *client's* AsyncStorage — for Expo
+// wizard and tour flags), which live in the *client's* AsyncStorage - for Expo
 // web that is localStorage on the Metro origin, not anywhere under OTTO_HOME.
 // This script cannot reach it, so it prints the one-liner to run in the browser.
 
@@ -199,7 +199,7 @@ function runFresh() {
 
   console.log(`reset ${targetHome} to a first-run state`);
   console.log(`  cleared providers, model overrides, personalities, teams, feature flags`);
-  console.log(`  removed  ${wiped.length ? wiped.join(", ") : "(nothing — already clean)"}`);
+  console.log(`  removed  ${wiped.length ? wiped.join(", ") : "(nothing - already clean)"}`);
   console.log(
     `  kept     daemon.listen (${config?.daemon?.listen ?? "unset"}), daemon-keypair.json, server-id`,
   );
@@ -212,7 +212,7 @@ function runFresh() {
 function runDefaults() {
   const source = readJson(path.join(sourceHome, "config.json"));
   if (!source) {
-    fail(`No readable config.json in ${sourceHome} — nothing to bootstrap from.`);
+    fail(`No readable config.json in ${sourceHome} - nothing to bootstrap from.`);
   }
 
   const targetConfigPath = path.join(targetHome, "config.json");
@@ -248,7 +248,7 @@ function runDefaults() {
     console.log(`  kept    ${skipped.join(", ")}  (already set; pass --force to overwrite)`);
   }
   console.log(
-    `  daemon.listen left untouched: ${target.daemon?.listen ?? "(unset — set on launch)"}`,
+    `  daemon.listen left untouched: ${target.daemon?.listen ?? "(unset - set on launch)"}`,
   );
 }
 
@@ -257,7 +257,7 @@ function runDefaults() {
 // ---------------------------------------------------------------------------
 
 // A real git repo, because a workspace that is not one has no Changes view, no
-// diff base and no branch — which makes it useless for exactly the flows this
+// diff base and no branch - which makes it useless for exactly the flows this
 // lane is used to look at.
 //
 // `--template` goes further: a whole boilerplate project from the shared corpus,
@@ -290,7 +290,7 @@ function ensureSandboxProject() {
       "# Playbook project",
       "",
       "Scratch git repo created by `scripts/dev-agent-bootstrap.mjs` so the agent",
-      "lane has a project to open. Nothing here is precious — delete the folder and",
+      "lane has a project to open. Nothing here is precious - delete the folder and",
       "re-run the bootstrap to get a clean one.",
       "",
     ].join("\n"),
@@ -331,18 +331,18 @@ function materializeSandboxTemplate(templateName) {
 
   const { template, created, branches } = result;
   console.log(
-    `template  ${templateName} (${template.label}) — ${created ? "materialized" : "already present"}`,
+    `template  ${templateName} (${template.label}) - ${created ? "materialized" : "already present"}`,
   );
   console.log(`  branches ${branches.join(", ")}`);
 
   if (args.includes("--verify")) {
     // Runs on whatever branch is checked out, which is `main` after a fresh
     // materialization. A break branch is expected to fail, so verifying one is
-    // only meaningful with the expectation inverted — hence the branch check.
+    // only meaningful with the expectation inverted - hence the branch check.
     const branch = currentBranch(targetDir);
     const expectFailure = branch.startsWith("break/");
     const checks = runTemplateChecks({ dir: targetDir, template, expectFailure });
-    const steps = checks.steps.map((step) => `${step.label}:${step.status}`).join(" ") || "—";
+    const steps = checks.steps.map((step) => `${step.label}:${step.status}`).join(" ") || "-";
     console.log(`  verify   ${branch} → ${checks.status}  ${steps}`);
     if (checks.status === "skipped") {
       console.log(`           ${checks.reason} (the repo is still usable, only the build is not)`);
@@ -355,7 +355,7 @@ function materializeSandboxTemplate(templateName) {
       fail(
         checks.status === "failed"
           ? `Template "${templateName}" does not build green on ${branch}.`
-          : `Break branch ${branch} built clean — the error scenario has stopped working.`,
+          : `Break branch ${branch} built clean - the error scenario has stopped working.`,
       );
     }
   }
@@ -412,7 +412,7 @@ async function addPlaybookProject(client, projectPath) {
     fail(`project.add failed: ${added.error}`);
   }
   // Project descriptors key their id as `projectId`; workspace descriptors use
-  // plain `id`. Easy to conflate — they are different payload schemas. A
+  // plain `id`. Easy to conflate - they are different payload schemas. A
   // project's id is its normalized root path, so only the path is worth printing.
   console.log(`project   ${added.project?.projectRootPath ?? projectPath}`);
   return added.project?.projectId ?? null;
@@ -425,7 +425,7 @@ async function addPlaybookProject(client, projectPath) {
 // find-or-create, which is what "put Otto in this state" means.
 //
 // `--branch` takes the other road deliberately: an otto worktree, which is what
-// makes the git surface real — a fork-point diff base, commit, rollback, file
+// makes the git surface real - a fork-point diff base, commit, rollback, file
 // history, blame, branch switch, merge-into-base, archive-with-branch-cleanup.
 // A worktree per branch is inherently one-per-branch, so re-running is handled by
 // treating "already exists" as the state having been reached.
@@ -453,7 +453,7 @@ async function openPlaybookWorkspace(client, projectPath) {
   });
   if (created.error) {
     if (/exist|already/i.test(created.error)) {
-      console.log(`workspace (already on ${branch}) — ${created.error}`);
+      console.log(`workspace (already on ${branch}) - ${created.error}`);
       return null;
     }
     fail(`workspace.create failed: ${created.error}`);
@@ -478,7 +478,7 @@ async function assertProviderRegistered(client, provider) {
   }
   const declared = readJson(path.join(targetHome, "config.json"))?.agents?.providers ?? {};
   const hint = Object.hasOwn(declared, provider)
-    ? `config.json declares it, so the running daemon is stale — restart the lane ` +
+    ? `config.json declares it, so the running daemon is stale - restart the lane ` +
       `(providers are read once, at daemon startup).`
     : `Nothing declares it. Seed it first: npm run dev:agent:bootstrap -- --force`;
   fail(`Daemon on ${host} has no provider "${provider}". Registered: ${ids.join(", ")}.\n${hint}`);
@@ -499,20 +499,20 @@ async function createPlaybookChat(client, projectPath, workspaceId) {
   const agentId = snapshot?.id ?? null;
   console.log(
     `chat      ${agentId ?? "(no id returned)"}  ${selection.provider} / ${selection.label}` +
-      `${prompt ? " — prompted" : ""}`,
+      `${prompt ? " - prompted" : ""}`,
   );
   return agentId;
 }
 
 // A scenario has to be reachable without the previous one in the way. Reset does
 // that over RPCs rather than by deleting files, which is what lets it run with the
-// lane *up* — stopping and restarting a daemon to get a clean slate is the friction
+// lane *up* - stopping and restarting a daemon to get a clean slate is the friction
 // this whole script exists to remove.
 //
 // Order matters: agents reference workspaces, workspaces reference projects. Going
 // the other way leaves the daemon reconciling records whose parents just vanished.
 async function resetLaneState(client) {
-  // Reset deletes. It may only ever point at a managed dev home — never `~/.otto`,
+  // Reset deletes. It may only ever point at a managed dev home - never `~/.otto`,
   // never a path someone passed in. This guard is the reason default-on is safe.
   const managedRoot = path.join(devStateDir, "");
   if (!path.resolve(targetHome).startsWith(path.resolve(managedRoot))) {
@@ -528,7 +528,7 @@ async function resetLaneState(client) {
   // gone, or that a cascade removed a moment earlier, is the desired outcome.
   //
   // No `scope`: the field is the enum "active", so a default fetch is what returns
-  // everything. Page limit is the schema maximum — a lane with more than 200 chats is
+  // everything. Page limit is the schema maximum - a lane with more than 200 chats is
   // not a lane anyone is reasoning about.
   const agents = await client.fetchAgents({ page: { limit: 200 } });
   const agentIds = (agents.entries ?? []).map((entry) => entry.agent?.id).filter(Boolean);
@@ -554,7 +554,7 @@ async function resetLaneState(client) {
   }
 
   // The sandbox repos themselves. Templates are re-materialized from the corpus, so
-  // nothing here is a loss — and leaving them means a stale worktree registration
+  // nothing here is a loss - and leaving them means a stale worktree registration
   // can survive the daemon-side reset.
   const sandboxRoot = path.join(devStateDir, "agent-sandbox");
   if (existsSync(sandboxRoot)) {
@@ -597,13 +597,13 @@ async function runDaemonStages() {
 }
 
 // ---------------------------------------------------------------------------
-// Client half — the printed snippet
+// Client half - the printed snippet
 // ---------------------------------------------------------------------------
 
 // `fresh` clears the flags; every other stage sets them. Note they must be set
 // to `true` explicitly: migrateSetupWizardFlag only treats a device as an
 // upgrader when the field is *absent*, and the app writes a full settings blob
-// with `false` on first boot — so seeding an empty blob does not skip the wizard.
+// with `false` on first boot - so seeding an empty blob does not skip the wizard.
 function printClientSnippet() {
   const metroPort = process.env.OTTO_AGENT_METRO_PORT ?? "8095";
   const mutation =
@@ -617,7 +617,7 @@ function printClientSnippet() {
   console.log(
     [
       "",
-      `Client-side half — run this once in the browser pane on http://localhost:${metroPort},`,
+      `Client-side half - run this once in the browser pane on http://localhost:${metroPort},`,
       stage === "fresh"
         ? "then reload. It clears the wizard and tour flags so the app boots into the"
         : "then reload. It sets the wizard and tour flags so the app skips straight to the",
@@ -656,5 +656,5 @@ if (stage === "fresh") {
 printClientSnippet();
 
 if (!existsSync(path.join(targetHome, "server-id"))) {
-  console.log("Note: no server-id yet — start the lane once so the daemon mints its identity.");
+  console.log("Note: no server-id yet - start the lane once so the daemon mints its identity.");
 }

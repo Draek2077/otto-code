@@ -14,7 +14,7 @@ import { useContextManagementEnabled } from "./use-context-report";
  */
 export interface PromptPreviewQuery {
   preview: ContextPromptPreview | null;
-  /** Nothing to show yet — distinct from "on screen but revalidating". */
+  /** Nothing to show yet - distinct from "on screen but revalidating". */
   isLoading: boolean;
   error: string | null;
   refresh: () => void;

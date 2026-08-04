@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 /**
  * Interactive bootstrapper for the demo capture pipeline. Every question is a
- * menu you drive with the arrow keys — nothing to type or remember (no scenario
+ * menu you drive with the arrow keys - nothing to type or remember (no scenario
  * names, no directory names, no env var syntax). Sets every required env var
  * programmatically via child_process's `env` option, so there's nothing to
  * mistype across PowerShell/bash either. This is the entry point
@@ -31,33 +31,33 @@ const CANCEL = Symbol("cancel");
 const SCENARIOS = [
   {
     id: "01-agent-live",
-    label: "Agent working live — create, stream, tool calls, finish",
+    label: "Agent working live - create, stream, tool calls, finish",
     kind: "real",
     providerChoice: true,
     badges: ["tokens"],
   },
   {
     id: "02-preview-verify",
-    label: "Preview verify — launch config, dev server, agent proof",
+    label: "Preview verify - launch config, dev server, agent proof",
     kind: "electron-real",
     providerChoice: true,
     badges: ["tokens", "electron"],
   },
   {
     id: "03-diff-review",
-    label: "Diff review — file explorer, tabs, changes list, diffs",
+    label: "Diff review - file explorer, tabs, changes list, diffs",
     kind: "free",
     badges: ["free"],
   },
   {
     id: "04-personalities",
-    label: "Personalities — roster, tabbed editor, composer picker",
+    label: "Personalities - roster, tabbed editor, composer picker",
     kind: "free",
     badges: ["free"],
   },
   {
     id: "05-agent-teams",
-    label: "Agent teams — creation, switcher, picker",
+    label: "Agent teams - creation, switcher, picker",
     kind: "free",
     badges: ["free"],
   },
@@ -70,7 +70,7 @@ const SCENARIOS = [
   { id: "07-subagent-track", label: "Sub-agent tracking", kind: "real", badges: ["tokens"] },
   {
     id: "08-visualizer",
-    label: "Visualizer — live agent constellation",
+    label: "Visualizer - live agent constellation",
     kind: "real",
     badges: ["tokens"],
   },
@@ -85,19 +85,19 @@ const SCENARIOS = [
 const EXTRAS = [
   {
     id: "feature-spread",
-    label: "Feature spread — stills sweep (desktop + mobile + tablet + iOS)",
+    label: "Feature spread - stills sweep (desktop + mobile + tablet + iOS)",
     kind: "spread",
     badges: ["free"],
   },
   {
     id: "hero-shot",
-    label: "Hero shot — flagship chat+Visualizer split (Atlas)",
+    label: "Hero shot - flagship chat+Visualizer split (Atlas)",
     kind: "real",
     badges: ["tokens"],
   },
   {
     id: "electron-smoke",
-    label: "Electron smoke test — proves the desktop capture lane works",
+    label: "Electron smoke test - proves the desktop capture lane works",
     kind: "electron-free",
     badges: ["free", "electron"],
   },
@@ -262,13 +262,13 @@ async function chooseTheme() {
 
 async function chooseProvider() {
   return select("Which provider/model?", [
-    { label: "Claude — Sonnet 5 (cheap, full feature set)", value: { DEMO_PROVIDER: "claude" } },
+    { label: "Claude - Sonnet 5 (cheap, full feature set)", value: { DEMO_PROVIDER: "claude" } },
     {
-      label: "Claude — Opus (pricier, sometimes plans more thoroughly)",
+      label: "Claude - Opus (pricier, sometimes plans more thoroughly)",
       value: { DEMO_PROVIDER: "claude", DEMO_MODEL: "opus" },
     },
     {
-      label: "Local-AI — your LM Studio setup (needs .env.test configured)",
+      label: "Local-AI - your LM Studio setup (needs .env.test configured)",
       value: { DEMO_PROVIDER: "local-ai", E2E_LOCAL_AI: "1" },
     },
   ]);
@@ -282,9 +282,9 @@ async function chooseZoom() {
   return select(
     "Desktop UI zoom (bigger = larger UI, less on screen):",
     [
-      { label: "2.0× — more content, smaller UI (1280×720 layout)", value: "2" },
-      { label: "2.5× — balanced (1024×576 layout)", value: "2.5" },
-      { label: "3.0× — biggest UI, least content (853×480 layout)", value: "3" },
+      { label: "2.0× - more content, smaller UI (1280×720 layout)", value: "2" },
+      { label: "2.5× - balanced (1024×576 layout)", value: "2.5" },
+      { label: "3.0× - biggest UI, least content (853×480 layout)", value: "3" },
     ],
     { initialIndex: 1 },
   );
@@ -293,7 +293,7 @@ async function chooseZoom() {
 async function confirmSpend(themeCount) {
   const cost =
     themeCount > 1 ? "TWO real provider turns (one per theme)" : "one real provider turn";
-  const answer = await select(`This run spends real provider tokens — ${cost}.`, [
+  const answer = await select(`This run spends real provider tokens - ${cost}.`, [
     { label: "Yes, run it", value: true },
     { label: "No, cancel", value: false },
   ]);
@@ -335,7 +335,7 @@ function printReviewHint(outDirs) {
     console.log(`  packages/app/demo/.out/${dir}/shots/`);
   }
   console.log(
-    "Open every PNG and look at the WHOLE frame — both staged repos in the sidebar, no error " +
+    "Open every PNG and look at the WHOLE frame - both staged repos in the sidebar, no error " +
       "banners, forms filled, nothing scrolled out of view. A passing test is not the bar.",
   );
 }
@@ -372,7 +372,7 @@ async function runFreeOrReal(scenario) {
 
   const code = await run("npx", args, env);
   if (code !== 0) {
-    console.log(`\nRun exited with code ${code} — check the output above for the failing step.`);
+    console.log(`\nRun exited with code ${code} - check the output above for the failing step.`);
     return;
   }
   printReviewHint(outDirs);
@@ -398,7 +398,7 @@ async function runSpread() {
   ];
   const code = await run("npx", args, env);
   if (code !== 0) {
-    console.log(`\nRun exited with code ${code} — check the output above.`);
+    console.log(`\nRun exited with code ${code} - check the output above.`);
     return;
   }
   printReviewHint([
@@ -440,20 +440,20 @@ async function runElectron(scenario) {
     shell: true,
   });
   if (build.status !== 0) {
-    console.log(`\nbuild:main failed with code ${build.status} — fix that before continuing.`);
+    console.log(`\nbuild:main failed with code ${build.status} - fix that before continuing.`);
     return;
   }
 
   const args = ["playwright", "test", "--config", ELECTRON_CONFIG, scenario.id];
   const code = await run("npx", args, env);
   if (code !== 0) {
-    console.log(`\nRun exited with code ${code} — check the output above.`);
+    console.log(`\nRun exited with code ${code} - check the output above.`);
     return;
   }
   printReviewHint(outDirs);
 }
 
-/** Scenario base name from a .out/ directory name — strips a trailing theme suffix. */
+/** Scenario base name from a .out/ directory name - strips a trailing theme suffix. */
 function baseNameOf(dirName) {
   return dirName.replace(/-(twilight|daylight|mobile|tablet|ios)$/, "");
 }
@@ -478,7 +478,7 @@ async function discoverCaptures() {
 async function runPostprocess() {
   const byBase = await discoverCaptures();
   if (byBase.size === 0) {
-    console.log("\nNo captures found in demo/.out/ yet — run a scenario first.");
+    console.log("\nNo captures found in demo/.out/ yet - run a scenario first.");
     return;
   }
   const items = [...byBase.entries()].map(([base, dirs]) => {
@@ -490,7 +490,7 @@ async function runPostprocess() {
   if (dirs === CANCEL) return;
   const code = await run("node", ["demo/scripts/postprocess.mjs", ...dirs], baseEnv());
   if (code === 0) {
-    console.log("\nDone — check packages/website/public/demos/ for the site-ready assets.");
+    console.log("\nDone - check packages/website/public/demos/ for the site-ready assets.");
   }
 }
 
@@ -515,7 +515,7 @@ async function main() {
 
 main().catch((err) => {
   process.stdout.write(`${ESC}[?25h`); // restore cursor on any crash path
-  // Stdin closing mid-prompt (Ctrl+D, or any non-interactive invocation) —
+  // Stdin closing mid-prompt (Ctrl+D, or any non-interactive invocation) -
   // treat it as "done", not a crash with a stack trace.
   if (err && err.code === "ERR_USE_AFTER_CLOSE") {
     process.exit(0);

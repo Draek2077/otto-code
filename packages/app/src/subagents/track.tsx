@@ -214,7 +214,7 @@ export function SubagentsTrack({
               </ScrollView>
             ) : null}
           </View>
-          <ComposerTrackSeamShadow />
+          <ComposerTrackSeamShadow layer={COMPOSER_TRACK_LAYERS.subagents} />
         </ChatWidthBounds>
       </View>
     </ComposerTrackTransition>
@@ -223,7 +223,7 @@ export function SubagentsTrack({
 
 interface CompletedSubagentsGroupProps {
   rows: SubagentRow[];
-  /** No active rows above — drop the separator gap so the group sits flush. */
+  /** No active rows above - drop the separator gap so the group sits flush. */
   flushTop: boolean;
   expanded: boolean;
   onToggle: () => void;
@@ -368,13 +368,13 @@ function SubagentsTrackRow({
   const handlePointerLeave = useCallback(() => setHovered(false), []);
   const actionsAlwaysVisible = isNative || isCompact;
   const actionsVisible = actionsAlwaysVisible || hovered;
-  // Observed subagents have no runtime to detach — hide the action for them.
+  // Observed subagents have no runtime to detach - hide the action for them.
   const detachHandler =
     row.kind !== "otto" || row.attend === "observed" ? undefined : onDetachSubagent;
 
   return (
     // Wrapper View handles hover so moving the pointer between the row and
-    // the archive button doesn't drop the hover state — the same pattern
+    // the archive button doesn't drop the hover state - the same pattern
     // used by sidebar workspace rows.
     <View onPointerEnter={handlePointerEnter} onPointerLeave={handlePointerLeave}>
       <Pressable
@@ -438,7 +438,7 @@ function SubagentsTrackRow({
   );
 }
 
-// Elapsed run time — a live ticker while the subagent works, then frozen at its
+// Elapsed run time - a live ticker while the subagent works, then frozen at its
 // createdAt→updatedAt duration once terminal. The Claude background-task panel's
 // clearest liveness signal; here it complements the token readout.
 // See docs/chat-lifecycle.md (the subagents track).
@@ -666,7 +666,7 @@ const styles = StyleSheet.create((theme) => ({
     fontVariant: ["tabular-nums"],
   },
   // The live tool name reads as the answer to "what is it doing", not another
-  // statistic — same muted tone as the numbers but no tabular figures, and
+  // statistic - same muted tone as the numbers but no tabular figures, and
   // capped/shrinkable so a long MCP tool name truncates instead of squeezing
   // the row label out.
   rowCurrentTool: {

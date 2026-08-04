@@ -14,7 +14,7 @@ import {
 import { buildHostWorkspaceRoute } from "@/utils/host-routes";
 
 // docs/feature-flags.md: turning the Visualizer feature off must remove its
-// surfaces — the workspace-header button hides (workspace-screen.tsx gates it
+// surfaces - the workspace-header button hides (workspace-screen.tsx gates it
 // on useFeatureEnabled), any open Visualizer tab is reaped across workspaces
 // (use-close-disabled-feature-tabs.ts), and the Settings -> Visualizer section
 // collapses to just the master switch (visualizer-section.tsx). Toggling back

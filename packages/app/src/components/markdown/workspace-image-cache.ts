@@ -9,7 +9,7 @@ import type { WorkspaceImageBase } from "./workspace-image-source";
  * Reading a document's own images through the daemon, once each.
  *
  * The transport is the file-read RPC the viewer already uses for image
- * previews — there is no second image-serving path and there must not be one.
+ * previews - there is no second image-serving path and there must not be one.
  * `createFilePanePreview` (`components/file-pane.tsx`) is the shape this
  * mirrors: bytes → the attachment store → a `blob:` URL on web, a `file://` one
  * on native, with the store's own lifecycle and GC behind it.
@@ -51,7 +51,7 @@ const MAX_CACHED_IMAGES = 96;
  *
  * The trade this makes: an image edited on disk keeps showing its cached copy
  * until eviction. Documents change far more often than the images they embed,
- * and the alternative — a watch subscription per embedded image — is a lot of
+ * and the alternative - a watch subscription per embedded image - is a lot of
  * machinery for a README logo.
  */
 const cache = new Map<string, Promise<WorkspaceImageAsset | null>>();

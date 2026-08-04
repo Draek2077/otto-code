@@ -10,7 +10,7 @@
  * So the set is curated instead: ~40 glyphs covering what widgets actually
  * reach for, drawn in Tabler's outline language (24px box, 2px stroke, round
  * caps) and applied as a CSS mask so each one inherits `currentColor`. A name
- * outside the set renders nothing rather than a broken box — and the contract
+ * outside the set renders nothing rather than a broken box - and the contract
  * document lists exactly what exists, so the model never guesses.
  */
 

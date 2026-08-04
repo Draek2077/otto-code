@@ -1,12 +1,12 @@
 = Diagram Catalog
 :description: The diagrams this system needs, and why each one earns its place.
 
-A diagram earns its place by answering questions that prose answers badly — flows,
+A diagram earns its place by answering questions that prose answers badly - flows,
 boundaries, and state. This catalog is the curated set for Otto: each entry states
 *why it exists*, the questions it answers, and its node budget. Anything not on this
 list should default to prose or a table; an unmotivated diagram is decoration.
 
-*Legend* — Status: ✅ drawn in this set · 📋 proposed (next authoring wave).
+*Legend* - Status: ✅ drawn in this set · 📋 proposed (next authoring wave).
 Every diagram is Mermaid-in-AsciiDoc, so all are text-reviewable and LLM-maintainable.
 
 == Foundation (read first)
@@ -34,7 +34,7 @@ keeps frontend and backend from bleeding into each other.
 |stateDiagram · ≤8 states
 |*The shared vocabulary.* Nearly every bug report ("stuck running", "archived while
 idle") is a claim about this state machine. A drawn machine makes illegal transitions
-visibly illegal — the reference for reviewing any lifecycle-touching change.
+visibly illegal - the reference for reviewing any lifecycle-touching change.
 |✅ link:01-system-overview.html[Overview]
 
 |D4 · Configuration flow
@@ -61,7 +61,7 @@ diagram turns "chat is weird" into a checkable path with four named outcomes
 
 |D6 · Timeline & state ERD
 |erDiagram · ≤10 entities
-|*The persistence contract.* Epochs, sequence rows, agent records, snapshots — the
+|*The persistence contract.* Epochs, sequence rows, agent records, snapshots - the
 relations that make resume, rewind, and dedup possible. Any storage or migration
 discussion without this picture degenerates into file-path archaeology.
 |✅ link:06-engineering-guide.html[Guide §1]
@@ -77,7 +77,7 @@ mandate made visual).
 |D15 · Sub-agent settle & de-inflation
 |sequence · ≤4 participants
 |*The double-counting defense.* Observed sub-agents settle asynchronously while the
-parent may report whole-tree costs — the one-row-per-sub-agent rule and the
+parent may report whole-tree costs - the one-row-per-sub-agent rule and the
 parent-residual subtraction only stay correct if their ordering is explicit. This is
 the diagram a provider author reads before wiring accounting.
 |✅ link:05-audit-architecture.html[Audit Architecture]
@@ -86,14 +86,14 @@ the diagram a provider author reads before wiring accounting.
 |sequence · ≤6 participants
 |*The safety-critical path.* Approve/deny crosses four trust domains (agent → daemon
 → client → human). Deny-by-default, unattended coercion, and responder logic can only
-be reviewed against the drawn round trip — this is the diagram security review reads.
+be reviewed against the drawn round trip - this is the diagram security review reads.
 |📋
 
 |D9 · Provider adapter contract
 |flowchart (two lanes) · ≤14
 |*The core mission, made checkable.* "Every provider gets every capability" requires
 knowing which side owns the tool loop. Drawing the provider-owned vs daemon-owned
-lanes shows exactly which seams a new capability must plug into — the checklist
+lanes shows exactly which seams a new capability must plug into - the checklist
 diagram for `docs/providers.md`.
 |📋
 |===
@@ -114,7 +114,7 @@ new store or query.
 
 |D11 · Chat render pipeline
 |flowchart · ≤10
-|*The 60 fps budget.* From reducer flush to virtualized mount to markdown paint —
+|*The 60 fps budget.* From reducer flush to virtualized mount to markdown paint -
 each stage has a budget (48 ms batching, 100-item threshold, memo boundaries).
 Performance audits walk this pipeline stage by stage instead of profiling blind.
 |📋
@@ -122,7 +122,7 @@ Performance audits walk this pipeline stage by stage instead of profiling blind.
 |D12 · IDE service topology
 |flowchart · ≤14
 |*The extension surface.* Preview, browser broker, terminal workers, file RPCs,
-artifacts — five services with the same shape (agent tool → daemon service → client
+artifacts - five services with the same shape (agent tool → daemon service → client
 surface). New IDE capabilities copy this shape; audits check its guardrails
 (tab binding, tool-description contracts, edit gates).
 |✅ link:06-engineering-guide.html[Guide §4]
@@ -162,7 +162,7 @@ exactly the confusion these diagrams exist to prevent.
 |D16 · Run lifecycle
 |stateDiagram · ≤8 states
 |*Where a run can legally be.* Every "why is it stuck" question about a phase run is a claim
-about this machine — above all that `paused` is a real resting state a gate puts it in, and
+about this machine - above all that `paused` is a real resting state a gate puts it in, and
 that a rejected gate cancels rather than fails.
 |✅ link:13-orchestration-runs.html[Phase Runs]
 
@@ -208,9 +208,9 @@ decision-arrives-first race sits, and the boot path that must rehydrate rather t
 because the restart edge is invisible in prose and is the system's largest open risk.
 |✅ link:15-orchestration-durability.html[Durability]
 
-|D23 · Node anatomy — the mini-orchestrator
+|D23 · Node anatomy - the mini-orchestrator
 |flowchart (nested) · ≤10
-|*What a node actually is.* The nested envelope — retry ⊃ loop ⊃ worker + judge — with only
+|*What a node actually is.* The nested envelope - retry ⊃ loop ⊃ worker + judge - with only
 the outermost result crossing the node boundary. The design template for every future node
 kind: a kind is a different envelope, not a different scheduler.
 |✅ link:14-orchestration-graphs.html[Graph Execution]
@@ -227,4 +227,4 @@ Equally important is what this catalog refuses to include:
 * *Screen-by-screen UI flow maps.* Expo Router's file tree already is that diagram.
 
 When a proposed diagram busts its node budget during authoring, the subject is too
-big — split the page, don't grow the picture.
+big - split the page, don't grow the picture.

@@ -1,10 +1,11 @@
 /**
  * Resolve a model from an exact catalog id or a unique case-insensitive name
- * fragment. An ambiguous fragment is an error that lists the matches — ported
+ * fragment. An ambiguous fragment is an error that lists the matches - ported
  * from the original CLI's pickModel, but throwing a CommandError instead of
  * calling process.exit, so the output layer renders it.
  */
 import { CommandError } from "../output/types.js";
+import { rankModels, type RankedModel } from "../ops/results.js";
 import type { Model } from "../types.js";
 
 export function pickModel(catalog: Model[], needle: string | undefined): Model {
@@ -38,4 +39,26 @@ export function pickModel(catalog: Model[], needle: string | undefined): Model {
     });
   }
   return matches[0];
+}
+
+/**
+ * Choose a model when nothing named one: the best-ranked model from bench
+ * history that is still installed, or the first catalog entry when nothing
+ * has been benched yet. This is what "Automatic" (a null default model) means
+ * in the UI - it must always start something for a non-empty catalog. The
+ * VRAM fit check downstream in startService is what can still refuse the pick.
+ */
+export function pickAutoModel(catalog: Model[], ranked: RankedModel[] = rankModels()): Model {
+  if (catalog.length === 0) {
+    throw new CommandError({
+      code: "NO_MODEL",
+      message: "no models installed",
+      details: "run `otto brain pull <model>` to download one, or point at an LM Studio install",
+    });
+  }
+  for (const entry of ranked) {
+    const match = catalog.find((m) => m.id === entry.id);
+    if (match) return match;
+  }
+  return catalog[0];
 }

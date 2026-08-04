@@ -197,7 +197,7 @@ export function FileViewModeBar({ mode, showSplit, onChange, formatted }: FileVi
 }
 
 const styles = StyleSheet.create((theme) => ({
-  // The chrome scales with the icons — a doubled glyph in unchanged padding
+  // The chrome scales with the icons - a doubled glyph in unchanged padding
   // reads as cramped, and the tap targets need the room on a phone anyway.
   bar: {
     flexDirection: "row",

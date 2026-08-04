@@ -12,7 +12,7 @@ import type {
 import { editorWebViewHtml } from "./webview/editor-webview-html";
 
 // Native host: CM6 runs inside a react-native-webview (the terminal's proven
-// pattern — see terminal-emulator.native.tsx). One editor per webview; the
+// pattern - see terminal-emulator.native.tsx). One editor per webview; the
 // bridge speaks the typed contract from editor-contract.ts.
 
 const EDITOR_WEBVIEW_SOURCE = { html: editorWebViewHtml };
@@ -66,7 +66,7 @@ interface PendingRequestMaps {
 /**
  * The half of the outbound protocol that answers a `requestId`. Split out from
  * the pushed events below so neither switch grows past what one function should
- * be doing — every pull command adds a branch to exactly one of them.
+ * be doing - every pull command adds a branch to exactly one of them.
  * Returns whether the message was a reply.
  */
 function settlePendingReply(message: EditorWebViewOutbound, pending: PendingRequestMaps): boolean {
@@ -89,7 +89,7 @@ function settlePendingReply(message: EditorWebViewOutbound, pending: PendingRequ
 /**
  * The keystrokes the editor forwards for the host to act on. Split out of
  * {@link forwardPushedEvent} purely to keep each switch under the complexity
- * cap — a new *shortcut* adds a branch here, any other pushed event adds one
+ * cap - a new *shortcut* adds a branch here, any other pushed event adds one
  * there.
  */
 function forwardShortcutEvent(message: EditorWebViewOutbound, props: CodeEditorProps): boolean {
@@ -247,7 +247,7 @@ export function CodeEditor(props: CodeEditorProps) {
     for (const queuedMessage of queued) {
       sendToWebView(queuedMessage);
     }
-    // `mount` carries no diagnostics — it is the doc-and-theme contract — so a webview
+    // `mount` carries no diagnostics - it is the doc-and-theme contract - so a webview
     // that remounts mid-session (render-process death) has to be re-told what is broken,
     // or the file reads as clean until the server next republishes.
     const known = callbacksRef.current.diagnostics;
@@ -347,7 +347,7 @@ export function CodeEditor(props: CodeEditorProps) {
 
   // The saved text is a prop, not a command (see CodeEditorProps.cleanDoc). The
   // mount message already carries the current value, so only later changes are
-  // pushed — and only once the bridge is up, since a queued message would
+  // pushed - and only once the bridge is up, since a queued message would
   // otherwise arrive before the core exists.
   const mountedCleanDocRef = useRef(props.cleanDoc);
   useEffect(() => {

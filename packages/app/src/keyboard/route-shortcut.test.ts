@@ -25,7 +25,7 @@ function makeCtx(overrides: Partial<ShortcutRoutingContext> = {}): ShortcutRouti
   };
 }
 
-describe("routeKeyboardShortcut — dispatch passthroughs", () => {
+describe("routeKeyboardShortcut - dispatch passthroughs", () => {
   it.each([
     ["agent.interrupt", { id: "agent.interrupt", scope: "global" }],
     ["workspace.tab.new", { id: "workspace.tab.new", scope: "workspace" }],
@@ -57,7 +57,7 @@ describe("routeKeyboardShortcut — dispatch passthroughs", () => {
   });
 });
 
-describe("routeKeyboardShortcut — workspace.tab.navigate", () => {
+describe("routeKeyboardShortcut - workspace.tab.navigate", () => {
   it("forwards index payloads to the workspace.tab.navigate-index dispatch", () => {
     expect(
       routeKeyboardShortcut(
@@ -98,7 +98,7 @@ describe("routeKeyboardShortcut — workspace.tab.navigate", () => {
   });
 });
 
-describe("routeKeyboardShortcut — workspace.navigate.index", () => {
+describe("routeKeyboardShortcut - workspace.navigate.index", () => {
   it("navigates to the sidebar target at index-1", () => {
     expect(
       routeKeyboardShortcut(
@@ -137,7 +137,7 @@ describe("routeKeyboardShortcut — workspace.navigate.index", () => {
   });
 });
 
-describe("routeKeyboardShortcut — workspace.navigate.relative", () => {
+describe("routeKeyboardShortcut - workspace.navigate.relative", () => {
   const STATUS_VISUAL_TARGETS = [
     { serverId: "srv", workspaceId: "needs-input" },
     { serverId: "srv", workspaceId: "running-new" },
@@ -270,7 +270,7 @@ describe("routeKeyboardShortcut — workspace.navigate.relative", () => {
   });
 });
 
-describe("routeKeyboardShortcut — message-input.action", () => {
+describe("routeKeyboardShortcut - message-input.action", () => {
   it.each([
     ["focus", "message-input.focus"],
     ["send", "message-input.send"],
@@ -296,7 +296,7 @@ describe("routeKeyboardShortcut — message-input.action", () => {
   });
 });
 
-describe("routeKeyboardShortcut — settings.toggle", () => {
+describe("routeKeyboardShortcut - settings.toggle", () => {
   it("pushes to the settings root when not currently in settings", () => {
     expect(
       routeKeyboardShortcut(
@@ -331,7 +331,7 @@ describe("routeKeyboardShortcut — settings.toggle", () => {
   });
 });
 
-describe("routeKeyboardShortcut — callbacks and pickers", () => {
+describe("routeKeyboardShortcut - callbacks and pickers", () => {
   it.each([
     ["sidebar.toggle.left", "toggle-agent-list"],
     ["sidebar.toggle.both", "toggle-both-sidebars"],
@@ -350,7 +350,7 @@ describe("routeKeyboardShortcut — callbacks and pickers", () => {
   });
 });
 
-describe("routeKeyboardShortcut — toggle dialogs", () => {
+describe("routeKeyboardShortcut - toggle dialogs", () => {
   it("opens the command center when closed", () => {
     expect(
       routeKeyboardShortcut(
@@ -386,7 +386,7 @@ describe("routeKeyboardShortcut — toggle dialogs", () => {
   });
 });
 
-describe("routeKeyboardShortcut — unknown actions", () => {
+describe("routeKeyboardShortcut - unknown actions", () => {
   it("returns none for unknown action ids", () => {
     expect(
       routeKeyboardShortcut({ action: "totally.made.up", payload: null }, makeCtx()),

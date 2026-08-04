@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { compactUp, type Theme } from "@/styles/theme";
 
 // The New project page's pickers are pills in a row above the input, the same
-// language New workspace uses for project / host / isolation / base — not
+// language New workspace uses for project / host / isolation / base - not
 // stacked settings rows. Everything selectable on this page goes through here so
 // the row stays visually uniform however many choices a mode adds.
 
@@ -119,7 +119,7 @@ const styles = StyleSheet.create((theme) => ({
   badge: {
     flexDirection: "row",
     alignItems: "center",
-    // 1.5x on compact to wrap the badge icons' compact upscale — otherwise the
+    // 1.5x on compact to wrap the badge icons' compact upscale - otherwise the
     // theme-scaled icon/text get clipped by the fixed desktop height.
     height: compactUp(BADGE_HEIGHT, 1.5),
     maxWidth: 240,

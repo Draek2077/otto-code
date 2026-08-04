@@ -2,7 +2,7 @@
  * Test stub for `react-native-safe-area-context`.
  *
  * The real package's entry pulls in `NativeSafeAreaProvider`, which imports
- * `react-native/Libraries/Utilities/codegenNativeComponent` — a Flow-typed `.js` file in React
+ * `react-native/Libraries/Utilities/codegenNativeComponent` - a Flow-typed `.js` file in React
  * Native's codegen path. Nothing in a node test environment can parse it, so the import throws
  * `SyntaxError: Unexpected token 'typeof'` and takes down whichever test file happens to sit at
  * the top of the chain (`keyboard-action-dispatcher.test.ts` and `input-draft.live.test.tsx`

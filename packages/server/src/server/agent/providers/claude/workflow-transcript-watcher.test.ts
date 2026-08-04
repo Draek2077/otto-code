@@ -290,7 +290,7 @@ describe("WorkflowTranscriptWatcher", () => {
   });
 
   it("two concurrent watchers bind their own dirs via the run-state taskId, not arrival order", () => {
-    // Both dirs completed on disk with identity available — each watcher must
+    // Both dirs completed on disk with identity available - each watcher must
     // take the dir whose run-state taskId matches its own, regardless of
     // readdir order or which watcher ticks first.
     writeRunDir("wf_one", "a-one", "Prompt for run one");
@@ -371,7 +371,7 @@ describe("WorkflowTranscriptWatcher", () => {
     watcher.arm();
     vi.advanceTimersByTime(120_000); // well past the 90s bind deadline
 
-    // A dir appearing after the deadline is never bound — polling has stopped.
+    // A dir appearing after the deadline is never bound - polling has stopped.
     writeRunDir("wf_late-1", "a1", "Too late");
     vi.advanceTimersByTime(3_500);
     expect(events).toHaveLength(0);
@@ -425,7 +425,7 @@ describe("WorkflowTranscriptWatcher", () => {
     expect(announcesFor(events, childKey)).toHaveLength(1);
 
     // The engine writes the final transcript chunk (with usage) and the journal
-    // result before the next tick — the same-tick ordering that used to flip a
+    // result before the next tick - the same-tick ordering that used to flip a
     // just-settled child back to 'running' via the token emit.
     fs.appendFileSync(
       path.join(runDir, "agent-a1.jsonl"),

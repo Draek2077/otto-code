@@ -68,7 +68,7 @@ export interface WorkspacePaneContentProps {
   isWorkspaceFocused: boolean;
   isPaneFocused: boolean;
   /** The content is on screen (workspace focused AND this tab is frontmost in
-   * its pane) — see `isVisible` on PaneFocusContextValue. Optional; defaults
+   * its pane) - see `isVisible` on PaneFocusContextValue. Optional; defaults
    * to the focused value inside createPaneFocusContextValue. */
   isVisible?: boolean;
   onFocusPane?: () => void;

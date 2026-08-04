@@ -28,7 +28,7 @@ $env:BROWSER = "none"
 # Bump Metro's Node heap to 8 GB. Long edit-while-live sessions grow Metro's
 # in-memory module graph + transform cache until it walks into V8's ~4 GB default
 # old-space ceiling and dies with "Ineffective mark-compacts near heap limit"
-# (exit 134). Scoped to the Expo/Metro process only — the daemon keeps its default.
+# (exit 134). Scoped to the Expo/Metro process only - the daemon keeps its default.
 $MetroNodeOptions = if ($env:NODE_OPTIONS) { "$($env:NODE_OPTIONS) --max-old-space-size=8192" } else { "--max-old-space-size=8192" }
 
 # Run both with concurrently

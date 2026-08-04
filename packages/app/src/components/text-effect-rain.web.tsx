@@ -1,7 +1,7 @@
 // Web renderer for the kind: "glyph" text effect (Matrix rain). Fully
 // declarative: two keyframes are registered once for the whole app, every
 // column rides the same ones, and the only thing that varies per column is a
-// negative `animation-delay`. No JS per frame, no state — the overlay
+// negative `animation-delay`. No JS per frame, no state - the overlay
 // re-renders only when the measured text span changes.
 //
 // See text-effect-rain.tsx for the native counterpart.
@@ -72,7 +72,7 @@ function ensureRainKeyframes() {
 
 /**
  * Negative delay so column `index` is already `index * stagger` seconds into
- * the cycle at mount — a positive delay would leave the row dark until the
+ * the cycle at mount - a positive delay would leave the row dark until the
  * strip caught up with it.
  */
 function columnDelaySeconds(index: number, staggerSeconds: number, cycleSeconds: number): number {
@@ -98,7 +98,7 @@ const WebRainColumn = memo(function WebRainColumn({
   tailColor,
 }: WebRainColumnProps) {
   // One timing string for both layers: same cycle, same delay, different
-  // keyframes — they are complementary windows of the same timeline.
+  // keyframes - they are complementary windows of the same timeline.
   const timing = useMemo(() => {
     const delay = columnDelaySeconds(column.index, staggerSeconds, cycleSeconds);
     return `${cycleSeconds}s linear ${delay}s infinite`;

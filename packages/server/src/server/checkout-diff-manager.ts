@@ -268,8 +268,8 @@ export class CheckoutDiffManager {
   }
 
   /**
-   * Read the patch text alone — no structuring, no highlighting, no `git show` per changed
-   * file — and hash it. This is the cheap half of {@link computeCheckoutDiffSnapshot}, and
+   * Read the patch text alone - no structuring, no highlighting, no `git show` per changed
+   * file - and hash it. This is the cheap half of {@link computeCheckoutDiffSnapshot}, and
    * it is what lets a watcher wakeup that did not move the diff bail before the expensive
    * half runs. Returns null when the read fails, so the caller falls through to the full
    * read and turns the same failure into an error payload for subscribers.
@@ -303,8 +303,8 @@ export class CheckoutDiffManager {
         target.refreshQueued = false;
 
         // Change detection runs on the raw patch text first. Most watcher wakeups move no
-        // diff at all — build churn, a save that changed nothing, an editor's atomic
-        // rename — and those used to pay a full structure + full-file re-highlight +
+        // diff at all - build churn, a save that changed nothing, an editor's atomic
+        // rename - and those used to pay a full structure + full-file re-highlight +
         // snapshot stringify before concluding nothing happened. The probe costs one cheap
         // git read; a real change pays it on top of the full read, which is the trade.
         if (target.latestRawDiffFingerprint !== null) {

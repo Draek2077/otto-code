@@ -21,8 +21,8 @@ export interface ProjectConfigSessionOptions {
 
 /**
  * A client's read/write surface for a project's on-disk otto.json. Resolves the
- * request's repoRoot against the known (non-archived) project roots — accepting a
- * trailing slash or a symlink via realpath — then reads or writes the config
+ * request's repoRoot against the known (non-archived) project roots - accepting a
+ * trailing slash or a symlink via realpath - then reads or writes the config
  * substrate and emits the matching response. Reaches no state beyond the injected
  * project registry and the outbound channel.
  */

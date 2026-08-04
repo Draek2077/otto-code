@@ -762,7 +762,7 @@ describe("resolveAgentForm", () => {
       const next = resolveAgentForm(state, { type: "REQUEST_RESOLUTION" });
 
       expect(next.form).toEqual(state.form);
-      // Explicit selections survive — only RESET (form closed) clears them.
+      // Explicit selections survive - only RESET (form closed) clears them.
       expect(next.userModified).toEqual(state.userModified);
       expect(next.resolution.status).toBe("pending");
     });
@@ -772,7 +772,7 @@ describe("resolveAgentForm", () => {
       // late-arriving workingDir turns `undefined` initialValues into real
       // ones. That used to clear the userModified flags, so the next
       // COMPLETE_RESOLUTION re-derived from device prefs and silently reverted
-      // the model the active team's holder had already applied — while the
+      // the model the active team's holder had already applied - while the
       // picker still read "Team's Chatter".
       const applied = resolveAgentForm(makeState({ serverId: "host-1" }), {
         type: "SET_PROVIDER_AND_MODEL_FROM_USER",
@@ -1104,7 +1104,7 @@ describe("resolveAgentForm", () => {
       });
 
       expect(next.form.model).toBe("claude-haiku-4-5");
-      // Not the provider default — Auto's closest safe analog is the
+      // Not the provider default - Auto's closest safe analog is the
       // guardrailed no-prompt mode. See coerceModeForModel.
       expect(next.form.modeId).toBe("dontAsk");
     });

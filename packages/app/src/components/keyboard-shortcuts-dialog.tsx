@@ -82,7 +82,7 @@ export function KeyboardShortcutsDialog() {
   const sections = useMemo(() => buildKeyboardShortcutHelpSections(platform), [platform]);
 
   // The help table's `keys` are the defaults, so each row's chord is resolved
-  // against the user's remaps here — otherwise the dialog advertises a binding
+  // against the user's remaps here - otherwise the dialog advertises a binding
   // that no longer fires.
   const chordsByRowId = useMemo(() => {
     const resolved = new Map<string, ShortcutKey[][]>();

@@ -133,7 +133,7 @@ export class DirectorySync {
       }),
       // `project.update` only reaches the session that asked for the rename.
       // Project metadata is host-global, so the daemon also fans the rename out
-      // to every connected session on this channel — that is the carrier a
+      // to every connected session on this channel - that is the carrier a
       // second window, a phone, or another viewer of the same host hears it on.
       // Same descriptor payload, so it replays through the same upsert delta;
       // `hasActiveWorkspaces` is ignored because membership no longer decides

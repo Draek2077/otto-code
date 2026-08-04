@@ -27,7 +27,7 @@ are excluded as findings.
 
 ## The five findings that matter most
 
-### F1 — REGRESSION: the Otto tool-result cap was deleted by the v0.2.5 merge (traced, verified)
+### F1 - REGRESSION: the Otto tool-result cap was deleted by the v0.2.5 merge (traced, verified)
 
 Commit `3b4578e68` ("honest usage accounting") added two protections to the MCP-path tool-result
 serializer: a 26,000-head + 4,000-tail char truncation on every model-visible Otto tool result, and
@@ -54,7 +54,7 @@ F2-F5 below from "bounded at ~30K chars" into "unbounded".
 `git show 3b4578e68:packages/server/src/server/agent/mcp-server.ts`. ~20 lines, fork-original file,
 **zero upstream merge cost**. This is the single highest value-per-line change in the audit.
 
-### F2 — Streaming code fences re-tokenize the whole fence up to ~30x/sec on the UI thread (traced)
+### F2 - Streaming code fences re-tokenize the whole fence up to ~30x/sec on the UI thread (traced)
 
 An open fence cannot be block-promoted (`split-markdown-blocks.ts:40-49`), so the live tail block
 is the entire fence-so-far. Every 32 ms reveal tick produces a new string, and
@@ -72,7 +72,7 @@ already uses (`MERMAID_RENDER_DEBOUNCE_MS`). Landing it in fork-original
 `highlighted-code-block.tsx` untouched. Alternative with the same home: tokenize only complete
 lines and cache per line.
 
-### F3 — The Windows/macOS working-tree watcher has no ignore filter; build churn drives full git+highlight recomputes (traced, verified)
+### F3 - The Windows/macOS working-tree watcher has no ignore filter; build churn drives full git+highlight recomputes (traced, verified)
 
 `workspace-git-service.ts:1606-1609` registers the recursive repo-root watch with a callback that
 discards `filename` entirely. The gitignored-dirs filter exists but is wired only into the Linux
@@ -99,7 +99,7 @@ ignore set the Linux path already computes (additive callback change, low confli
 (c) size-gate the full-file highlight path, falling back to the existing `highlightDiffFromHunks`
 above ~256 KB (quick).
 
-### F4 — Streaming tool-input snapshots are quadratic in CPU, wire, and retained memory (traced path, inferred flush counts)
+### F4 - Streaming tool-input snapshots are quadratic in CPU, wire, and retained memory (traced path, inferred flush counts)
 
 For a large streamed `Write`/`Edit`, the Claude provider re-runs `parsePartialJsonObject` (a
 char-by-char parser) over the **full accumulated** argument buffer on every `input_json_delta`
@@ -117,7 +117,7 @@ timeline pagination re-clones and re-projects all of it whenever a page contains
 `limitAgentTimelineItemContent` (~20 lines) and throttle running-input re-emits to ~500 ms or
 +4 KB growth (~15 lines). Both touch upstream-shared files but as small additive hunks.
 
-### F5 — Every agent lifecycle event rebuilds the full agent/workspace/project catalog, once per connected client (traced path, inferred event rate)
+### F5 - Every agent lifecycle event rebuilds the full agent/workspace/project catalog, once per connected client (traced path, inferred event rate)
 
 `emitState` (~45 call sites) fires per lifecycle/permission/steer event; each fire, per session,
 runs `buildDescriptorMap`, which fetches and projects **every** live agent, **every** persisted

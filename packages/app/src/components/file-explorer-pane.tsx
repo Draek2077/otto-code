@@ -287,7 +287,7 @@ function TreeRowItem({
     () => <History size={iconSize.sm} color={theme.colors.foregroundMuted} />,
     [iconSize.sm, theme.colors.foregroundMuted],
   );
-  // The Changes tab's own +/- glyph — the destination named by its icon.
+  // The Changes tab's own +/- glyph - the destination named by its icon.
   const changesLeading = useMemo(
     () => <SourceControlPanelIcon size={iconSize.sm} color={theme.colors.foregroundMuted} />,
     [iconSize.sm, theme.colors.foregroundMuted],
@@ -416,7 +416,7 @@ interface EntryMutationItemsProps {
  * different item components, so each gets a thin wrapper below).
  *
  * They sit below a separator, after everything that only reads, and Delete is
- * last and destructive-styled — the pointer never crosses it on the way to a
+ * last and destructive-styled - the pointer never crosses it on the way to a
  * harmless item. All four are absent, not disabled, when the host cannot serve
  * them: an item that exists but refuses is a worse answer than no item.
  */
@@ -592,7 +592,7 @@ function EntryMetaBlock({ entry }: { entry: ExplorerEntry }) {
 }
 
 /**
- * Pane-level right-click menu (web only) — one shared instance serving every
+ * Pane-level right-click menu (web only) - one shared instance serving every
  * tree row, mirroring the row's "..." dropdown actions.
  */
 function EntryContextMenu({
@@ -759,7 +759,7 @@ interface FileExplorerPaneProps {
 interface TreeRow {
   entry: ExplorerEntry;
   depth: number;
-  /** which indent rails keep running below this row — see tree-rail-mask.ts */
+  /** which indent rails keep running below this row - see tree-rail-mask.ts */
   ancestorMask: number;
 }
 
@@ -900,8 +900,8 @@ export function FileExplorerPane({
   }, [canEditFiles, hasWorkspaceScope, onOpenFile, selectExplorerEntry]);
 
   // Git history is offered only where the question has an answer: a host that
-  // can serve it, a workspace to open the tab in, and — unlike the Changes view,
-  // where every row is by definition tracked — an actual git repository. The
+  // can serve it, a workspace to open the tab in, and - unlike the Changes view,
+  // where every row is by definition tracked - an actual git repository. The
   // explorer happily browses folders that are not repos at all.
   const fileHistorySupported = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.checkoutGitFileHistory === true,
@@ -920,7 +920,7 @@ export function FileExplorerPane({
   }, [checkoutStatus, fileHistorySupported, serverId, workspaceId]);
 
   // "View changes" is offered per row, only for files the Changes tab actually
-  // lists — an entry that would land on an empty tab is a broken promise, so the
+  // lists - an entry that would land on an empty tab is a broken promise, so the
   // item is absent rather than disabled. `workspaceRoot` (untrimmed) is passed
   // through so this shares the Changes pane's diff subscription.
   const changedPaths = useChangedFilePaths({
@@ -937,7 +937,7 @@ export function FileExplorerPane({
   );
 
   // Create / rename / delete. Gated on `features.fileMutations`: the client
-  // never touches the filesystem, so there is nothing to degrade to — an old
+  // never touches the filesystem, so there is nothing to degrade to - an old
   // host simply has no such menu items and no header buttons.
   const canMutateFiles = useFileMutationsFeature(serverId);
   const refreshDirectory = useCallback(
@@ -1026,7 +1026,7 @@ export function FileExplorerPane({
         kind: nameSheet.mode === "create-folder" ? "directory" : "file",
       });
       // Creating into a collapsed folder that then stays collapsed reads as
-      // nothing having happened — expand it so the new entry is on screen.
+      // nothing having happened - expand it so the new entry is on screen.
       if (!failure && workspaceStateKey && !expandedPaths.has(nameSheet.parentPath)) {
         setExpandedPathsForWorkspace(workspaceStateKey, [
           ...Array.from(expandedPaths),
@@ -1129,7 +1129,7 @@ export function FileExplorerPane({
     [normalizedWorkspaceRoot],
   );
 
-  // `entry.path` is already workspace-relative — copy it as-is (forward slashes,
+  // `entry.path` is already workspace-relative - copy it as-is (forward slashes,
   // repo-relative), the VS Code "Copy Relative Path" idiom. The absolute variant
   // above joins it onto the workspace root.
   const handleCopyRelativePath = useCallback(async (path: string) => {
@@ -1350,7 +1350,7 @@ export function FileExplorerPane({
   );
 
   // The Solution lens. Discovery runs for every workspace whose host can serve it and is the
-  // whole cost when the answer is "none" — no solutions means no switcher, no probe, and a Files
+  // whole cost when the answer is "none" - no solutions means no switcher, no probe, and a Files
   // tab that behaves exactly as it does today.
   const { solutions } = useSolutionsQuery({
     serverId,
@@ -1429,7 +1429,7 @@ export function FileExplorerPane({
     ],
   );
 
-  // The fuzzy finder is `code.list_files`, so it rides the code-index gate —
+  // The fuzzy finder is `code.list_files`, so it rides the code-index gate -
   // not the project-search one. Today's daemon ships both together; they are
   // separate flags precisely so a future one need not.
   const canIndexCode = useCodeIndexFeature(serverId);
@@ -1541,7 +1541,7 @@ export function FileExplorerPane({
 
 /**
  * Where a "New file/folder" from a given row lands. A directory takes the new
- * entry inside itself; a file takes it alongside — the same rule VS Code uses,
+ * entry inside itself; a file takes it alongside - the same rule VS Code uses,
  * and the one users expect when they right-click a file to add its neighbour.
  */
 function resolveCreateParentPath(entry: ExplorerEntry): string {
@@ -1550,7 +1550,7 @@ function resolveCreateParentPath(entry: ExplorerEntry): string {
 
 interface NameSheetRequest {
   mode: FileNameSheetMode;
-  /** Directory the entry lands in — for rename, the target's existing parent. */
+  /** Directory the entry lands in - for rename, the target's existing parent. */
   parentPath: string;
   /** Rename only: the entry being renamed. */
   targetPath?: string;
@@ -1593,7 +1593,7 @@ interface FileExplorerPaneContentProps {
 function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
-  // useIconSize (not theme.iconSize props) — the runtime theme patch doesn't
+  // useIconSize (not theme.iconSize props) - the runtime theme patch doesn't
   // reliably reach icon size props here; the hook scales with the breakpoint.
   const iconSize = useIconSize();
   const {
@@ -1649,7 +1649,7 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
   const isSolutionLens = viewMode === "solution";
 
   // The Files tree's own error and loading states are about the filesystem listing, which the
-  // Solution lens does not use — showing them there would report a failure the user is not
+  // Solution lens does not use - showing them there would report a failure the user is not
   // looking at.
   if (error && !isSolutionLens) {
     return (
@@ -1702,7 +1702,7 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
         </View>
         <View style={styles.headerActions}>
           {/* Root-level create. The Solution lens is a build-system view, where
-              "add a file to this folder" has no meaning — membership is the
+              "add a file to this folder" has no meaning - membership is the
               project file's business, not the filesystem's. */}
           {!isSolutionLens && onNewRootFile ? (
             <Tooltip delayDuration={300}>
@@ -1878,7 +1878,7 @@ function FileTreeBody({
 }
 
 /**
- * Files vs Solution, and — when a repository has more than one — which solution.
+ * Files vs Solution, and - when a repository has more than one - which solution.
  *
  * One control rather than two: a lens toggle beside a solution picker would make the common case
  * (one solution) show a picker with a single entry, and the two choices are really one question.

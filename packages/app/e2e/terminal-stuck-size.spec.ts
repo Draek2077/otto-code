@@ -19,7 +19,7 @@ import { getServerId } from "./helpers/server-id";
  * instead of racing real OS focus.
  *
  * The assertion reads the PTY's own opinion of its size (`stty size`) with input written
- * daemon-side — clicking or typing in the pane would fire the focus-claim path and mask the bug.
+ * daemon-side - clicking or typing in the pane would fire the focus-claim path and mask the bug.
  */
 
 /**
@@ -28,7 +28,7 @@ import { getServerId } from "./helpers/server-id";
  *
  * This has to be stubbed: headless Chromium never actually blurs. Opening a second page and
  * calling bringToFront() leaves the first page at `hasFocus() === true`, `visibilityState
- * === "visible"`, and fires no focus/blur events at all — so there is no way to produce a real
+ * === "visible"`, and fires no focus/blur events at all - so there is no way to produce a real
  * blur from Playwright. This stubs the environment signal, not the app: the daemon, the
  * WebSocket, the terminal, and every code path under test stay real.
  */
@@ -146,7 +146,7 @@ test.describe("terminal PTY size claim under lost window focus", () => {
     // ...and comes back.
     await setWindowFocused(page, true);
 
-    // __ottoTerminal points at the most recently mounted xterm — the new terminal.
+    // __ottoTerminal points at the most recently mounted xterm - the new terminal.
     const rendered = requireTerminalSize(await readRenderedTerminalSize(page));
     // Sanity: the pane really rendered at a desktop size, not the PTY default.
     expect(rendered.cols).toBeGreaterThan(80);

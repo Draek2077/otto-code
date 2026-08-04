@@ -23,7 +23,7 @@ export interface DiffModeOverride {
 
 export interface ReviewDraftStoreState {
   drafts: Record<string, ReviewDraftComment[]>;
-  // In-memory only — not persisted. Keyed by scope key.
+  // In-memory only - not persisted. Keyed by scope key.
   diffModeOverrides: Record<string, DiffModeOverride>;
 }
 
@@ -70,7 +70,7 @@ export function expireStaleDiffModeOverridesInState(
   return { ...state, diffModeOverrides: next };
 }
 
-// Pure read — returns the effective mode without mutating state. The staleness check is
+// Pure read - returns the effective mode without mutating state. The staleness check is
 // kept even though stale overrides are expired at the data boundary: a render can observe
 // a fresh dirty state before the expiry lands, and resolution must be correct under any
 // interleaving.
@@ -163,7 +163,7 @@ export function normalizePersistedState(state: unknown): ReviewDraftStoreState {
   if (!state || typeof state !== "object") {
     return { drafts: {}, diffModeOverrides: {} };
   }
-  // activeModesByScope may be present in old persisted JSON — tolerate and ignore it.
+  // activeModesByScope may be present in old persisted JSON - tolerate and ignore it.
   const persisted = state as { drafts?: unknown };
   const drafts = persisted.drafts;
   if (!drafts || typeof drafts !== "object" || Array.isArray(drafts)) {

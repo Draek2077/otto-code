@@ -2,19 +2,19 @@
 // sound.
 //
 // `auto-speech-queue.ts` is pure control flow and deliberately knows nothing
-// about hosts, clients or audio. This module supplies the missing half — one
-// speaker per connected host, registered into the shared queue — and mirrors
+// about hosts, clients or audio. This module supplies the missing half - one
+// speaker per connected host, registered into the shared queue - and mirrors
 // `AgentVoiceCuesHost` exactly, for the same reason: the pieces it needs (the
 // runtime client that synthesizes, the daemon config that carries the
 // personality roster, the `ttsSpeak` capability flag) are all per-server hooks.
 //
-// Mounted in `_layout.tsx`'s ProvidersWrapper beside AgentVoiceCuesHost — inside
+// Mounted in `_layout.tsx`'s ProvidersWrapper beside AgentVoiceCuesHost - inside
 // VoiceProvider so the shared audio engine resolves, and above the router so a
 // route change never unmounts it mid-sentence. Renders nothing.
 //
 // Per-agent auto-speech: each chat toggles independently from its composer's
 // speaker icon. The host owns the one subscription to the sparse settings
-// record and does two things with it — hands it to the queue whole (see
+// record and does two things with it - hands it to the queue whole (see
 // `syncEnabledAgents` for why it has to be the whole record and not one key at
 // a time), and mounts one `ChatAutoSpeechSource` per enabled chat.
 //
@@ -69,7 +69,7 @@ function HostAutoSpeech({ serverId }: { serverId: string }) {
   const engine = useVoiceAudioEngineOptional();
   const canSpeak = useTtsSpeakFeature(serverId);
   const { config } = useDaemonConfig(serverId);
-  // Read at speak time so a personality edit — or toggling voice mode — never
+  // Read at speak time so a personality edit - or toggling voice mode - never
   // tears the registration down mid-queue.
   const rosterRef = useRef<readonly AgentPersonality[] | undefined>(undefined);
   rosterRef.current = config?.agentPersonalities?.personalities;
@@ -95,7 +95,7 @@ function HostAutoSpeech({ serverId }: { serverId: string }) {
         void engine.initialize().catch(() => undefined);
         const voice = resolveVoice(rosterRef.current, serverId, item.agentId);
         // Marks the bubble as speaking so its playback button pins itself open
-        // in the Stop state — the same registry a manual playback claims.
+        // in the Stop state - the same registry a manual playback claims.
         setMessagePlaybackActive(item.groupId);
         try {
           const result = await client.speakMessage({

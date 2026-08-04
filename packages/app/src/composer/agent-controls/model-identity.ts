@@ -3,7 +3,7 @@ import { modelTierLabel } from "@/utils/model-tier-label";
 
 /**
  * Everything the model picker's hover card states about the current selection.
- * Built from whatever the surface already resolved for its chips — nothing here
+ * Built from whatever the surface already resolved for its chips - nothing here
  * is fetched, so the card can never disagree with the trigger it hangs off.
  */
 export interface ModelIdentityInput {
@@ -21,7 +21,7 @@ export interface ModelIdentityInput {
   modeLabel: string | null | undefined;
   /**
    * Label of the model the provider actually ran the last turn on, when that is
-   * not the selection above. Already decided by resolveRuntimeModelFact — a
+   * not the selection above. Already decided by resolveRuntimeModelFact - a
    * label, never an id, so it stays a statement and never becomes a choice.
    */
   runtimeModelLabel: string | null | undefined;
@@ -32,7 +32,7 @@ export interface ModelIdentity {
   name: string;
   /**
    * The underlying model, carried as its own row ONLY when the headline is a
-   * personality name — otherwise it would just repeat the headline.
+   * personality name - otherwise it would just repeat the headline.
    */
   modelLabel: string | null;
   providerLabel: string | null;
@@ -51,7 +51,7 @@ function cleanLabel(value: string | null | undefined): string | null {
 
 /**
  * Assemble the identity card for a selected model. Returns null when there is
- * nothing selected yet (no personality and no model) — callers fall back to the
+ * nothing selected yet (no personality and no model) - callers fall back to the
  * plain "Change model" hint, because a card of empty rows says less than a
  * sentence does.
  */

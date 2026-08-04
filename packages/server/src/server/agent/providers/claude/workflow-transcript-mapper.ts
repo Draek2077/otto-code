@@ -1,5 +1,5 @@
 // Maps an on-disk Claude workflow-subagent transcript (agent-<id>.jsonl) into
-// Otto AgentTimelineItem[] — the SAME timeline shape the live SDK path produces,
+// Otto AgentTimelineItem[] - the SAME timeline shape the live SDK path produces,
 // so the synthetic workflow-decomposition stream ingests identically (see
 // docs/subagent-accounting.md, "Workflow decomposition").
 //
@@ -14,7 +14,7 @@
 // nested `message`. One assistant turn is split across multiple lines that share
 // one `message.id` (a text line + one line per tool_use), with tool_result lines
 // (type:"user") interleaved. tool_use carries name+input; the matching
-// tool_result carries only tool_use_id + output, so pairing is stateful — this
+// tool_result carries only tool_use_id + output, so pairing is stateful - this
 // mapper keeps its own per-subagent tool-use cache.
 
 import type { AgentTimelineItem } from "../../agent-sdk-types.js";
@@ -75,7 +75,7 @@ function isRawBlock(value: unknown): value is RawBlock {
 export class WorkflowSubagentTranscriptMapper {
   private readonly toolUseCache = new Map<string, CachedToolUse>();
   // Real per-frame token accounting (dedup by message.id, keep max-output frame,
-  // sum across ids) — shared with the live sidechain path so both surface the
+  // sum across ids) - shared with the live sidechain path so both surface the
   // sub-agent's usage identically. See ../../subagent-usage.ts.
   private readonly usage = new SubagentUsageAccumulator();
 
@@ -101,7 +101,7 @@ export class WorkflowSubagentTranscriptMapper {
   /**
    * The sub-agent's real token footprint so far: input/output plus the cache
    * read/creation split, straight from the API `usage` on each frame. Summed
-   * across deduped messages — no roll-up, no estimation.
+   * across deduped messages - no roll-up, no estimation.
    */
   usageTotals(): SubagentUsageTotals {
     return this.usage.totals();

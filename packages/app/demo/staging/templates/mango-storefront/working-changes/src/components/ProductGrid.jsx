@@ -2,7 +2,7 @@ import ProductCard from "./ProductCard.jsx";
 
 export default function ProductGrid({ products, onAddToCart }) {
   if (products.length === 0) {
-    return <p className="grid-empty">Nothing matches your search — try a different word.</p>;
+    return <p className="grid-empty">Nothing matches your search - try a different word.</p>;
   }
 
   return (

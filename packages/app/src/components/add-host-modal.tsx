@@ -231,7 +231,7 @@ function formatTechnicalTransportDetails(
     return labels.noAdditionalDetails(unique[0] ?? "");
   }
 
-  return unique.join(" — ");
+  return unique.join(" - ");
 }
 
 function buildConnectionFailureCopy(input: {

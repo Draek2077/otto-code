@@ -4,7 +4,7 @@
 //   --demo  : packages/visualizer/.demo/index.html (gitignored, open in a browser)
 //
 // The shell carries the same posture as the artifact CSP (packages/server/src/
-// server/artifact/html-validator.ts): no network (connect-src 'none') — every
+// server/artifact/html-validator.ts): no network (connect-src 'none') - every
 // byte of data reaches the page via postMessage from the Otto host.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -21,12 +21,12 @@ const css = readFileSync(resolve(distDir, "index.css"), "utf8");
 
 // Otto's default fonts, embedded as data: URIs (CSP allows font-src data:;
 // the guest document is isolated from the app shell, so webfonts loaded by
-// the app never reach it). Only the 400 weight — exactly what the app itself
+// the app never reach it). Only the 400 weight - exactly what the app itself
 // registers in app/_layout.tsx; browsers synthesize bolder weights from it,
 // so the guest matches app rendering. The family names deliberately equal the
 // app's registered names (theme.ts DEFAULT_*_FONT_STACK) so host-sent stacks
 // resolve unchanged. Size note: these add ~600 KB of base64; the Electron
-// view loads the shell as a data: URL, which Chromium caps at 2 MB — check
+// view loads the shell as a data: URL, which Chromium caps at 2 MB - check
 // the emitted size stays comfortably below that when adding anything here.
 // Deliberately NOT declared in this package's own dependencies: the specifiers
 // resolve to the app workspace's @expo-google-fonts copy (hoisted to the root
@@ -47,16 +47,16 @@ const DEFAULT_CODE_STACK =
   "JetBrainsMono_400Regular, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace";
 
 // Otto appearance overrides. Placed AFTER the bundle CSS so equal-specificity
-// selectors win by order — required because the vendor's globals.css uses
+// selectors win by order - required because the vendor's globals.css uses
 // Tailwind v4 `@theme inline`, which bakes the Geist font values directly
 // into the emitted utility classes (`.font-mono { font-family: 'Geist Mono',
 // ... }`); overriding the `--font-mono`/`--font-sans` variables does nothing.
 //
 // Font policy (the reason `.font-mono` maps to the INTERFACE font): upstream
-// uses `font-mono` as its general interface voice — labels, badges, buttons,
-// messages — not as a code marker. Otto renders all of that in the interface
+// uses `font-mono` as its general interface voice - labels, badges, buttons,
+// messages - not as a code marker. Otto renders all of that in the interface
 // font; only surfaces the vendor patch marks with `otto-code` (tool diff/
-// command blocks, file paths — see vendor/agent-flow/OTTO-PATCHES.md) keep a
+// command blocks, file paths - see vendor/agent-flow/OTTO-PATCHES.md) keep a
 // monospaced face, and they use Otto's code font.
 //
 // Type scale: the vendor's DOM text is authored on a 9/10/11/12px ramp with
@@ -86,7 +86,7 @@ button, input, textarea, select { font-family: inherit; }
 /* Theme colors (docs/visualizer.md "Theme colors"). Most of the page themes
    through the vendor COLORS registry (seeded via window.__OTTO_THEME__, see
    the shell script below + vendor OTTO-PATCHES.md); these rules cover the
-   remaining STYLESHEET-level chrome in the vendor globals.css — glass cards,
+   remaining STYLESHEET-level chrome in the vendor globals.css - glass cards,
    their inputs, and their scrollbars. Every var falls back to the vendor's
    own value so the unthemed demo shell keeps the upstream look. !important
    mirrors the vendor's own !important on the input rules. */
@@ -94,9 +94,9 @@ button, input, textarea, select { font-family: inherit; }
   background: var(--otto-vis-glass-bg, rgba(10, 15, 30, 0.7));
   border-color: var(--otto-vis-glass-border, rgba(100, 200, 255, 0.15));
   /* Match the chat message (composer) box corner radius
-     (theme.borderRadius.md = 6px; input.tsx inputWrapper style) so every HUD box —
+     (theme.borderRadius.md = 6px; input.tsx inputWrapper style) so every HUD box -
      popups, timeline, live/playback control bar, file-attention/message
-     panels — reads as the same family as the chat input. Vendor default is 8px
+     panels - reads as the same family as the chat input. Vendor default is 8px
      (globals.css .glass-card). */
   border-radius: 6px;
 }
@@ -126,11 +126,11 @@ button, input, textarea, select { font-family: inherit; }
 `;
 
 // Runs before the bundle script: rewrites canvas font families (the vendor
-// hardcodes "<size>px monospace" in every ctx.font assignment — node labels,
+// hardcodes "<size>px monospace" in every ctx.font assignment - node labels,
 // context bars, cost overlays, timeline ticks) onto the interface font, and
 // listens for the Otto shell-level `otto-appearance` message ({uiFontFamily,
 // codeFontFamily, chatFontSize}) to re-seed the CSS variables above at
-// runtime. Not part of the vendor bridge — vscode-bridge.ts ignores unknown
+// runtime. Not part of the vendor bridge - vscode-bridge.ts ignores unknown
 // message types. Canvas font SIZES are left untouched: canvas glyphs are HUD
 // elements sized to their boxes, not reading text.
 const appearanceScript = `
@@ -141,7 +141,7 @@ const appearanceScript = `
   // JSON.parse throws on the raw placeholder and everything below no-ops.
   // Baked per load ON PURPOSE: the vendor page reads COLORS from module init
   // and React renders (no repaint path), so a theme change reloads the guest
-  // — same contract as the dpr cap above.
+  // - same contract as the dpr cap above.
   var theme = null;
   try { theme = JSON.parse("__OTTO_THEME_JSON__"); } catch (_e) {}
   if (theme && theme.colors) {
@@ -224,7 +224,7 @@ const html = `<!DOCTYPE html>
 html, body { height: 100%; width: 100%; margin: 0; padding: 0; overflow: hidden; background: #030304; }
 #root { height: 100%; width: 100%; }
 /* Electron <webview> guests freeze vh/vw units at the initial guest viewport
-   size — they never recompute on resize (window.innerHeight updates, 100vh
+   size - they never recompute on resize (window.innerHeight updates, 100vh
    does not). The vendor root is h-screen/w-screen (100vh/100vw), which left
    the whole UI laid out in a phantom initial-size box. Remap both onto the
    percentage chain above, which does track guest resizes. !important because
@@ -240,7 +240,7 @@ html, body { height: 100%; width: 100%; margin: 0; padding: 0; overflow: hidden;
 <script>${appearanceScript}</script>
 <script>
 // Cap the devicePixelRatio the vendor page sees. It sizes its canvas backing
-// store (and the bloom renderer's blur buffers) by dpr — at native 2x, a
+// store (and the bloom renderer's blur buffers) by dpr - at native 2x, a
 // maximized pane is a ~6M-pixel store redrawn with a 3-pass blur every frame:
 // measured 14 FPS vs 52 FPS at cap 1 and 25 FPS at cap 1.5. The cap is a
 // host-substituted placeholder (applyVisualizerRenderScale in the app's

@@ -11,7 +11,7 @@ const ThemedNameInput = withUnistyles(TextInput, (theme: Theme) => ({
 /**
  * The new name for a rename job.
  *
- * A dialog for the NAME only — the audit happens in the job tab this opens, not here. That
+ * A dialog for the NAME only - the audit happens in the job tab this opens, not here. That
  * split is the whole point: a dialog is the right shape for "what should it be called" (one
  * field, one answer) and the wrong shape for "here is everything this will change", which is
  * a surface you read, scroll, and click into.

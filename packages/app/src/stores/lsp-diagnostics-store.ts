@@ -12,7 +12,7 @@ import { useShallow } from "zustand/react/shallow";
  * squiggle alive.
  *
  * Keyed on a normalised path rather than the raw string because the same file reaches the
- * app spelled several ways — a tab's workspace-relative path, the daemon's absolute one,
+ * app spelled several ways - a tab's workspace-relative path, the daemon's absolute one,
  * `\` from Windows and `/` from the wire.
  */
 
@@ -72,7 +72,7 @@ export const useLspDiagnosticsStore = create<LspDiagnosticsState>((set) => ({
  * One document's problems.
  *
  * The daemon addresses a push by the path it was synced with, which for a file tab is the
- * absolute path — so callers pass the same thing they sync. `useShallow` keeps a stable
+ * absolute path - so callers pass the same thing they sync. `useShallow` keeps a stable
  * array identity while the set is unchanged, which matters because the consumer pushes it
  * into CodeMirror: a fresh array every render would redraw every marker on every keystroke.
  */

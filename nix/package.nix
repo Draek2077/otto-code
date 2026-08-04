@@ -11,7 +11,7 @@
   # Exposed so downstream flakes that follow a different nixpkgs revision
   # (where `fetchNpmDeps` may produce a different hash for the same lockfile)
   # can override via `.override { npmDepsHash = "sha256-..."; }` without
-  # `overrideAttrs` gymnastics — `npmDepsHash` is destructured from
+  # `overrideAttrs` gymnastics - `npmDepsHash` is destructured from
   # `buildNpmPackage`'s args, so `overrideAttrs` cannot reach it.
   #
   # The default is read from a sidecar file so the CI auto-updater can replace
@@ -69,7 +69,7 @@ buildNpmPackage rec {
     stdenv.cc.cc.lib # libstdc++ for sherpa-onnx prebuilt binaries
   ];
 
-  # Don't use the default npm build hook — we need a custom build sequence
+  # Don't use the default npm build hook - we need a custom build sequence
   dontNpmBuild = true;
 
   buildPhase = ''
@@ -94,7 +94,7 @@ buildNpmPackage rec {
     # (@vercel/nft from supervisor-entrypoint.js, cli/dist/index.js, and the
     # forked terminal/speech worker processes) plus an explicit list of non-JS
     # assets read at runtime. The trace script is the single source of
-    # truth for what the daemon needs at $out — auditable in plain JS, no
+    # truth for what the daemon needs at $out - auditable in plain JS, no
     # npm hoisting / .bin / workspace-symlink footguns.
     mkdir -p $out/lib/otto
     node scripts/trace-daemon.mjs > daemon-files.txt

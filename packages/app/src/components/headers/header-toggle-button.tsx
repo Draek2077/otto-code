@@ -21,7 +21,7 @@ interface HeaderToggleButtonProps extends Omit<PressableProps, "style" | "onPres
   tooltipSide: "left" | "right" | "top" | "bottom";
   tooltipDelayDuration?: number;
   style?: StyleProp<ViewStyle>;
-  // Persistent on-state — holds the slot chrome while the toggle is enabled, the
+  // Persistent on-state - holds the slot chrome while the toggle is enabled, the
   // same way the sidebar's Settings button marks the surface you are already on.
   // An enabled feature should read as enabled without needing a hover to prove it.
   active?: boolean;
@@ -96,7 +96,7 @@ export const headerIconSlotStyle = StyleSheet.create((theme) => ({
     },
     borderRadius: theme.borderRadius.lg,
   },
-  // Selected is the resting shade — the same fill the explorer's selected tab
+  // Selected is the resting shade - the same fill the explorer's selected tab
   // uses, so a toggled-on title-bar button and a selected tab match. Hover is
   // ONE step off it, and is applied AFTER selected in `combinedStyle`, so
   // pointing at a toggled-on button lifts it rather than flattening it back.

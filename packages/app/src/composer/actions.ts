@@ -300,8 +300,8 @@ export interface MoveQueuedComposerMessageInput {
 
 /**
  * Re-order the client-held queue. Mirrors the daemon's
- * `reorderSteerQueueEntry` — same clamp, same "already gone or already there
- * ⇒ no-op" answer — so the composer's move control behaves the same whichever
+ * `reorderSteerQueueEntry` - same clamp, same "already gone or already there
+ * ⇒ no-op" answer - so the composer's move control behaves the same whichever
  * queue is backing it.
  */
 export function moveQueuedComposerMessage(input: MoveQueuedComposerMessageInput): boolean {

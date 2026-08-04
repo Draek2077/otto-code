@@ -697,7 +697,7 @@ describe("wire compatibility", () => {
   test("fetch_agent resolves an observed subagent from the registry projection", async () => {
     // An observed subagent (Claude Task / ultracode fan-out) has no live
     // ManagedAgent and is never persisted, so the fetch must fall through to
-    // the registry — otherwise a still-visible track row 404s.
+    // the registry - otherwise a still-visible track row 404s.
     // See docs/agent-lifecycle.md (Item 1).
     const observedId = "agent-1::sub::task-42";
     const observedPayload = toObservedSubagentPayload({
@@ -736,7 +736,7 @@ describe("wire compatibility", () => {
 
   test("archive_agent resolves an observed subagent through the registry archive path", async () => {
     // Observed subagents have no ManagedAgent and no stored record, so the
-    // normal archive command would throw "Agent not found" — the session must
+    // normal archive command would throw "Agent not found" - the session must
     // route them to AgentManager.archiveObservedSubagent instead. This is the
     // path behind the terminal-row Archive action and "Clear all completed".
     // See docs/agent-lifecycle.md (Items 2 + 6).
@@ -765,7 +765,7 @@ describe("wire compatibility", () => {
       throw new Error("Expected agent_archived");
     }
     expect(response.payload.agentId).toBe(observedId);
-    // This timestamp can only come from archiveObservedSubagent's stub — proof
+    // This timestamp can only come from archiveObservedSubagent's stub - proof
     // the observed branch handled it rather than the stored-record command.
     expect(response.payload.archivedAt).toBe("2026-05-02T01:23:45.000Z");
   });

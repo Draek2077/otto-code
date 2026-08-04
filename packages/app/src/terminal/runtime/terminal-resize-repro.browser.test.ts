@@ -9,7 +9,7 @@ import { encodeTerminalOutput, TerminalEmulatorRuntime } from "./terminal-emulat
 // A heavy stream overflows MAX_TERMINAL_OUTPUT_FRAME_BYTES, so the server sends a
 // SNAPSHOT mid-stream. The client restores it via renderTerminalSnapshotToAnsi.
 // When the snapshot carries per-row soft-wrap flags, restored long lines must
-// reflow on resize just like live output — not freeze at the snapshot width.
+// reflow on resize just like live output - not freeze at the snapshot width.
 
 interface Mounted {
   host: HTMLDivElement;
@@ -176,7 +176,7 @@ describe("terminal resize reflow repro (Otto terminal)", () => {
     // Post-snapshot streamed output reflows to fill the wide terminal.
     expect(streamedRowLen).toBeGreaterThan(narrowCols + 20);
     // Snapshot-restored content reflows too, instead of staying frozen at the
-    // snapshot width — the reported bug.
+    // snapshot width - the reported bug.
     expect(snapshotRowLen).toBeGreaterThan(narrowCols + 20);
   });
 });

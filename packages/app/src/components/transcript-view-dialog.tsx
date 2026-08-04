@@ -41,7 +41,7 @@ export interface TranscriptViewDialogProps {
  * Read-only view of a closed generation agent's chat transcript, reachable from
  * the Artifacts and Schedules kebab menus. Reuses the live chat renderer
  * (AgentStreamView) with no composer and an empty permissions map, so the
- * dialog can only ever read the transcript — never steer it.
+ * dialog can only ever read the transcript - never steer it.
  *
  * The generation agent is terminal, so a single fetch of the record plus one
  * timeline sync is enough; there is no live stream to keep frozen while hidden
@@ -141,7 +141,7 @@ function TranscriptViewDialogContent({
         }
         storeFetchedAgentDetail({ serverId, result });
         // Pull the transcript into agentStreamTail. Tolerate a rejection (e.g. a
-        // sync timeout) — the record is already stored, so we still render what
+        // sync timeout) - the record is already stored, so we still render what
         // arrived rather than dead-ending the viewer.
         try {
           await ensureAgentIsInitialized({
@@ -152,7 +152,7 @@ function TranscriptViewDialogContent({
             setAgentInitializing,
           });
         } catch {
-          // ignore — render whatever timeline made it into the store
+          // ignore - render whatever timeline made it into the store
         }
         if (cancelled) {
           return;

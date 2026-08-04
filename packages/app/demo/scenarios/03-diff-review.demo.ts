@@ -8,7 +8,7 @@ import { beat, humanClick, resetPacingSeed } from "../helpers/pacing";
 import { seedDemoWorkspace, type DemoWorkspace } from "../staging/seed";
 
 /**
- * Scenario 03 — Diff review + IDE surfaces.
+ * Scenario 03 - Diff review + IDE surfaces.
  * The storefront template ships with staged working-tree changes, so this
  * walkthrough needs no agent run: open the workspace, browse the file
  * explorer, open a file, then review the pending diff in flat and tree views.
@@ -52,7 +52,7 @@ test("diff review walkthrough", async ({ page }, testInfo) => {
   await recorder.shot(
     "workspace",
     "Your project, open in Otto",
-    "A real repository opened as a workspace — agents, terminals, files, and diffs all live here.",
+    "A real repository opened as a workspace - agents, terminals, files, and diffs all live here.",
   );
 
   await humanClick(page, page.getByRole("button", { name: "Open explorer" }).first());
@@ -90,7 +90,7 @@ test("diff review walkthrough", async ({ page }, testInfo) => {
   await recorder.shot(
     "diff-view",
     "Review the diff line by line",
-    "Full syntax-highlighted diffs with gutter line numbers — review from anywhere.",
+    "Full syntax-highlighted diffs with gutter line numbers - review from anywhere.",
   );
 
   // The tree toggle lives in the options menu unless pinned to the strip.
@@ -100,7 +100,7 @@ test("diff review walkthrough", async ({ page }, testInfo) => {
   await recorder.shot(
     "changes-options",
     "Diff tools at hand",
-    "Split layout, whitespace, line wrapping, and tree view — all per-workspace preferences.",
+    "Split layout, whitespace, line wrapping, and tree view - all per-workspace preferences.",
   );
 
   await humanClick(page, page.getByTestId("changes-toggle-view-mode").first());

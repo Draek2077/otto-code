@@ -76,7 +76,7 @@ export function loadCatalog(paths: BrainPaths = resolveBrainPaths()): Catalog {
 
 // --------------------------------------------------------------------- config
 
-/** Persisted config only — no env overrides. Used by writers. */
+/** Persisted config only - no env overrides. Used by writers. */
 export function loadPersistedConfig(paths: BrainPaths = resolveBrainPaths()): BrainConfig {
   const current = readJson(paths.configFile, BrainConfigSchema);
   if (current) return current;

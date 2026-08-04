@@ -11,7 +11,7 @@
 //    a keyed container by definition); a plain object collapses only when its
 //    path is listed in `collapseKeysAt`, because a struct's field names are the
 //    useful part. Collapsing means `sessions.*.agents.size` is one metric across
-//    every host, not one metric per host id — so paths stay comparable between
+//    every host, not one metric per host id - so paths stay comparable between
 //    runs and the key space cannot grow with the data.
 //  - **Arrays are leaves.** Emitting `.length` is the whole signal; descending
 //    into elements would make the census O(timeline items) on every tick, which

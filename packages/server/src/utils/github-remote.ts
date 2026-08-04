@@ -19,7 +19,7 @@ export { resolveSshHostname, type SshHostnameResolver } from "./ssh-hostname.js"
  *
  * Otto keeps this one function because `services/github-service.ts` is still
  * GitHub-shaped. Folding it into the forge resolver belongs to the Bitbucket
- * re-attachment — see findings/upstream/2026-07-31-deleted-file-audit.md.
+ * re-attachment - see findings/upstream/2026-07-31-deleted-file-audit.md.
  */
 export async function resolveGitHubRemote(input: {
   remoteUrl: string;

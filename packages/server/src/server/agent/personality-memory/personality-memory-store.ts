@@ -1,6 +1,6 @@
 /**
  * File-backed storage for personality memory: one JSON file per personality
- * under `$OTTO_HOME/personality-memory/`, atomic writes, no migrations —
+ * under `$OTTO_HOME/personality-memory/`, atomic writes, no migrations -
  * the pattern from docs/data-model.md.
  *
  * One file per personality rather than one file per fact. The harness's own
@@ -29,7 +29,7 @@ import type {
 
 /**
  * Hard ceiling on stored entries per personality. Not a token budget (the brief
- * has its own) — a floor under pathological growth, so a personality that
+ * has its own) - a floor under pathological growth, so a personality that
  * records on every turn for a month cannot turn its file into a liability. The
  * oldest, least-reinforced entry is dropped when the cap is hit; a user who
  * wants the tail kept prunes deliberately via review_lessons.
@@ -118,8 +118,8 @@ export class PersonalityMemoryStore {
           entry.id === duplicate.id
             ? {
                 ...entry,
-                // The newer phrasing wins — it is the one the agent just found
-                // useful — while the reinforcement history carries forward.
+                // The newer phrasing wins - it is the one the agent just found
+                // useful - while the reinforcement history carries forward.
                 text: lesson,
                 updatedAt: now,
                 reinforcedCount: (entry.reinforcedCount ?? 1) + 1,
@@ -148,7 +148,7 @@ export class PersonalityMemoryStore {
 
   /**
    * Rewrite, re-scope or drop one entry. This is both the review loop's write
-   * path and the Context Management editor's — the same operation either way,
+   * path and the Context Management editor's - the same operation either way,
    * differing only in the `source` stamp the caller passes for a new entry.
    */
   revise(input: ReviseLessonInput): Promise<boolean> {
@@ -177,7 +177,7 @@ export class PersonalityMemoryStore {
       } else {
         // The EXISTING binding wins. The Memory tab lists every project's
         // lessons, so editing another project's entry from this workspace must
-        // not silently re-home it — the caller's root only fills a gap, which is
+        // not silently re-home it - the caller's root only fills a gap, which is
         // what a global entry moving to project scope needs.
         const projectRoot = existing.projectRoot ?? input.projectRoot;
         if (projectRoot) next.projectRoot = projectRoot;
@@ -335,7 +335,7 @@ export class PersonalityMemoryStore {
  * Normalize a lesson to the shape the tool contract promises: one paragraph,
  * capped in length. Lessons are model-authored and are later interpolated into
  * a system-prompt list item, so newlines and control characters collapse to
- * spaces here — a multi-line entry could smuggle its own markdown headings into
+ * spaces here - a multi-line entry could smuggle its own markdown headings into
  * the injected brief as top-level structure. The brief composer flattens again
  * at render time; this keeps the store from accumulating entries that only the
  * renderer saves you from.
@@ -343,7 +343,7 @@ export class PersonalityMemoryStore {
 function normalizeLesson(text: string): string {
   // Written as a code-point test rather than a regex character class: C0
   // controls and C1/DEL become spaces, and the whitespace collapse then folds
-  // them — with every newline and Unicode line separator — into single spaces.
+  // them - with every newline and Unicode line separator - into single spaces.
   const flat = Array.from(text, (char) => {
     const code = char.codePointAt(0) ?? 0;
     return code < 32 || (code >= 127 && code <= 159) ? " " : char;
@@ -385,7 +385,7 @@ const VALID_SOURCES = new Set<PersonalityMemorySource>(["agent", "user", "review
 /**
  * Hand-written rather than Zod: the store is the only reader of this file, the
  * shape is five fields, and a malformed entry must be dropped rather than fail
- * the whole load — one bad row should never cost a personality its memory.
+ * the whole load - one bad row should never cost a personality its memory.
  */
 function sanitizeEntries(value: unknown): PersonalityMemoryEntry[] {
   const raw =

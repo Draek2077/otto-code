@@ -22,7 +22,7 @@ interface UseAgentContextUsageOptions {
 
 /**
  * Fetches the per-category context window breakdown for an agent. Resolves to
- * null — meaning "don't show a breakdown" — when the daemon predates the RPC,
+ * null - meaning "don't show a breakdown" - when the daemon predates the RPC,
  * the agent's provider can't report one, or the fetch hasn't completed yet.
  */
 export function useAgentContextUsage(

@@ -190,7 +190,7 @@ describe("preview_start tab binding", () => {
     const browser = payload.browser as { browserId: string; note?: string };
     expect(browser.browserId).toBe(TAB_A);
     expect(browser.note).toContain("currently at http://example.com/somewhere");
-    // No new tab was opened — the designated tab stays "it".
+    // No new tab was opened - the designated tab stays "it".
     expect(harness.brokerCalls.map((call) => call.command.command)).toEqual(["list_tabs"]);
     expect(harness.bindings).toEqual([]);
   });

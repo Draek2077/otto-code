@@ -1,4 +1,4 @@
-// Agent Teams editor — named, per-host groupings of agent personalities that
+// Agent Teams editor - named, per-host groupings of agent personalities that
 // act as switchable operating templates: which personalities are on deck plus
 // a shared team prompt stacked ahead of each member's personality prompt at
 // spawn. Lives in the host settings "Agents" section, directly under the
@@ -55,7 +55,7 @@ export function useAgentTeamsFeature(serverId: string): boolean {
 const DEFAULT_TEAM_COLOR = "#4ec4ff";
 
 // Team names are human labels (they appear in the switcher dropdown and on
-// cards), so unlike personality handles they allow spaces — but stay short and
+// cards), so unlike personality handles they allow spaces - but stay short and
 // free of structural characters so a name renders cleanly everywhere.
 const MAX_TEAM_NAME_LENGTH = 30;
 
@@ -158,7 +158,7 @@ const checkAccentMapping = (theme: Theme) => ({
 
 const FLEX_1 = { flex: 1 } as const;
 
-// Canonical icon-only affordance — hover chrome + tooltip (mirrors the
+// Canonical icon-only affordance - hover chrome + tooltip (mirrors the
 // personalities editor / file-view-mode-bar).
 type ThemedIcon = typeof ThemedPlus;
 
@@ -299,7 +299,7 @@ export function AgentTeamsSection({ serverId }: { serverId: string }): ReactElem
     [editing, teams, personalities, saveTeams],
   );
 
-  // Team names are unique per host (case-insensitive) — they are what the
+  // Team names are unique per host (case-insensitive) - they are what the
   // switcher and cards display; a collision blocks save with an inline error.
   const takenNames = useMemo(
     () =>
@@ -343,7 +343,7 @@ export function AgentTeamsSection({ serverId }: { serverId: string }): ReactElem
         const alsoDelete = checkboxChecked && orphaned.length > 0;
         const orphanedIds = new Set(orphaned.map((entry) => entry.id));
         try {
-          // Deleting the active team clears the active id in the same patch —
+          // Deleting the active team clears the active id in the same patch -
           // never leave a dangling reference (the daemon heals it anyway).
           await saveTeams(remaining, {
             clearActive: isActive,
@@ -488,7 +488,7 @@ interface TeamRowProps {
   onRemove: (id: string) => void;
 }
 
-// Member identities — one provider icon per member, filled with that member's
+// Member identities - one provider icon per member, filled with that member's
 // spinner gradient (same glyph the roster and pickers use). Overflow collapses
 // to a +N count.
 function MemberIcons({
@@ -726,7 +726,7 @@ function TeamEditModal({
     });
   }, []);
 
-  // Members filter — matches a personality's name or any of its role labels, so
+  // Members filter - matches a personality's name or any of its role labels, so
   // "rev" finds both a personality called "Reva" and every Reviewer.
   const filteredPersonalities = useMemo(() => {
     const query = memberQuery.trim().toLowerCase();
@@ -741,7 +741,7 @@ function TeamEditModal({
 
   const nameCollides = takenNames.includes(draft.name.trim().toLowerCase());
   const colorValid = isHexColor(draft.color);
-  // Members must resolve against the CURRENT roster — a draft carrying only
+  // Members must resolve against the CURRENT roster - a draft carrying only
   // dangling ids (personalities deleted mid-edit) must not save as "empty".
   const knownIds = useMemo(() => new Set(personalities.map((entry) => entry.id)), [personalities]);
   const resolvedMemberCount = draft.memberIds.filter((memberId) => knownIds.has(memberId)).length;
@@ -764,7 +764,7 @@ function TeamEditModal({
   }, [canSave, draft, isSaving, onSave]);
 
   // Cancel/backdrop-close confirms before discarding a dirty draft (exact
-  // stringify dirty check — the draft is plain JSON-safe data).
+  // stringify dirty check - the draft is plain JSON-safe data).
   const handleClose = useCallback(() => {
     if (JSON.stringify(draft) === JSON.stringify(initialDraft)) {
       onClose();
@@ -886,7 +886,7 @@ function TeamEditModal({
   );
 }
 
-// Pinned filter over the members list — name or role, with a clear button once
+// Pinned filter over the members list - name or role, with a clear button once
 // there is something to clear.
 function MemberSearchField({
   value,
@@ -1029,7 +1029,7 @@ interface MemberRowProps {
 function MemberRow({ personality, entries, checked, onToggle }: MemberRowProps): ReactElement {
   const handlePress = useCallback(() => onToggle(personality.id), [onToggle, personality.id]);
 
-  // Checking is never blocked by unavailability — a team can include a
+  // Checking is never blocked by unavailability - a team can include a
   // currently-offline member; it grays in pickers as usual. Availability is
   // shown here purely as information.
   const availability = useMemo(() => {
@@ -1088,7 +1088,7 @@ function MemberRow({ personality, entries, checked, onToggle }: MemberRowProps):
         </Text>
         {!availability.available ? (
           <Text style={styles.unavailableText} numberOfLines={2}>
-            Unavailable — {availability.reason}
+            Unavailable - {availability.reason}
           </Text>
         ) : null}
       </View>
@@ -1201,7 +1201,11 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.full,
     borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderAccent, not border: this pill sits on a surface1 card, so its fill
+    // is surface2 for contrast against that card - but `border` is nearly
+    // identical to surface2 on this theme, which swallows the pill's own
+    // outline. borderAccent is a real step brighter.
+    borderColor: theme.colors.borderAccent,
     backgroundColor: theme.colors.surface2,
   },
   rolePillText: {
@@ -1325,7 +1329,7 @@ const styles = StyleSheet.create((theme) => ({
   membersField: {
     gap: theme.spacing[2],
   },
-  // Pinned filter row above the members list — framed like the other inputs so
+  // Pinned filter row above the members list - framed like the other inputs so
   // it reads as a field, with the clear button inside the frame.
   searchRow: {
     flexDirection: "row",
@@ -1369,7 +1373,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surfaceHover,
   },
   // Matches the Changes-tab commit-selection checkbox (16px, muted border,
-  // accent when checked) and is always rendered — never hover-revealed.
+  // accent when checked) and is always rendered - never hover-revealed.
   memberCheckbox: {
     width: 16,
     height: 16,
@@ -1387,7 +1391,7 @@ const styles = StyleSheet.create((theme) => ({
   memberInfo: {
     flex: 1,
   },
-  // Action row handed to the sheet's `footer` slot — the footer wrapper already
+  // Action row handed to the sheet's `footer` slot - the footer wrapper already
   // owns the padding, top border, and outer alignment.
   editorActions: {
     flex: 1,
@@ -1401,7 +1405,7 @@ const styles = StyleSheet.create((theme) => ({
 }));
 
 // Stable style arrays for the wide row (hoisted so the JSX doesn't allocate a
-// new array each render — same pattern as the personalities section).
+// new array each render - same pattern as the personalities section).
 // The search row draws its own focus treatment, so the field suppresses the
 // browser's. `outlineStyle` is web-only and Unistyles' StyleSheet rejects it, so
 // it rides here rather than inside `StyleSheet.create` (same as the sheet

@@ -432,7 +432,7 @@ async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promis
       expect(staleLines.length).toBe(0);
       // Guard against the dual-ping regression: if a JSON {type:"ping"} reaches the DO during
       // the idle window, the DO logs `legacy_json_ping_received`. The current daemon code must
-      // not send JSON pings on the control socket — only protocol pings via socket.ping().
+      // not send JSON pings on the control socket - only protocol pings via socket.ping().
       const legacyPingLines = relayStdoutLines.filter((l) =>
         l.includes("legacy_json_ping_received"),
       );

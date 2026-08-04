@@ -22,10 +22,10 @@ const HIDDEN: VeilState = { opacity: 0, durationMs: 0 };
 // does NOT animate on the JS thread: the heavy target screens (Settings, the
 // Workspace deck) block the JS thread while they mount, which starves any
 // rAF/Reanimated-driven fade and makes it choppy. Instead a surface0 veil is
-// layered over the routed content and driven by a CSS `transition` on opacity —
+// layered over the routed content and driven by a CSS `transition` on opacity -
 // which the browser runs on the compositor, immune to JS-thread blocking. The
 // veil SNAPS to opaque then REVEALS (the single fade back out), exposing the new
-// screen — visually identical to fading the new screen in from the background.
+// screen - visually identical to fading the new screen in from the background.
 // Gated by the Animations setting; the first mount is skipped so cold start does
 // not flash.
 export function RouteFadeContainer({ children }: { children: ReactNode }) {
@@ -45,7 +45,7 @@ export function RouteFadeContainer({ children }: { children: ReactNode }) {
 // by the caller so sub-page surfaces can run the same fade over just one pane
 // (the settings content pane keys this on its view identity, keeping the
 // settings sidebar outside the fade). `fadeOnMount` (initial value only) runs
-// the fade on the first key too — for panes whose host screen remounts on
+// the fade on the first key too - for panes whose host screen remounts on
 // internal navigation and can tell the two cases apart. `ready` (default true)
 // gates the reveal: while false the veil stays opaque, so a target whose content
 // paints a beat after its shell (a cold workspace deck) does not have the veil
@@ -55,7 +55,7 @@ export function RouteFadeContainer({ children }: { children: ReactNode }) {
 // paints, so the veil is already opaque in the very first frame the new screen
 // would appear. With a post-paint useEffect, a fast screen (History, Artifacts)
 // mounts and paints instantly, is shown for one frame, and only *then* gets
-// covered — which reads as the new screen flashing in before it fades. Covering
+// covered - which reads as the new screen flashing in before it fades. Covering
 // pre-paint removes that flash.
 export function KeyedFadeContainer({
   transitionKey,
@@ -76,7 +76,7 @@ export function KeyedFadeContainer({
   const [coverToken, setCoverToken] = useState(0);
   const revealedTokenRef = useRef(0);
   // The veil must be driven by *key changes*, not by the effect merely
-  // re-running — `animationsEnabled` is also a dependency, and flipping the
+  // re-running - `animationsEnabled` is also a dependency, and flipping the
   // setting must never flash the veil over a screen that didn't navigate.
   // Seeding with the first key makes the initial run a no-change (no cold-start
   // flash); `null` under `fadeOnMount` makes the first key count as a change.
@@ -87,7 +87,7 @@ export function KeyedFadeContainer({
     prevKeyRef.current = transitionKey;
     if (!animationsEnabled) {
       // Any reveal still pending just re-sets the veil to opacity 0 (already
-      // HIDDEN here) — a no-op — so there is nothing to cancel.
+      // HIDDEN here) - a no-op - so there is nothing to cancel.
       setVeil(HIDDEN);
       return;
     }
@@ -95,7 +95,7 @@ export function KeyedFadeContainer({
       return;
     }
     // SNAP the veil to opaque (durationMs 0 = no transition), pre-paint, so the
-    // incoming screen is masked from its first frame — no flash of it appearing
+    // incoming screen is masked from its first frame - no flash of it appearing
     // before the fade, and no *fading* cover that would read as a second fade.
     // The actual reveal is handled by the effect below once the target is ready.
     setVeil({ opacity: 1, durationMs: 0 });
@@ -121,7 +121,7 @@ export function KeyedFadeContainer({
   }, [coverToken, ready]);
 
   // RN-web maps these to CSS transition props (not in RN's ViewStyle types, hence
-  // the cast — same pattern as the sidebars' `cursor`). Memoized so the veil View
+  // the cast - same pattern as the sidebars' `cursor`). Memoized so the veil View
   // isn't handed a fresh style object every parent render.
   const veilStyle = useMemo(
     () => [
@@ -139,7 +139,7 @@ export function KeyedFadeContainer({
   return (
     <View style={containerStyle}>
       {children}
-      {/* testID: E2E-observable seam for the Animations setting — the veil's
+      {/* testID: E2E-observable seam for the Animations setting - the veil's
           inline transition-duration is 0ms whenever animations are disabled and
           PAGE_TRANSITION_DURATION_MS after any animated transition (see
           e2e/appearance-theme-animations.spec.ts). */}

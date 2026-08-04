@@ -4,7 +4,7 @@ import { z } from "zod";
 // A project's git hosting provider (GitHub, Bitbucket Cloud, ...) is chosen
 // per project in otto.json; all PR/issue functionality follows that choice.
 // Shared by messages.ts (wire schemas) and otto-config-schema.ts (project
-// config) — lives here to avoid a module cycle between those two.
+// config) - lives here to avoid a module cycle between those two.
 export const GitHostingProviderIdSchema = z.enum(["github", "bitbucket-cloud"]);
 
 // Wire form of the provider id. Deliberately an OPEN string, not the enum, so a
@@ -15,7 +15,7 @@ export const GitHostingProviderIdSchema = z.enum(["github", "bitbucket-cloud"]);
 // GIT_HOSTING_PROVIDER_IDS known-set.
 export const GitHostingProviderIdWireSchema = z.string();
 
-// What a provider can do. The client renders only capability-true actions —
+// What a provider can do. The client renders only capability-true actions -
 // no emulation of missing features (feature contract).
 export const GitHostingCapabilitiesSchema = z.object({
   autoMerge: z.boolean().optional().default(false),
@@ -26,7 +26,7 @@ export const GitHostingCapabilitiesSchema = z.object({
   reviewDecisions: z.boolean().optional().default(false),
   issues: z.boolean().optional().default(false),
   // COMPAT(projectScaffold): added in v0.6.9. Repository-level operations used
-  // by the New project page — enumerate the repos/owners you can reach, and
+  // by the New project page - enumerate the repos/owners you can reach, and
   // create a brand-new remote repository. Absent on older daemons, which is
   // read as "can't", so the page hides those choices rather than emulating them.
   listRepositories: z.boolean().optional().default(false),

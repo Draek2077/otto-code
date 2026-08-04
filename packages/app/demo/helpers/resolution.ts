@@ -1,5 +1,5 @@
 /**
- * Shared desktop capture resolution — 16:9 QHD, the highest-quality source
+ * Shared desktop capture resolution - 16:9 QHD, the highest-quality source
  * size the pipeline captures at (site delivery can downscale from here later;
  * capture never upscales). This is the *physical output* size: the pixel
  * dimensions of the PNGs/video, and the Electron lane's resize target (see
@@ -13,7 +13,7 @@ export const DEFAULT_DESKTOP_CAPTURE_SCALE = 2.5;
 /**
  * Ceiling for the zoom. Logical width is 2560 ÷ scale, and the app flips to its
  * compact/mobile layout (split panes gone, sidebars overlaid) below the `md`
- * breakpoint of 768px — see src/constants/layout.ts. 2560 ÷ 768 ≈ 3.33, so this
+ * breakpoint of 768px - see src/constants/layout.ts. 2560 ÷ 768 ≈ 3.33, so this
  * is the point past which a desktop capture stops being a desktop layout.
  */
 export const MAX_DESKTOP_CAPTURE_SCALE = 3.3;
@@ -37,7 +37,7 @@ function resolveCaptureScale(): number {
  * while the output still lands at full DESKTOP_CAPTURE_RESOLUTION. Higher =
  * bigger UI, but less content on screen and less logical *height* (2.5 → 576,
  * 3.0 → 480). Do NOT capture at scale 1 with the viewport set to the output
- * resolution — the app then lays out as if on a giant screen, every control
+ * resolution - the app then lays out as if on a giant screen, every control
  * tiny. See MAX_DESKTOP_CAPTURE_SCALE for the ceiling.
  */
 export const DESKTOP_CAPTURE_SCALE = resolveCaptureScale();
@@ -45,7 +45,7 @@ export const DESKTOP_CAPTURE_SCALE = resolveCaptureScale();
 /**
  * Logical (CSS-pixel) viewport for the desktop lanes: the output resolution
  * divided by the capture scale (rounded to whole pixels). At 2.5× this is
- * 1024×576 — the app lays out at that density and captures at
+ * 1024×576 - the app lays out at that density and captures at
  * DESKTOP_CAPTURE_SCALE to reach DESKTOP_CAPTURE_RESOLUTION. Used as the
  * Playwright browser viewport for the web lane and the real window size (DIP)
  * for the Electron lane.

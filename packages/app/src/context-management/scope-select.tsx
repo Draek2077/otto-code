@@ -12,15 +12,15 @@ import {
  * One of the two "what am I evaluating against" pickers at the head of Context
  * Management, in the shape they share.
  *
- * Both used to be wrapping chip rows — five window presets, then a chip per
- * personality — which spent four rows of the densest panel in the app before a
+ * Both used to be wrapping chip rows - five window presets, then a chip per
+ * personality - which spent four rows of the densest panel in the app before a
  * single number appeared, and grew without bound as a host collected
  * personalities. A dropdown is the right control for a list that gets long: it
  * costs one row whatever the roster does, and it has somewhere to put a search
  * field.
  *
  * The label rides inside the trigger rather than above it, so the pair fits on
- * one line and each control reads as a sentence its value finishes —
+ * one line and each control reads as a sentence its value finishes -
  * "Evaluate against 200K", "Viewing context for Everyone".
  */
 export interface ScopeSelectProps {
@@ -28,7 +28,7 @@ export interface ScopeSelectProps {
   label: string;
   /** Option id of the current selection. */
   value: string;
-  /** The trailing half — what the trigger reads after the label. */
+  /** The trailing half - what the trigger reads after the label. */
   displayLabel: string;
   options: SelectFieldOption<string>[];
   onSelect: (id: string) => void;

@@ -16,7 +16,7 @@ const MIN_VISIBLE_HEIGHT = 80;
  * can seed the native caption-button strip with the color the renderer will
  * settle on. Without this, the window is constructed with a static theme default
  * and only repaints to the real color (e.g. the sidebar surface) once React
- * mounts — a visible flash on every sidebar-open launch.
+ * mounts - a visible flash on every sidebar-open launch.
  */
 export interface WindowControlsOverlayColors {
   backgroundColor?: string;
@@ -50,7 +50,7 @@ export interface WindowStateStore {
   load(): Promise<WindowState | null>;
   /** Persists the state atomically off the main thread (serialized writes). */
   save(state: WindowState): Promise<void>;
-  /** Persists the state synchronously — used as the final writer on close/quit. */
+  /** Persists the state synchronously - used as the final writer on close/quit. */
   saveSync(state: WindowState): void;
 }
 
@@ -141,7 +141,7 @@ export function clampWindowStateToWorkAreas(
   const overlay = state.overlay ? { overlay: state.overlay } : {};
   const primary = workAreas[0];
   if (!primary) {
-    // No display info — keep the size, let the OS place the window.
+    // No display info - keep the size, let the OS place the window.
     return { width: state.width, height: state.height, isMaximized: state.isMaximized, ...overlay };
   }
 

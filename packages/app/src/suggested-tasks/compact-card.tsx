@@ -34,7 +34,7 @@ export interface CompactSuggestedTasksCardProps {
 /**
  * The phone form of the suggested-task queue: one row deep until the user asks
  * for the detail. The collapsed row says how many offers are waiting and carries
- * the bulk action itself — with several queued, that row *is* "start all", so a
+ * the bulk action itself - with several queued, that row *is* "start all", so a
  * user who already trusts the suggestions never has to expand. Tapping the label
  * opens the same per-task rows the desktop card shows, each with its own split
  * button, for a user who wants to pick.

@@ -45,10 +45,10 @@ export function useAggregatedAgents(options?: {
     runtime.refreshAllAgentDirectories();
   }, [runtime]);
 
-  // Keyed by "serverId:agentId" — reuse the previous AggregatedAgent object when
+  // Keyed by "serverId:agentId" - reuse the previous AggregatedAgent object when
   // none of its fields changed, so downstream memo/shallow comparisons can bail early.
   const prevAgentsRef = useRef<Map<string, AggregatedAgent>>(new Map());
-  // Preserved sorted array — returned as-is when every element kept its identity
+  // Preserved sorted array - returned as-is when every element kept its identity
   // and order, so callers using reference equality skip re-renders entirely.
   const prevSortedRef = useRef<AggregatedAgent[]>([]);
 

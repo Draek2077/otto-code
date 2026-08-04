@@ -8,7 +8,7 @@ const logger = createTestLogger();
 
 // `backgrounded` marks an observed run that outlives an interrupt of the owning
 // chat's turn. The client reads it to decide whether an interrupting send is
-// destructive at all — a warning that counts backgrounded runs claims to stop
+// destructive at all - a warning that counts backgrounded runs claims to stop
 // work it never touches. See docs/chat-lifecycle.md.
 interface ObservedInternals {
   onObservedSubagentUpdated(
@@ -57,7 +57,7 @@ test("the backgrounded flag latches and survives a status-only refresh", () => {
   expect(manager.getObservedSubagentPayload(observedId("task-1"))?.backgrounded).toBe(true);
 
   // A later progress frame that omits it must not walk the row back to
-  // foreground — nothing re-attaches a backgrounded run to the turn.
+  // foreground - nothing re-attaches a backgrounded run to the turn.
   ingest({ key: "task-1", status: "running", toolUseCount: 3 });
   expect(manager.getObservedSubagentPayload(observedId("task-1"))?.backgrounded).toBe(true);
 });

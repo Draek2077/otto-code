@@ -72,7 +72,7 @@ interface SidebarWorkspaceMenuProps {
   archiveShortcutKeys?: ShortcutKey[][] | null;
 }
 
-/** Common shape shared by `DropdownMenuItem` and `ContextMenuItem` — lets the
+/** Common shape shared by `DropdownMenuItem` and `ContextMenuItem` - lets the
  * kebab dropdown and the right-click context menu render identical items from
  * one source instead of maintaining two copies that can drift apart. */
 export type WorkspaceMenuItemComponent = (

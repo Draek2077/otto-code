@@ -352,10 +352,10 @@ export function setupWindowResizeEvents(win: BrowserWindow): void {
 
 // Pixels under -webkit-app-region: drag (the titlebar strips and pane tab-bar
 // gutters) hit-test as the native window caption on Windows, so the renderer
-// never receives pointer events over them — see docs/hover.md "Electron drag
+// never receives pointer events over them - see docs/hover.md "Electron drag
 // regions are hover dead zones". hookWindowMessage(WM_NCMOUSEMOVE) does NOT
 // work as an escape hatch: Chromium consumes non-client mouse messages before
-// Electron's message hooks see them (verified empirically — the hook never
+// Electron's message hooks see them (verified empirically - the hook never
 // fired while the cursor crossed a drag region). Polling the global cursor is
 // the mechanism that works regardless of how a pixel hit-tests.
 const CURSOR_HOVER_POLL_INTERVAL_MS = 50;
@@ -366,7 +366,7 @@ const CURSOR_HOVER_POLL_INTERVAL_MS = 50;
  * (e.g. revealing the tab-bar tools when the pointer crosses the gutter).
  * Windows-only: macOS delivers DOM hover over drag regions natively.
  *
- * Coordinates are DIP relative to the window's content area — the same space
+ * Coordinates are DIP relative to the window's content area - the same space
  * as renderer CSS pixels while zoomFactor is 1. Sends `nc-mouse-move` on
  * movement (deduped while the cursor rests) and `nc-mouse-leave` when the
  * cursor exits the window or the window loses focus.
@@ -605,13 +605,13 @@ export function buildStandardContextMenuItems(
  * unconditional popup lands on top of the app's own React context menus
  * (sidebar rows, pane tabs) and clobbers them. Gate the default menu to
  * editable fields, real text selections, spellcheck suggestions, links, and
- * images — everywhere else right-click belongs to the renderer.
+ * images - everywhere else right-click belongs to the renderer.
  */
 export function shouldShowDefaultContextMenu(params: Electron.ContextMenuParams): boolean {
   // A contenteditable that is not a form control is the code editor (CM6), and
   // it ships its own menu with Go to Definition alongside the edit actions.
   // `formControlType` is what separates it from a real <input>/<textarea>,
-  // which keeps the native menu — and this test has to come FIRST, because the
+  // which keeps the native menu - and this test has to come FIRST, because the
   // selection and spellcheck clauses below would otherwise match inside it.
   if (params.isEditable && params.formControlType === "none") {
     return false;

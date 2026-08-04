@@ -147,7 +147,7 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
 }
 
 // COMPAT(macOS-signing): mac builds are unsigned, so they cannot replace
-// themselves in place — see manual-download-update-runtime.ts for why. They
+// themselves in place - see manual-download-update-runtime.ts for why. They
 // still get told an update exists; "Update now" opens the download page.
 // Drop this split once Apple signing is configured.
 const usesManualDownload = process.platform === "darwin";
@@ -200,7 +200,7 @@ export async function downloadAndInstallUpdate(
 ): Promise<AppUpdateInstallResult> {
   if (usesManualDownload) {
     // Nothing to install: hand the user the download page and leave the running
-    // app alone. Reporting installed:false keeps the UI honest — the update is
+    // app alone. Reporting installed:false keeps the UI honest - the update is
     // not applied until they replace the app themselves.
     await shell.openExternal(MANUAL_DOWNLOAD_URL);
     return {

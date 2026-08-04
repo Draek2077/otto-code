@@ -49,11 +49,11 @@ import type { GraphSpawnPort, RunService } from "./run-service.js";
 // User-initiated orchestrations (projects/orchestration-graphs): the daemon
 // wiring behind the New Orchestration dialog's `runs.start` RPC. Two flavors:
 //
-// - "ai": prompt-and-go — spawn an orchestrator agent whose first turn is the
+// - "ai": prompt-and-go - spawn an orchestrator agent whose first turn is the
 //   user's prompt plus a nudge to declare its own plan via start_run. The Run
 //   record appears when the agent calls the tool; the dialog just needs the
 //   chat to navigate to.
-// - "graph": deterministic — spawn the orchestrator (root node, hosts the
+// - "graph": deterministic - spawn the orchestrator (root node, hosts the
 //   chat), then hand the graph to RunService.startGraphRun with a spawn port
 //   that creates every child agent itself. Participants never wire themselves
 //   together: children are stamped with the orchestration policy label the
@@ -62,7 +62,7 @@ import type { GraphSpawnPort, RunService } from "./run-service.js";
 //
 // Orchestrator seat precedence (per the dialog): explicit personality → bare
 // provider/model → the active team's Orchestrator-role member. No fallback
-// beyond that — a missing seat is a loud error.
+// beyond that - a missing seat is a loud error.
 
 export interface UserOrchestrationDependencies {
   runService: RunService;
@@ -75,7 +75,7 @@ export interface UserOrchestrationDependencies {
   listProviderEntries(cwd: string): Promise<readonly ProviderSnapshotEntry[]>;
   /**
    * Where node agents' submit_output calls land (shared with the Otto tool
-   * catalog). Absent on hosts that never execute graphs — such a node then
+   * catalog). Absent on hosts that never execute graphs - such a node then
    * falls back to recovering its fields from prose.
    */
   nodeOutputStore?: NodeOutputStore;
@@ -132,7 +132,7 @@ async function startAiOrchestration(
     `${prompt}\n\n` +
     (description ? `Context (what this orchestration is for): ${description}\n\n` : "") +
     `Orchestrate this: declare a multi-agent plan with the start_run tool and let the ` +
-    `daemon execute it, then relay the results. Use Otto tools only — never spawn ` +
+    `daemon execute it, then relay the results. Use Otto tools only - never spawn ` +
     `provider-native subagents or workflows for orchestration.`;
   const agentId = await spawnOrchestrationAgent(deps, {
     seat,
@@ -160,7 +160,7 @@ async function startGraphOrchestration(
   const description = input.description?.trim();
   const descriptionField = description ? { description } : {};
   // The cast is FROZEN here, once: every node seat, and the team prompt each
-  // child composes, resolves against this view for the whole run — a mid-run
+  // child composes, resolves against this view for the whole run - a mid-run
   // team edit must not re-cast later nodes or shear a running orchestration.
   // (The phase-run path gets the same guarantee from its per-run role cache.)
   const agentTeamsView = deps.getAgentTeams();
@@ -205,7 +205,7 @@ async function startGraphOrchestration(
   const runIdRef = { current: "" };
   // Templates are snapshotted with the cast: a node dispatched late renders the
   // template text that was true at start, not a mid-run edit. Together with the
-  // frozen team view this is what makes a run reproducible — which the
+  // frozen team view this is what makes a run reproducible - which the
   // evaluation harness depends on.
   const spawnPort = buildGraphSpawnPort(deps, {
     cwd: input.cwd,
@@ -268,7 +268,7 @@ async function resolveOrchestratorSeat(
   });
   if (!member) {
     throw new Error(
-      "No active-team member fills the Orchestrator role — pick a personality or model in the dialog.",
+      "No active-team member fills the Orchestrator role - pick a personality or model in the dialog.",
     );
   }
   return { kind: "personality", personality: member };
@@ -302,7 +302,7 @@ interface SpawnOrchestrationAgentInput {
 /**
  * Refuse to spawn a restricted node onto a seat that can't restrict it.
  *
- * The alternative — spawn anyway and hope — would make the designer's access
+ * The alternative - spawn anyway and hope - would make the designer's access
  * control mean different things on different seats with nothing in the UI to
  * say which. A node that asked for "read" and silently got "write" is the exact
  * failure this feature exists to prevent, so the run stops here and names both
@@ -394,7 +394,7 @@ interface PersonalityCreateConfig {
 }
 
 // Resolve a personality against the cwd's provider snapshot and fold its
-// identity into a create config — the same stack the app's spawn paths apply
+// identity into a create config - the same stack the app's spawn paths apply
 // (team prompt → personality prompt → role-focus directive). Unavailable is a
 // loud error: an orchestration must never silently swap brains.
 async function buildPersonalityCreateConfigForCwd(
@@ -430,7 +430,7 @@ async function buildPersonalityCreateConfigForCwd(
 
 /**
  * The prompt-template snapshot taken at run start (null when the host has no
- * store). One read serves the whole run — see the reproducibility comment at
+ * store). One read serves the whole run - see the reproducibility comment at
  * the call site.
  */
 async function snapshotPromptTemplates(
@@ -452,7 +452,7 @@ function buildGraphSpawnPort(
     workspaceId?: string;
     orchestratorAgentId: string;
     runIdRef: { current: string };
-    /** The team view frozen at run start — the whole cast resolves against it. */
+    /** The team view frozen at run start - the whole cast resolves against it. */
     agentTeamsView: AgentTeamsConfigView | undefined;
     /** The personality roster frozen at run start. */
     roster: AgentPersonality[];
@@ -478,7 +478,7 @@ function buildGraphSpawnPort(
         ? { [ORCHESTRATION_QUERY_TOOLS_LABEL]: JSON.stringify(spawnInput.queryTools) }
         : {}),
     };
-    // Resolved against the run-start snapshot, never the live host config —
+    // Resolved against the run-start snapshot, never the live host config -
     // a node dispatched an hour in gets the cast the run started with.
     const member = spawnInput.role
       ? resolveTeamRoleMember({
@@ -529,7 +529,7 @@ function buildGraphSpawnPort(
         const result = await deps.agentManager.waitForAgentFullySettled(agentId, { signal });
         const finalMessage =
           result.lastMessage ?? (await deps.agentManager.getLastAssistantMessage(agentId));
-        // Taken (not read) — one submission belongs to one settle, and leaving
+        // Taken (not read) - one submission belongs to one settle, and leaving
         // it behind would let a later iteration inherit an earlier answer.
         const submittedOutput = deps.nodeOutputStore?.take(agentId) ?? null;
         return {
@@ -603,12 +603,12 @@ function buildOrchestratorKickoff(
       : "";
   const descriptionBlock = description ? `\n\nPurpose: ${description}` : "";
   return (
-    `You are the orchestrator of "${title}" — a deterministic orchestration. The daemon ` +
+    `You are the orchestrator of "${title}" - a deterministic orchestration. The daemon ` +
     `executes a fixed graph of agent nodes and routes each node's result to you as it ` +
-    `finishes. You do NOT spawn, steer, or manage these agents yourself — the graph is the ` +
+    `finishes. You do NOT spawn, steer, or manage these agents yourself - the graph is the ` +
     `plan and the daemon is the executor.${descriptionBlock}\n\n` +
     `Nodes:\n${nodeLines.join("\n")}${inputBlock}\n\n` +
-    `Acknowledge results briefly as they arrive (one or two sentences — you are narrating ` +
+    `Acknowledge results briefly as they arrive (one or two sentences - you are narrating ` +
     `progress for the user watching this chat). When the daemon reports completion, ` +
     `synthesize everything into a final answer.`
   );

@@ -1,9 +1,9 @@
-= Orchestration — Durability
+= Orchestration - Durability
 :description: What actually survives a restart today, the resume gap that follows from it, and the designed model for closing it.
 
 Durability matters more here than in any framework we studied, for one reason: *our nodes
 have side effects that cost money and edit repositories.* Re-running a completed node is not a
-wasted millisecond — it is a second agent making a second set of edits.
+wasted millisecond - it is a second agent making a second set of edits.
 
 Human gates as a control-flow mechanism are link:13-orchestration-runs.html[Phase Runs]; this
 page is about what persists.
@@ -15,7 +15,7 @@ page is about what persists.
 Every state change is persisted and broadcast: the engine emits the whole `Run` on each phase
 transition, and `RunStore` writes it atomically (temp + rename), serialized per id. Node
 results land on `RunPhaseCandidate` as `summary` and validated `outputFields`. Graphs and
-prompt templates persist the same way. No migrations — forward compatibility is the
+prompt templates persist the same way. No migrations - forward compatibility is the
 optional-field rule.
 
 In memory only, and lost on restart: the memoised node promises, the concurrency semaphore,
@@ -26,7 +26,7 @@ between submission and harvest), and pending gate waiters.
 ====
 *There is no resume.* `RunService.init()` walks the persisted runs at boot and marks every
 `running`, `pending` **or `paused`** run as `failed` with "Daemon restarted while this run was
-in flight." A run parked at a human gate — waiting on the person the gate exists for — does not
+in flight." A run parked at a human gate - waiting on the person the gate exists for - does not
 survive a daemon restart. Meanwhile its child agents may still be alive, so the work is
 orphaned rather than cleaned up.
 
@@ -40,10 +40,10 @@ reason rather than hanging or silently vanishing.
 
 == Designed: what must survive a restart
 
-. *The frontier* — which nodes completed, which were skipped, which were in flight.
-. *Node outputs* — so a resumed run feeds downstream nodes without re-running upstream ones.
-. *Pause state* — which gate is waiting, what it asked, and what form it expects back.
-. *The seat snapshot and spend* — resolution must not drift, and a restart must not reset the
+. *The frontier* - which nodes completed, which were skipped, which were in flight.
+. *Node outputs* - so a resumed run feeds downstream nodes without re-running upstream ones.
+. *Pause state* - which gate is waiting, what it asked, and what form it expects back.
+. *The seat snapshot and spend* - resolution must not drift, and a restart must not reset the
   counter.
 
 The first two are largely already written; the frontier is the piece that lives only in the
@@ -84,7 +84,7 @@ plus persisted per-task writes. On resume, recompute the id; skip if a non-error
 |Skipped entirely when the step is present and not paused.
 
 |Fits us?
-|The id derivation is machinery we do not need — our node ids are stable and user-authored.
+|The id derivation is machinery we do not need - our node ids are stable and user-authored.
 |*Yes.* This is the model.
 |===
 
@@ -95,14 +95,14 @@ resolves skipped; everything else runs.
 [IMPORTANT]
 ====
 *The memo check must precede anything side-effecting, always.* LangGraph's node bodies
-re-execute from the top on resume — harmless when a node is a function, catastrophic when a node
-spawns an agent that edits a repository. Node execution must be structured so that nothing — no
-spawn, no file write, no notification — precedes the "have I already done this?" check.
+re-execute from the top on resume - harmless when a node is a function, catastrophic when a node
+spawns an agent that edits a repository. Node execution must be structured so that nothing - no
+spawn, no file write, no notification - precedes the "have I already done this?" check.
 ====
 
 *The key must include the iteration.* A plain `(runId, nodeId)` key breaks the moment a node is
 inside a loop: the same node id legitimately runs many times. The key is
-`(runId, nodeId, attempt, instance)`. This is not hypothetical — Rivet's user-input pause is
+`(runId, nodeId, attempt, instance)`. This is not hypothetical - Rivet's user-input pause is
 keyed by node id alone, so a looped input node cannot have two outstanding prompts.
 
 === Gate pause and resume
@@ -117,7 +117,7 @@ flowchart TD
   D -->|reject| F[Approved branch skipped]
   E --> G[Clear pause · resume scheduling]
   F --> G
-  C -.->|daemon restarts| H[Boot: run is paused — rehydrate, never fail it]
+  C -.->|daemon restarts| H[Boot: run is paused - rehydrate, never fail it]
   H --> D
 ----
 
@@ -132,7 +132,7 @@ persisting the pause. Otto already solves this in memory; the durable version ne
 buffering, persisted.
 
 *The boot path is the whole fix for indefinite gates.* Activepieces' boot-time "refill paused
-jobs" pass is a one-shot migration guarded by a Redis key, **not** a watchdog — their durable
+jobs" pass is a one-shot migration guarded by a Redis key, **not** a watchdog - their durable
 mechanism is a job scheduled at pause time. Otto's equivalent is simpler: a paused run is a
 record nothing is driving, so the boot path only needs to stop marking it failed and restore it
 as paused. Gates *with timeouts* would need the scheduled-job equivalent.
@@ -145,7 +145,7 @@ misassigns answers. Key by node id and iteration from day one.
 
 The genuinely hard case, and the one no studied framework has: *the daemon restarted and the
 node's agent is still running.* Every framework surveyed assumes in-process work, so a crash
-kills it. Ours does not — Otto agents are separate processes with persisted state.
+kills it. Ours does not - Otto agents are separate processes with persisted state.
 
 That makes the correct behaviour *adoption*, not restart:
 
@@ -157,7 +157,7 @@ That makes the correct behaviour *adoption*, not restart:
 This is strictly better than any in-process engine can offer, and it falls out of Otto's
 existing architecture rather than needing new machinery.
 
-A lease with a visibility timeout is the backstop for two daemons driving one run — currently
+A lease with a visibility timeout is the backstop for two daemons driving one run - currently
 impossible, but the invariant ("a node that is `running` is owned by exactly one executor, and
 ownership is provable") is worth stating before it becomes possible.
 
@@ -166,7 +166,7 @@ ownership is provable") is worth stating before it becomes possible.
 The run record is broadcast to every connected client on every change, so it must stay small.
 Outputs are references plus a bounded summary; anything large belongs in the workspace or the
 artifact store. Activepieces offloads step outputs into a compressed log and slices anything
-over 32KB into separate objects — a reasonable design for their shape, and an argument for
+over 32KB into separate objects - a reasonable design for their shape, and an argument for
 ours: *if the output is big enough to need slicing, it should have been an artifact.*
 
 == Deliberately not building
@@ -177,7 +177,7 @@ ours: *if the output is big enough to need slicing, it should have been an artif
 * *Time travel / fork from a checkpoint.* Real value, real cost, and per-agent rewind already
   exists.
 * *Deterministic replay with compensation.* Requires all nondeterminism behind activity
-  boundaries. Our side effect is "an agent edited your repo" — git is the compensation
+  boundaries. Our side effect is "an agent edited your repo" - git is the compensation
   mechanism, not us.
 
 == Invariants
@@ -192,7 +192,7 @@ Marked ✅ where the code enforces it today and ◻ where it is designed.
 . ✅ A gate decision arriving before the engine waits is buffered, not lost *(in memory)*.
 . ◻ A restart resumes in-flight runs; it never marks a paused run failed.
 . ◻ A still-running agent is adopted, not re-spawned.
-. ✅ A join that can never be satisfied resolves skipped with a stated reason — never a hang,
+. ✅ A join that can never be satisfied resolves skipped with a stated reason - never a hang,
   never a silent skip.
 . ✅ A run in flight cannot be deleted; the caller cancels first.
 . ✅ Writes are atomic and serialized per run id.
@@ -201,7 +201,7 @@ Marked ✅ where the code enforces it today and ◻ where it is designed.
 == Change checklist
 
 * Does the change introduce a side effect that could precede the memo check?
-* Does it add a way for the same node to run twice — and if so, is the key extended?
+* Does it add a way for the same node to run twice - and if so, is the key extended?
 * Can a decision or event arrive before the state it answers is persisted?
 * Does a restart mid-change leave a run in a state the boot path understands?
 * Does it add anything unbounded to the run record?

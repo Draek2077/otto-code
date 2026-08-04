@@ -50,7 +50,7 @@ function failMcpResponse(res: ServerResponse): void {
 
 /**
  * In-process stateless HTTP MCP server (fresh McpServer + transport per
- * request, mirroring the daemon's own /mcp/agents hosting). Real dependency —
+ * request, mirroring the daemon's own /mcp/agents hosting). Real dependency -
  * exercises the manager's actual StreamableHTTPClientTransport path.
  */
 async function startHttpMcpServer(

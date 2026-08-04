@@ -32,10 +32,10 @@ function getElementRect(node: unknown): DOMRect | null {
  * the window is focused and forwards it as `nc-mouse-move` desktop events
  * carrying content-relative DIP coordinates (CSS pixels at zoom 1); this hook
  * hit-tests them against `ref`'s bounding rect. Because the poll covers every
- * pixel of the window — drag regions and normal client pixels alike — the
+ * pixel of the window - drag regions and normal client pixels alike - the
  * returned flag is a complete "cursor is over the element" signal on its own;
  * `nc-mouse-leave` clears it when the cursor exits the window or focus is
- * lost. Inert outside the Electron desktop app — browser web and native both
+ * lost. Inert outside the Electron desktop app - browser web and native both
  * return a constant false.
  */
 export function useNonClientHover(ref: { current: unknown }): boolean {

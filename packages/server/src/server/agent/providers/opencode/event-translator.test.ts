@@ -1295,7 +1295,7 @@ describe("translateOpenCodeEvent", () => {
         item: { type: "error", message: "Provider retry (attempt 3): Internal server error" },
       },
     ]);
-    // Streaming state must NOT be reset — the turn is still alive, opencode
+    // Streaming state must NOT be reset - the turn is still alive, opencode
     // will eventually either succeed or emit session.idle / session.error.
     expect(state.streamedPartKeys.size).toBe(1);
     expect(state.partTypes.size).toBe(1);

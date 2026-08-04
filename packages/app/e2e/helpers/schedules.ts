@@ -6,7 +6,7 @@ import type { SeedDaemonClient } from "./seed-client";
  * Typed view over the daemon client's schedule RPC surface (schedule/create,
  * schedule/list, schedule/inspect, schedule/run-once, schedule/delete). The
  * seed client interface doesn't declare these, so schedule specs cast through
- * this — mirroring the inline interfaces in schedules-edit-model-hydration.spec
+ * this - mirroring the inline interfaces in schedules-edit-model-hydration.spec
  * but shared, and including the run-once/inspect surface the run-lifecycle
  * specs need.
  */
@@ -14,7 +14,7 @@ export interface ScheduleRunRecord {
   id: string;
   status: "running" | "succeeded" | "failed";
   agentId: string | null;
-  /** Workspace backing this run — recorded as soon as the run's hidden workspace is created. */
+  /** Workspace backing this run - recorded as soon as the run's hidden workspace is created. */
   workspaceId?: string | null;
   output: string | null;
   error: string | null;

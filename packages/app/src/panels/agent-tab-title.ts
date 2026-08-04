@@ -17,7 +17,7 @@ export interface AgentTabTitle {
  * This deliberately diverges from upstream Paseo, which blanked out the "New
  * chat" / "New agent" placeholders and reported `loading` in their place. That
  * reads as a permanent shimmer whenever auto-naming is off, fails, or never runs
- * — a chat genuinely named "New chat" is named, so it renders as such and is
+ * - a chat genuinely named "New chat" is named, so it renders as such and is
  * replaced in place when a generated title lands.
  */
 export function resolveAgentTabTitle(input: {

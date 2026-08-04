@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
-import { Brain, ChevronDown, Folder } from "@/components/icons/material-icons";
+import { ChevronDown, Folder, Psychology } from "@/components/icons/material-icons";
 import { StyleSheet } from "react-native-unistyles";
 import type { AgentModelDefinition } from "@otto-code/protocol/agent-types";
 import type { ArtifactMetadata } from "@otto-code/protocol/artifacts/types";
@@ -207,7 +207,7 @@ async function submitArtifactForm(input: {
   createArtifact: ReturnType<typeof useArtifactMutations>["createArtifact"];
   updateArtifact: ReturnType<typeof useArtifactMutations>["updateArtifact"];
 }): Promise<{ serverId: string; artifact: ArtifactMetadata }> {
-  // Editing only saves metadata — it never regenerates. The user re-runs
+  // Editing only saves metadata - it never regenerates. The user re-runs
   // generation separately once they're happy with the changes.
   if (input.isEdit && input.editTarget) {
     const artifact = await input.updateArtifact({
@@ -256,14 +256,14 @@ function canSubmitArtifactForm(input: {
 // The synthetic "Team's Artificer" picker entry. Unlike the schedule form's
 // "Team's Scheduler" (which stores a run-time sentinel the daemon re-resolves at
 // every run), artifact generation runs immediately, so this entry has no
-// persisted binding — selecting it resolves the active team's Artificer NOW and
+// persisted binding - selecting it resolves the active team's Artificer NOW and
 // auto-fills the same provider/model/effort + spinner snapshot a direct
 // personality pick would. Its id never leaves the form.
 const TEAM_ARTIFICER_ENTRY_ID = "__team-artificer__";
 
 // Artifact model picker's personality selection: the role-filtered roster plus,
 // when a team is active, a "Team's Artificer" entry that follows the team's
-// Artificer at pick time. Runs immediately, so there is no persisted sentinel —
+// Artificer at pick time. Runs immediately, so there is no persisted sentinel -
 // the shared form producer resolves + applies the active team's Artificer NOW.
 function useArtifactPersonalitySelection(input: {
   serverId: string | null;
@@ -297,12 +297,12 @@ function openKey(props: ArtifactCreateSheetProps): string {
 }
 
 /**
- * Mount gate — same shape as ScheduleFormSheet. The form's default ladder
+ * Mount gate - same shape as ScheduleFormSheet. The form's default ladder
  * (team's Artificer → personality → last-used model) is one-shot per MOUNT:
  * `useFormRolePersonality` latches `defaultAppliedRef`/`bindingTouched` the
  * moment the user picks a plain model. Keeping the sheet mounted across a
  * Cancel therefore left those latches set, so reopening skipped the default
- * entirely and the form re-resolved from the just-written model preference —
+ * entirely and the form re-resolved from the just-written model preference -
  * the cancelled pick came back as if it were the default. Unmounting on
  * dismiss (after the exit animation) is what makes "reopen" mean "start over".
  */
@@ -576,7 +576,7 @@ function OpenArtifactCreateSheet({
       setFieldResetKey((key) => key + 1);
       // Models and personalities are host-scoped, not project-scoped. On a
       // blank open (no seed) the form hook auto-selects the first online host
-      // so the pickers populate before any project is chosen — forcing null
+      // so the pickers populate before any project is chosen - forcing null
       // here would stomp that auto-selection in the same commit.
       if (resolvedInitialServerId) {
         setSelectedServerId(resolvedInitialServerId);
@@ -759,7 +759,7 @@ function OpenArtifactCreateSheet({
       </View>
 
       {/* A personality already fixes its own effort, so hide the picker while
-          one is selected — the whole point is not having to choose it. */}
+          one is selected - the whole point is not having to choose it. */}
       {!selectedPersonalityId && selectedModel && availableThinkingOptions.length > 0 ? (
         <View style={styles.field}>
           <Text style={styles.label}>Effort</Text>
@@ -989,7 +989,7 @@ function ThinkingOptionItem({
   const leadingSlot = useMemo(
     () => (
       <View style={styles.optionIconBox}>
-        <Brain size={16} color={styles.chevron.color} />
+        <Psychology size={16} color={styles.chevron.color} />
       </View>
     ),
     [],

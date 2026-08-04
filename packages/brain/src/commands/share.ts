@@ -1,9 +1,9 @@
 /**
- * `otto brain share` — opt a brain into being reachable (and optionally
+ * `otto brain share` - opt a brain into being reachable (and optionally
  * configurable) by other Otto hosts. Off by default: a brain binds loopback and
  * is invisible to the network until its owner runs this. Sets the bind, the
  * access level (open on a trusted network, or a bearer key), HTTPS, and whether
- * key holders may reconfigure it. Writes $OTTO_HOME/otto-brain/config.json — the
+ * key holders may reconfigure it. Writes $OTTO_HOME/otto-brain/config.json - the
  * same fields the Otto app's Sharing UI sets, so the two stay in sync.
  */
 import { randomBytes } from "node:crypto";

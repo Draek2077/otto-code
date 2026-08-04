@@ -34,7 +34,7 @@ async function handleQuitConfirmRequest(
     (settings.quit.onlyWarnForActiveAgents ? hasActiveAgents : true);
 
   // Stopping the daemon means enabled schedules stop firing until it runs
-  // again — a suppressible warning that applies even when the generic "warn
+  // again - a suppressible warning that applies even when the generic "warn
   // before quitting" setting is off. Resolved up front so both warnings can
   // share a single dialog instead of prompting twice in sequence. The lookup
   // is deadline-bounded and works off the pre-cached local daemon serverId,
@@ -115,7 +115,7 @@ export function QuitConfirmListener() {
   const { agents } = useAggregatedAgents();
   // Subscribing here keeps the local daemon serverId query mounted (and its
   // result cached) for the app's whole lifetime, so the quit flow never has
-  // to resolve it on demand — that path shells out to the CLI and would hold
+  // to resolve it on demand - that path shells out to the CLI and would hold
   // the quit dialog back by seconds.
   const localDaemonServerId = useLocalDaemonServerId();
 

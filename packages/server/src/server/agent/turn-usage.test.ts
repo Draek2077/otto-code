@@ -54,9 +54,9 @@ describe("toTurnSpend", () => {
 
     expect(first.usage?.inputTokens).toBe(100);
     expect(first.usage?.totalCostUsd).toBeCloseTo(0.25);
-    // Tokens untouched — OpenCode already resets its token accumulator per turn.
+    // Tokens untouched - OpenCode already resets its token accumulator per turn.
     expect(second.usage?.inputTokens).toBe(80);
-    // Cost differenced — booking 0.75 again would have made the total 1.00.
+    // Cost differenced - booking 0.75 again would have made the total 1.00.
     expect(second.usage?.totalCostUsd).toBeCloseTo(0.5);
   });
 
@@ -82,7 +82,7 @@ describe("toTurnSpend", () => {
       "pi",
       first.watermark,
     );
-    // Occupancy answers "how full am I" and is absolute — differencing it would
+    // Occupancy answers "how full am I" and is absolute - differencing it would
     // be meaningless. Only the billable leaves move.
     expect(second.usage?.contextWindowUsedTokens).toBe(9_000);
     expect(second.usage?.contextWindowMaxTokens).toBe(200_000);

@@ -10,11 +10,11 @@ import {
 } from "./helpers/visualizer";
 
 // With the Visualizer open, agent lifecycle drives the guest's session list,
-// observed through the host-side session mirror (the toolbar chats dropdown —
+// observed through the host-side session mirror (the toolbar chats dropdown -
 // page -> host `session-state`, docs/visualizer.md):
 //   - a new root agent in the workspace adds a session,
 //   - archiving an agent REMOVES its session (regression: archive drives the
-//     page's `close-session`, not `agent_complete` — an archived chat must
+//     page's `close-session`, not `agent_complete` - an archived chat must
 //     disappear rather than linger as a completed node/session).
 // Mock-provider agents only; all daemon state is cleaned up at the end.
 
@@ -23,7 +23,7 @@ test.describe("Visualizer session lifecycle", () => {
 
   test("starting an agent adds a session; archiving removes it", async ({ page }) => {
     // Session labels are capped at 24 chars in the toolbar mirror
-    // (truncateSessionLabel) — keep titles short so they survive verbatim.
+    // (truncateSessionLabel) - keep titles short so they survive verbatim.
     const suffix = Date.now().toString(36).slice(-6);
     const titleA = `VisLife A ${suffix}`;
     const titleB = `VisLife B ${suffix}`;
@@ -66,7 +66,7 @@ test.describe("Visualizer session lifecycle", () => {
       await closeVisualizerChatsDropdown(page, dialog);
 
       // The surviving chat (A) keeps the selection after B is archived away.
-      // (A is the session the Visualizer booted with — its open chat tab
+      // (A is the session the Visualizer booted with - its open chat tab
       // anchors it in the page↔host mirror, so it persists as the primary
       // session; B, added out of band with no tab, is what archive retires.
       // The close-session removal is proven by B disappearing above.)

@@ -238,7 +238,7 @@ function WorkspaceHoverCardContent({
   const [contentSize, setContentSize] = useState<{ width: number; height: number } | null>(null);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
 
-  // Measure trigger — same pattern as tooltip.tsx
+  // Measure trigger - same pattern as tooltip.tsx
   useEffect(() => {
     if (!triggerRef.current) return;
 
@@ -306,7 +306,7 @@ function WorkspaceHoverCardContent({
             </Text>
           </View>
           <HostRow serverId={workspace.serverId} />
-          {/* Branch + diff are git details — hidden in User interface mode. */}
+          {/* Branch + diff are git details - hidden in User interface mode. */}
           {isDeveloperMode && workspace.currentBranch ? (
             <CopyableInfoRow
               icon={ThemedGitBranch}

@@ -199,9 +199,9 @@ interface DaemonSpawnInvocation {
 // A packaged desktop build runs this CLI on the Electron binary
 // (`process.execPath` is e.g. /opt/Otto/Otto). Spawning the daemon through that
 // binary then needs two things the plain-Node path doesn't:
-//   1. ELECTRON_RUN_AS_NODE=1 — otherwise the binary boots as the Otto GUI/CLI
+//   1. ELECTRON_RUN_AS_NODE=1 - otherwise the binary boots as the Otto GUI/CLI
 //      (commander) and rejects the daemon entry as an "unknown command".
-//   2. The unpacked node-entrypoint-runner — the supervisor entry resolves to a
+//   2. The unpacked node-entrypoint-runner - the supervisor entry resolves to a
 //      path inside app.asar, which can't be the direct entry under
 //      ELECTRON_RUN_AS_NODE, so it must be loaded via the runner (mirroring the
 //      desktop daemon-manager: `<runner> node-script <entry>`).

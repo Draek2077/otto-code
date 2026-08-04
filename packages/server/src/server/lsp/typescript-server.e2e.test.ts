@@ -9,7 +9,7 @@ import { LSP_SERVER_ROWS, resolveServerCommand, type LspServerRow } from "./regi
 /**
  * The charter's Phase 1 acceptance criterion: spawn a real
  * `typescript-language-server` against a fixture workspace and get a real
- * `initialize` result back. Nothing is stubbed here — this is the proof that the
+ * `initialize` result back. Nothing is stubbed here - this is the proof that the
  * transport, the Windows `.cmd` shim path, and the handshake work together.
  */
 

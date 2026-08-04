@@ -38,7 +38,7 @@ internal sealed record ProbeResponse(string? Id, bool Ok, object? Result, ProbeE
 // ---- solution.tree -------------------------------------------------------------------------
 
 /// <summary>
-/// A solution folder. Virtual — it has a path inside the solution (<c>/Src/</c>) and no
+/// A solution folder. Virtual - it has a path inside the solution (<c>/Src/</c>) and no
 /// filesystem location, which is exactly why no CLI surface can report it and why hand-parsing
 /// <c>GlobalSection(NestedProjects)</c> was the wrong plan.
 /// </summary>
@@ -46,7 +46,7 @@ internal sealed record SolutionFolderDto(string Path, string Name, string? Paren
 
 /// <summary>
 /// One project in the solution. <c>Path</c> is absolute and forward-slashed, and may sit outside
-/// the workspace — that is the user's arrangement, not ours to police.
+/// the workspace - that is the user's arrangement, not ours to police.
 /// </summary>
 internal sealed record SolutionProjectDto(
     string Id,

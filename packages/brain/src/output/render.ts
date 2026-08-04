@@ -1,5 +1,5 @@
 /**
- * Format renderers for the output layer. chalk lives here and nowhere else —
+ * Format renderers for the output layer. chalk lives here and nowhere else -
  * command handlers express color declaratively via ColumnDef.color, and only
  * these renderers turn a result into text. Table output is ANSI-aware so colored
  * cells still align.

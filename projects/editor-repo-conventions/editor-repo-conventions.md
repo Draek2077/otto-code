@@ -3,7 +3,7 @@
 **Status:** charter, 2026-07-25. Nothing built.
 
 Otto's editor currently imposes its own conventions on every file it opens. The repo has already
-stated what it wants — in `.editorconfig`, in a formatter config, in a linter config — and we ignore
+stated what it wants - in `.editorconfig`, in a formatter config, in a linter config - and we ignore
 all of it. Open a 4-space Python project in Otto and press Tab: you get whatever Otto decided.
 
 That is the whole problem. **A repo that has stated its conventions should have them honoured without
@@ -22,8 +22,8 @@ Ordered by how universal the file is, which is also the build order.
 | Source                                                  | What it settles                                                                | Reach                    |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------ |
 | `.editorconfig`                                         | indent style + width, final newline, trailing whitespace, charset, line length | Every language, any repo |
-| `.prettierrc` / `oxfmt` / `.rustfmt.toml` / `pyproject` | width, quotes, semicolons — and a **format command**                           | Per ecosystem            |
-| `.oxlintrc.json` / `eslint.config.*`                    | lint rules — **already covered by the LSP diagnostics path**, not this         | JS/TS                    |
+| `.prettierrc` / `oxfmt` / `.rustfmt.toml` / `pyproject` | width, quotes, semicolons - and a **format command**                           | Per ecosystem            |
+| `.oxlintrc.json` / `eslint.config.*`                    | lint rules - **already covered by the LSP diagnostics path**, not this         | JS/TS                    |
 
 **`.editorconfig` is the whole of phase 1**, and it is the piece worth having on its own. It is a
 tiny, stable, deliberately language-agnostic format; it is the one file that is present in
@@ -38,7 +38,7 @@ same warning.
 
 ## Shape
 
-Reading the file belongs on the **daemon**, not the client — same reasoning as everything else in
+Reading the file belongs on the **daemon**, not the client - same reasoning as everything else in
 Otto: the file is on the daemon's machine, `.editorconfig` resolution walks _up_ the directory tree
 from the opened file to the nearest `root = true`, and the client has no filesystem there. So a
 capability plus an RPC, resolved per file:
@@ -57,8 +57,8 @@ wrong for exactly the repos that bothered to configure this.
 1. **Precedence against the user's own preferences.** Otto has device-local editor prefs today
    (`editor-prefs-store`: word wrap, ruler column). If a repo says 4 spaces and the user's setting
    says 2, who wins? The defensible answer is **the repo wins for repo-shaped settings**
-   (indentation, final newline — properties of the file, which the whole team shares) and **the user
-   wins for view-shaped settings** (word wrap, ruler — properties of looking at it, nobody else's
+   (indentation, final newline - properties of the file, which the whole team shares) and **the user
+   wins for view-shaped settings** (word wrap, ruler - properties of looking at it, nobody else's
    business). That line needs stating once and then holding.
 2. **Whether an override is needed at all**, and if so where it lives. Resist a per-workspace
    override until someone actually wants one; the point of this feature is that it needs no
@@ -68,7 +68,7 @@ wrong for exactly the repos that bothered to configure this.
    by hand is the kind of thing that works on the first three repos and then quietly mis-scopes a
    section. Lean toward the dependency; the same argument as `vscode-jsonrpc`.
 4. **CM6 wiring.** Indent unit is `indentUnit` from `@codemirror/language`, in a `Compartment` so it
-   can be reconfigured per file without a remount — the pattern `themeCompartment` and
+   can be reconfigured per file without a remount - the pattern `themeCompartment` and
    `wrapCompartment` already establish in `editor-core.ts`. `insertFinalNewline` and
    `trimTrailingWhitespace` are save-path concerns, not editing ones, and belong wherever the save
    happens rather than in the editor.
@@ -81,7 +81,7 @@ wrong for exactly the repos that bothered to configure this.
    user can see the repo's rule was picked up rather than guessing. Wrong-but-silent is the failure
    mode this prevents.
 3. **Format on demand, from the repo's own formatter.** A "Format document" action that runs what the
-   project runs — oxfmt here, prettier elsewhere, `dotnet format`, `ruff format`. Bigger than it
+   project runs - oxfmt here, prettier elsewhere, `dotnet format`, `ruff format`. Bigger than it
    looks: it needs a per-ecosystem command registry with the same workspace-first discovery ladder as
    the language-server rows, and it must never invent a formatter a project did not choose. Probably
    its own charter by the time it is real.

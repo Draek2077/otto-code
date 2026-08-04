@@ -12,7 +12,7 @@ import { AgentOwnerSchema, daemonExecutionKey, type DaemonAgentOwner } from "./a
 
 // Frozen personality snapshot as stored on disk. Roles are kept as a loose
 // string array here (not the PersonalityRole enum) so an old record whose role
-// vocabulary drifted never fails to load — buildStoredAgentConfig re-normalizes
+// vocabulary drifted never fails to load - buildStoredAgentConfig re-normalizes
 // them to the known set on read. Mirrors ResolvedPersonalitySnapshot.
 const PERSONALITY_SNAPSHOT_STORAGE_SCHEMA = z
   .object({
@@ -177,7 +177,7 @@ export class AgentStorage {
   }
 
   /**
-   * Every stored record, or — with `scope` — the records reachable from it,
+   * Every stored record, or - with `scope` - the records reachable from it,
    * resolved through the owner index instead of a full scan. A seeded home
    * carries thousands of archived records, and the descriptor rebuild that runs
    * on every agent lifecycle event only needs the handful owned by the
@@ -185,7 +185,7 @@ export class AgentStorage {
    * subagent chain points at).
    *
    * `scope` narrows what is FETCHED, and callers must stay correct against a
-   * superset — the descriptor rebuild is, since it drops any agent whose
+   * superset - the descriptor rebuild is, since it drops any agent whose
    * workspace it is not building. That is what lets the scope be a pure
    * optimization rather than a second source of truth about which agents count.
    *
@@ -281,13 +281,13 @@ export class AgentStorage {
 
   /**
    * Serialize a per-agent record write. The record is BUILT inside the chained
-   * callback (after the previous write for this agent has fully settled — its
+   * callback (after the previous write for this agent has fully settled - its
    * `writeRecord` cache.set included), not captured before enqueuing. That
    * closes a lost-update race for read-modify-write callers like
    * {@link applySnapshot}/{@link setTitle}: a title-less background persist that
    * would otherwise read a stale title before a concurrent `setTitle`, then
    * write it back afterwards, now re-reads the latest persisted title at the
-   * moment it runs — so the newer title survives. The build callback returning
+   * moment it runs - so the newer title survives. The build callback returning
    * `null` skips the write (record vanished); throwing surfaces to the caller.
    */
   private queueRecordWrite(agentId: string, build: () => StoredAgentRecord | null): Promise<void> {
@@ -345,7 +345,7 @@ export class AgentStorage {
     this.pathById.set(agentId, nextPath);
     // Keep the owner index in step with the cache. It used to be built only by
     // the disk load pass, so a hub execution's agent was not findable by its
-    // (daemonId, executionId) until the daemon restarted — every replayed or
+    // (daemonId, executionId) until the daemon restarted - every replayed or
     // reconnected create missed the idempotency lookup and spawned a duplicate.
     this.indexOwner(record);
   }

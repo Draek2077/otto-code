@@ -72,7 +72,7 @@ function revealedLines(view: EditorView): Set<number> {
  * Block markers own the whitespace that separates them from their content.
  *
  * `# Title` parses as a `HeaderMark` covering only the `#`, so hiding just the
- * node leaves the heading indented by one space — visible, wrong, and exactly
+ * node leaves the heading indented by one space - visible, wrong, and exactly
  * the kind of thing only a real browser test catches. Inline marks are NOT
  * extended: the space after `**bold**` belongs to the sentence.
  */

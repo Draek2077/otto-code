@@ -83,7 +83,7 @@ const EMPTY_AGENT_IDS: string[] = [];
  * given host. Shares the app-wide artifacts query cache with useArtifacts but
  * selects down to a sorted id array, so subscribers (every mounted
  * WorkspaceScreen deck entry) only re-render when the id set actually changes
- * — which is almost never, since it is empty unless a generation is running.
+ * - which is almost never, since it is empty unless a generation is running.
  *
  * Freshness is event-driven (notifications + connectivity invalidation), so
  * the staleTime is long: switching workspaces should not fan out an all-hosts

@@ -46,7 +46,7 @@ export function useEditorClipboardActions(
     });
   }, [controllerRef, copySelectionText]);
 
-  // A clipboard read can be refused (browser permission) — that is a no-op, not
+  // A clipboard read can be refused (browser permission) - that is a no-op, not
   // an error worth a dialog. The keyboard's own Paste is unaffected either way.
   const paste = useCallback(() => {
     void Clipboard.getStringAsync()

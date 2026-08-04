@@ -43,7 +43,7 @@ test.describe("Subagent detach", () => {
     // Detach's other half: the parent's track stops listing the child. Assert it
     // on the parent tab rather than page-wide. Detaching focuses the child, so
     // the parent's pane is inactive by the time the old page-wide count ran, and
-    // an inactive pane does not re-render — its stale row stayed in the DOM even
+    // an inactive pane does not re-render - its stale row stayed in the DOM even
     // though the store had already dropped the parent link (probed: null right
     // after the detach and still null 3s later). The assertion was measuring a
     // pane nobody can see; this measures the one the user comes back to.

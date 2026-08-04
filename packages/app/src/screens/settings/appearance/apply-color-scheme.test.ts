@@ -283,7 +283,7 @@ describe("applyColorScheme", () => {
 
     const black = findUpdater("black")(makeFakeTheme("dark"));
     const dark = findUpdater("dark")(makeFakeTheme("dark"));
-    // Same slider position, deeper backdrop — the softened ink has further to
+    // Same slider position, deeper backdrop - the softened ink has further to
     // fall, so it must land darker than the standard dark mirror's.
     expect(luminance(black.colors.foreground)).toBeLessThan(luminance(dark.colors.foreground));
   });

@@ -557,7 +557,7 @@ describe("workspace git watch targets", () => {
     await sessionAny.archiveWorkspaceRecord("ws-10");
 
     // Re-observing the directory establishes a fresh subscription only if archive
-    // tore down the prior one, which is keyed by cwd — not the opaque workspace id.
+    // tore down the prior one, which is keyed by cwd - not the opaque workspace id.
     syncGitObserver(session, REPO_CWD, "ws-10");
     expect(subscriptions).toHaveLength(2);
 

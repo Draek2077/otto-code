@@ -22,8 +22,8 @@ export interface FileNameSheetProps {
   /**
    * Resolves with an error message to show inline, or null when the mutation
    * succeeded and the sheet should close. The sheet does not decide what a
-   * conflict means — the daemon's typed result does, and the caller translates
-   * it — but it does stay open so the user can pick another name.
+   * conflict means - the daemon's typed result does, and the caller translates
+   * it - but it does stay open so the user can pick another name.
    */
   onSubmit: (name: string) => Promise<string | null>;
 }

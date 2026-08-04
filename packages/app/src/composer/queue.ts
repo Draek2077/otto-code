@@ -39,7 +39,7 @@ export interface ComposerQueueController {
   listSendable: () => Promise<readonly ComposerQueueItem[]>;
   /**
    * Move a message one place earlier or later. Null when this host cannot
-   * re-order, which is what hides the controls — order is still meaningful,
+   * re-order, which is what hides the controls - order is still meaningful,
    * there is just no way to change it here.
    */
   move: ((id: string, direction: "up" | "down") => Promise<void>) | null;
@@ -50,7 +50,7 @@ const EMPTY_ITEMS: readonly ComposerQueueItem[] = [];
 /**
  * Turn the daemon's entries into rows, pairing each with whatever attachments
  * this client still holds for it. Also drops sidecar entries the daemon no
- * longer reports — they have run, or were cleared — so the map cannot grow
+ * longer reports - they have run, or were cleared - so the map cannot grow
  * without bound.
  */
 function projectDaemonQueueItems(
@@ -84,7 +84,7 @@ function projectDaemonQueueItems(
  *    daemon's copy is destroyed by the take: if the sidecar is gone (reload,
  *    another device) the merged turn would go out with those files silently
  *    dropped. Only reachable through `listSendable`, which settles in-flight
- *    enqueues first — so "the client cannot back it" is a real fact here, not
+ *    enqueues first - so "the client cannot back it" is a real fact here, not
  *    a write that simply hasn't landed yet.
  */
 function isSendableAsUserTurn(item: ComposerQueueItem): boolean {
@@ -101,18 +101,18 @@ function isSendableAsUserTurn(item: ComposerQueueItem): boolean {
  * immediately with `delivery: "queue"`, survives a disconnect or a second
  * client, and everything queued before the turn ends is delivered as one turn.
  * Without it the queue stays in this client, drained on the running→idle edge
- * (see session-context) — the behavior Otto has always had, not a degraded
+ * (see session-context) - the behavior Otto has always had, not a degraded
  * build of the daemon feature.
  *
  * Attachments only ever exist client-side, so the daemon-backed path keeps a
  * local sidecar keyed by the daemon's entry id purely so this client can put
- * them back — in the box on "edit", or in the merged turn on "Send all". The
+ * them back - in the box on "edit", or in the merged turn on "Send all". The
  * daemon still owns whether an entry exists and when it runs; losing the
  * sidecar (reload, other device) costs those two client-side re-sends, and the
  * entry still drains with its attachments intact from the daemon's own copy.
  *
  * The sidecar is written when the send answers, which is a tick AFTER the
- * daemon has already broadcast the new entry — so nothing may decide anything
+ * daemon has already broadcast the new entry - so nothing may decide anything
  * from `items` alone. `take` and `listSendable` settle first; see
  * `settleEnqueues`.
  */
@@ -145,7 +145,7 @@ export function useComposerQueue(input: {
    * Wait for every enqueue still in flight.
    *
    * The daemon broadcasts the new entry from inside `enqueueSteerMessage`,
-   * BEFORE it answers the send — so the row is on screen a tick before this
+   * BEFORE it answers the send - so the row is on screen a tick before this
    * client learns the entry id it must file the attachments under. Until that
    * write lands the row reads `attachmentCount: 2, attachments: []`, and
    * because the sidecar is a ref, the write that fixes it re-renders nothing.
@@ -241,7 +241,7 @@ export function useComposerQueue(input: {
   /**
    * What "Send all" should pull, read live: settle the enqueues in flight,
    * then re-read the queue from the store rather than the rendered snapshot,
-   * which a sidecar write cannot invalidate (it is a ref, by design — the
+   * which a sidecar write cannot invalidate (it is a ref, by design - the
    * sidecar is incidental cache, not UI truth).
    *
    * The client-held queue has no sidecar and no such lag, but goes through the
@@ -258,7 +258,7 @@ export function useComposerQueue(input: {
   }, [agentId, daemonOwnsQueue, queueWriter, serverId, settleEnqueues]);
 
   // A daemon that owns the queue but predates agent.queue.reorder has no way to
-  // move an entry, so the controls are absent rather than faked client-side —
+  // move an entry, so the controls are absent rather than faked client-side -
   // the order the daemon holds is the one that runs.
   const canReorder = daemonOwnsQueue ? daemonCanReorder && Boolean(client) : true;
 

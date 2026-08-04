@@ -571,7 +571,7 @@ describe("workspace message schemas", () => {
   test("preserves explicit statusEnteredAt: null for empty workspaces", () => {
     // The server emits `statusEnteredAt: null` for workspaces with no
     // contributing agents (the "done with no agents" case). The client must
-    // distinguish this from "field omitted" — both parse to null, but the
+    // distinguish this from "field omitted" - both parse to null, but the
     // round-trip must not lose the explicit null.
     const baseWorkspace = {
       id: "ws-status-entered",

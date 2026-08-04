@@ -6,7 +6,7 @@ import type { BarcodeScanningResult, BarcodeSettings } from "expo-camera";
 // Platform seam for the pair-scan QR camera. expo-camera must only be
 // imported on native: its web build spawns a Web Worker at module-import time
 // that importScripts() jsQR from a CDN, which the desktop CSP (script-src
-// 'self') blocks — an uncaught NetworkError on every boot. The .web variant
+// 'self') blocks - an uncaught NetworkError on every boot. The .web variant
 // stubs this module out so expo-camera never enters the web bundle.
 
 const BARCODE_SCANNER_SETTINGS: BarcodeSettings = { barcodeTypes: ["qr"] };

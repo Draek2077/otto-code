@@ -6,7 +6,7 @@ user-invocable: true
 
 # Handoff Skill
 
-Transfer the current task — context, decisions, failed attempts, constraints — to a fresh agent. The receiving agent starts with **zero context**, so the handoff prompt must be a self-contained briefing.
+Transfer the current task - context, decisions, failed attempts, constraints - to a fresh agent. The receiving agent starts with **zero context**, so the handoff prompt must be a self-contained briefing.
 
 **User's arguments:** $ARGUMENTS
 
@@ -16,9 +16,9 @@ Read the **otto** skill. Before choosing a provider, call `list_personalities` (
 
 ## Parsing arguments
 
-1. **Provider or personality** — explicit user request first; otherwise a `coder` **personality** from `list_personalities` (pass its name as `create_agent`'s `personality`), or, failing that, resolve a provider from `impl` preference (or `ui` if the task is styling-only).
-2. **Worktree** — "in a worktree" / "worktree" → create a worktree via Otto with a short branch name derived from the task, based on the current branch.
-3. **Task description** — anything else the user said.
+1. **Provider or personality** - explicit user request first; otherwise a `coder` **personality** from `list_personalities` (pass its name as `create_agent`'s `personality`), or, failing that, resolve a provider from `impl` preference (or `ui` if the task is styling-only).
+2. **Worktree** - "in a worktree" / "worktree" → create a worktree via Otto with a short branch name derived from the task, based on the current branch.
+3. **Task description** - anything else the user said.
 
 ## The handoff prompt
 
@@ -32,16 +32,16 @@ The receiving agent has zero context. Include:
 [Why this task exists, required context.]
 
 ## Relevant files
-- `path/to/file.ts` — [what it is and why it matters]
+- `path/to/file.ts` - [what it is and why it matters]
 
 ## Current state
 [What's done, what works, what doesn't.]
 
 ## What was tried
-- [Approach] — [why it failed or was abandoned]
+- [Approach] - [why it failed or was abandoned]
 
 ## Decisions
-- [Decision — rationale]
+- [Decision - rationale]
 
 ## Acceptance criteria
 - [ ] [Criterion]
@@ -68,4 +68,4 @@ Leave `notifyOnFinish` omitted unless the user explicitly wants no callback.
 
 Handoff agents are siblings/root agents, not your subagents. They must survive you being archived and must not appear in your subagent track.
 
-Don't wait by default — the user decides whether to follow along or move on. Tell them the agent ID and how to follow along (the otto skill explains).
+Don't wait by default - the user decides whether to follow along or move on. Tell them the agent ID and how to follow along (the otto skill explains).

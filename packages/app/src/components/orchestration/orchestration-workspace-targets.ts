@@ -6,8 +6,8 @@ import { normalizeWorkspacePath } from "@/utils/workspace-identity";
  *
  * The project picker chooses a repo root; a project usually holds more than one
  * workspace (the checkout itself plus its worktrees), and the run has to land in
- * exactly one of them. Workspaces are matched by `projectId` — the same key the
- * project list groups on — so a worktree whose directory lives outside the repo
+ * exactly one of them. Workspaces are matched by `projectId` - the same key the
+ * project list groups on - so a worktree whose directory lives outside the repo
  * root still belongs to its project.
  */
 
@@ -64,8 +64,8 @@ export function buildOrchestrationWorkspaceTargets(
     return left.name.localeCompare(right.name);
   });
 
-  // A project whose root is not itself an open workspace still runs there —
-  // the daemon opens it on demand — so the root is always offered.
+  // A project whose root is not itself an open workspace still runs there -
+  // the daemon opens it on demand - so the root is always offered.
   if (!hasRootEntry) {
     targets.unshift({
       id: PROJECT_ROOT_WORKSPACE_ID,
@@ -81,7 +81,7 @@ export function buildOrchestrationWorkspaceTargets(
 
 /**
  * The project a known workspace directory belongs to. An Otto worktree lives
- * outside its repo root, so path containment cannot answer this — the
+ * outside its repo root, so path containment cannot answer this - the
  * workspace's own `projectId` can.
  */
 export function resolveProjectKeyForWorkspaceCwd(

@@ -9,7 +9,7 @@ const REVEAL_PADDING = 16;
 // request (navigation + virtualization). Poll a short while for it to appear.
 const MAX_ATTEMPTS = 30;
 
-// Reveal diagnostics, dev builds only — never ship console noise to production
+// Reveal diagnostics, dev builds only - never ship console noise to production
 // bundles. Metro dead-code-strips the calls when `__DEV__` is false.
 const DEBUG_REVEAL = __DEV__;
 function debugReveal(...args: unknown[]): void {

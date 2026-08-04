@@ -34,7 +34,7 @@ export const ArtifactMetadataSchema = z.object({
   generationModel: z.string().nullable(),
   // Requested generation mode/effort, persisted so regeneration re-runs with
   // the same settings. Optional: records written before these fields existed
-  // omit them (no migrations). The mode is a *request* — the artifact service
+  // omit them (no migrations). The mode is a *request* - the artifact service
   // only honors unattended modes and otherwise resolves the provider's
   // unattended default, so generation never stalls on an approval prompt.
   generationModeId: z.string().nullable().optional(),
@@ -46,7 +46,7 @@ export const ArtifactMetadataSchema = z.object({
   generationSpinner: ArtifactSpinnerSchema.nullable().optional(),
   // Human name of the Agent Personality that generated (last generated) this
   // artifact, snapshotted at create/regenerate time like the provider/model
-  // above — the "who actually did it" the card's identity line shows alongside
+  // above - the "who actually did it" the card's identity line shows alongside
   // provider/model. Absent ⇒ no personality was used (plain provider/model
   // selection). Purely additive (no daemon floor needed).
   generationPersonalityName: z.string().nullable().optional(),
@@ -88,7 +88,7 @@ export type ArtifactRun = z.infer<typeof ArtifactRunSchema>;
 
 // The full on-disk record: the lean metadata plus its generation run history.
 // `runs` defaults to [] so records written before run history existed parse
-// unchanged (no migrations — same approach the rest of the store takes).
+// unchanged (no migrations - same approach the rest of the store takes).
 // list_artifacts / broadcasts keep sending ArtifactMetadata (runs stripped);
 // only inspect_artifact returns this fuller shape.
 export const StoredArtifactSchema = ArtifactMetadataSchema.extend({

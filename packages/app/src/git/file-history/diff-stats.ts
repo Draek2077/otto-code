@@ -4,7 +4,7 @@ import type { DiffLine } from "@/utils/tool-call-parsers";
  * Count changed *blocks*, not changed lines.
  *
  * A five-line replacement is one difference to someone stepping through a diff
- * — it is one edit — and that is what the count in the diff header is for. A
+ * - it is one edit - and that is what the count in the diff header is for. A
  * line count would report "10 differences" for a single renamed variable and
  * tell the reader nothing about how much work reviewing it is.
  *

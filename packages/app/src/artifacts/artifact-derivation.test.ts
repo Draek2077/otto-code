@@ -134,7 +134,7 @@ describe("artifactBelongsToProject", () => {
     ).toBe(true);
   });
 
-  it("does not treat a grouping id as a path — no prefix matching", () => {
+  it("does not treat a grouping id as a path - no prefix matching", () => {
     // The regression this guards: artifact.projectId and workspace.projectId
     // are opaque grouping keys (often a remote key, not a path), so a worktree
     // whose projectId happens to be a path-shaped prefix of another must not

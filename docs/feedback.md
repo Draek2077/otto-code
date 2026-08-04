@@ -1,6 +1,6 @@
 # Feedback
 
-In-app **Send feedback** — a bug report, an idea, or a note — delivered to Otto's maintainer
+In-app **Send feedback** - a bug report, an idea, or a note - delivered to Otto's maintainer
 without the reporter needing a GitHub account, a login, or any account at all.
 
 ## The shape of it
@@ -12,7 +12,7 @@ App (any platform)  ──HTTPS POST──▶  otto-code.me/api/feedback  ──
 Three properties drive every decision below:
 
 - **No account for the reporter.** The old Feedback button opened the GitHub issue tracker, which
-  is a dead end for anyone without a GitHub account — which is most people who hit a bug.
+  is a dead end for anyone without a GitHub account - which is most people who hit a bug.
 - **Anonymous by default.** The only identity in a report is an optional free-text contact field.
   Blank means blank; there is nothing else to correlate on.
 - **Nothing leaves the device unseen.** The attached context block is rendered verbatim in the
@@ -24,8 +24,8 @@ The report goes from the app straight to the intake. It does **not** go through 
 
 That is deliberate: a large share of feedback is _about_ the host connection ("I can't reach my
 daemon", "the relay drops"), and a submit path that requires a healthy daemon would be broken
-exactly when it is needed. There is also nothing left for the daemon to contribute — no host
-credential is involved in delivery — so routing through it would add a protocol RPC, a capability
+exactly when it is needed. There is also nothing left for the daemon to contribute - no host
+credential is involved in delivery - so routing through it would add a protocol RPC, a capability
 gate, and a failure mode, and buy nothing.
 
 The consequence to keep in mind: there is **no daemon-side dead-letter**. A failed send is
@@ -47,7 +47,7 @@ rather file there.
 
 **The context block is a closed list**: app version, client platform (and whether it is the
 desktop app), and one line per configured host carrying connection status, transport, and daemon
-version. No host labels, endpoints, workspace paths, or project names — those leak private
+version. No host labels, endpoints, workspace paths, or project names - those leak private
 information into a channel the reporter cannot see. `formatFeedbackContext` is the one place that
 decides this, and a test pins the exclusion. Widening it is a deliberate change to that contract.
 
@@ -57,7 +57,7 @@ must not rewrite the block between the moment the reporter reads it and the mome
 ## Intake (Cloudflare Worker)
 
 `packages/website/src/feedback-intake.ts`, routed from `server-entry.ts` at `/api/feedback` ahead
-of the app router — it is a write-only API, not a page.
+of the app router - it is a write-only API, not a page.
 
 - **CORS is open** (`*`). Callers are native, Electron, and web builds on arbitrary origins; the
   endpoint is unauthenticated, write-only, and returns no user data, so there is nothing an origin
@@ -65,7 +65,7 @@ of the app router — it is a write-only API, not a page.
 - **Honeypot.** A `honeypot` field the real sheet never sets. Filled means a bot: answer `200 ok`
   and drop it, so there is nothing to tune against.
 - **Rate limit.** 5 reports per IP per hour via the `WEBSITE_CACHE` KV binding, `429` past that.
-  This is accident control — a stuck client or a double-tap — not a security boundary. KV is
+  This is accident control - a stuck client or a double-tap - not a security boundary. KV is
   eventually consistent, so treat it as a soft ceiling.
 - **Bounds.** Message 4000 chars, context 1800, contact 200, body 16 KB.
 - **Delivery.** A Discord webhook from the `FEEDBACK_WEBHOOK_URL` secret. Message and context each
@@ -90,7 +90,7 @@ feedback is not accepting reports right now.
 The [bug-reporting charter](../projects/README.md) also described a **host-owner sink**: a daemon
 that files a GitHub issue into an owner-configured repo with its own `gh` credentials, so a team's
 coworkers report into that team's tracker. That half is unbuilt, and it is a different feature with
-a different audience — it needs `createIssue` on the forge layer
+a different audience - it needs `createIssue` on the forge layer
 ([git-providers.md](git-providers.md)), a `bugReporting` config block, and a daemon RPC. Nothing
 here blocks it: the sheet would gain a sink choice, not a rewrite.
 

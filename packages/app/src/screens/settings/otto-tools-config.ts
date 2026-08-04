@@ -2,7 +2,7 @@ import { OTTO_TOOL_GROUPS, type OttoToolGroup } from "@otto-code/protocol/provid
 import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@otto-code/protocol/messages";
 
 // User-facing metadata for each Otto tool category. Order here is the display
-// order in the Host settings "Otto Tools" section. Copy is raw English — the
+// order in the Host settings "Otto Tools" section. Copy is raw English - the
 // developer-mode host settings surfaces are English-only pending a translation
 // pass (build-first, translate-last).
 export interface OttoToolGroupMeta {
@@ -63,7 +63,7 @@ export const OTTO_TOOL_GROUP_META: readonly OttoToolGroupMeta[] = [
 
 // The two tool groups that belong under the dedicated "Browser Tools" section
 // (gated by the browserTools.enabled master switch) rather than the general Otto
-// tool catalog. Relabeled for that context — the browser group is just
+// tool catalog. Relabeled for that context - the browser group is just
 // "Control" there (the section header already says "Browser"), and the
 // master-switch dependency note is dropped because the section structure now
 // makes the dependency explicit.
@@ -72,7 +72,7 @@ export const BROWSER_TOOL_GROUP_META: readonly OttoToolGroupMeta[] = [
     group: "browser",
     label: "Control",
     description:
-      "Verify changes in the Otto browser pane — accessibility snapshots, DOM, console, network, clicks.",
+      "Verify changes in the Otto browser pane - accessibility snapshots, DOM, console, network, clicks.",
   },
   {
     group: "preview",
@@ -85,7 +85,7 @@ const BROWSER_TOOL_GROUP_SET = new Set<OttoToolGroup>(
   BROWSER_TOOL_GROUP_META.map((meta) => meta.group),
 );
 
-// The general Otto tool catalog shown under "Otto Tools" — every group except
+// The general Otto tool catalog shown under "Otto Tools" - every group except
 // the browser-tools groups, which live in their own section. Preserves the
 // canonical display order from OTTO_TOOL_GROUP_META.
 export const OTTO_CORE_TOOL_GROUP_META: readonly OttoToolGroupMeta[] = OTTO_TOOL_GROUP_META.filter(
@@ -111,7 +111,7 @@ export function isToolGroupEnabled(
 }
 
 // Build a patch that flips one category. The resulting array is always the full
-// membership (canonical order), so "all on" persists as the complete list —
+// membership (canonical order), so "all on" persists as the complete list -
 // equivalent to undefined but explicit, which is fine (the daemon reads either
 // as "all enabled").
 export function createToolGroupsPatch(

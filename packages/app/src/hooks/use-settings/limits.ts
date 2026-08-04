@@ -4,7 +4,7 @@
  * These live apart from `storage.ts` so that a consumer wanting a bound does not have to load
  * the settings store with it. `storage.ts` reaches `@/constants/layout`, which imports
  * `react-native-unistyles`, whose published entry point is TypeScript source rather than
- * compiled JavaScript. Anything running outside Metro — Playwright's spec loader above all —
+ * compiled JavaScript. Anything running outside Metro - Playwright's spec loader above all -
  * cannot parse that, and fails with `SyntaxError: Unexpected token 'typeof'` reported against
  * the spec rather than the package.
  *

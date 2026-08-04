@@ -9,8 +9,8 @@ const MIN_CHARS_PER_TICK = 2;
 // typing while bursts type faster.
 const BACKLOG_CATCHUP_DIVISOR = 8;
 // Typing rate ceiling (~4k chars/s at 32ms ticks). Without it the
-// proportional step makes a whole-message burst — Fable's safety-buffered
-// stream delivers most of a message at once — converge in ~8 ticks, which
+// proportional step makes a whole-message burst - Fable's safety-buffered
+// stream delivers most of a message at once - converge in ~8 ticks, which
 // reads as an instant dump instead of typing.
 const MAX_CHARS_PER_TICK = 128;
 // Skip-ahead bound: never keep more than ~2s of typing queued. A tab left
@@ -22,7 +22,7 @@ const MAX_PENDING_CHARS = 8000;
 // text exists, so the reveal resets to 0 and the reply types from its first
 // character. If a boundary change arrives with a LOT of assistant text
 // already present, it is a rebuild (reconnect / canonical replace), not a
-// new turn — snap caught-up so replaced history never replays.
+// new turn - snap caught-up so replaced history never replays.
 const NEW_TURN_SNAP_THRESHOLD_CHARS = 600;
 
 /** Pure step function: how much of the turn should be revealed next tick. */
@@ -80,7 +80,7 @@ export const EMPTY_TURN_REVEAL: LiveTurnReveal = {
 
 /**
  * Where the running turn starts: the last user message the daemon has echoed
- * back. Optimistic rows are skipped — one appended mid-run (a steer) does not
+ * back. Optimistic rows are skipped - one appended mid-run (a steer) does not
  * start a turn, and its id is replaced when the canonical row lands, which
  * would read as a turn change.
  */
@@ -113,7 +113,7 @@ export function computeLiveTurnReveal(params: {
   tail: readonly StreamItem[];
   head: readonly StreamItem[];
   /**
-   * The boundary of the turn that already finished — the caller latches it
+   * The boundary of the turn that already finished - the caller latches it
    * whenever the agent is idle (see the stream view).
    *
    * Sending a message flips the agent to running while the only row for it is
@@ -122,7 +122,7 @@ export function computeLiveTurnReveal(params: {
    * cosmetic: consumers read a span as "this is being written right now", so
    * the previous reply re-typed itself on screen and auto-speech read it back
    * the moment you hit send. A turn that has already been settled cannot be
-   * the running one — it spans nothing until its own user row arrives.
+   * the running one - it spans nothing until its own user row arrives.
    */
   settledTurnKey?: string | null;
 }): LiveTurnReveal {
@@ -154,7 +154,7 @@ export function clampRevealBudget(revealedTotal: number, span: TurnRevealSpan): 
 
 /**
  * The paced reveal position for the live turn. Plain external store rather
- * than React state so the 32ms ticks NEVER re-render the stream view — each
+ * than React state so the 32ms ticks NEVER re-render the stream view - each
  * assistant item subscribes to its own clamped budget via
  * useSyncExternalStore and only the item the reveal boundary is crossing
  * re-renders on a tick.
@@ -179,7 +179,7 @@ export class TurnRevealTicker {
 
   /**
    * Render-phase reconcile (targetRef pattern): keeps the target current and
-   * handles turn boundaries. Deliberately does NOT notify listeners — it runs
+   * handles turn boundaries. Deliberately does NOT notify listeners - it runs
    * while the owner is already rendering the subscribers with fresh props.
    *
    * `visible` is the per-pane axis, separate from the app-level check in
@@ -197,7 +197,7 @@ export class TurnRevealTicker {
    * NOT arrive in the same render as the return: the stream view runs its
    * items through `useDeferredValue`, so the first render back still carries
    * the frozen target. Snapping there snaps to the stale value, and the live
-   * target lands a render later with the return already consumed — pacing the
+   * target lands a render later with the return already consumed - pacing the
    * away backlog exactly as before. So the return is LATCHED and re-snaps on
    * every render until one arrives carrying live data.
    */
@@ -237,7 +237,7 @@ export class TurnRevealTicker {
   tick = (): void => {
     // Off screen, snap. There is nothing to animate for a hidden tab or a
     // pocketed phone, and pacing there is actively harmful: browsers clamp a
-    // background `setInterval` to about 1Hz, so the reveal — not the model —
+    // background `setInterval` to about 1Hz, so the reveal - not the model -
     // becomes the bottleneck. Everything downstream that waits for a segment to
     // reach full length waits with it, and auto-speech, whose entire point is
     // that you are NOT looking at the screen, goes silent behind a tab switch.

@@ -6,7 +6,7 @@ module.exports = defineConfig([
   expoConfig,
   {
     // Demo templates are standalone fake projects (their own package.json),
-    // not app code — they must not be linted against the app's config.
+    // not app code - they must not be linted against the app's config.
     ignores: ["dist/*", "demo/staging/templates/**", "demo/.out/**"],
   },
 ]);

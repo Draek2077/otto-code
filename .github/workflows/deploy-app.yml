@@ -32,8 +32,8 @@ jobs:
 
       # wrangler pages deploy doesn't auto-create the project; create it on first
       # run. The create command fails when the project already exists, so tolerate
-      # that — a real auth/permission problem still surfaces in the deploy step.
-      # CLOUDFLARE_ACCOUNT_ID is the fork's own Cloudflare account — the same
+      # that - a real auth/permission problem still surfaces in the deploy step.
+      # CLOUDFLARE_ACCOUNT_ID is the fork's own Cloudflare account - the same
       # account_id as packages/{relay,website}/wrangler.toml. Keep them in sync.
       - name: Ensure Cloudflare Pages project exists
         run: npx wrangler pages project create otto-app --production-branch main || echo "Project already exists (or creation failed; deploy will surface real errors)"

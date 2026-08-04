@@ -1,7 +1,7 @@
 import { useSessionStore } from "@/stores/session-store";
 
 /**
- * The single detection point for host-wide language-server listing — the daemon answers
+ * The single detection point for host-wide language-server listing - the daemon answers
  * `lsp.servers.list` with no `cwd`.
  *
  * Settings is a host screen, so it asks the host question: what can this machine run. An

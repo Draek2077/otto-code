@@ -103,8 +103,8 @@ export function renderPromptAttachmentAsText(attachment: AgentAttachment): strin
       });
     }
     // COMPAT(hostingAttachments): added in v0.7.6, remove after 2027-02-01.
-    // No hosting provider is a registered forge — Bitbucket rides the `github`
-    // forge id as a routing facade (bootstrap.ts) — so the provider id is passed
+    // No hosting provider is a registered forge - Bitbucket rides the `github`
+    // forge id as a routing facade (bootstrap.ts) - so the provider id is passed
     // through as an unknown forge, which yields the neutral "PR"/"#" grammar
     // both providers use, and only the brand label is resolved separately.
     case "hosting_pr": {
@@ -170,7 +170,7 @@ export function renderPromptAttachmentAsText(attachment: AgentAttachment): strin
     default: {
       // Compile-time exhaustiveness. A schema branch added to
       // AgentAttachmentSchema with no arm here is a type error, not a runtime
-      // throw on the prompt-build path — which is exactly how the hosting_*
+      // throw on the prompt-build path - which is exactly how the hosting_*
       // arms went missing without a single test or typecheck noticing.
       const unhandled: never = attachment;
       throw new Error(`unsupported prompt attachment: ${(unhandled as AgentAttachment).type}`);

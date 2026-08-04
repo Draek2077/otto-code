@@ -34,7 +34,7 @@ function runtimeModuleSpecifiers(source: string): string[] {
   const isTypeOnlyImport = (node: ts.ImportDeclaration): boolean => {
     const clause = node.importClause;
     if (!clause) {
-      // Side-effect import: `import "./x.js"` — always a runtime load.
+      // Side-effect import: `import "./x.js"` - always a runtime load.
       return false;
     }
     if (clause.isTypeOnly) {

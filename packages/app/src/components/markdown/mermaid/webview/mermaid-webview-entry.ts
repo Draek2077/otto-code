@@ -2,7 +2,7 @@ import type { MermaidWebViewInbound, MermaidWebViewOutbound } from "../mermaid-c
 import { renderMermaid } from "../mermaid-render";
 
 // Runs inside the native react-native-webview. There is no DOM on iOS/Android,
-// so mermaid lives here instead — the same recipe as the CM6 editor and the
+// so mermaid lives here instead - the same recipe as the CM6 editor and the
 // terminal emulator (see scripts/build-mermaid-webview-html.mjs, which esbuilds
 // this entry into a self-contained HTML string).
 //

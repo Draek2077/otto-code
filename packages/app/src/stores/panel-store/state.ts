@@ -25,7 +25,7 @@ export type SortOption = "name" | "modified" | "size";
  * The Files tab's two lenses: the filesystem as it lays itself out, or the tree as the build
  * system sees it.
  *
- * **"Solution", never "Project"** — Project is already an Otto noun (a grouping of workspaces
+ * **"Solution", never "Project"** - Project is already an Otto noun (a grouping of workspaces
  * sharing a git remote), and a .NET project is a completely different thing that appears on
  * screen at the same time. See docs/glossary.md.
  */
@@ -47,7 +47,7 @@ export function resolveExplorerViewMode(input: {
   explorerViewModeByCheckout: Record<string, ExplorerViewMode>;
 }): ExplorerViewMode {
   // No solutions means no switcher, so any remembered choice is unreachable and must not strand
-  // the tab on an empty lens — the same coercion `resolveExplorerTabForCheckout` does for `isGit`.
+  // the tab on an empty lens - the same coercion `resolveExplorerTabForCheckout` does for `isGit`.
   if (!input.hasSolutions) {
     return "files";
   }

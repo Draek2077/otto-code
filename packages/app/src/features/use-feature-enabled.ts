@@ -4,7 +4,7 @@ import { useSettings, type AppSettings } from "@/hooks/use-settings";
 import { APP_SETTINGS_QUERY_KEY } from "@/hooks/use-settings/storage";
 
 // The single gate for whether an optional feature is enabled. Feature enablement
-// is device-local presentation only — it changes what this client loads and
+// is device-local presentation only - it changes what this client loads and
 // renders, never the daemon, agents, or anything on the wire (mirrors
 // use-interface-mode.ts). Resolution rule: a missing key ⇒ the feature's own
 // `defaultEnabled` (all-on today), so existing devices behave exactly like
@@ -25,7 +25,7 @@ export function useFeatureEnabled(id: FeatureId): boolean {
 }
 
 /**
- * Imperative, non-React read of the same settings query cache — for gate sites
+ * Imperative, non-React read of the same settings query cache - for gate sites
  * that run outside the React tree (e.g. openVisualizerTab, dispatched from a
  * button handler / keyboard action). Reads the single source of truth; falls
  * back to `defaultEnabled` when the cache is not yet populated.

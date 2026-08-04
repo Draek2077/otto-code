@@ -111,13 +111,13 @@ export interface PanelState {
   projectSearchFocusToken: number;
   // Ephemeral (not persisted): bumped when a keyboard action wants the Files
   // tab's filename finder open; the file explorer consumes it back to 0. Mod+F
-  // outside an editor means "find a file" — the tab alone is only half of that.
+  // outside an editor means "find a file" - the tab alone is only half of that.
   fileFinderOpenToken: number;
   // Ephemeral (not persisted): set when another pane (e.g. the Changes view)
   // wants a file revealed in the Files tree; the file explorer consumes it
   // back to null. The token disambiguates repeat reveals of the same path.
   filesRevealRequest: { path: string; token: number } | null;
-  // Ephemeral (not persisted): the mirror image of filesRevealRequest — set when
+  // Ephemeral (not persisted): the mirror image of filesRevealRequest - set when
   // another surface (the Files tree's "View changes", the file tab's toolbar)
   // wants a file revealed in the Changes tab; the diff pane consumes it back to
   // null after expanding the file's diff and scrolling its header into view.

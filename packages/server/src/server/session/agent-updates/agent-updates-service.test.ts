@@ -9,7 +9,7 @@ import type {
 import type { ManagedAgent } from "../../agent/agent-manager.js";
 import type { StoredAgentRecord } from "../../agent/agent-storage.js";
 
-// No mocks — every dependency is an injected in-memory fake. The agent payloads
+// No mocks - every dependency is an injected in-memory fake. The agent payloads
 // are supplied through the fake builders, so each test fully controls the
 // (agent, project, filter) triple the service reasons about and asserts the
 // emitted `agent_update` payloads.

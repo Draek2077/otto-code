@@ -2,7 +2,7 @@
  * Resolves $OTTO_HOME exactly as the Otto daemon does (see
  * packages/server/src/server/otto-home.ts): env override, else `~/.otto`, tilde
  * expanded, made private. Sharing this rule is what lets otto-brain's config sit
- * next to Otto's — and follow it into the dev home whenever the dev scripts export
+ * next to Otto's - and follow it into the dev home whenever the dev scripts export
  * OTTO_HOME. There is deliberately no dev-path logic here; that lives in shell.
  */
 import { homedir } from "node:os";

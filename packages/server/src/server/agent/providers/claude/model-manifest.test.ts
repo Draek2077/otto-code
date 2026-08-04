@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { CLAUDE_MODEL_MANIFEST } from "./model-manifest.js";
 
 describe("claude model manifest", () => {
-  // The manifest is the official Claude model list we ship — every entry must
+  // The manifest is the official Claude model list we ship - every entry must
   // classify to a known tier so no first-party Claude model ever shows as
   // "Unknown" in tier-driven UI (wizard presets, personality forms).
   it("every manifest model has a known tier in the shared catalog", () => {
@@ -12,7 +12,7 @@ describe("claude model manifest", () => {
     }
   });
 
-  // Exact-string expectations, one per manifest id — no name-pattern derivation.
+  // Exact-string expectations, one per manifest id - no name-pattern derivation.
   // Rule of thumb encoded here: 1M-context Opus (and Fable) are deep, non-1M
   // Opus and Sonnet are standard, Haiku is fast.
   it("each manifest model has its expected tier", () => {

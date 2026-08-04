@@ -236,7 +236,7 @@ export function createVoiceTurnController(params: {
 
   // A turn that suffered two STT errors tears its session down to null and never
   // rebuilds it (reconnect only fires once per turn). Without this, every later
-  // utterance is detected but never transcribed — the classic "voice input
+  // utterance is detected but never transcribed - the classic "voice input
   // stopped, had to restart" wedge. Rebuild lazily at the top of each new turn so
   // a dead session recovers on the next thing the user says.
   async function ensureSttSession(): Promise<void> {

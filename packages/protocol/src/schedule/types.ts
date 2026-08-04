@@ -29,7 +29,7 @@ export const ScheduleTargetSchema = z.discriminatedUnion("type", [
       cwd: z.string().trim().min(1),
       // Optional Agent Personality binding (by name). When set, each run
       // re-resolves the personality against the run cwd and hard-fails if it is
-      // unavailable — so schedule runs pick up personality edits between runs.
+      // unavailable - so schedule runs pick up personality edits between runs.
       personality: z.string().trim().min(1).optional(),
       modeId: z.string().trim().min(1).optional(),
       model: z.string().trim().min(1).optional(),
@@ -64,7 +64,7 @@ export const ScheduleRunSchema = z.object({
   status: z.enum(["running", "succeeded", "failed"]),
   agentId: z.guid().nullable(),
   workspaceId: z.string().nullable().optional(),
-  // Who actually executed this run — the resolved personality (if any),
+  // Who actually executed this run - the resolved personality (if any),
   // provider, and model. Stamped when the run starts (so a failed run still
   // records its executor). Optional for back-compat: runs written before these
   // fields existed omit them.
@@ -89,7 +89,7 @@ export const StoredScheduleSchema = z.object({
   lastRunAt: z.string().nullable(),
   lastRunStatus: z.enum(["succeeded", "failed"]).nullable().optional(),
   lastRunError: z.string().nullable().optional(),
-  // Executor of the most recent run — mirrors the run-level fields above so the
+  // Executor of the most recent run - mirrors the run-level fields above so the
   // schedule card can show "who ran it last" (personality · provider · model)
   // without loading the full run history (ScheduleSummary omits `runs`).
   // Optional for back-compat: schedules that never ran, or predate these

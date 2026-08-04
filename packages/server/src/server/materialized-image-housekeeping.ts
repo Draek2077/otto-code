@@ -8,8 +8,8 @@ import {
 const SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1_000;
 
 /**
- * Keeps `$OTTO_HOME/attachments` — the images providers materialize so the
- * timeline has a file to point at — inside its retention policy.
+ * Keeps `$OTTO_HOME/attachments` - the images providers materialize so the
+ * timeline has a file to point at - inside its retention policy.
  *
  * Runs once at startup and daily after that. A daemon left running for months
  * is the normal case on desktop, so start-only would mean the policy never

@@ -231,7 +231,7 @@ describe("daemon E2E (real claude) - send message during tool call", () => {
       // Step 4: Send a second message while the tool call is still running
       await client.sendMessage(agent.id, "Reply with exactly: INTERRUPT_RECEIVED");
 
-      // Step 5: Wait for the agent to finish — this is the critical assertion.
+      // Step 5: Wait for the agent to finish - this is the critical assertion.
       // If the bug is present, the agent will stop and never start a new turn.
       const finish = await client.waitForFinish(agent.id, 120_000);
       const postSendMessages = [...collector.messages];

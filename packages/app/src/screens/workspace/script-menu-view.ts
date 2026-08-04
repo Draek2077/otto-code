@@ -82,7 +82,7 @@ function orderByRecency(
  *
  * Without this, recency does nothing. Discovered groups are collapsed by
  * default, so ordering *inside* one only pays off after the user has already
- * expanded 98 rows — which is the problem, not the fix.
+ * expanded 98 rows - which is the problem, not the fix.
  *
  * Otto's declared Scripts are excluded on purpose: they are already expanded
  * and first, so lifting them here would show the same row twice on one screen.

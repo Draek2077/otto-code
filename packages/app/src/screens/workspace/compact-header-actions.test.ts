@@ -50,8 +50,8 @@ describe("resolveCompactHeaderActions", () => {
     expect(survivors({ rowWidth: 260 })).toEqual([]);
   });
 
-  // The cue mute is the one button whose loss costs nothing — the same switch
-  // is in Agents settings — so it yields its slot to everything else.
+  // The cue mute is the one button whose loss costs nothing - the same switch
+  // is in Agents settings - so it yields its slot to everything else.
   it("keeps the voice-cue mute off a crowded row even when the host supports it", () => {
     expect(survivors({ rowWidth: 380 })).not.toContain("voiceCues");
     expect(
@@ -89,7 +89,7 @@ describe("resolveCompactHeaderActions", () => {
     expect(fit.showPlay).toBe(true);
     expect(fit.showVisualizer).toBe(true);
     expect(fit.showPlainExplorer).toBe(true);
-    // The compact explorer mount site stays off — desktop uses its own toggle.
+    // The compact explorer mount site stays off - desktop uses its own toggle.
     expect(fit.showCompactExplorer).toBe(false);
   });
 

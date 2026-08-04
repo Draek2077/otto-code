@@ -31,7 +31,7 @@ export interface RealDaemonState {
 export async function loadRealDaemonState(): Promise<RealDaemonState> {
   const port = getE2EDaemonPort();
   const ottoHome = process.env.E2E_OTTO_HOME;
-  if (!ottoHome) throw new Error("E2E_OTTO_HOME not set — globalSetup must run first");
+  if (!ottoHome) throw new Error("E2E_OTTO_HOME not set - globalSetup must run first");
 
   const resp = await fetch(`http://127.0.0.1:${port}/api/status`);
   const data: DaemonApiStatus = await resp.json();
@@ -406,10 +406,10 @@ export async function expectDaemonManagementDisabled(page: Page): Promise<void> 
 
 /**
  * Asserts the daemon status card shows the given PID. Pass null to assert
- * the cleared state (shown as "PID —" when the daemon is stopped).
+ * the cleared state (shown as "PID -" when the daemon is stopped).
  */
 export async function expectDaemonStatusPid(page: Page, pid: number | null): Promise<void> {
-  const expected = pid !== null ? `PID ${pid}` : "PID —";
+  const expected = pid !== null ? `PID ${pid}` : "PID -";
   await expect(
     page.getByTestId("host-page-daemon-lifecycle-card").getByText(expected),
   ).toBeVisible();

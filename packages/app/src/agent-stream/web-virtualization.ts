@@ -8,7 +8,7 @@ export const DEFAULT_WEB_PARTIAL_VIRTUALIZATION_THRESHOLD = 40;
 // their exact heights and the bottom anchor cannot drift.
 //
 // Was 50, which made the floor cost of *any* long chat 50 fully rendered markdown bubbles
-// no matter how far up the user scrolled — the reason scrolling a long chat was heavy.
+// no matter how far up the user scrolled - the reason scrolling a long chat was heavy.
 // 12 comfortably covers the visible viewport plus the live turn, which is all the tail has
 // to do; everything above it goes through the virtualizer like the rest of history.
 export const DEFAULT_WEB_MOUNTED_RECENT_STREAM_ITEMS = 12;
@@ -22,7 +22,7 @@ const COLLAPSED_TOOL_SEQUENCE_ROW_HEIGHT_ESTIMATE = 40;
 //
 // One agentic turn runs for hundreds of rows with no user message anywhere in it, so an
 // uncapped walk-back anchors on the line that *started* the turn and mounts the entire
-// thing — the tail cap above becomes a no-op during exactly the long streaming runs it
+// thing - the tail cap above becomes a no-op during exactly the long streaming runs it
 // was reduced for. 40 is wide enough that an ordinary conversational turn still rewinds
 // to its user message, which is the shape the walk-back exists for.
 const MAX_MOUNTED_WINDOW_WALK_BACK = 40;
@@ -63,15 +63,30 @@ export function getWebMountedRecentStreamItems(isMobileBreakpoint = false): numb
  * Whether a virtualized row swapping its estimate for its measured height may
  * move `scrollTop`.
  *
- * Two conditions, and dropping either one moves the reader.
+ * One condition: **is the row above the viewport**. Growth above the reader is
+ * absorbed in both states, because in both states it is growth they must not be
+ * moved by.
  *
- * **Detached.** The reader owns the position, so a correction above them has to
- * be absorbed or the rows under their eyes slide. While following, the app is
- * heading to the bottom anyway and an adjustment would only fight the stick.
+ * It used to be two, with a `isFollowingOutput` early return on the reasoning
+ * that "the app is heading to the bottom anyway and an adjustment would only
+ * fight the stick". It does not fight the stick, and skipping it is what threw
+ * the reader to the top of the transcript on send.
  *
- * **Above the viewport.** This half is TanStack Virtual's own default
+ * The stick writes an *absolute* position (`scrollTop = scrollHeight`), so a
+ * relative correction applied before it is overwritten, never doubled. What the
+ * early return actually bought was a gap. Sending releases the mounted-window pin
+ * (see findMountedWindowStart), which hands a turn measured at its real heights
+ * back to the virtualizer at estimated ones; the browser clamps `scrollTop` to
+ * the collapsed range, and then the virtualizer re-measures those rows one batch
+ * at a time and grows the document back by thousands of pixels, all of it *above*
+ * the viewport. Uncompensated, every batch pushed the view further from the end,
+ * and the rAF stick was left chasing a document growing faster than one frame per
+ * batch. Deep history is the bad case, because none of it has cached block
+ * heights: a reply estimated at 220px measuring 800 is a 580px shove per row.
+ *
+ * The condition that remains is TanStack Virtual's own default
  * (`item.start < scrollOffset`), and overriding
- * `shouldAdjustScrollPositionOnItemSizeChange` replaces it wholesale — so an
+ * `shouldAdjustScrollPositionOnItemSizeChange` replaces it wholesale - so an
  * override that returns a single global answer silently opts every row in,
  * including the ones being measured *below* the fold. Growth the reader cannot
  * see must not move them: scrolling up feeds the virtualizer a steady supply of
@@ -85,13 +100,9 @@ export function getWebMountedRecentStreamItems(isMobileBreakpoint = false): numb
  * virtualized block, which is the frame the virtualizer reports it in.
  */
 export function shouldAbsorbVirtualRowResize(input: {
-  isFollowingOutput: boolean;
   blockViewportRelativeTop: number;
   rowStart: number;
 }): boolean {
-  if (input.isFollowingOutput) {
-    return false;
-  }
   return input.blockViewportRelativeTop + input.rowStart < 0;
 }
 
@@ -131,8 +142,8 @@ export function estimateStreamItemHeight(item: StreamItem): number {
 /**
  * Does the row at `index` begin something, or continue the row above it?
  *
- * Every kind except an assistant block is its own self-contained row — a tool
- * call, a folded action group, a todo list — so the mounted window can start on
+ * Every kind except an assistant block is its own self-contained row - a tool
+ * call, a folded action group, a todo list - so the mounted window can start on
  * one without cutting anything in half. Assistant blocks are the exception: a
  * streamed reply is promoted one markdown block at a time into separate rows
  * sharing a `blockGroupId` that butt together into a single visible bubble, and
@@ -157,7 +168,7 @@ function startsAVisualRow(items: StreamItem[], index: number): boolean {
  * That handoff is destructive to scroll position: a turn worth of measured
  * height is swapped for `estimateStreamItemHeight` in a single frame, the
  * document shrinks by however much the estimates undershoot, and the browser
- * clamps `scrollTop` — dumping a reader who was scrolled up somewhere near the
+ * clamps `scrollTop` - dumping a reader who was scrolled up somewhere near the
  * top. The window naturally advances *while the agent streams* (the walk-back
  * anchor jumps from one user message to the next as the tail grows), so this hit
  * lands exactly when someone is reading back through a live turn.
@@ -207,7 +218,7 @@ export function findMountedWindowStart(input: {
   if (isFollowing) {
     return startIndex;
   }
-  // A pin that has fallen out of the tail entirely is stale — ignore it rather
+  // A pin that has fallen out of the tail entirely is stale - ignore it rather
   // than mounting the whole history.
   const pinnedIndex = items.findIndex((item) => item.id === pinnedStartItemId);
   return pinnedIndex >= 0 ? Math.min(pinnedIndex, startIndex) : startIndex;

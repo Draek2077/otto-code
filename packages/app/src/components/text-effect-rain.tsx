@@ -1,7 +1,7 @@
 // Native renderer for the kind: "glyph" text effect (Matrix rain).
 //
-// The perf shape is the point: the overlay owns exactly ONE shared value — a
-// linear 0→1 sawtooth — and every column derives its own style from it by
+// The perf shape is the point: the overlay owns exactly ONE shared value - a
+// linear 0→1 sawtooth - and every column derives its own style from it by
 // subtracting its staggered phase. One animation driver per badge, worklets on
 // the UI thread, no JS per frame, and no re-render while the strip travels.
 //

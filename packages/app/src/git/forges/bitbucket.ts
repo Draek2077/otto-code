@@ -17,7 +17,7 @@ import type { CheckoutPrMergeMethod } from "@otto-code/protocol/messages";
  * `bitbucket-cloud-service.ts` tags its `forgeSpecific` envelope
  * `forge: "bitbucket"`, and `deriveMergeCapability` matches modules by parsing
  * that envelope rather than by id. That is also why there is no `urlGrammar`
- * and no `.view.tsx` sibling here — both of those are looked up by forge id.
+ * and no `.view.tsx` sibling here - both of those are looked up by forge id.
  *
  * Server twin: `server/src/services/git-hosting/bitbucket-facts.ts`.
  */
@@ -53,7 +53,7 @@ function deriveBitbucketMergeCapability(bitbucket: BitbucketMergeFacts): MergeCa
     // UNKNOWN), so readiness cannot be derived from the facts. The daemon
     // re-checks that the PR is open before merging and Bitbucket enforces its
     // own merge checks server-side, so offer the action and let the forge
-    // refuse — the same posture the pre-forge policy took.
+    // refuse - the same posture the pre-forge policy took.
     directMergeReady: true,
     // Bitbucket Cloud has no auto-merge and no merge queue.
     canEnableAutoMerge: false,

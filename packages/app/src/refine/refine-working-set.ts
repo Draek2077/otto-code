@@ -12,7 +12,7 @@ import type { RefineSetFile } from "./refine-set";
  * A label short enough to read in a chip row and specific enough that the model
  * can tell two files apart.
  *
- * Relative to the workspace root when the file is inside it — that is the name
+ * Relative to the workspace root when the file is inside it - that is the name
  * the user and the project already use. Otherwise home-shortened, which is what
  * makes a global instruction file read as `~/.claude/CLAUDE.md` rather than as
  * a path with someone's username in it. Ambiguity is resolved by keeping enough
@@ -28,7 +28,7 @@ export function buildRefineLabel(absolutePath: string, workspaceRoot: string | n
 }
 
 /**
- * Two files in a set can render to the same label — home shortening is the one
+ * Two files in a set can render to the same label - home shortening is the one
  * place that happens, since `/home/me/notes.md` and `/Users/me/notes.md` both
  * become `~/notes.md`. Since the label is what the model uses to tell documents
  * apart, a collision falls back to the **unshortened** path: shortening again
@@ -57,7 +57,7 @@ export interface BuildRefineWorkingSetInput {
 }
 
 /**
- * Build the session's working set. Ids are positional and opaque — they are
+ * Build the session's working set. Ids are positional and opaque - they are
  * what travels to the daemon and back instead of a path, so a model cannot
  * misroute a write by inventing a filename.
  */

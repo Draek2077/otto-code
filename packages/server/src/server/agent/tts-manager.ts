@@ -62,7 +62,7 @@ export class TTSManager {
    * A single `speak` call is ONE utterance. We split its text into synthesis
    * segments only to keep each provider request small and to start audio flowing
    * sooner, but all segments belong to a SINGLE playback group and are emitted as
-   * contiguous chunks. Emission is pipelined — a segment ships the instant it is
+   * contiguous chunks. Emission is pipelined - a segment ships the instant it is
    * synthesized, never waiting for the previous segment's playback to be
    * confirmed. That confirmation gate used to cost a full client round-trip
    * between every sentence, which is exactly the multi-sentence lag users heard;
@@ -116,8 +116,8 @@ export class TTSManager {
     scheduleNextSegments();
 
     const group = this.beginGroupPlayback(abortSignal);
-    // Emit one chunk behind so the final emitted chunk — whichever segment it
-    // turns out to be — is the one flagged `isLastChunk`, and chunk indices stay
+    // Emit one chunk behind so the final emitted chunk - whichever segment it
+    // turns out to be - is the one flagged `isLastChunk`, and chunk indices stay
     // contiguous even if a segment yields no audio (the client plays indices in
     // strict +1 order and would otherwise stall on a gap).
     let held: { buffer: Buffer; format: string } | null = null;
@@ -176,7 +176,7 @@ export class TTSManager {
         );
 
         if (buffer && buffer.length > 0) {
-          // The previously held segment is now known not to be the last — ship it.
+          // The previously held segment is now known not to be the last - ship it.
           flushHeld(false);
           // The pause the segment's punctuation owes rides inside its own PCM;
           // the client splices chunks gapless, so this is where cadence lives.
@@ -218,7 +218,7 @@ export class TTSManager {
    * OWN single-chunk playback group with `isVoiceMode: false`. That matters
    * because the client's non-voice audio path buffers a group until its final
    * chunk before playing (it does not stream chunks within a group the way voice
-   * mode does) — one group per sentence makes each sentence play the moment it
+   * mode does) - one group per sentence makes each sentence play the moment it
    * synthesizes, while the next is already prefetching, so audio starts after the
    * first sentence instead of the whole message. The client's serial playback
    * queue keeps the sentences in order. Resolves once every emitted sentence has

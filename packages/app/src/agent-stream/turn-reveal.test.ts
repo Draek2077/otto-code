@@ -81,7 +81,7 @@ describe("nextRevealLength", () => {
       ticks += 1;
     }
     assert.equal(revealed, 8000);
-    // ~32ms ticks: an 8k burst (the skip-ahead bound) finishes in about 3s —
+    // ~32ms ticks: an 8k burst (the skip-ahead bound) finishes in about 3s -
     // ~62 capped ticks plus the proportional decay tail once under ~1k.
     assert.ok(ticks <= 110, `took ${ticks} ticks`);
   });
@@ -239,7 +239,7 @@ describe("TurnRevealTicker", () => {
   it("snaps to the target off screen instead of pacing a throttled timer", () => {
     // A backgrounded tab clamps the tick to ~1Hz. Pacing there would leave
     // segments short of their full length for minutes, and everything waiting
-    // on a settled segment — auto-speech above all — waits with them.
+    // on a settled segment - auto-speech above all - waits with them.
     let onScreen = false;
     const ticker = new TurnRevealTicker({
       turnKey: "u1",
@@ -284,7 +284,7 @@ describe("TurnRevealTicker", () => {
     // defers its items, so re-entry renders TWICE: once still carrying the
     // frozen target, then again with the live one. Snapping on the first and
     // clearing the return there left the second render to pace the whole away
-    // backlog — the rush, exactly as before the fix.
+    // backlog - the rush, exactly as before the fix.
     const ticker = new TurnRevealTicker({ turnKey: "u1", target: 1000 });
     ticker.update({ turnKey: "u1", target: 1000, enabled: true, visible: false });
 
@@ -306,7 +306,7 @@ describe("TurnRevealTicker", () => {
     });
     assert.equal(ticker.getRevealed(), 40_000);
 
-    // And the latch is spent — text arriving after the return still types.
+    // And the latch is spent - text arriving after the return still types.
     ticker.update({
       turnKey: "u1",
       target: 40_400,

@@ -68,7 +68,7 @@ describe("rulerBandRect", () => {
   });
 
   it("floors a short selection at the mark height so it stays visible", () => {
-    // 40 content px — two lines — is 2px of track on this scale.
+    // 40 content px - two lines - is 2px of track on this scale.
     expect(rulerBandRect(2000, 2040, LONG)).toEqual({ top: 100, height: RULER_MARK_HEIGHT_PX });
   });
 

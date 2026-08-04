@@ -42,7 +42,7 @@ async function getAvailablePort(): Promise<number> {
 
 // Every fixed port owned by a lane that is NOT this one. Tests and demos draw
 // their daemon/Metro/relay ports dynamically (see getAvailablePort) precisely so
-// that several runs can go at once — that is worth keeping, so isolation from
+// that several runs can go at once - that is worth keeping, so isolation from
 // the other lanes is enforced by subtraction here rather than by pinning a band.
 // The installed app, the dev app, tests, and demos are all expected to be
 // running simultaneously; see docs/development.md → "Lanes".
@@ -61,7 +61,7 @@ const RESERVED_LOCAL_PORTS = new Set([
   // in order. Desktop dev starts at 8082 and never claims 8081.
   8081, 8082, 8083, 8084, 8085, 8086, 8087, 8088, 8089,
   // The docs/marketing sites (`.claude/launch.json`): website, then archdocs.
-  // Deliberately outside the 808x Expo band — see packages/website/vite.config.ts.
+  // Deliberately outside the 808x Expo band - see packages/website/vite.config.ts.
   4300, 4400,
   // Electron remote-debugging (CDP) for the desktop dev shell.
   9223,
@@ -103,7 +103,7 @@ function sleep(ms: number): Promise<void> {
 
 // Metro accepts TCP connections long before it has compiled the web bundle, so
 // waitForServer below only proves the port is listening. The first navigation is
-// what triggers the compile, and on CI that runs well past a spec's 60s budget —
+// what triggers the compile, and on CI that runs well past a spec's 60s budget -
 // so whichever spec happened to be first in a shard paid for it and failed on
 // `page.goto` (diff-row-alignment as attempt #1, shards 2 and 4). Each shard
 // spawns its own Metro, so each one has to be warmed. Doing it here puts the
@@ -623,7 +623,7 @@ async function preflightLocalAi(config: LocalAiConfig): Promise<void> {
     );
   }
   // A reachable server that answers with an error status is a different failure
-  // (wrong E2E_LOCAL_AI_API_KEY, wrong path) — don't blame it on LM Studio being down.
+  // (wrong E2E_LOCAL_AI_API_KEY, wrong path) - don't blame it on LM Studio being down.
   if (!response.ok) {
     throw new Error(
       `Local-AI preflight failed: ${modelsUrl} answered ${response.status} ${response.statusText}. ` +
@@ -664,7 +664,7 @@ async function preflightLocalAi(config: LocalAiConfig): Promise<void> {
  *
  * The daemon only seeds when the persisted config has never carried the
  * section, so writing empty sections here is exactly the "user cleared the
- * roster" state — no seeding, no auto-bind. Specs that exercise personalities
+ * roster" state - no seeding, no auto-bind. Specs that exercise personalities
  * and teams seed their own through `helpers/personalities.ts`, which is also
  * what makes their assertions deterministic.
  */
@@ -724,7 +724,7 @@ async function logSpeechHarnessConfig(): Promise<void> {
   // unrelated tests never start background local-model downloads.
   if (!openAiUsable && !hasDefaultLocalModelsDir) {
     console.warn(
-      "[e2e] Neither OPENAI_API_KEY nor local speech models found — app E2E keeps dictation/voice disabled. " +
+      "[e2e] Neither OPENAI_API_KEY nor local speech models found - app E2E keeps dictation/voice disabled. " +
         "Tests that require dictation should gate on OTTO_DICTATION_ENABLED.",
     );
     return;
@@ -895,7 +895,7 @@ function startMetro(input: {
 }): ChildProcess {
   const appDir = path.resolve(__dirname, "..");
   // Run the Expo CLI's JS entry with the current Node binary instead of
-  // spawning `npx` — `npx` is not directly spawnable on Windows (ENOENT).
+  // spawning `npx` - `npx` is not directly spawnable on Windows (ENOENT).
   const expoCli = require.resolve("expo/bin/cli", { paths: [appDir] });
   const child = spawn(
     process.execPath,

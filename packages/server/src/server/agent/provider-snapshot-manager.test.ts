@@ -396,12 +396,21 @@ describe("ProviderSnapshotManager public surface", () => {
         copilot: { enabled: false },
         opencode: { enabled: false },
         pi: { enabled: false },
+        "otto-brain": { enabled: false },
       },
     });
     try {
       const entries = await manager.listProviders({ cwd: "/tmp/project", wait: true });
       const providers = entries.map((entry) => entry.provider).sort();
-      expect(providers).toEqual(["claude", "codex", "copilot", "omp", "opencode", "pi"]);
+      expect(providers).toEqual([
+        "claude",
+        "codex",
+        "copilot",
+        "omp",
+        "opencode",
+        "otto-brain",
+        "pi",
+      ]);
       for (const entry of entries) {
         expect(entry.enabled).toBe(false);
         expect(entry.status).toBe("unavailable");
@@ -723,7 +732,7 @@ describe("ProviderSnapshotManager public surface", () => {
         const result = await diagnosticRequest;
         expect(result.provider).toBe("mock-slow");
         expect(result.diagnostic).toContain("Mock slow provider");
-        expect(result.diagnostic).toContain("Models: —");
+        expect(result.diagnostic).toContain("Models: -");
         expect(result.diagnostic).toContain(
           `Status: Error: Timed out refreshing Mock Slow Provider after ${TEST_REFRESH_TIMEOUT_MS}ms`,
         );
@@ -1080,7 +1089,9 @@ describe("ProviderSnapshotManager applyMutableProviderConfig", () => {
         "zai-claude": { extends: "claude", label: "ZAI", enabled: true },
       });
 
-      const cwds = listener.mock.calls.map((call) => call[1]).sort();
+      // Set, not sequence: a newly registered provider is also probed in every
+      // primed snapshot, so each cwd legitimately sees more than one event.
+      const cwds = [...new Set(listener.mock.calls.map((call) => call[1]))].sort();
       expect(cwds).toEqual([cwdA, cwdB].sort());
     } finally {
       manager.destroy();

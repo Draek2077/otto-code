@@ -15,7 +15,7 @@ import { useFileCommitDiff, useRevisionBlame } from "./use-file-history-data";
 
 /**
  * What one revision did to this file, with a header that names *both sides* of
- * the comparison — the file's previous revision and the path it had then, versus
+ * the comparison - the file's previous revision and the path it had then, versus
  * this revision and the path it has now.
  *
  * The left-hand side comes from the daemon, which resolved it by walking this
@@ -126,7 +126,7 @@ export function RevisionDiff({
   );
 }
 
-/** Changed *blocks*, not changed lines — a five-line replacement is one edit. */
+/** Changed *blocks*, not changed lines - a five-line replacement is one edit. */
 function countFileDifferences(file: ParsedDiffFile): number {
   let count = 0;
   for (const hunk of file.hunks) {
@@ -295,7 +295,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: compactFont(theme.fontSize.xs),
   },
-  // Pushed to the trailing edge, where a count belongs — it describes the pane,
+  // Pushed to the trailing edge, where a count belongs - it describes the pane,
   // it is not part of the revision pair.
   headerCount: {
     marginLeft: "auto",

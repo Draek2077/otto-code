@@ -12,12 +12,12 @@ import { DotnetProbePool, type DotnetProbePoolLimits, type RunningProbe } from "
 import { ProbeRequestError } from "./probe.js";
 
 /**
- * `SolutionProvider` for .NET — implementation #1 of the seam, and the acceptance criteria.
+ * `SolutionProvider` for .NET - implementation #1 of the seam, and the acceptance criteria.
  *
  * It owns two things and delegates everything else: the discovery walk (cheap, in Node, because
  * it runs everywhere) and the translation between the sidecar's payloads and the provider-neutral
- * shapes. The domain knowledge — what a `.slnx` folder nesting means, which files MSBuild
- * actually compiles — belongs to Microsoft's libraries inside the sidecar, which is the whole
+ * shapes. The domain knowledge - what a `.slnx` folder nesting means, which files MSBuild
+ * actually compiles - belongs to Microsoft's libraries inside the sidecar, which is the whole
  * reason this exists as a subsystem rather than as a parser.
  */
 

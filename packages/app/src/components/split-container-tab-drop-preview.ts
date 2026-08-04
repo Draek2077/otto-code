@@ -23,7 +23,7 @@ interface ComputeTabDropPreviewInput {
   targetTabs: WorkspaceTabDescriptor[];
   /**
    * Which axis the target pane's tab strip lays tabs out along. The horizontal
-   * row compares X centers; the vertical rail must compare Y centers instead —
+   * row compares X centers; the vertical rail must compare Y centers instead -
    * every chip in a rail shares the same left/width, so the X comparison is
    * degenerate there and the insertion index never follows the pointer.
    */

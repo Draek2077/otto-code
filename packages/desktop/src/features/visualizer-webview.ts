@@ -50,8 +50,8 @@ const GUEST_DOM_READY_WATCHDOG_MS = 20_000;
 /**
  * Always-on failure diagnostics for the visualizer guest. The renderer-side
  * view dev-gates its logging and the guest has no visible console of its own,
- * so without this a guest that never loads — seen on Linux machines running
- * the GPU software-rendering fallback — fails with zero evidence anywhere.
+ * so without this a guest that never loads - seen on Linux machines running
+ * the GPU software-rendering fallback - fails with zero evidence anywhere.
  * These lines land in the electron-log file users can send.
  */
 export function registerVisualizerWebviewDiagnostics(contents: WebContents): void {
@@ -66,7 +66,7 @@ export function registerVisualizerWebviewDiagnostics(contents: WebContents): voi
   const watchdog = setTimeout(() => {
     if (!domReady && !contents.isDestroyed()) {
       log.error(
-        "[visualizer-webview] guest never reached dom-ready — the Visualizer tab will stay blank",
+        "[visualizer-webview] guest never reached dom-ready - the Visualizer tab will stay blank",
         { webContentsId: id, timeoutMs: GUEST_DOM_READY_WATCHDOG_MS },
       );
     }

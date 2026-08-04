@@ -43,7 +43,7 @@ test("serves the resident model batch first, then switches to the other", async 
   ]);
 
   assert.deepEqual(order, ["A1", "A2", "B1", "B2"], "A batch first (already loaded), then B batch");
-  assert.deepEqual(switches, ["b"], "only one switch — to B; A was already resident");
+  assert.deepEqual(switches, ["b"], "only one switch - to B; A was already resident");
 });
 
 test("runs up to parallelSlots requests of the resident model at once", async () => {

@@ -5,7 +5,7 @@
  * This exists because the roster the scanner used to measure was a small
  * fraction of the real one. Skills and subagents contributed by plugins are
  * advertised by name and description on every request exactly like hand-written
- * ones — a host with five plugins enabled can carry dozens of roster entries the
+ * ones - a host with five plugins enabled can carry dozens of roster entries the
  * scan reported as zero, which understates a category users are explicitly told
  * they can control by disabling things.
  *
@@ -34,7 +34,7 @@ interface PluginKey {
  * Install roots for every enabled plugin, e.g.
  * `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>`.
  *
- * Returns an empty array — never throws — when settings are absent, unreadable
+ * Returns an empty array - never throws - when settings are absent, unreadable
  * or malformed. A plugin listed in settings but not present on disk is simply
  * skipped: settings record intent, the filesystem records reality.
  */

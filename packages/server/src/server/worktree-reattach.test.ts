@@ -53,7 +53,7 @@ describe("buildReattachCandidates", () => {
     expect(candidates[0]).toMatchObject({ workspaceId: "wks_a", directoryOnDisk: false });
   });
 
-  it("excludes active worktree workspaces — they are already live", () => {
+  it("excludes active worktree workspaces - they are already live", () => {
     const candidates = buildReattachCandidates({
       worktreeWorkspaces: [workspace({ workspaceId: "wks_a", cwd: "/wt/a", archivedAt: null })],
       onDiskWorktrees: [{ path: "/wt/a", branchName: "feature/a" }],

@@ -4,19 +4,19 @@ This app uses [`react-native-unistyles` v3](https://www.unistyl.es/) for theme-a
 
 That model is powerful, but it has sharp edges. Use this note when adding theme-dependent styles.
 
-## STOP — `useUnistyles()` Is Banned
+## STOP - `useUnistyles()` Is Banned
 
 **Do not call `useUnistyles()`. Anywhere. New code MUST NOT add a call; existing call sites are tolerated only because nobody has rewritten them yet and will be converted as they are touched.** The library authors themselves [strongly advise against it](https://www.unistyl.es/v3/references/use-unistyles):
 
 > We strongly recommend **not using** this hook, as it will re-render your component on every change. This hook was created to simplify the migration process and should only be used when other methods fail.
 
-We have hit this gotcha repeatedly in Otto. The hook subscribes the component to **every** Unistyles runtime change (theme, breakpoint, insets, color scheme, scale) and returns a fresh object reference each call. That means a periodic lockstep re-render of warm subtrees (agent streams, panels, sidebars) even when nothing the user can see has changed — confirmed in profiling, with `theme` as the only changed input every cycle. It also breaks every downstream `useMemo`/`memo` boundary that includes a derived theme value.
+We have hit this gotcha repeatedly in Otto. The hook subscribes the component to **every** Unistyles runtime change (theme, breakpoint, insets, color scheme, scale) and returns a fresh object reference each call. That means a periodic lockstep re-render of warm subtrees (agent streams, panels, sidebars) even when nothing the user can see has changed - confirmed in profiling, with `theme` as the only changed input every cycle. It also breaks every downstream `useMemo`/`memo` boundary that includes a derived theme value.
 
-Reviewers MUST reject PRs that introduce a new `useUnistyles()` call. There is no last-resort carveout. If you cannot solve a case with the alternatives below, file an issue and stop — do not paper over it with the hook.
+Reviewers MUST reject PRs that introduce a new `useUnistyles()` call. There is no last-resort carveout. If you cannot solve a case with the alternatives below, file an issue and stop - do not paper over it with the hook.
 
 Use these alternatives in order:
 
-### 1. `StyleSheet.create((theme) => ...)` — default
+### 1. `StyleSheet.create((theme) => ...)` - default
 
 Most theme-aware styling needs nothing else. The Babel plugin tracks theme dependencies inside the factory and updates the native ShadowTree without any React re-render.
 
@@ -35,7 +35,7 @@ If you are reading a theme value just to feed it back into a `style` prop, you a
 
 ### 2. Hard-coded constants for genuinely static values
 
-If you only need a number that happens to live on the theme (e.g. a fixed spacing value used to compute a gap or animation distance), use a literal constant or import a static module. Static reads do not need a subscription. See the "Static Theme Imports" section below — importing `baseColors`, theme-name constants, or `type Theme` is fine when the value is intentionally static.
+If you only need a number that happens to live on the theme (e.g. a fixed spacing value used to compute a gap or animation distance), use a literal constant or import a static module. Static reads do not need a subscription. See the "Static Theme Imports" section below - importing `baseColors`, theme-name constants, or `type Theme` is fine when the value is intentionally static.
 
 ### 3. `withUnistyles(Component)` for third-party props
 
@@ -50,7 +50,7 @@ const ThemedBlur = withUnistyles(BlurView);
 
 ### 4. There is no "last resort"
 
-There is no escape hatch. If none of (1)–(3) fit, the problem is upstream — fix it there or file an issue. The hook is not on the table.
+There is no escape hatch. If none of (1)–(3) fit, the problem is upstream - fix it there or file an issue. The hook is not on the table.
 
 ## How Updates Propagate
 
@@ -80,7 +80,7 @@ this reason.
 Render-time array syntax is intentional and exempt from the app's JSX array-allocation lint rule.
 Keep the entries separate so each retains its Unistyles metadata. If composition is needed outside
 JSX, create the array inside the component or in a `useMemo` that first runs when the component
-mounts—never at module evaluation time.
+mounts-never at module evaluation time.
 
 [`useUnistyles()`](https://www.unistyl.es/v3/references/use-unistyles) is different. It gives React access to the current theme/runtime and can make a component re-render when those values change. Use it for values that must be rendered through React props, such as icon colors or small escape hatches. Do not expect direct reads from `UnistylesRuntime` to re-render a component; [issue #817](https://github.com/jpudysz/react-native-unistyles/issues/817) is a useful reminder of that invariant.
 
@@ -181,9 +181,9 @@ This applies broadly to non-`style` props that carry theme-dependent values, suc
 
 ### On web, third-party components drop Unistyles styles entirely
 
-Staleness is the mild version. On web it is worse: `StyleSheet.create` returns style objects whose style values are **non-enumerable** properties (see `removeInlineStyles` in `react-native-unistyles/src/web/utils/unistyle.ts`) — only Unistyles-tracked components can read them. Pass such a style to a component the Babel plugin does not remap (`@gorhom/bottom-sheet`'s `BottomSheetScrollView`, any third-party view) and spreading/flattening yields an empty object: **no styles apply at all, silently, from first paint**. Native is unaffected, so the symptom is web-only — which is how `AdaptiveModalSheet`'s bottom sheet shipped with its `contentContainerStyle` padding and the scroll view's `flexShrink` missing on web (content flush to the sheet edge, sticky footer pushed off-screen) while looking fine on device.
+Staleness is the mild version. On web it is worse: `StyleSheet.create` returns style objects whose style values are **non-enumerable** properties (see `removeInlineStyles` in `react-native-unistyles/src/web/utils/unistyle.ts`) - only Unistyles-tracked components can read them. Pass such a style to a component the Babel plugin does not remap (`@gorhom/bottom-sheet`'s `BottomSheetScrollView`, any third-party view) and spreading/flattening yields an empty object: **no styles apply at all, silently, from first paint**. Native is unaffected, so the symptom is web-only - which is how `AdaptiveModalSheet`'s bottom sheet shipped with its `contentContainerStyle` padding and the scroll view's `flexShrink` missing on web (content flush to the sheet edge, sticky footer pushed off-screen) while looking fine on device.
 
-Fix pattern: give the third-party component only plain RN style objects (module-level `const`, theme-free), and put themed layout on a core `View` wrapped around the children — the wrapper-`View` pattern below. Grep candidates: any `style`/`contentContainerStyle` on a `BottomSheet*` component that references a Unistyles `styles.*` entry.
+Fix pattern: give the third-party component only plain RN style objects (module-level `const`, theme-free), and put themed layout on a core `View` wrapped around the children - the wrapper-`View` pattern below. Grep candidates: any `style`/`contentContainerStyle` on a `BottomSheet*` component that references a Unistyles `styles.*` entry.
 
 ## Fix Patterns
 
@@ -208,7 +208,7 @@ const styles = StyleSheet.create((theme) => ({
 
 This is the pattern used by the settings screen: the screen background lives on a normal `View style={styles.container}`, while the scroll content container only carries layout.
 
-In practice the wrapper-`View` pattern is the one we use. Across the app, `withUnistyles` is now reserved for wrapping leaf components — mostly lucide icons (`ThemedActivityIndicator`, `ThemedChevronDown`, …) and small third-party components like `MarkdownWithStableRenderer` — so they pick up theme-reactive `color`/`tintColor` props without re-rendering their parent.
+In practice the wrapper-`View` pattern is the one we use. Across the app, `withUnistyles` is now reserved for wrapping leaf components - mostly lucide icons (`ThemedActivityIndicator`, `ThemedChevronDown`, …) and small third-party components like `MarkdownWithStableRenderer` - so they pick up theme-reactive `color`/`tintColor` props without re-rendering their parent.
 
 In principle, [`withUnistyles`](https://www.unistyl.es/v3/references/with-unistyles) can also wrap a `ScrollView` to make `contentContainerStyle` theme-reactive via its [auto-mapping behavior for `style` and `contentContainerStyle`](https://www.unistyl.es/v3/references/with-unistyles#auto-mapping-for-style-and-contentcontainerstyle-props). We previously did this on the welcome screen and hit the `> *` child-selector leak documented below; we have since moved the welcome screen to the wrapper-`View` pattern. If you find yourself reaching for `withUnistyles(ScrollView)`, treat it as a smell and check whether a wrapper view works first.
 
@@ -228,7 +228,7 @@ Use this sparingly. It works because React re-renders the prop, but it gives up 
 
 `withUnistyles` on a component with a theme-dependent `style` prop works by wrapping the component in a `<div style={{display: 'contents'}} className={hash}>` and emitting the style under a `.hash > *` child selector so the styles cascade onto the wrapped component. This is how auto-mapping for `style` and `contentContainerStyle` works on web.
 
-The sharp edge: Unistyles hashes styles by value. If `withUnistyles` receives a style whose value is **identical** to a style used elsewhere in the app on a plain `View`, both usages get the same hash — and both CSS rules (the element rule and the `> *` child rule) are emitted under the same class name. The `> *` rule then leaks onto the direct children of every `View` that shares the hash.
+The sharp edge: Unistyles hashes styles by value. If `withUnistyles` receives a style whose value is **identical** to a style used elsewhere in the app on a plain `View`, both usages get the same hash - and both CSS rules (the element rule and the `> *` child rule) are emitted under the same class name. The `> *` rule then leaks onto the direct children of every `View` that shares the hash.
 
 Concrete regression we hit: `welcome-screen.tsx` had `const ThemedScrollView = withUnistyles(ScrollView)` with `style={{ flex: 1, backgroundColor: theme.colors.surface0 }}`. `panels/agent-panel.tsx` had `root` and `container` styles with the exact same value. All three collided on class `unistyles_j2k2iilhfz`, so the browser stylesheet contained:
 
@@ -243,7 +243,7 @@ Concrete regression we hit: `welcome-screen.tsx` had `const ThemedScrollView = w
 }
 ```
 
-The child-selector rule forced `flex:1` and `background-color: surface0` onto the Composer's outer `Animated.View` (a direct child of `container`), stretching it to fill remaining space and leaving a large empty gap between the composer UI and the bottom of the screen. It also painted a `surface0` band behind the scroll-to-bottom button. The bug only appeared in the browser — Electron skips `WelcomeScreen` after pairing, so the `> *` rule was never injected there.
+The child-selector rule forced `flex:1` and `background-color: surface0` onto the Composer's outer `Animated.View` (a direct child of `container`), stretching it to fill remaining space and leaving a large empty gap between the composer UI and the bottom of the screen. It also painted a `surface0` band behind the scroll-to-bottom button. The bug only appeared in the browser - Electron skips `WelcomeScreen` after pairing, so the `> *` rule was never injected there.
 
 Symptoms to watch for:
 
@@ -266,13 +266,13 @@ Avoid the bug by preferring the wrapper-`View` pattern from the previous section
 
 ## `pointerEvents` In Stylesheets Is Silently Broken On Web
 
-Do not put `pointerEvents` inside a `StyleSheet.create` style (or any style object) — pass it as a **prop** on the `View`/`Animated.View`.
+Do not put `pointerEvents` inside a `StyleSheet.create` style (or any style object) - pass it as a **prop** on the `View`/`Animated.View`.
 
-On web, Unistyles emits style properties as literal CSS, so `pointerEvents: "box-none"` becomes `pointer-events: box-none` — not a valid CSS value. The browser drops the declaration and the element silently keeps `pointer-events: auto`. Nothing errors, nothing warns; the overlay just eats clicks. The `pointerEvents` **prop** goes through react-native-web instead, which maps `box-none`/`box-only` to real CSS classes (the benign `r-pointerEvents-* > *` rules mentioned above).
+On web, Unistyles emits style properties as literal CSS, so `pointerEvents: "box-none"` becomes `pointer-events: box-none` - not a valid CSS value. The browser drops the declaration and the element silently keeps `pointer-events: auto`. Nothing errors, nothing warns; the overlay just eats clicks. The `pointerEvents` **prop** goes through react-native-web instead, which maps `box-none`/`box-only` to real CSS classes (the benign `r-pointerEvents-* > *` rules mentioned above).
 
-Concrete regression we hit: the agent stream's scroll-to-bottom overlay — a full-width absolute strip with `pointerEvents: "box-none"` in its Unistyles stylesheet. On web the strip blocked clicks on action groups to the left and right of the button. Moving `box-none` to the prop fixed it.
+Concrete regression we hit: the agent stream's scroll-to-bottom overlay - a full-width absolute strip with `pointerEvents: "box-none"` in its Unistyles stylesheet. On web the strip blocked clicks on action groups to the left and right of the button. Moving `box-none` to the prop fixed it.
 
-Second sharp edge once you use the prop: RNW's `box-none` implementation resets **direct children** to `pointer-events: auto`. If a full-width layout wrapper sits between the `box-none` container and the interactive element, that wrapper becomes clickable again and blocks the same area. The interactive element must be the direct child of the `box-none` view — don't sandwich a centering wrapper in between.
+Second sharp edge once you use the prop: RNW's `box-none` implementation resets **direct children** to `pointer-events: auto`. If a full-width layout wrapper sits between the `box-none` container and the interactive element, that wrapper becomes clickable again and blocks the same area. The interactive element must be the direct child of the `box-none` view - don't sandwich a centering wrapper in between.
 
 ## Hidden Sheet Content
 
@@ -337,7 +337,7 @@ This is the dominant pattern in the app today (see `sidebar-workspace-list.tsx`,
 
 Do not apply `StyleSheet.create((theme) => ...)` styles to a Reanimated `Animated.View`. Unistyles wraps styled components in a `<UnistylesComponent>` and patches native view props from C++ via the ShadowRegistry. Reanimated also reaches into the same native node from its worklet runtime. When a theme change fires, both systems try to mutate the same node and the app crashes with `Unable to find node on an unmounted component.` This was a real iOS sidebar crash on theme toggle (commit `4896cfe9`).
 
-Fix: keep static positioning on the `Animated.View` in plain React Native `StyleSheet`, and pass theme-dependent values (e.g. `backgroundColor`) as inline style from `useUnistyles()` — the inline path is acceptable here because no other escape works:
+Fix: keep static positioning on the `Animated.View` in plain React Native `StyleSheet`, and pass theme-dependent values (e.g. `backgroundColor`) as inline style from `useUnistyles()` - the inline path is acceptable here because no other escape works:
 
 ```tsx
 import { StyleSheet as RNStyleSheet } from "react-native";
@@ -377,43 +377,43 @@ If we ever need to avoid the transition entirely, store at least the theme prefe
 
 ## Runtime Theme Patching For User Preferences
 
-Appearance settings (UI/mono font family, font sizes, syntax-highlight theme) are applied by patching every registered theme at runtime with `UnistylesRuntime.updateTheme(name, updater)` — not by threading preference reads through components. `applyAppearance` in `packages/app/src/screens/settings/appearance/apply-appearance.ts` runs from a `ProvidersWrapper` effect on settings load/change and loops `ALL_THEME_KEYS`, returning `{ ...theme, fontFamily, fontSize, lineHeight, colors.syntax }`.
+Appearance settings (UI/mono font family, font sizes, syntax-highlight theme) are applied by patching every registered theme at runtime with `UnistylesRuntime.updateTheme(name, updater)` - not by threading preference reads through components. `applyAppearance` in `packages/app/src/screens/settings/appearance/apply-appearance.ts` runs from a `ProvidersWrapper` effect on settings load/change and loops `ALL_THEME_KEYS`, returning `{ ...theme, fontFamily, fontSize, lineHeight, colors.syntax }`.
 
 This works without `useUnistyles()` because every consumer already reads these tokens through `StyleSheet.create((theme) => …)` (or the `withUnistyles`/`uniProps` path for the markdown renderer), so patching the theme repaints tracked views through the native ShadowRegistry with no React re-render.
 
 ### Only two registered theme keys: `light`/`dark` as repaintable mirrors
 
-Only two Unistyles theme keys are ever registered (`packages/app/src/styles/unistyles.ts`'s `StyleSheet.configure({ themes: { light, dark } })`) — not one key per named variant (Meadow, Ember, Slate, ...). This is a hard constraint, not a style choice: `schemeToTheme()` inside `react-native-unistyles` hardcodes the literal strings `'light'`/`'dark'`, and `UnistylesRuntime.setAdaptiveThemes(true)` always resolves to `setTheme(schemeToTheme(colorScheme))` — adaptive mode can only ever toggle between whatever is registered under those two literal keys, never an arbitrary named theme.
+Only two Unistyles theme keys are ever registered (`packages/app/src/styles/unistyles.ts`'s `StyleSheet.configure({ themes: { light, dark } })`) - not one key per named variant (Meadow, Ember, Slate, ...). This is a hard constraint, not a style choice: `schemeToTheme()` inside `react-native-unistyles` hardcodes the literal strings `'light'`/`'dark'`, and `UnistylesRuntime.setAdaptiveThemes(true)` always resolves to `setTheme(schemeToTheme(colorScheme))` - adaptive mode can only ever toggle between whatever is registered under those two literal keys, never an arbitrary named theme.
 
-Otto's appearance settings let a user pick a specific variant per spectrum (e.g. Meadow for light, Ember for dark) and have System mode auto-swap between those two specific picks as the OS scheme flips. The only way to make that work is to keep the `light`/`dark` keys perpetually repainted with `colors`/`shadow` copied from whichever variant is the user's current pick — `packages/app/src/screens/settings/appearance/apply-color-scheme.ts`'s `applyColorScheme` does this, sourcing from the 13 named variant objects in `theme.ts` (`meadowTheme`, `darkGhosttyTheme`, etc.), which are exported as plain data and never passed to `StyleSheet.configure` themselves. This repaint runs regardless of which mode is active (explicit Light/Dark or System), so switching modes back and forth never loses or resets a per-spectrum pick, and there's no staleness window — do not "simplify" this by re-registering variant keys individually; it would break System mode's ability to target an arbitrary variant.
+Otto's appearance settings let a user pick a specific variant per spectrum (e.g. Meadow for light, Ember for dark) and have System mode auto-swap between those two specific picks as the OS scheme flips. The only way to make that work is to keep the `light`/`dark` keys perpetually repainted with `colors`/`shadow` copied from whichever variant is the user's current pick - `packages/app/src/screens/settings/appearance/apply-color-scheme.ts`'s `applyColorScheme` does this, sourcing from the 13 named variant objects in `theme.ts` (`meadowTheme`, `darkGhosttyTheme`, etc.), which are exported as plain data and never passed to `StyleSheet.configure` themselves. This repaint runs regardless of which mode is active (explicit Light/Dark or System), so switching modes back and forth never loses or resets a per-spectrum pick, and there's no staleness window - do not "simplify" this by re-registering variant keys individually; it would break System mode's ability to target an arbitrary variant.
 
-**Always repaint before switching adaptive/pinned state, never after** — `applyColorScheme` repaints both mirrors first, then calls `setAdaptiveThemes`/`setTheme`, so there is no frame where a mirror still shows a stale variant.
+**Always repaint before switching adaptive/pinned state, never after** - `applyColorScheme` repaints both mirrors first, then calls `setAdaptiveThemes`/`setTheme`, so there is no frame where a mirror still shows a stale variant.
 
 Gotchas:
 
 - **Patch all registered themes, not just the active one.** The active theme can change and adaptive mode can flip light/dark; patching every key keeps the active key current and makes ordering vs `setTheme`/`setAdaptiveThemes` irrelevant. The effect depends on the settings values (not on the resolved theme), so it cannot loop.
 - **Narrow the discriminated union before spreading.** `updateTheme`'s updater returns the theme union; spreading the union widens `colorScheme` to `"light" | "dark"`, which is assignable to neither concrete member. Branch on `t.colorScheme` so each branch spreads a single narrowed theme type (no `as`). Both `applyAppearance` and `applyColorScheme` need this.
 - **`colors.syntax` is owned by `applyAppearance`, not `applyColorScheme`.** When repainting `colors` from a variant's source palette, carry the mirror's _existing_ `colors.syntax` forward (`{ ...source.colors, syntax: t.colors.syntax }`) instead of the source variant's own syntax value, so the two patchers stay commutative regardless of call order.
-- **`lineHeight.diff` is the code/diff line-height axis** — it is coupled to the code-font-size control (≈ `codeFontSize * 1.5`). Do NOT use it for prose. Markdown body line-height scales with the UI ramp (`Math.round(theme.fontSize.base * 1.4)`); routing prose through `lineHeight.diff` clips text at small code sizes.
+- **`lineHeight.diff` is the code/diff line-height axis** - it is coupled to the code-font-size control (≈ `codeFontSize * 1.5`). Do NOT use it for prose. Markdown body line-height scales with the UI ramp (`Math.round(theme.fontSize.base * 1.4)`); routing prose through `lineHeight.diff` clips text at small code sizes.
 - **High-churn draft values** (live-while-typing in the appearance preview) bypass the theme: apply them as inline styles marked with `inlineUnistylesStyle` so per-keystroke values don't grow the `#unistyles-web` CSS registry.
 - **Mounted parsed content uses `AppearanceStyleBoundary`.** Markdown, syntax-highlighted code, and tool-call detail bodies can contain memoized/custom renderer trees that do not naturally re-run when runtime-patched appearance tokens change. Wrap the parsed surface once with `packages/app/src/components/appearance-style-boundary.tsx`; do not add local "appearance key" props at each callsite.
 - **Dynamic font tokens stay widened.** `fontFamily`, `fontSize`, and `lineHeight` on `commonTheme` are annotated `string`/`number` (not narrowed by `as const`) so the updater's return assigns; the platform default stacks live in `DEFAULT_UI_FONT_STACK` / `DEFAULT_MONO_FONT_STACK`.
 
 ## `ScopedTheme` Does Not Stick On Web
 
-`ScopedTheme` (used by the "Black agent chat background" setting — Settings > Appearance > Agents — to force the `black` theme inside chat panes) works by setting a registry-level "scoped theme" flag during the renders that pass through its marker children — styles registered in that window are computed against the scoped theme. That model breaks on web for any live subtree: when a deep child re-renders on its own (chat-stream updates, hover state, ...), its render never passes through the markers, `getClassName` recomputes with no scope, and the element's class flips back to the app theme. The scope silently unwinds; on first implementation the tab chip went black but the chat pane stayed app-themed.
+`ScopedTheme` (used by the "Black agent chat background" setting - Settings > Appearance > Agents - to force the `black` theme inside chat panes) works by setting a registry-level "scoped theme" flag during the renders that pass through its marker children - styles registered in that window are computed against the scoped theme. That model breaks on web for any live subtree: when a deep child re-renders on its own (chat-stream updates, hover state, ...), its render never passes through the markers, `getClassName` recomputes with no scope, and the element's class flips back to the app theme. The scope silently unwinds; on first implementation the tab chip went black but the chat pane stayed app-themed.
 
-The web fix relies on how Unistyles themes work there: with the default `CSSVars` mode, every generated class references `var(--...)` and each registered theme's variables are emitted under `:root.<name>` in the `#unistyles-web` style tag. `components/black-chat-scope.web.tsx` wraps the pane in a `display: contents` DOM element carrying `.otto-black-chat-scope`, and `styles/black-chat-scope.ts` mirrors the generated `:root.black{...}` block verbatim under that class (re-synced by `applyColorScheme`/`applyAppearance` after every repaint). CSS cascading then wins regardless of re-renders. Copying the generated rule — instead of serializing the theme ourselves — guarantees the variable names match whatever the installed Unistyles version emits.
+The web fix relies on how Unistyles themes work there: with the default `CSSVars` mode, every generated class references `var(--...)` and each registered theme's variables are emitted under `:root.<name>` in the `#unistyles-web` style tag. `components/black-chat-scope.web.tsx` wraps the pane in a `display: contents` DOM element carrying `.otto-black-chat-scope`, and `styles/black-chat-scope.ts` mirrors the generated `:root.black{...}` block verbatim under that class (re-synced by `applyColorScheme`/`applyAppearance` after every repaint). CSS cascading then wins regardless of re-renders. Copying the generated rule - instead of serializing the theme ourselves - guarantees the variable names match whatever the installed Unistyles version emits.
 
-`ScopedTheme` still wraps the subtree inside the DOM wrapper: `withUnistyles`/`uniProps` consumers resolve real values through React, not CSS vars, and capture their scoped theme at mount — but **only when their mount render passes through the markers**. Components that mount during a partial re-render (streamed chat messages mounting from a store update deep in the tree) capture no scope and resolve the app theme. That is invisible in dark mode (app dark variant ≈ black variant) but glaring when the app theme is light: markdown text and inline-code chips rendered light-Sherbet colors — dark plum text, pale chips — on the pure-black pane.
+`ScopedTheme` still wraps the subtree inside the DOM wrapper: `withUnistyles`/`uniProps` consumers resolve real values through React, not CSS vars, and capture their scoped theme at mount - but **only when their mount render passes through the markers**. Components that mount during a partial re-render (streamed chat messages mounting from a store update deep in the tree) capture no scope and resolve the app theme. That is invisible in dark mode (app dark variant ≈ black variant) but glaring when the app theme is light: markdown text and inline-code chips rendered light-Sherbet colors - dark plum text, pale chips - on the pure-black pane.
 
-The fix for JS-resolved _color_ values on web is `styles/theme-color-ref.ts` (`themeColorRef(theme, "surface2")`): it emits `var(--colors-surface2)` on web so the value follows the nearest ancestor's CSS variables (the black scope wrapper inside chat panes, `:root` elsewhere), and the concrete theme value on native where `ScopedTheme` works. `styles/markdown-styles.ts` uses it for every color. Restrictions: only flat color tokens, only values that reach the DOM as CSS, never do math on the result — and **not** for `react-native-svg` icon `color` props, which land as an SVG presentation attribute where `var()` does not resolve. Icon `uniProps` color mappings inside scoped subtrees still have the mount-timing leak (muted greys, low visual impact); fixing them needs a different route (e.g. `style: { color: var }` instead of the `color` prop).
+The fix for JS-resolved _color_ values on web is `styles/theme-color-ref.ts` (`themeColorRef(theme, "surface2")`): it emits `var(--colors-surface2)` on web so the value follows the nearest ancestor's CSS variables (the black scope wrapper inside chat panes, `:root` elsewhere), and the concrete theme value on native where `ScopedTheme` works. `styles/markdown-styles.ts` uses it for every color. Restrictions: only flat color tokens, only values that reach the DOM as CSS, never do math on the result - and **not** for `react-native-svg` icon `color` props, which land as an SVG presentation attribute where `var()` does not resolve. Icon `uniProps` color mappings inside scoped subtrees still have the mount-timing leak (muted greys, low visual impact); fixing them needs a different route (e.g. `style: { color: var }` instead of the `color` prop).
 
 If you scope another subtree to a named theme on web, reuse `BlackChatScope`'s pattern; do not reach for `ScopedTheme` alone.
 
 ## Patched: `uniProps` leaked to the DOM on web
 
-Upstream `withUnistyles` (v3.2.4) merges the wrapper's full props — including the `uniProps` function itself — into the props spread onto the wrapped component. On web that forwards `uniProps` all the way to a DOM element, and React logs ``React does not recognize the `uniProps` prop on a DOM element`` for every `uniProps` callsite on screen. Harmless on native (RN drops unknown props) but it floods the web console — including the console channel browser-based verification tooling reads.
+Upstream `withUnistyles` (v3.2.4) merges the wrapper's full props - including the `uniProps` function itself - into the props spread onto the wrapped component. On web that forwards `uniProps` all the way to a DOM element, and React logs ``React does not recognize the `uniProps` prop on a DOM element`` for every `uniProps` callsite on screen. Harmless on native (RN drops unknown props) but it floods the web console - including the console channel browser-based verification tooling reads.
 
 Fixed by `patches/react-native-unistyles+3.2.4.patch` (applied via `scripts/postinstall-patches.mjs`), which strips `uniProps` from the pass-through props in the web `withUnistyles` before merging. When bumping the unistyles version, re-check whether upstream fixed this; if not, re-create the patch (`npx patch-package react-native-unistyles`) and update the filename in `patches/`.
 

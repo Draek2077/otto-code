@@ -18,7 +18,7 @@ interface DiffScrollProps {
   style?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
   /**
-   * Web-only overlay-scrollbar wiring — see diff-scroll.web.tsx. Accepted here so
+   * Web-only overlay-scrollbar wiring - see diff-scroll.web.tsx. Accepted here so
    * the two implementations share one prop shape, and ignored: native's platform
    * indicator already auto-hides, and this scroller's own onScroll drives the
    * sidebar close gesture below.

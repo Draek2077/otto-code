@@ -6,7 +6,7 @@ import type { MermaidDiagramProps } from "./mermaid-diagram-contract";
 import { MERMAID_RENDER_DEBOUNCE_MS } from "./mermaid-diagram-contract";
 
 // Native host: iOS/Android have no DOM, so mermaid runs inside a
-// react-native-webview carrying a self-contained payload — the CM6 editor's and
+// react-native-webview carrying a self-contained payload - the CM6 editor's and
 // the terminal's proven pattern. mermaid-diagram.tsx overrides this file on web.
 //
 // The payload module is reached through a dynamic import() and nothing else
@@ -140,8 +140,8 @@ export function MermaidDiagram({ code, theme, renderFallback }: MermaidDiagramPr
   }, []);
 
   const drawable = height > 0 && !error;
-  // Before the diagram has a measured height — and forever, if it failed to
-  // parse — the WebView measures off-flow at a provisional height instead of
+  // Before the diagram has a measured height - and forever, if it failed to
+  // parse - the WebView measures off-flow at a provisional height instead of
   // being squeezed to zero: a WebView with no height may never lay its page out,
   // and then it could never report the height that would give it one. Absolute
   // + full width keeps the measurement honest (the diagram scales to the pane it

@@ -2,7 +2,7 @@
  * The headless brain service: the router + supervisor bound to a port, with the
  * VRAM fit, on-demand model switching, remote auth, built-in TLS, and pid-file
  * lifecycle. Used both by `otto brain serve` (foreground) and by a detached
- * `otto brain start`. It stays provider-neutral about the runtime source — it
+ * `otto brain start`. It stays provider-neutral about the runtime source - it
  * takes whatever resolveRuntime picks (managed or LM Studio).
  *
  * TLS is served in-process (config.tls): HTTPS with a files / self-signed /
@@ -23,13 +23,15 @@ import {
 import { resolveBrainPaths } from "../config/paths.js";
 import type { BrainConfig } from "../config/schema.js";
 import { query as queryGpu } from "../gpu.js";
-import { pickModel, scanModels } from "../models/index.js";
+import { managedModelsDir, pickAutoModel, pickModel, scanModels } from "../models/index.js";
 import { CommandError } from "../output/types.js";
 import { resolveRuntime } from "../runtime/index.js";
 import type { Model } from "../types.js";
 import * as vram from "../vram.js";
 import { resolveVersion } from "../version.js";
 import * as results from "../ops/results.js";
+import { createCpuSampler, sample as sampleSystem } from "../sysmon.js";
+import { createHostApi } from "./host-api.js";
 import { createRouter, Telemetry } from "./router.js";
 import { Supervisor } from "./supervisor.js";
 import * as tailscale from "./tailscale.js";
@@ -41,7 +43,7 @@ function redactConfig(config: BrainConfig): BrainConfig {
   return {
     ...config,
     auth: { ...config.auth, token: config.auth.token ? "********" : null },
-    // The Hugging Face token is the owner's account credential — never echo it to
+    // The Hugging Face token is the owner's account credential - never echo it to
     // a caller of /__host/config (read is allowed by default on a shared brain).
     ...(config.hfToken ? { hfToken: "********" } : {}),
   };
@@ -82,7 +84,7 @@ export function extractToken(req: http.IncomingMessage): string | null {
 
 /**
  * The one derivation of the effective auth token. `mode: "token"` with a null or
- * empty token is NO auth — the bind guard and withAuth both read this, so they
+ * empty token is NO auth - the bind guard and withAuth both read this, so they
  * cannot disagree (a mode-only guard once let mode=token + token=null bind
  * non-loopback and then serve every route ungated).
  */
@@ -152,7 +154,7 @@ export async function startService({
   const displayHost = tlsOptions?.hostname ?? bindHost;
 
   // Auth is orthogonal to transport: TLS encrypts the pipe, a token authorizes the
-  // caller. A non-loopback bind still needs an actual token even over HTTPS —
+  // caller. A non-loopback bind still needs an actual token even over HTTPS -
   // gate on the token itself, not auth.mode, or mode=token with no token binds open.
   const authToken = effectiveAuthToken(config);
   if (
@@ -170,10 +172,20 @@ export async function startService({
     });
   }
 
+  // `allowRemoteConfig` exists to gate NETWORK control (see its schema comment:
+  // "a brain is not remotely controllable until its owner opts in") - it is not
+  // meant to lock out the only caller that can ever reach a loopback-bound
+  // brain, which is the local daemon that spawned it. When nothing off-machine
+  // could possibly be a caller, config writes are always allowed; the flag only
+  // starts to matter once the bind is actually reachable from elsewhere.
+  const allowWrite = () => isLoopback(bindHost) || config.allowRemoteConfig;
+
   const store = loadProfilesStore(paths);
-  const catalog = scanModels(config, env);
+  // Not const: deleting a model through the management API re-scans and replaces
+  // this, and every reader goes through a getter so nobody holds a stale array.
+  let catalog = scanModels(config, env);
   const needle = modelNeedle ?? config.defaultModel ?? store.lastModelId ?? undefined;
-  const model = pickModel(catalog, needle);
+  const model = needle ? pickModel(catalog, needle) : pickAutoModel(catalog);
   let profile = forModel(store, model, config.defaults);
 
   const gpu = await queryGpu();
@@ -263,6 +275,38 @@ export async function startService({
     return redactConfig(config);
   };
 
+  // One CPU sampler for the lifetime of the service: it reports a busy fraction
+  // between successive calls, so a fresh one per request would always return null.
+  const cpuSampler = createCpuSampler();
+
+  const hostApi = createHostApi({
+    supervisor,
+    getCatalog: () => catalog,
+    rescan: () => {
+      catalog = scanModels(config, env);
+      return catalog;
+    },
+    getProfilesStore: () => store,
+    saveProfiles: (next) => saveProfilesStore(next, paths),
+    getProfileDefaults: () => config.defaults,
+    queryGpuInfo: queryGpu,
+    getRanking: () => {
+      try {
+        return results.rankModels(results.loadAll());
+      } catch {
+        return [];
+      }
+    },
+    loadModel,
+    // The same gate as POST /__host/config. Deleting someone's model files over
+    // the network is strictly more dangerous than changing their default model,
+    // so it does not get a weaker one.
+    getAllowWrite: allowWrite,
+    getModelsDir: () => managedModelsDir(config, env),
+    sampleResources: () =>
+      sampleSystem(cpuSampler, { host: supervisor.host, port: supervisor.internalPort }),
+  });
+
   const handler = withAuth(
     createRouter({
       supervisor,
@@ -276,7 +320,10 @@ export async function startService({
       getLockModel: () => config.lockModel,
       getDefaultModel: () => config.defaultModel,
       applyConfigPatch,
-      getAllowConfigWrite: () => config.allowRemoteConfig,
+      getAllowConfigWrite: allowWrite,
+      hostApi,
+      getResources: () =>
+        sampleSystem(cpuSampler, { host: supervisor.host, port: supervisor.internalPort }),
     }),
     authToken,
   );

@@ -5,12 +5,12 @@ import { type Run, RunSchema } from "@otto-code/protocol/orchestration";
 
 import { writeJsonFileAtomic } from "../atomic-file.js";
 
-// File-backed persistence for orchestration Runs — one JSON file per run under
+// File-backed persistence for orchestration Runs - one JSON file per run under
 // `$OTTO_HOME/runs/{runId}.json`, mirroring ScheduleStore. Runs are write-heavy
 // projections (the engine emits on every phase change), so the surface is
 // save/get/list/delete rather than create/update: the RunService owns the
 // mutable run and calls `save` on each emit. Writes are atomic (temp + rename)
-// and serialized per-id so concurrent emits can't interleave. No migrations —
+// and serialized per-id so concurrent emits can't interleave. No migrations -
 // forward-compat is via optional schema fields (see docs/data-model.md).
 export class RunStore {
   private readonly mutations = new Map<string, Promise<unknown>>();

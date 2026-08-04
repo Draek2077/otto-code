@@ -40,7 +40,7 @@ test("adds a changed file to the focused chat without replacing its composer dra
     // Otto only offers "Add to context" while a chat is focused
     // (useDiffContextAttachmentToggle returns null without a focusedAgentId).
     // Focus follows the focused pane's active tab, not the DOM, so booting
-    // straight onto the agent route is what establishes it — this click is here
+    // straight onto the agent route is what establishes it - this click is here
     // to prove the draft survives a real interaction, not to set focus.
     await agentComposer.click();
     // Paseo's diff panel splits the file row into a `-toggle` child and offers

@@ -4,9 +4,9 @@ Everything a user can run for a project, behind the Play button.
 
 A **Script** is one runnable command. It comes from one of two places:
 
-- **Declared** — written into the workspace's `otto.json`. Persisted, checked into the repo, and
+- **Declared** - written into the workspace's `otto.json`. Persisted, checked into the repo, and
   the only kind that may own a service-proxy route.
-- **Discovered** — read out of the project's own files by a **script provider**
+- **Discovered** - read out of the project's own files by a **script provider**
   (`package.json` scripts today). Derived, never persisted, recomputed on every fetch.
 
 Both are Scripts. The originating file's vocabulary does not survive the trip:
@@ -19,8 +19,8 @@ and Otto calls all of them Scripts. See [glossary.md](glossary.md).
 
 ```ts
 interface ScriptProvider {
-  readonly sourceId: string; // "npm" — stable; qualified names are built from it
-  readonly sourceLabel: string; // "npm" — the group header's tool half
+  readonly sourceId: string; // "npm" - stable; qualified names are built from it
+  readonly sourceLabel: string; // "npm" - the group header's tool half
   discover(context: ScriptDiscoveryContext): Promise<DiscoveredScript[]>;
 }
 ```
@@ -39,8 +39,8 @@ Adding a source is one file plus one line in `createScriptProviders()`.
 
 ## Qualified names
 
-Everything downstream of the dropdown — the runtime store, the service-proxy hostname, the
-`workspace.script.*` RPCs — is keyed by `scriptName`, and two sources can both offer `build`. So a
+Everything downstream of the dropdown - the runtime store, the service-proxy hostname, the
+`workspace.script.*` RPCs - is keyed by `scriptName`, and two sources can both offer `build`. So a
 discovered Script's wire name is qualified with its source:
 
 ```
@@ -54,7 +54,7 @@ why discovery needed no new RPC and no change to the runtime store: `workspace.s
 
 ## Discovery is on-demand, never in the descriptor
 
-`WorkspaceDescriptorPayload.scripts` carries exactly what it always did — the declared Scripts plus
+`WorkspaceDescriptorPayload.scripts` carries exactly what it always did - the declared Scripts plus
 any running orphan runtime entry. It is **not** where discovered Scripts live: a monorepo root
 `package.json` can hold forty of them, and the descriptor is pushed on every `workspace_update`.
 
@@ -67,8 +67,8 @@ deliberate:
 
 | Source                                  | Owns                                            | Stale when             |
 | --------------------------------------- | ----------------------------------------------- | ---------------------- |
-| The fetched list                        | identity — label, source, command               | something starts/stops |
-| The descriptor (`script_status_update`) | status — lifecycle, health, exit code, terminal | a project file changes |
+| The fetched list                        | identity - label, source, command               | something starts/stops |
+| The descriptor (`script_status_update`) | status - lifecycle, health, exit code, terminal | a project file changes |
 
 `useWorkspaceScriptGroups` fetches identity once and **overlays status** from the descriptor, field
 by field. It does not refetch on `script_status_update`, which arrives on every health poll. The
@@ -76,7 +76,7 @@ overlay is explicit rather than a spread: a live orphan record carries no `label
 and spreading it over the fetched record would erase both.
 
 A **running** discovered Script reaches the descriptor only through the orphan path, so
-`buildOrphanRuntimePayload` recovers its source from the qualified name — otherwise `npm:dev` leaks
+`buildOrphanRuntimePayload` recovers its source from the qualified name - otherwise `npm:dev` leaks
 into the sidebar as a script name.
 
 ## Coexistence: declared always wins
@@ -92,13 +92,13 @@ The name rule is the aggressive half, on purpose. `otto.json` is small and hand-
 declared `dev` _is_ the dev script and must not appear twice. The cost is that a genuinely
 different declared `dev` hides `npm run dev`; the escape hatch is renaming the declared entry.
 
-Two _providers_ offering the same bare name do not collide with each other — their qualified names
+Two _providers_ offering the same bare name do not collide with each other - their qualified names
 differ, and they are genuinely different things.
 
 ## Running one
 
-Discovered Scripts get the same machinery as declared ones — terminal, runtime store, lifecycle,
-exit code, View terminal, Stop, Restart — and **no service-proxy route**.
+Discovered Scripts get the same machinery as declared ones - terminal, runtime store, lifecycle,
+exit code, View terminal, Stop, Restart - and **no service-proxy route**.
 
 A proxy route needs a declared port and the intent that the thing serves HTTP.
 `package.json` cannot supply either: `npm run dev` might be a server, a watcher, or a one-shot.
@@ -116,7 +116,7 @@ power, it is less. `script-menu-view.ts` is the pure layer that decides what the
 
 **Otto's group is expanded and first; every discovered group is collapsed**, its header carrying
 the source and a row count so the user can decide whether opening it is worth it. A group header is
-hidden only in the pre-discovery shape (one group, always expanded) — a collapsible group must
+hidden only in the pre-discovery shape (one group, always expanded) - a collapsible group must
 always show its header, or its rows have nothing to open them.
 
 **Recent** lifts the discovered Scripts this user actually runs into their own expanded group near
@@ -160,7 +160,7 @@ predates discovery gets exactly the `otto.json` list it asked for.
 
 Capability gate: `server_info.features.workspaceScriptDiscovery`
 (`COMPAT(workspaceScriptDiscovery)`, added in v0.7.6). An older daemon simply does not offer the
-grouped list. There is no client-side scan to fall back to — only the daemon can read the
+grouped list. There is no client-side scan to fall back to - only the daemon can read the
 workspace's files.
 
 ## Where the code lives

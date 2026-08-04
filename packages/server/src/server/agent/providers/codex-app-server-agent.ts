@@ -211,7 +211,7 @@ const CODEX_APP_SERVER_CAPABILITIES: AgentCapabilityFlags = {
   supportsRewindBoth: false,
   // Codex models sandbox tiers natively; resolveSandboxPolicyType narrows the
   // seat's tier to the session's access ceiling on every turn. read-only is
-  // its floor — there is no "no filesystem" tier and no tool-deny list — so
+  // its floor - there is no "no filesystem" tier and no tool-deny list - so
   // supportsWorkspaceAccessNone stays unset and "none" nodes are refused at
   // spawn rather than run with native reads live.
   supportsWorkspaceAccess: true,
@@ -882,7 +882,7 @@ function filterCodexThreadsByCwd(
   }
   // thread/list rows carry an optional cwd. The descriptor builder later
   // falls back to process.cwd() if the field is missing, so we only match
-  // here when the row genuinely carries a cwd string — otherwise threads
+  // here when the row genuinely carries a cwd string - otherwise threads
   // with no cwd would falsely match the daemon's own cwd.
   const matchesCwd = createPathEquivalenceMatcher(cwd);
   return threads.filter((thread) => typeof thread.cwd === "string" && matchesCwd(thread.cwd));
@@ -4548,7 +4548,7 @@ export class CodexAppServerAgentSession implements AgentSession {
    * session's workspace access ceiling if it declares one.
    *
    * Codex is the one provider that already models this natively, so the mapping
-   * is direct — and it is a *ceiling*, never a widening: a graph node asking for
+   * is direct - and it is a *ceiling*, never a widening: a graph node asking for
    * read-only can't be handed workspace-write by a mode preset.
    */
   private resolveSandboxPolicyType(presetSandbox: string): string {

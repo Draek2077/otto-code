@@ -63,7 +63,7 @@ export class StructuredAgentFallbackError extends Error {
 
 /**
  * True when `error` is one of the expected structured-generation failures
- * (invalid model output after retries, or every fallback provider exhausted) —
+ * (invalid model output after retries, or every fallback provider exhausted) -
  * the "generation just didn't work out" cases callers degrade gracefully on,
  * as opposed to unexpected errors they should rethrow.
  */
@@ -370,13 +370,13 @@ export async function getStructuredAgentResponse<T>(
  * retry loop over `manager.generateBareCompletion`, a direct tool-less provider
  * call. It intentionally does NOT spawn an agent (no createAgent → runAgent →
  * closeAgent), so no full session config, no Otto tool catalog / MCP mount, and
- * on Claude no `claude_code` preset or CLAUDE.md is ever built — the prompt is
+ * on Claude no `claude_code` preset or CLAUDE.md is ever built - the prompt is
  * self-contained. Behavior contract is preserved: same schemas, same `maxRetries`
  * handling, and the fallback ladder in
  * `generateStructuredAgentResponseWithFallback` still applies (a provider that
  * can't do a tool-less completion throws here and the ladder skips to the next).
  *
- * `agentId`/`persistSession` on the options are legacy no-ops for this path —
+ * `agentId`/`persistSession` on the options are legacy no-ops for this path -
  * kept so the runner signature and existing callers stay unchanged.
  */
 export async function generateStructuredAgentResponse<T>(

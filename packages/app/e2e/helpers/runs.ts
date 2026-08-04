@@ -12,7 +12,7 @@ import type { SeedDaemonClient } from "./seed-client";
  * home and bounce the daemon with helpers/daemon-restart.ts to make it live.
  *
  * Only terminal statuses ("done" / "failed" / "canceled") survive a restart
- * unchanged — in-flight runs are marked failed by RunService.init.
+ * unchanged - in-flight runs are marked failed by RunService.init.
  */
 export interface SeededRunPhase {
   id: string;

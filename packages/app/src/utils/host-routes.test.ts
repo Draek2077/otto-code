@@ -47,7 +47,7 @@ describe("workspace route parsing", () => {
   });
 
   it("decodes non-canonical base64url workspace IDs used by older links", () => {
-    // Unpadded base64url of "/home/user/dev/otto" — older links wrote the
+    // Unpadded base64url of "/home/user/dev/otto" - older links wrote the
     // segment without the trailing "=" that canonical base64 would carry.
     expect(decodeWorkspaceIdFromPathSegment("L2hvbWUvdXNlci9kZXYvb3R0bw")).toBe(
       "/home/user/dev/otto",

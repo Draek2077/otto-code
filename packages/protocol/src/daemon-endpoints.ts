@@ -180,7 +180,7 @@ export function buildRelayWebSocketUrl(params: {
   role: RelayRole;
   /**
    * Per-connection routing identifier used by the daemon to open server data sockets.
-   * Clients should NOT provide this — the relay assigns a routing ID on connect.
+   * Clients should NOT provide this - the relay assigns a routing ID on connect.
    */
   connectionId?: string;
   version?: RelayProtocolVersion | 1 | 2;

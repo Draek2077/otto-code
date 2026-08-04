@@ -2,7 +2,7 @@ import Svg, { Circle, Line, Path, Polyline, Rect } from "react-native-svg";
 import { withUnistyles } from "react-native-unistyles";
 
 // Otto's mark: the letters O·T·T·O drawn as a robot face (O's = eyes, T bars = brows,
-// T stems = nose bridge). Geometry contract lives in branding/README.md — the masters
+// T stems = nose bridge). Geometry contract lives in branding/README.md - the masters
 // in branding/ and these components must stay in sync.
 
 interface OttoLogoProps {
@@ -59,7 +59,7 @@ function OttoLogoRobotBase({ size = 64, color = "currentColor" }: OttoLogoProps)
 }
 
 // Expression variant: raised left brow + winking right eye. Reserved for fun
-// surfaces (branding/README.md) — geometry mirrors branding/otto-icon-wink.svg.
+// surfaces (branding/README.md) - geometry mirrors branding/otto-icon-wink.svg.
 function OttoLogoWinkBase({ size = 64, color = "currentColor" }: OttoLogoProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 512 512" fill="none">
@@ -94,7 +94,7 @@ const themedForeground = (theme: { colors: { foreground: string } }) => ({
   color: theme.colors.foreground,
 });
 
-// Face icon — the general-purpose mark for inline UI.
+// Face icon - the general-purpose mark for inline UI.
 export const OttoLogo = withUnistyles(OttoLogoBase, themedForeground);
 
 // Layers of the full logo (branding/otto-logo.svg). The splash screen stacks them and

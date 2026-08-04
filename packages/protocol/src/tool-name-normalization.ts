@@ -87,13 +87,13 @@ export function getOttoToolLeafName(name: string): string | null {
  *
  * Tools hosted over MCP arrive namespaced as `mcp__<server>__<tool>` (Claude
  * Code format). The `mcp__<server>__` part is transport plumbing that means
- * nothing to a reader — "Create Issue", not "mcp__linear__create_issue". This
+ * nothing to a reader - "Create Issue", not "mcp__linear__create_issue". This
  * generalizes {@link getOttoToolLeafName} to ANY server so every MCP tool reads
  * cleanly, not just Otto's own.
  *
  * Returns `null` when the name carries no `mcp__…__` namespace, so callers keep
  * plain tool names (`Read`, `bash`) and dotted/other forms untouched. Case is
- * preserved — MCP tool ids are already snake_case and callers humanize after.
+ * preserved - MCP tool ids are already snake_case and callers humanize after.
  * `speak` is never treated as namespaced (it renders as a chat bubble, not an
  * action row).
  */

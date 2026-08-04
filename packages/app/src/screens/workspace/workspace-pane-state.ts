@@ -241,7 +241,7 @@ export function resolveSideFileOpenPlacement(input: {
 
   // A document opened from chat belongs to the right of the chat. When the pane
   // to the right is the Visualizer, split a fresh pane off the source (chat) to
-  // the right — that lands the new pane between the chat and the Visualizer,
+  // the right - that lands the new pane between the chat and the Visualizer,
   // rather than hijacking the Visualizer's own pane.
   const rightNeighbor = findAdjacentPane(layout.root, sourcePaneId, "right");
   if (rightNeighbor && isVisualizerPane(rightNeighbor)) {
@@ -249,7 +249,7 @@ export function resolveSideFileOpenPlacement(input: {
   }
 
   // Otherwise prefer reusing an already-on-screen pane over splitting a new one
-  // — every pane in a split layout is visible at once, so any neighbor works.
+  // - every pane in a split layout is visible at once, so any neighbor works.
   // Search right first (where a companion doc split usually sits), then the
   // other directions so a source pane that is itself the rightmost one (e.g. a
   // file opened from the Visualizer's own pane) still lands in the pane to its
@@ -271,10 +271,10 @@ export function resolveSideFileOpenPlacement(input: {
 
 /**
  * Where a "New chat" (draft) tab should land, given the pane the action fired
- * from. The Visualizer is a companion view that owns its own pane — a new chat
+ * from. The Visualizer is a companion view that owns its own pane - a new chat
  * must never displace it into a second tab there. When the draft would land in
  * the Visualizer's pane, redirect it: reuse an existing sibling pane if one is
- * already on screen (a neighbor to the left or right — where the chat usually
+ * already on screen (a neighbor to the left or right - where the chat usually
  * sits), otherwise split a fresh pane to the LEFT of the Visualizer.
  */
 export type WorkspaceNewChatPlacement =

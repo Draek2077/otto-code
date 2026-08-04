@@ -24,14 +24,14 @@ export { COMPOSER_TRACK_LAYERS } from "@/composer/track-layers";
 // WHY NOT REANIMATED HERE. Its web exit does not animate the leaving element: it
 // shallow-clones the node, moves the children into the clone, appends the clone
 // to the parent, and pins it with `position:absolute` at coordinates taken from a
-// SNAPSHOT — and that snapshot is captured at the card's last React render
+// SNAPSHOT - and that snapshot is captured at the card's last React render
 // (componentDidMount / componentDidUpdate), not at the moment the card leaves. So
 // the ghost appears wherever the card was standing at its last render. Anything
 // that moves the card afterwards without re-rendering it is baked in, and the
 // composer fan is bottom-anchored, so a great deal moves it: resizing the window,
 // dragging a pane splitter, toggling a sidebar. Measured against the real
 // component, growing the window by 100px put the ghost 100px ABOVE the card it
-// was replacing — it leapt up the screen, then faded and sank from there. The
+// was replacing - it leapt up the screen, then faded and sank from there. The
 // card's own entrance is the same trap in miniature: FadeInDown holds a 25px
 // translate that getBoundingClientRect reports but the exit clone discards, so
 // dismissing mid-entrance jumps by exactly that.
@@ -42,7 +42,7 @@ export { COMPOSER_TRACK_LAYERS } from "@/composer/track-layers";
 //
 // THE MOTION. The fan is bottom-anchored above the message box, so a card's box
 // collapsing to zero height slides the card DOWN into the composer all by
-// itself — no transform needed, and the layout closes in step with the motion
+// itself - no transform needed, and the layout closes in step with the motion
 // instead of snapping shut at one end of it. Growing back out of zero replays it
 // in reverse. The content overflows its own box while this happens (RNW views do
 // not clip), which is what makes the card read as passing behind the message box
@@ -85,7 +85,7 @@ export function ComposerTrackTransition({ children, layer }: ComposerTrackTransi
   const present = children != null;
 
   // The caller has already stopped rendering a dismissed card, but it still has
-  // to be on screen while it sinks away — so the last non-empty content is held
+  // to be on screen while it sinks away - so the last non-empty content is held
   // until the exit finishes. Clearing it is what finally unmounts the card.
   const retained = useRef<ReactNode>(null);
   if (present) {
@@ -94,7 +94,7 @@ export function ComposerTrackTransition({ children, layer }: ComposerTrackTransi
   const [, forceRender] = useReducer((tick: number) => tick + 1, 0);
   const releaseRetained = useCallback(() => {
     retained.current = null;
-    // Not derivable from `phase` — dropping the content has to repaint even when
+    // Not derivable from `phase` - dropping the content has to repaint even when
     // the phase it lands on is the one already set.
     forceRender();
   }, []);
@@ -112,7 +112,7 @@ export function ComposerTrackTransition({ children, layer }: ComposerTrackTransi
   }, []);
 
   // Measured before paint so the very first entrance already has a height to
-  // grow into. `onLayout` below keeps it current afterwards — including for
+  // grow into. `onLayout` below keeps it current afterwards - including for
   // reflows no React render caused, such as the band's text re-wrapping when the
   // window narrows.
   useLayoutEffect(() => {

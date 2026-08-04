@@ -4,7 +4,7 @@
  *
  * WHY createStub contains one cast:
  * TypeScript's structural type system cannot accept Partial<T> as T when T has
- * private class members — no object-literal syntax satisfies private fields
+ * private class members - no object-literal syntax satisfies private fields
  * from outside the class. Centralising the cast here adds real runtime value
  * over a bare `obj as unknown as T` scattered across tests:
  *   - A Proxy intercepts every property access.
@@ -13,7 +13,7 @@
  *     silently returning undefined and causing a confusing downstream failure.
  *
  * Alternatives rejected:
- *   - mockOf<T>(p): return p as unknown as T — same single cast, zero runtime
+ *   - mockOf<T>(p): return p as unknown as T - same single cast, zero runtime
  *     benefit; this is the "option 4 trap" the task spec explicitly flags.
  *   - Object.create(ctor.prototype): only works for concrete classes, not for
  *     interfaces (ProjectRegistry, WorkspaceRegistry) or external library types
@@ -40,7 +40,7 @@ export function createStub<T extends object>(stubs: { [K in keyof T]?: unknown }
         throw new Error(`createStub: "${prop}" was called but not stubbed`);
       };
     },
-  }) as unknown as T; // one justified cast — rationale in file-level comment
+  }) as unknown as T; // one justified cast - rationale in file-level comment
 }
 
 /**
@@ -49,7 +49,7 @@ export function createStub<T extends object>(stubs: { [K in keyof T]?: unknown }
  * Use when tests need to access private fields or call private methods of a
  * real class instance (e.g. `asInternals<WebSocketServerInternals>(server)`).
  * The parameter is typed `unknown` so TypeScript accepts the single `as T`
- * assertion — narrowing from the top type is safe, unlike `as unknown as T`
+ * assertion - narrowing from the top type is safe, unlike `as unknown as T`
  * which short-circuits structural checking on a concrete source type.
  */
 export function asInternals<T>(obj: T extends object ? unknown : unknown): T {

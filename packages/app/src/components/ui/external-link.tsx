@@ -14,7 +14,7 @@ interface ExternalLinkProps {
 }
 
 /**
- * Inline "Docs ↗" affordance — muted text + arrow-top-right icon, opens the
+ * Inline "Docs ↗" affordance - muted text + arrow-top-right icon, opens the
  * URL via the global openLink router (in-app browser tab or system browser,
  * per the "Open links" setting). Wrap in a Tooltip when there's a one-line
  * hint worth surfacing on hover/tap.

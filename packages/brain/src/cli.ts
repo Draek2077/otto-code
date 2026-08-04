@@ -3,7 +3,7 @@
  * a group factory (`createBrainCommand`) that adds straight into the main `otto`
  * program, and a `registerBrainCommands` that mounts the same verbs on a
  * standalone root program (for `bin/otto-brain` on a server without the full CLI).
- * Handlers stay pure — they return typed results wrapped by withOutput.
+ * Handlers stay pure - they return typed results wrapped by withOutput.
  */
 import { Command } from "commander";
 

@@ -1,4 +1,4 @@
-// Auto-speech — read incoming assistant prose aloud, in order, as it lands.
+// Auto-speech - read incoming assistant prose aloud, in order, as it lands.
 //
 // The composer's speaker toggle turns it on per chat (per agent). From then on
 // every assistant bubble segment from that chat is queued the moment it is FINAL
@@ -9,12 +9,12 @@
 //
 // Why a module singleton rather than a hook or a store slice: there is exactly
 // one speaker on the device. Two chats streaming side by side have to share one
-// serial queue or they talk over each other — and the call sites that must reach
+// serial queue or they talk over each other - and the call sites that must reach
 // it (a message row deep in a virtualized list, the composer toggle, the
 // per-bubble playback button) share no React ancestor short of the app root.
 //
-// This module holds no way to make a sound. `registerSpeaker` — one per
-// connected host, from auto-speech-host.tsx — injects that: the runtime client,
+// This module holds no way to make a sound. `registerSpeaker` - one per
+// connected host, from auto-speech-host.tsx - injects that: the runtime client,
 // the shared audio engine, the agent's personality voice. What is left here is
 // pure control flow, which is what makes the interruption rules testable.
 //
@@ -23,7 +23,7 @@
 // `syncEnabledAgents` reconciles it against the persisted settings record.
 //
 // Deliberately NOT gated on app/tab visibility. Auto-speech is the one feature
-// whose whole point is that you are not looking at the screen — a phone in a
+// whose whole point is that you are not looking at the screen - a phone in a
 // pocket or a tab in the background must keep reading. What did stop it there
 // was upstream: the typewriter reveal's timer is throttled off screen, so
 // segments never reached full length and nothing was ever offered. That is
@@ -33,9 +33,9 @@
 //   * Toggling auto-speech off for a chat aborts ITS current utterance and
 //     drops ITS queued items. Other chats keep reading.
 //   * Pressing Play on any message TAKES OVER, device-wide: there is one
-//     speaker, so the whole queue is emptied — every chat's — and auto playback
+//     speaker, so the whole queue is emptied - every chat's - and auto playback
 //     is held until that manual playback ends, then resumes with whatever
-//     arrives next. Deliberately not with the backlog the user interrupted —
+//     arrives next. Deliberately not with the backlog the user interrupted -
 //     by the time they finish listening, it is stale.
 //   * Pressing the button on the message auto-speech is currently reading stops
 //     it and empties the queue without leaving the mode.
@@ -81,7 +81,7 @@ function agentKey(serverId: string, agentId?: string): string | null {
  * items with freshly derived ids, so the row remounts and offers the identical
  * prose again under a new identity. Keying on the id let that through, and
  * because the host's `speakMessage` cancels whatever is playing before it
- * starts, the duplicate did not queue politely behind the original — it cut it
+ * starts, the duplicate did not queue politely behind the original - it cut it
  * off and restarted from sentence one, over and over.
  *
  * The trade: a reply that repeats itself verbatim within the last
@@ -114,7 +114,7 @@ class AutoSpeechQueue {
    */
   private abortGate: (() => void) | null = null;
   private readonly speakers = new Map<string, AutoSpeechSpeaker>();
-  /** Every message ever queued — a rebuilt row must not read itself twice. */
+  /** Every message ever queued - a rebuilt row must not read itself twice. */
   private readonly accepted = new Set<string>();
   private readonly listeners = new Set<() => void>();
 
@@ -134,11 +134,11 @@ class AutoSpeechQueue {
   /** The bubble currently being read by auto-speech, or null. */
   getSpeakingGroupId = (): string | null => this.active?.groupId ?? null;
 
-  /** Queued and not yet started — the backlog the user can hear coming. */
+  /** Queued and not yet started - the backlog the user can hear coming. */
   getPendingCount = (): number => this.queue.length;
 
   /**
-   * Reconcile the enabled set against the persisted settings record — the host
+   * Reconcile the enabled set against the persisted settings record - the host
    * calls this on every settings change.
    *
    * Wholesale rather than key-by-key because the record is SPARSE: turning a
@@ -235,7 +235,7 @@ class AutoSpeechQueue {
   /**
    * Offer a finished message segment. Silently ignored when the chat it belongs
    * to has auto-speech off, when the segment has already been offered, or when
-   * it has nothing to say — callers are message rows and must not have to know
+   * it has nothing to say - callers are message rows and must not have to know
    * the mode's state.
    *
    * Accepting marks the fingerprint immediately, not at speak time: a segment
@@ -278,7 +278,7 @@ class AutoSpeechQueue {
     return token;
   }
 
-  /** Release the hold — but only if this playback still owns it. */
+  /** Release the hold - but only if this playback still owns it. */
   endManualPlayback(token: number): void {
     if (this.manualToken !== token) {
       return;
@@ -361,7 +361,7 @@ class AutoSpeechQueue {
     }
   }
 
-  /** Test seam — the singleton is global by design. */
+  /** Test seam - the singleton is global by design. */
   resetForTests(): void {
     this.enabledAgents.clear();
     this.queue = [];

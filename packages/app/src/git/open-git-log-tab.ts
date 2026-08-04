@@ -9,7 +9,7 @@ export interface OpenGitLogTabInput {
 
 /**
  * Open (or focus) the log pane for a git operation. One tab per operation per
- * workspace — reopening the same operation focuses the existing tab. New tabs
+ * workspace - reopening the same operation focuses the existing tab. New tabs
  * land right next to the tab the user is looking at.
  */
 export function openGitLogTab(input: OpenGitLogTabInput): boolean {

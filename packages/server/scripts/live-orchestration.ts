@@ -1,10 +1,10 @@
-// Loop B — parameterized live orchestration harness.
+// Loop B - parameterized live orchestration harness.
 //
 // Stands up an in-process daemon on the CURRENT source with REAL providers,
 // seeded from an existing Otto home's config (personalities + teams + provider
 // auth), activates a team, spawns a conductor personality that drives start_run,
 // and reports the full circle (conductor's final message + every persisted Run).
-// In-process teardown — no supervisor, no orphan daemon, random free port, so it
+// In-process teardown - no supervisor, no orphan daemon, random free port, so it
 // never touches the main daemon on 6868 or the desktop daemon on 6788.
 //
 // Usage (from repo root):
@@ -40,8 +40,8 @@ interface Args {
 }
 
 const DEFAULT_PROMPT =
-  "Use the start_run tool to run this plan: phase 1 implement — write a haiku about caching; " +
-  "phase 2 deliver (depends on phase 1) — combine it into a short note. " +
+  "Use the start_run tool to run this plan: phase 1 implement - write a haiku about caching; " +
+  "phase 2 deliver (depends on phase 1) - combine it into a short note. " +
   "After the run finishes, report the run id and paste the final note verbatim.";
 
 function parseArgs(argv: readonly string[]): Args {
@@ -139,7 +139,7 @@ async function reportRuns(ottoHome: string): Promise<void> {
         firstSummary: candidates?.[0]?.summary?.slice(0, 300),
       };
     });
-    log(`RUN ${run.id} — ${run.status}`, {
+    log(`RUN ${run.id} - ${run.status}`, {
       title: run.title,
       team: run.teamName,
       teamId: run.teamId,

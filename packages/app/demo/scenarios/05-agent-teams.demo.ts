@@ -12,9 +12,9 @@ import { seedDemoCast, waitForProvidersReady, type DemoCast } from "../staging/c
 import { seedDemoWorkspace, type DemoWorkspace } from "../staging/seed";
 
 /**
- * Scenario 05 — Agent teams (one feature: creating a team and what an active
+ * Scenario 05 - Agent teams (one feature: creating a team and what an active
  * team changes). The Research Guild is pre-seeded so the teams list is never
- * empty; the Ship Crew is created on camera — that's the tutorial beat. The
+ * empty; the Ship Crew is created on camera - that's the tutorial beat. The
  * payoff is the composer picker leading with the active team's role slots.
  */
 
@@ -41,7 +41,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   // The Ship Crew was created through the UI, so it isn't in the cast's
-  // cleanup set — remove it by name before the cast tears down its members.
+  // cleanup set - remove it by name before the cast tears down its members.
   await removeTeamsByName(cast.client, [SHIP_CREW_NAME]).catch(() => undefined);
   await cast?.cleanup();
   await workspace?.cleanup();
@@ -58,7 +58,7 @@ test("agent teams walkthrough", async ({ page }, testInfo) => {
 
   // ── The teams list in host settings ───────────────────────────────────────
   // Teams/personalities/voices moved to their own "teams" settings section
-  // (split out of the Agents page — see host-page.tsx's HostTeamsPage).
+  // (split out of the Agents page - see host-page.tsx's HostTeamsPage).
   await page.goto(buildSettingsHostSectionRoute(serverId, "teams"));
   await expect(page.getByTestId("agent-teams-section")).toBeVisible({ timeout: 30_000 });
   await waitForProvidersReady(page);
@@ -67,21 +67,21 @@ test("agent teams walkthrough", async ({ page }, testInfo) => {
   await recorder.shot(
     "teams",
     "Teams: personalities that work together",
-    "A team is a named lineup of personalities with a shared prompt — switch teams and the whole host follows.",
+    "A team is a named lineup of personalities with a shared prompt - switch teams and the whole host follows.",
   );
 
   // ── Create the Ship Crew on camera ────────────────────────────────────────
   await humanClick(page, page.getByTestId("agent-teams-add-button"));
   const modal = page.getByTestId("agent-team-edit-modal");
   await expect(modal).toBeVisible({ timeout: 15_000 });
-  // Fill the form completely, top to bottom — name, shared prompt, members.
+  // Fill the form completely, top to bottom - name, shared prompt, members.
   await humanType(page, page.getByTestId("agent-team-name-input"), SHIP_CREW_NAME);
   await humanType(
     page,
     page.getByTestId("agent-team-prompt-input"),
     "Bias to action: plan tight, build small, review honestly, and keep main green.",
   );
-  // The editor is tabbed — identity above, members on their own tab.
+  // The editor is tabbed - identity above, members on their own tab.
   await humanClick(
     page,
     page.getByTestId("agent-team-tabs").getByRole("button", { name: "Members", exact: true }),
@@ -93,7 +93,7 @@ test("agent teams walkthrough", async ({ page }, testInfo) => {
   await recorder.shot(
     "team-editor",
     "Build the lineup",
-    "Name the team and tick its members — each brings their own model, roles, and prompt.",
+    "Name the team and tick its members - each brings their own model, roles, and prompt.",
   );
 
   await humanClick(page, page.getByTestId("agent-team-save-button"));
@@ -118,7 +118,7 @@ test("agent teams walkthrough", async ({ page }, testInfo) => {
   await recorder.shot(
     "team-switcher",
     "One switcher, instant handoff",
-    "The active team lives in the sidebar — swap crews without touching any agent.",
+    "The active team lives in the sidebar - swap crews without touching any agent.",
   );
 
   await humanClick(
@@ -140,7 +140,7 @@ test("agent teams walkthrough", async ({ page }, testInfo) => {
   await recorder.shot(
     "picker-team",
     "Team roles in every picker",
-    "With a team active, pickers lead with its section — including role slots that always resolve to the crew's current holder.",
+    "With a team active, pickers lead with its section - including role slots that always resolve to the crew's current holder.",
   );
 
   await humanClick(page, page.getByTestId("personality-group-team").first());
@@ -148,7 +148,7 @@ test("agent teams walkthrough", async ({ page }, testInfo) => {
   await recorder.shot(
     "picker-team-roles",
     "Meet the crew",
-    "Aria, Forge, Argus, and Tempo — pick a member, or a role slot that follows the team.",
+    "Aria, Forge, Argus, and Tempo - pick a member, or a role slot that follows the team.",
   );
 
   await recorder.finish(testInfo);

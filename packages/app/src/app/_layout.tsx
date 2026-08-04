@@ -396,7 +396,7 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
   const storeReady = resolveStartupNavigationReady({ startupBlocker });
 
   // Desktop reveal signal: tell main the first *durable* screen is ready so it
-  // can show the window (main holds the reveal off raw first paint — see
+  // can show the window (main holds the reveal off raw first paint - see
   // createWindow). "Durable" means we won't immediately swap what's on screen:
   // the settling splash itself is fine to reveal on, the error splash must be
   // shown, we've given up waiting, or real content is ready. We deliberately do
@@ -449,7 +449,7 @@ interface AppContainerProps {
   chromeEnabled?: boolean;
 }
 
-// Quick-cycle keyboard shortcut. System is deliberately excluded — its effect
+// Quick-cycle keyboard shortcut. System is deliberately excluded - its effect
 // depends on the live OS scheme, which would make a manual cycle shortcut
 // non-deterministic. Each step is an explicit (mode, variant) pair rather than
 // a flat theme name, since there's no longer a single `settings.theme` value.
@@ -483,7 +483,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
 
   const cycleTheme = useCallback(() => {
-    // -1 (current mode is System, not in the cycle) wraps to index 0 — the
+    // -1 (current mode is System, not in the cycle) wraps to index 0 - the
     // same graceful fallback the previous flat-list cycle already had for any
     // "current value not in the list" case.
     const currentIndex = THEME_CYCLE_ORDER.findIndex(
@@ -592,7 +592,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
 
   // The command-center registry is what draft composers publish their model
   // choices into, so the provider has to sit above every surface that renders a
-  // composer — not just above <CommandCenter /> itself.
+  // composer - not just above <CommandCenter /> itself.
   return <CommandCenterProvider>{content}</CommandCenterProvider>;
 }
 
@@ -642,7 +642,7 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
   // fields together (not split into separate effects) so the mirror repaint
   // in applyColorScheme always runs before the mode switch, never after.
   // The OS scheme is a dependency because in System mode the `black` chat
-  // mirror follows whichever spectrum is actually showing — Unistyles flips
+  // mirror follows whichever spectrum is actually showing - Unistyles flips
   // the light/dark keys adaptively on its own, but the black repaint must
   // re-run here when the OS scheme changes.
   const osColorScheme = useColorScheme();
@@ -705,8 +705,8 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
       <OfferLinkListener upsertDaemonFromOfferUrl={upsertConnectionFromOfferUrl} />
       <HostSessionManager />
       <FaviconStatusSync />
-      {/* Agent voice cues are a notification channel, so playback lives here —
-          app-global, above the router — and is independent of the Visualizer
+      {/* Agent voice cues are a notification channel, so playback lives here -
+          app-global, above the router - and is independent of the Visualizer
           entirely. Headless: it fires the cue audio and renders nothing. */}
       <AgentVoiceCuesHost />
       {/* Auto-speech reads incoming replies aloud. Headless, and mounted here
@@ -931,6 +931,7 @@ function AppWithSidebar({ children }: { children: ReactNode }) {
       pathname === "/runs" ||
       pathname === "/artifacts" ||
       pathname === "/stats" ||
+      pathname === "/brain" ||
       routeHasKnownHost);
 
   return <AppContainer chromeEnabled={shouldShowAppChrome}>{children}</AppContainer>;
@@ -965,13 +966,14 @@ function RootStack() {
         <Stack.Screen name="schedules" />
         <Stack.Screen name="runs" />
         <Stack.Screen name="stats" />
+        <Stack.Screen name="brain" />
         <Stack.Screen name="artifacts" />
         <Stack.Screen name="pair-scan" />
       </Stack.Protected>
       <Stack.Screen name="h/[serverId]" />
       {/* The `settings/hosts/[serverId]` layout owns its own `index`/`[hostSection]`
           leaves so the `[serverId]` segment matches before a leaf mounts (native
-          blank-screen guard — see docs/expo-router.md and its `_layout.tsx`). */}
+          blank-screen guard - see docs/expo-router.md and its `_layout.tsx`). */}
       <Stack.Screen name="settings/hosts/[serverId]" />
     </ThemedStack>
   );
@@ -1015,7 +1017,7 @@ function RuntimeProviders({ children }: { children: ReactNode }) {
 // PortalProvider must stay inside normal app-wide context providers here.
 // `@gorhom/portal` renders portaled children at the host's location in the
 // tree, so any context a portaled sheet might consume (QueryClient, theme,
-// auth, settings, …) must wrap PortalProvider — not be wrapped by it.
+// auth, settings, …) must wrap PortalProvider - not be wrapped by it.
 // BottomSheetModalProvider is the exception: Gorhom modals consume portal
 // context and need one shared provider for sibling sheets to stack.
 // ToastProvider lives here (not in RuntimeProviders) for the same reason:
@@ -1055,7 +1057,7 @@ function RootAppTree() {
           </RuntimeProviders>
         </RootProviders>
       </View>
-      {/* Navy viewport hairline marking a dev build — see components/dev-mode-border.
+      {/* Navy viewport hairline marking a dev build - see components/dev-mode-border.
           Gated on isDev so production never mounts it; the native module is a no-op. */}
       {isDev ? <DevModeBorder /> : null}
     </GestureHandlerRootView>

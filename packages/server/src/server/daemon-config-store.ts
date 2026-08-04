@@ -8,7 +8,12 @@ import {
   type PersistedAgentTeam,
 } from "./persisted-config.js";
 import { ProviderOverrideSchema } from "./agent/provider-launch-config.js";
-import { OTTO_TOOL_GROUPS, type OttoToolGroup } from "@otto-code/protocol/provider-config";
+import {
+  OTTO_TOOL_GROUPS,
+  type ConnectorAuthState,
+  type ConnectorConfig,
+  type OttoToolGroup,
+} from "@otto-code/protocol/provider-config";
 import {
   MutableDaemonConfigSchema,
   MutableDaemonConfigPatchSchema,
@@ -87,18 +92,150 @@ function isEqualValue(a: unknown, b: unknown): boolean {
 // payload). A client saving the config unchanged sends the sentinel straight
 // back and patch() restores the stored value instead of overwriting it with the
 // placeholder. The settings UI's change-detection usually means an untouched
-// secret isn't re-sent at all, but a full-object patch would carry it — so the
+// secret isn't re-sent at all, but a full-object patch would carry it - so the
 // restore is handled defensively rather than relying on the client.
 export const DAEMON_CONFIG_SECRET_SENTINEL = "__otto_secret_present__";
 
 // Wire paths (within the mutable config) of the secrets masked on the way to
-// clients. Deliberately narrow — only host-provider credentials.
+// clients. Deliberately narrow - only host-provider credentials.
 const SECRET_WIRE_PATHS: readonly (readonly string[])[] = [
   ["speech", "openai", "apiKey"],
   ["gitHosting", "providers", "bitbucketCloud", "apiToken"],
   ["brain", "authToken"],
   ["brain", "remote", "authToken"],
 ];
+
+// Connector secrets can't be expressed in SECRET_WIRE_PATHS: `connectors` is an
+// array, and a dotted path has no way to say "every element". They were
+// therefore never masked, so every token pasted into a connector was echoed back
+// to every connected client in the config payload. These two helpers close that,
+// and they have to exist before OAuth lands - a leaked refresh token is a
+// standing grant, not a one-off.
+//
+// Two different mechanisms, deliberately:
+//   - env / header values round-trip through the sentinel, because the user owns
+//     them and may legitimately re-type one.
+//   - `auth` is daemon-owned. The client never authors it (only the OAuth broker
+//     does), so it is masked outbound and restored wholesale inbound rather than
+//     trusted from the wire at all.
+function maskRecordValues(
+  values: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+  if (!values) {
+    return undefined;
+  }
+  const masked: Record<string, string> = {};
+  for (const [key, value] of Object.entries(values)) {
+    masked[key] = value.length > 0 ? DAEMON_CONFIG_SECRET_SENTINEL : value;
+  }
+  return masked;
+}
+
+function redactConnectorsForClient(connectors: ConnectorConfig[] | undefined): ConnectorConfig[] {
+  const redacted: ConnectorConfig[] = [];
+  for (const connector of connectors ?? []) {
+    const server =
+      connector.server.type === "stdio"
+        ? { ...connector.server, ...maskedKey("env", maskRecordValues(connector.server.env)) }
+        : {
+            ...connector.server,
+            ...maskedKey("headers", maskRecordValues(connector.server.headers)),
+          };
+    if (!connector.auth) {
+      redacted.push({ ...connector, server });
+      continue;
+    }
+    // Presence, never the value: the UI needs to know a connector is connected
+    // and to whom, and nothing more.
+    redacted.push({
+      ...connector,
+      server,
+      auth: {
+        kind: connector.auth.kind,
+        ...(connector.auth.account ? { account: connector.auth.account } : {}),
+        ...(connector.auth.authorizedAt ? { authorizedAt: connector.auth.authorizedAt } : {}),
+        ...(connector.auth.tokens
+          ? { tokens: { accessToken: DAEMON_CONFIG_SECRET_SENTINEL } }
+          : {}),
+      },
+    });
+  }
+  return redacted;
+}
+
+// Omit the key entirely when the value is undefined, so a masked copy never
+// introduces an explicit `env: undefined` where the original had no key at all.
+function maskedKey<T>(key: string, value: T | undefined): Record<string, T> {
+  return value === undefined ? {} : { [key]: value };
+}
+
+function restoreRecordSecrets(
+  incoming: Record<string, string> | undefined,
+  stored: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+  if (!incoming) {
+    return undefined;
+  }
+  const restored: Record<string, string> = {};
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value === DAEMON_CONFIG_SECRET_SENTINEL) {
+      const storedValue = stored?.[key];
+      // No stored value to restore means the sentinel is meaningless - drop the
+      // key rather than persisting the placeholder as if it were a credential.
+      if (storedValue !== undefined) {
+        restored[key] = storedValue;
+      }
+      continue;
+    }
+    restored[key] = value;
+  }
+  return restored;
+}
+
+function restoreConnectorSecretsInPatch(
+  patch: MutableDaemonConfigPatch,
+  current: MutableDaemonConfig,
+): void {
+  if (!patch.connectors) {
+    return;
+  }
+  const stored = new Map((current.connectors ?? []).map((entry) => [entry.id, entry]));
+  const restoredConnectors: ConnectorConfig[] = [];
+  for (const connector of patch.connectors) {
+    const previous = stored.get(connector.id);
+    const server =
+      connector.server.type === "stdio"
+        ? {
+            ...connector.server,
+            ...maskedKey(
+              "env",
+              restoreRecordSecrets(
+                connector.server.env,
+                previous?.server.type === "stdio" ? previous.server.env : undefined,
+              ),
+            ),
+          }
+        : {
+            ...connector.server,
+            ...maskedKey(
+              "headers",
+              restoreRecordSecrets(
+                connector.server.headers,
+                previous && previous.server.type !== "stdio" ? previous.server.headers : undefined,
+              ),
+            ),
+          };
+    // Auth is never taken from the wire. Whatever the daemon holds wins; a
+    // client cannot mint, alter, or clear an authorization by saving settings.
+    const { auth: _discarded, ...rest } = connector;
+    restoredConnectors.push({
+      ...rest,
+      server,
+      ...(previous?.auth ? { auth: previous.auth } : {}),
+    });
+  }
+  patch.connectors = restoredConnectors;
+}
 
 function setValueAtPath(
   config: Record<string, unknown>,
@@ -127,6 +264,8 @@ export function redactDaemonConfigForClient(config: MutableDaemonConfig): Mutabl
       next = setValueAtPath(next, path, DAEMON_CONFIG_SECRET_SENTINEL);
     }
   }
+  // Connectors live in an array, which SECRET_WIRE_PATHS cannot address.
+  next = { ...next, connectors: redactConnectorsForClient(config.connectors) };
   return next as MutableDaemonConfig;
 }
 
@@ -184,7 +323,7 @@ export class DaemonConfigStore {
 
   /**
    * Seed the shipped default Agent Personalities onto disk the first time this
-   * host runs the feature — but ONLY when the persisted config has never carried
+   * host runs the feature - but ONLY when the persisted config has never carried
    * an agentPersonalities section. Once the section exists on disk (even as an
    * empty roster the user cleared), this is a no-op, so deleting the whole team
    * sticks across restarts instead of silently re-seeding. The in-memory config
@@ -216,10 +355,10 @@ export class DaemonConfigStore {
 
   /**
    * Seed the shipped starter Agent Team onto disk the first time this host
-   * runs the teams feature — ONLY when the persisted config has never carried
+   * runs the teams feature - ONLY when the persisted config has never carried
    * an agentTeams section (mirrors seedDefaultPersonalitiesIfAbsent: once the
    * section exists on disk, even emptied, this is a permanent no-op so
-   * deleting the starter team sticks across restarts). Seeds teams only —
+   * deleting the starter team sticks across restarts). Seeds teams only -
    * activeTeamId stays unset so a fresh host behaves exactly like today until
    * the user opts in via the switcher.
    */
@@ -249,6 +388,7 @@ export class DaemonConfigStore {
     // A masked secret that comes back unchanged must not overwrite the stored
     // value with the sentinel placeholder.
     stripRedactedSecretsFromPatch(parsedPatch);
+    restoreConnectorSecretsInPatch(parsedPatch, this.current);
     const { patch: prunedPatch, removedProviderIds } = extractProviderRemovals(parsedPatch);
     const base = removedProviderIds.length
       ? removeProviders(this.current, removedProviderIds)
@@ -288,6 +428,43 @@ export class DaemonConfigStore {
     return next;
   }
 
+  /**
+   * Write a connector's OAuth state. The only door into `auth`: patch() discards
+   * it on the way in so a client cannot mint or clear an authorization, which
+   * means the broker needs its own entry point. Pass null to disconnect.
+   *
+   * A no-op when the connector id is unknown - an authorization that completes
+   * after its connector was deleted must not resurrect the connector.
+   */
+  public setConnectorAuth(
+    connectorId: string,
+    auth: ConnectorAuthState | null,
+  ): MutableDaemonConfig {
+    const connectors = this.current.connectors ?? [];
+    if (!connectors.some((entry) => entry.id === connectorId)) {
+      return this.current;
+    }
+    const nextConnectors: ConnectorConfig[] = [];
+    for (const entry of connectors) {
+      if (entry.id !== connectorId) {
+        nextConnectors.push(entry);
+        continue;
+      }
+      const { auth: _previous, ...rest } = entry;
+      nextConnectors.push(auth ? { ...rest, auth } : rest);
+    }
+    const next = MutableDaemonConfigSchema.parse({ ...this.current, connectors: nextConnectors });
+    if (isEqualValue(this.current, next)) {
+      return this.current;
+    }
+    this.persistConfig(next, []);
+    this.current = next;
+    for (const listener of this.changeListeners) {
+      listener(next, { removedProviderIds: [] });
+    }
+    return next;
+  }
+
   public onFieldChange(path: string, handler: FieldChangeHandler): () => void {
     const handlers = this.fieldChangeHandlers.get(path) ?? new Set<FieldChangeHandler>();
     handlers.add(handler);
@@ -324,8 +501,8 @@ export class DaemonConfigStore {
 }
 
 // Post-validation normalization (wire schemas stay pure declarations): never
-// let a dangling active team id survive a patch. Deleting the active team —
-// or patching an id that matches no team — heals to "no team active" rather
+// let a dangling active team id survive a patch. Deleting the active team -
+// or patching an id that matches no team - heals to "no team active" rather
 // than erroring, because teamlessness is a valid state and an active id must
 // always resolve.
 function healActiveAgentTeamId(config: MutableDaemonConfig): MutableDaemonConfig {
@@ -431,7 +608,7 @@ function resolveNextAgents(params: {
     } as PersistedConfig["agents"];
   }
   if (removedProviders.size > 0 && persistedOverrides) {
-    // The last provider override was removed — drop the providers key so the
+    // The last provider override was removed - drop the providers key so the
     // removed entry does not survive in config.json.
     const { providers: _removed, ...agentsWithoutProviders } = persistedAgents ?? {};
     return { ...agentsWithoutProviders, ...metadata } as PersistedConfig["agents"];
@@ -585,7 +762,7 @@ function buildPersistedBrainSection(
 }
 
 // Host-level hosting credentials persist under gitHosting.providers in
-// config.json — one set per provider. The mutable config is the post-merge
+// config.json - one set per provider. The mutable config is the post-merge
 // source of truth; empty strings mean "remove" and a provider with no
 // remaining credentials is dropped so stale tokens never linger on disk.
 function buildPersistedGitHosting(
@@ -799,7 +976,7 @@ interface AgentTeamsPersistSection {
 // Read the teams section out of the mutable config, dropping entries that lack
 // the required identity fields (id/name). Parsing each entry through the
 // persisted schema (passthrough at every level) re-validates the known fields
-// AND carries unknown fields through untouched — so a team field written by a
+// AND carries unknown fields through untouched - so a team field written by a
 // newer daemon round-trips instead of being silently stripped on the next
 // patch. Member-id validation happens at use time against the roster, not here.
 function readAgentTeamsSection(mutable: MutableDaemonConfig): AgentTeamsPersistSection {
@@ -824,7 +1001,7 @@ function readAgentTeamsSection(mutable: MutableDaemonConfig): AgentTeamsPersistS
 // Attach the teams section to the persisted agents section. Writes when there
 // is anything to persist, or when a previously-written section must be cleared
 // to empty (so deleting the last team survives a restart). A null/absent
-// active id persists as an omitted key — the section's presence alone is what
+// active id persists as an omitted key - the section's presence alone is what
 // blocks re-seeding.
 function withAgentTeams(params: {
   nextAgents: PersistedConfig["agents"];
@@ -858,7 +1035,7 @@ function withAgentTeams(params: {
 // The agents sections that are plain replace-the-whole-array lists: user
 // model-tier tags and the remembered provider endpoints. Each is written when
 // there is anything to persist, or when a previously-written array must be
-// cleared to empty — so removing the last tag, or forgetting the last endpoint,
+// cleared to empty - so removing the last tag, or forgetting the last endpoint,
 // survives a restart instead of being re-read off stale disk state.
 function withAgentArraySections(params: {
   nextAgents: PersistedConfig["agents"];
@@ -944,7 +1121,7 @@ interface MetadataGenerationFlags {
 }
 
 // Persist the mcp section, carrying an explicit toolGroups allowlist only when
-// defined (undefined = all groups enabled — never frozen onto disk).
+// defined (undefined = all groups enabled - never frozen onto disk).
 function buildPersistedMcpSection(params: {
   persistedMcp: NonNullable<PersistedConfig["daemon"]>["mcp"] | undefined;
   injectIntoAgents: boolean;
@@ -1012,7 +1189,7 @@ function readMetadataGenerationProviders(
 // Read the agent personality roster out of the mutable config, dropping entries
 // that lack the required identity fields (id/name/provider/model). Parsing each
 // entry through the persisted schema (which is .passthrough() at every level)
-// re-validates the known fields AND carries unknown fields through untouched —
+// re-validates the known fields AND carries unknown fields through untouched -
 // so a personality field written by a newer daemon round-trips instead of being
 // silently stripped on the next patch. Effort/role validation happens at use
 // time against the daemon's live catalog, not here.

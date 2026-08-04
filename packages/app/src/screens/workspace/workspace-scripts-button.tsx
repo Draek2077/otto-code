@@ -584,7 +584,7 @@ function ScriptRow({
         {restartAction}
         {lifecycleAction}
       </View>
-      {/* A discovered row shows what it will actually run — the label is the
+      {/* A discovered row shows what it will actually run - the label is the
           project's own name for it, which on its own says nothing about the
           command behind it. Otto's declared rows keep their existing chrome. */}
       {script.source && script.command ? (
@@ -1073,7 +1073,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
   },
-  // Matches `headerIconSlotStyle.slotHovered` — this trigger sits in the same
+  // Matches `headerIconSlotStyle.slotHovered` - this trigger sits in the same
   // header row as the toggles it borrows its chrome from.
   ghostButtonHovered: {
     backgroundColor: theme.colors.surfaceToggleHover,
@@ -1086,7 +1086,7 @@ const styles = StyleSheet.create((theme) => ({
   splitButtonPrimaryHovered: {
     backgroundColor: theme.colors.surfaceToggleHover,
   },
-  // Zero-size anchor for the collapsed mode — exists only so the dropdown has a
+  // Zero-size anchor for the collapsed mode - exists only so the dropdown has a
   // position to open from; must never take layout space or catch pointers.
   // `position: absolute` keeps it out of flex flow: a zero-size *flex item*
   // still consumes a `gap` slot on both sides (same as ArtifactOpenMenu's).

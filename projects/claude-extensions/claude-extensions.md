@@ -1,12 +1,12 @@
-# Claude Extensions — charter
+# Claude Extensions - charter
 
 Status: **not started**. Scope approved by the product owner 2026-07-25: **Claude-only, in the Claude
 provider settings panel.**
 
 ## What this is
 
-Full management of the Claude Code extension surface from inside Otto — plugins, marketplaces,
-skills, and MCP servers — so a host's agent capabilities can be inspected and changed from the phone
+Full management of the Claude Code extension surface from inside Otto - plugins, marketplaces,
+skills, and MCP servers - so a host's agent capabilities can be inspected and changed from the phone
 without SSHing in and running `claude` interactively.
 
 Today Otto can _see_ the result of this configuration (skills and commands show up in the composer's
@@ -36,26 +36,26 @@ Consequences to accept up front:
 - The UI lives in the **Claude provider settings panel**, gated to `provider === "claude"`. It does
   **not** go in the host-wide Agents section, which would falsely imply it affects every provider.
 - Naming stays Claude-native: **Plugins**, **Marketplaces**, **Skills**, **MCP**. No invented
-  provider-neutral umbrella term in the UI — per [docs/glossary.md](../../docs/glossary.md), the
+  provider-neutral umbrella term in the UI - per [docs/glossary.md](../../docs/glossary.md), the
   label users already know from the CLI wins.
 - If a second provider ever grows an installable-extension model, this becomes an adapter. It is not
   designed as one now, and no speculative adapter seam gets built.
 
-## Current state — what exists on the host
+## Current state - what exists on the host
 
 Verified on Windows against the installed CLI, 2026-07-25.
 
-### Plugins have a scriptable CLI — mostly machine-readable
+### Plugins have a scriptable CLI - mostly machine-readable
 
 `claude plugin` is fully non-interactive. That is the load-bearing finding of the whole charter: no
-TUI to drive, no interactive prompts to fake. Machine-readability is good but **not uniform** — `list`
+TUI to drive, no interactive prompts to fake. Machine-readability is good but **not uniform** - `list`
 and `eval` emit JSON, `details` does not:
 
 | Command                                        | Notes                                                                         |
 | ---------------------------------------------- | ----------------------------------------------------------------------------- |
 | `plugin list --json`                           | Installed set                                                                 |
-| `plugin list --available --json`               | `{ installed: [...], available: [...] }` — the full catalog                   |
-| `plugin details <name>`                        | Component inventory **and projected token cost** — **text only, no `--json`** |
+| `plugin list --available --json`               | `{ installed: [...], available: [...] }` - the full catalog                   |
+| `plugin details <name>`                        | Component inventory **and projected token cost** - **text only, no `--json`** |
 | `plugin eval <target> --json [path]`           | Scored eval runs with a no-plugin baseline arm                                |
 | `plugin install\|uninstall <name>`             | `plugin@marketplace` id form supported                                        |
 | `plugin enable\|disable <name>`                | Enable/disable without uninstalling                                           |
@@ -87,10 +87,10 @@ Per-component (rounded)
   code-simplifier        ~60       ~910
 ```
 
-So the richest data in the whole surface — per-component always-on vs on-invoke token cost — is the
+So the richest data in the whole surface - per-component always-on vs on-invoke token cost - is the
 least machine-readable. §"Reading `details`" below is the decision that forces.
 
-On disk, under `~/.claude/plugins/`: `installed_plugins.json` (v2 — id → array of install records),
+On disk, under `~/.claude/plugins/`: `installed_plugins.json` (v2 - id → array of install records),
 `known_marketplaces.json` (name → `{ source: { source: "github", repo }, installLocation, lastUpdated }`),
 `plugin-catalog-cache.json` (~400 KB on a two-marketplace install), plus `marketplaces/<name>/`
 clones and `cache/<marketplace>/<plugin>/<version>/` install trees.
@@ -98,7 +98,7 @@ clones and `cache/<marketplace>/<plugin>/<version>/` install trees.
 ### MCP does not have one
 
 `claude mcp` covers `add`, `add-json`, `add-from-claude-desktop`, `get`, `list`, `login`, `logout`,
-`remove`, `reset-project-choices`, `serve`. **`list` and `get` have no `--json` flag** — they emit
+`remove`, `reset-project-choices`, `serve`. **`list` and `get` have no `--json` flag** - they emit
 human-formatted text with health-check status and `⏸ Pending approval` markers for unapproved
 `.mcp.json` servers. This asymmetry with `plugin` is the single biggest source of work in the whole
 charter, and §"MCP reads" below is the decision it forces.
@@ -115,7 +115,7 @@ Config lives in `~/.claude.json` under `mcpServers` (user/local scope) and in pe
   ([agent.ts:2980](../../packages/server/src/server/agent/providers/claude/agent.ts:2980)) already
   surfaces commands and skills to the composer. `classifyClaudeSlashCommand`
   ([agent.ts:395](../../packages/server/src/server/agent/providers/claude/agent.ts:395)) carries the
-  note that Claude exposes commands and skills as **one flat SDK list with no structured source** —
+  note that Claude exposes commands and skills as **one flat SDK list with no structured source** -
   so today Otto cannot say which plugin a given skill came from. Plugin management supplies exactly
   that missing attribution.
 - **A binary resolver.** `resolveClaudeBinary(runtimeSettings)`
@@ -126,7 +126,7 @@ Config lives in `~/.claude.json` under `mcpServers` (user/local scope) and in pe
   ([provider-diagnostic-sheet.tsx:94](../../packages/app/src/components/provider-diagnostic-sheet.tsx:94)),
   already conditionally per provider: `connection | models | tools | agents`. New tabs slot in here.
 - **An overlapping open item.** [context-management](../../docs/context-management.md)
-  carries "skills/MCP toggles" in its open tail — per-agent _enablement_ of what is already
+  carries "skills/MCP toggles" in its open tail - per-agent _enablement_ of what is already
   installed. That is a different axis from this charter's _installation_ management, but the two
   surfaces must agree on vocabulary and must not both grow their own list of installed skills.
 
@@ -137,8 +137,8 @@ Config lives in `~/.claude.json` under `mcpServers` (user/local scope) and in pe
 Two new tabs on the Claude provider settings sheet, both gated to `provider === "claude"` in the
 same conditional style the `tools` and `agents` tabs already use:
 
-- **Plugins** — installed list, marketplace browser, marketplace sources.
-- **MCP** — configured servers, add/remove, health.
+- **Plugins** - installed list, marketplace browser, marketplace sources.
+- **MCP** - configured servers, add/remove, health.
 
 The sheet is already 2120 lines. Each tab gets its own component file
 (`provider-plugins-tab.tsx`, `provider-mcp-tab.tsx`) rather than growing the sheet further; the sheet
@@ -153,7 +153,7 @@ scaffolds there and installed plugins from `skills-dir` already resolve as `<nam
 One module, `packages/server/src/server/agent/providers/claude/extensions.ts`, wrapping the CLI:
 
 - Resolve the binary via the existing `resolveClaudeBinary`.
-- Shell out with `execFile` (never a shell string — marketplace ids and server names are user input).
+- Shell out with `execFile` (never a shell string - marketplace ids and server names are user input).
 - Parse `--json` where it exists; parse text only where it does not (see below).
 - Normalize every mutation to `{ ok, message, requiresRestart }`.
 
@@ -161,11 +161,11 @@ One module, `packages/server/src/server/agent/providers/claude/extensions.ts`, w
 and their v2 shape will change; writing them directly is how this feature silently breaks on a Claude
 Code upgrade. Reading the catalog cache for browse performance is acceptable; writing anything is not.
 
-### MCP reads — the forced decision
+### MCP reads - the forced decision
 
 Because `mcp list`/`get` emit no JSON, there are three options and the charter picks one:
 
-1. **Parse the text output.** Cheap now, brittle forever — the output carries health status and
+1. **Parse the text output.** Cheap now, brittle forever - the output carries health status and
    emoji-prefixed approval markers that will be reformatted without notice.
 2. **Read the config files directly** (`~/.claude.json` → `mcpServers`, project `.mcp.json`) for the
    _inventory_, and use the CLI only for _mutations_.
@@ -173,7 +173,7 @@ Because `mcp list`/`get` emit no JSON, there are three options and the charter p
 
 **Pick 2, with one caveat.** Config files give a stable, structured inventory (name, transport,
 command/url, env keys, headers, scope) and are the same files the CLI writes. What they cannot give
-is **live health** — whether a server actually connects — which only `mcp get` health-checks. So:
+is **live health** - whether a server actually connects - which only `mcp get` health-checks. So:
 inventory from config files, and health as a _separate, explicitly optional_ per-server probe that
 runs `mcp get <name>` and reports only a coarse reachable/unreachable/pending verdict from a narrow
 match. If that text-matching breaks, health degrades to "unknown" and the inventory keeps working.
@@ -188,11 +188,11 @@ robustness needs.
   **read from the plugin tree at `installPath`**, not parsed from the text. `list --json` already
   gives the path; the tree underneath is just files. This is robust, gives exact component names, and
   is what supplies the plugin → skill attribution `listCommands()` lacks.
-- **Token cost** has no file-level equivalent — the numbers are Claude Code's own estimates, and Otto
+- **Token cost** has no file-level equivalent - the numbers are Claude Code's own estimates, and Otto
   re-deriving them with its own tokenizer would produce numbers that disagree with what users see in
   the CLI. So this **is** parsed from the `details` text, narrowly: the `Always-on:` headline and the
-  per-component table rows. If the parse fails, cost renders as "unavailable" and the inventory —
-  which came from the filesystem — is unaffected.
+  per-component table rows. If the parse fails, cost renders as "unavailable" and the inventory -
+  which came from the filesystem - is unaffected.
 
 The rule generalizes across the whole adapter: **structure from files, numbers from the CLI, and no
 single parse failure takes down a whole view.**
@@ -208,7 +208,7 @@ This must be surfaced, not hidden:
 
 - Every mutation returns `requiresRestart`.
 - When it is true **and** the host has running Claude agents, the result banner says so plainly and
-  offers **Restart affected agents** as an explicit action — never automatic. Restarting someone's
+  offers **Restart affected agents** as an explicit action - never automatic. Restarting someone's
   agent from a settings screen without asking is exactly the kind of surprise the repo's
   confirm-before-irreversible rule exists to prevent.
 - When no Claude agents are running, say "applies to new sessions" and stop.
@@ -231,7 +231,7 @@ over the relay, so this is the one part of the feature that moves credentials ac
 ### OAuth is out of scope for v1
 
 `claude mcp login <name>` runs an interactive browser OAuth flow against a local callback port.
-Driving that from a phone against a daemon on a different machine is a genuinely different feature —
+Driving that from a phone against a daemon on a different machine is a genuinely different feature -
 it needs the callback to land somewhere reachable and the consent screen to render somewhere the user
 can see it.
 
@@ -240,7 +240,7 @@ unauthenticated state is shown honestly with the message that login must be comp
 `claude mcp login`. `--callback-port` is exposed so a user who _is_ at the host can set it up
 predictably. Actually performing the flow from the app is deferred and noted in the open tail.
 
-## Beyond management — what actually helps
+## Beyond management - what actually helps
 
 Direction set by the product owner 2026-07-25: **anything we can do to help users with these tools is
 best.** Install/remove CRUD is the floor, not the goal. A settings screen that only mirrors the CLI
@@ -249,14 +249,14 @@ terminal is.
 
 Ordered by how much they help, not by how hard they are.
 
-### 1. The context budget — the strongest single reason to build this
+### 1. The context budget - the strongest single reason to build this
 
 `details` reports each plugin's **always-on** token cost, paid on every session, plus **on-invoke**
 cost paid each time a skill or agent fires. Nothing in Claude Code totals this across everything you
 have installed. Users accumulate plugins over months and have no idea what they are paying before
 they type a word.
 
-Otto can total it, rank plugins by always-on cost, and show it where the decision is made — on the
+Otto can total it, rank plugins by always-on cost, and show it where the decision is made - on the
 row, next to Disable. That turns an invisible cost into a decision, which is the same move
 [docs/token-economy.md](../../docs/token-economy.md) makes everywhere else and the same one
 [context-management](../../docs/context-management.md) makes for everything sent before you
@@ -268,7 +268,7 @@ This also gives disable/enable a real purpose: not tidying, but reclaiming conte
 ### 2. What is actually loaded, versus what is installed
 
 Installed ≠ active. Scope, enablement, and the restart gap all mean the plugin set on disk can differ
-from the set a running agent actually loaded. Otto is the only place that knows both — it holds the
+from the set a running agent actually loaded. Otto is the only place that knows both - it holds the
 agent sessions.
 
 Showing "active in this session" against "installed on this host", with the difference explained
@@ -282,7 +282,7 @@ small number of causes that are all knowable: the server is in a `.mcp.json` tha
 approved (`⏸ Pending approval`), it needs an OAuth login that has not happened, its command is not on
 PATH, or it starts and immediately exits.
 
-The health probe (§"MCP reads") exists for this. It should not report a red dot — it should report
+The health probe (§"MCP reads") exists for this. It should not report a red dot - it should report
 the cause and the next action. Where the fix is a CLI command that must run on the host, say so
 verbatim so it can be copied.
 
@@ -309,7 +309,7 @@ no-plugin baseline arm** (`--ablation with-without`) so you get a score delta, n
 
 That is a complete author → test → measure loop, and `eval` is the one part of this whole surface
 that emits rich JSON. It was listed as out-of-scope in the first draft of this charter; under the
-enablement framing it is promoted to its own phase. It stays **last** — it serves plugin authors,
+enablement framing it is promoted to its own phase. It stays **last** - it serves plugin authors,
 while phases 1–4 serve everyone.
 
 ### 6. Trust on the way in
@@ -317,40 +317,40 @@ while phases 1–4 serve everyone.
 Adding a marketplace and installing a plugin is running someone else's code and, for MCP, handing it
 credentials. The UI should name the source repo, distinguish the official marketplace from a
 third-party one, and confirm on marketplace add rather than treating it as a text-field edit. Not a
-security feature — an honesty one.
+security feature - an honesty one.
 
 ## Phases
 
 Each phase is independently shippable and independently useful.
 
-**Phase 1 — Plugins, read-only, with the cost view.** Adapter + `extensions.claude.plugins.list`.
+**Phase 1 - Plugins, read-only, with the cost view.** Adapter + `extensions.claude.plugins.list`.
 The Plugins tab renders the installed set with name, marketplace, version, scope, enabled state.
 Detail view reads the component inventory from `installPath` and the token cost from parsed
 `details` output (§"Reading `details`"), giving both the plugin → skill attribution `listCommands()`
-lacks and **the always-on total across all installed plugins** (enablement §1) — the headline number,
+lacks and **the always-on total across all installed plugins** (enablement §1) - the headline number,
 shipped in the first phase rather than saved for later. Also the installed-vs-active distinction
 (§2), which is nearly free here since the daemon holds the sessions. No mutations.
 _~1–2 medium sessions._
 
-**Phase 2 — Plugin mutations.** Enable, disable, install, uninstall, update. The `requiresRestart`
+**Phase 2 - Plugin mutations.** Enable, disable, install, uninstall, update. The `requiresRestart`
 banner and the Restart affected agents action. Confirmation on uninstall. Disable is presented as
 reclaiming the context budget Phase 1 made visible, which is what makes the pairing work.
 _~1 medium session._
 
-**Phase 3 — Marketplaces and the catalog browser.** `marketplace add|remove|update|list`, plus
-browsing `plugin list --available --json`. The catalog is large — search and marketplace grouping are
+**Phase 3 - Marketplaces and the catalog browser.** `marketplace add|remove|update|list`, plus
+browsing `plugin list --available --json`. The catalog is large - search and marketplace grouping are
 required, not polish; a flat list of that size is unusable on a phone. Workspace-derived relevance
 (§4) rides along here: it is a file glob plus an ordering, not a subsystem. Marketplace add names the
 source repo and confirms (§6).
-_~1–2 medium sessions — the browser is the largest single piece of UI in the charter._
+_~1–2 medium sessions - the browser is the largest single piece of UI in the charter._
 
-**Phase 4 — MCP.** Config-file inventory, add (all three transports, all scopes), remove, the
-secret-handling rules above, and the **diagnostic** health probe (§3) — cause and next action, not a
+**Phase 4 - MCP.** Config-file inventory, add (all three transports, all scopes), remove, the
+secret-handling rules above, and the **diagnostic** health probe (§3) - cause and next action, not a
 red dot. `add-json` backs a "paste a server config" path, which is how most MCP servers are actually
 distributed.
 _~2 medium sessions._
 
-**Phase 5 — Skills and the authoring loop.** The `~/.claude/skills/` section, `plugin init`
+**Phase 5 - Skills and the authoring loop.** The `~/.claude/skills/` section, `plugin init`
 scaffolding into Otto's editor, `plugin validate`, and `plugin eval --json` with the
 `--ablation with-without` baseline and `--max-cost-usd` ceiling surfaced as a scored run (§5). Larger
 than the first draft's "skills tab" because eval is a real feature, and still last: it serves plugin
@@ -373,7 +373,7 @@ extensions.claude.skills.scaffold       extensions.claude.skills.validate
 extensions.claude.eval.run
 ```
 
-`eval.run` is the one long-running call here — scored eval runs take minutes and cost money. It
+`eval.run` is the one long-running call here - scored eval runs take minutes and cost money. It
 streams progress rather than blocking a request/response pair, and it carries the `--max-cost-usd`
 ceiling as a required argument rather than an optional one.
 
@@ -381,7 +381,7 @@ One capability flag, `server_info.features.claudeExtensions`, with a single
 `// COMPAT(claudeExtensions): added in v0.1.X, drop the gate when floor >= v0.1.X` marker. Per the
 feature contract: **no fallback path.** An old daemon simply does not show the tabs.
 
-Wire schemas stay pure structural declarations — no `.transform()`, no `.catch()`. Text-parsing
+Wire schemas stay pure structural declarations - no `.transform()`, no `.catch()`. Text-parsing
 normalization (the health probe) happens in an explicit post-validation pass in the adapter, never in
 the schema.
 
@@ -389,8 +389,8 @@ the schema.
 
 - 🔵 **CLI surface drift.** The whole feature is a wrapper around another product's CLI. `plugin list`
   and `plugin eval` have `--json` contracts; `plugin details` and `mcp list`/`get` do not. Mitigation
-  is the split rule — structure from files, numbers from the CLI, no single parse failure taking down
-  a view — but a Claude Code upgrade renaming a subcommand still breaks things. Worth a single
+  is the split rule - structure from files, numbers from the CLI, no single parse failure taking down
+  a view - but a Claude Code upgrade renaming a subcommand still breaks things. Worth a single
   adapter-level version probe and a clear "unsupported CLI version" state rather than a wall of parse
   errors.
 - 🔵 **Token-cost presentation must not fork from context-management.** Both surfaces will show what

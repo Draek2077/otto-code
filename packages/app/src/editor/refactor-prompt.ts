@@ -1,6 +1,6 @@
 // Pure composition of the AI Refactor prompt. The dialog's whole job is to
 // produce a tightly-scoped instruction that gets good results without
-// exceeding what the user asked — so the scope guard is baked in here, not
+// exceeding what the user asked - so the scope guard is baked in here, not
 // left to the model to infer. No React, no daemon; unit-tested in isolation.
 
 export interface RefactorScope {
@@ -52,7 +52,7 @@ export function isRefactorInstructionValid(instruction: string): boolean {
 }
 
 /**
- * Compose the guarded refactor prompt. Throws on an empty instruction — the
+ * Compose the guarded refactor prompt. Throws on an empty instruction - the
  * dialog gates the confirm button on {@link isRefactorInstructionValid}, so
  * this is a defensive invariant, not a user-facing path.
  */

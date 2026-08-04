@@ -115,7 +115,7 @@ describe("joinSubtitleParts", () => {
     expect(joinSubtitleParts(["host", undefined, "master"])).toBe("host · master");
   });
 
-  it("drops empty strings (Boolean parity — agents subtitle refactor guard)", () => {
+  it("drops empty strings (Boolean parity - agents subtitle refactor guard)", () => {
     expect(joinSubtitleParts(["", "otto", "master"])).toBe("otto · master");
   });
 

@@ -9,7 +9,7 @@ import {
 } from "@/provider-selection/personality-form";
 import { ROLE_ICONS } from "@/provider-selection/role-icons";
 
-// A synthetic "Team's <Role>" picker entry — a dynamic binding that resolves to
+// A synthetic "Team's <Role>" picker entry - a dynamic binding that resolves to
 // the active team's member holding a given role, rather than a concrete
 // personality. Shared by every surface that offers one (the schedule form's
 // "Team's Scheduler", the artifact sheet's "Team's Artificer"): the surface owns
@@ -46,7 +46,7 @@ export interface BuildTeamRoleEntryInput {
  * active team.
  */
 export function buildTeamRoleEntry(input: BuildTeamRoleEntryInput): TeamRoleEntry {
-  // Neutral role glyph — the row represents a role whose holder changes with the
+  // Neutral role glyph - the row represents a role whose holder changes with the
   // team, so it never wears a concrete personality's colored provider icon.
   const roleIcon = ROLE_ICONS[input.role];
   const members = resolveTeamMembers(input.team, input.roster).filter((member) =>

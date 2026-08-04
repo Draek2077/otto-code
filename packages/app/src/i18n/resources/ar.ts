@@ -97,7 +97,7 @@ export const ar: TranslationResources = {
     },
     contextHealth: {
       summary:
-        "سياق المشروع يبلغ {{tokens}} رمزًا — أي {{percent}} من نافذة هذا النموذج، في كل طلب. يتبقى {{room}} للعمل.",
+        "سياق المشروع يبلغ {{tokens}} رمزًا - أي {{percent}} من نافذة هذا النموذج، في كل طلب. يتبقى {{room}} للعمل.",
       manage: "إدارة",
       dismiss: "إخفاء الآن",
     },
@@ -234,16 +234,16 @@ export const ar: TranslationResources = {
         disabled: "الذاكرة معطّلة لهذه الشخصية، لذا لا يُرسل أي من هذا. الدروس محفوظة على أي حال.",
         empty: "لا يُضاف أي شيء إلى سياق هذه الشخصية في هذا المشروع.",
         emptyButStored_one:
-          "الدرس أدناه لا ينطبق على هذا المشروع، لذا لا يُضاف شيء هنا — والوسم على السطر يوضّح السبب.",
+          "الدرس أدناه لا ينطبق على هذا المشروع، لذا لا يُضاف شيء هنا - والوسم على السطر يوضّح السبب.",
         emptyButStored_other:
-          "لا ينطبق أي من الدروس أدناه ({{count}}) على هذا المشروع، لذا لا يُضاف شيء هنا — والوسم على كل سطر يوضّح السبب.",
+          "لا ينطبق أي من الدروس أدناه ({{count}}) على هذا المشروع، لذا لا يُضاف شيء هنا - والوسم على كل سطر يوضّح السبب.",
         omitted: "{{count}} من الدروس أدناه لم تتّسع لها ميزانية الحقن ولا يجري إرسالها.",
       },
       scope: {
         global: "في كل مكان",
         project: "هذا المشروع",
         elsewhere: "مشروع آخر",
-        unattached: "بلا مشروع — لا تُرسل أبدًا",
+        unattached: "بلا مشروع - لا تُرسل أبدًا",
         change: "النطاق: {{scope}}. اضغط للتغيير.",
       },
       row: {
@@ -344,7 +344,7 @@ export const ar: TranslationResources = {
     },
     emptyState: {
       title: "لا يوجد سياق للمشروع بعد",
-      body: "لا يُحمَّل أي شيء لهذا المشروع. هذه بداية نظيفة وليست مشكلة — أضف CLAUDE.md أو AGENTS.md في جذر المشروع عندما تريد إعطاء وكلائك تعليمات دائمة.",
+      body: "لا يُحمَّل أي شيء لهذا المشروع. هذه بداية نظيفة وليست مشكلة - أضف CLAUDE.md أو AGENTS.md في جذر المشروع عندما تريد إعطاء وكلائك تعليمات دائمة.",
     },
   },
   agentControls: {
@@ -470,7 +470,7 @@ export const ar: TranslationResources = {
       deleteAgent: {
         title: "حذف هذه المحادثة؟",
         subjectFallback: "هذه المحادثة",
-        recordLine: "يُحذف سجل Otto الخاص بـ {{subject}} نهائيًا — الصف وعنوانه وبياناته الوصفية.",
+        recordLine: "يُحذف سجل Otto الخاص بـ {{subject}} نهائيًا - الصف وعنوانه وبياناته الوصفية.",
         transcriptLine:
           "يبقى نص {{provider}} الخاص على المضيف كما هو، فتظل المحادثة نفسها على القرص ويمكن قراءتها أو استئنافها خارج Otto.",
         undoLine: "لا يمكن التراجع عن جانب Otto من هذا.",
@@ -484,7 +484,7 @@ export const ar: TranslationResources = {
         recordLineMany:
           "يحذف نهائيًا سجلات Otto الخاصة بـ {{count}} محادثات مؤرشفة. المحادثات التي لم تؤرشفها لا تُمس.",
         transcriptLine:
-          "تبقى النصوص الخاصة بمزوّدي الوكلاء على المضيف كما هي — هذا يمسح سجل Otto لا المحادثات الموجودة على القرص.",
+          "تبقى النصوص الخاصة بمزوّدي الوكلاء على المضيف كما هي - هذا يمسح سجل Otto لا المحادثات الموجودة على القرص.",
         undoLine: "لا يمكن التراجع عن جانب Otto من هذا.",
         confirm: "مسح",
       },
@@ -731,7 +731,7 @@ export const ar: TranslationResources = {
           subjectFile: "سيتم حذف «{{name}}» من القرص.",
           subjectFolder: "سيتم حذف «{{name}}» من القرص.",
           permanentLine:
-            "هذا إجراء نهائي — يُحذف العنصر من القرص ولا يُنقل إلى سلة المهملات، ولا يمكن لـ Otto التراجع عنه.",
+            "هذا إجراء نهائي - يُحذف العنصر من القرص ولا يُنقل إلى سلة المهملات، ولا يمكن لـ Otto التراجع عنه.",
           confirm: "حذف",
         },
         deleteContents: {
@@ -859,7 +859,7 @@ export const ar: TranslationResources = {
       closeAction: "إغلاق المُصوِّر",
       loadFailedTitle: "تعذّر تشغيل المُصوِّر",
       loadFailedBody:
-        "لم تكتمل عملية تحميل عرض الرسم على هذا الجهاز. قد يحدث ذلك عند تشغيل التطبيق بدون تسريع رسومي — سجلّ سطح المكتب يحتوي على التفاصيل. أغلق التبويبة وأعد فتحها للمحاولة مجددًا.",
+        "لم تكتمل عملية تحميل عرض الرسم على هذا الجهاز. قد يحدث ذلك عند تشغيل التطبيق بدون تسريع رسومي - سجلّ سطح المكتب يحتوي على التفاصيل. أغلق التبويبة وأعد فتحها للمحاولة مجددًا.",
     },
     contextManagement: {
       tabLabel: "السياق",
@@ -1201,12 +1201,12 @@ export const ar: TranslationResources = {
           // Branch cleanup section (worktreeArchiveBranchCleanup)
           branchIntro: "شجرة العمل هذه على الفرع {{branchName}}.",
           deleteBranchCheckbox: "احذف أيضًا الفرع {{branchName}}",
-          branchMerged: "مدموج بالكامل في {{baseBranch}} — حذفه آمن.",
-          branchMergedNoBase: "مدموج بالكامل — حذفه آمن.",
-          branchUnmergedCommit: "غير مدموج في {{baseBranch}} — الحذف سيتجاهل {{count}} التزام.",
-          branchUnmergedCommits: "غير مدموج في {{baseBranch}} — الحذف سيتجاهل {{count}} التزامات.",
-          branchUnmergedCommitNoBase: "غير مدموج — الحذف سيتجاهل {{count}} التزام.",
-          branchUnmergedCommitsNoBase: "غير مدموج — الحذف سيتجاهل {{count}} التزامات.",
+          branchMerged: "مدموج بالكامل في {{baseBranch}} - حذفه آمن.",
+          branchMergedNoBase: "مدموج بالكامل - حذفه آمن.",
+          branchUnmergedCommit: "غير مدموج في {{baseBranch}} - الحذف سيتجاهل {{count}} التزام.",
+          branchUnmergedCommits: "غير مدموج في {{baseBranch}} - الحذف سيتجاهل {{count}} التزامات.",
+          branchUnmergedCommitNoBase: "غير مدموج - الحذف سيتجاهل {{count}} التزام.",
+          branchUnmergedCommitsNoBase: "غير مدموج - الحذف سيتجاهل {{count}} التزامات.",
           branchMergeUnknown: "تعذّر تحديد حالة الدمج.",
           branchRemoteKept: "يتم الاحتفاظ بالنسخة على origin.",
           branchDeleted: "تم حذف الفرع {{branchName}}.",
@@ -1251,7 +1251,7 @@ export const ar: TranslationResources = {
         deletedFile: "تم الحذف",
         baseChip: "مقابل {{baseRef}}",
         baseChipReadOnly: "المقارنة مقابل {{baseRef}}",
-        baseChipEditable: "المقارنة مقابل {{baseRef}} — اضغط للتغيير",
+        baseChipEditable: "المقارنة مقابل {{baseRef}} - اضغط للتغيير",
         baseChipInferred: "المقارنة مقابل {{baseRef}}، المكتشف كفرع أصل لهذا الفرع",
         baseChipWorktree: "المقارنة مقابل {{baseRef}}، الفرع الذي أُنشئت منه شجرة العمل",
         baseChipPinned: "المقارنة مقابل {{baseRef}}، الذي اخترته",
@@ -2174,10 +2174,10 @@ export const ar: TranslationResources = {
     team: {
       title: "أي نوع من الفِرق تريد؟",
       subtitle:
-        "اختر فريقًا ويبني لك Otto طاقمًا كاملًا ومتوازنًا — شخصيات بأسماء وطباع خاصة بها. لا يناسبك؟ أعد الخلط. أو ابنِ فريقك من وكلائك.",
+        "اختر فريقًا ويبني لك Otto طاقمًا كاملًا ومتوازنًا - شخصيات بأسماء وطباع خاصة بها. لا يناسبك؟ أعد الخلط. أو ابنِ فريقك من وكلائك.",
       unsupportedTitle: "ابنِ فريقك",
       unsupportedBody:
-        "هذا المضيف لا يدعم فِرق الوكلاء بعد. حدّث المضيف ليبني لك Otto فريقًا — يمكنك تخطّي هذه الخطوة الآن.",
+        "هذا المضيف لا يدعم فِرق الوكلاء بعد. حدّث المضيف ليبني لك Otto فريقًا - يمكنك تخطّي هذه الخطوة الآن.",
       blueprints: {
         application: {
           name: "فريق التطبيقات",
@@ -2185,7 +2185,7 @@ export const ar: TranslationResources = {
         },
         game: {
           name: "فريق الألعاب",
-          tagline: "مجموعة أستوديو لصناعة الألعاب — الميكانيكيات والإحساس واللمسات المميزة.",
+          tagline: "مجموعة أستوديو لصناعة الألعاب - الميكانيكيات والإحساس واللمسات المميزة.",
         },
         web: {
           name: "فريق الويب",
@@ -2193,7 +2193,7 @@ export const ar: TranslationResources = {
         },
         creative: {
           name: "أستوديو إبداعي",
-          tagline: "أستوديو للكتابة والفن والأفكار — بلا حاجة إلى برمجة.",
+          tagline: "أستوديو للكتابة والفن والأفكار - بلا حاجة إلى برمجة.",
         },
         management: {
           name: "فريق الإدارة",
@@ -2208,7 +2208,7 @@ export const ar: TranslationResources = {
         name: "ابنِ فريقك",
         tagline: "جمّع فريقًا من وكلائك، بطريقتك.",
       },
-      providerNoModels: "لا توجد نماذج لهذا المزوّد بعد — حدّثه من الإعدادات ثم عد إلى هنا.",
+      providerNoModels: "لا توجد نماذج لهذا المزوّد بعد - حدّثه من الإعدادات ثم عد إلى هنا.",
       providerMissing: "اختر مزوّدًا أولًا (في الخطوة السابقة) ليعرف Otto أي النماذج يستخدم.",
       memberCountOne: "عضو واحد",
       memberCountMany: "{{count}} أعضاء",
@@ -2508,9 +2508,9 @@ export const ar: TranslationResources = {
     wordWrap: "التفاف النص",
     outOfProject: {
       badge:
-        "تحرير خارج المشروع ({{project}}) — ليس جزءًا من سياق الوكيل ولا من تغييرات Git في هذا الـ Workspace.",
+        "تحرير خارج المشروع ({{project}}) - ليس جزءًا من سياق الوكيل ولا من تغييرات Git في هذا الـ Workspace.",
       badgeNoProject:
-        "تحرير خارج المشروع — ليس جزءًا من سياق الوكيل ولا من تغييرات Git في هذا الـ Workspace.",
+        "تحرير خارج المشروع - ليس جزءًا من سياق الوكيل ولا من تغييرات Git في هذا الـ Workspace.",
     },
     contextMenu: {
       cut: "قص",
@@ -2569,12 +2569,12 @@ export const ar: TranslationResources = {
     loading: "جارٍ تحميل الملفات...",
     noResults: "لا توجد ملفات",
   },
-  // Refine — the reviewed AI rewrite (docs/refine.md). Only the two
+  // Refine - the reviewed AI rewrite (docs/refine.md). Only the two
   // entry-point strings are translated here; the Refine tab itself is literal
   // English pending the pre-release i18n sweep, like the rename/references tabs.
   refine: {
     open: "تحسين بالذكاء الاصطناعي",
-    saveFirst: "احفظ تغييراتك أو تراجع عنها أولًا — التحسين يعمل على الملف الموجود على القرص.",
+    saveFirst: "احفظ تغييراتك أو تراجع عنها أولًا - التحسين يعمل على الملف الموجود على القرص.",
     compactOpen: "ضغط بالذكاء الاصطناعي",
     unsupported: "حدّث المضيف لاستخدام التحسين.",
     job: {
@@ -2590,8 +2590,8 @@ export const ar: TranslationResources = {
     toolbar: {
       discard: "تجاهل هذا المقترح وإعادة قراءة كل الملفات",
       writing: "جارٍ الكتابة…",
-      acceptOne: "قبول — كتابة التغييرات المحتفظ بها",
-      acceptMany: "قبول — كتابة {{count}} ملفات",
+      acceptOne: "قبول - كتابة التغييرات المحتفظ بها",
+      acceptMany: "قبول - كتابة {{count}} ملفات",
       dropAll: "إسقاط كل التغييرات",
       keepAll: "الاحتفاظ بكل التغييرات",
     },
@@ -2607,7 +2607,7 @@ export const ar: TranslationResources = {
       allOffHint: "دع إعادة الكتابة تغيّر كل ملفات هذه المجموعة، لا الملف الأول فقط.",
       writableHint: "يمكن إعادة كتابته. اضغط لجعله سياقًا للقراءة فقط.",
       referenceHint:
-        "سياق للقراءة فقط — يقرؤه النموذج ولا يمكنه تغييره أبدًا. اضغط للسماح بإعادة كتابته.",
+        "سياق للقراءة فقط - يقرؤه النموذج ولا يمكنه تغييره أبدًا. اضغط للسماح بإعادة كتابته.",
     },
     instruction: {
       placeholder: "ما الذي يجب تغييره؟ مثال: احتفظ بكل قاعدة واحذف التكرار",
@@ -2651,22 +2651,22 @@ export const ar: TranslationResources = {
       failed: "تعذّرت الكتابة",
     },
     summary: {
-      pinning: "يجري تثبيت الملفات كما هي الآن — وهذا ما سيُقاس عليه كل مقترح.",
+      pinning: "يجري تثبيت الملفات كما هي الآن - وهذا ما سيُقاس عليه كل مقترح.",
       unreadable: "تعذّرت قراءة مجموعة العمل هذه.",
       idle: "لا يوجد مقترح بعد. لم يُمَس أي ملف.",
-      generating: "الجولة {{round}} — جارٍ إعادة الكتابة.",
+      generating: "الجولة {{round}} - جارٍ إعادة الكتابة.",
       accepting: "جارٍ كتابة التغييرات المحتفظ بها.",
-      acceptedOne: "تم — كتابة ملف واحد.",
-      acceptedMany: "تم — كتابة {{count}} ملفات.",
+      acceptedOne: "تم - كتابة ملف واحد.",
+      acceptedMany: "تم - كتابة {{count}} ملفات.",
       partiallyAccepted: "{{written}} مكتوبة، و{{skipped}} تُركت كما هي. لم يُستبدل أي شيء.",
       reviewOne:
-        "الجولة {{round}} — تم الاحتفاظ بـ {{kept}} من أصل {{total}} تغيير، +{{additions}} −{{removals}} سطرًا. لم يُكتب أي شيء بعد.",
+        "الجولة {{round}} - تم الاحتفاظ بـ {{kept}} من أصل {{total}} تغيير، +{{additions}} −{{removals}} سطرًا. لم يُكتب أي شيء بعد.",
       reviewMany:
-        "الجولة {{round}} — تم الاحتفاظ بـ {{kept}} من أصل {{total}} تغييرات، +{{additions}} −{{removals}} سطرًا. لم يُكتب أي شيء بعد.",
+        "الجولة {{round}} - تم الاحتفاظ بـ {{kept}} من أصل {{total}} تغييرات، +{{additions}} −{{removals}} سطرًا. لم يُكتب أي شيء بعد.",
       reviewOneScoped:
-        "الجولة {{round}} — تم الاحتفاظ بـ {{kept}} من أصل {{total}} تغيير عبر {{changedFiles}}/{{proposedFiles}} ملفات، +{{additions}} −{{removals}} سطرًا. لم يُكتب أي شيء بعد.",
+        "الجولة {{round}} - تم الاحتفاظ بـ {{kept}} من أصل {{total}} تغيير عبر {{changedFiles}}/{{proposedFiles}} ملفات، +{{additions}} −{{removals}} سطرًا. لم يُكتب أي شيء بعد.",
       reviewManyScoped:
-        "الجولة {{round}} — تم الاحتفاظ بـ {{kept}} من أصل {{total}} تغييرات عبر {{changedFiles}}/{{proposedFiles}} ملفات، +{{additions}} −{{removals}} سطرًا. لم يُكتب أي شيء بعد.",
+        "الجولة {{round}} - تم الاحتفاظ بـ {{kept}} من أصل {{total}} تغييرات عبر {{changedFiles}}/{{proposedFiles}} ملفات، +{{additions}} −{{removals}} سطرًا. لم يُكتب أي شيء بعد.",
     },
   },
   refactor: {
@@ -3023,7 +3023,7 @@ export const ar: TranslationResources = {
       mountedWorkspaceLimit: {
         label: "عدد الـ Workspaces المُبقاة محمّلة",
         description:
-          "عدد الـ Workspaces التي تبقى محمّلة ليكون التبديل إليها فوريًا. بعد هذا العدد، يُفرَّغ الـ Workspace الأقل استخدامًا مؤخرًا ويُعاد تحميله عند فتحه مجددًا. اضبطه على الأقل بعدد ما تتنقل بينه فعلًا — فدون ذلك، كل تبديل يفرّغ الـ Workspace الذي أنت على وشك العودة إليه. القيم الأعلى تستهلك ذاكرة أكبر.",
+          "عدد الـ Workspaces التي تبقى محمّلة ليكون التبديل إليها فوريًا. بعد هذا العدد، يُفرَّغ الـ Workspace الأقل استخدامًا مؤخرًا ويُعاد تحميله عند فتحه مجددًا. اضبطه على الأقل بعدد ما تتنقل بينه فعلًا - فدون ذلك، كل تبديل يفرّغ الـ Workspace الذي أنت على وشك العودة إليه. القيم الأعلى تستهلك ذاكرة أكبر.",
         accessibilityLabel: "عدد الـ Workspaces المُبقاة محمّلة",
       },
       mountedTabLimit: {
@@ -3197,7 +3197,7 @@ export const ar: TranslationResources = {
         },
         chatMetricsBar: {
           title: "إظهار مقاييس المحادثة",
-          hint: "صف رفيع أعلى النص يعرض إجمالي الرموز والتكلفة ونشاط الوكلاء الفرعيين لهذه المحادثة — بما في ذلك كل ما تفرّع عنها. لا تظهر التكلفة إلا عندما يبلّغ عنها المزوّد",
+          hint: "صف رفيع أعلى النص يعرض إجمالي الرموز والتكلفة ونشاط الوكلاء الفرعيين لهذه المحادثة - بما في ذلك كل ما تفرّع عنها. لا تظهر التكلفة إلا عندما يبلّغ عنها المزوّد",
           accessibilityLabel: "إظهار مقاييس المحادثة",
         },
         autoExpandReasoning: {
@@ -3589,12 +3589,12 @@ export const ar: TranslationResources = {
         hostImagesSummary: "{{size}} عبر {{count}} صورة",
         hostImagesEmpty: "لا شيء مخزَّن بعد",
         hostImagesHint:
-          "لقطات الشاشة والصور الأخرى التي أنتجها وكلاؤك، محفوظة كي تظل الرسائل السابقة قادرة على عرضها. لا يمكن التراجع عن المسح — ستعود تلك الرسائل إلى عرض الوصف النصي.",
+          "لقطات الشاشة والصور الأخرى التي أنتجها وكلاؤك، محفوظة كي تظل الرسائل السابقة قادرة على عرضها. لا يمكن التراجع عن المسح - ستعود تلك الرسائل إلى عرض الوصف النصي.",
         previewCache: "نسخ مؤقتة على هذا الجهاز",
         previewCacheSummary: "{{size}} عبر {{count}} صورة",
         previewCacheEmpty: "لا شيء في الذاكرة المؤقتة",
         previewCacheHint:
-          "نسخ محلية لتحميل الصور فورًا. مسحها آمن — يُعاد تنزيلها عند الحاجة. أما الملفات التي أرفقتها بالرسائل ({{size}}) فتُحفظ بشكل منفصل ولا تُمسح من هنا أبدًا.",
+          "نسخ محلية لتحميل الصور فورًا. مسحها آمن - يُعاد تنزيلها عند الحاجة. أما الملفات التي أرفقتها بالرسائل ({{size}}) فتُحفظ بشكل منفصل ولا تُمسح من هنا أبدًا.",
         clear: "مسح",
         clearConfirm: "مسح الصور",
         clearImagesTitle: "مسح الصور على هذا المضيف؟",
@@ -3758,7 +3758,7 @@ export const ar: TranslationResources = {
           "عند الإيقاف، تُخفي المحادثات محدد الضغط التلقائي وتستخدم دائمًا الإعداد الافتراضي أعلاه.",
         maxToolRoundsLabel: "أقصى عدد لجولات الأدوات في الدور الواحد",
         maxToolRoundsHint:
-          "يتوقف الدور بخطأ بعد هذا العدد من جولات الأدوات دون إجابة نهائية — صمّام أمان ضد الحلقات الجامحة.",
+          "يتوقف الدور بخطأ بعد هذا العدد من جولات الأدوات دون إجابة نهائية - صمّام أمان ضد الحلقات الجامحة.",
         maxToolRoundsValue: "{{rounds}} جولة",
         maxToolRoundsRequiresUpdate: "حدّث المضيف لضبط أقصى عدد لجولات الأدوات.",
         saveFailed: "فشل حفظ إعدادات الوكلاء",

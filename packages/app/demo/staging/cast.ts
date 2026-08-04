@@ -15,7 +15,7 @@ import {
  * The shared demo cast: seven named personalities with distinct roles, colors,
  * prompts, and hand-written voice cues, plus two teams built from them. Every
  * people-scenario (personalities, teams, pickers) seeds this same cast so the
- * captured world stays consistent across runs — one product story, not seven
+ * captured world stays consistent across runs - one product story, not seven
  * random rosters.
  *
  * Personalities bind to real Claude model ids (a role-appropriate Opus/Sonnet/
@@ -32,7 +32,7 @@ export type CastTeamKey = "shipCrew" | "researchGuild";
 interface CastMemberSpec {
   name: string;
   roles: string[];
-  /** Real Claude model id (see protocol default-personalities.ts) — an
+  /** Real Claude model id (see protocol default-personalities.ts) - an
    * unknown id renders rows disabled with "Model not available". */
   model: string;
   prompt: string;
@@ -72,7 +72,7 @@ const CAST_SPECS: Record<CastMemberKey, CastMemberSpec> = {
       done: ["Cooled and done."],
     },
   },
-  // "Argus", not "Sage" — the shipped starter roster already has a Sage and
+  // "Argus", not "Sage" - the shipped starter roster already has a Sage and
   // two same-named personalities would wreck the captures.
   sage: {
     name: "Argus",
@@ -109,7 +109,7 @@ const CAST_SPECS: Record<CastMemberKey, CastMemberSpec> = {
     roles: ["researcher", "chatter"],
     model: "claude-sonnet-5",
     prompt:
-      "You are Scout, the pathfinder. You read widely, cite what you find, and come back with a map — options, tradeoffs, and a recommendation.",
+      "You are Scout, the pathfinder. You read widely, cite what you find, and come back with a map - options, tradeoffs, and a recommendation.",
     glowA: "#ffb020",
     glowB: "#ff6b6b",
     cues: {
@@ -139,7 +139,7 @@ const CAST_SPECS: Record<CastMemberKey, CastMemberSpec> = {
     roles: ["artificer", "chatter"],
     model: "claude-sonnet-5",
     prompt:
-      "You are Muse, the artificer. You turn ideas into polished interactive artifacts — visual, self-contained, and a little delightful.",
+      "You are Muse, the artificer. You turn ideas into polished interactive artifacts - visual, self-contained, and a little delightful.",
     glowA: "#b455ff",
     glowB: "#ff7ad9",
     cues: {
@@ -178,7 +178,7 @@ const TEAM_SPECS: Record<CastTeamKey, CastTeamSpec> = {
 /**
  * Right after daemon boot, personality rows carry a transient red
  * "Provider ... is not ready (loading)" note until the provider snapshot
- * resolves. Wait it out before any people-surface shot — captured red
+ * resolves. Wait it out before any people-surface shot - captured red
  * warnings read as a broken product.
  */
 export async function waitForProvidersReady(page: Page): Promise<void> {

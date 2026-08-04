@@ -124,7 +124,7 @@ function toQueuedMessagePayloads(
     // blocks are obvious; a text ATTACHMENT (added-to-chat file, folder, chat
     // history, review) also counts, because the user attached it and expects to
     // see it in the row's count. It is told apart from a plain prompt text
-    // block by its required `mimeType` — TextAttachmentSchema declares it,
+    // block by its required `mimeType` - TextAttachmentSchema declares it,
     // buildAgentPrompt's own text block never carries one. Counting only
     // `type !== "text"` undercounted every added-to-chat file, so the daemon
     // path disagreed with the client-held queue on the very same message.
@@ -195,7 +195,7 @@ export function toAgentPayload(
     title: options?.title ?? null,
     labels: agent.labels,
     // Internal agents (e.g. artifact generation) have no client watching to
-    // approve/prompt them — render their tab read-only like an observed
+    // approve/prompt them - render their tab read-only like an observed
     // subagent. Other ManagedAgents stay attended; true observed subagents
     // are produced by a separate projection (see observed-subagent-registry).
     // See projects/observed-subagents/observed-subagents.md.
@@ -208,7 +208,7 @@ export function toAgentPayload(
   }
 
   // Same lifetime-total field observed subagents use (toObservedSubagentPayload
-  // below) — populated here too so the subagent track shows every row the same
+  // below) - populated here too so the subagent track shows every row the same
   // way regardless of how the child was spawned. See accumulateAgentTokens in
   // agent-manager.ts.
   if (typeof agent.cumulativeTokens === "number" && Number.isFinite(agent.cumulativeTokens)) {
@@ -219,7 +219,7 @@ export function toAgentPayload(
 
   // Same liveness signals observed rows carry, so a native (create_agent) child
   // reads identically in the track. Sourced from its own timeline rather than a
-  // provider task report — see AgentManager.recordNativeSubagentToolActivity.
+  // provider task report - see AgentManager.recordNativeSubagentToolActivity.
   applySubagentLiveness(payload, {
     toolUseCount: agent.toolUseCount,
     currentTool: agent.currentTool,
@@ -363,7 +363,7 @@ function buildStoredAgentPayloadTail(
   return tail;
 }
 
-// Observed subagents have no Otto runtime — all interactive capabilities are
+// Observed subagents have no Otto runtime - all interactive capabilities are
 // false so the client hides model/mode/thinking/rewind controls, leaving a
 // read-only pane. Tool invocations stay true so the transcript renders tool
 // calls. See projects/observed-subagents/observed-subagents.md.
@@ -406,7 +406,7 @@ export function toObservedSubagentPayload(input: {
   toolUseCount?: number;
   currentTool?: string;
   // Resolved by the manager (latched, and inherited from the parent row), not
-  // read off `update` — a status-only refresh omits it.
+  // read off `update` - a status-only refresh omits it.
   backgrounded?: boolean;
   update: ObservedSubagentUpdate;
 }): AgentSnapshotPayload {
@@ -473,9 +473,9 @@ export function toObservedSubagentPayload(input: {
 
 /**
  * Attach the sub-agents-track liveness signals to a snapshot: how much work the
- * agent has done (`toolUseCount`, cumulative — it stays on a finished row, which
+ * agent has done (`toolUseCount`, cumulative - it stays on a finished row, which
  * is the whole point of "89 tool uses") and what it is doing right now
- * (`currentTool`, dropped the moment the agent is terminal — a finished agent
+ * (`currentTool`, dropped the moment the agent is terminal - a finished agent
  * isn't "running Bash"). Absent inputs leave the fields off entirely so the row
  * omits the readout instead of showing a stale or invented value.
  * Shared by both projections so observed and native sub-agent rows read alike.
@@ -500,7 +500,7 @@ function applySubagentLiveness(
  * shape, and a chat total can sum them without caring which it is.
  *
  * Omitted entirely when there is nothing to report, and `costUsd` is omitted
- * unless the provider genuinely priced something — an absent cost is the honest
+ * unless the provider genuinely priced something - an absent cost is the honest
  * answer for a local model, and it is what makes the client show a blank
  * instead of an estimate. `costCoverage` travels with it so a partially-priced
  * total is never read as complete.
@@ -754,7 +754,7 @@ function sanitizeContextComposition(value: JsonValue | undefined): ContextCompos
 /**
  * The provider's own labelled split. Unlike the fixed-key composition this is an
  * open-ended list, so entries are validated structurally (label + finite count)
- * rather than against a known field set — a provider inventing a new category
+ * rather than against a known field set - a provider inventing a new category
  * must reach the client intact, not be silently dropped.
  */
 function sanitizeContextCategories(

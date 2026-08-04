@@ -1,4 +1,4 @@
-// The Active Team switcher — the "switch instantly from the main UI" surface
+// The Active Team switcher - the "switch instantly from the main UI" surface
 // for Agent Teams (docs/agent-teams.md). Default home: a row
 // in the top-left sidebar menu, directly above "New workspace". An appearance
 // setting (teamSwitcherPlacement) relocates it into the workspace title bar
@@ -7,7 +7,7 @@
 // Selection is daemon truth: picking a team patches `agentTeams.activeTeamId`
 // and the control renders from the hot-reloaded config, so every connected
 // client agrees instantly. No client-side selection state. Switching is
-// deliberately unceremonious — snapshot semantics protect running agents.
+// deliberately unceremonious - snapshot semantics protect running agents.
 //
 // i18n: English-only pending a translation pass (build-first, translate-last).
 import { useCallback, useMemo, useRef, useState, type ReactElement } from "react";
@@ -56,7 +56,7 @@ const chevronMapping = (theme: Theme) => ({
 });
 
 /**
- * Sidebar mount point — renders only while the appearance setting keeps the
+ * Sidebar mount point - renders only while the appearance setting keeps the
  * switcher in its default sidebar home.
  */
 export function SidebarActiveTeamSwitchers({
@@ -72,7 +72,7 @@ export function SidebarActiveTeamSwitchers({
 }
 
 /**
- * Title-bar mount point — renders only when the appearance setting relocates
+ * Title-bar mount point - renders only when the appearance setting relocates
  * the switcher into the workspace header, ahead of the other tools.
  */
 export function HeaderActiveTeamSwitchers(): ReactElement | null {
@@ -84,7 +84,7 @@ export function HeaderActiveTeamSwitchers(): ReactElement | null {
 }
 
 /**
- * One switcher per connected host that advertises the agentTeams capability —
+ * One switcher per connected host that advertises the agentTeams capability -
  * gating happens inside each row (absent feature / empty team list ⇒ null), so
  * a host without teams renders nothing and the whole surface disappears,
  * matching the zero-setup invariant.
@@ -190,7 +190,7 @@ function ActiveTeamSwitcher({
 
   const handleToggle = useCallback(() => setOpen((current) => !current), []);
 
-  // Renders only when the host advertises the capability AND has ≥ 1 team —
+  // Renders only when the host advertises the capability AND has ≥ 1 team -
   // no teams configured means no switcher anywhere (zero-setup invariant).
   if (!isConnected || !hasFeature || teams.length === 0) {
     return null;
@@ -220,7 +220,7 @@ function ActiveTeamSwitcher({
         value={activeTeam?.id ?? NO_TEAM_OPTION_ID}
         onSelect={handleSelect}
         searchable={teams.length > 8}
-        title={hostCount > 1 ? `Active team — ${hostLabel}` : "Active team"}
+        title={hostCount > 1 ? `Active team - ${hostLabel}` : "Active team"}
         open={open}
         onOpenChange={setOpen}
         anchorRef={anchorRef}
@@ -436,7 +436,7 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
   },
   // Exactly the workspace list's project icon square box (theme.iconSize.lg) so
-  // the circle reads at the same size as the project squares — and tracks the
+  // the circle reads at the same size as the project squares - and tracks the
   // appearance icon-scale setting the same way, unlike a fixed literal. The
   // smaller fixed-size acronym leaves the breathing room around the letters.
   sidebarAvatarDot: {

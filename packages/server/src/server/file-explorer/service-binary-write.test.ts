@@ -51,7 +51,7 @@ describe("writeExplorerBinaryFile", () => {
     }
   });
 
-  it("replaces an existing binary file — the case the text write refuses outright", async () => {
+  it("replaces an existing binary file - the case the text write refuses outright", async () => {
     const root = await createTempDir("otto-binary-write-");
     try {
       await writeExplorerBinaryFile({ root, relativePath: "report.pdf", bytes: PDF_BYTES });

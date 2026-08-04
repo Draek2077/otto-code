@@ -10,8 +10,8 @@ import { ROLE_LABELS } from "@/provider-selection/role-labels";
 
 /**
  * What happens to a personality's accrued lessons when the personality is
- * deleted. This sheet exists because the alternative — deleting the roster entry
- * and silently dropping everything it had learned — destroys the only part of a
+ * deleted. This sheet exists because the alternative - deleting the roster entry
+ * and silently dropping everything it had learned - destroys the only part of a
  * personality that took real work to produce.
  *
  * So the delete asks a three-way question rather than a yes/no one: hand the
@@ -32,7 +32,7 @@ interface PersonalityMemoryTransferSheetProps {
   visible: boolean;
   /** The personality being deleted. */
   personality: AgentPersonality;
-  /** How many lessons are at stake — named, so the decision is informed. */
+  /** How many lessons are at stake - named, so the decision is informed. */
   lessonCount: number;
   /** The rest of the roster, as possible destinations. */
   candidates: readonly AgentPersonality[];

@@ -7,7 +7,7 @@ const DEFAULT_STEP = 8;
 /**
  * Tracks the height of a container via onLayout, quantized so ordinary layout
  * churn doesn't re-render everything under it. Measure a box whose height is set
- * by its own parent — measuring a content-sized box and feeding the result back
+ * by its own parent - measuring a content-sized box and feeding the result back
  * into that content's size is a loop.
  */
 export function useContainerHeight(options?: { step?: number }): {

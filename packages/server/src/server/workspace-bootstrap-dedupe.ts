@@ -16,7 +16,7 @@
  *
  * Returns `false` (drop) when the status pair is unchanged AND the update
  * is not strictly newer than the snapshot in activity. The both-null
- * activity case falls through to drop — there is genuinely no new info.
+ * activity case falls through to drop - there is genuinely no new info.
  */
 export interface BootstrapUpdateSnapshot {
   status: string;

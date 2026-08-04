@@ -3,7 +3,7 @@ import { useSettings, type AppSettings, type InterfaceMode } from "@/hooks/use-s
 import { APP_SETTINGS_QUERY_KEY } from "@/hooks/use-settings/storage";
 
 // The single gate for User vs Developer interface depth. Interface mode is
-// presentation only — it changes what the client renders, never what the daemon
+// presentation only - it changes what the client renders, never what the daemon
 // does, what agents can do, or what rides the wire (see
 // projects/first-time-wizard/interface-modes.md). Every consumer of these hooks
 // must map to a row in the surface inventory; a stray import elsewhere is a defect.
@@ -26,7 +26,7 @@ export function useIsDeveloperMode(): boolean {
 }
 
 /**
- * Imperative, non-React read of the same settings query cache — for gate sites
+ * Imperative, non-React read of the same settings query cache - for gate sites
  * that run outside the React tree (keyboard-action dispatch, file-open paths).
  * Reads the single source of truth (no second store); falls back to "developer"
  * when the cache is not yet populated, matching the resolution rule above.

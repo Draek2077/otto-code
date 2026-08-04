@@ -15,11 +15,11 @@ const ThemedRecordVoiceOver = withUnistyles(RecordVoiceOver);
 const ThemedVoiceOverOff = withUnistyles(VoiceOverOff);
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-// `accentBright` — the same accent the Sidebar and Explorer toggles use for their
+// `accentBright` - the same accent the Sidebar and Explorer toggles use for their
 // on-state, so every enabled header toggle reads as one family.
 const accentColorMapping = (theme: Theme) => ({ color: theme.colors.accentBright });
 
-// Accent while cues can speak, so the button reads as the state toggle it is —
+// Accent while cues can speak, so the button reads as the state toggle it is -
 // same convention as the Visualizer button beside it.
 function resolveGlyphColor(input: { unmuted: boolean; hovered: boolean }) {
   if (input.unmuted) {
@@ -40,7 +40,7 @@ function resolveTriggerStyle(unmuted: boolean) {
 
 /** Whether a cue mute is worth a header slot: the host can speak cues (the same
  * capability pair the playback hook gates on) AND the user has the feature
- * enabled. A mute for something that can never make noise is just clutter — so
+ * enabled. A mute for something that can never make noise is just clutter - so
  * turning cues off in settings takes the button away with them, and turning
  * them back on brings it back. Muting is not disabling: a muted button stays. */
 export function useVoiceCuesAvailable(serverId: string): boolean {
@@ -58,14 +58,14 @@ export function useVoiceCuesAvailable(serverId: string): boolean {
  * open Settings.
  *
  * This is a MUTE, which is not the same thing as the Agents settings toggle.
- * That toggle is "do I want cues at all"; this is "not right now" — exactly the
+ * That toggle is "do I want cues at all"; this is "not right now" - exactly the
  * split the Visualizer already has between its feature switch and its in-page
  * speaker button. So this writes `agentVoiceCuesMuted`, never `agentVoiceCues`:
  * muting leaves the feature configured (and this button on screen, showing its
  * muted glyph), while disabling cues in settings removes the button altogether,
  * because a mute for something switched off is a control over nothing.
  *
- * The caller owns both gates — availability and the responsive drop-off — via
+ * The caller owns both gates - availability and the responsive drop-off - via
  * `useVoiceCuesAvailable` and `resolveCompactHeaderActions`. */
 export function WorkspaceVoiceCuesButton() {
   const isCompact = useIsCompactFormFactor();

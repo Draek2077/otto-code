@@ -145,8 +145,8 @@ function createClient(baseUrl: string): OpenAICompatAgentClient {
 }
 
 /**
- * Endpoint that serves a two-round tool turn — a write_file call, then a
- * final text round — reporting usage on each round's last chunk so per-round
+ * Endpoint that serves a two-round tool turn - a write_file call, then a
+ * final text round - reporting usage on each round's last chunk so per-round
  * usage_updated emission can be asserted.
  *
  * `cachedTokens` optionally injects `prompt_tokens_details.cached_tokens` into
@@ -368,7 +368,7 @@ describe("OpenAICompatAgentClient", () => {
   // acp, codex, omp, opencode and pi. They used to be dropped: the prompt was
   // flattened to its text and image blocks, so an uploaded file or a PR
   // attached to a message reached the model as nothing at all. That loss was
-  // invisible — the turn ran, it just answered about content it never saw —
+  // invisible - the turn ran, it just answered about content it never saw -
   // and it bit hardest when the composer's Queue track merged several messages
   // into one turn, taking every attachment in the batch down with it.
   test("renders attachment blocks into the prompt instead of dropping them", async () => {
@@ -449,7 +449,7 @@ describe("OpenAICompatAgentClient", () => {
     const names = await toolNamesForAccess("read");
     expect(names).not.toContain("write_file");
     expect(names).not.toContain("edit_file");
-    // Reading and running checks stay — that is what "read" is for.
+    // Reading and running checks stay - that is what "read" is for.
     expect(names).toContain("read_file");
     expect(names).toContain("run_command");
   });
@@ -603,7 +603,7 @@ describe("OpenAICompatAgentClient", () => {
   test("sends a stable prompt_cache_key and splits cached input across rounds", async () => {
     const args = JSON.stringify({ path: "note.txt", content: "hello tools" });
     // Round 1 is a cold prefill (0 cached); round 2 hits the cache for 60 of its
-    // 80 prompt tokens — the shape an implicit-cache endpoint reports once the
+    // 80 prompt tokens - the shape an implicit-cache endpoint reports once the
     // per-session prompt_cache_key lets it reuse the shared prefix.
     const endpoint = await startToolRoundUsageEndpoint(args, { cachedTokens: [0, 60] });
     const client = createClient(endpoint.baseUrl);
@@ -703,7 +703,7 @@ describe("OpenAICompatAgentClient", () => {
       expect.objectContaining({ type: "assistant_message", text: "Hello from test-model-a" }),
     ]);
 
-    // The retained reasoning is display-only — it must never be echoed back
+    // The retained reasoning is display-only - it must never be echoed back
     // to the model as request input.
     await resumed.run("Say hello again");
     const lastRequest = endpoint.completionBodies[endpoint.completionBodies.length - 1] as {
@@ -847,7 +847,7 @@ async function makeTempCwd(): Promise<string> {
 
 /**
  * Fake server whose first completion round streams TWO write_file tool calls
- * in one assistant message and whose later rounds stream plain text — used to
+ * in one assistant message and whose later rounds stream plain text - used to
  * verify the conversation stays wire-valid when a multi-call round is
  * interrupted partway.
  */
@@ -920,7 +920,7 @@ async function startTwoToolCallEndpoint(): Promise<TestEndpoint & { requests: Re
 
 /**
  * Fake server that streams a fresh list_dir tool call on every completion
- * round and never a final answer — the only thing that can end the turn is
+ * round and never a final answer - the only thing that can end the turn is
  * the max-tool-rounds safety valve.
  */
 async function startEndlessToolEndpoint(): Promise<TestEndpoint & { requests: RecordedRequest[] }> {
@@ -1287,7 +1287,7 @@ describe("OpenAICompatAgentSession rewind", () => {
         }
       }
     }
-    // One whole message each — not one event per streamed chunk, and no
+    // One whole message each - not one event per streamed chunk, and no
     // usage/turn bookkeeping events retained.
     expect(replayed).toEqual([
       "user_message:First question",
@@ -1453,7 +1453,7 @@ describe("OpenAICompatAgentSession tool loop", () => {
 
     await session.run("Create note.txt");
 
-    // Never prompts — the denial is immediate, with no permission traffic for
+    // Never prompts - the denial is immediate, with no permission traffic for
     // the daemon's unattended deny-responder to answer.
     expect(events.some((event) => event.type === "permission_requested")).toBe(false);
     await expect(fs.access(path.join(cwd, "note.txt"))).rejects.toThrow();
@@ -1689,7 +1689,7 @@ describe("OpenAICompatAgentSession tool loop", () => {
 
     expect(session.applyMaxToolRounds?.(1)).toBe(true);
     // 0 is below the schema minimum and resolves to the same clamped value (1),
-    // so there is no change to report — the valve can never be disabled.
+    // so there is no change to report - the valve can never be disabled.
     expect(session.applyMaxToolRounds?.(0)).toBe(false);
 
     const events: AgentStreamEvent[] = [];
@@ -2446,7 +2446,7 @@ describe("OpenAICompatAgentSession tool-result images", () => {
         );
         return;
       }
-      // No native listing — the /v1 tag (or its absence) is the only signal.
+      // No native listing - the /v1 tag (or its absence) is the only signal.
       if (req.method === "GET" && req.url === "/api/v0/models") {
         res.writeHead(404);
         res.end();
@@ -2538,7 +2538,7 @@ describe("OpenAICompatAgentSession tool-result images", () => {
   });
 
   test("sends the image when the model's vision capability is unknown", async () => {
-    // No `type` tag (a plain OpenAI /v1/models) — default to sending so a hosted
+    // No `type` tag (a plain OpenAI /v1/models) - default to sending so a hosted
     // vision endpoint that can't be introspected still receives the screenshot.
     expect(await toolResultContent()).toEqual([
       { type: "text", text: "Screenshot captured" },
@@ -2714,7 +2714,7 @@ describe("executeCompatTool", () => {
 });
 
 /**
- * OpenAI endpoint that supports non-streaming responses — needed for
+ * OpenAI endpoint that supports non-streaming responses - needed for
  * compaction tests since handleCompact sends a non-streaming request.
  */
 async function startCompactEndpoint(options?: {
@@ -2844,7 +2844,7 @@ describe("OpenAICompatAgentSession /compact", () => {
 
     expect(result.canceled).toBe(false);
 
-    // turn_completed is the manager's terminal signal — without it the
+    // turn_completed is the manager's terminal signal - without it the
     // foreground turn stream never settles and the agent stays "running".
     const turnCompletedEvents = events.filter((event) => event.type === "turn_completed");
     expect(turnCompletedEvents.length).toBe(3); // two normal turns + the compact turn
@@ -3009,7 +3009,7 @@ describe("OpenAICompatAgentSession /compact", () => {
     expect(usage?.inputTokens).toBe(100);
     expect(usage?.outputTokens).toBe(50);
     // The compaction usage must report the post-compaction context size, not
-    // the compaction request's own prompt size — the client's context ring
+    // the compaction request's own prompt size - the client's context ring
     // renders whatever usage_updated last delivered.
     expect(typeof usage?.contextWindowUsedTokens).toBe("number");
     expect(usage?.contextWindowUsedTokens).toBeGreaterThan(0);
@@ -3179,7 +3179,7 @@ describe("OpenAICompatAgentSession auto-compaction", () => {
   test("compacts automatically when context usage crosses the threshold", async () => {
     const endpoint = await startAutoCompactEndpoint({
       contextLength: 100_000,
-      promptTokens: 90_000, // 90% — above the default 80% threshold
+      promptTokens: 90_000, // 90% - above the default 80% threshold
     });
     const client = createClient(endpoint.baseUrl);
     const session = await client.createSession({
@@ -3241,7 +3241,7 @@ describe("OpenAICompatAgentSession auto-compaction", () => {
   test("stays idle while usage is below the threshold", async () => {
     const endpoint = await startAutoCompactEndpoint({
       contextLength: 100_000,
-      promptTokens: 50_000, // 50% — below the default 80% threshold
+      promptTokens: 50_000, // 50% - below the default 80% threshold
     });
     const client = createClient(endpoint.baseUrl);
     const session = await client.createSession({
@@ -3260,7 +3260,7 @@ describe("OpenAICompatAgentSession auto-compaction", () => {
   test("provider-level compaction config sets the default threshold", async () => {
     const endpoint = await startAutoCompactEndpoint({
       contextLength: 100_000,
-      promptTokens: 60_000, // 60% — above a 50% threshold, below the stock 80%
+      promptTokens: 60_000, // 60% - above a 50% threshold, below the stock 80%
     });
     const client = new OpenAICompatAgentClient({
       providerId: "lmstudio",
@@ -3311,7 +3311,7 @@ describe("OpenAICompatAgentSession auto-compaction", () => {
   test("compaction.hideSelector hides the feature and ignores per-agent values", async () => {
     const endpoint = await startAutoCompactEndpoint({
       contextLength: 100_000,
-      promptTokens: 60_000, // 60% — above the provider default 50% threshold
+      promptTokens: 60_000, // 60% - above the provider default 50% threshold
     });
     const client = new OpenAICompatAgentClient({
       providerId: "lmstudio",
@@ -3351,7 +3351,7 @@ describe("OpenAICompatAgentSession auto-compaction", () => {
   test("applyCompactionConfig re-applies provider settings to a live session", async () => {
     const endpoint = await startAutoCompactEndpoint({
       contextLength: 100_000,
-      promptTokens: 60_000, // 60% — below the stock 80%, above the new 50%
+      promptTokens: 60_000, // 60% - below the stock 80%, above the new 50%
     });
     const client = createClient(endpoint.baseUrl);
     const session = await client.createSession({
@@ -3365,7 +3365,7 @@ describe("OpenAICompatAgentSession auto-compaction", () => {
     );
 
     // Hide the selector and lower the threshold: the select disappears and
-    // the new default becomes live — compaction now triggers at 60% usage.
+    // the new default becomes live - compaction now triggers at 60% usage.
     expect(session.applyCompactionConfig?.({ thresholdPercent: 50, hideSelector: true })).toBe(
       true,
     );

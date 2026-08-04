@@ -152,7 +152,7 @@ describe("opencode agent error handling (real)", () => {
 
   // Note: there used to be a real-API test here pinned to zai/glm-5.1's
   // "insufficient balance" retry. It's been removed because retry behavior is
-  // entirely upstream-dependent — opencode itself decides when to retry, and
+  // entirely upstream-dependent - opencode itself decides when to retry, and
   // OpenCode Zen's quota/availability changes over time. The translation logic
   // (session.status:retry → timeline error item) is covered by unit tests in
   // opencode/event-translator.test.ts.

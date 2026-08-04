@@ -19,11 +19,11 @@ import { type Theme } from "@/styles/theme";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 
 interface DiffFolderRowProps {
-  /** full uncompressed directory path — the collapse identity */
+  /** full uncompressed directory path - the collapse identity */
   dirPath: string;
   displayName: string;
   depth: number;
-  /** which indent rails keep running below this row — see tree-rail-mask.ts */
+  /** which indent rails keep running below this row - see tree-rail-mask.ts */
   ancestorMask: number;
   collapsed: boolean;
   additions: number;
@@ -38,7 +38,7 @@ function folderRowPressableStyle({
   pressed,
 }: PressableStateCallbackType & { hovered?: boolean }) {
   // Subtle background highlight on hover/press, matching the Files explorer rows
-  // (entryRowActive) — no opacity darken.
+  // (entryRowActive) - no opacity darken.
   return [styles.folderRow, (Boolean(hovered) || pressed) && styles.folderRowActive];
 }
 

@@ -1,7 +1,7 @@
 /**
  * Paint layers for the fanned cards above the message box, back (lowest) to
  * front. Ascending order matches the cards' document order, so the static look
- * is exactly what plain source order already gives — what these pin is the
+ * is exactly what plain source order already gives - what these pin is the
  * ordering DURING motion.
  *
  * Every card enters by growing out of a zero-height box and leaves by

@@ -7,7 +7,7 @@ import type { CodeReferencesGroup } from "./use-code-references";
 
 /**
  * The source line behind each hit, so a results list reads as code rather than as
- * coordinates. A reference list without the line is a list of places to go and look —
+ * coordinates. A reference list without the line is a list of places to go and look -
  * which is most of the work the list was supposed to save.
  *
  * One read per FILE, not per hit: a file with twelve call sites is one read and twelve
@@ -20,14 +20,14 @@ import type { CodeReferencesGroup } from "./use-code-references";
  * one parse per file and nothing per hit.
  *
  * Previews are deliberately best-effort. A file that cannot be read (deleted since the
- * search, outside the workspace, binary) simply has no preview — the hit is still real and
+ * search, outside the workspace, binary) simply has no preview - the hit is still real and
  * still navigable, and failing the whole list over one unreadable file would be worse.
  * Highlighting is best-effort on top of that: an unsupported language or an oversized file
  * yields `tokens: null`, and the row falls back to plain mono text.
  */
 
 export interface CodeLinePreview {
-  /** The line, indentation stripped — a results list has no room for it. */
+  /** The line, indentation stripped - a results list has no room for it. */
   text: string;
   /** Aligned with `text`, or null when the file could not be tokenized. */
   tokens: HighlightToken[] | null;
@@ -61,7 +61,7 @@ export function useReferencePreviews(input: {
         if (cancelled) {
           return;
         }
-        // Skip what we already hold — a provisional result that grows adds files, it does
+        // Skip what we already hold - a provisional result that grows adds files, it does
         // not change the ones already read.
         if (previews[group.path] !== undefined) {
           continue;

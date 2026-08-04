@@ -1,7 +1,7 @@
 // Key space for the session store's `fileExplorer` map. It lives in its own
 // dependency-free module because both the writer (hooks/use-file-explorer-actions)
 // and the release path (stores/session-store `removeWorkspace`) need it, and the
-// writer imports the store — so keeping the builder there would be a cycle.
+// writer imports the store - so keeping the builder there would be a cycle.
 
 export interface FileExplorerWorkspaceScope {
   workspaceId?: string | null;

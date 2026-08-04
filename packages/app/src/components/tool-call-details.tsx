@@ -78,7 +78,7 @@ function CodeVerticalScroll({
 // indicator (scrolling still works via trackpad / shift-wheel).
 //
 // With `wrap` (the "Wrap long lines" appearance setting, default on) the
-// horizontal scroller is skipped entirely and long lines soft-wrap instead —
+// horizontal scroller is skipped entirely and long lines soft-wrap instead -
 // callers pair this with the pre-wrap text style from DetailStyles.
 function CodeHorizontalScroll({
   style,
@@ -250,7 +250,7 @@ function ShellDetailSection({ command, output, ds }: ShellDetailProps) {
   const commandOutput = (output ?? "").replace(/^\n+/, "");
   const hasOutput = commandOutput.length > 0;
   // The command is shell source and gets the shell grammar; the output below it
-  // is whatever the program printed and stays plain — highlighting arbitrary
+  // is whatever the program printed and stays plain - highlighting arbitrary
   // stdout as shell paints false structure onto it.
   const commandSpans = useMemo(() => {
     const lines = highlightToKeyedLines(normalizedCommand, "sh");
@@ -888,7 +888,7 @@ const styles = StyleSheet.create((theme) => {
     },
     plainText: {
       fontFamily: theme.fontFamily.ui,
-      // Matches assistant prose (theme.fontSize.sm) — see createMarkdownStyles'
+      // Matches assistant prose (theme.fontSize.sm) - see createMarkdownStyles'
       // `body`/`text` for the same convention.
       fontSize: theme.fontSize.sm,
       color: theme.colors.foreground,
@@ -906,7 +906,7 @@ const styles = StyleSheet.create((theme) => {
       color: theme.colors.foregroundMuted,
       fontSize: theme.fontSize.xs,
     },
-    // Every code/terminal surface in a tool card sits on `surfaceCode` — the
+    // Every code/terminal surface in a tool card sits on `surfaceCode` - the
     // same well the editor paints (styles/theme.ts). Boxed or full-bleed, a
     // command, a diff, a file read and a JSON payload are one material.
     diffContainer: {
@@ -959,7 +959,7 @@ const styles = StyleSheet.create((theme) => {
     // Layered over scrollText when "Wrap long lines" is on. Web needs the
     // explicit pre-wrap (scrollText forces `pre`); native Text soft-wraps by
     // itself once the horizontal ScrollView is gone. Soft wraps are visual
-    // only — selection/copy still yields the original unwrapped text.
+    // only - selection/copy still yields the original unwrapped text.
     scrollTextWrap: {
       flexShrink: 1,
       minWidth: 0,

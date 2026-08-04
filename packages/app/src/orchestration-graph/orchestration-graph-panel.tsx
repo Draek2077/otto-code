@@ -5,14 +5,14 @@ import { StyleSheet } from "react-native-unistyles";
 // Native fallback for the graph designer (projects/orchestration-graphs): the
 // Drawflow canvas is a DOM editor (the CM6 precedent), and designing a graph
 // wants a desktop-sized screen anyway. Running an existing graph works from
-// any device via the New Orchestration dialog — only authoring is web/desktop.
+// any device via the New Orchestration dialog - only authoring is web/desktop.
 export function OrchestrationGraphPanel(): ReactElement {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Graph designer</Text>
       <Text style={styles.body}>
         Designing orchestration graphs needs a desktop-sized screen. Open Otto on the web or the
-        desktop app to edit this graph — running it works right here via New Orchestration.
+        desktop app to edit this graph - running it works right here via New Orchestration.
       </Text>
     </View>
   );

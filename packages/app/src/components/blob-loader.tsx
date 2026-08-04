@@ -20,8 +20,8 @@ import Svg, {
 import { withUnistyles } from "react-native-unistyles";
 
 // One full loop. Glow A makes 2 revolutions per loop and glow B 3 (same
-// direction), so they lap each other exactly once per loop — merging into a
-// single blended glow, then splitting to opposite sides — while both land
+// direction), so they lap each other exactly once per loop - merging into a
+// single blended glow, then splitting to opposite sides - while both land
 // back at their start for a seamless repeat.
 const BLOB_LOADER_DURATION_MS = 5600;
 const BLOB_LOADER_EPOCH_MS = 0;
@@ -95,7 +95,7 @@ function blurPadUnits(blur: number): number {
 /**
  * One color of orbiting light: a bright ring plus soft halo strokes, all
  * stroked with a radial gradient anchored off-center so rotating the layer
- * orbits the hot spot. Everything fades to transparent — there is no opaque
+ * orbits the hot spot. Everything fades to transparent - there is no opaque
  * body, so the loader glows over both black and white backgrounds.
  */
 function GlowLayer({
@@ -116,7 +116,7 @@ function GlowLayer({
   // working-indicator instance crisp.
   //
   // Android: react-native-svg FeGaussianBlur renders incorrectly (barely any
-  // blur) on Hermes/Android — see software-mansion/react-native-svg#2636.
+  // blur) on Hermes/Android - see software-mansion/react-native-svg#2636.
   // Instead of a broken filter we widen the halo strokes proportionally to
   // simulate the bloom through opacity and radius falloff. The result is a
   // softer-than-crisp ring that reads as a glow, even if not a true gaussian.
@@ -168,7 +168,7 @@ function GlowLayer({
       <G filter={filtered ? `url(#${filterId})` : undefined}>
         {/* Feathered halo: stacked strokes fade the glow outward and inward.
             On Android the stroke widths are widened to simulate the missing
-            gaussian bloom — wider, lower-opacity halos read as a soft glow. */}
+            gaussian bloom - wider, lower-opacity halos read as a soft glow. */}
         <Circle
           cx={50}
           cy={50}
@@ -231,7 +231,7 @@ export function BlobLoader({
   blur?: number;
   // Whether the ring squashes organically as it spins (the plasma "wobble").
   // On (default) for the tiny working indicator; callers that want a smooth,
-  // perfectly circular spin — e.g. the setup wizard's large brand halo — pass
+  // perfectly circular spin - e.g. the setup wizard's large brand halo - pass
   // false. The orbiting glow still spins; only the scaleX/scaleY pulse stops.
   wobble?: boolean;
 }) {
@@ -250,7 +250,7 @@ export function BlobLoader({
   const wobbleAmplitude = wobble ? 0.045 : 0;
   const wobbleStyle = useAnimatedStyle(() => {
     // Integer squash cycles per loop keep the repeat seamless. Amplitude 0
-    // (wobble disabled) leaves scaleX/scaleY at 1 — a smooth circular spin.
+    // (wobble disabled) leaves scaleX/scaleY at 1 - a smooth circular spin.
     const squash = Math.sin(sharedBlobProgress.value * Math.PI * 8);
     return {
       transform: [
@@ -287,7 +287,7 @@ export function BlobLoader({
   // Over-scan each glow layer past the `size` box by the blur's viewBox pad
   // (converted to px: pad is per-side in 0..100 units, so `size * pad / 100`).
   // The SVG then renders at `size * span/100`, which pulls the padded ring back
-  // to `0.8 × size` on screen — so `size` means the same visible ring diameter
+  // to `0.8 × size` on screen - so `size` means the same visible ring diameter
   // whether or not there's a bloom, and the glow overflows the box instead of
   // clipping. Zero pad (unblurred) collapses this to a plain inset-0 fill.
   // GlowLayer pads its viewBox by the same units whether the bloom comes from

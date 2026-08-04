@@ -15,7 +15,7 @@ const WORKSPACES: CrossProjectWorkspace[] = [
     projectName: "Alpha",
   },
   { workspaceId: "ws-b", projectId: "proj-b", cwd: "/home/me/projects/beta", projectName: "Beta" },
-  // A worktree nested under alpha — the more specific root must win.
+  // A worktree nested under alpha - the more specific root must win.
   {
     workspaceId: "ws-a-wt",
     projectId: "proj-a",

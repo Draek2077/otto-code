@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { TerminalActivityTracker } from "./terminal-activity-tracker.js";
 import type { TerminalActivitySnapshot } from "./terminal-activity-tracker.js";
 
-describe("TerminalActivityTracker — initial state", () => {
+describe("TerminalActivityTracker - initial state", () => {
   it("starts as unknown", () => {
     const tracker = new TerminalActivityTracker();
 
@@ -10,7 +10,7 @@ describe("TerminalActivityTracker — initial state", () => {
   });
 });
 
-describe("TerminalActivityTracker — set", () => {
+describe("TerminalActivityTracker - set", () => {
   it("updates the snapshot state", () => {
     const tracker = new TerminalActivityTracker();
 
@@ -45,7 +45,7 @@ describe("TerminalActivityTracker — set", () => {
   });
 });
 
-describe("TerminalActivityTracker — clearAttention", () => {
+describe("TerminalActivityTracker - clearAttention", () => {
   it("moves attention back to idle", () => {
     const tracker = new TerminalActivityTracker();
 
@@ -65,7 +65,7 @@ describe("TerminalActivityTracker — clearAttention", () => {
   });
 });
 
-describe("TerminalActivityTracker — onChange listener", () => {
+describe("TerminalActivityTracker - onChange listener", () => {
   it("fires when state changes", () => {
     const tracker = new TerminalActivityTracker();
     const changes: TerminalActivitySnapshot[] = [];
@@ -134,7 +134,7 @@ describe("TerminalActivityTracker — onChange listener", () => {
   });
 });
 
-describe("TerminalActivityTracker — dispose", () => {
+describe("TerminalActivityTracker - dispose", () => {
   it("removes listeners", () => {
     const tracker = new TerminalActivityTracker();
     const listener = vi.fn();

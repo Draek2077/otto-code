@@ -17,7 +17,7 @@ const ThemedTodoCheckIcon = withUnistyles(Check);
 const primaryForegroundColorMapping = (theme: Theme) => ({ color: theme.colors.primaryForeground });
 
 // Motion durations for the task list. Kept short so a live check-off reads as
-// confirmation, not decoration — the list must never feel busy.
+// confirmation, not decoration - the list must never feel busy.
 const TODO_PULSE_DURATION = 900;
 const TODO_CHECK_DURATION = 260;
 const TODO_FLASH_DURATION = 700;
@@ -75,7 +75,7 @@ interface TodoSummaryMarkerProps {
 }
 
 /**
- * One glyph standing in for an entire checklist — what the collapsed compact
+ * One glyph standing in for an entire checklist - what the collapsed compact
  * card shows instead of the rows. A hollow ring while nothing has started, a
  * pulsing accent dot while the agent is partway through, a filled success check
  * once every task is done. Larger than the per-row {@link TodoStatusMarker}
@@ -134,7 +134,7 @@ interface TodoStatusMarkerProps {
 /**
  * The per-task marker: a filled check when done, a pulsing accent ring for the
  * task the agent is working on right now, a hollow ring for what's queued. The
- * check scales in only on a live transition into completed — never on first
+ * check scales in only on a live transition into completed - never on first
  * mount, so scrolling a finished list back into view doesn't replay it.
  */
 function TodoStatusMarker({ status, animationsEnabled }: TodoStatusMarkerProps) {
@@ -291,7 +291,7 @@ export interface TodoTaskListProps {
 }
 
 /**
- * The reusable body of a task list — an animated progress bar plus the checkable
+ * The reusable body of a task list - an animated progress bar plus the checkable
  * rows. Callers own the surrounding chrome (the inline card header, or the
  * floating pinned overlay's tinted header + dismiss). Shared so the transcript
  * card and the pinned overlay render one identical, consistent list.

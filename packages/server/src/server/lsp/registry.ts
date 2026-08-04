@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 /**
  * Which language servers exist, and how to find one on this machine. A language
- * is a row here — not code — so adding Go or Rust later is a table entry.
+ * is a row here - not code - so adding Go or Rust later is a table entry.
  *
  * Resolution is workspace-first, always: a server that type-checks the project
  * must be the version the project itself installs, or its answers disagree with
@@ -27,7 +27,7 @@ export interface LspServerRow {
   initializationOptions?: unknown;
   /**
    * Whether this row is on when the host config says nothing about it. The three
-   * acceptance-criteria languages are on — a release that needs to be switched on
+   * acceptance-criteria languages are on - a release that needs to be switched on
    * before it works has not shipped them. Rows whose index cost is heavy enough to
    * notice (rust-analyzer, clangd) or that are not finished (Angular) are off, so
    * nobody pays for a language they never open.
@@ -82,7 +82,7 @@ export const LSP_SERVER_ROWS: readonly LspServerRow[] = [
     // supply it. Verified 2026-07-24 to need no `solution/open` bootstrap: it
     // initializes as a plain stdio server against a loose folder, a classic
     // `.sln`, and .NET 10's new `.slnx` alike, and loads the project itself.
-    // Stdio is its default mode — it has no `--stdio` flag.
+    // Stdio is its default mode - it has no `--stdio` flag.
     languageIds: ["csharp"],
     extensions: [".cs", ".csx"],
     bin: "csharp-ls",
@@ -99,8 +99,8 @@ export const LSP_SERVER_ROWS: readonly LspServerRow[] = [
     id: "oxlint",
     // `oxlint --lsp` is a real LSP server (verified 2026-07-25: serverInfo
     // `oxlint 1.61.0`, publishes diagnostics on didOpen, offers quickfix and
-    // `source.fixAll.oxc` code actions). Diagnostics only — no definition, hover,
-    // references or rename — which is exactly why the fan-out filters on advertised
+    // `source.fixAll.oxc` code actions). Diagnostics only - no definition, hover,
+    // references or rename - which is exactly why the fan-out filters on advertised
     // capability instead of asking every bound server everything.
     //
     // This is the first row that binds a *second* server to a file the TypeScript
@@ -116,7 +116,7 @@ export const LSP_SERVER_ROWS: readonly LspServerRow[] = [
     // on the author's behalf and filling their gutter with rules they never adopted.
     discovery: ["workspaceBin"],
     defaultEnabled: true,
-    indexCost: "None — it lints the open file only, with no project model to build.",
+    indexCost: "None - it lints the open file only, with no project model to build.",
   },
   {
     id: "angular",
@@ -216,7 +216,7 @@ export async function resolveServerCommand(
 
 /**
  * Forward slashes, because a substituted Windows root would otherwise produce
- * `C:\ws` + `/node_modules` — one arg with both separators, which the servers
+ * `C:\ws` + `/node_modules` - one arg with both separators, which the servers
  * consuming these probe paths handle inconsistently.
  */
 function substituteRoot(args: readonly string[], rootPath: string): readonly string[] {

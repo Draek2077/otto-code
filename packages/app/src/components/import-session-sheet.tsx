@@ -48,7 +48,7 @@ interface ImportSessionSheetProps {
   cwd?: string | null;
   /**
    * Workspace the sheet was opened from. The imported session is adopted by this
-   * workspace instead of the daemon resolving one for the directory — omit it
+   * workspace instead of the daemon resolving one for the directory - omit it
    * only where there is no workspace context (the home screen).
    */
   workspaceId?: string | null;

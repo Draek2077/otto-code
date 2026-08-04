@@ -65,7 +65,7 @@ const PARAGRAPH_MIDDLES = [
   "`{id}` needs to be refactored so that it can be tested in isolation from `{otherId}`.",
   "we're doing an O(n²) lookup inside `{id}` which becomes visible at scale.",
   "the state managed by `{id}` should instead flow through the context provided by `{otherId}`.",
-  "`{id}` is catching all errors and silently swallowing them — we need to surface those from `{otherId}`.",
+  "`{id}` is catching all errors and silently swallowing them - we need to surface those from `{otherId}`.",
   "there's a race condition between `{id}` and `{otherId}` that only shows up under load.",
   "`{id}` allocates a new buffer each time, but it could reuse the one from `{otherId}`.",
 ];
@@ -125,7 +125,7 @@ const USER_PROMPTS = [
   "Please write a test for the user registration flow.",
   "Can you explain why this TypeScript type is failing?",
   "I want to migrate from class components to function components.",
-  "Help me optimize this database query — it's running slow in production.",
+  "Help me optimize this database query - it's running slow in production.",
   "What's the best way to handle file uploads in Express?",
   "Can you add error handling to these API routes?",
   "Please implement a caching layer for the product catalog.",
@@ -133,7 +133,7 @@ const USER_PROMPTS = [
   "How can I make this code more testable?",
   "Can you help me set up CI/CD for this project?",
   "Let's add input validation to all these endpoints.",
-  "I'm getting a memory leak somewhere — can you help find it?",
+  "I'm getting a memory leak somewhere - can you help find it?",
   "Please write documentation for the public API.",
   "Can you implement OAuth2 login with Google as the provider?",
   "How do I properly type this GraphQL resolver?",
@@ -317,7 +317,7 @@ function buildPySnippet(
   targetLines: number,
 ): string {
   const lines: string[] = [];
-  lines.push(`"""${capitalize(id1)} module — handles ${id2} processing."""`);
+  lines.push(`"""${capitalize(id1)} module - handles ${id2} processing."""`);
   lines.push(`from typing import Iterator`);
   lines.push(`import time`);
   lines.push(``);
@@ -431,7 +431,7 @@ function buildBashSnippet(
     step++;
   }
 
-  lines.push(`echo "Done — generated ${n} artifacts."`);
+  lines.push(`echo "Done - generated ${n} artifacts."`);
   return lines.slice(0, Math.max(targetLines, 6)).join("\n");
 }
 
@@ -494,7 +494,7 @@ const TOOL_CALL_NAMES = [
 ] as const;
 
 function makeToolCallDetail(rng: () => number): ToolCallDetail {
-  // Weighted toward read/edit/search — those are the common ones.
+  // Weighted toward read/edit/search - those are the common ones.
   const r = rng();
   if (r < 0.3) {
     return {
@@ -558,7 +558,7 @@ function buildAssistantMessage(rng: () => number): string {
     parts.push(buildParagraph(rng));
   }
 
-  // Optional list — bullet or numbered (50% chance).
+  // Optional list - bullet or numbered (50% chance).
   if (rng() < 0.5) {
     parts.push(rng() > 0.4 ? buildBulletList(rng) : buildNumberedList(rng));
   }
@@ -651,7 +651,7 @@ export function generateSyntheticConversation(
 
   // Build the conversation turn by turn.
   while (items.length < options.itemCount) {
-    // User message to kick off a turn — or whenever there's room for another prompt.
+    // User message to kick off a turn - or whenever there's room for another prompt.
     if (items.length === 0 || rng() < 0.15) {
       items.push({
         type: "user_message",
@@ -669,7 +669,7 @@ export function generateSyntheticConversation(
       if (items.length >= options.itemCount) break;
     }
 
-    // Assistant message — always present in a turn after the user prompt.
+    // Assistant message - always present in a turn after the user prompt.
     items.push({
       type: "assistant_message",
       text: buildAssistantMessage(rng),
@@ -683,7 +683,7 @@ export function generateSyntheticConversation(
       const burstSize = Math.min(randInt(rng, 3, 8), remaining);
       addToolCalls(burstSize);
     } else if (rng() < 0.4) {
-      // Smaller tool call cluster — 1 or 2.
+      // Smaller tool call cluster - 1 or 2.
       const remaining = options.itemCount - items.length;
       const burstSize = Math.min(randInt(rng, 1, 2), remaining);
       addToolCalls(burstSize);

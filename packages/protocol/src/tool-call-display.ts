@@ -28,7 +28,7 @@ function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-// Curated display names — the registry of tools we explicitly "know about".
+// Curated display names - the registry of tools we explicitly "know about".
 // Keyed by the lowercased leaf name (transport namespace already stripped).
 //
 // Only tools whose bare id does NOT title-case cleanly on its own need an entry
@@ -37,7 +37,7 @@ function readString(value: unknown): string | undefined {
 // camelCase ("WebSearch") names are handled by the algorithmic humanizer below
 // and do NOT need listing.
 //
-// Anything not here falls through to the humanizer and still renders readably —
+// Anything not here falls through to the humanizer and still renders readably -
 // so an unmapped tool shows up looking slightly generic (e.g. a stray provider
 // tool), which is the cue to add it here. Extend this map to teach Otto a tool.
 const KNOWN_TOOL_DISPLAY_NAMES: Record<string, string> = {
@@ -91,7 +91,7 @@ function humanizeToolName(name: string): string {
  * shows a tool/action name without a full timeline item to run through
  * {@link buildToolCallDisplayModel} (the visualizer's action labels, sub-agent
  * activity rows). Strips the MCP/Otto namespace, consults the known-tool
- * registry, then title-cases as a fallback — so "mcp__otto__spawn_task",
+ * registry, then title-cases as a fallback - so "mcp__otto__spawn_task",
  * "otto.spawn_task", and a bare "spawn_task" all render as "Spawn Task".
  */
 export function getToolDisplayName(name: string): string {

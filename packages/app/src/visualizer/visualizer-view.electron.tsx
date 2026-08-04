@@ -32,7 +32,7 @@ type VisualizerWebview = HTMLElement & {
 };
 
 // A dedicated, non-persistent partition (no "persist:" prefix -> in-memory
-// session, cleared on app restart) — same rationale as
+// session, cleared on app restart) - same rationale as
 // artifact-html-view.electron.tsx: the app-shell CSP (script-src 'self') is
 // inherited by same-document srcDoc iframes and blocks the inline bundle. A
 // <webview> guest on its own session escapes that CSP. This also happens to
@@ -68,7 +68,7 @@ function executeWebviewJavaScript(webview: VisualizerWebview, code: string): Pro
   }
 }
 
-// Injected on dom-ready (not before — the guest doesn't exist yet). The page's
+// Injected on dom-ready (not before - the guest doesn't exist yet). The page's
 // own first `ready` post races this injection and is lost (it falls through
 // to the entry's window.parent.postMessage fallback, which goes nowhere useful
 // inside a <webview> guest); dom-ready is this platform's substitute readiness
@@ -93,7 +93,7 @@ export const VisualizerView = forwardRef<VisualizerViewHandle, VisualizerViewPro
     onMessageRef.current = onMessage;
     const [rawHtml, setRawHtml] = useState<string | null>(null);
     // executeJavaScript throws until the guest's dom-ready has fired, even once
-    // the <webview> is attached to the DOM (isConnected is not enough — see
+    // the <webview> is attached to the DOM (isConnected is not enough - see
     // Electron's WebViewElement.getWebContentsId). Messages sent before that
     // (e.g. the dev-only demo button, or the adapter's first postMessage) queue
     // here and flush in handleDomReady.
@@ -124,7 +124,7 @@ export const VisualizerView = forwardRef<VisualizerViewHandle, VisualizerViewPro
       return themeJson ? applyVisualizerTheme(scaled, themeJson) : scaled;
     }, [rawHtml, renderScale, themeJson]);
     // Read inside the [html]-keyed create effect below without re-triggering
-    // it — a themeBackground change always rides an html change anyway.
+    // it - a themeBackground change always rides an html change anyway.
     const themeBackgroundRef = useRef(themeBackground);
     themeBackgroundRef.current = themeBackground;
 
@@ -163,7 +163,7 @@ export const VisualizerView = forwardRef<VisualizerViewHandle, VisualizerViewPro
       const initialRect = host.getBoundingClientRect();
       const webview = document.createElement("webview") as VisualizerWebview;
       webview.setAttribute("partition", VISUALIZER_WEBVIEW_PARTITION);
-      // "autosize" turns on Electron's dynamic guest-resize tracking — without
+      // "autosize" turns on Electron's dynamic guest-resize tracking - without
       // it, a <webview>'s internal viewport can get stuck at whatever size it
       // first rendered at and never re-propagate later CSS box changes (width
       // syncs, height silently doesn't). Same attribute prepareBrowserWebview
@@ -174,7 +174,7 @@ export const VisualizerView = forwardRef<VisualizerViewHandle, VisualizerViewPro
       webview.setAttribute("minheight", "0");
       webview.setAttribute("maxwidth", "10000");
       webview.setAttribute("maxheight", "10000");
-      // Absolute + explicit px, not flex/percentage — same technique as
+      // Absolute + explicit px, not flex/percentage - same technique as
       // applyResidentWebviewStyle in browser-webview-resident.ts.
       webview.style.position = "absolute";
       webview.style.left = "0";
@@ -186,7 +186,7 @@ export const VisualizerView = forwardRef<VisualizerViewHandle, VisualizerViewPro
       // Hide the guest until it has painted its own (themed) first frame. An
       // Electron <webview>'s guest webContents has an opaque WHITE base color
       // that Chromium paints during the gap between attach and the guest's
-      // first paint — and being opaque, it occludes the themed element
+      // first paint - and being opaque, it occludes the themed element
       // background above. WebContents has no setBackgroundColor to kill that
       // white, so instead the element starts transparent (opacity 0), letting
       // the themed host div behind it show through the gap, and is revealed on
@@ -210,7 +210,7 @@ export const VisualizerView = forwardRef<VisualizerViewHandle, VisualizerViewPro
         domReadyRef.current = true;
         // Guest has parsed its document (html/body + the shell's inline theme
         // script have applied the themed background), so it now paints themed,
-        // not white — safe to reveal.
+        // not white - safe to reveal.
         webview.style.opacity = "1";
         void executeWebviewJavaScript(webview, INJECT_POST_BRIDGE_SCRIPT);
         const pending = pendingMessagesRef.current;
@@ -229,9 +229,9 @@ export const VisualizerView = forwardRef<VisualizerViewHandle, VisualizerViewPro
           return;
         }
         if (!raw.startsWith(HOST_MESSAGE_PREFIX)) {
-          // Dev diagnostics: surface guest console lines — including uncaught
+          // Dev diagnostics: surface guest console lines - including uncaught
           // errors/CSP violations, which Chromium also routes through
-          // console-message — in the host's DevTools, since the guest is a
+          // console-message - in the host's DevTools, since the guest is a
           // separate renderer with no other visible console.
           if (isDev) {
             // eslint-disable-next-line no-console
@@ -245,7 +245,7 @@ export const VisualizerView = forwardRef<VisualizerViewHandle, VisualizerViewPro
             onMessageRef.current?.(data as VisualizerHostMessage);
           }
         } catch {
-          // Malformed payload from the guest — drop it.
+          // Malformed payload from the guest - drop it.
         }
       };
       const handleFailLoad = (event: Event) => {
@@ -264,7 +264,7 @@ export const VisualizerView = forwardRef<VisualizerViewHandle, VisualizerViewPro
           console.log("[visualizer:did-fail-load]", detail.errorCode, detail.errorDescription);
         }
         // Not dev-gated: a guest that fails to load emits nothing else at all
-        // (no dom-ready, no ready) — without this the panel's only symptom is
+        // (no dom-ready, no ready) - without this the panel's only symptom is
         // an eternally-opaque load cover. Machines running the Linux
         // software-rendering fallback hit exactly that. The desktop main
         // process logs the same failure durably ([visualizer-webview] in the
@@ -282,7 +282,7 @@ export const VisualizerView = forwardRef<VisualizerViewHandle, VisualizerViewPro
       host.appendChild(webview);
 
       // Electron's <webview> does not reliably track percentage/flex-driven
-      // CSS resizes of its container (unlike a same-process <iframe>) — the
+      // CSS resizes of its container (unlike a same-process <iframe>) - the
       // guest's internal viewport can get stuck at whatever size it first
       // rendered at. Drive it with explicit pixel dimensions instead, same
       // technique as resizeResidentBrowserWebview in browser-webview-resident.ts.
@@ -306,7 +306,7 @@ export const VisualizerView = forwardRef<VisualizerViewHandle, VisualizerViewPro
         // Take the guest out of the compositor BEFORE destroying it. An
         // Electron <webview> guest is a cross-process surface; releasing it on
         // .remove() can briefly clear its region to white (the guest webContents
-        // base color) before whatever is behind repaints — the flash seen when
+        // base color) before whatever is behind repaints - the flash seen when
         // the Visualizer tab closes or its html swaps (theme/scale). Hiding it
         // first detaches it from the visible layer tree, so the region falls
         // back to the themed content behind it instead of flashing white.
@@ -314,7 +314,7 @@ export const VisualizerView = forwardRef<VisualizerViewHandle, VisualizerViewPro
         webview.remove();
         webviewRef.current = null;
       };
-      // Recreated only when html changes — first load, or a render-scale
+      // Recreated only when html changes - first load, or a render-scale
       // change substituting a new dpr cap (the page reads dpr once at boot,
       // so scale changes require a guest reload anyway).
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -322,7 +322,7 @@ export const VisualizerView = forwardRef<VisualizerViewHandle, VisualizerViewPro
 
     // Paint the host container the theme background so the brief window before
     // the guest is revealed (opacity gate above) reads as the theme color, not
-    // the app-shell default — the "themeBackground painted host-side" the props
+    // the app-shell default - the "themeBackground painted host-side" the props
     // contract already promises. Memoized so only a theme change re-styles it.
     const hostStyle = useMemo<CSSProperties>(
       () => ({ ...HOST_STYLE, background: themeBackground ?? "#000" }),

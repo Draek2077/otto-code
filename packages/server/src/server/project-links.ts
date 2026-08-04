@@ -59,7 +59,7 @@ function pairKey(a: string, b: string): string {
   // projects are raw filesystem paths, which routinely contain spaces, so a
   // plain space-join would let different pairs collide (e.g. ["Alice","Bob C"]
   // vs ["Alice B","C"]). JSON.stringify unambiguously delimits the two ids.
-  // In-memory only — never persisted or sent over the wire.
+  // In-memory only - never persisted or sent over the wire.
   return JSON.stringify([ordered.projectAId, ordered.projectBId]);
 }
 

@@ -1,5 +1,5 @@
 /**
- * `otto brain runtime install|list` — manage the self-contained llama.cpp runtime.
+ * `otto brain runtime install|list` - manage the self-contained llama.cpp runtime.
  * `install` downloads a pinned build into $OTTO_HOME/otto-brain/runtimes so the
  * tool needs no other software; `list` shows every runtime found (managed first,
  * then LM Studio).

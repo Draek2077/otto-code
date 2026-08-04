@@ -10,10 +10,10 @@ import type { ToolCallDetail } from "../agent-sdk-types.js";
 import { isBlockedIp } from "../url-screen.js";
 
 // ---------------------------------------------------------------------------
-// SSRF Protection — prevent web_fetch from reaching internal networks
+// SSRF Protection - prevent web_fetch from reaching internal networks
 // ---------------------------------------------------------------------------
 // The blocked-range table and IP checks live in ../url-screen.ts, shared with
-// the browser tools' navigation screen (which allows loopback/LAN — see there).
+// the browser tools' navigation screen (which allows loopback/LAN - see there).
 
 /** Hostnames that are always allowed (DuckDuckGo API endpoints). */
 const ALLOWED_HOSTS = new Set(["api.duckduckgo.com", "html.duckduckgo.com"]);
@@ -34,12 +34,12 @@ interface ValidatedTarget {
 /**
  * Resolve a hostname and validate that none of its addresses are blocked.
  * Returns the resolved addresses so the connection can be pinned to exactly
- * what was validated — validating and then letting fetch re-resolve would be
+ * what was validated - validating and then letting fetch re-resolve would be
  * bypassable via low-TTL DNS rebinding. Throws if the host is blocked or
  * resolution fails.
  */
 async function validateHostname(host: string): Promise<ValidatedTarget> {
-  // Allowlist check — skip DNS validation for trusted hosts
+  // Allowlist check - skip DNS validation for trusted hosts
   if (ALLOWED_HOSTS.has(host)) {
     return { addresses: [] };
   }
@@ -54,7 +54,7 @@ async function validateHostname(host: string): Promise<ValidatedTarget> {
     throw new Error(`Blocked: hostname '${host}' targets an internal network`);
   }
 
-  // IP literals validate directly — no DNS involved. URL.hostname keeps the
+  // IP literals validate directly - no DNS involved. URL.hostname keeps the
   // brackets around IPv6 literals.
   const literal = host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
   const literalFamily = net.isIP(literal);
@@ -110,7 +110,7 @@ type PinnedLookupCallback = (
 
 /**
  * Dispatcher whose socket lookup answers from the pre-validated address set
- * instead of re-querying DNS — the connection can only reach an IP that
+ * instead of re-querying DNS - the connection can only reach an IP that
  * passed isBlockedIp. TLS keeps the hostname as servername, so certificate
  * validation is unaffected. An empty address set (allowlisted hosts) falls
  * back to the default resolver.
@@ -137,7 +137,7 @@ function buildPinnedDispatcher(target: ValidatedTarget): Agent {
 
 /**
  * Built-in coding tools for the OpenAI-compatible native provider. These run
- * in the daemon process against the agent's cwd — there is no external agent
+ * in the daemon process against the agent's cwd - there is no external agent
  * binary, so the daemon is the tool runtime. Definitions use the OpenAI
  * function-calling schema so any /chat/completions server that supports
  * `tools` can drive them.
@@ -174,7 +174,7 @@ const MAX_GREP_MATCHES = 100;
 const MAX_GREP_FILE_BYTES = 1024 * 1024;
 const DEFAULT_COMMAND_TIMEOUT_MS = 120_000;
 const MAX_COMMAND_TIMEOUT_MS = 600_000;
-/** Stop buffering command output past this point — only the head is ever shown. */
+/** Stop buffering command output past this point - only the head is ever shown. */
 const MAX_COMMAND_BUFFER_BYTES = 1024 * 1024;
 const SKIPPED_DIRECTORIES = new Set([
   ".git",
@@ -306,7 +306,7 @@ export const COMPAT_TOOL_SPECS: CompatToolSpec[] = [
     kind: "execute",
     description:
       "Run a shell command in the workspace directory and return its combined output and exit code. Long output is truncated. " +
-      "Do not start long-running dev servers here — they block the shell and cannot be verified; when the preview tools are available, use preview_start instead.",
+      "Do not start long-running dev servers here - they block the shell and cannot be verified; when the preview tools are available, use preview_start instead.",
     parameters: {
       type: "object",
       properties: {
@@ -431,7 +431,7 @@ function resolveToolPath(cwd: string, target: string): string {
 /**
  * True when the target path stays inside the workspace subtree. Used to scope
  * acceptEdits auto-approval: edits outside the cwd (~/.bashrc, Otto's own
- * config) still prompt. Purely lexical — symlinks are not chased — so it
+ * config) still prompt. Purely lexical - symlinks are not chased - so it
  * gates prompting, it is not a sandbox.
  */
 export function isPathInsideWorkspace(cwd: string, target: string): boolean {
@@ -477,7 +477,7 @@ async function readFileTool(input: CompatToolCallInput): Promise<CompatToolOutco
   try {
     const stat = await fs.stat(filePath);
     if (stat.isDirectory()) {
-      return errorOutcome(`${filePath} is a directory — use list_dir instead`, detailBase);
+      return errorOutcome(`${filePath} is a directory - use list_dir instead`, detailBase);
     }
     if (stat.size > MAX_READ_BYTES) {
       const handle = await fs.open(filePath, "r");
@@ -700,7 +700,7 @@ async function editFileTool(input: CompatToolCallInput): Promise<CompatToolOutco
   const replaceAll = input.arguments["replace_all"] === true;
   if (occurrences > 1 && !replaceAll) {
     return errorOutcome(
-      `old_string matches ${occurrences} times in ${filePath} — add more context or set replace_all`,
+      `old_string matches ${occurrences} times in ${filePath} - add more context or set replace_all`,
       detail,
     );
   }
@@ -771,7 +771,7 @@ async function runShellCommand(
   timeoutMs: number,
   signal?: AbortSignal,
 ): Promise<ShellResult> {
-  // stdin closed from the start — a command that reads stdin should see EOF
+  // stdin closed from the start - a command that reads stdin should see EOF
   // immediately instead of hanging until the timeout kills it.
   const child = spawn(command, {
     shell: true,
@@ -811,7 +811,7 @@ async function runShellCommand(
 
   let exitCode: number | null = null;
   try {
-    // events.once rejects when the child emits "error" (spawn failure) —
+    // events.once rejects when the child emits "error" (spawn failure) -
     // the one case where "close" never arrives.
     const [code] = (await once(child, "close")) as [number | null];
     exitCode = code;
@@ -872,7 +872,7 @@ function stripHtml(html: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// web_search — DuckDuckGo Instant Answer API + HTML scraping fallback
+// web_search - DuckDuckGo Instant Answer API + HTML scraping fallback
 // ---------------------------------------------------------------------------
 
 interface DdgInstantAnswerResult {
@@ -1003,7 +1003,7 @@ export function parseDdgHtmlResults(html: string): DdgHtmlResult[] {
     const title = stripHtml(decodeHtmlEntities(anchor.inner)).trim();
 
     // DDG wraps results in /l/?uddg=<encoded> redirect links; recover the
-    // destination (query params intact — stripping them breaks links that
+    // destination (query params intact - stripping them breaks links that
     // need them) and fall back to the raw href.
     const hrefMatch = anchor.tag.match(/\bhref="([^"]+)"/i);
     let url = hrefMatch ? decodeHtmlEntities(hrefMatch[1]) : "";
@@ -1012,7 +1012,7 @@ export function parseDdgHtmlResults(html: string): DdgHtmlResult[] {
       try {
         url = decodeURIComponent(uddgMatch[1]);
       } catch {
-        // Malformed encoding — keep the redirect URL, it still resolves.
+        // Malformed encoding - keep the redirect URL, it still resolves.
       }
     }
 
@@ -1052,7 +1052,7 @@ async function webSearchTool(input: CompatToolCallInput): Promise<CompatToolOutc
 
     // Extract results from the Instant Answer API. Results and annotations
     // are joined by index later, so an annotation slot (possibly empty) is
-    // pushed for every kept result — filling them under different conditions
+    // pushed for every kept result - filling them under different conditions
     // attaches snippets to the wrong result.
     if (instantResults.Results && instantResults.Results.length > 0) {
       for (const r of instantResults.Results) {
@@ -1115,7 +1115,7 @@ async function webSearchTool(input: CompatToolCallInput): Promise<CompatToolOutc
 }
 
 // ---------------------------------------------------------------------------
-// web_fetch — Fetch a URL and extract readable text
+// web_fetch - Fetch a URL and extract readable text
 // ---------------------------------------------------------------------------
 
 interface GuardedResponse {
@@ -1126,7 +1126,7 @@ interface GuardedResponse {
 
 /**
  * Fetch a URL, following redirects manually so every hop is re-validated
- * against the SSRF blocklist — a public URL must not be able to redirect into
+ * against the SSRF blocklist - a public URL must not be able to redirect into
  * an internal/metadata address. Each hop's connection is pinned to the
  * addresses that passed validation (see buildPinnedDispatcher), so a low-TTL
  * DNS-rebinding server cannot answer validation with a public IP and the
@@ -1181,7 +1181,7 @@ async function fetchWithSsrfGuard(urlString: string): Promise<GuardedResponse> {
 
 /**
  * Read a response body up to maxBytes. Stops reading and cancels the stream
- * the moment the cap is crossed — the whole point is that a hostile server
+ * the moment the cap is crossed - the whole point is that a hostile server
  * cannot stream an unbounded body into daemon memory before a size check.
  */
 async function readBodyWithCap(
@@ -1232,7 +1232,7 @@ async function webFetchTool(input: CompatToolCallInput): Promise<CompatToolOutco
     });
   }
 
-  // max_length is model-controlled — clamp it so a tool result can never
+  // max_length is model-controlled - clamp it so a tool result can never
   // exceed the shared per-result context budget.
   const requestedLength = readNumber(input.arguments, "max_length");
   const maxLength = Math.min(

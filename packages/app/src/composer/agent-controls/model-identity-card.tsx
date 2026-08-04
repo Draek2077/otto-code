@@ -27,7 +27,7 @@ interface ModelIdentityCardProps {
 
 /**
  * The model picker's hover card: who is answering, on what, and how. Reads like
- * a personality identity card but stays a tooltip — no icons, no color, no
+ * a personality identity card but stays a tooltip - no icons, no color, no
  * interaction, just the headline and the four facts that decide a turn.
  * Rows that don't apply (no personality, no effort levels, no modes) are
  * dropped rather than shown empty.

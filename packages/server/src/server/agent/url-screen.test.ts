@@ -47,7 +47,7 @@ describe("isBlockedIp (web_fetch policy)", () => {
 });
 
 describe("isBlockedBrowserIp (browser-tools policy)", () => {
-  // Loopback, private LAN, CGNAT (Tailscale), and IPv6 ULA stay reachable —
+  // Loopback, private LAN, CGNAT (Tailscale), and IPv6 ULA stay reachable -
   // previews, dev servers, and LAN devices are the browser pane's purpose.
   test.each([
     "127.0.0.1",

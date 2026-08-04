@@ -253,7 +253,7 @@ export async function clickSettingsBackToWorkspace(page: Page): Promise<void> {
 export async function expectHostSettingsUrl(page: Page, serverId: string): Promise<void> {
   // Same redundant `?hostSection=<section>` query as `openSettingsHostSection` above: the
   // settings sidebar pushes the section as a route param and expo-router echoes it into the
-  // search string on web. Assert the pathname so the route is validated either way — comparing
+  // search string on web. Assert the pathname so the route is validated either way - comparing
   // pathname+search made every caller of this helper fail on a query string that carries no
   // meaning.
   const expectedPath = buildSettingsHostSectionRoute(serverId, "connections");

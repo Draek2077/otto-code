@@ -1,7 +1,7 @@
 // Shared display strings for personality roles. Keyed exhaustively by
 // PersonalityRole so adding a new role forces both maps to be updated in one
 // place (typecheck fails otherwise). Imported by the personalities editor, the
-// teams settings section, and the setup-wizard team step — keep these three in
+// teams settings section, and the setup-wizard team step - keep these three in
 // sync by importing from here, not re-declaring.
 import type { PersonalityRole } from "@otto-code/protocol/messages";
 
@@ -30,5 +30,5 @@ export const ROLE_HINTS: Record<PersonalityRole, string> = {
   coder: "Spawned as a coding sub-agent",
   designer: "Styling, layout & human-skill text (copy, naming)",
   writer: "Fast small-text generation (commit messages, summaries, names)",
-  orchestrator: "The sole conductor — plans & drives a multi-agent team",
+  orchestrator: "The sole conductor - plans & drives a multi-agent team",
 };

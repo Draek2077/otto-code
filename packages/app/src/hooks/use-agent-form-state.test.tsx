@@ -168,7 +168,7 @@ describe("useAgentFormState (create-sheet open flow)", () => {
   it("recovers the preselection when the preferred provider heals after open", async () => {
     // A stale cached snapshot can hold the preferred provider in an error
     // state (e.g. a remote endpoint that was asleep). The form must not
-    // settle on "no selection" — it re-resolves when fresh entries arrive.
+    // settle on "no selection" - it re-resolves when fresh entries arrive.
     mocks.snapshot.entries = ERRORED_ENTRIES;
     const { result, rerender } = renderArtifactStyleForm();
 

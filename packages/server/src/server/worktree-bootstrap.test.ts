@@ -532,7 +532,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     expect(createTerminalCalls[0]?.cwd).toBe(repoDir);
     expect(createTerminalCalls[0]?.name).toBe("web");
     expect(createTerminalCalls[0]?.title).toBe("web");
-    // No service wiring (no port, no proxy URL) — but the workspace's own
+    // No service wiring (no port, no proxy URL) - but the workspace's own
     // location env is always stamped so the daemon's inherited values can't
     // decide where the script runs.
     expect(createTerminalCalls[0]?.env).toEqual({

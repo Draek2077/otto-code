@@ -40,7 +40,7 @@ export interface StructuredGenerationDaemonConfig {
     personalities?: readonly AgentPersonality[];
   };
   // The host's Agent Teams section. With a team active, its role-matched
-  // members are preferred ahead of non-member personalities — a preference
+  // members are preferred ahead of non-member personalities - a preference
   // ladder, never an availability gate (an all-out-of-commission team must not
   // break commit-message generation).
   agentTeams?: AgentTeamsConfigView;
@@ -67,7 +67,7 @@ export interface ResolveStructuredGenerationProvidersOptions {
    * When set, every available Agent Personality carrying this role is resolved
    * FIRST and prepended ahead of the legacy configured/substring/current chain.
    * This is how mini-task generation (commit messages, branch/workspace names)
-   * prefers a user's role-matched personality — a Writer — before falling back
+   * prefers a user's role-matched personality - a Writer - before falling back
    * to the built-in preference list.
    */
   role?: PersonalityRole;
@@ -125,7 +125,7 @@ export async function resolveStructuredGenerationProviders(
   // AHEAD of role-matched Writer personalities, so a mini-task (title, branch,
   // commit) doesn't pay a standard/deep model's price. A host that opts in via
   // metadataGeneration.preferWriterPersonalities restores the pre-cheap-default
-  // order — Writers first — which is why the personality push is split around
+  // order - Writers first - which is why the personality push is split around
   // the ladder rather than moved.
   if (preferWriterPersonalities) {
     providers.push(...personalityProviders);
@@ -182,7 +182,7 @@ export async function resolveStructuredGenerationProviders(
  * provider chain from resolveStructuredGenerationProviders: when an available
  * role-matched personality wins (personalities are prepended first), that
  * personality's name and bound provider/model; otherwise the bare provider/model.
- * null when nothing resolves — the caller decides how to refuse the task.
+ * null when nothing resolves - the caller decides how to refuse the task.
  */
 export type ResolvedStructuredGenerationAgent =
   | {
@@ -520,7 +520,7 @@ const TIER_COST_RANK: Record<ModelTier, number> = { fast: 0, standard: 1, deep: 
  * Tier-aware cheapest-capable backstop for the built-in ladder: the cheapest
  * advertised `.tier` across enabled models, capped at "standard" so a "deep"
  * model is never elected as the cheap default. Models the daemon couldn't tier
- * (undefined) are skipped — we never guess. Returns null when no fast/standard
+ * (undefined) are skipped - we never guess. Returns null when no fast/standard
  * model is available (the curated substring ladder / current selection then
  * carry the task).
  */
@@ -565,7 +565,7 @@ function readConfiguredPersonalities(
 /**
  * The team rung of the routing ladder: with a team active, its members come
  * first (roster order within each group), then everyone else, then the legacy
- * chain that follows the personalities. Pure re-ordering — nothing is ever
+ * chain that follows the personalities. Pure re-ordering - nothing is ever
  * excluded, so an unavailable or empty team degrades to exactly the
  * pre-teams behavior.
  */
@@ -627,7 +627,7 @@ function resolvePersonalityProviders(
 }
 
 // Map the personality's canonical effort level onto the bound model's advertised
-// thinking options — the same resolution the spawn path uses — falling back to
+// thinking options - the same resolution the spawn path uses - falling back to
 // the model default when the level can't be mapped (fully custom option ids).
 function resolvePersonalityThinkingOptionId(
   model: AgentModelDefinition | undefined,

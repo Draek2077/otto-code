@@ -113,14 +113,14 @@ non-route directory.
 Dropping a file into `src/app` is not enough for a top-level screen. `_layout.tsx`
 gates two separate things, and missing either one fails quietly:
 
-1. **`RootStack`** — add a `<Stack.Screen name="your-route" />`. Most go inside
+1. **`RootStack`** - add a `<Stack.Screen name="your-route" />`. Most go inside
    the `<Stack.Protected guard={storeReady}>` block.
-2. **`AppWithSidebar.shouldShowAppChrome`** — an explicit pathname allow-list
+2. **`AppWithSidebar.shouldShowAppChrome`** - an explicit pathname allow-list
    (`/open-project`, `/new`, `/new-project`, `/sessions`, …). It drives
    `chromeEnabled`, which decides whether the **left sidebar renders at all** and
    whether **keyboard shortcuts are live**.
 
-Miss #2 and the screen still mounts and works — it just has no sidebar and no
+Miss #2 and the screen still mounts and works - it just has no sidebar and no
 shortcuts. On desktop that means a page the user **cannot navigate away from**,
 with a stranded sidebar-toggle button in the header that toggles nothing. It
 looks like a styling bug and is actually a routing one, so check the allow-list
@@ -134,7 +134,7 @@ route means editing both places.
 
 Every stack scene wraps its content in `@react-navigation/elements`'
 `Background`, which paints `colors.background` from the **React Navigation
-theme** — a separate theming system from Unistyles. Without a provider that is
+theme** - a separate theming system from Unistyles. Without a provider that is
 the default light theme's near-white, and it is what flashes while a heavy
 screen (the workspace deck) cold-mounts on top of it.
 
@@ -195,7 +195,7 @@ Before landing route changes:
       `target` when the action names a specific tab.
 - [ ] Did you add a route? Register it in the layout that directly owns it.
 - [ ] Did you add a **top-level** route? Also add it to `RootStack` AND to
-      `shouldShowAppChrome` — or it renders with no sidebar and no way out.
+      `shouldShowAppChrome` - or it renders with no sidebar and no way out.
 - [ ] Did `useLocalSearchParams()` lose a required param? Fix the route tree.
 - [ ] Did native show a blank screen without a crash? Suspect route ownership
       before stores, themes, or rendering.

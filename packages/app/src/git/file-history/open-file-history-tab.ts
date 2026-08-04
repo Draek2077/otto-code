@@ -13,8 +13,8 @@ export interface OpenFileHistoryTabInput {
 
 /**
  * Open (or focus) the git investigation tab for a file. Whole-file and
- * line-scoped histories are separate tabs — asking "who changed these three
- * lines" does not replace the answer to "what happened to this file" — and each
+ * line-scoped histories are separate tabs - asking "who changed these three
+ * lines" does not replace the answer to "what happened to this file" - and each
  * lands next to the tab the user is looking at, like the git operation logs.
  */
 export function openFileHistoryTab(input: OpenFileHistoryTabInput): boolean {

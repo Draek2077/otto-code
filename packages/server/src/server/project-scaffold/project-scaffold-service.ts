@@ -57,7 +57,7 @@ export interface ProjectScaffoldServiceDeps {
   // Resolves a host-level hosting service for a provider id, or null when that
   // provider isn't configured on this daemon.
   resolveHostingProvider: (providerId: string) => Promise<GitHostingService | null>;
-  // Emitted as each step starts and settles. Advisory only — the returned
+  // Emitted as each step starts and settles. Advisory only - the returned
   // outcome carries the authoritative step list.
   onProgress: (step: ProjectScaffoldStep) => void;
 }
@@ -150,7 +150,7 @@ export function createProjectScaffoldService(
     if (templateId) {
       const content = getGitignoreTemplateContent(templateId);
       // An unknown template id from a newer client is not worth failing the
-      // whole scaffold over — the repo is still perfectly usable without it.
+      // whole scaffold over - the repo is still perfectly usable without it.
       if (content) {
         await writeFile(join(input.targetPath, ".gitignore"), content, "utf8");
       } else {
@@ -284,7 +284,7 @@ export function createProjectScaffoldService(
         );
       }
       // Checked up front for every path. Without this, `mkdir` would throw a
-      // raw EEXIST and `git clone` would fail with its own wording — the client
+      // raw EEXIST and `git clone` would fail with its own wording - the client
       // needs one code it can turn into "that name is taken".
       if (await pathExists(targetPath)) {
         throw new ProjectScaffoldError("already_exists", `Already exists: ${targetPath}`);

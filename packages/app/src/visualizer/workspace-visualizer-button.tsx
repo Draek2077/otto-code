@@ -13,11 +13,11 @@ import { useVisualizerSurface } from "@/visualizer/use-visualizer-surface";
 const ThemedWaypoints = withUnistyles(Waypoints);
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-// `accentBright` — the same accent the Sidebar and Explorer toggles use for their
+// `accentBright` - the same accent the Sidebar and Explorer toggles use for their
 // on-state, so every enabled header toggle reads as one family.
 const accentColorMapping = (theme: Theme) => ({ color: theme.colors.accentBright });
 
-// Accent while the Visualizer is on screen — either surface — so the button
+// Accent while the Visualizer is on screen - either surface - so the button
 // reads as the state toggle it now is.
 function resolveGlyphColor(input: { showing: boolean; hovered: boolean }) {
   if (input.showing) {
@@ -46,8 +46,8 @@ interface WorkspaceVisualizerButtonProps {
  *
  * One button, two surfaces: it opens whichever surface you last used (the tab,
  * or the picture-in-picture viewport) and closes whatever is showing. Switching
- * between surfaces is done from inside the Visualizer itself — the tab toolbar's
- * PIP button and the PIP's expand control — which is why there is no second
+ * between surfaces is done from inside the Visualizer itself - the tab toolbar's
+ * PIP button and the PIP's expand control - which is why there is no second
  * header button here any more. */
 export function WorkspaceVisualizerButton({
   serverId,

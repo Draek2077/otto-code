@@ -18,7 +18,7 @@ import { useWidgetChatTarget } from "./widget-chat-context";
  * A widget, rendered inline in the transcript at its tool call's position.
  *
  * Deliberately chrome-less. A widget is the model's own illustration of what it
- * is saying, not a card the user files somewhere — a border and a header with a
+ * is saying, not a card the user files somewhere - a border and a header with a
  * snake_case title would frame a thought as a document. Chrome appears only
  * when there is something to say: while the fragment is still arriving, and
  * when it failed.
@@ -33,7 +33,7 @@ interface WidgetDocumentFrameProps {
   payload: WidgetPayload;
   height: number;
   onGuestMessage: (message: WidgetGuestMessage) => void;
-  /** Injected by withUnistyles — the live theme, as concrete values. */
+  /** Injected by withUnistyles - the live theme, as concrete values. */
   widgetTheme?: WidgetThemeInput;
 }
 

@@ -420,7 +420,7 @@ describe("removeWorkspace", () => {
   });
 
   // The explorer keeps one ExplorerDirectory per directory ever listed, which is
-  // the heaviest per-workspace map in the session — it must not outlive the
+  // the heaviest per-workspace map in the session - it must not outlive the
   // workspace it describes, under either spelling of its key.
   it("drops the removed workspace's file explorer listings", () => {
     const store = useSessionStore.getState();

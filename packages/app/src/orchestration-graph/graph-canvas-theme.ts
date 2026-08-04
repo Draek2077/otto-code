@@ -1,6 +1,6 @@
 import type { Theme } from "@/styles/theme";
 
-// Concrete color values for the DOM node-editor skin — resolved app-side from
+// Concrete color values for the DOM node-editor skin - resolved app-side from
 // the Otto theme (the CM6 editor-theme pattern: concrete values, not CSS
 // variables, injected via withUnistyles so theme switches re-render).
 

@@ -21,7 +21,7 @@ interface DiffViewerProps {
   emptyLabel?: string;
   fillAvailableHeight?: boolean;
   // "Wrap long lines" appearance setting: soft-wrap long diff lines instead of
-  // horizontal scrolling. Visual only — selection/copy still yields the
+  // horizontal scrolling. Visual only - selection/copy still yields the
   // original unwrapped text.
   wrap?: boolean;
 }

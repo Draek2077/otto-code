@@ -33,7 +33,7 @@ export interface ScrollEdgeFades {
 
 /**
  * Tracks whether a scroll view has content hidden above or below the fold, so
- * edge fades can be shown only where there is something to dissolve into —
+ * edge fades can be shown only where there is something to dissolve into -
  * no top fade at the top, no bottom fade at the bottom, and neither when the
  * content does not overflow at all.
  *
@@ -100,7 +100,7 @@ export function useScrollEdgeFades(scrollRef: RefObject<ScrollView | null>): Scr
       viewportRef.current = event.nativeEvent.layoutMeasurement.height;
       contentRef.current = event.nativeEvent.contentSize.height;
       // Flipped in the same batch as the edge change this event causes, so the
-      // very first scroll already animates — it is only the pre-scroll,
+      // very first scroll already animates - it is only the pre-scroll,
       // measurement-driven resolution that snaps.
       setHasScrolled(true);
       recompute();

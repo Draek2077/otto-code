@@ -17,7 +17,7 @@ export interface ResolvedProviderModel {
  *
  * Callers run this **before** connecting. Full resolution happens after a connection because it
  * consults the host (personalities, defaults), so leaving this check there meant a plainly
- * malformed command line reported "Cannot connect to daemon" instead of the real problem — and
+ * malformed command line reported "Cannot connect to daemon" instead of the real problem - and
  * only on machines without a daemon running, which is why it read as a CI-only failure.
  *
  * Silent when either input is absent or they agree; `resolveProviderAndModel` still repeats the

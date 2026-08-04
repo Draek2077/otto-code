@@ -324,7 +324,7 @@ describe("answering against the draft", () => {
     const documents = createDocuments([stubRow("stub")]);
     const filePath = path.join(rootPath, "a.ts");
 
-    // The file does not exist on disk at all — only in the mirror.
+    // The file does not exist on disk at all - only in the mirror.
     await documents.sync({
       rootPath,
       filePath,

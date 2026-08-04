@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from "react";
  *
  * Quantizing the code the highlighter sees to one commit per window turns that
  * back into roughly linear work: ~4 passes a second instead of ~30. Same number
- * as `MERMAID_RENDER_DEBOUNCE_MS`, chosen for the same reason — long enough to
+ * as `MERMAID_RENDER_DEBOUNCE_MS`, chosen for the same reason - long enough to
  * swallow a burst of flushes, short enough that nobody waits on it.
  */
 export const FENCE_HIGHLIGHT_DEBOUNCE_MS = 250;
@@ -31,7 +31,7 @@ export const FENCE_HIGHLIGHT_DEBOUNCE_MS = 250;
  * one window of the stream ending.
  *
  * Settled content never waits. The first value is returned on mount, so a
- * closed fence — history, the file viewer, the pull-request panel — is fully
+ * closed fence - history, the file viewer, the pull-request panel - is fully
  * highlighted on its first paint. Anything that is not an append (a rewind, a
  * different message, a file the viewer just opened) replaces the current value
  * immediately; holding a stale body there would be a wrong answer rather than a

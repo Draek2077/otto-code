@@ -6,7 +6,7 @@ import { seedWorkspace } from "./helpers/seed-client";
 import { getServerId } from "./helpers/server-id";
 
 // Settings has no keyboard shortcut of its own (Mod+, opens the file finder),
-// so the round trip is the sidebar button in and the back button out — the same
+// so the round trip is the sidebar button in and the back button out - the same
 // `navigateToLastWorkspace` path the old Mod+, toggle took.
 async function openSettingsFromSidebar(page: import("@playwright/test").Page) {
   const settingsButton = page.locator('[data-testid="sidebar-settings"]:visible').first();

@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { Text, View } from "react-native";
-import { Brain, Folder, GitBranch } from "@/components/icons/material-icons";
+import { Folder, GitBranch, Psychology } from "@/components/icons/material-icons";
 import { StyleSheet } from "react-native-unistyles";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import type { ScheduleCadence, ScheduleSummary } from "@otto-code/protocol/schedule/types";
@@ -95,7 +95,7 @@ function formatMaxRunsHint(raw: string): string {
   return `Stops after ${parsed} ${parsed === 1 ? "run" : "runs"}`;
 }
 
-// The synthetic "Team's Scheduler" picker entry — a dynamic binding that
+// The synthetic "Team's Scheduler" picker entry - a dynamic binding that
 // resolves to the active team's Scheduler at RUN time, not a concrete
 // personality. Its id never leaves the form; the submitted binding is the
 // protocol sentinel. The entry itself is built by the shared form producer
@@ -337,7 +337,7 @@ function OpenScheduleFormSheet({
     // Only a bare model selection is the user's own last-used choice. Under a
     // personality (or the team's Scheduler) the model on screen belongs to that
     // binding, and writing it to the device preference would erase the tier it
-    // outranks — then read back as a manual pick on the next create surface.
+    // outranks - then read back as a manual pick on the next create surface.
     if (personality.resolveSubmitPersonality?.()) {
       return;
     }
@@ -394,7 +394,7 @@ function OpenScheduleFormSheet({
           model: state.selectedModel || null,
           // Always null: schedule runs are unattended and there is no mode
           // field anymore. Explicit null (not omission) so editing a schedule
-          // clears any mode stored by an older client — a stored attended
+          // clears any mode stored by an older client - a stored attended
           // mode would fail the run at its first approval prompt.
           modeId: null,
           thinkingOptionId: state.selectedThinkingOptionId || null,
@@ -552,7 +552,7 @@ function OpenScheduleFormSheet({
 }
 
 // The schedule form's personality binding: selecting a personality here BINDS
-// it onto the schedule — the daemon re-resolves the binding at every run (and
+// it onto the schedule - the daemon re-resolves the binding at every run (and
 // hard-fails loudly when it's out of commission). The synthetic "Team's
 // Scheduler" entry stores the protocol sentinel instead of a name and follows
 // whoever holds the Scheduler role in the active team at run time. The binding
@@ -825,7 +825,7 @@ function ScheduleTargetFields({
   );
   const modelTriggerLeading = useMemo(() => {
     // A role-slot entry (Team's <Role>) wears its neutral role glyph rather than
-    // the current holder's colored provider icon — picking it means "the role",
+    // the current holder's colored provider icon - picking it means "the role",
     // not that specific personality.
     if (selectedPersonality?.roleIcon) {
       const RoleIcon = selectedPersonality.roleIcon;
@@ -947,7 +947,7 @@ function ScheduleTargetFields({
       ) : null}
 
       {/* A personality already fixes its own effort, so hide the picker while
-          one is selected — the whole point is not having to choose it. */}
+          one is selected - the whole point is not having to choose it. */}
       {!personality.selectedPersonalityId && state.disclosure.showThinkingField ? (
         <SelectField
           label="Effort"
@@ -1172,7 +1172,7 @@ function ThinkingOptionItem({
   const leadingSlot = useMemo(
     () => (
       <View style={styles.optionIconBox}>
-        <Brain size={16} color={styles.providerIcon.color} />
+        <Psychology size={16} color={styles.providerIcon.color} />
       </View>
     ),
     [],

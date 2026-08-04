@@ -1,7 +1,7 @@
 /**
  * GitHub-style task lists (`- [ ]`, `- [x]`) for the shared markdown renderer.
  *
- * Rewrites at the token level — after block+inline parsing — so the `[ ]`
+ * Rewrites at the token level - after block+inline parsing - so the `[ ]`
  * marker is only recognized at the start of a real list item; task syntax
  * inside code fences or mid-sentence is untouched.
  *

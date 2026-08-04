@@ -1,12 +1,12 @@
 /**
- * SetupWizardScreen — the first-run wizard shell. Full-screen, no app chrome
+ * SetupWizardScreen - the first-run wizard shell. Full-screen, no app chrome
  * (the `/setup` route sits outside `shouldShowAppChrome`). Owns step state and
  * the wizard's side effects (persisting `interfaceMode` and the completion
  * flag); the individual steps are presentational.
  *
  * Step order (charter): Welcome → Mode → Providers → Done. The Agents (Phase 3
  * personality presets) and Teams (Phase 4, owned by the Agentic Teams agent)
- * steps slot in between "providers" and "done" — see STEP_SEQUENCE.
+ * steps slot in between "providers" and "done" - see STEP_SEQUENCE.
  *
  * Bookends (Welcome, Done) render their own full-brand layout with their own
  * buttons; the middle steps get the shared chrome here (progress, Back, Skip,
@@ -38,7 +38,7 @@ import { TeamStep, type TeamStepHandle } from "./team-step";
 import { DoneStep } from "./done-step";
 
 // The ordered step list: Welcome → Mode → Providers → Team → Done. The Team step
-// (generative — Otto builds a themed team for the kind you pick) is additive: it
+// (generative - Otto builds a themed team for the kind you pick) is additive: it
 // appends to the host's roster/teams, never deletes, and feature-gates + skips
 // gracefully on old hosts.
 const STEP_SEQUENCE = ["welcome", "mode", "providers", "team", "done"] as const;
@@ -69,7 +69,7 @@ export function SetupWizardScreen() {
   const earliestOnlineServerId = useEarliestOnlineHostServerId();
   const hosts = useHosts();
 
-  // Guard: the wizard needs a live host — the providers step (step 2) calls
+  // Guard: the wizard needs a live host - the providers step (step 2) calls
   // useProvidersSnapshot(), which hangs without a connection. With no saved
   // hosts there is nothing to wait for, so leave for /welcome immediately.
   // With a saved-but-offline host (host dropped mid-wizard, or a stale deep

@@ -30,7 +30,7 @@ export function resolveProvidersToFetch(
   snapshotEntries: ReadonlyArray<{ provider: string; enabled?: boolean }> | undefined,
 ): AgentProvider[] | null {
   // COMPAT(providersSnapshot): the import-recent-sessions feature ships alongside
-  // providersSnapshot (v0.1.48, 2026-04-05). Daemons older than that lack both —
+  // providersSnapshot (v0.1.48, 2026-04-05). Daemons older than that lack both -
   // we render an "update host" empty state instead of degrading. Drop this gate
   // when the supported daemon floor is >= v0.1.48 (target: 2026-10-05).
   if (!supportsSnapshot) return null;

@@ -50,7 +50,7 @@ export type AgentDeleteScope = "active" | "archived" | "both";
  * `--all` / `--cwd` still mean active-only.
  *
  * Both flags at once is contradictory ("only archived" and "also archived"), so
- * it is refused rather than guessed — this command is irreversible.
+ * it is refused rather than guessed - this command is irreversible.
  */
 export function resolveAgentDeleteScope(options: {
   archived?: boolean;

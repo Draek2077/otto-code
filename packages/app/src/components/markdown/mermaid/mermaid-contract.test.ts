@@ -9,7 +9,7 @@ describe("isMermaidFenceLanguage", () => {
   });
 
   it("matches when the info string carries trailing attributes", () => {
-    // ```mermaid {theme=dark} — common in docs tooling; still a diagram.
+    // ```mermaid {theme=dark} - common in docs tooling; still a diagram.
     expect(isMermaidFenceLanguage("mermaid {theme=dark}")).toBe(true);
     expect(isMermaidFenceLanguage("  mermaid  ")).toBe(true);
   });

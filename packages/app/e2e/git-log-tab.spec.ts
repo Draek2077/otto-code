@@ -6,7 +6,7 @@ import { seedWorkspace } from "./helpers/seed-client";
 
 // The Git Log tab is the daemon's git *operation* log (checkout.git.get_operation_log
 // backfill + checkout.git.log_appended live stream), not a repository-history
-// browser: it records each git operation Otto runs — heading, the exact git
+// browser: it records each git operation Otto runs - heading, the exact git
 // commands, their output, and a "created commit <sha>" outcome line. This spec
 // proves commits made through the Changes UI land in the tab with their
 // messages and hashes.
@@ -52,7 +52,7 @@ test("git log tab records UI commits with messages and hashes", async ({ page })
   });
 
   // Commit only alpha (deselect beta). Leaving beta dirty keeps the commit
-  // section — and the log button inside it — mounted after the commit lands.
+  // section - and the log button inside it - mounted after the commit lands.
   // The Git Commit log opens as a focused tab over the Changes pane, so the
   // commit must happen while the Changes view is active, before opening the log.
   await fileRowContaining(page, "beta.ts").locator('[data-testid$="-checkbox"]').click();

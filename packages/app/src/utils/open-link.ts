@@ -11,7 +11,7 @@ type InAppLinkOpener = (url: string) => void;
 let inAppLinkOpener: InAppLinkOpener | null = null;
 
 /**
- * Registered by the workspace screen — the only surface that can host Otto
+ * Registered by the workspace screen - the only surface that can host Otto
  * browser tabs (Electron desktop). Returns an unregister function that only
  * clears the slot if it still holds this opener, so an unmount racing a new
  * mount never wipes the newer registration.

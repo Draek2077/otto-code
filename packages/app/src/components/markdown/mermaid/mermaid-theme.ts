@@ -8,7 +8,7 @@ import type { MermaidThemeConfig } from "./mermaid-contract";
  * every variable it is handed, so a `var(--colors-surface2)` string produces
  * `NaN` shades and an unstyled diagram. Concrete values are the only option,
  * which is also why a diagram inside the black chat scope on web follows the
- * app theme rather than the scope (same class of leak as icon `color` props —
+ * app theme rather than the scope (same class of leak as icon `color` props -
  * see docs/unistyles.md).
  */
 export function buildMermaidThemeConfig(theme: Theme): MermaidThemeConfig {
@@ -31,7 +31,7 @@ export function buildMermaidThemeConfig(theme: Theme): MermaidThemeConfig {
  * `base` is the only built-in theme that honours `themeVariables`; the others
  * hardcode their palette. Mermaid fills unspecified variables by deriving them
  * from `primaryColor`/`background`, so this list only has to cover the slots
- * where a derived value would be illegible on an Otto surface — plus the
+ * where a derived value would be illegible on an Otto surface - plus the
  * per-diagram families (sequence, class/state, notes) that derive from their
  * own variables rather than the primaries.
  */

@@ -1,7 +1,7 @@
-# E2E QA Coverage — full-app Playwright test plan
+# E2E QA Coverage - full-app Playwright test plan
 
 **Goal:** every user-facing feature of Otto has locally runnable Playwright coverage, organized
-by feature category, with a mechanical way to see what is covered and what is not — so cutting
+by feature category, with a mechanical way to see what is covered and what is not - so cutting
 a release means running known suites, not hoping.
 
 This project does not replace the existing harness; it organizes and extends it. The harness in
@@ -18,7 +18,7 @@ burning paid API credits.
 | Tier                 | Suffix                  | What it proves                                                                                                                                                                                      | Cost             | When it runs                         |
 | -------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------ |
 | **T1 Mock**          | `*.spec.ts`             | UI + daemon behavior with the deterministic mock agent. The bulk of coverage.                                                                                                                       | Free             | Every category run; CI shards        |
-| **T2 Local-AI**      | `*.local.spec.ts` (new) | Full live agent loop — prompt → tool calls → file edits → diff/UI updates — via the **openai-compat provider pointed at LM Studio** (qwen3.6-27b-mtp over Tailscale). Real inference, zero dollars. | Free (local GPU) | Release validation; opt-in locally   |
+| **T2 Local-AI**      | `*.local.spec.ts` (new) | Full live agent loop - prompt → tool calls → file edits → diff/UI updates - via the **openai-compat provider pointed at LM Studio** (qwen3.6-27b-mtp over Tailscale). Real inference, zero dollars. | Free (local GPU) | Release validation; opt-in locally   |
 | **T3 Real provider** | `*.real.spec.ts`        | Provider-specific integration (Claude/Codex/OpenCode/Pi rewind, session import).                                                                                                                    | Paid             | Release validation only, minimal set |
 
 Design rule for T2/T3 specs: **assert on side effects, not on model prose.** A live-model spec
@@ -35,18 +35,18 @@ with the covering spec files named inline.
 
 `node scripts/e2e-coverage-check.mjs` keeps the matrix honest:
 
-- **Stale rows** — matrix names a spec file that no longer exists → error.
-- **Unmapped specs** — a spec file on disk that no matrix row claims → error. New specs must be
+- **Stale rows** - matrix names a spec file that no longer exists → error.
+- **Unmapped specs** - a spec file on disk that no matrix row claims → error. New specs must be
   added to the matrix in the same change; the check makes forgetting impossible.
-- **Scoreboard** — per-category ✅/🟡/❌ counts, so "how covered is Git & Changes?" is one command.
-  📊 instrument rows (§16) are counted separately and excluded from the percentage — a measurement
+- **Scoreboard** - per-category ✅/🟡/❌ counts, so "how covered is Git & Changes?" is one command.
+  📊 instrument rows (§16) are counted separately and excluded from the percentage - a measurement
   harness asserts no behavior, so scoring it either way would lie about coverage.
 
 The check is pure file analysis (no daemon, no browser, <1s) and **runs in CI's `lint` job** on
 every push and pull request. It was hand-run only for one release cycle and drifted in exactly the
 predicted way, which is what moved it out of the deferred phase.
 
-The matrix is also what groups the **run report** — the reporter reads its sections to bucket
+The matrix is also what groups the **run report** - the reporter reads its sections to bucket
 every test under its module, so the plan document and the run artifacts stay in lockstep. What a
 run produces (per-module table of contents, per-test evidence directories, the money-shot digest,
 the failure report) and the conventions for money shots and regression specs are in
@@ -55,7 +55,7 @@ the failure report) and the conventions for money shots and regression specs are
 ## Running locally
 
 The repo rule "never run the full Playwright suite locally" exists because whole-suite runs
-freeze the machine. The unit of local execution is therefore the **category batch** — Playwright
+freeze the machine. The unit of local execution is therefore the **category batch** - Playwright
 already runs `workers: 1`, so one category at a time is tractable:
 
 ```powershell
@@ -82,33 +82,33 @@ Phase 1 adds Playwright `@cat:*` tags to every `test.describe`, so category runs
 
 When cutting a release (rides alongside the `release` skill, does not block it yet):
 
-1. **T1 full sweep** — all categories, sequentially, locally overnight or via CI shards. Must be green.
-2. **T2 local-AI journeys** — the ~10 core-journey `*.local.spec.ts` specs against LM Studio.
+1. **T1 full sweep** - all categories, sequentially, locally overnight or via CI shards. Must be green.
+2. **T2 local-AI journeys** - the ~10 core-journey `*.local.spec.ts` specs against LM Studio.
    Requires the qwen model loaded in LM Studio first.
-3. **T3 real smoke** — the existing `rewind-flow.*.real.spec.ts` set plus one send/receive smoke
+3. **T3 real smoke** - the existing `rewind-flow.*.real.spec.ts` set plus one send/receive smoke
    per provider you actually ship against. Paid; smallest possible set.
-4. `node scripts/e2e-coverage-check.mjs` — confirm no unmapped/stale drift entered the release.
+4. `node scripts/e2e-coverage-check.mjs` - confirm no unmapped/stale drift entered the release.
 
 ## Phases
 
-- **Phase 0 — DONE:** charter, coverage matrix seeded from all existing specs, local-AI tier
+- **Phase 0 - DONE:** charter, coverage matrix seeded from all existing specs, local-AI tier
   design doc, coverage-check script.
-- **Phase 2 — BUILT:** `local-ai` Playwright project + `test:e2e:local-ai`; global-setup
+- **Phase 2 - BUILT:** `local-ai` Playwright project + `test:e2e:local-ai`; global-setup
   preflights LM Studio (`/models`) and injects the openai-compat provider (values from the
   repo-root `.env.test`, never committed) into the isolated `OTTO_HOME` when `E2E_LOCAL_AI=1`;
   6 T2 specs written (loop, permissions, max-rounds, compaction, resume, rewind).
-- **Phase 3 — BUILT (unvalidated):** 31 new T1 specs across personalities/teams, permissions +
+- **Phase 3 - BUILT (unvalidated):** 31 new T1 specs across personalities/teams, permissions +
   safe-unattended + wizard, chat/composer, git/changes, settings/visualizer, schedules/runs,
   files/editor. All 🟡 in the matrix until the iron-out pass. Supporting mock-provider
   extensions: synthetic tool-permission scenario, dev-only `dontAsk` mode, prompt-triggered
   suggestion/rate-limit/markdown/tool-call scenarios, structured title responder, no-op
   `applyPersonality`.
-- **Phase 3.5 — NEXT: iron-out.** Run batches per [iron-out.md](../README.md#testing--tooling), fix
+- **Phase 3.5 - NEXT: iron-out.** Run batches per [iron-out.md](../README.md#testing--tooling), fix
   selector/timing drift, promote 🟡 → ✅.
-- **Phase 1 — organize (partly done):** coverage check **wired into CI** (`lint` job in
+- **Phase 1 - organize (partly done):** coverage check **wired into CI** (`lint` job in
   `.github/workflows/ci.yml`, 2026-07-25). Still deferred: `@cat:*` tags on specs, category npm
   scripts, and teaching the check to verify tags too.
-- **Phase 4 — remaining gaps:** work down the 24 ❌ rows in priority order (observed subagents,
+- **Phase 4 - remaining gaps:** work down the 24 ❌ rows in priority order (observed subagents,
   artifacts/preview, vision, relay pairing, compact-layout smoke, …); each new feature PR adds
   its matrix row + spec together.
 

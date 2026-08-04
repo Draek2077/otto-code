@@ -5,8 +5,8 @@ import { createEditorCore, type EditorCore } from "../editor-core";
 
 // Link and heading completion against a real CodeMirror in a real browser.
 //
-// The pure half — where a target starts, what an anchor is called, how a path is
-// written relative to the document — is covered by markdown-link-completion.test.ts.
+// The pure half - where a target starts, what an anchor is called, how a path is
+// written relative to the document - is covered by markdown-link-completion.test.ts.
 // What only a browser can prove is the wiring: that the source is actually
 // reachable from a markdown buffer, that the popup opens, and that accepting a
 // row puts the right text in the document. A mock of CodeMirror would assert

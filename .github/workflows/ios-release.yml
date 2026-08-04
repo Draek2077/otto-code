@@ -12,15 +12,15 @@ name: iOS Release
 #
 # Requires these repo secrets (all gate the workflow via ios-signing-gate):
 #   - EXPO_TOKEN               (already set; authenticates the EAS build)
-#   - APPLE_TEAM_ID             (shared with desktop macOS signing — same team)
+#   - APPLE_TEAM_ID             (shared with desktop macOS signing - same team)
 #   - ASC_API_KEY_P8            (contents of the downloaded .p8 API key file)
 #   - ASC_API_KEY_ID            (Key ID from App Store Connect → Users and
 #                                Access → Integrations → Keys)
 #   - ASC_API_KEY_ISSUER_ID     (Issuer ID from the same Keys page)
 #
 # Also requires packages/app/eas.json's submit.production.ios.ascAppId to be
-# set to the real App Store Connect numeric app ID (not a secret — it's
-# public in the ASC URL — but there's no app record yet, so it's a
+# set to the real App Store Connect numeric app ID (not a secret - it's
+# public in the ASC URL - but there's no app record yet, so it's a
 # placeholder until one exists).
 #
 # First-run gotcha: EAS can usually generate the iOS distribution certificate

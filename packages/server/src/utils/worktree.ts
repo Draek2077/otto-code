@@ -940,7 +940,7 @@ export async function isOttoOwnedWorktreeCwd(
   const relativePath = getRealpathAwareRelativePath(worktreesBaseRoot, resolvedCwd);
 
   // Ownership is defined by the path living under <worktrees-root>/<hash>/<slug>[/...].
-  // The <hash>/<slug> prefix is Otto-private — nothing else writes there — so the
+  // The <hash>/<slug> prefix is Otto-private - nothing else writes there - so the
   // path shape alone is sufficient proof of ownership, even when git has already
   // forgotten about the worktree.
   if (relativePath === null) {

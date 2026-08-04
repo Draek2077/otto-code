@@ -11,7 +11,7 @@ export const RETAINED_TRANSCRIPT_RESIDENCY_LIMIT = 10;
  * Retained transcripts are read-only snapshots of closed internal generation
  * agents (schedule / artifact runs), loaded on demand when a viewer opens one.
  * Nothing closes them: the client just fetches, so there is no unsubscribe to
- * hang eviction off. Capping residency is the substitute — the rows are on disk
+ * hang eviction off. Capping residency is the substitute - the rows are on disk
  * and reload transparently on the next fetch, so evicting one costs a re-read,
  * not the transcript. See docs/safe-unattended.md.
  */
@@ -35,7 +35,7 @@ export class RetainedTimelineResidency {
 
   /**
    * Mark an id resident and most-recently-used. Returns the ids evicted to stay
-   * under the cap — the caller owns dropping their rows.
+   * under the cap - the caller owns dropping their rows.
    */
   retain(agentId: string): string[] {
     this.ids.delete(agentId);

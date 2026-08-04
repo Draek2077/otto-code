@@ -55,7 +55,7 @@ const MAX_CONCURRENT_SCHEDULE_RUNS = 5;
 // tokens in a single tool result. Keep a recent window instead.
 //
 // The floor is `maxRuns` when one is set, because `countCompletedRuns` decides
-// completion by counting the retained array — pruning below `maxRuns` would
+// completion by counting the retained array - pruning below `maxRuns` would
 // make such a schedule never complete. A schedule with `maxRuns` is already
 // bounded by the user's own cap, so nothing is unbounded either way.
 const MAX_RETAINED_SCHEDULE_RUNS = 50;
@@ -337,15 +337,15 @@ export interface ScheduleServiceOptions {
   agentManager: ScheduleAgentManager;
   agentStorage: AgentStorage;
   createAgent: BoundCreateAgentCommand;
-  /** Optional — enables personality-bound schedules (run-time resolution). */
+  /** Optional - enables personality-bound schedules (run-time resolution). */
   providerSnapshotManager?: ScheduleProviderLister;
-  /** Optional — reads the live personality roster for personality-bound schedules. */
+  /** Optional - reads the live personality roster for personality-bound schedules. */
   readAgentPersonalities?: () => AgentPersonality[];
   /**
-   * Optional — reads the live Agent Teams section. A schedule resolves the
+   * Optional - reads the live Agent Teams section. A schedule resolves the
    * ACTIVE team at run time (the active team is "how this host operates right
    * now"): a run under Team B carries Team B's frame iff the bound personality
-   * is a member; otherwise it runs teamless — never a hard-fail, unlike
+   * is a member; otherwise it runs teamless - never a hard-fail, unlike
    * personality unavailability, because teamlessness is a valid state.
    */
   readAgentTeams?: () => AgentTeamsConfigView | undefined;
@@ -358,7 +358,7 @@ export interface ScheduleServiceOptions {
   archiveWorkspace: (workspaceId: string, repoRoot: string) => Promise<void>;
   // Flip a hidden schedule-run workspace to visible and emit a workspace_update
   // so it appears in every client's sidebar. Called on finish-and-keep and on
-  // error (never on archive-on-finish success — that path stays invisible).
+  // error (never on archive-on-finish success - that path stays invisible).
   revealWorkspace: (workspaceId: string) => Promise<void>;
   now?: () => Date;
   runner?: (schedule: StoredSchedule, runId: string) => Promise<ScheduleExecutionResult>;
@@ -966,7 +966,7 @@ export class ScheduleService {
         updated = completeSchedule(updated, now);
       } else if (updated.status === "completed") {
         // Completed concurrently (e.g. the target agent was archived mid-run);
-        // record the run outcome but leave the schedule terminal — don't advance.
+        // record the run outcome but leave the schedule terminal - don't advance.
       } else if (params.manual) {
         // Manual one-shot runs do not advance the cadence or recompute completion.
       } else if (shouldCompleteSchedule(updated, now)) {
@@ -1102,7 +1102,7 @@ export class ScheduleService {
     let agentId: string | null = null;
     let succeeded = false;
     // Whether the run produced any chat content (assistant/tool activity). Drives
-    // "reveal a failed run's workspace only if there's something to see" — a run
+    // "reveal a failed run's workspace only if there's something to see" - a run
     // that failed before doing anything leaves no empty workspace behind.
     let hasContent = false;
     try {
@@ -1116,7 +1116,7 @@ export class ScheduleService {
       const runConfig = { ...config, cwd: workspace.cwd };
       // A personality-bound schedule re-resolves its personality against THIS
       // run's cwd and hard-fails the run if it's unavailable (surfaced via the
-      // run's failure path) — no silent fallback.
+      // run's failure path) - no silent fallback.
       const brain = await this.resolveSchedulePersonalityBrain(runConfig);
       // Stamp who is running this: the resolved personality (if bound), else the
       // configured provider/model. Recorded before the agent spawns so even a
@@ -1153,7 +1153,7 @@ export class ScheduleService {
         // internal agents), so a clean run is fully silent. Problems surface
         // through the schedule service's own error detection (waitResult.status
         // === "error"), which reveals the hidden workspace. Whether these agents
-        // should instead stay listed/persisted is a deferred decision — see the
+        // should instead stay listed/persisted is a deferred decision - see the
         // safe-unattended charter's Open questions.
         internal: true,
         promptFailure: "return-error",
@@ -1196,7 +1196,7 @@ export class ScheduleService {
       };
     } finally {
       // Schedule-run agents are internal (ephemeral), so archive-by-workspace
-      // can't see them — close the agent directly, mirroring how the artifact
+      // can't see them - close the agent directly, mirroring how the artifact
       // generator tears down its internal agent. Without this the finished agent
       // would leak in-memory (internal agents are never persisted or listed).
       if (agentId) {
@@ -1244,14 +1244,14 @@ export class ScheduleService {
   // Disposition of a schedule-run workspace once the run settles. The workspace
   // was created hidden, so exactly one of these happens:
   //   - error WITH content (run did work, then threw): REVEAL and never archive
-  //     — the failure has substance the user can inspect (the checkout state and
+  //     - the failure has substance the user can inspect (the checkout state and
   //     the retained transcript).
-  //   - error WITHOUT content (run failed before doing anything — spawn error,
+  //   - error WITHOUT content (run failed before doing anything - spawn error,
   //     personality unavailable, immediate provider error): ARCHIVE the hidden
   //     workspace. Revealing it would leave an empty workspace in the sidebar
   //     with nothing to see; the failure still surfaces on the schedule card
   //     (lastRunError) and in the run's retained (if any) transcript.
-  //   - success + archiveOnFinish: archive as before — it was never revealed, so
+  //   - success + archiveOnFinish: archive as before - it was never revealed, so
   //     the user never sees the transient workspace.
   //   - success + keep (archiveOnFinish=false): REVEAL so the kept result shows.
   private async disposeScheduleRunWorkspace(params: {
@@ -1362,7 +1362,7 @@ export class ScheduleService {
     });
 
     // The dynamic "Team's Scheduler" binding resolves the active team's
-    // Scheduler at RUN time — the schedule follows whoever holds the role in
+    // Scheduler at RUN time - the schedule follows whoever holds the role in
     // the operating team when it fires.
     if (name === TEAM_SCHEDULER_PERSONALITY_SENTINEL) {
       return this.buildScheduleBrain(
@@ -1388,7 +1388,7 @@ export class ScheduleService {
   }
 
   // Shared tail for both binding kinds: run-time team framing (iff the resolved
-  // personality is a member of the team active NOW — teamless runs are valid,
+  // personality is a member of the team active NOW - teamless runs are valid,
   // never an error) plus the concrete brain fields.
   private buildScheduleBrain(snapshot: ResolvedPersonalitySnapshot): ScheduleBrain {
     const teamSnapshot = resolveTeamSnapshotForPersonality(
@@ -1500,7 +1500,7 @@ function buildScheduleAgentConfig(
   return {
     // Schedule agents are internal (see the createAgent call) but observable, like
     // the artifact generator: they stay out of listings/sidebar, yet their live
-    // stream still forwards to a client that opens their timeline — so a revealed
+    // stream still forwards to a client that opens their timeline - so a revealed
     // (errored or kept) run can be watched. Without observable the daemon's global
     // subscription drops the stream events.
     observable: true,

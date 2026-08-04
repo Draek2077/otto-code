@@ -85,7 +85,7 @@ function deferred<T>(): Deferred<T> {
 /**
  * Pins the ordering the bug lives in, rather than hoping for it: the daemon
  * broadcasts the new entry from inside `enqueueSteerMessage`, BEFORE it answers
- * the send — so the client always learns the row exists a tick before it learns
+ * the send - so the client always learns the row exists a tick before it learns
  * the entry id it must file the attachments under. Here the send does not answer
  * until the test says so, and `reached` lets the test wait for the broadcast
  * without a timer.
@@ -116,7 +116,7 @@ afterEach(() => {
   useSessionStore.setState({ sessions: {} } as never);
 });
 
-describe("useComposerQueue — the daemon broadcast beats the sidecar write", () => {
+describe("useComposerQueue - the daemon broadcast beats the sidecar write", () => {
   it("still sends a row whose attachments have not reached the sidecar yet", async () => {
     seedSession({ steerQueue: true });
     const send = installRacingSend([ENTRY_ID]);
@@ -201,7 +201,7 @@ describe("useComposerQueue — the daemon broadcast beats the sidecar write", ()
   });
 });
 
-describe("useComposerQueue — what 'Send all' must still leave behind", () => {
+describe("useComposerQueue - what 'Send all' must still leave behind", () => {
   it("leaves an entry whose attachments this client genuinely never had", async () => {
     seedSession({ steerQueue: true });
     const { result } = renderQueue({});
@@ -236,7 +236,7 @@ describe("useComposerQueue — what 'Send all' must still leave behind", () => {
   });
 });
 
-describe("useComposerQueue — the client-held queue", () => {
+describe("useComposerQueue - the client-held queue", () => {
   it("answers the same question with no sidecar and no race", async () => {
     seedSession({ steerQueue: false });
     const { result } = renderQueue({});

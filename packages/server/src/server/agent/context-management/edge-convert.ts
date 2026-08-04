@@ -28,7 +28,7 @@ export type ConvertEdgeResult = { ok: true } | { ok: false; error: string };
 
 export function renderEdgeToken(rawTarget: string, target: "import" | "reference"): string {
   if (target === "import") return `@${rawTarget}`;
-  // Link text defaults to the file's base name — short, and the user can edit
+  // Link text defaults to the file's base name - short, and the user can edit
   // it afterwards like any other text.
   const label = path.basename(rawTarget).replace(/\.(md|markdown|mdx)$/i, "");
   return `[${label}](${rawTarget})`;

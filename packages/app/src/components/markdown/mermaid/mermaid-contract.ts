@@ -5,7 +5,7 @@
 /**
  * Otto's theme flattened into the handful of concrete color/font values mermaid
  * needs. Mermaid derives further shades from these with color math, so every
- * value must be a real color — never a CSS `var()` reference.
+ * value must be a real color - never a CSS `var()` reference.
  */
 export interface MermaidThemeConfig {
   dark: boolean;

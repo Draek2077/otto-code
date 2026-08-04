@@ -7,12 +7,12 @@
 
 Refactor otto-brain in place so it is designed and coded like a first-class Otto
 product: a workspace package (`@otto-code/brain`) that installs, builds, deploys,
-and is configured exactly like the rest of the suite. This is **step one — a
+and is configured exactly like the rest of the suite. This is **step one - a
 refactor in place**. Step two (a separate effort) physically moves the tree into
 `repos/otto-code/packages/brain`. Everything here is chosen so that step two is a
 `git mv` plus workspace wiring, not a rewrite.
 
-The product promise: a user runs **local AI with no other software required** —
+The product promise: a user runs **local AI with no other software required** -
 otto-brain provides its own llama.cpp runtime and downloads its own models. It can
 be **managed by the Otto daemon** (brought up alongside Otto like the daemon
 manages its own children) **or run standalone**, including on a separate server.
@@ -27,7 +27,7 @@ auth. The local brain is **opt-in**: Otto does not start it by default.
 | Package           | `otto-brain`, no deps                                      | `@otto-code/brain`, AGPL-3.0-or-later, `publishConfig.access: public`, standalone NodeNext `tsconfig` (mirrors `packages/relay`)                                                         |
 | Entry             | `bin`-less, `main: src/index.js`                           | `bin/otto-brain → dist/index.js` for standalone dev; primary surface is a commander command group `createBrainCommand()` lifted into `packages/cli`                                      |
 | CLI               | hand-rolled `parseArgs`; `cmd*` fns `console.log` directly | `commander` program; `src/commands/*`; handlers return `{type,data,schema}`; `withOutput` wrapper renders table/json/yaml; `@clack/prompts` for interactive; chalk only in renderers     |
-| Config            | repo-local `config/profiles.json`                          | `$OTTO_HOME/otto-brain/` — resolve `OTTO_HOME` like otto (`~/.otto`, `0700`); zod schema `version:1`; camelCase keys; atomic private writes (`0600`); merge `CLI → env → file → default` |
+| Config            | repo-local `config/profiles.json`                          | `$OTTO_HOME/otto-brain/` - resolve `OTTO_HOME` like otto (`~/.otto`, `0700`); zod schema `version:1`; camelCase keys; atomic private writes (`0600`); merge `CLI → env → file → default` |
 | Env               | `OTTO_BRAIN_*`                                             | keep `OTTO_BRAIN_*` namespace (like `OTTO_RELAY_*`) + honor `OTTO_HOME`                                                                                                                  |
 | Tooling           | none                                                       | oxlint + oxfmt (no eslint/prettier); `tsgo --noEmit` typecheck                                                                                                                           |
 | Tests             | `node:test` in `test/`                                     | vitest, `src/*.test.ts` colocated                                                                                                                                                        |
@@ -48,13 +48,13 @@ private-files,persisted-config,config}.ts` (config), root `.oxlintrc.json` /
 - A thin `bin/otto-brain` stays for standalone/remote use where the full `otto`
   CLI is not installed.
 - Command verbs (map of today's commands):
-  - `otto brain start` / `stop` / `status` / `restart` — **service lifecycle** (new).
-  - `otto brain serve` — run the router+supervisor in the foreground (today's `serve`).
-  - `otto brain scan` / `models` — list detected + downloadable models (with ranking).
-  - `otto brain pull <model>` — download a model (new; wired to the catalog).
-  - `otto brain runtime install` — fetch/vendor the llama.cpp runtime (new).
-  - `otto brain calibrate` / `sweep` / `bench` / `rescore` / `report` — as today.
-  - `otto brain ui` (or bare `otto brain`) — the full-screen TUI (kept, ported to TS).
+  - `otto brain start` / `stop` / `status` / `restart` - **service lifecycle** (new).
+  - `otto brain serve` - run the router+supervisor in the foreground (today's `serve`).
+  - `otto brain scan` / `models` - list detected + downloadable models (with ranking).
+  - `otto brain pull <model>` - download a model (new; wired to the catalog).
+  - `otto brain runtime install` - fetch/vendor the llama.cpp runtime (new).
+  - `otto brain calibrate` / `sweep` / `bench` / `rescore` / `report` - as today.
+  - `otto brain ui` (or bare `otto brain`) - the full-screen TUI (kept, ported to TS).
 
 ### Service model (managed OR standalone, local OR remote)
 
@@ -83,12 +83,12 @@ otto-brain's service surface is the existing HTTP router (reverse proxy in front
 
 ### Config (`$OTTO_HOME/otto-brain/`)
 
-- `config.json` — service + defaults: `version:1`, `enabled`, `autoStart`,
+- `config.json` - service + defaults: `version:1`, `enabled`, `autoStart`,
   `listen` (`{host,port}`), `auth`, `runtime` (path/preference), `modelsDir`,
   `defaultModel`, per-field defaults (cache types, flashAttention, reasoningBudget…).
-- `profiles.json` — per-model profiles + calibrations + geometry (today's
+- `profiles.json` - per-model profiles + calibrations + geometry (today's
   `config/profiles.json`, migrated once on first run).
-- `catalog.json` — the download catalog (today's `config/downloads.json`), the
+- `catalog.json` - the download catalog (today's `config/downloads.json`), the
   source of truth for `otto brain pull`.
 - All zod-validated, camelCase keys, atomic private writes.
 
@@ -96,9 +96,9 @@ otto-brain's service surface is the existing HTTP router (reverse proxy in front
 
 - **Runtime provider interface.** Abstract "where does `llama-server` come from"
   behind a source interface with two implementations:
-  1. `lmstudio` — discover LM Studio's vendored runtimes (today's `backend.js`),
+  1. `lmstudio` - discover LM Studio's vendored runtimes (today's `backend.js`),
      kept as a zero-download fast path when present.
-  2. `managed` — otto-brain downloads a pinned llama.cpp build into
+  2. `managed` - otto-brain downloads a pinned llama.cpp build into
      `$OTTO_HOME/otto-brain/runtimes/<label>/`, including the matching `vendor/`
      DLL dir, and puts both on `PATH` (preserving the DLL-stub fix documented in
      `backend.js`). This is what makes otto-brain need nothing else installed.
@@ -115,43 +115,43 @@ brain pull` downloads from the catalog into the managed dir; `scan` unions both.
 
 | Today (`src/*.js`)                                      | Target (`src/**/*.ts`)                           | Notes                                                                                                           |
 | ------------------------------------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| `index.js` (dispatch + arg parser)                      | `index.ts` + `run.ts` + `cli.ts` + `commands/*`  | Split; commander + output layer. **Touches models/scan — sequence after the other agent's ranking work lands.** |
+| `index.js` (dispatch + arg parser)                      | `index.ts` + `run.ts` + `cli.ts` + `commands/*`  | Split; commander + output layer. **Touches models/scan - sequence after the other agent's ranking work lands.** |
 | `backend.js`                                            | `runtime/{index,lmstudio,managed}.ts`            | Becomes the runtime provider interface.                                                                         |
-| `models.js`                                             | `models/{scan,catalog}.ts`                       | **Other agent is adding ranking here — do last, rebase onto their change.**                                     |
+| `models.js`                                             | `models/{scan,catalog}.ts`                       | **Other agent is adding ranking here - do last, rebase onto their change.**                                     |
 | `gguf.js`                                               | `gguf.ts`                                        | Preserve bounded-reader header comments.                                                                        |
-| `gpu.js`                                                | `gpu.ts`                                         | —                                                                                                               |
+| `gpu.js`                                                | `gpu.ts`                                         | -                                                                                                               |
 | `vram.js`                                               | `vram.ts`                                        | Preserve the "formula is a bound" header.                                                                       |
 | `profiles.js`                                           | `config/profiles.ts`                             | Store moves under `$OTTO_HOME/otto-brain/`.                                                                     |
-| `supervisor.js`                                         | `service/supervisor.ts`                          | —                                                                                                               |
+| `supervisor.js`                                         | `service/supervisor.ts`                          | -                                                                                                               |
 | `router.js`                                             | `service/router.ts`                              | Add auth for remote.                                                                                            |
-| `scheduler.js`                                          | `service/scheduler.ts`                           | —                                                                                                               |
-| `calibrate.js` / `sweep.js`                             | `ops/{calibrate,sweep}.ts`                       | —                                                                                                               |
-| `sysmon.js` / `report.js` / `results.js` / `archive.js` | `ops/*.ts`                                       | —                                                                                                               |
-| `bench/*`                                               | `bench/*.ts`                                     | **Other agent just updated the bench system — port last, verbatim behavior.**                                   |
+| `scheduler.js`                                          | `service/scheduler.ts`                           | -                                                                                                               |
+| `calibrate.js` / `sweep.js`                             | `ops/{calibrate,sweep}.ts`                       | -                                                                                                               |
+| `sysmon.js` / `report.js` / `results.js` / `archive.js` | `ops/*.ts`                                       | -                                                                                                               |
+| `bench/*`                                               | `bench/*.ts`                                     | **Other agent just updated the bench system - port last, verbatim behavior.**                                   |
 | `tui/{screen,app}.js`                                   | `tui/{screen,app}.ts`                            | Kept as the signature interactive experience.                                                                   |
 | `config/profiles.json`, `config/downloads.json`         | seed data migrated into `$OTTO_HOME/otto-brain/` | One-time migration.                                                                                             |
 
 ## Phased plan
 
-- **Phase 0 — Safety.** ✅ `.gitignore`, baseline commit `6d1fe4c`, branch
+- **Phase 0 - Safety.** ✅ `.gitignore`, baseline commit `6d1fe4c`, branch
   `refactor/otto-code-brain`.
-- **Phase 1 — Package & tooling.** `package.json` → `@otto-code/brain` + deps;
+- **Phase 1 - Package & tooling.** `package.json` → `@otto-code/brain` + deps;
   `tsconfig.json`; `bin/otto-brain`; local `.oxlintrc.json` / `.oxfmtrc.json`;
-  vitest. **Flipping `"type":"module"` is the breaking step — gated on the other
+  vitest. **Flipping `"type":"module"` is the breaking step - gated on the other
   agent finishing.**
-- **Phase 2 — Config subsystem.** `src/config/*` (otto-home, private-files, config
+- **Phase 2 - Config subsystem.** `src/config/*` (otto-home, private-files, config
   schema) + one-time migration. Additive; collision-free.
-- **Phase 3 — Service layer.** pid/lock, `start/stop/status`, daemon-spawn
+- **Phase 3 - Service layer.** pid/lock, `start/stop/status`, daemon-spawn
   contract, remote bind + auth, opt-in gate.
-- **Phase 4 — CLI restructure.** commander + output layer + `commands/*`.
-- **Phase 5 — Port core modules to TS/ESM.** Preserve the load-bearing header
+- **Phase 4 - CLI restructure.** commander + output layer + `commands/*`.
+- **Phase 5 - Port core modules to TS/ESM.** Preserve the load-bearing header
   comments (DLL-stub trap, KV overestimate, reasoning-only failure). Runtime
   provider interface.
-- **Phase 6 — Self-contained runtime + model download.** `managed` runtime fetch;
+- **Phase 6 - Self-contained runtime + model download.** `managed` runtime fetch;
   `otto brain pull`; catalog wiring.
-- **Phase 7 — TUI port to TS.**
-- **Phase 8 — Tests → vitest.**
-- **Phase 9 — Docs.** Rewrite `CLAUDE.md` to otto conventions; fold this charter's
+- **Phase 7 - TUI port to TS.**
+- **Phase 8 - Tests → vitest.**
+- **Phase 9 - Docs.** Rewrite `CLAUDE.md` to otto conventions; fold this charter's
   durable facts into a docs page at merge time.
 
 ## Merge-time wiring (step two, not now)
@@ -173,7 +173,7 @@ own config file and have the daemon read `enabled`/`autoStart`).
 
 ## Open questions
 
-- Auth mechanism for remote brain: **resolved — a bearer token / API key.**
+- Auth mechanism for remote brain: **resolved - a bearer token / API key.**
   `auth.mode=token` gates every route but `/health`, accepting `Authorization:
 Bearer`, `x-api-key`, or `x-otto-brain-token`. Combined with built-in TLS
   (`config.tls`), this retires `otto-brain-relay`: the brain terminates HTTPS
@@ -183,7 +183,7 @@ Bearer`, `x-api-key`, or `x-otto-brain-token`. Combined with built-in TLS
   standalone/remote brain is configured by address on the Otto side.) The
   daemon-managed lifecycle + Otto tray/Settings control is chartered separately at
   `projects/brain-host-control/`.
-- **Payload transform — verify before porting.** The relay existed partly to lift
+- **Payload transform - verify before porting.** The relay existed partly to lift
   images out of Anthropic `tool_result` blocks, which **LM Studio's server**
   rejects. The brain fronts its **own** `llama-server` (llama.cpp) via the
   supervisor, not LM Studio's server, so the quirk may not apply. Before porting

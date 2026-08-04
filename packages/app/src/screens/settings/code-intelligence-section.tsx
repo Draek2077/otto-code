@@ -65,7 +65,7 @@ export function CodeIntelligenceSection({ serverId }: { serverId: string }) {
   const client = useHostRuntimeClient(serverId);
   const { config, patchConfig } = useDaemonConfig(serverId);
 
-  // The row is absent, not disabled, on a host that cannot serve the feature — there is nothing
+  // The row is absent, not disabled, on a host that cannot serve the feature - there is nothing
   // for a switch to turn on.
   const solutionViewSupported = useSolutionViewFeature(serverId);
   // The host-wide listing is the only listing. An older daemon demands a cwd, and probing
@@ -178,7 +178,7 @@ export function CodeIntelligenceSection({ serverId }: { serverId: string }) {
 }
 
 /**
- * "Microsoft .NET Solution Management" — a **separate row** from code intelligence, not a member
+ * "Microsoft .NET Solution Management" - a **separate row** from code intelligence, not a member
  * of it.
  *
  * Turning C# language-server support off does not turn this off and vice versa. That is not a
@@ -186,7 +186,7 @@ export function CodeIntelligenceSection({ serverId }: { serverId: string }) {
  * view builds its own model and shares nothing with the rows below except a language. Nesting it
  * under the master switch would assert a dependency that does not exist.
  *
- * Absent, not disabled, on a host that cannot serve it — there is nothing for a switch to do.
+ * Absent, not disabled, on a host that cannot serve it - there is nothing for a switch to do.
  */
 function SolutionManagementRow(props: {
   supported: boolean;
@@ -419,7 +419,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[4],
   },
   // Table rows live inside a card, so they take the card's horizontal padding
-  // and separate with a top border — a bottom border on the last row would
+  // and separate with a top border - a bottom border on the last row would
   // double up against the card edge.
   tableRow: {
     flexDirection: "row",

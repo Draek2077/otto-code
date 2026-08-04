@@ -1,6 +1,6 @@
 /**
- * The daemon-facing façade over personality memory. Everything above this line —
- * the MCP tools, the spawn injection, the RPCs — talks to this; nothing above it
+ * The daemon-facing façade over personality memory. Everything above this line -
+ * the MCP tools, the spawn injection, the RPCs - talks to this; nothing above it
  * knows about files, scopes or dedup.
  *
  * Its one real job beyond delegation is turning the two things a caller actually
@@ -30,8 +30,8 @@ export interface PersonalityMemoryServiceDeps {
 }
 
 /**
- * `memoryEnabled` absent means ON. A personality with no lessons costs nothing —
- * the brief is empty and injects nothing — so defaulting to off would only mean
+ * `memoryEnabled` absent means ON. A personality with no lessons costs nothing -
+ * the brief is empty and injects nothing - so defaulting to off would only mean
  * the feature never starts working for anyone who did not go looking for a
  * switch. The switch exists to stop a personality accruing, not to start it.
  */
@@ -45,7 +45,7 @@ export interface PersonalityMemoryView {
   personalityId: string;
   personalityName: string;
   enabled: boolean;
-  /** Every stored entry, not just this project's — the Memory tab shows all. */
+  /** Every stored entry, not just this project's - the Memory tab shows all. */
   entries: PersonalityMemoryEntry[];
   /** The exact text that would be injected for `projectRoot`. */
   brief: MemoryBrief;
@@ -64,8 +64,8 @@ export class PersonalityMemoryService {
 
   /**
    * The brief to inject for an agent spawned from `personalityId` in `cwd`, or
-   * null when there is nothing to inject. Null covers every "no memory" case —
-   * unknown personality, switch off, no lessons yet — so the spawn path has one
+   * null when there is nothing to inject. Null covers every "no memory" case -
+   * unknown personality, switch off, no lessons yet - so the spawn path has one
    * branch instead of four.
    *
    * Never throws: a memory read failing must not stop an agent from spawning.
@@ -150,7 +150,7 @@ export class PersonalityMemoryService {
   /**
    * `cwd` is the same convenience `record` offers: callers that have a working
    * directory but no root hand it over and let this layer resolve it. It matters
-   * on a scope change to "project" — an entry moved to project scope with no
+   * on a scope change to "project" - an entry moved to project scope with no
    * root matches no project's brief, so it would be listed and never injected.
    */
   async revise(params: {
@@ -206,7 +206,7 @@ export class PersonalityMemoryService {
     try {
       return await this.deps.resolveProjectRoot(cwd);
     } catch {
-      // A non-git directory is ordinary, not an error — the cwd IS the project.
+      // A non-git directory is ordinary, not an error - the cwd IS the project.
       return cwd;
     }
   }

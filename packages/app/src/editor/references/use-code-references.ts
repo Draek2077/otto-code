@@ -7,14 +7,14 @@ import { useSessionStore } from "@/stores/session-store";
  *
  * `indexing` is the state that matters here and the reason this is a hook rather than a
  * one-shot query. Measured on this repo: for the first ~12 seconds after a language server
- * spawns, `references` returns a *partial* set — 2 hits in 1 file where the truth was 14 in
- * 4 — and the old code reported that as a complete `ok`. The daemon now says `indexing`
+ * spawns, `references` returns a *partial* set - 2 hits in 1 file where the truth was 14 in
+ * 4 - and the old code reported that as a complete `ok`. The daemon now says `indexing`
  * whenever a bound server is still building its project model, even with results in hand,
  * so this hook shows what it has, marks it provisional, and re-asks until it settles.
  *
  * Polling rather than a push channel because the settle moment is a property of the server,
  * not an event Otto is told about. The interval backs off and the whole thing gives up after
- * a ceiling — a server that never goes idle must not mean a tab that polls forever.
+ * a ceiling - a server that never goes idle must not mean a tab that polls forever.
  */
 
 const FIRST_RETRY_MS = 600;
@@ -35,7 +35,7 @@ export interface CodeReferencesState {
   loading: boolean;
   /**
    * A server is still building its project model, so the list above may be short. The
-   * results are real — they are just not all of them yet.
+   * results are real - they are just not all of them yet.
    */
   provisional: boolean;
   /** The project never settled inside the ceiling; the list is final but suspect. */
@@ -101,7 +101,7 @@ export function useCodeReferences(input: UseCodeReferencesInput): CodeReferences
     }
 
     // Every run of this effect owns its own generation. Without it a late reply from the
-    // previous position would overwrite the current one's results — the classic async-state
+    // previous position would overwrite the current one's results - the classic async-state
     // bug, and especially easy here because a retry can be seconds behind.
     let cancelled = false;
     let attemptMs = FIRST_RETRY_MS;

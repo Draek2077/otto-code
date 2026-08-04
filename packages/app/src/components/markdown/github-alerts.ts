@@ -8,7 +8,7 @@
  *
  * The kind is attached to the `blockquote_open` token as an attribute, which
  * `tokensToAST` turns into `node.attributes` for the renderer's `blockquote`
- * rule to read. Nothing here decides what an alert looks like — this is the
+ * rule to read. Nothing here decides what an alert looks like - this is the
  * parse half, and it is the half worth testing.
  */
 
@@ -30,7 +30,7 @@ interface AlertToken {
   /**
    * markdown-it's own setter. Declared instead of the `attrs` array because
    * markdown-it types that array as `TokenAttribute[]`, which a hand-rolled
-   * `[string, string][]` is not assignable to — and the setter is the supported
+   * `[string, string][]` is not assignable to - and the setter is the supported
    * way to add one anyway.
    */
   attrSet?: (name: string, value: string) => void;

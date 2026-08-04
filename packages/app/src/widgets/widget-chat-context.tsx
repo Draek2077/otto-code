@@ -4,7 +4,7 @@ import { createContext, useContext, useMemo, type ReactNode } from "react";
  * Which chat a widget belongs to.
  *
  * Provided once by the agent-stream view, which already knows both ids, rather
- * than threaded as props through `ToolCall` — that component is rendered from
+ * than threaded as props through `ToolCall` - that component is rendered from
  * four call sites and none of the others has any use for them.
  *
  * It is also the active-chat gate in practice: `sendPrompt` resolves its target

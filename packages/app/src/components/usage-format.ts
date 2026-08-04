@@ -6,13 +6,13 @@ import { formatClockTime } from "@/utils/time";
 // and its sub-agents render as one block instead of interleaving with other
 // chats' rows by raw timestamp; then, within a cluster, arrange sub-agent rows
 // as the SPAWN TREE a human expects: each sub-agent under the chat turn that
-// spawned it (via `startedAt` — async sub-agents routinely SETTLE turns later,
+// spawned it (via `startedAt` - async sub-agents routinely SETTLE turns later,
 // so settle-time adjacency scatters a single fan-out across turns), and each
 // nested sub-agent directly under its spawning sub-agent (via
 // `parentSubagentKey`). Rows predating those fields keep the old adjacency
 // behavior. Clusters themselves stay newest-first (first appearance = newest,
 // since the input is already sorted); a row with no agentId is its own
-// singleton. Pure re-ordering — the same rows come back, so day grouping and
+// singleton. Pure re-ordering - the same rows come back, so day grouping and
 // totals are unaffected. See [[subagent-real-accounting]] (block 6).
 export function groupUsageRowsByParent(events: UsageEvent[]): UsageEvent[] {
   const order: string[] = [];
@@ -33,7 +33,7 @@ export function groupUsageRowsByParent(events: UsageEvent[]): UsageEvent[] {
 /**
  * Arrange one chat cluster (newest-first rows) as its spawn tree: non-sub-agent
  * rows keep their order; each chat row is followed by the sub-agents it spawned
- * (oldest spawn first — the order the fan-out was launched), each of those
+ * (oldest spawn first - the order the fan-out was launched), each of those
  * followed by its own children, recursively.
  */
 function orderClusterAsSpawnTree(rows: UsageEvent[]): UsageEvent[] {
@@ -178,7 +178,7 @@ function makeOwnerResolver(
 
 /**
  * Nesting depth for each sub-agent row (row id → depth): 1 for a sub-agent
- * spawned by the chat itself, 2 for a sub-agent's sub-agent, and so on —
+ * spawned by the chat itself, 2 for a sub-agent's sub-agent, and so on -
  * following `parentSubagentKey` links to rows actually present in the list.
  * Rows without tree fields (older daemons) read as depth 1. Cycle-guarded.
  */
@@ -217,7 +217,7 @@ export function computeSubagentRowDepths(events: UsageEvent[]): Map<string, numb
 
 /**
  * Whole-tree rollup for a chat row that has sub-agent children in the log,
- * split the same fresh/cached/out way as the rows themselves — a flat token
+ * split the same fresh/cached/out way as the rows themselves - a flat token
  * total would bury the cache-read share, which is billed at a fraction of
  * fresh input and can dwarf it.
  */
@@ -243,7 +243,7 @@ function addEventToParentTotals(entry: UsageParentTotals, event: UsageEvent): vo
 // Whole-tree totals for the chat rows that own sub-agent rows. Takes the
 // ALREADY-GROUPED order from groupUsageRowsByParent (cluster-contiguous,
 // newest-first) and attributes each sub-agent row to the nearest preceding chat
-// row with the same agentId — the same relationship the indented nesting shows,
+// row with the same agentId - the same relationship the indented nesting shows,
 // since a sub-agent settles during its parent turn. Nested sub-agents (subs of
 // subs, any depth) all carry the OWNING chat's agentId, so they roll up into the
 // same parent turn without any tree walk. Returns totals keyed by the parent
@@ -393,12 +393,12 @@ export type UsageTimestampDisplay = "absolute" | "relative";
 
 /**
  * The left-gutter timestamp for a ledger row. The day header above the group
- * already answers "which day", so the gutter never repeats it — it answers
+ * already answers "which day", so the gutter never repeats it - it answers
  * "when within that day": clock time ("3:42 PM").
  *
  * Today's rows are the exception: when the viewer prefers relative timestamps
  * they read as elapsed instead ("3m", "2h"), which is what you want while work
- * is still landing. Past days always take clock time — "5d" says nothing the day
+ * is still landing. Past days always take clock time - "5d" says nothing the day
  * header hasn't already said, and pairing it with the header gives the
  * date-and-time reading without printing the date on every row.
  */
@@ -415,7 +415,7 @@ export function formatUsageEventStamp(
 
 /**
  * Stands in for a gutter timestamp already carried by a neighbouring row.
- * Repeating "3:42 PM" down a burst of rows is noise — the column should only
+ * Repeating "3:42 PM" down a burst of rows is noise - the column should only
  * ever mark where time actually moved.
  */
 export const USAGE_STAMP_REPEAT = "-";
@@ -430,7 +430,7 @@ export const USAGE_STAMP_REPEAT = "-";
  * minute *began*. Labelling the top row would date the block by its final event
  * and leave the moment it actually started unmarked.
  *
- * Takes the ALREADY-ORDERED rows (spawn-tree order, not raw time) — the
+ * Takes the ALREADY-ORDERED rows (spawn-tree order, not raw time) - the
  * comparison that matters is with the row physically below. Callers pass one day
  * group at a time, so a group's last row always keeps its stamp.
  */

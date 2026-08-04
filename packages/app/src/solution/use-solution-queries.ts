@@ -24,7 +24,7 @@ const EMPTY_SOLUTIONS: readonly SolutionRef[] = [];
 
 /**
  * Solutions are added and removed about as often as a repository is restructured, so a long
- * staleness is honest here — and the alternative, re-walking on every mount, spends a directory
+ * staleness is honest here - and the alternative, re-walking on every mount, spends a directory
  * traversal to learn nothing.
  */
 const SOLUTION_LIST_STALE_MS = 5 * 60_000;

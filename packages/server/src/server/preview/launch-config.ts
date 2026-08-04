@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { z } from "zod";
 
 /**
- * `.claude/launch.json` — the project-level dev-server launch config shared
+ * `.claude/launch.json` - the project-level dev-server launch config shared
  * with Claude Code's preview tooling. Otto's preview subsystem reads the same
  * file so one config drives both harnesses.
  * See docs/preview.md ("launch.json").

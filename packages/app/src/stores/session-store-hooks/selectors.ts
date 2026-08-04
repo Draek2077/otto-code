@@ -134,7 +134,7 @@ export function selectWorkspaceDirectory(
 }
 
 /**
- * The workspace's project grouping key (`WorkspaceDescriptor.projectId`) — a
+ * The workspace's project grouping key (`WorkspaceDescriptor.projectId`) - a
  * repo-remote key like `remote:host/owner/repo` when the repo has a git
  * remote, otherwise a filesystem path (main repo root, or cwd for non-git).
  * Distinct from `workspaceDirectory`/`projectRootPath`, which are always

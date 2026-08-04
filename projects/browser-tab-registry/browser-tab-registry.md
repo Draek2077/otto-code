@@ -9,7 +9,7 @@ browser tabs."_ That is the behaviour we want and the behaviour we mostly get.
 The problem is that nothing **owns** that contract. A browser tab's identity, its liveness, and its
 reachability by an agent live in three separate maps maintained by three different lifecycles, and
 they can disagree. When they do, a tab is visibly open on screen, fully functional to the user, and
-completely unreachable from the very chat that is supposed to reach it — with an error message that
+completely unreachable from the very chat that is supposed to reach it - with an error message that
 says the tab does not exist.
 
 **A tab the user can see is a tab an agent in that workspace can drive. That should be structurally
@@ -24,9 +24,9 @@ All in `packages/desktop/src/features/browser-webviews/registry.ts`
 
 | Map                                                       | Written by                                                                  | Lifecycle it follows              |
 | --------------------------------------------------------- | --------------------------------------------------------------------------- | --------------------------------- |
-| `browserIdsByWebContentsId` / `webContentsIdsByBrowserId` | `registerOttoBrowserWebContents` — `main.ts` `did-attach-webview`           | The `<webview>` element's attach  |
-| `workspaceIdsByBrowserId`                                 | `registerWorkspace` — IPC from `browser-pane.electron.tsx:869` (pane mount) | The React pane's **mount effect** |
-| `activeBrowserIdsByWorkspaceId`                           | `setWorkspaceActiveBrowser` — `workspace-screen.tsx:403-411` (focus change) | Focused-tab changes               |
+| `browserIdsByWebContentsId` / `webContentsIdsByBrowserId` | `registerOttoBrowserWebContents` - `main.ts` `did-attach-webview`           | The `<webview>` element's attach  |
+| `workspaceIdsByBrowserId`                                 | `registerWorkspace` - IPC from `browser-pane.electron.tsx:869` (pane mount) | The React pane's **mount effect** |
+| `activeBrowserIdsByWorkspaceId`                           | `setWorkspaceActiveBrowser` - `workspace-screen.tsx:403-411` (focus change) | Focused-tab changes               |
 
 Automation reachability is gated **only** on the second map. `executeListTabs`
 (`service.ts:568-570`) lists via `listBrowserIdsForWorkspace`, and `resolveTabTarget`
@@ -34,7 +34,7 @@ Automation reachability is gated **only** on the second map. `executeListTabs`
 with a live, attached webContents that is missing from `workspaceIdsByBrowserId` is invisible to
 every agent, while remaining perfectly usable by the human.
 
-`workspaceIdsByBrowserId` is `Map<string, string>` — **one workspace per tab, last writer wins** —
+`workspaceIdsByBrowserId` is `Map<string, string>` - **one workspace per tab, last writer wins** -
 and two different code paths rewrite it (`registerWorkspace` at line 51, and `setWorkspaceActiveBrowser`
 at line 76, which quietly reassigns ownership as a side effect of a focus change).
 
@@ -53,12 +53,12 @@ did not.
 **Not reproduced, reported by the user.** With two tabs open, closing one removed both. The
 suspicious path is `unregisterWebContents` (`registry.ts:22-36`), which on a webContents death
 deletes the workspace entry _and_ calls `deleteActiveBrowserReferences`, sweeping every workspace's
-active-browser entry that points at that browserId. Not yet traced — do not treat as diagnosed.
+active-browser entry that points at that browserId. Not yet traced - do not treat as diagnosed.
 
 **Ruled out.** Chat-to-chat switching is _not_ a trigger. Chats within a workspace share one
 `workspaceId`, so both writers rewrite the same value. Switching chats and re-driving the tab worked
 correctly once the tab was registered. An earlier reading of this as the docs' "chats trample each
-other" was wrong — that phrase describes two agents driving one tab concurrently, a different issue
+other" was wrong - that phrase describes two agents driving one tab concurrently, a different issue
 that is out of scope here.
 
 ## Why it is hard to diagnose
@@ -73,7 +73,7 @@ Three defects that cost most of a session to work around:
    nothing clears or revalidates it when the tab dies. `preview_list` therefore advertises browserIds
    that cannot be used, which reads as "the tab is fine" when it is not.
 3. **The register/unregister IPC handlers do not log.** `main.ts:525` and `:532` are the exact seam
-   where the state goes wrong, and they are silent — while the webContents attach beside them logs
+   where the state goes wrong, and they are silent - while the webContents attach beside them logs
    every time.
 
 ## Direction
@@ -81,7 +81,7 @@ Three defects that cost most of a session to work around:
 Not a design decision yet; these are the constraints the design has to satisfy.
 
 - **One authoritative record per tab.** A tab is a single entity with a workspace, a webContents and
-  a liveness state — not three maps that happen to be keyed alike. Membership derives from that
+  a liveness state - not three maps that happen to be keyed alike. Membership derives from that
   record.
 - **Reachability follows the tab, not the pane's mount effect.** A tab parked in the resident-webview
   host (`browser-webview-resident.ts`) is alive and should stay reachable. Tying registration to a
@@ -89,7 +89,7 @@ Not a design decision yet; these are the constraints the design has to satisfy.
 - **Focus must not reassign ownership.** `setWorkspaceActiveBrowser` writing `workspaceIdsByBrowserId`
   conflates "which tab is focused here" with "which workspace owns this tab". Separate them.
 - **Distinct failures get distinct codes.** At minimum `browser_tab_wrong_workspace` vs
-  `browser_tab_not_found`, so the caller can tell "not yours" from "not there" — and so the tools can
+  `browser_tab_not_found`, so the caller can tell "not yours" from "not there" - and so the tools can
   say which.
 - **Instrument the seams.** The register/unregister IPC path logs, at the same level the attach path
   already does.
@@ -98,10 +98,10 @@ Not a design decision yet; these are the constraints the design has to satisfy.
 
 ### Open questions
 
-1. **Where does the authoritative record live** — the main process (closest to webContents liveness)
+1. **Where does the authoritative record live** - the main process (closest to webContents liveness)
    or the renderer store (closest to what the user sees as a tab)? They disagree today; one has to
    win and the other becomes a projection.
-2. **What happens to a tab whose workspace is closed** — destroyed, or orphaned and adoptable? This
+2. **What happens to a tab whose workspace is closed** - destroyed, or orphaned and adoptable? This
    decides whether ownership is reassignable at all.
 3. **Does the daemon need to know**, or is this entirely a desktop-side repair? `boundBrowserId`
    invalidation (defect 2) is daemon-side and may be separable from the rest.
@@ -110,7 +110,7 @@ Not a design decision yet; these are the constraints the design has to satisfy.
 
 ## Not in scope
 
-- **Concurrent driving of one tab by two agents** — the trampling docs/preview.md already describes.
+- **Concurrent driving of one tab by two agents** - the trampling docs/preview.md already describes.
   The mitigation there is a tab per chat, and it is unaffected by any of this.
 - **Changing the workspace-level scope itself.** Workspace-scoped tabs are the intended contract;
   this charter makes the implementation match it, not replace it.

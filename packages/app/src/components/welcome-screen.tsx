@@ -81,7 +81,9 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[3],
     paddingVertical: theme.spacing[4],
     borderRadius: theme.borderRadius.xl,
-    backgroundColor: theme.colors.surface2,
+    // surface1, not surface2: `border` is nearly identical to surface2 on this
+    // theme, which swallows the button's own outline.
+    backgroundColor: theme.colors.surface1,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
@@ -181,7 +183,7 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
   // For fresh devices that haven't completed the wizard, go to the setup
   // wizard so they can configure providers, teams, etc. For existing devices,
   // go straight to the project selection screen.
-  // Guard on settings hydration — DEFAULT_CLIENT_SETTINGS has
+  // Guard on settings hydration - DEFAULT_CLIENT_SETTINGS has
   // hasCompletedSetupWizard === false, so unhydrated state would flash the
   // wizard in front of a returning user (the same class of bug the bootstrap
   // prevents with isSetupWizardStateLoaded).
@@ -196,7 +198,7 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
   }, [anyOnlineServerId, hasCompletedWizard, isSettingsLoading, router]);
 
   // "Finish onboarding" callback exposed to child modals. For fresh devices
-  // this is a no-op — the effect above owns navigation when a host comes
+  // this is a no-op - the effect above owns navigation when a host comes
   // online. We only navigate here for existing devices (wizard already done)
   // so that both paths agree on the destination.
   const finishOnboarding = useCallback(() => {

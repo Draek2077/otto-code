@@ -23,7 +23,7 @@ import { SelectField, type SelectFieldOption } from "@/components/ui/select-fiel
 import { ToolbarIconButton } from "@/components/ui/toolbar-icon-button";
 import { ToolbarSeparator } from "@/components/ui/toolbar-separator";
 
-// The visualizer tab's top toolbar — the native Otto counterpart to the
+// The visualizer tab's top toolbar - the native Otto counterpart to the
 // controls that used to live inside the vendored webview HUD. Chats switcher +
 // audio toggle on the left; panel/HUD toggles on the right. Always visible; the HUD-eye
 // here hides only the in-webview HUD (see visualizer-panel.tsx / OTTO-PATCHES.md).
@@ -43,10 +43,10 @@ const ThemedPinFilled = withUnistyles(PinFilled);
 const ThemedPictureInPicture = withUnistyles(PictureInPicture);
 
 // Responsive collapse: as the toolbar narrows, five lower-priority controls drop
-// one at a time — roughly nearest-the-center-gap first, with Stats kept until
+// one at a time - roughly nearest-the-center-gap first, with Stats kept until
 // last: Timeline → Files → Cost → Pin → Stats. Everything else (chat picker,
 // audio, zoom, restart, HUD) always stays. Hiding is a pure function of the
-// measured bar width — no measure/hide feedback loop — so it can't oscillate.
+// measured bar width - no measure/hide feedback loop - so it can't oscillate.
 const COLLAPSE_ORDER = ["timeline", "files", "cost", "pin", "stats"] as const;
 type CollapsibleControl = (typeof COLLAPSE_ORDER)[number];
 
@@ -62,9 +62,9 @@ const ALWAYS_VISIBLE_ICON_COUNT = 4; // audio, zoom, restart, HUD
 const ALWAYS_VISIBLE_SEPARATOR_COUNT = 3; // 2 in the left group + 1 before HUD
 
 /** Which collapsible controls to hide at the given bar width. Null width (first
- * paint, before layout) shows everything. The PIP control is never collapsed —
+ * paint, before layout) shows everything. The PIP control is never collapsed -
  * it is a surface switch, not an informational toggle, and a mode control that
- * vanishes as you narrow the pane is how you lose the surface you're in — so it
+ * vanishes as you narrow the pane is how you lose the surface you're in - so it
  * only widens the reserved budget. */
 function computeHiddenControls(
   barWidth: number | null,
@@ -108,7 +108,7 @@ export interface VisualizerToolbarProps {
   onToggleAudio: () => void;
   onToggleHud: () => void;
   /** Collapse the tab into the picture-in-picture viewport. Null where the PIP
-   * doesn't exist (compact layouts) — see visualizer-pip-host.tsx. */
+   * doesn't exist (compact layouts) - see visualizer-pip-host.tsx. */
   onCollapseToPip: (() => void) | null;
 }
 
@@ -134,12 +134,12 @@ export function VisualizerToolbar({
   onToggleHud,
   onCollapseToPip,
 }: VisualizerToolbarProps) {
-  // Zoom to Fit and Restart act on the live simulation — disable them when no
+  // Zoom to Fit and Restart act on the live simulation - disable them when no
   // chat is selected (the "Waiting for chat activity" empty state) since there's
   // nothing to fit or restart.
   const viewportDisabled = selectedSessionId === null;
   // Hiding the HUD force-hides every informational panel (Timeline / Files /
-  // Cost / Stats) — visualizer-panel forces config.panels off while hidden — so
+  // Cost / Stats) - visualizer-panel forces config.panels off while hidden - so
   // their toggles are disabled and shown unselected until the HUD is re-enabled.
   const panelsDisabled = hudHidden;
   // Responsive collapse (see COLLAPSE_ORDER): measure the bar, derive which
@@ -166,7 +166,7 @@ export function VisualizerToolbar({
 
   // Right-hand toggles as separator-delimited clusters. Collapsed controls drop
   // out; empty clusters (and the separator that would precede them) disappear so
-  // no orphan pipe is left behind — e.g. once Timeline/Files/Cost are all hidden
+  // no orphan pipe is left behind - e.g. once Timeline/Files/Cost are all hidden
   // the group is just the HUD toggle with no leading separators.
   const timelineNode = hidden.has("timeline") ? null : (
     <ToolbarIconButton
@@ -212,7 +212,7 @@ export function VisualizerToolbar({
     />
   );
   // The surface switch. It lives here rather than in the workspace header
-  // because it only means anything while the Visualizer is open — one header
+  // because it only means anything while the Visualizer is open - one header
   // button now opens the surface you last used, and you change surface from
   // inside. Momentary (no `selected`): pressing it leaves this toolbar behind.
   const pipNode =
@@ -264,7 +264,7 @@ export function VisualizerToolbar({
             Collapsed away last when the toolbar runs out of room. */}
         {hidden.has("pin") ? null : (
           <ToolbarIconButton
-            label={followActive ? "Pin this chat" : "Unpin — follow the active chat"}
+            label={followActive ? "Pin this chat" : "Unpin - follow the active chat"}
             Icon={followActive ? ThemedPin : ThemedPinFilled}
             selected={!followActive}
             onPress={onToggleFollow}

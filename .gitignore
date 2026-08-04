@@ -18,10 +18,10 @@ result
 packages/dotnet-probe/bin/
 packages/dotnet-probe/obj/
 
-# graphify — knowledge graph outputs are personal/derived; .graphifyignore stays tracked
+# graphify - knowledge graph outputs are personal/derived; .graphifyignore stays tracked
 graphify-out/
 
-# understand-anything — all tool output (intermediate/, tmp/, knowledge-graph.json); .understandignore lives inside and is ignored with it
+# understand-anything - all tool output (intermediate/, tmp/, knowledge-graph.json); .understandignore lives inside and is ignored with it
 .ua/
 
 # Environment variables
@@ -71,7 +71,7 @@ playwright-report/
 # never overwrites the T1 report mid-write.
 playwright-report-*/
 **/playwright-report-*/
-# QA run artifacts (index/evidence/money-shot digest/failure report) — regenerated every run
+# QA run artifacts (index/evidence/money-shot digest/failure report) - regenerated every run
 e2e-report/
 **/e2e-report/
 e2e-report-*/

@@ -263,7 +263,7 @@ function ProjectSettingsBody({
 
   // Native: a single route-removal guard covers hardware back, swipe-back, and
   // any in-app navigation that pops this screen. Web keeps the guard in the
-  // explicit exit handlers instead — preventing removal there fights the
+  // explicit exit handlers instead - preventing removal there fights the
   // browser's URL, which expo-router does not recover from (see
   // docs/expo-router.md on route-tree fragility).
   const handlePreventRemove = useCallback(
@@ -559,7 +559,7 @@ interface ProjectConfigFormProps {
 
 // Content-only identity of a draft, for dirty comparison. Script row ids come
 // from a module counter, so two configToDraft calls over the same config would
-// differ by id alone — strip them.
+// differ by id alone - strip them.
 function draftFingerprint(draft: ProjectConfigDraft): string {
   return JSON.stringify({
     ...draft,
@@ -963,7 +963,7 @@ interface LinkableProject {
 }
 
 // The gated-multi-root link manager: link this project to others on the same
-// host so their files can be opened/edited in place. Links are bidirectional —
+// host so their files can be opened/edited in place. Links are bidirectional -
 // linking here also links the other side.
 function ProjectLinksSection({ serverId, projectId, client }: ProjectLinksSectionProps) {
   const { t } = useTranslation();
@@ -1728,7 +1728,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface2,
     minHeight: 100,
   },
-  // Row handed to AdaptiveModalSheet's `footer` — the sheet's own wrapper
+  // Row handed to AdaptiveModalSheet's `footer` - the sheet's own wrapper
   // already supplies padding, the top border, and the row alignment.
   modalFooter: {
     flex: 1,

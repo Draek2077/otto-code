@@ -33,7 +33,7 @@ test.describe("Sidebar host filter (multi-select)", () => {
       await expectHostFilterRow(page, serverId);
       await expectHostFilterRow(page, SECONDARY_HOST_ID);
 
-      // Pin the primary host — its workspace stays visible.
+      // Pin the primary host - its workspace stays visible.
       await toggleHostFilter(page, serverId);
       await expect(workspaceRow).toBeVisible();
 
@@ -42,11 +42,11 @@ test.describe("Sidebar host filter (multi-select)", () => {
       await toggleHostFilter(page, SECONDARY_HOST_ID);
       await expect(workspaceRow).toBeVisible();
 
-      // Drop the primary host — only the (empty) secondary host remains pinned, so the workspace hides.
+      // Drop the primary host - only the (empty) secondary host remains pinned, so the workspace hides.
       await toggleHostFilter(page, serverId);
       await expect(workspaceRow).toHaveCount(0, { timeout: 10_000 });
 
-      // Back to all hosts — the workspace returns.
+      // Back to all hosts - the workspace returns.
       await selectAllHostsFilter(page);
       await expect(workspaceRow).toBeVisible({ timeout: 10_000 });
     } finally {

@@ -25,7 +25,7 @@ export function assertValidArtifactId(artifactId: string): void {
 
 // Drop the run history off a stored record to get the lean metadata that
 // list/get callers (and every broadcast/notification) work with. Keeping runs
-// out of that shape means they never ride the wire on routine updates — only
+// out of that shape means they never ride the wire on routine updates - only
 // inspect() surfaces them.
 function toMetadata(stored: StoredArtifact): ArtifactMetadata {
   const { runs: _runs, ...metadata } = stored;
@@ -125,7 +125,7 @@ export class ArtifactStore {
   }
 
   // Append a generation attempt to the run history, oldest entries pruned so the
-  // on-disk log stays bounded. Does not touch updatedAt — the run's own
+  // on-disk log stays bounded. Does not touch updatedAt - the run's own
   // timestamps carry that, and the accompanying status update bumps it.
   async appendRun(artifactId: string, run: ArtifactRun): Promise<void> {
     await this.ensureDir();
@@ -138,7 +138,7 @@ export class ArtifactStore {
     await writeJsonFileAtomic(this.metadataPath(artifactId), updated);
   }
 
-  // Patch the current (most recent still-"running") run — to stamp its agent id
+  // Patch the current (most recent still-"running") run - to stamp its agent id
   // once known, or to close it out as succeeded/failed. No-ops when there's no
   // running run, so completion handlers can fire unconditionally.
   async patchCurrentRun(artifactId: string, patch: Partial<ArtifactRun>): Promise<void> {
@@ -183,7 +183,7 @@ function isEnoent(error: unknown): boolean {
   return (error as NodeJS.ErrnoException).code === "ENOENT";
 }
 
-// Index of the last run still in flight — the one a success/failure handler
+// Index of the last run still in flight - the one a success/failure handler
 // should close out. Returns -1 when nothing is running.
 function findLastRunningIndex(runs: ArtifactRun[]): number {
   for (let i = runs.length - 1; i >= 0; i--) {

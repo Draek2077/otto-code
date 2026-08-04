@@ -404,7 +404,7 @@ describe("hasRunningObservedSubagent", () => {
         status: "running",
         archivedAt: AGENT_TIMESTAMP,
       }),
-      // An attended child is its own chat with its own cues — the parent is not
+      // An attended child is its own chat with its own cues - the parent is not
       // waiting on it.
       makeAgent({
         id: "attended",
