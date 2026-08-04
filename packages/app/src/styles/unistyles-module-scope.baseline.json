@@ -30,7 +30,6 @@
   "screens/settings/agent-voice-cues-row.tsx",
   "screens/settings/appearance/appearance-section.tsx",
   "screens/settings/code-intelligence-section.tsx",
-  "screens/settings/host-brain-models.tsx",
   "screens/settings/host-brain-page.tsx",
   "screens/settings/host-page.tsx",
   "screens/settings/otto-tools-section.tsx",
