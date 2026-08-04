@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.8.0 - 2026-08-03
+
+### Added
+
+- A top-level Brain page manages your local models: overview, models, a downloadable library, benchmarks and logs
+- Load, unload or delete a Brain model, and edit its profile, without leaving the page
+- Brain shows a live VRAM budget as you adjust a model's settings, before you apply them
+- The connector picker gains a search box and an audience filter, and expands a connector in place instead of leaving the list
+
+### Changed
+
+- The connector catalog now covers 29 sources with cited setup instructions, 25 of them one-click sign-in
+- Connecting most sources goes through Otto's own sign-in flow instead of pasting a token
+- The old Brain settings dashboard sheet is replaced by the Brain page
+- The bundled agent catalog picks up current versions of Factory Droid and Qwen Code
+
+### Fixed
+
+- A pasted connector token was echoed back to every client instead of staying secret
+
 ## 0.7.6 - 2026-08-03
 
 ### Added
