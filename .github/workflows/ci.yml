@@ -344,7 +344,7 @@ jobs:
           OTTO_TAB_BRIDGE_E2E_ARTIFACT_DIR: ${{ runner.temp }}/browser-tab-bridge-e2e
 
       - name: Upload browser tab bridge diagnostics
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: env.RUN_TESTS == 'true' && failure() && matrix.os == 'ubuntu-latest'
         with:
           name: browser-tab-bridge-e2e
@@ -370,7 +370,7 @@ jobs:
           (github.event_name == 'workflow_dispatch' ||
            needs.changes.result != 'success' ||
            needs.changes.outputs.desktop_package != 'false')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: desktop-packaged-smoke-linux-x64
           path: ${{ runner.temp }}/desktop-smoke
@@ -529,7 +529,7 @@ jobs:
         run: npm run test:e2e:desktop --workspace=@otto-code/app
 
       - name: Upload test artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: env.RUN_TESTS == 'true' && failure()
         with:
           name: playwright-results-${{ matrix.shard }}
