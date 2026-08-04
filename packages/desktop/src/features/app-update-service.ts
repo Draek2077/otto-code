@@ -110,7 +110,14 @@ async function performQuitAndInstall(
   },
 ): Promise<void> {
   if (onBeforeQuit) await onBeforeQuit();
-  runtime.quitAndInstall(/* isSilent */ !restart, /* isForceRunAfter */ restart);
+  // Always silent, including the restart path. Otto ships an assisted NSIS
+  // installer, and electron-builder's assisted template only relaunches the app
+  // after a *silent* install: run it with its wizard UI and the --force-run flag
+  // electron-updater passes is ignored outright, leaving the "Run Otto" checkbox
+  // on the finish page as the only way back in. Otto has already told the user
+  // it will restart itself and quit by then, so nobody is there to click Finish
+  // and the update lands with the app dead. See docs/fork-release-guide.md.
+  runtime.quitAndInstall(/* isSilent */ true, /* isForceRunAfter */ restart);
 }
 
 function getErrorMessage(error: unknown): string {

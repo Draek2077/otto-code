@@ -8,9 +8,17 @@ const DESKTOP_CLI_ENV = "OTTO_DESKTOP_CLI";
 // as real process argv (OTTO_ELECTRON_FLAGS/appendSwitch is too late for the
 // browser process's Ozone platform selection), so the arg parser must let
 // them through.
+// --updated is handed to the app by the Windows installer, not by a user:
+// electron-builder's StartApp forwards it from the installer's own command line
+// both from the finish page's "Run Otto" checkbox and from the silent
+// auto-update relaunch. It means "you were just updated", never "run a CLI
+// command", so it must not flip a GUI launch into passthrough mode - that
+// launch would run the CLI, fail on an unrecognized command, and exit with no
+// window, no log line, and no crash dump.
 const IGNORED_ARG_PREFIXES = [
   "-psn_",
   "--no-sandbox",
+  "--updated",
   "--remote-debugging-port=",
   "--ozone-platform=",
   "--use-gl=",

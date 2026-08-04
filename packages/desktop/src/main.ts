@@ -1307,6 +1307,12 @@ async function runCliPassthroughIfRequested(): Promise<boolean> {
     return false;
   }
 
+  // This path exits without ever creating a window. Leave a breadcrumb: a
+  // launch that lands here by accident (an installer or OS flag the parser
+  // doesn't recognize) is otherwise indistinguishable from "the app never
+  // started" - no window, no error, nothing in the log.
+  log.info("[startup] running as CLI passthrough", { args: cliArgs });
+
   try {
     const exitCode = await runPassthroughCli(cliArgs);
     app.exit(exitCode);

@@ -421,7 +421,10 @@ describe("app update service", () => {
 
     expect(result.installed).toBe(true);
     expect(runtime.installedVersions).toEqual(["1.2.5"]);
-    expect(runtime.installModes).toEqual([{ isSilent: false, isForceRunAfter: true }]);
+    // Silent even when restarting: the assisted NSIS installer only honors
+    // --force-run on a silent install, so a wizard here would strand the user
+    // on the finish page with the app already quit.
+    expect(runtime.installModes).toEqual([{ isSilent: true, isForceRunAfter: true }]);
   });
 
   it("waits for a stale active download before downloading and installing the rechecked version", async () => {

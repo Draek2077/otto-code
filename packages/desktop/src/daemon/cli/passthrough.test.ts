@@ -90,6 +90,16 @@ describe("passthrough CLI", () => {
     ).toBeNull();
   });
 
+  it("ignores --updated from the Windows installer's post-install relaunch", () => {
+    expect(
+      parsePassthroughCliArgs({
+        argv: ["C:\\Users\\me\\AppData\\Local\\Programs\\Otto\\Otto.exe", "--updated"],
+        isDefaultApp: false,
+        forceCli: false,
+      }),
+    ).toBeNull();
+  });
+
   it("preserves CLI flags for direct app invocations", () => {
     expect(
       parsePassthroughCliArgs({

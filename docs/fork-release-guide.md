@@ -160,9 +160,21 @@ The release loop, once you're ready to ship:
   app after a _silent_ install. Run it with its wizard UI and the `--force-run` flag
   electron-updater passes is ignored outright, leaving the "Run Otto" checkbox on the finish page
   as the only way back into the app. Since Otto has already told the user it will restart itself
-  and exited, nobody is there to click Finish, and the update lands with the app dead. The
-  `shouldInstallSilently` guard in `packages/desktop/src/features/auto-updater.ts` is what keeps
-  this correct; don't hand `quitAndInstall` a non-silent value on `win32`.
+  and exited, nobody is there to click Finish, and the update lands with the app dead.
+  `performQuitAndInstall` in `packages/desktop/src/features/app-update-service.ts` passes
+  `isSilent: true` unconditionally, including on the restart path, and a test in
+  `app-update-service.test.ts` pins it. Don't hand `quitAndInstall` a non-silent value. This guard
+  was lost once already, in a refactor that dropped the `shouldInstallSilently` helper this
+  paragraph used to name, and the restart path silently went back to running the wizard.
+
+- **The installer relaunches the app as `Otto.exe --updated`, and the app must treat that as a GUI
+  launch.** electron-updater passes `--updated` to the installer, and electron-builder's `StartApp`
+  forwards it to the app on both relaunch paths: the silent auto-update relaunch and the "Run Otto"
+  checkbox on the assisted installer's finish page. Otto routes any unrecognized argument to the
+  passthrough CLI, which runs headless and exits with no window, no log line and no crash dump, so
+  a forwarded flag that isn't recognized reads exactly like "the app never started". `--updated` is
+  in `IGNORED_ARG_PREFIXES` in `packages/desktop/src/daemon/cli/passthrough.ts` for that reason, and
+  any future flag the installer forwards belongs there too.
 
 - **Install-on-quit is Otto's own, not electron-updater's.** electron-updater implements
   `autoInstallOnAppQuit` with `app.once("quit")`, and Otto's before-quit handler ends in
