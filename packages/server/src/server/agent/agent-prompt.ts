@@ -96,13 +96,15 @@ export function startAgentRun(
     },
     "agent.session.start_stream.request",
   );
+  const runOptions = options?.runOptions;
   // Out-of-band commands (e.g. /goal pause) must run WITHOUT canceling an
   // in-flight turn - replaceAgentRun would interrupt the running turn. The
-  // intercept lives at this layer so it covers every prompt entrypoint.
-  if (agentManager.tryRunOutOfBand(agentId, prompt)) {
+  // intercept lives at this layer so it covers every prompt entrypoint. The run
+  // options ride along so the prompt the manager records carries the composer's
+  // message id and reconciles the client's optimistic row.
+  if (agentManager.tryRunOutOfBand(agentId, prompt, runOptions)) {
     return { outOfBand: true, queued: false };
   }
-  const runOptions = options?.runOptions;
   const queuedResult = tryQueuePrompt(agentManager, agentId, prompt, logger, options);
   if (queuedResult) {
     return queuedResult;

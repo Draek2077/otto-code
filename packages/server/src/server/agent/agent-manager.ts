@@ -117,6 +117,7 @@ import { getAgentProviderDefinition } from "@otto-code/protocol/provider-manifes
 import { resolveModelPickExitModeId } from "./model-pick-mode.js";
 import { invokeRewindCapability, type RewindMode } from "./rewind/rewind.js";
 import { formatSystemNotificationPrompt, isSystemInjectedEnvelope } from "./agent-prompt.js";
+import { normalizeClientMessageId } from "../client-message-id.js";
 import {
   appendTodoNudgeToPrompt,
   buildTodoReconcileMessage,
@@ -3499,7 +3500,11 @@ export class AgentManager {
    * emitted by the handler flow through dispatchStream so they persist and
    * broadcast like normal timeline events.
    */
-  tryRunOutOfBand(agentId: string, prompt: AgentPromptInput): boolean {
+  tryRunOutOfBand(
+    agentId: string,
+    prompt: AgentPromptInput,
+    runOptions?: AgentRunOptions,
+  ): boolean {
     const agent = this.requireSessionAgent(agentId);
     const handler = agent.session.tryHandleOutOfBand?.(prompt);
     if (!handler) {
@@ -3520,6 +3525,32 @@ export class AgentManager {
       }
       this.dispatchStream(agent.id, event, { timestamp: new Date().toISOString() });
     };
+
+    // An out-of-band command allocates no turn, so no provider ever echoes the
+    // prompt back the way startTurn does. Record it HERE, before the handler
+    // runs, or the typed command exists only as the client's optimistic row:
+    // absent from the persisted timeline, so it disappears on reload, and
+    // unordered against the rows the handler goes on to emit - which is how a
+    // /compact separator ends up rendered ABOVE the "/compact" the reader
+    // typed. Emitting it first also gives it the lower seq, so the separator
+    // sorts after it on every rehydration.
+    const promptText = typeof prompt === "string" ? prompt : "";
+    if (promptText && !isSystemInjectedEnvelope(promptText)) {
+      const clientMessageId = normalizeClientMessageId(runOptions?.clientMessageId);
+      dispatch({
+        type: "timeline",
+        provider: agent.provider,
+        item: {
+          type: "user_message",
+          text: promptText,
+          ...(runOptions?.messageId ? { messageId: runOptions.messageId } : {}),
+          ...(clientMessageId ? { clientMessageId } : {}),
+        },
+      });
+      agent.lastUserMessageAt = new Date();
+      this.emitState(agent);
+    }
+
     void (async () => {
       try {
         await handler.run({ emit: dispatch });

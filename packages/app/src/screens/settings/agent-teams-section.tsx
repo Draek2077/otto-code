@@ -1026,6 +1026,12 @@ interface MemberRowProps {
   onToggle: (personalityId: string) => void;
 }
 
+function formatMemberEffort(effortLevel: string | undefined): string {
+  if (!effortLevel) return "Provider default effort";
+  if (effortLevel === "xhigh") return "Extra high effort";
+  return `${effortLevel.charAt(0).toUpperCase()}${effortLevel.slice(1)} effort`;
+}
+
 function MemberRow({ personality, entries, checked, onToggle }: MemberRowProps): ReactElement {
   const handlePress = useCallback(() => onToggle(personality.id), [onToggle, personality.id]);
 
@@ -1043,6 +1049,17 @@ function MemberRow({ personality, entries, checked, onToggle }: MemberRowProps):
   }, [entries, personality]);
 
   const roles = useMemo(() => normalizePersonalityRoles(personality.roles), [personality]);
+  const providerEntry = useMemo(
+    () => entries.find((entry) => entry.provider === personality.provider),
+    [entries, personality.provider],
+  );
+  const memberModelSummary = useMemo(() => {
+    const providerLabel = providerEntry?.label ?? personality.provider;
+    const modelLabel =
+      providerEntry?.models?.find((model) => model.id === personality.model)?.label ??
+      personality.model;
+    return `${providerLabel} · ${modelLabel} · ${formatMemberEffort(personality.effortLevel)}`;
+  }, [personality.effortLevel, personality.model, personality.provider, providerEntry]);
 
   const rowStyle = useCallback(
     ({ pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
@@ -1082,6 +1099,9 @@ function MemberRow({ personality, entries, checked, onToggle }: MemberRowProps):
       <View style={infoStyle}>
         <Text style={settingsStyles.rowTitle} numberOfLines={1}>
           {personality.name}
+        </Text>
+        <Text style={settingsStyles.rowHint} numberOfLines={1}>
+          {memberModelSummary}
         </Text>
         <Text style={settingsStyles.rowHint} numberOfLines={1}>
           {roles.map((role) => ROLE_LABELS[role]).join(", ") || "No roles"}

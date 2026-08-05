@@ -310,6 +310,12 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
     minWidth: 0,
     paddingHorizontal: theme.spacing[1],
+    // Keep the base-branch picker aligned with the adjacent diff-mode dropdown.
+    height: {
+      xs: 28,
+      sm: 28,
+      md: 24,
+    },
     borderRadius: theme.borderRadius.base,
     flexShrink: 1,
   },
