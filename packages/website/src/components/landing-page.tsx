@@ -49,7 +49,11 @@ import "~/styles.css";
 
 interface LandingPageProps {
   title: React.ReactNode;
-  subtitle: string;
+  /**
+   * A plain string gets the standard hero paragraph treatment (the agent pages
+   * pass one). Pass nodes only when the hero needs more than one paragraph.
+   */
+  subtitle: React.ReactNode;
 }
 
 export function LandingPage({ title, subtitle }: LandingPageProps) {
@@ -93,8 +97,9 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
             <CostSection />
             <ShipSection />
             <BringAnyModelSection />
+            <OttoBrainSection />
             <VoiceSection />
-            <BuiltOnOttoSection />
+            <BuiltOnPaseoSection />
             <FAQ />
             <OttoCreditCTA />
           </div>
@@ -136,11 +141,15 @@ function Nav() {
   );
 }
 
-function Hero({ title, subtitle }: { title: React.ReactNode; subtitle: string }) {
+function Hero({ title, subtitle }: { title: React.ReactNode; subtitle: React.ReactNode }) {
   return (
     <div className="space-y-6">
       <h1 className="text-3xl md:text-5xl font-medium tracking-tight">{title}</h1>
-      <p className="text-white/70 text-lg leading-relaxed max-w-lg">{subtitle}</p>
+      {typeof subtitle === "string" ? (
+        <p className="text-white/70 text-lg leading-relaxed max-w-lg">{subtitle}</p>
+      ) : (
+        <div className="space-y-4 max-w-lg">{subtitle}</div>
+      )}
     </div>
   );
 }
@@ -216,7 +225,7 @@ function SectionTitle({ title, description }: { title: string; description: stri
 
 const UPSTREAM_PILLARS = [
   {
-    title: "From Otto, by Mo",
+    title: "From Paseo, by Mo",
     items: [
       "Multi-provider agent orchestration",
       "Self-hosted daemon, your machines",
@@ -240,13 +249,13 @@ const UPSTREAM_PILLARS = [
       "In-browser preview verification for agents",
       "Real per-subagent token and cost accounting",
       "Named agent personalities, spawnable by role",
-      "Local models via LM Studio, Ollama & friends",
+      "Local models via OpenAI Compatible providers",
       "A familiar, refined UI that never boxes you in",
     ],
   },
 ] as const;
 
-function BuiltOnOttoSection() {
+function BuiltOnPaseoSection() {
   return (
     <motion.section
       initial={FADE_IN_UP}
@@ -255,21 +264,22 @@ function BuiltOnOttoSection() {
       transition={EASE_OUT_05}
     >
       <SectionTitle
-        title="Built on Otto"
-        description="Everything above stands on a foundation someone else got right first. Multi-provider agent orchestration, a self-hosted daemon, real clients on every platform, split panes, worktrees, the CLI. That is Otto, and Otto keeps all of it intact."
+        title="Built on Paseo"
+        description="Everything above stands on a foundation someone else got right first. Multi-provider agent orchestration, a self-hosted daemon, real clients on every platform, split panes, worktrees, the CLI. That is Paseo, and Otto keeps all of it intact."
       />
 
       <div className="space-y-4">
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+          Otto is built on{" "}
           <a
-            href="https://github.com/Draek2077/otto-code"
+            href="https://github.com/getpaseo/paseo"
             target="_blank"
             rel="noopener noreferrer"
             className="underline hover:text-white/80"
           >
-            Otto
-          </a>{" "}
-          is a phenomenal piece of open-source engineering by{" "}
+            Paseo
+          </a>
+          , the self-hosted daemon by{" "}
           <a
             href="https://github.com/boudra"
             target="_blank"
@@ -278,16 +288,12 @@ function BuiltOnOttoSection() {
           >
             Mo
           </a>
-          : a self-hosted daemon that orchestrates coding agents across desktop, mobile, web, and
-          CLI. What makes it such a good base is that the hard parts are already right: process
-          lifecycle, a clean WebSocket protocol, real cross-platform clients. So the work on top is
-          actual features instead of plumbing. Otto keeps that full foundation intact, with upstream
-          history preserved, and builds on it. That&apos;s the open-source community working exactly
-          as it should, and I&apos;m not shy about it.
+          . That gives us the plumbing: process lifecycle, WebSocket protocol, cross-platform
+          clients. So we ship features instead of infrastructure. Paseo stays intact, upstream
+          history preserved.
         </p>
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-          Otto&apos;s Visualizer, the live node-graph of what your agents are actually doing, is the
-          render layer of{" "}
+          The Visualizer is the render layer of{" "}
           <a
             href="https://github.com/patoles/agent-flow"
             target="_blank"
@@ -305,24 +311,18 @@ function BuiltOnOttoSection() {
           >
             Simon Patole
           </a>
-          . It is a genuinely lovely piece of work, and the reason it slotted in at all is a design
-          decision Simon got right: the renderer is cleanly separated from how events are collected,
-          talking to a small documented bridge protocol. So Otto could feed it its own
-          provider-neutral event stream and have the graph light up for every provider on day one
-          (Claude, Codex, OpenCode, or a local model) instead of just the ones the original ingests.
-          Adapting it has been the most enjoyable part of this project. If the orchestration graph
-          is the bit you like, go star Agent Flow too.
+          . The renderer is cleanly separated from event collection and talks to a small documented
+          bridge. So Otto feeds it its own provider-neutral stream and the graph lights up for every
+          provider on day one: Claude, Codex, OpenCode, local models. If the graph is the part you
+          like, go star Agent Flow too.
         </p>
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-          Otto is a personal project by Philippe, not a startup. Just the environment I want to work
-          in and the way I&apos;m getting better at agentic coding. Most of Otto is written by the
-          agents Otto runs. The problem I keep hitting is that agents can now do an enormous amount
-          of work on their own, and it&apos;s hard to see what they did, what it cost, and where it
-          went sideways. So the work leans toward making that legible: real per-subagent token and
-          cost accounting, the orchestration graph, and browser-verified previews so an agent proves
-          a change instead of claiming it. The rest is finding open-source pieces this good and
-          fitting them into one setup that works end to end. All credit for the foundations belongs
-          to the people who wrote them.
+          Otto is a personal project by Philippe, not a startup. Most of it is written by the agents
+          it runs. The problem I keep hitting is that agents can now do a lot of work on their own,
+          and it&apos;s hard to see what they did, what it cost, and where it went sideways. So the
+          work leans toward legibility: real per-subagent token and cost accounting, the
+          orchestration graph, and browser-verified previews so an agent proves a change instead of
+          claiming it. All credit for the foundations belongs to the people who wrote them.
         </p>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {UPSTREAM_PILLARS.map((pillar) => (
@@ -1254,6 +1254,46 @@ function VoiceSection() {
   );
 }
 
+function OttoBrainSection() {
+  return (
+    <FeatureSection
+      title="Otto Brain"
+      description="A model hosting and management system, local or remote. Run a model on your machine or point Otto at a brain running on another installation of your own. Start, stop, and switch models from the same interface you use for Claude and Codex: no separate GUI, no separate process to babysit. Pull models from Hugging Face, calibrate context windows and reasoning budgets, and benchmark your models against each other. Your prompts stay on hardware you own."
+    >
+      <FeatureShot
+        id="brain-dashboard"
+        kind="focus"
+        ratio="16/9"
+        chrome
+        alt="The Otto Brain dashboard showing live VRAM, telemetry verdicts, and the running model"
+        spec="The dashboard sheet: model name and version at top, VRAM usage bar, telemetry bars (reasoning-only / truncated / failed), and the recent completions list showing live verdicts."
+      />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+          <p className="mb-2 text-sm font-medium text-white/80">Self-contained</p>
+          <p className="text-sm leading-relaxed text-white/60">
+            Owns its own llama.cpp runtime and models. Nothing else to install.
+          </p>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+          <p className="mb-2 text-sm font-medium text-white/80">Daemon-managed</p>
+          <p className="text-sm leading-relaxed text-white/60">
+            Starts, stops, and restarts with the daemon. Lifecycle is{" "}
+            <code className="text-xs text-white/70">otto brain start/stop/restart/status</code>.
+          </p>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+          <p className="mb-2 text-sm font-medium text-white/80">Calibrate &amp; benchmark</p>
+          <p className="text-sm leading-relaxed text-white/60">
+            Measure KV bytes per token, calibrate context windows and reasoning budgets, and rank
+            models against each other with evals and variance.
+          </p>
+        </div>
+      </div>
+    </FeatureSection>
+  );
+}
+
 function InterfaceSection() {
   return (
     <FeatureSection
@@ -1911,22 +1951,22 @@ function FAQ() {
     >
       <h2 className="text-3xl font-medium">FAQ</h2>
       <div className="space-y-6">
-        <FAQItem question="How is Otto related to Otto?">
+        <FAQItem question="How is Otto related to Paseo?">
           Otto is an open-source fork of{" "}
           <a
-            href="https://github.com/Draek2077/otto-code"
+            href="https://github.com/getpaseo/paseo"
             target="_blank"
             rel="noopener noreferrer"
             className="underline hover:text-white/80"
           >
-            Otto
+            Paseo
           </a>
-          , with full upstream history preserved. I&apos;m proud of that lineage. Otto is a
+          , with full upstream history preserved. I&apos;m proud of that lineage. Paseo is a
           fantastic platform to build on. Otto tracks upstream improvements and adds its own
           direction on top: growing into a fully featured agentic coding assistant, with in-browser
           preview verification, artifacts, and frontier-model tooling brought to every provider,
           cloud APIs and local models alike. Otto is an independent project and isn&apos;t
-          affiliated with or endorsed by the Otto team; Otto&apos;s community, sponsors, and
+          affiliated with or endorsed by the Paseo team; Paseo&apos;s community, sponsors, and
           testimonials are theirs, not mine.
         </FAQItem>
         <FAQItem question="What powers the Visualizer?">
@@ -2037,12 +2077,12 @@ function OttoCreditCTA() {
         <p>
           Otto is an independent open-source fork of{" "}
           <a
-            href="https://github.com/Draek2077/otto-code"
+            href="https://github.com/getpaseo/paseo"
             target="_blank"
             rel="noopener noreferrer"
             className="underline hover:text-white/80"
           >
-            Otto
+            Paseo
           </a>
           , created by{" "}
           <a

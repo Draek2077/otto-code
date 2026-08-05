@@ -1,9 +1,9 @@
-# Website showcase: the eleven sections and the assets that prove them
+# Website showcase: the twelve sections and the assets that prove them
 
 Companion to [marketing-strategy.md](marketing-strategy.md) and
 [feature-inventory.md](feature-inventory.md). Where the inventory is the **accounting** (238
 verified items in 21 subsystem groups), this page is the **staging plan**: how those groups collapse
-into eleven landing-page sections, and exactly which capture produces each image.
+into twelve landing-page sections, and exactly which capture produces each image.
 
 **Status is not here.** Progress lives in the 🟡 _Site demos: the scenario backlog_ entry in
 [`projects/README.md`](../README.md#testing--tooling), which is the single ledger. This page is the
@@ -20,7 +20,7 @@ overrides it.
 The landing page today sells Paseo's foundation across six separate sections and Otto's own work
 across five hand-drawn simulations. That inverts the story. Consolidated, the base becomes one
 confident section at the end (_look how solid the ground is_) and the eleven sections above it are
-Otto's.
+Otto's. Otto Brain landed later as §10, making twelve.
 
 Two ordering rules decided this sequence:
 
@@ -46,10 +46,18 @@ claims stay traceable to verified items.
 | 7   | Know what it costs           | Accounting & context (17)                                                                   |
 | 8   | Review, preview, ship        | Git & changes (14), Workspaces & projects (11)                                              |
 | 9   | Bring any model              | Providers (14)                                                                              |
-| 10  | Voice                        | Speech & voice (8)                                                                          |
-| 11  | Built on Paseo               | Platform, ops & release (11), plus the whole upstream foundation                            |
+| 10  | Otto Brain                   | **No inventory group yet.** See the note below                                              |
+| 11  | Voice                        | Speech & voice (8)                                                                          |
+| 12  | Built on Paseo               | Platform, ops & release (11), plus the whole upstream foundation                            |
 
-§11 absorbs six sections that exist today and are all upstream: `SelfHostedSection`,
+§10 is the one row that does not trace back to
+[feature-inventory.md](feature-inventory.md): Otto Brain shipped after the 238-item accounting was
+taken, so it has no group there. Its claims currently rest on `packages/brain/src/cli.ts` directly
+(`start`/`stop`/`restart`/`status`, `pull`/`search` against Hugging Face, `calibrate`, `bench`, the
+owned llama.cpp runtime). **Add a Brain group to the inventory and point this row at it**, or the
+section is the only unverifiable one on the page.
+
+§12 absorbs six sections that exist today and are all upstream: `SelfHostedSection`,
 `MultiProviderSection`, `SplitPanelsSection`, `ShortcutsSection`, `ServiceProxySection`,
 `CLISection`, plus the credit copy currently in `BuiltOnOpenSourceSection`. The Agent Flow credit
 moves up into §1 as a one-line link, because that is where the visitor is looking at Simon's work.
@@ -141,14 +149,17 @@ only**; no Daylight pass is needed for any of these.
 | `ship-worktree`      | 8    | focus | `18-worktrees` (new)                          |
 | `model-local`        | 9    | focus | `17-multi-provider` (new)                     |
 | `model-local-verify` | 9    | loop  | `02-preview-verify`, `DEMO_PROVIDER=local-ai` |
-| `voice-mode`         | 10   | loop  | `21-voice` (new)                              |
-| `voice-playback`     | 10   | focus | `21-voice` (new)                              |
-| `paseo-panes`        | 11   | focus | `15-workspace-layouts` (new)                  |
+| `brain-dashboard`    | 10   | focus | none yet                                      |
+| `voice-mode`         | 11   | loop  | `21-voice` (new)                              |
+| `voice-playback`     | 11   | focus | `21-voice` (new)                              |
+| `paseo-panes`        | 12   | focus | `15-workspace-layouts` (new)                  |
 
-**35 shots: 1 full frame, 29 focus, 5 loops.** The full frame is itself captured as a loop, so six
-assets are video. Twelve already have a producing scenario; the rest need one. Verified against the
-rendered page: `document.querySelectorAll('[data-shot-placeholder]')` returns 34, the hero being
-the one slot still filled by the old mockup.
+**36 shots: 1 full frame, 30 focus, 5 loops.** The full frame is itself captured as a loop, so six
+assets are video. Twelve already have a producing scenario; the rest need one. `brain-dashboard` is
+the only row with no scenario named at all, so it renders the amber _no scenario yet_ marker
+on the live page until one is authored. Verified against the rendered page:
+`document.querySelectorAll('[data-shot-placeholder]')` returned 34 before Otto Brain landed and
+should now return 35, the hero being the one slot still filled by the old mockup.
 
 ### Cheapest wins first
 

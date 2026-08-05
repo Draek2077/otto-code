@@ -1,18 +1,20 @@
 import { useId, useMemo } from "react";
 import { View } from "react-native";
-import Svg, { Defs, LinearGradient, Stop } from "react-native-svg";
+import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { GLOW_DEFAULT_A, GLOW_DEFAULT_B } from "@/components/blob-loader";
-import { getProviderIcon } from "@/components/provider-icons";
+import { getProviderIconSvg } from "@/components/provider-icons";
 import type { PersonalityProviderIconProps } from "@/components/personality-provider-icon";
 
-const HIDDEN_DEFS_STYLE = { position: "absolute" as const };
-
 /**
- * Web path for {@link PersonalityProviderIcon}. MaskedView is a no-op on web, so
- * instead we render a hidden gradient `<defs>` and point the provider icon's
- * fill at it via `url(#id)` - browsers resolve gradient refs across `<svg>`
- * elements document-wide. The id is per-instance (useId) so multiple triggers
- * with different personality colors don't collide.
+ * Web path for {@link PersonalityProviderIcon}.
+ *
+ * Uses CSS `mask-image` (same technique as `brain-icon-mask.web.tsx`) to clip
+ * a gradient `<rect>` to the provider icon's shape. The SVG source is converted
+ * to a `data:` URL and applied as the mask — no `<SvgXml>` involved, so there
+ * is no cross-document `url(#gradient)` problem.
+ *
+ * Both the prefixed and unprefixed properties are set: react-native-web passes
+ * unrecognised style keys through to the DOM, and Safari still wants the prefix.
  */
 export function PersonalityProviderIcon({
   provider,
@@ -20,12 +22,34 @@ export function PersonalityProviderIcon({
   glowA = GLOW_DEFAULT_A,
   glowB = GLOW_DEFAULT_B,
 }: PersonalityProviderIconProps) {
-  const Icon = getProviderIcon(provider);
   const gradientId = `personality-icon-${useId().replace(/:/g, "")}`;
-  const containerStyle = useMemo(() => ({ width: size, height: size }), [size]);
+  const svgSource = useMemo(() => getProviderIconSvg(provider), [provider]);
+
+  const maskStyle = useMemo(() => {
+    const encoded = encodeURIComponent(
+      svgSource
+        // Strip `currentColor` — a mask has no inherited colour to resolve
+        // against, and an unresolved currentColor masks everything away.
+        .replace(/currentColor/g, "#000000"),
+    );
+    const maskUrl = `url("data:image/svg+xml;utf8,${encoded}")`;
+    return {
+      width: size,
+      height: size,
+      maskImage: maskUrl,
+      maskSize: "contain",
+      maskRepeat: "no-repeat",
+      maskPosition: "center",
+      WebkitMaskImage: maskUrl,
+      WebkitMaskSize: "contain",
+      WebkitMaskRepeat: "no-repeat",
+      WebkitMaskPosition: "center",
+    } as object;
+  }, [svgSource, size]);
+
   return (
-    <View style={containerStyle}>
-      <Svg width={0} height={0} style={HIDDEN_DEFS_STYLE}>
+    <View style={maskStyle}>
+      <Svg width={size} height={size}>
         <Defs>
           {/* objectBoundingBox units: (0,0)→(1,1) is a 45° diagonal across the glyph. */}
           <LinearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
@@ -33,8 +57,8 @@ export function PersonalityProviderIcon({
             <Stop offset="1" stopColor={glowB} />
           </LinearGradient>
         </Defs>
+        <Rect width={size} height={size} fill={`url(#${gradientId})`} />
       </Svg>
-      <Icon size={size} color={`url(#${gradientId})`} />
     </View>
   );
 }

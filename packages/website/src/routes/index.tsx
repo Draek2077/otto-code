@@ -15,14 +15,20 @@ export const Route = createFileRoute("/")({
 function Home() {
   return (
     <LandingPage
-      title={
+      title="Agentic coding with personality, local or cloud."
+      subtitle={
         <>
-          Agentic coding with personality,
-          <br />
-          for every model, cloud or local.
+          <p className="text-white/70 text-lg leading-relaxed">
+            Run Claude, Codex, OpenCode, OMP, and any OpenAI Compatible APIs on your local machine
+            or cloud, from your desk or your phone.
+          </p>
+          <p className="text-white/70 text-lg leading-relaxed">
+            Frontier-model tooling for every provider: agents that verify their work in the browser,
+            artifacts, schedules, permission modes and more. Self-hosted, multi-provider, open
+            source.
+          </p>
         </>
       }
-      subtitle="Run Claude Code, Codex, OpenCode, and any OpenAI-compatible model on your own machines, from your desk or your phone. Frontier-model tooling for every provider: agents that verify their own work in the browser, artifacts, rich permission modes, and more. Self-hosted, multi-provider, open source."
     />
   );
 }
