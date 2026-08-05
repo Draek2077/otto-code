@@ -37,6 +37,7 @@ import { Supervisor } from "./supervisor.js";
 import * as tailscale from "./tailscale.js";
 import { CertManager, resolveTlsOptions, type SecurePair } from "./tls.js";
 import { removePidFile, writePidFile } from "./pid-lock.js";
+import { createBrainRunLog } from "./run-log.js";
 
 /** The effective config with secrets masked, for the `/__host/config` read. */
 function redactConfig(config: BrainConfig): BrainConfig {
@@ -131,6 +132,11 @@ export async function startService({
   env = process.env,
   onLog = () => {},
 }: StartServiceOptions): Promise<ServiceHandle> {
+  const runLog = createBrainRunLog(env);
+  const log = (line: string): void => {
+    runLog.write(line);
+    onLog(line);
+  };
   const runtime = resolveRuntime(config, env);
   if (!runtime) {
     throw new CommandError({
@@ -203,15 +209,17 @@ export async function startService({
         details: "use a smaller quant, or run `otto brain calibrate` for a measured budget",
       });
     }
-    if (fit.adjusted && fit.reason) onLog(`note: ${fit.reason}`);
+    if (fit.adjusted && fit.reason) log(`note: ${fit.reason}`);
     profile = fit.profile;
   }
 
   const telemetry = new Telemetry();
   const supervisor = new Supervisor({ runtime });
   supervisor.on("log", (line: string) => {
+    runLog.write(line);
     if (/error|failed|warn/i.test(line)) onLog(line);
   });
+  supervisor.on("crashed", (error: string) => runLog.write(`FATAL ${error}`));
 
   // Serialize model switches: the router queues request-driven switches, but the
   // config path (POST /__host/config) calls loadModel directly. Chaining here
@@ -311,7 +319,7 @@ export async function startService({
     createRouter({
       supervisor,
       telemetry,
-      logger: { warn: (m: string) => onLog(`WARN ${m}`) },
+      logger: { warn: (m: string) => log(`WARN ${m}`) },
       getCatalog: () => catalog,
       loadModel,
       version: resolveVersion(),
@@ -368,9 +376,11 @@ export async function startService({
     },
     env,
   );
+  log(`ready: ${model.displayName} on ${bindHost}:${port}; run log ${runLog.path}`);
 
   const stop = async (): Promise<void> => {
     certManager?.stop();
+    log("Brain service stopping");
     await supervisor.stop();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     removePidFile(env);

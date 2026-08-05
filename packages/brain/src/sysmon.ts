@@ -37,6 +37,14 @@ export interface SlotInfo {
   /** Slots emitting tokens. */
   decode: number;
   contexts: number[];
+  threads?: Array<{
+    slot: number;
+    phase: "prefill" | "decode";
+    promptTokens: number;
+    generatedTokens: number;
+    promptTokensPerSecond: number | null;
+    tokensPerSecond: number | null;
+  }>;
 }
 
 /** One combined reading for the status panel. */
@@ -171,11 +179,58 @@ export function summariseSlots(rows: unknown[]): SlotInfo {
   };
 }
 
+/** Measures throughput from successive `/slots` snapshots, without guessing. */
+export class SlotActivityTracker {
+  #previous = new Map<number, { at: number; promptTokens: number; generatedTokens: number }>();
+
+  sample(rows: unknown[], now = Date.now()): SlotInfo {
+    const threads = rows.flatMap((row, slot) => {
+      const record = row as Record<string, unknown>;
+      if (!isProcessing(record)) {
+        this.#previous.delete(slot);
+        return [];
+      }
+      const promptTokens = counter(record, ["n_past", "n_prompt_tokens_processed"]);
+      const generatedTokens = decodedTokens(record);
+      const phase: "prefill" | "decode" = generatedTokens === 0 ? "prefill" : "decode";
+      const previous = this.#previous.get(slot);
+      const elapsedSeconds = previous ? (now - previous.at) / 1000 : 0;
+      const rate = (current: number, before: number | undefined) =>
+        elapsedSeconds > 0 && before !== undefined && current >= before
+          ? (current - before) / elapsedSeconds
+          : null;
+      this.#previous.set(slot, { at: now, promptTokens, generatedTokens });
+      return [
+        {
+          slot,
+          phase,
+          promptTokens,
+          generatedTokens,
+          promptTokensPerSecond:
+            phase === "prefill" ? rate(promptTokens, previous?.promptTokens) : null,
+          tokensPerSecond:
+            phase === "decode" ? rate(generatedTokens, previous?.generatedTokens) : null,
+        },
+      ];
+    });
+    return { ...summariseSlots(rows), threads };
+  }
+}
+
+function counter(record: Record<string, unknown>, keys: string[]): number {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  return 0;
+}
+
+const slotActivityTracker = new SlotActivityTracker();
 /** Slot occupancy from the running server. */
 async function slots({ host, port }: { host: string; port: number }): Promise<SlotInfo | null> {
   const data = await fetchJson({ host, port, path: "/slots" });
   if (!Array.isArray(data)) return null;
-  return summariseSlots(data as unknown[]);
+  return slotActivityTracker.sample(data as unknown[]);
 }
 
 export { slots };

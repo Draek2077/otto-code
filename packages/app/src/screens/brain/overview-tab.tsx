@@ -127,6 +127,17 @@ function readRecord(
     : null;
 }
 
+function readRecords(
+  source: Record<string, unknown> | null,
+  key: string,
+): Record<string, unknown>[] {
+  const value = source?.[key];
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (item): item is Record<string, unknown> =>
+      typeof item === "object" && item !== null && !Array.isArray(item),
+  );
+}
 function StatTile({
   Icon,
   label,
@@ -309,6 +320,43 @@ function VramPanel({ gpu }: { gpu: Record<string, unknown> | null }) {
   );
 }
 
+function ModelActivityPanel({ slots }: { slots: Record<string, unknown> | null }) {
+  const threads = readRecords(slots, "threads");
+  return (
+    <View style={styles.panel}>
+      <Text style={styles.panelTitle}>Live model activity</Text>
+      {threads.length === 0 ? (
+        <Text style={styles.panelCaption}>No active inference requests.</Text>
+      ) : (
+        <View style={styles.activityList}>
+          {threads.map((thread) => {
+            const phase = thread.phase === "prefill" ? "Reading prompt" : "Generating";
+            const rate = readNumber(
+              thread,
+              thread.phase === "prefill" ? "promptTokensPerSecond" : "tokensPerSecond",
+            );
+            const tokenCount = readNumber(
+              thread,
+              thread.phase === "prefill" ? "promptTokens" : "generatedTokens",
+            );
+            return (
+              <View key={String(thread.slot)} style={styles.activityRow}>
+                <Text style={styles.activitySlot}>Slot {String(thread.slot)}</Text>
+                <Text style={styles.activityPhase}>{phase}</Text>
+                <Text style={styles.activityRate}>
+                  {rate === null ? "Measuring…" : `${Math.round(rate).toLocaleString()} tok/s`}
+                </Text>
+                {tokenCount !== null ? (
+                  <Text style={styles.activityTokens}>{tokenCount.toLocaleString()} tokens</Text>
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+}
 function ResourceTiles({
   resources,
   gpu,
@@ -515,6 +563,7 @@ export function BrainOverviewTab({
       />
       {canManageRuntime ? <RuntimePanel serverId={serverId} isConnected={isConnected} /> : null}
       <VramPanel gpu={readRecord(resources, "gpu")} />
+      <ModelActivityPanel slots={readRecord(statusRecord, "slots")} />
       <ResourceTiles
         resources={resources}
         gpu={readRecord(resources, "gpu")}
@@ -611,6 +660,40 @@ const styles = StyleSheet.create((theme) => ({
   panelCaption: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
+  },
+  activityList: {
+    gap: theme.spacing[2],
+  },
+  activityRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: theme.spacing[2],
+    paddingVertical: theme.spacing[2],
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  activitySlot: {
+    color: theme.colors.foregroundMuted,
+    fontFamily: theme.fontFamily.mono,
+    fontSize: theme.fontSize.xs,
+  },
+  activityPhase: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    flexGrow: 1,
+  },
+  activityRate: {
+    color: theme.colors.accentBright,
+    fontFamily: theme.fontFamily.mono,
+    fontSize: theme.fontSize.sm,
+    fontVariant: ["tabular-nums"],
+  },
+  activityTokens: {
+    color: theme.colors.foregroundMuted,
+    fontFamily: theme.fontFamily.mono,
+    fontSize: theme.fontSize.xs,
+    fontVariant: ["tabular-nums"],
   },
   meterTrack: {
     height: theme.spacing[2],

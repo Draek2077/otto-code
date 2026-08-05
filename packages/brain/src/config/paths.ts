@@ -20,6 +20,7 @@ export interface BrainPaths {
   pidFile: string;
   activityFile: string;
   logFile: string;
+  logsDir: string;
   resultsDir: string;
 }
 
@@ -41,6 +42,7 @@ export function resolveBrainPaths(env: NodeJS.ProcessEnv = process.env): BrainPa
     // service - which is what answers /__host/status - never sees them otherwise.
     activityFile: path.join(root, "otto-brain.activity"),
     logFile: path.join(root, "otto-brain.log"),
+    logsDir: path.join(root, "logs"),
     resultsDir: path.join(root, "results"),
   };
 }

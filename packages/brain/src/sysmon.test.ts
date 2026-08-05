@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { summariseSlots } from "./sysmon.js";
+import { SlotActivityTracker, summariseSlots } from "./sysmon.js";
 
 /**
  * The shapes here are the ones llama.cpp has actually shipped: `is_processing`
@@ -72,5 +72,29 @@ describe("summariseSlots", () => {
     expect(summariseSlots([{ is_processing: false, n_ctx: 4096 }]).contexts).toEqual([4096]);
     expect(summariseSlots([{ is_processing: false, n_past: 512 }]).contexts).toEqual([512]);
     expect(summariseSlots([{ is_processing: false }]).contexts).toEqual([0]);
+  });
+});
+
+describe("SlotActivityTracker", () => {
+  it("keeps concurrent prompt and decode rates separate", () => {
+    const tracker = new SlotActivityTracker();
+    tracker.sample(
+      [
+        { is_processing: true, n_past: 100, n_decoded: 0 },
+        { is_processing: true, n_past: 120, n_decoded: 5 },
+      ],
+      1_000,
+    );
+    const info = tracker.sample(
+      [
+        { is_processing: true, n_past: 160, n_decoded: 0 },
+        { is_processing: true, n_past: 120, n_decoded: 25 },
+      ],
+      3_000,
+    );
+    expect(info.threads).toEqual([
+      expect.objectContaining({ slot: 0, phase: "prefill", promptTokensPerSecond: 30 }),
+      expect.objectContaining({ slot: 1, phase: "decode", tokensPerSecond: 10 }),
+    ]);
   });
 });

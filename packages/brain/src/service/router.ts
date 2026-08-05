@@ -427,6 +427,25 @@ function proxyBuffered({
         }
         res.writeHead(upstreamRes.statusCode ?? 502, outHeaders);
         const isStream = String(upstreamRes.headers["content-type"] || "").includes("event-stream");
+        const upstreamResponseFailed = (error: Error): void => {
+          if (settled) return;
+          const message = `llama-server response ended unexpectedly: ${error.message}`;
+          telemetry.record({
+            at: new Date().toISOString(),
+            path: req.url,
+            verdict: "failed",
+            error: message,
+          });
+          logger?.warn?.(message);
+          // Headers may already be on the wire for an SSE response. Destroying
+          // it is the only honest result, but `done()` still releases the queue.
+          if (!res.writableEnded && !res.destroyed) res.destroy(error);
+          done();
+        };
+        upstreamRes.once("aborted", () =>
+          upstreamResponseFailed(new Error("upstream response aborted")),
+        );
+        upstreamRes.once("error", upstreamResponseFailed);
 
         if (isStream) {
           let sawContent = false;
