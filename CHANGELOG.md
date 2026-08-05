@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.8.2 - 2026-08-05
+
+### Added
+
+- Rename a Brain model's display name from the Models tab, with a reset back to its scanned default
+- The Brain overview panel shows live model activity: which slot is running, whether it's reading the prompt or generating, and tokens per second
+- An agent team member row shows its provider, model and effort level
+
+### Fixed
+
+- Fixed some Codex tool actions staying stuck showing "running" after their turn ended without a final status
+- Fixed personality provider icons with gradient colors failing to render on some browsers
+- Fixed a chat tab losing your scroll position after switching away and back
+- Fixed the brain icon reading smaller than the icons beside it
+- A browser tab now shows a plain loading spinner instead of the AI thinking indicator while a page loads
+- Fixed a typed slash command like /compact sometimes rendering out of order or disappearing after a reload
+- Fixed a race where changing a session's personality or model right after a turn finished could break the next message
+- Fixed a git status check sometimes waiting for the next background refresh instead of fetching PR status right away
+
 ## 0.8.1 - 2026-08-04
 
 ### Fixed
