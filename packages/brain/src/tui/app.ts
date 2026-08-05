@@ -27,6 +27,8 @@ import { calibrate } from "../ops/calibrate.js";
 import { sweep } from "../ops/sweep.js";
 import * as results from "../ops/results.js";
 import * as archive from "../ops/archive.js";
+import { deleteDisplayName, loadRenameMap, updateDisplayName } from "../models/rename-map.js";
+import { readJsonBody, sendError, sendJson } from "../service/http-util.js";
 import { Supervisor } from "../service/supervisor.js";
 import { createRouter, Telemetry } from "../service/router.js";
 import * as sysmon from "../sysmon.js";
@@ -57,6 +59,9 @@ const REASONING_CYCLE = [0, 512, 1024, 1536, 3072, -1];
 // hardware; draft models likewise do not help, so nothing boosts for them.
 const VISION_RANK_BONUS = 0.03;
 const THINKING_RANK_BONUS = 0.02;
+// Mirrors host-api.ts's MAX_DISPLAY_NAME - the rename form posts to the same
+// wire shape (see startRouter), so both paths must enforce the same limit.
+const MAX_DISPLAY_NAME = 200;
 
 type Tone = "info" | "good" | "warn" | "bad";
 type Focus = "models" | "config";
@@ -69,7 +74,7 @@ interface FieldContext {
 
 /** A pending destructive action awaiting y/n. */
 interface ConfirmState {
-  kind: "delete";
+  kind: "delete" | "reset-name";
   model: Model;
 }
 
@@ -303,6 +308,11 @@ export class App {
   lastFit: { modelId: string; fit: vram.FitResult } | null = null;
 
   filterMode = false;
+  renaming = false;
+  renameBuffer = "";
+  /** ids with a persisted rename-map override, so "reset name" can tell the
+   * user there is nothing to reset instead of round-tripping for a no-op. */
+  renamedIds = new Set<string>();
   confirming: ConfirmState | null = null;
   picker: PickerState | null = null;
   search: SearchState | null = null;
@@ -431,7 +441,22 @@ export class App {
       getCatalog: () => this.catalog,
       loadModel: (m: Model) => this.loadModelFitted(m),
     });
-    const server = http.createServer(handler);
+    // The rename form posts to this local router (see submitRename) rather than
+    // calling updateDisplayName in-process, so a future remote-brain TUI hits the
+    // same code path this does. The full host-api surface is not wired in here -
+    // only these two routes - since nothing else in the TUI needs it over HTTP.
+    const server = http.createServer((req, res) => {
+      const path = (req.url ?? "").split("?")[0];
+      if (req.method === "POST" && path === "/__host/model/rename") {
+        this.handleRenameRequest(req, res);
+        return;
+      }
+      if (req.method === "POST" && path === "/__host/model/rename/reset") {
+        this.handleResetRequest(req, res);
+        return;
+      }
+      handler(req, res);
+    });
     this.routerServer = server;
     server.keepAliveTimeout = 75_000;
     server.requestTimeout = 0;
@@ -445,11 +470,78 @@ export class App {
     });
   }
 
+  /** POST /__host/model/rename?id=… - the one host-api route this embedded
+   * router serves, so the TUI's rename form and a remote-brain client hit the
+   * same wire shape. */
+  handleRenameRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
+    const url = new URL(req.url ?? "", "http://brain.local");
+    const id = url.searchParams.get("id");
+    const model = id ? this.catalog.find((m) => m.id === id) : null;
+    if (!model) {
+      sendError(res, 404, id ? `model "${id}" was not found` : "an ?id= is required");
+      return;
+    }
+    readJsonBody(req, 4096, (result) => {
+      if (!result.ok) {
+        sendError(res, 400, result.error);
+        return;
+      }
+      const body = result.body as { displayName?: unknown };
+      const displayName = body.displayName;
+      if (typeof displayName !== "string" || displayName.trim().length === 0) {
+        sendError(res, 400, "displayName must be a non-empty string");
+        return;
+      }
+      if (displayName.length > MAX_DISPLAY_NAME) {
+        sendError(res, 400, `displayName must be at most ${MAX_DISPLAY_NAME} characters`);
+        return;
+      }
+      if (/[^\x20-\x7E]/.test(displayName)) {
+        sendError(res, 400, "displayName must not contain control characters or non-ASCII");
+        return;
+      }
+      // Same collision guard as host-api.ts's handleRename - both /v1/models
+      // and defaultModel/switchTo resolve a model by displayName, so a
+      // duplicate silently strands one of the two models unreachable by name.
+      const conflict = this.catalog.find(
+        (m) => m.id !== model.id && (m.displayName === displayName || m.id === displayName),
+      );
+      if (conflict) {
+        sendError(res, 409, `another model is already named "${displayName}"`);
+        return;
+      }
+      updateDisplayName(model.id, displayName);
+      sendJson(res, { displayName });
+    });
+  }
+
+  /** POST /__host/model/rename/reset?id=… - clears this model's rename-map
+   * override and returns the scan-derived default name it reverted to. */
+  handleResetRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
+    const url = new URL(req.url ?? "", "http://brain.local");
+    const id = url.searchParams.get("id");
+    const model = id ? this.catalog.find((m) => m.id === id) : null;
+    if (!model) {
+      sendError(res, 404, id ? `model "${id}" was not found` : "an ?id= is required");
+      return;
+    }
+    readJsonBody(req, 4096, (result) => {
+      if (!result.ok) {
+        sendError(res, 400, result.error);
+        return;
+      }
+      deleteDisplayName(model.id);
+      const rescanned = scanModels(loadBrainConfig()).find((m) => m.id === model.id);
+      sendJson(res, { displayName: rescanned ? rescanned.displayName : model.displayName });
+    });
+  }
+
   // -------------------------------------------------------------------- state
 
   reload(): void {
     const config = loadBrainConfig();
     this.catalog = scanModels(config);
+    this.renamedIds = new Set(Object.keys(loadRenameMap()));
     this.loadRankings();
     this.selected = Math.min(this.selected, Math.max(0, this.visible.length - 1));
     this.syncProfile();
@@ -557,6 +649,7 @@ export class App {
   // -------------------------------------------------------------------- input
 
   onKey(key: string): void {
+    if (this.renaming) return this.onRenameKey(key);
     if (this.editing) return this.onEditKey(key);
     if (this.filterMode) return this.onFilterKey(key);
     if (this.confirming) return this.onConfirmKey(key);
@@ -640,6 +733,12 @@ export class App {
       case "D":
         this.beginDelete();
         break;
+      case "R":
+        if (this.focus === "models") this.beginRename();
+        break;
+      case "u":
+        if (this.focus === "models") this.beginResetName();
+        break;
       case "r":
         this.reload();
         break;
@@ -700,6 +799,113 @@ export class App {
       active.buffer += key;
     }
     this.draw();
+  }
+
+  beginRename(): void {
+    const model = this.model;
+    if (!model) return;
+    this.renaming = true;
+    this.renameBuffer = "";
+    this.setStatus(`rename "${model.displayName}" → `, "info");
+  }
+
+  onRenameKey(key: string): void {
+    if (key === "escape") {
+      this.renaming = false;
+      this.renameBuffer = "";
+      this.setStatus("rename cancelled", "info");
+      return;
+    }
+    if (key === "enter") {
+      void this.submitRename();
+      return;
+    }
+    if (key === "backspace") {
+      this.renameBuffer = this.renameBuffer.slice(0, -1);
+    } else if (key === "space") {
+      if (this.renameBuffer.length < 80) this.renameBuffer += " ";
+    } else if (key.length === 1 && key >= " " && this.renameBuffer.length < 80) {
+      this.renameBuffer += key;
+    }
+    this.draw();
+  }
+
+  /** POST the new display name to this TUI's own local router (see
+   * handleRenameRequest / startRouter), then rescan so the renamed catalog
+   * entry - and its persisted override - are reflected immediately. */
+  async submitRename(): Promise<void> {
+    const model = this.model;
+    if (!model) {
+      this.renaming = false;
+      this.draw();
+      return;
+    }
+    const newName = this.renameBuffer.trim();
+    if (!newName) {
+      this.renaming = false;
+      this.renameBuffer = "";
+      this.setStatus("rename cancelled - name cannot be empty", "warn");
+      return;
+    }
+    await this.guard("rename", async () => {
+      const url = `http://127.0.0.1:${this.listenPort}/__host/model/rename?id=${encodeURIComponent(model.id)}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ displayName: newName }),
+      });
+      if (!res.ok) {
+        let message = `HTTP ${res.status}`;
+        try {
+          const body = (await res.json()) as { error?: { message?: string } };
+          if (body.error?.message) message = body.error.message;
+        } catch {
+          /* non-JSON error body */
+        }
+        throw new Error(message);
+      }
+      this.renaming = false;
+      this.renameBuffer = "";
+      this.reload();
+      this.setStatus(`renamed to ${newName}`, "good");
+    });
+  }
+
+  beginResetName(): void {
+    const model = this.model;
+    if (!model) return;
+    if (!this.renamedIds.has(model.id)) {
+      this.setStatus(`"${model.displayName}" has no custom name to reset`, "info");
+      return;
+    }
+    this.confirming = { kind: "reset-name", model };
+    this.setStatus(`reset "${model.displayName}" to its default name?   y / n`, "warn");
+    this.draw();
+  }
+
+  /** POST to this TUI's own local router (see handleResetRequest), then
+   * rescan so the reverted name is reflected immediately. */
+  async submitResetName(model: Model): Promise<void> {
+    await this.guard("reset name", async () => {
+      const url = `http://127.0.0.1:${this.listenPort}/__host/model/rename/reset?id=${encodeURIComponent(model.id)}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+      });
+      if (!res.ok) {
+        let message = `HTTP ${res.status}`;
+        try {
+          const body = (await res.json()) as { error?: { message?: string } };
+          if (body.error?.message) message = body.error.message;
+        } catch {
+          /* non-JSON error body */
+        }
+        throw new Error(message);
+      }
+      const body = (await res.json()) as { displayName?: string };
+      this.reload();
+      this.setStatus(`reset to ${body.displayName ?? "its default name"}`, "good");
+    });
   }
 
   move(delta: number): void {
@@ -843,18 +1049,22 @@ export class App {
     if (!confirming) return;
     if (key === "y") {
       this.confirming = null;
-      void this.guard("delete", async () => {
-        const plan = deleteModelFiles(confirming.model);
-        this.reload();
-        void this.refreshDisk();
-        this.setStatus(
-          `deleted ${confirming.model.displayName} - freed ${vram.formatGiB(plan.bytes)}`,
-          "good",
-        );
-      });
+      if (confirming.kind === "delete") {
+        void this.guard("delete", async () => {
+          const plan = deleteModelFiles(confirming.model);
+          this.reload();
+          void this.refreshDisk();
+          this.setStatus(
+            `deleted ${confirming.model.displayName} - freed ${vram.formatGiB(plan.bytes)}`,
+            "good",
+          );
+        });
+      } else {
+        void this.submitResetName(confirming.model);
+      }
     } else if (key === "n" || key === "escape") {
       this.confirming = null;
-      this.setStatus("delete cancelled", "info");
+      this.setStatus(confirming.kind === "delete" ? "delete cancelled" : "reset cancelled", "info");
       this.draw();
     }
   }
@@ -1505,10 +1715,26 @@ export class App {
     lines.push(...budget);
     lines.push("");
     lines.push(...status);
+    if (this.renaming) {
+      lines.push("");
+      lines.push(this.renameLine(cols - 1));
+    }
     lines.push("");
     lines.push(...footer);
 
     this.renderFitted(lines);
+  }
+
+  /** The rename input line shown above the footer while renaming is active:
+   * the current name in grey, the buffer typed so far, and a cursor. */
+  renameLine(cols: number): string {
+    const model = this.model;
+    const name = model ? model.displayName : "";
+    return truncate(
+      `${style.brightYellow}rename${style.reset}  ${style.grey}${name}${style.reset} → ` +
+        `${this.renameBuffer}${style.brightCyan}▏${style.reset}`,
+      cols,
+    );
   }
 
   /**
@@ -2029,6 +2255,8 @@ export class App {
     item("f", "find on Hugging Face - search and add a new model");
     item("g", "get a quant - pick Q4/Q5/Q6… to download for this repo");
     item("D", "delete the selected model (frees disk, asks to confirm)");
+    item("R", "rename the selected model (Enter saves, Esc cancels)");
+    item("u", "reset the selected model's name to its default (asks to confirm)");
     section("Views");
     item("b", "benchmark mode - rank models, run the coding suite");
     item("l", "view the live llama-server log");
@@ -2059,10 +2287,19 @@ export class App {
    */
   keybindings(cols: number): string[] {
     let groups: string[][][];
-    if (this.confirming) {
+    if (this.renaming) {
       groups = [
         [
-          ["y", "confirm delete"],
+          ["type", "rename"],
+          ["enter", "save"],
+          ["esc", "cancel"],
+        ],
+      ];
+    } else if (this.confirming) {
+      const label = this.confirming.kind === "delete" ? "confirm delete" : "confirm reset";
+      groups = [
+        [
+          ["y", label],
           ["n", "cancel"],
         ],
       ];
@@ -2127,6 +2364,8 @@ export class App {
           ["f", "find on HF"],
           ["g", "get quant"],
           ["D", "delete"],
+          ["R", "rename"],
+          ["u", "reset name"],
           ["b", "benchmarks"],
           ["l", "logs"],
           ["/", "filter"],

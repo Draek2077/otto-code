@@ -4222,6 +4222,41 @@ export class Session {
     });
   }
 
+  private async handleBrainModelRenameRequest(
+    modelId: string,
+    displayName: string,
+    requestId: string,
+  ): Promise<void> {
+    const { data, error } = await this.callBrainConsole((manager) =>
+      manager.renameModel(modelId, displayName),
+    );
+    this.emit({
+      type: "brain.model.rename.response",
+      payload: {
+        displayName: typeof data.displayName === "string" ? data.displayName : null,
+        error,
+        requestId,
+      },
+    });
+  }
+
+  private async handleBrainModelRenameResetRequest(
+    modelId: string,
+    requestId: string,
+  ): Promise<void> {
+    const { data, error } = await this.callBrainConsole((manager) =>
+      manager.resetModelName(modelId),
+    );
+    this.emit({
+      type: "brain.model.rename.reset.response",
+      payload: {
+        displayName: typeof data.displayName === "string" ? data.displayName : null,
+        error,
+        requestId,
+      },
+    });
+  }
+
   private async handleBrainLogsTailRequest(limit: number | null, requestId: string): Promise<void> {
     const { data, error } = await this.callBrainConsole((manager) => manager.hostLogs(limit));
     this.emit({
@@ -5220,6 +5255,12 @@ export class Session {
         return true;
       case "brain.model.delete.request":
         await this.handleBrainModelDeleteRequest(msg.modelId, msg.requestId);
+        return true;
+      case "brain.model.rename.request":
+        await this.handleBrainModelRenameRequest(msg.modelId, msg.displayName, msg.requestId);
+        return true;
+      case "brain.model.rename.reset.request":
+        await this.handleBrainModelRenameResetRequest(msg.modelId, msg.requestId);
         return true;
       case "brain.logs.tail.request":
         await this.handleBrainLogsTailRequest(msg.limit, msg.requestId);

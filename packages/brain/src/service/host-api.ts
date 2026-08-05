@@ -29,6 +29,7 @@ import {
 import { forModel, getCalibration, put } from "../config/profiles.js";
 import type { Profile, ProfileDefaults, ProfilesStore } from "../config/schema.js";
 import { deleteModelFiles, diskUsage, planDelete, totalModelBytes } from "../models/manage.js";
+import { deleteDisplayName, updateDisplayName } from "../models/rename-map.js";
 import type { RankedModel } from "../ops/results.js";
 import type { GpuInfo, Model } from "../types.js";
 import * as vram from "../vram.js";
@@ -37,6 +38,7 @@ import { errorMessage, readJsonBody, sendError, sendJson } from "./http-util.js"
 import type { Supervisor } from "./supervisor.js";
 
 const MAX_PATCH_BYTES = 256 * 1024;
+const MAX_DISPLAY_NAME = 200;
 const DEFAULT_LOG_LINES = 200;
 
 /**
@@ -60,6 +62,10 @@ export interface HostCapabilities {
   resources: boolean;
   /** GET /__host/models */
   inventory: boolean;
+  /** POST /__host/model/rename */
+  rename: boolean;
+  /** POST /__host/model/rename/reset */
+  reset: boolean;
   /** Whether writes are currently permitted (allowRemoteConfig). */
   writable: boolean;
 }
@@ -227,6 +233,8 @@ export function createHostApi(deps: HostApiDeps): HostApi {
     load: true,
     resources: true,
     inventory: true,
+    rename: true,
+    reset: true,
     writable: deps.getAllowWrite(),
   });
 
@@ -317,6 +325,59 @@ export function createHostApi(deps: HostApiDeps): HostApi {
           sendError(res, 400, errorMessage(error));
         }
       })();
+    });
+  };
+
+  const handleRename = (
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    model: Model,
+  ): void => {
+    readJsonBody(req, MAX_DISPLAY_NAME + 64, (result) => {
+      if (!result.ok) {
+        sendError(res, 400, result.error);
+        return;
+      }
+      const body = result.body as { displayName?: unknown };
+      const displayName = body.displayName;
+      if (typeof displayName !== "string" || displayName.trim().length === 0) {
+        sendError(res, 400, "displayName must be a non-empty string");
+        return;
+      }
+      if (displayName.length > MAX_DISPLAY_NAME) {
+        sendError(res, 400, `displayName must be at most ${MAX_DISPLAY_NAME} characters`);
+        return;
+      }
+      if (/[^\x20-\x7E]/.test(displayName)) {
+        sendError(res, 400, "displayName must not contain control characters or non-ASCII");
+        return;
+      }
+      // /v1/models keys its `id` on displayName (router.ts) and both the
+      // completion path and defaultModel/switchTo resolve a model by
+      // `displayName === name || id === name` - a collision here would make
+      // one of the two models unreachable by name with no error anywhere.
+      const conflict = deps
+        .getCatalog()
+        .find((m) => m.id !== model.id && (m.displayName === displayName || m.id === displayName));
+      if (conflict) {
+        sendError(res, 409, `another model is already named "${displayName}"`);
+        return;
+      }
+      updateDisplayName(model.id, displayName);
+      sendJson(res, { displayName });
+    });
+  };
+
+  const handleReset = (req: http.IncomingMessage, res: http.ServerResponse, model: Model): void => {
+    readJsonBody(req, 4096, (result) => {
+      if (!result.ok) {
+        sendError(res, 400, result.error);
+        return;
+      }
+      deleteDisplayName(model.id);
+      const catalog = deps.rescan();
+      const updated = resolveModel(catalog, model.id);
+      sendJson(res, { displayName: updated ? updated.displayName : model.displayName });
     });
   };
 
@@ -474,6 +535,8 @@ export function createHostApi(deps: HostApiDeps): HostApi {
       "/__host/model/budget",
       "/__host/model/load",
       "/__host/model/fields",
+      "/__host/model/rename",
+      "/__host/model/rename/reset",
     ]);
     if (!modelRoutes.has(route)) return false;
 
@@ -504,6 +567,16 @@ export function createHostApi(deps: HostApiDeps): HostApi {
     if (route === "/__host/model/load" && method === "POST") {
       if (!guardWrite(res)) return true;
       handleLoad(res, model);
+      return true;
+    }
+    if (route === "/__host/model/rename" && method === "POST") {
+      if (!guardWrite(res)) return true;
+      handleRename(req, res, model);
+      return true;
+    }
+    if (route === "/__host/model/rename/reset" && method === "POST") {
+      if (!guardWrite(res)) return true;
+      handleReset(req, res, model);
       return true;
     }
     if (route === "/__host/model" && method === "DELETE") {

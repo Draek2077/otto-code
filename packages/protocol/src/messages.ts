@@ -2676,6 +2676,41 @@ export const BrainModelDeleteResponseSchema = z.object({
   }),
 });
 
+// Rename a model's display name. The brain rejects a collision with another
+// model's current id/displayName: /v1/models keys its id on displayName, and
+// both the completion path and defaultModel/switchTo resolve a model by
+// displayName === name || id === name - a duplicate would strand one model
+// unreachable by name with no error anywhere else in the chain.
+export const BrainModelRenameRequestSchema = z.object({
+  type: z.literal("brain.model.rename.request"),
+  modelId: z.string(),
+  displayName: z.string(),
+  requestId: z.string(),
+});
+export const BrainModelRenameResponseSchema = z.object({
+  type: z.literal("brain.model.rename.response"),
+  payload: z.object({
+    displayName: z.string().nullable().default(null),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+// Reset a model's display name back to its scan-derived default.
+export const BrainModelRenameResetRequestSchema = z.object({
+  type: z.literal("brain.model.rename.reset.request"),
+  modelId: z.string(),
+  requestId: z.string(),
+});
+export const BrainModelRenameResetResponseSchema = z.object({
+  type: z.literal("brain.model.rename.reset.response"),
+  payload: z.object({
+    displayName: z.string().nullable().default(null),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
 // Tail the brain's llama-server log.
 export const BrainLogsTailRequestSchema = z.object({
   type: z.literal("brain.logs.tail.request"),
@@ -6654,6 +6689,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   BrainModelLoadRequestSchema,
   BrainModelUnloadRequestSchema,
   BrainModelDeleteRequestSchema,
+  BrainModelRenameRequestSchema,
+  BrainModelRenameResetRequestSchema,
   BrainLogsTailRequestSchema,
   UpdateAgentRequestMessageSchema,
   ProjectRenameRequestSchema,
@@ -11629,6 +11666,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   BrainModelLoadResponseSchema,
   BrainModelUnloadResponseSchema,
   BrainModelDeleteResponseSchema,
+  BrainModelRenameResponseSchema,
+  BrainModelRenameResetResponseSchema,
   BrainLogsTailResponseSchema,
   AgentArchivedMessageSchema,
   CloseItemsResponseSchema,
@@ -12594,6 +12633,10 @@ export type BrainModelUnloadRequest = z.infer<typeof BrainModelUnloadRequestSche
 export type BrainModelUnloadResponse = z.infer<typeof BrainModelUnloadResponseSchema>;
 export type BrainModelDeleteRequest = z.infer<typeof BrainModelDeleteRequestSchema>;
 export type BrainModelDeleteResponse = z.infer<typeof BrainModelDeleteResponseSchema>;
+export type BrainModelRenameRequest = z.infer<typeof BrainModelRenameRequestSchema>;
+export type BrainModelRenameResponse = z.infer<typeof BrainModelRenameResponseSchema>;
+export type BrainModelRenameResetRequest = z.infer<typeof BrainModelRenameResetRequestSchema>;
+export type BrainModelRenameResetResponse = z.infer<typeof BrainModelRenameResetResponseSchema>;
 export type BrainLogsTailRequest = z.infer<typeof BrainLogsTailRequestSchema>;
 export type BrainLogsTailResponse = z.infer<typeof BrainLogsTailResponseSchema>;
 export type KillTerminalRequest = z.infer<typeof KillTerminalRequestSchema>;

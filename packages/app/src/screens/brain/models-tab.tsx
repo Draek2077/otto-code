@@ -19,10 +19,12 @@ import type { BrainInventoryModel, BrainJob } from "@otto-code/protocol/messages
 import {
   Brain,
   Eye,
+  Pencil,
   Play,
   RotateCw,
   Square,
   Trash2,
+  Undo2,
   X,
   Zap,
 } from "@/components/icons/material-icons";
@@ -31,6 +33,7 @@ import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { AdaptiveRenameModal } from "@/components/rename-modal";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative } from "@/constants/platform";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
@@ -69,11 +72,30 @@ const dangerIcon = (theme: Theme) => ({
   size: theme.iconSize.sm,
 });
 
+const ThemedPencil = withUnistyles(Pencil);
+const ThemedUndo = withUnistyles(Undo2);
+
 const loadIcon = <ThemedPlay uniProps={smallIcon} />;
 const unloadIcon = <ThemedSquare uniProps={smallIcon} />;
 const reloadIcon = <ThemedRotateCw uniProps={smallIcon} />;
 const deleteIcon = <ThemedTrash uniProps={dangerIcon} />;
 const cancelIcon = <ThemedX uniProps={smallIcon} />;
+const renameIcon = <ThemedPencil uniProps={smallIcon} />;
+const resetNameIcon = <ThemedUndo uniProps={smallIcon} />;
+
+// Mirrors host-api.ts's MAX_DISPLAY_NAME and its ASCII-only check, so a
+// rejection shows in the modal instead of costing a round trip.
+const MAX_DISPLAY_NAME = 200;
+function validateDisplayName(value: string): string | null {
+  const trimmed = value.trim();
+  if (trimmed.length > MAX_DISPLAY_NAME) {
+    return `Must be at most ${MAX_DISPLAY_NAME} characters`;
+  }
+  if (/[^\x20-\x7E]/.test(trimmed)) {
+    return "Must not contain control characters or non-ASCII";
+  }
+  return null;
+}
 
 // Capability icon colors match the TUI's own ANSI palette exactly (`app.ts`
 // scoreColour()/capability badges: V cyan, M magenta, R green) so a model that
@@ -353,7 +375,7 @@ function MetadataLine({ model }: { model: BrainInventoryModel }) {
   return <Text style={styles.metadata}>{parts.join(" · ")}</Text>;
 }
 
-type ModelAction = "load" | "unload" | "delete";
+type ModelAction = "load" | "unload" | "delete" | "reset-name";
 
 /**
  * Load, Unload, or Reload, depending on whether the model is resident and
@@ -458,6 +480,7 @@ function ModelActions({
   const client = useHostRuntimeClient(serverId);
   const [pending, setPending] = useState<ModelAction | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
   const isLoaded = model.state === "loaded" || model.state === "loading";
   const jobRunning = job?.status === "running";
 
@@ -544,6 +567,23 @@ function ModelActions({
     })();
   }, [client, model.displayName, model.id, model.mmprojBytes, model.sizeBytes, run]);
 
+  const handleOpenRename = useCallback(() => setRenameOpen(true), []);
+  const handleCloseRename = useCallback(() => setRenameOpen(false), []);
+  const handleRenameSubmit = useCallback(
+    async (value: string) => {
+      if (!client) return;
+      await client.brainModelRename(model.id, value.trim());
+      onChanged();
+    },
+    [client, model.id, onChanged],
+  );
+
+  const handleResetName = useCallback(() => {
+    if (client) {
+      void run("reset-name", () => client.brainModelRenameReset(model.id));
+    }
+  }, [client, model.id, run]);
+
   return (
     <View style={styles.actionsColumn}>
       <View style={styles.actionsRow}>
@@ -585,6 +625,27 @@ function ModelActions({
         <Button
           variant="ghost"
           size="sm"
+          leftIcon={renameIcon}
+          onPress={handleOpenRename}
+          disabled={!canWrite || pending !== null}
+          testID="brain-model-rename"
+        >
+          Rename
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          leftIcon={resetNameIcon}
+          onPress={handleResetName}
+          loading={pending === "reset-name"}
+          disabled={!canWrite || pending !== null}
+          testID="brain-model-reset-name"
+        >
+          Reset name
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
           leftIcon={deleteIcon}
           onPress={handleDelete}
           loading={pending === "delete"}
@@ -594,6 +655,18 @@ function ModelActions({
           Delete
         </Button>
       </View>
+      <AdaptiveRenameModal
+        visible={renameOpen}
+        title="Rename model"
+        initialValue={model.displayName}
+        placeholder="Display name"
+        submitLabel="Rename"
+        maxLength={MAX_DISPLAY_NAME}
+        validate={validateDisplayName}
+        onClose={handleCloseRename}
+        onSubmit={handleRenameSubmit}
+        testID="brain-model-rename-modal"
+      />
       {job && (jobRunning || job.status === "failed") ? (
         <View style={styles.jobStatus} testID="brain-model-job-status">
           {jobRunning ? <ThemedSpinner size="small" /> : null}

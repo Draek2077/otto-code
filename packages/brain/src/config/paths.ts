@@ -14,6 +14,7 @@ export interface BrainPaths {
   configFile: string;
   profilesFile: string;
   catalogFile: string;
+  renameMapFile: string;
   modelsDir: string;
   runtimesDir: string;
   pidFile: string;
@@ -31,6 +32,7 @@ export function resolveBrainPaths(env: NodeJS.ProcessEnv = process.env): BrainPa
     configFile: path.join(root, "config.json"),
     profilesFile: path.join(root, "profiles.json"),
     catalogFile: path.join(root, "catalog.json"),
+    renameMapFile: path.join(root, "rename-map.json"),
     modelsDir: path.join(root, "models"),
     runtimesDir: path.join(root, "runtimes"),
     pidFile: path.join(root, "otto-brain.pid"),

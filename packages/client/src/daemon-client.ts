@@ -204,6 +204,8 @@ import type {
   BrainModelLoadResponse,
   BrainModelProfileGetResponse,
   BrainModelProfileSetResponse,
+  BrainModelRenameResetResponse,
+  BrainModelRenameResponse,
   BrainNetworkInfo,
   BrainRemoteConfig,
   BrainRepoQuant,
@@ -7056,6 +7058,42 @@ export class DaemonClient {
       requestId,
       message: { type: "brain.model.delete.request", modelId },
       responseType: "brain.model.delete.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload;
+  }
+
+  /**
+   * Rename a model's display name. The brain rejects a collision with
+   * another model's current id/displayName.
+   */
+  async brainModelRename(
+    modelId: string,
+    displayName: string,
+    requestId?: string,
+  ): Promise<BrainModelRenameResponse["payload"]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.model.rename.request", modelId, displayName },
+      responseType: "brain.model.rename.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload;
+  }
+
+  /** Reset a model's display name back to its scan-derived default. */
+  async brainModelRenameReset(
+    modelId: string,
+    requestId?: string,
+  ): Promise<BrainModelRenameResetResponse["payload"]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.model.rename.reset.request", modelId },
+      responseType: "brain.model.rename.reset.response",
     });
     if (payload.error) {
       throw new Error(payload.error);

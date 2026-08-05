@@ -6,6 +6,7 @@ import { loadCatalog } from "../config/store.js";
 import type { Model } from "../types.js";
 import { resolveModelsDirs } from "./dirs.js";
 import { enrichWithCatalog } from "./enrich.js";
+import { loadRenameMap } from "./rename-map.js";
 import { scan } from "./scan.js";
 
 export * from "./scan.js";
@@ -63,6 +64,12 @@ export function scanModels(
     }
   }
   const enriched = enrichWithCatalog(all, loadCatalogSafe(env));
+  const renameMap = loadRenameMap(resolveBrainPaths(env));
+  for (const model of enriched) {
+    if (renameMap[model.id]) {
+      model.displayName = renameMap[model.id];
+    }
+  }
   enriched.sort((a, b) => a.displayName.localeCompare(b.displayName));
   return enriched;
 }

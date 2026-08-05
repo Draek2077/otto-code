@@ -652,6 +652,23 @@ export class BrainManager {
     return this.requestHostJson("POST", "/__host/model/unload");
   }
 
+  /**
+   * Rename a model's display name. The brain itself rejects a collision with
+   * another model's current id/displayName.
+   */
+  async renameModel(modelId: string, displayName: string): Promise<Record<string, unknown> | null> {
+    this.requireReachable();
+    return this.requestHostJson("POST", this.modelPath("/__host/model/rename", modelId), {
+      displayName,
+    });
+  }
+
+  /** Reset a model's display name back to its scan-derived default. */
+  async resetModelName(modelId: string): Promise<Record<string, unknown> | null> {
+    this.requireReachable();
+    return this.requestHostJson("POST", this.modelPath("/__host/model/rename/reset", modelId));
+  }
+
   /** Delete a model's files. The brain refuses while that model is loaded. */
   async deleteModel(modelId: string): Promise<Record<string, unknown> | null> {
     this.requireReachable();
