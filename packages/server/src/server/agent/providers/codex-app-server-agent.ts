@@ -3144,6 +3144,13 @@ export class CodexAppServerAgentSession implements AgentSession {
   private emittedTerminalInteractionKeys = new Set<string>();
   private emittedExecCommandStartedCallIds = new Set<string>();
   private emittedExecCommandCompletedCallIds = new Set<string>();
+  /**
+   * Codex normally sends a terminal event for every started tool item. Keep a
+   * turn-local ledger as a safety net for app-server versions that omit that
+   * final event (notably after a harness-side rejection), so an action never
+   * stays visually active after its turn has ended.
+   */
+  private activeForegroundToolCalls = new Map<string, ToolCallTimelineItem>();
   private emittedItemStartedIds = new Set<string>();
   private emittedItemCompletedIds = new Set<string>();
   private emittedProviderSubagentUserMessageKeys = new Set<string>();
@@ -4583,11 +4590,41 @@ export class CodexAppServerAgentSession implements AgentSession {
   }
 
   private emitEvent(event: AgentStreamEvent): void {
+    if (event.type === "timeline" && event.item.type === "tool_call") {
+      if (event.item.status === "running") {
+        this.activeForegroundToolCalls.set(event.item.callId, event.item);
+      } else {
+        this.activeForegroundToolCalls.delete(event.item.callId);
+      }
+    }
     if (this.loadingPersistedHistory && event.type === "provider_subagent") {
       this.persistedProviderSubagentEvents.push(event);
       return;
     }
     this.notifySubscribers(event);
+  }
+
+  private settleActiveForegroundToolCalls(
+    turnStatus: "completed" | "failed" | "interrupted",
+    errorMessage: string | null,
+  ): void {
+    for (const toolCall of this.activeForegroundToolCalls.values()) {
+      let item: ToolCallTimelineItem;
+      if (turnStatus === "failed") {
+        item = {
+          ...toolCall,
+          status: "failed",
+          error: {
+            message: errorMessage ?? "Codex turn ended before this action reported completion",
+          },
+        };
+      } else if (turnStatus === "interrupted") {
+        item = { ...toolCall, status: "canceled", error: null };
+      } else {
+        item = { ...toolCall, status: "completed", error: null };
+      }
+      this.emitEvent({ type: "timeline", provider: CODEX_PROVIDER, item });
+    }
   }
 
   private notifySubscribers(event: AgentStreamEvent): void {
@@ -5320,6 +5357,9 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.emitSubAgentActivityUpdate(subAgentCallId, status);
       return;
     }
+    const terminalStatus =
+      parsed.status === "failed" || parsed.status === "interrupted" ? parsed.status : "completed";
+    this.settleActiveForegroundToolCalls(terminalStatus, parsed.errorMessage);
     if (parsed.status === "failed") {
       this.emitEvent({
         type: "turn_failed",
@@ -5351,6 +5391,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.emittedProviderSubagentUserMessageKeys.clear();
     this.emittedExecCommandStartedCallIds.clear();
     this.emittedExecCommandCompletedCallIds.clear();
+    this.activeForegroundToolCalls.clear();
     this.pendingAgentMessages.clear();
     this.pendingReasoning.clear();
     this.pendingCommandOutputDeltas.clear();

@@ -2579,6 +2579,36 @@ describe("Codex app-server provider", () => {
     });
   });
 
+  test("settles an active action when Codex omits its terminal tool event", () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    asInternals(session).handleNotification("item/started", {
+      threadId: "test-thread",
+      item: {
+        type: "commandExecution",
+        id: "orphaned-shell-action",
+        status: "running",
+        command: "git push origin main",
+        cwd: "/tmp/codex-question-test",
+      },
+    });
+    asInternals(session).handleNotification("turn/completed", {
+      threadId: "test-thread",
+      turn: { status: "completed" },
+    });
+
+    const toolCalls = events.flatMap((event) =>
+      event.type === "timeline" && event.item.type === "tool_call" ? [event.item] : [],
+    );
+    expect(toolCalls.map((item) => item.status)).toEqual(["running", "completed"]);
+    expect(toolCalls.at(-1)).toMatchObject({
+      callId: "orphaned-shell-action",
+      name: "shell",
+      status: "completed",
+    });
+  });
   test("never treats an unmapped foreign terminal as the root terminal", () => {
     const session = createSession();
     const events: AgentStreamEvent[] = [];
