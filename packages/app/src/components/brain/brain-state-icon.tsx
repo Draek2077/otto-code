@@ -27,6 +27,7 @@ import {
   type BrainState,
   type BrainStateVisual,
 } from "@/components/brain/brain-state";
+import { brainGlyphExtent } from "@/components/icons/brain-glyph-scale";
 import type { IconComponent } from "@/components/icons/material-icons";
 import { useAnimationsEnabled } from "@/hooks/use-animations-enabled";
 import type { Theme } from "@/styles/theme";
@@ -84,6 +85,10 @@ export function BrainStateIcon({
 
   const progress = useSweepProgress(motion !== null, visual.durationMs);
 
+  // Laid out at `size`, drawn at `glyph`. The container already centres its
+  // children, so the overflow falls evenly on all four edges; `overflow` has to
+  // be spelled out because react-native-web's View hides it by default.
+  const glyph = brainGlyphExtent(size);
   const containerStyle = useMemo(
     () => [
       {
@@ -91,6 +96,7 @@ export function BrainStateIcon({
         height: size,
         alignItems: "center" as const,
         justifyContent: "center" as const,
+        overflow: "visible" as const,
       },
       style,
     ],
@@ -100,16 +106,16 @@ export function BrainStateIcon({
   return (
     <View pointerEvents="none" style={containerStyle}>
       {visual.glow > 0 ? (
-        <BrainIconGlow size={size} color={visual.peak ?? base} strength={visual.glow} />
+        <BrainIconGlow box={size} size={glyph} color={visual.peak ?? base} strength={visual.glow} />
       ) : null}
       {motion === null || motion === "pulse" ? (
         <BrainIconBreathing progress={progress} active={motion === "pulse"}>
-          <SvgXml xml={artwork} width={size} height={size} color={base} />
+          <SvgXml xml={artwork} width={glyph} height={glyph} color={base} />
         </BrainIconBreathing>
       ) : (
-        <BrainIconMask maskSvg={maskSvg} size={size}>
+        <BrainIconMask maskSvg={maskSvg} size={glyph}>
           <BrainIconFill
-            size={size}
+            size={glyph}
             base={base}
             peak={visual.peak ?? base}
             motion={motion}
@@ -117,7 +123,9 @@ export function BrainStateIcon({
           />
         </BrainIconMask>
       )}
-      {visual.badge ? <BrainIconBadge badge={visual.badge} size={size} color={base} /> : null}
+      {visual.badge ? (
+        <BrainIconBadge badge={visual.badge} size={size} glyph={glyph} color={base} />
+      ) : null}
     </View>
   );
 }
@@ -132,21 +140,26 @@ export function BrainStateIcon({
 function BrainIconBadge({
   badge,
   size,
+  glyph,
   color,
 }: {
   badge: BrainBadge;
   size: number;
+  glyph: number;
   color: string;
 }) {
   const Badge = BRAIN_BADGE_COMPONENTS[badge];
-  const extent = size * BRAIN_BADGE_SIZE;
+  // The gap is a feature of the drawn brain, so the mark is placed against
+  // `glyph`, then shifted by the overflow so it lands on the gap rather than
+  // where the gap would be if the brain were still box-sized.
+  const extent = glyph * BRAIN_BADGE_SIZE;
   const badgeStyle = useMemo(
     () => ({
       position: "absolute" as const,
-      left: size * BRAIN_BADGE_CENTER_X - extent / 2,
-      top: size * BRAIN_BADGE_CENTER_Y - extent / 2,
+      left: (size - glyph) / 2 + glyph * BRAIN_BADGE_CENTER_X - extent / 2,
+      top: (size - glyph) / 2 + glyph * BRAIN_BADGE_CENTER_Y - extent / 2,
     }),
-    [size, extent],
+    [size, glyph, extent],
   );
   return (
     <View pointerEvents="none" style={badgeStyle}>
@@ -337,10 +350,14 @@ function BrainIconFill({
  * costs one static SVG.
  */
 function BrainIconGlow({
+  box,
   size,
   color,
   strength,
 }: {
+  /** The laid-out box the halo centres on. */
+  box: number;
+  /** The drawn glyph the halo is sized against. */
   size: number;
   color: string;
   strength: number;
@@ -348,8 +365,8 @@ function BrainIconGlow({
   const gradientId = useId();
   const extent = size * GLOW_RATIO;
   const haloStyle = useMemo(
-    () => ({ position: "absolute" as const, left: (size - extent) / 2, top: (size - extent) / 2 }),
-    [size, extent],
+    () => ({ position: "absolute" as const, left: (box - extent) / 2, top: (box - extent) / 2 }),
+    [box, extent],
   );
   return (
     <Svg width={extent} height={extent} style={haloStyle} pointerEvents="none">

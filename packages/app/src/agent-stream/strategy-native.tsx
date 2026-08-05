@@ -23,6 +23,7 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 import type { StreamItem } from "@/types/stream";
+import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { useBottomAnchorController } from "./bottom-anchor-controller";
 import type { StreamRenderInput, StreamStrategy, StreamViewportHandle } from "./strategy";
@@ -31,6 +32,7 @@ import {
   isNearBottomForStreamRenderStrategy,
   resolveBottomAnchorTransportBehavior,
 } from "./strategy";
+import { deriveVisibilityScrollRestoration } from "./visibility-scroll-restoration";
 
 const DEFAULT_MAINTAIN_VISIBLE_CONTENT_POSITION = Object.freeze({
   minIndexForVisible: 0,
@@ -141,6 +143,10 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
   } = props;
   const { renderHistoryMountedRow, renderLiveHeadRow, renderLiveAuxiliary } = renderers;
   const flatListRef = useRef<FlatList<StreamItem>>(null);
+  const isPaneVisible = useRetainedPanelActive();
+  const isPaneVisibleRef = useRef(isPaneVisible);
+  const wasPaneVisibleRef = useRef(isPaneVisible);
+  const lastVisibleScrollOffsetYRef = useRef(0);
   const streamViewportMetricsRef = useRef({
     containerKey: "native-virtualized",
     contentHeight: 0,
@@ -155,6 +161,8 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
   const [isNativeViewportSettling, setIsNativeViewportSettling] = useState(false);
   const nativeViewportSettlingFrameIdRef = useRef<number | null>(null);
   const historyStartReadyRef = useRef(false);
+
+  isPaneVisibleRef.current = isPaneVisible;
 
   const historyItems = useMemo(() => {
     if (segments.historyVirtualized.length === 0) {
@@ -220,6 +228,9 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
 
   const scrollToBottom = useCallback(
     (animated: boolean) => {
+      if (!isPaneVisibleRef.current) {
+        return;
+      }
       // While pinned at offset 0 the inverted FlatList keeps growing content
       // anchored natively, so the sticky re-stick issued on every stream flush
       // (~48ms) doesn't need a scroll command. Re-issuing scrollToOffset here
@@ -235,6 +246,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
         animated,
       });
       scrollOffsetYRef.current = 0;
+      lastVisibleScrollOffsetYRef.current = 0;
       streamViewportMetricsRef.current = {
         ...streamViewportMetricsRef.current,
         offsetY: 0,
@@ -263,6 +275,35 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     },
     scrollToBottom,
   });
+  const bottomAnchorControllerRef = useRef(bottomAnchorController);
+  bottomAnchorControllerRef.current = bottomAnchorController;
+
+  useLayoutEffect(() => {
+    const wasPaneVisible = wasPaneVisibleRef.current;
+    wasPaneVisibleRef.current = isPaneVisible;
+    const restoration = deriveVisibilityScrollRestoration({
+      wasVisible: wasPaneVisible,
+      isVisible: isPaneVisible,
+      followsOutput: bottomAnchorControllerRef.current.mode === "sticky-bottom",
+    });
+    if (restoration === "none") {
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      if (restoration === "stick-to-bottom") {
+        bottomAnchorControllerRef.current.requestLocalAnchor({ agentId, reason: "jump-to-bottom" });
+        return;
+      }
+      programmaticScrollEventBudgetRef.current = 3;
+      flatListRef.current?.scrollToOffset({
+        offset: lastVisibleScrollOffsetYRef.current,
+        animated: false,
+      });
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [agentId, isPaneVisible]);
 
   useEffect(() => {
     streamViewportMetricsRef.current = {
@@ -334,9 +375,13 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
   }, [agentId, bottomAnchorController, markNativeViewportSettling, viewportRef]);
 
   const handleScroll = useStableEvent((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (!isPaneVisibleRef.current) {
+      return;
+    }
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     const previousOffsetY = scrollOffsetYRef.current;
     scrollOffsetYRef.current = contentOffset.y;
+    lastVisibleScrollOffsetYRef.current = contentOffset.y;
     streamViewportMetricsRef.current = {
       contentHeight: Math.max(0, contentSize.height),
       viewportWidth: Math.max(0, layoutMeasurement.width),
@@ -380,6 +425,9 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
   });
 
   const handleListLayout = useStableEvent((event: LayoutChangeEvent) => {
+    if (!isPaneVisibleRef.current) {
+      return;
+    }
     const previousViewportWidth = streamViewportMetricsRef.current.viewportWidth;
     const previousViewportHeight = streamViewportMetricsRef.current.viewportHeight;
     const viewportWidth = Math.max(0, event.nativeEvent.layout.width);
@@ -406,6 +454,9 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
   });
 
   const handleContentSizeChange = useStableEvent((_width: number, height: number) => {
+    if (!isPaneVisibleRef.current) {
+      return;
+    }
     const previousContentHeight = streamViewportMetricsRef.current.contentHeight;
     const nextContentHeight = Math.max(0, height);
     streamViewportMetricsRef.current = {

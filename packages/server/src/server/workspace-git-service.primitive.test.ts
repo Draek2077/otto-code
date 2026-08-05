@@ -394,12 +394,11 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
 
     checkoutStatusDeferred.resolve(createCheckoutStatus(REPO_CWD));
 
-    // The initial (register-triggered) refresh is git-only - GitHub PR status is
-    // delivered by the poll, which this stub does not implement - so the warmed
-    // snapshot reports GitHub as unavailable until a poll fills it in.
-    const gitOnlySnapshot = createSnapshot(REPO_CWD, { forge: UNPOLLED_FORGE });
-    await expect(service.getSnapshot(REPO_CWD)).resolves.toEqual(gitOnlySnapshot);
-    expect(service.peekSnapshot(REPO_CWD)).toEqual(gitOnlySnapshot);
+    // Registration itself remains git-only and non-blocking. This direct read
+    // joins that in-flight pass and upgrades it with forge facts, so a sidebar
+    // PR-status request does not cache the temporary git-only snapshot.
+    await expect(service.getSnapshot(REPO_CWD)).resolves.toEqual(createSnapshot(REPO_CWD));
+    expect(service.peekSnapshot(REPO_CWD)).toEqual(createSnapshot(REPO_CWD));
 
     subscription.unsubscribe();
     service.dispose();

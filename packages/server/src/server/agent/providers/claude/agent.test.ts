@@ -18,6 +18,70 @@ import { claudeProjectDirSync } from "./project-dir.js";
 import { streamSession } from "../test-utils/session-stream-adapter.js";
 import type { AgentSession, AgentTimelineItem, AgentStreamEvent } from "../../agent-sdk-types.js";
 
+function createPromptDrivenQueryFactory() {
+  const launches: Array<{ options: Record<string, unknown>; prompts: unknown[] }> = [];
+  const queryFactory = vi.fn(
+    ({ prompt, options }: { prompt: AsyncIterable<unknown>; options: Record<string, unknown> }) => {
+      const prompts: unknown[] = [];
+      const input = prompt[Symbol.asyncIterator]();
+      let emittedResult = false;
+      let closed = false;
+      launches.push({ options, prompts });
+
+      return {
+        async next(): Promise<IteratorResult<SDKMessage, void>> {
+          if (closed || emittedResult) {
+            return { done: true, value: undefined };
+          }
+          const next = await input.next();
+          if (next.done) {
+            return { done: true, value: undefined };
+          }
+          prompts.push(next.value);
+          emittedResult = true;
+          return {
+            done: false,
+            value: {
+              type: "result",
+              subtype: "success",
+              duration_ms: 0,
+              duration_api_ms: 0,
+              is_error: false,
+              num_turns: 1,
+              result: "done",
+              stop_reason: null,
+              total_cost_usd: 0,
+              usage: { input_tokens: 1, cache_read_input_tokens: 0, output_tokens: 1 },
+              permission_denials: [],
+              uuid: `result-${launches.length}`,
+              session_id: "session-atlas",
+            } as SDKMessage,
+          };
+        },
+        interrupt: vi.fn(async () => undefined),
+        return: vi.fn(async () => {
+          closed = true;
+          return { done: true, value: undefined };
+        }),
+        close: vi.fn(() => {
+          closed = true;
+        }),
+        applyFlagSettings: vi.fn(async () => undefined),
+        setPermissionMode: vi.fn(async () => undefined),
+        setModel: vi.fn(async () => undefined),
+        getContextUsage: vi.fn(async () => undefined),
+        supportedModels: vi.fn(async () => []),
+        supportedCommands: vi.fn(async () => []),
+        rewindFiles: vi.fn(async () => ({ canRewind: true })),
+        [Symbol.asyncIterator]() {
+          return this;
+        },
+      };
+    },
+  );
+  return { launches, queryFactory };
+}
+
 interface TestClaudeSession {
   translateMessageToEvents(message: SDKMessage): AgentStreamEvent[];
 }
@@ -935,6 +999,43 @@ describe("ClaudeAgentSession features", () => {
     expect(queryMock.return).not.toHaveBeenCalled();
 
     await session.close();
+  });
+
+  test("first send survives clearing a completed personality before selecting a plain model", async () => {
+    const { launches, queryFactory } = createPromptDrivenQueryFactory();
+    const client = new ClaudeAgentClient({
+      logger,
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    });
+    const session = await client.createSession({
+      provider: "claude",
+      cwd: process.cwd(),
+      model: "claude-opus-4-8",
+      systemPrompt: "You are Atlas.",
+    });
+
+    try {
+      await expect(session.run("Atlas turn")).resolves.toBeDefined();
+      // Let the terminal query pump clear its completed query, matching the
+      // picker interaction that happened immediately after this chat finished.
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      await session.applyPersonality?.({
+        personalitySnapshot: undefined,
+        systemPrompt: undefined,
+        daemonAppendSystemPrompt: undefined,
+      });
+      await session.setModel?.("claude-sonnet-5");
+
+      await expect(session.run("First Sonnet turn")).resolves.toBeDefined();
+
+      expect(launches).toHaveLength(2);
+      expect(launches[1]?.options).toMatchObject({ model: "claude-sonnet-5" });
+      expect(launches[1]?.prompts).toHaveLength(1);
+    } finally {
+      await session.close();
+    }
   });
 });
 

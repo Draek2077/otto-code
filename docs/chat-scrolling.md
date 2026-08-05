@@ -11,14 +11,25 @@ scroll write allowed in that state is the one that cancels motion out (see
 
 ## Two states, and only user input moves between them
 
-| State         | What it means                                      | Who can leave it                                                                                    |
-| ------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| **Following** | The view is pinned to the newest content           | Any user input that moves the view up                                                               |
-| **Detached**  | The reader owns the position; the app is hands-off | The reader returning to the bottom, the jump-to-bottom button, sending a message, entering the chat |
+| State         | What it means                                      | Who can leave it                                                                                         |
+| ------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| **Following** | The view is pinned to the newest content           | Any user input that moves the view up                                                                    |
+| **Detached**  | The reader owns the position; the app is hands-off | The reader returning to the bottom, the jump-to-bottom button, sending a message, first opening the chat |
 
-Route entry, the jump-to-bottom button and sending a message are the explicit
-"take me to the bottom" requests. Everything else the app does (content arriving,
-content collapsing, the viewport resizing) is not a reason to move the view.
+First opening a chat, the jump-to-bottom button and sending a message are the
+explicit "take me to the bottom" requests. Everything else the app does (content
+arriving, content collapsing, the viewport resizing) is not a reason to move the
+view.
+
+### Returning to a retained tab preserves ownership
+
+A tab that is temporarily hidden stays mounted. Returning to it is not a new
+chat entry: a tab that was following output re-sticks to the bottom, while a
+detached reader returns to the same place they were reading. The state, not the
+numeric scroll position, decides this. A hidden web scroller can be clamped to
+zero by `display: none`, so each strategy retains the last active reader
+position and restores it only for the detached case. It never turns a reader's
+intentional scroll-up into a bottom request.
 
 **Queueing counts as sending.** Pressing Enter against a busy agent puts the
 message on the steer queue instead of the wire, but the reader did the same thing

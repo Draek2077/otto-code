@@ -78,6 +78,7 @@ function WorkspaceTabPresentationResolverInner({
       statusBucket: descriptor.statusBucket,
       personalitySpinner: descriptor.personalitySpinner ?? null,
       provider: descriptor.provider,
+      busyLoader: descriptor.busyLoader,
     }),
     [
       descriptor.icon,
@@ -87,6 +88,7 @@ function WorkspaceTabPresentationResolverInner({
       descriptor.titleState,
       descriptor.personalitySpinner,
       descriptor.provider,
+      descriptor.busyLoader,
       tab.key,
       tab.kind,
     ],

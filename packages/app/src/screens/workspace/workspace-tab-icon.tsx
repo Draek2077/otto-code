@@ -1,5 +1,5 @@
 import { useMemo, type ReactElement } from "react";
-import { View } from "react-native";
+import { ActivityIndicator, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { BlobLoader, ThemedBlobLoader } from "@/components/blob-loader";
 import { PersonalityProviderIcon } from "@/components/personality-provider-icon";
@@ -21,6 +21,8 @@ export interface WorkspaceTabPresentation {
   personalitySpinner?: { glowA: string; glowB: string } | null;
   /** Provider id - fills the non-loading agent glyph with the personality gradient. */
   provider?: string;
+  /** Busy glyph while running: the AI blob loader (default) or a plain spinner. */
+  busyLoader?: "blob" | "spinner";
 }
 
 interface WorkspaceTabIconProps {
@@ -54,6 +56,17 @@ export function WorkspaceTabIcon({
   );
 
   if (shouldShowLoader) {
+    // Non-AI panels (a browser tab fetching a page) get the plain circular
+    // indicator - the blob loader means "a model is working" and stays reserved
+    // for that.
+    if (presentation.busyLoader === "spinner") {
+      return (
+        <View style={agentIconWrapperStyle}>
+          <ActivityIndicator size={resolvedSize} color={iconColor} />
+        </View>
+      );
+    }
+
     const spinner = presentation.personalitySpinner;
     return (
       <View style={agentIconWrapperStyle}>

@@ -26,6 +26,13 @@ export interface PanelDescriptor {
    * Only the agent panel sets this.
    */
   provider?: string;
+  /**
+   * Which busy glyph the tab shows while `statusBucket` is "running". The blob
+   * loader reads as "a model is thinking", so it is reserved for AI work;
+   * panels whose work is plain I/O (a page load, a fetch) pass "spinner" for
+   * the theme's circular indicator. Absent ⇒ "blob".
+   */
+  busyLoader?: "blob" | "spinner";
 }
 
 export interface PanelDescriptorContext {

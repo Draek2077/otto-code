@@ -3553,7 +3553,17 @@ class ClaudeAgentSession implements AgentSession {
       return this.query;
     }
 
-    if (this.queryRestartNeeded && this.query) {
+    const restartNeeded = this.queryRestartNeeded;
+    if (restartNeeded) {
+      // A completed query clears itself from the pump. A setting change made
+      // just after completion can therefore leave a restart pending without a
+      // query to tear down. Consume that restart before creating the next
+      // query; otherwise the new pump sees the stale flag, tears down its own
+      // input, and the first send after the switch has nowhere to push.
+      this.queryRestartNeeded = false;
+    }
+
+    if (restartNeeded && this.query) {
       const oldQuery = this.query;
       const oldInput = this.input;
       // Null out query/input BEFORE awaiting the old iterator's return so the
@@ -3561,7 +3571,6 @@ class ClaudeAgentSession implements AgentSession {
       this.query = null;
       this.input = null;
       this.queryPumpPromise = null;
-      this.queryRestartNeeded = false;
       oldInput?.end();
       oldQuery.close?.();
       try {

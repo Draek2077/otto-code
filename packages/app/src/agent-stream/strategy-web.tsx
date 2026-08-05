@@ -45,8 +45,10 @@ const SCROLL_ANCHOR_DRIFT_EPSILON_PX = 0.5;
 // count the same correction twice.
 const VIRTUALIZED_BLOCK_ATTRIBUTE = "data-stream-virtualized-block";
 import { useWebElementScrollbar } from "@/components/use-web-scrollbar";
+import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useHasFinePointer } from "@/hooks/use-fine-pointer";
 import { useStableEvent } from "@/hooks/use-stable-event";
+import { deriveVisibilityScrollRestoration } from "./visibility-scroll-restoration";
 
 const historyStartSlotStyle: CSSProperties = {
   display: "flex",
@@ -211,6 +213,10 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   }, []);
   const [followOutput, setFollowOutputr] = useState(true);
   const followOutputRef = useRef(followOutput);
+  const isPaneVisible = useRetainedPanelActive();
+  const isPaneVisibleRef = useRef(isPaneVisible);
+  const wasPaneVisibleRef = useRef(isPaneVisible);
+  const lastVisibleScrollTopRef = useRef(0);
   const setFollowOutput = (value: boolean) => {
     followOutputRef.current = value;
     setFollowOutputr(value);
@@ -265,6 +271,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   } = renderers;
 
   followOutputRef.current = followOutput;
+  isPaneVisibleRef.current = isPaneVisible;
 
   const hasRouteBottomAnchorRequest = routeBottomAnchorRequest !== null;
   const activationKey = routeBottomAnchorRequest?.requestKey ?? props.agentId;
@@ -370,6 +377,9 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   // ten pixels is reading, so the jump-to-bottom affordance appears and the
   // mounted-window pin engages even though they are still inside the 64px band.
   const updateScrollMetrics = useCallback(() => {
+    if (!isPaneVisibleRef.current) {
+      return;
+    }
     const scrollContainer = scrollContainerRef.current;
     if (!scrollContainer) {
       onNearBottomChange(true);
@@ -397,6 +407,9 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
    * detach state is read but never changed.
    */
   const evaluateHistoryStart = useStableEvent(() => {
+    if (!isPaneVisibleRef.current) {
+      return;
+    }
     const scrollContainer = scrollContainerRef.current;
     if (!scrollContainer) {
       return;
@@ -423,6 +436,9 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     lastKnownScrollTopRef.current = scrollContainer.scrollTop;
     lastScrollHeightRef.current = scrollContainer.scrollHeight;
     lastClientHeightRef.current = scrollContainer.clientHeight;
+    if (isPaneVisibleRef.current) {
+      lastVisibleScrollTopRef.current = scrollContainer.scrollTop;
+    }
   }, []);
 
   const captureScrollAnchor = useCallback(() => {
@@ -445,7 +461,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
    * the document reflowing above the anchor can produce a correction.
    */
   const restoreScrollAnchor = useCallback(() => {
-    if (followOutputRef.current) {
+    if (followOutputRef.current || !isPaneVisibleRef.current) {
       return;
     }
     const scrollContainer = scrollContainerRef.current;
@@ -475,7 +491,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   const scrollMessagesToBottom = useCallback(
     (behavior: ScrollBehaviorLike = "auto") => {
       const scrollContainer = scrollContainerRef.current;
-      if (!scrollContainer || !followOutputRef.current) {
+      if (!scrollContainer || !followOutputRef.current || !isPaneVisibleRef.current) {
         return;
       }
       if (isScrollContainerOverscrolledPastBottom(scrollContainer)) {
@@ -490,6 +506,9 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   );
 
   const scheduleStickToBottom = useCallback(() => {
+    if (!isPaneVisibleRef.current) {
+      return;
+    }
     const scrollContainer = scrollContainerRef.current;
     if (scrollContainer && isScrollContainerOverscrolledPastBottom(scrollContainer)) {
       return;
@@ -499,7 +518,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     }
     pendingAutoScrollFrameRef.current = window.requestAnimationFrame(() => {
       pendingAutoScrollFrameRef.current = null;
-      if (!followOutputRef.current) {
+      if (!followOutputRef.current || !isPaneVisibleRef.current) {
         return;
       }
       scrollMessagesToBottom("auto");
@@ -513,6 +532,9 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   }, [cancelPendingStickToBottom, scheduleStickToBottom, scrollMessagesToBottom]);
 
   const handleDomScroll = useCallback(() => {
+    if (!isPaneVisibleRef.current) {
+      return;
+    }
     const scrollContainer = scrollContainerRef.current;
     if (!scrollContainer) {
       return;
@@ -527,6 +549,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     lastKnownScrollTopRef.current = currentScrollTop;
     lastScrollHeightRef.current = currentScrollHeight;
     lastClientHeightRef.current = currentClientHeight;
+    lastVisibleScrollTopRef.current = currentScrollTop;
 
     const programmaticScrollTop = programmaticScrollTopRef.current;
     programmaticScrollTopRef.current = null;
@@ -673,6 +696,37 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     scheduleStickToBottom,
   ]);
 
+  useLayoutEffect(() => {
+    const wasPaneVisible = wasPaneVisibleRef.current;
+    wasPaneVisibleRef.current = isPaneVisible;
+    const restoration = deriveVisibilityScrollRestoration({
+      wasVisible: wasPaneVisible,
+      isVisible: isPaneVisible,
+      followsOutput: followOutputRef.current,
+    });
+    if (restoration === "none") {
+      return;
+    }
+    if (restoration === "stick-to-bottom") {
+      forceStickToBottom();
+      return;
+    }
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) {
+      return;
+    }
+    scrollContainer.scrollTop = lastVisibleScrollTopRef.current;
+    noteProgrammaticScroll(scrollContainer);
+    captureScrollAnchor();
+    updateScrollMetrics();
+  }, [
+    captureScrollAnchor,
+    forceStickToBottom,
+    isPaneVisible,
+    noteProgrammaticScroll,
+    updateScrollMetrics,
+  ]);
+
   useEffect(() => {
     if (!followOutputRef.current) {
       return;
@@ -711,6 +765,9 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
 
     updateScrollMetrics();
     const observer = new ResizeObserver(() => {
+      if (!isPaneVisibleRef.current) {
+        return;
+      }
       // A window growing taller can un-fill a transcript that used to overflow,
       // which is the other way to end up with no scroll event and unrequested
       // history.

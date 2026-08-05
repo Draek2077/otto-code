@@ -2,6 +2,7 @@ import { createElement, type ComponentType } from "react";
 import type { StyleProp, ViewStyle } from "react-native";
 import { SvgXml } from "react-native-svg";
 import { MATERIAL_SYMBOL_SVGS } from "@/assets/material-symbol-icons";
+import { withBrainGlyphScale } from "@/components/icons/brain-glyph-scale";
 
 export type IconComponent = ComponentType<{
   size: number;
@@ -15,6 +16,10 @@ function createMaterialSymbolIcon(name: keyof typeof MATERIAL_SYMBOL_SVGS): Icon
     createElement(SvgXml, { xml: svg, width: size, height: size, color, style });
   MaterialSymbolIcon.displayName = `MaterialSymbolIcon(${name})`;
   return MaterialSymbolIcon;
+}
+
+function createScaledBrainIcon(name: keyof typeof MATERIAL_SYMBOL_SVGS): IconComponent {
+  return withBrainGlyphScale(createMaterialSymbolIcon(name), name);
 }
 
 export const Abc = createMaterialSymbolIcon("Abc");
@@ -50,11 +55,15 @@ export const Boxes = createMaterialSymbolIcon("Boxes");
 // chosen over the plain `neurology` brain: the family ships four ready-made
 // variants of the same silhouette, so the states that need their own glyph get
 // one that is unmistakably the same object, and every other state is a colour.
-export const Brain = createMaterialSymbolIcon("Brain");
-export const BrainBenchmark = createMaterialSymbolIcon("BrainBenchmark");
-export const BrainDownload = createMaterialSymbolIcon("BrainDownload");
-export const BrainError = createMaterialSymbolIcon("BrainError");
-export const BrainScan = createMaterialSymbolIcon("BrainScan");
+//
+// The family draws larger than the box it is laid out in - see
+// `brain-glyph-scale.ts` for the factor and for why it overflows rather than
+// cropping its viewBox.
+export const Brain = createScaledBrainIcon("Brain");
+export const BrainBenchmark = createScaledBrainIcon("BrainBenchmark");
+export const BrainDownload = createScaledBrainIcon("BrainDownload");
+export const BrainError = createScaledBrainIcon("BrainError");
+export const BrainScan = createScaledBrainIcon("BrainScan");
 // Marks for the two ops the family ships no variant for. These are NOT whole
 // icons: each sits in a round gap bitten out of the base brain, the same way the
 // family's own clock and arrow do. Both are the filled weight and round in

@@ -1,4 +1,4 @@
-import { Bot, Brain, PackagePlus } from "@/components/icons/material-icons";
+import { Bot, PackagePlus } from "@/components/icons/material-icons";
 import { createElement, type ComponentType } from "react";
 import { SvgXml } from "react-native-svg";
 import { ClaudeIcon } from "@/components/icons/claude-icon";
@@ -19,10 +19,33 @@ export interface ProviderIconProps {
 
 export type ProviderIconComponent = ComponentType<ProviderIconProps>;
 
+// The Material brain glyph only inks 712x640 of its 960x960 box; the Claude,
+// Codex and Copilot marks bleed to their edges. Rendered at the same nominal
+// size next to those - personality avatars, agent rows, the model picker - the
+// brain read about a quarter too small. The provider-sized variant crops the
+// viewBox to the ink so it matches their width, and is deliberately scoped to
+// this file: the `Brain` icon itself keeps its Material padding everywhere else
+// (the sidebar rail, the Brain screen, the state machine in
+// `components/brain/`), where it sits beside other Material Symbols and must
+// stay optically aligned with them.
+//
+// Bounds measured off the path's control points; asserted in the sibling test
+// so a Material glyph refresh that moves the ink fails loudly.
+export const PROVIDER_BRAIN_VIEW_BOX = "124 -800 712 640";
+
+const PROVIDER_BRAIN_SVG = MATERIAL_SYMBOL_SVGS.Brain.replace(
+  /viewBox="[^"]*"/,
+  `viewBox="${PROVIDER_BRAIN_VIEW_BOX}"`,
+);
+
+const ProviderBrainIcon: ProviderIconComponent = ({ size, color }) =>
+  createElement(SvgXml, { xml: PROVIDER_BRAIN_SVG, width: size, height: size, color });
+ProviderBrainIcon.displayName = "ProviderBrainIcon";
+
 // App-only provider ids that are not part of the protocol icon-name registry
 // but still need a specific icon (e.g. the built-in local brain host).
 const APP_PROVIDER_ICONS: Record<string, ProviderIconComponent> = {
-  "otto-brain": Brain,
+  "otto-brain": ProviderBrainIcon,
 };
 
 const BUILTIN_PROVIDER_ICONS: Record<string, ProviderIconComponent> = {
@@ -46,7 +69,7 @@ const CATALOG_ICON_SVGS = new Map(
 // stored as strings here so we don't need to render React components to get at
 // their markup.
 const APP_PROVIDER_SVGS: Record<string, string> = {
-  "otto-brain": MATERIAL_SYMBOL_SVGS.Brain,
+  "otto-brain": PROVIDER_BRAIN_SVG,
 };
 
 const BUILTIN_PROVIDER_SVGS: Record<string, string> = {

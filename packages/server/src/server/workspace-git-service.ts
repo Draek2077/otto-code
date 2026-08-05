@@ -2110,9 +2110,19 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     request: WorkspaceGitRefreshRequest,
   ): Promise<WorkspaceGitRuntimeSnapshot> {
     if (target.refreshState.status === "in-flight") {
-      const needsForcedRefresh = request.force && !target.refreshState.force;
-      const needsGitHubRefresh =
-        request.force && request.includeForge && !target.refreshState.includeForge;
+      const refreshState = target.refreshState;
+      const needsForcedRefresh = request.force && !refreshState.force;
+      // A cold workspace registration begins with a git-only refresh so a
+      // workspace list never waits on the forge. A direct PR-status read that
+      // joins that pass still needs its forge facts, though. Upgrade the pass
+      // in place: the git read has not yet been followed by the forge read, so
+      // this costs no extra shell-out and lets the caller receive the PR rather
+      // than cache the temporary git-only snapshot indefinitely.
+      const needsForgeRefresh = request.includeForge && !refreshState.includeForge;
+      const canUpgradeCurrentPass = needsForgeRefresh && !request.force;
+      if (canUpgradeCurrentPass) {
+        refreshState.includeForge = true;
+      }
       // A change signal queues when the running pass has already taken its git
       // measurement. Each pass reads git first and the forge second, and a forge
       // round-trip is a `gh` process plus a network call - seconds. A branch
@@ -2122,10 +2132,10 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       // nothing to miss, so the signal rides along for free and a watcher burst
       // still costs exactly one shell-out.
       const missedByRunningPass = request.changeSignal && target.currentPassReadGit;
-      if (needsForcedRefresh || needsGitHubRefresh || missedByRunningPass) {
-        target.refreshState.queued = this.mergeRefreshRequests(target.refreshState.queued, request);
+      if (needsForcedRefresh || (needsForgeRefresh && request.force) || missedByRunningPass) {
+        refreshState.queued = this.mergeRefreshRequests(refreshState.queued, request);
       }
-      return target.refreshState.promise;
+      return refreshState.promise;
     }
 
     if (!request.force && this.shouldThrottleNonForcedRefresh(target)) {
@@ -2311,7 +2321,9 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     // Past this line the git half of this pass is fixed, so a change landing now
     // cannot be reported by it.
     target.currentPassReadGit = true;
-    if (request.includeForge) {
+    const inFlightRefreshIncludesForge =
+      target.refreshState.status === "in-flight" && target.refreshState.includeForge;
+    if (request.includeForge || inFlightRefreshIncludesForge) {
       await this.refreshForgeSnapshot(target, request, facts);
     }
 
