@@ -118,6 +118,12 @@ jobs:
       # Haskell trees are dead weight here, and the default 4GB swapfile is thin
       # for a peak this shape. A run terminated with a bare "The operation was
       # canceled." and no annotation is what that peak looks like from outside.
+      #
+      # 12G still wasn't enough for the v0.8.1 tag (2026-08-04): the runner died
+      # a few seconds into createBundleReleaseJsAndAssets handing off to the
+      # native/Hermes pass, same silent-cancel shape. Bumped to 24G - the
+      # `df -h` "Before" line has consistently shown ~88G free on this runner
+      # image, so 24G still leaves comfortable headroom for the build outputs.
       - name: Make room for the native build
         shell: bash
         run: |
@@ -130,7 +136,7 @@ jobs:
 
           sudo swapoff -a || true
           sudo rm -f /mnt/swapfile /swapfile || true
-          sudo fallocate -l 12G /mnt/swapfile
+          sudo fallocate -l 24G /mnt/swapfile
           sudo chmod 600 /mnt/swapfile
           sudo mkswap /mnt/swapfile
           sudo swapon /mnt/swapfile
