@@ -29,6 +29,27 @@ const WEB_BOTTOM_SETTLE_TIMEOUT_MS = 200;
 const USER_SCROLL_DELTA_EPSILON = 1;
 const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 64;
 const AUTO_SCROLL_RESUME_THRESHOLD_PX = 1;
+/**
+ * How close to the end counts as "back at the bottom" when the reader scrolls
+ * down again.
+ *
+ * Deliberately generous, and generous for a reason: the intent is to keep a
+ * reader who is *near* the end pinned *to* the end, not to make them land on it
+ * exactly. A line or two of text short of the bottom is someone watching output,
+ * so new content should bring them along rather than leave them stranded a few
+ * pixels out with the jump-to-bottom button showing.
+ *
+ * This used to be `AUTO_SCROLL_RESUME_THRESHOLD_PX` (1px), which asked the reader
+ * to hit the last pixel of the range. `scrollTop` is fractional while
+ * `scrollHeight` and `clientHeight` are integers, so at 125% or 150% display
+ * scaling that pixel is not reliably reachable at all, and the transcript would
+ * sit one fraction short of the bottom refusing to follow.
+ *
+ * Only the re-attach test uses this. The involuntary-drop backstop below stays on
+ * the tight 1px reading, because "the browser clamped to the exact end of a
+ * shorter document" is a different claim from "the reader is close enough".
+ */
+const BOTTOM_REATTACH_THRESHOLD_PX = 20;
 // Overscroll is a real state (elastic scrolling, `overscroll-behavior: contain`)
 // and the stick refuses to fight it. But `scrollTop` is fractional while
 // `clientHeight`/`scrollHeight` are integers, so at any display scale or browser
@@ -154,6 +175,16 @@ function isScrollContainerAtBottom(
   scrollContainer: Pick<HTMLElement, "scrollTop" | "clientHeight" | "scrollHeight">,
 ): boolean {
   return isScrollContainerNearBottom(scrollContainer, AUTO_SCROLL_RESUME_THRESHOLD_PX);
+}
+
+// See BOTTOM_REATTACH_THRESHOLD_PX. Separate from isScrollContainerAtBottom on
+// purpose: this one is "close enough to count as the bottom for the reader", the
+// other is "exactly at the end of the range", and only the clamp test wants the
+// second reading.
+function isScrollContainerWithinReattachZone(
+  scrollContainer: Pick<HTMLElement, "scrollTop" | "clientHeight" | "scrollHeight">,
+): boolean {
+  return isScrollContainerNearBottom(scrollContainer, BOTTOM_REATTACH_THRESHOLD_PX);
 }
 
 function scrollElementToBottom(
@@ -372,20 +403,33 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     }
   }, []);
 
-  // Near-bottom is reported as "the app is following the output", not merely "the
-  // scrollTop happens to be close to the end". A reader who nudged the view up by
-  // ten pixels is reading, so the jump-to-bottom affordance appears and the
-  // mounted-window pin engages even though they are still inside the 64px band.
+  /**
+   * Near-bottom is reported as "the app is following the output", and *only* that.
+   * A reader who nudged the view up out of the band is reading, so the
+   * jump-to-bottom affordance appears and the mounted-window pin engages.
+   *
+   * It deliberately does not also re-measure the container. This runs from the
+   * ResizeObserver while following, which is precisely the moment the document
+   * has grown and the stick has not landed yet: `scrollTop` is still where the
+   * last frame left it, so any flush taller than the band read as "not near the
+   * bottom" and reported a detach that had not happened. The jump button appeared
+   * and the mounted-window pin was taken, then the rAF stick landed and reverted
+   * both, on every flush big enough to clear the band. A tool row appearing, a
+   * group folding, an image loading or a code block rendering all clear it.
+   *
+   * The pin churn was the more expensive half: taking and dropping it moves the
+   * mounted/virtualized boundary, and every move is a handoff commit under a
+   * reader who was only watching the stream.
+   *
+   * The state is the answer. `handleDomScroll` owns it, it is decided from a
+   * settled position, and nothing else may second-guess it from a mid-update
+   * measurement.
+   */
   const updateScrollMetrics = useCallback(() => {
     if (!isPaneVisibleRef.current) {
       return;
     }
-    const scrollContainer = scrollContainerRef.current;
-    if (!scrollContainer) {
-      onNearBottomChange(true);
-      return;
-    }
-    onNearBottomChange(followOutputRef.current && isScrollContainerNearBottom(scrollContainer));
+    onNearBottomChange(followOutputRef.current);
   }, [onNearBottomChange]);
 
   /**
@@ -599,9 +643,20 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
 
     if (followOutputRef.current) {
       // Whatever moved the view up (wheel, touch, the overlay scrollbar thumb,
-      // Page Up, find-in-page), the reader is reading. From here the app writes
-      // nothing until they ask for the bottom again.
-      if (isUserScroll && delta < -USER_SCROLL_DELTA_EPSILON) {
+      // Page Up, find-in-page), a reader who has left the band is reading. From
+      // here the app writes nothing until they ask for the bottom again.
+      //
+      // The band is the same one re-attaching uses, and it has to be, or the two
+      // halves disagree: detaching on any move over a pixel while re-attaching
+      // needs 20px left a reader who nudged up five pixels stranded just short of
+      // the end, detached, with output piling up below them and no way back except
+      // the jump button. Inside the band they are watching, so new content should
+      // bring them along. See BOTTOM_REATTACH_THRESHOLD_PX.
+      if (
+        isUserScroll &&
+        delta < -USER_SCROLL_DELTA_EPSILON &&
+        !isScrollContainerWithinReattachZone(scrollContainer)
+      ) {
         cancelPendingStickToBottom();
         setFollowOutput(false);
         captureScrollAnchor();
@@ -609,7 +664,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     } else if (
       isUserScroll &&
       delta > USER_SCROLL_DELTA_EPSILON &&
-      isScrollContainerAtBottom(scrollContainer)
+      isScrollContainerWithinReattachZone(scrollContainer)
     ) {
       scrollAnchorRef.current = null;
       setFollowOutput(true);
@@ -910,6 +965,18 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       overflowX: "hidden",
       overflowY: scrollEnabled ? "auto" : "hidden",
       overscrollBehaviorY: "contain",
+      // Chrome's own scroll anchoring is on by default, and on this element it is
+      // a *fourth* thing writing `scrollTop`, alongside the stick, the content
+      // anchor and the virtualizer's absorb. It picks its own anchor node out of
+      // the same mounted rows our anchor uses and adjusts on DOM mutation,
+      // outside everything here: either it fires a scroll event that reads as a
+      // position change nobody asked for, or it fires none and the recorded
+      // metrics silently go stale under the next real event. One owner per
+      // correction is the rule this file is built on, and an owner we can neither
+      // see nor cancel is the one violation there is no way to reason about. Ours
+      // stays, because it measures in content space and hands off to the
+      // virtualizer by ownership. The browser's has to go.
+      overflowAnchor: "none",
     };
   }, [scrollEnabled]);
   const virtualRowsContainerStyle = useMemo((): CSSProperties => {

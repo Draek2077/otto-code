@@ -1055,4 +1055,243 @@ describe("createWebStreamStrategy", () => {
 
     expect(scrollTo).toHaveBeenCalled();
   });
+
+  it("reattaches when the reader stops a few pixels short of the bottom", async () => {
+    const scrollTo = installWritingScrollTo();
+    const strategy = createWebStreamStrategy({ isMobileBreakpoint: false });
+    const viewportRef = React.createRef<StreamViewportHandle>();
+    const historyMounted = Array.from({ length: 20 }, (_, index) => userMessage(index));
+    const renderInput = {
+      agentId: "agent",
+      segments: { historyVirtualized: [], historyMounted, liveHead: [] },
+      boundary: {
+        hasVirtualizedHistory: false,
+        hasMountedHistory: true,
+        hasLiveHead: false,
+      },
+      renderers: createRenderers(vi.fn()),
+      listEmptyComponent: null,
+      viewportRef,
+      routeBottomAnchorRequest: null,
+      isAuthoritativeHistoryReady: true,
+      onNearBottomChange: vi.fn(),
+      onNearHistoryStart: vi.fn(),
+      isLoadingOlderHistory: false,
+      hasOlderHistory: false,
+      olderHistoryProgressKey: null,
+      scrollEnabled: true,
+      listStyle: null,
+      baseListContentContainerStyle: null,
+      forwardListContentContainerStyle: null,
+    };
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    act(() => {
+      root?.render(strategy.render(renderInput));
+    });
+
+    const scrollContainer = container.querySelector('[data-testid="agent-chat-scroll"]');
+    if (!(scrollContainer instanceof HTMLElement)) {
+      throw new Error("Expected agent chat scroll container");
+    }
+    const metrics = installScrollBox(scrollContainer, {
+      scrollTop: 0,
+      scrollHeight: 2000,
+      clientHeight: 400,
+    });
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+    act(() => {
+      scrollContainer.dispatchEvent(new Event("scroll"));
+    });
+
+    // The reader scrolls up to read, which detaches.
+    metrics.scrollTop = 900;
+    act(() => {
+      scrollContainer.dispatchEvent(new Event("scroll"));
+    });
+    scrollTo.mockClear();
+
+    // Then they come back down and stop 10px short of the end, which is where a
+    // scroll gesture actually stops. Asking for the last pixel of the range left
+    // them stranded here, detached, with the jump-to-bottom button showing while
+    // they were plainly at the bottom - and at 125% or 150% display scaling that
+    // pixel is not reliably reachable at all, because scrollTop is fractional
+    // while scrollHeight and clientHeight are integers.
+    metrics.scrollTop = 1590;
+    act(() => {
+      scrollContainer.dispatchEvent(new Event("scroll"));
+    });
+
+    // Following again, so the next flush brings them along.
+    act(() => {
+      root?.render(
+        strategy.render({
+          ...renderInput,
+          segments: { ...renderInput.segments, liveHead: [userMessage(20)] },
+        }),
+      );
+    });
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+
+    expect(scrollTo).toHaveBeenCalled();
+    expect(metrics.scrollTop).toBe(1600);
+  });
+
+  it("keeps following when the reader nudges up without leaving the band", async () => {
+    const scrollTo = installWritingScrollTo();
+    const strategy = createWebStreamStrategy({ isMobileBreakpoint: false });
+    const viewportRef = React.createRef<StreamViewportHandle>();
+    const historyMounted = Array.from({ length: 20 }, (_, index) => userMessage(index));
+    const renderInput = {
+      agentId: "agent",
+      segments: { historyVirtualized: [], historyMounted, liveHead: [] },
+      boundary: {
+        hasVirtualizedHistory: false,
+        hasMountedHistory: true,
+        hasLiveHead: false,
+      },
+      renderers: createRenderers(vi.fn()),
+      listEmptyComponent: null,
+      viewportRef,
+      routeBottomAnchorRequest: null,
+      isAuthoritativeHistoryReady: true,
+      onNearBottomChange: vi.fn(),
+      onNearHistoryStart: vi.fn(),
+      isLoadingOlderHistory: false,
+      hasOlderHistory: false,
+      olderHistoryProgressKey: null,
+      scrollEnabled: true,
+      listStyle: null,
+      baseListContentContainerStyle: null,
+      forwardListContentContainerStyle: null,
+    };
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    act(() => {
+      root?.render(strategy.render(renderInput));
+    });
+
+    const scrollContainer = container.querySelector('[data-testid="agent-chat-scroll"]');
+    if (!(scrollContainer instanceof HTMLElement)) {
+      throw new Error("Expected agent chat scroll container");
+    }
+    const metrics = installScrollBox(scrollContainer, {
+      scrollTop: 0,
+      scrollHeight: 2000,
+      clientHeight: 400,
+    });
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+    act(() => {
+      scrollContainer.dispatchEvent(new Event("scroll"));
+    });
+    scrollTo.mockClear();
+
+    // A nudge of a few pixels, not a decision to go and read something. Detaching
+    // on any move over a pixel stranded the reader here: eight pixels short of the
+    // end, no longer following, with output piling up below them. The re-attach
+    // band and the detach test have to be the same band or the two halves of the
+    // rule disagree.
+    metrics.scrollTop = 1592;
+    act(() => {
+      scrollContainer.dispatchEvent(new Event("scroll"));
+    });
+
+    act(() => {
+      root?.render(
+        strategy.render({
+          ...renderInput,
+          segments: { ...renderInput.segments, liveHead: [userMessage(20)] },
+        }),
+      );
+    });
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+
+    expect(scrollTo).toHaveBeenCalled();
+    expect(metrics.scrollTop).toBe(1600);
+  });
+
+  it("does not report a detach while a flush grows the document under the stick", async () => {
+    installWritingScrollTo();
+    const strategy = createWebStreamStrategy({ isMobileBreakpoint: false });
+    const viewportRef = React.createRef<StreamViewportHandle>();
+    const historyMounted = Array.from({ length: 20 }, (_, index) => userMessage(index));
+    const onNearBottomChange = vi.fn();
+    const renderInput = {
+      agentId: "agent",
+      segments: { historyVirtualized: [], historyMounted, liveHead: [] },
+      boundary: {
+        hasVirtualizedHistory: false,
+        hasMountedHistory: true,
+        hasLiveHead: false,
+      },
+      renderers: createRenderers(vi.fn()),
+      listEmptyComponent: null,
+      viewportRef,
+      routeBottomAnchorRequest: null,
+      isAuthoritativeHistoryReady: true,
+      onNearBottomChange,
+      onNearHistoryStart: vi.fn(),
+      isLoadingOlderHistory: false,
+      hasOlderHistory: false,
+      olderHistoryProgressKey: null,
+      scrollEnabled: true,
+      listStyle: null,
+      baseListContentContainerStyle: null,
+      forwardListContentContainerStyle: null,
+    };
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    act(() => {
+      root?.render(strategy.render(renderInput));
+    });
+
+    const scrollContainer = container.querySelector('[data-testid="agent-chat-scroll"]');
+    if (!(scrollContainer instanceof HTMLElement)) {
+      throw new Error("Expected agent chat scroll container");
+    }
+    const metrics = installScrollBox(scrollContainer, {
+      scrollTop: 0,
+      scrollHeight: 2000,
+      clientHeight: 400,
+    });
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+    act(() => {
+      scrollContainer.dispatchEvent(new Event("scroll"));
+    });
+    onNearBottomChange.mockClear();
+
+    // A flush lands: the document grows and `scrollTop` has not been written yet,
+    // so the container momentarily measures far from its own end. Re-measuring it
+    // here reported a detach that never happened, which took the mounted-window
+    // pin and showed the jump-to-bottom button until the rAF stick reverted both.
+    // Anything taller than the old 64px probe did it: a tool row appearing, a
+    // group folding, an image loading, a code block rendering.
+    metrics.scrollHeight = 2600;
+    act(() => {
+      root?.render(
+        strategy.render({
+          ...renderInput,
+          segments: { ...renderInput.segments, liveHead: [userMessage(20)] },
+        }),
+      );
+    });
+
+    expect(onNearBottomChange).not.toHaveBeenCalledWith(false);
+  });
 });

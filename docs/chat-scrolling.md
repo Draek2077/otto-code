@@ -21,6 +21,35 @@ explicit "take me to the bottom" requests. Everything else the app does (content
 arriving, content collapsing, the viewport resizing) is not a reason to move the
 view.
 
+### The bottom is a band, and both halves use the same one
+
+`BOTTOM_REATTACH_THRESHOLD_PX` is 20px, roughly a line of text. Inside it the
+reader counts as at the end; outside it they are reading. **Both the detach test
+and the re-attach test read that one band**, and they have to, or the two halves
+of the rule contradict each other.
+
+The intent is to keep a reader who is _near_ the end pinned _to_ the end. There is
+no value in making anyone chase the bottom, and stopping a few pixels short is
+what a real gesture does.
+
+Each half was wrong on its own, in the same direction:
+
+- **Re-attaching** asked for the last pixel of the range (1px). `scrollTop` is
+  fractional while `scrollHeight` and `clientHeight` are integers, so at 125% or
+  150% display scaling that pixel is not reliably reachable at all. The symptom
+  was a transcript sitting visibly at the bottom, refusing to follow new output,
+  with the jump-to-bottom button still on screen.
+- **Detaching** fired on any upward move over a pixel. So a reader who nudged up
+  five pixels was detached, stranded just short of the end, with output piling up
+  below them and no way back except the button. Widening only the re-attach side
+  would have left this untouched: the leeway has to apply on the way up as well as
+  on the way back down.
+
+The tight 1px reading still exists for the involuntary-drop backstop further down,
+because "the browser clamped to the exact end of a shorter document" is a
+different claim from "the reader is close enough to count as at the bottom". That
+backstop is not a leeway and must not be widened to match.
+
 ### Returning to a retained tab preserves ownership
 
 A tab that is temporarily hidden stays mounted. Returning to it is not a new
@@ -112,10 +141,24 @@ The same machine covers a first page that does not fill the viewport, where no
 scroll event is ever produced: `scrollTop` is 0, which is inside the band, and
 the progress key stops it asking twice.
 
-Near-bottom is reported to the view as **"the app is following"**, not
-"`scrollTop` happens to be within 64px of the end". A reader who nudged the view
-up ten pixels is reading: the jump-to-bottom button appears and the
-mounted-window pin engages, even though they are still inside the band.
+Near-bottom is reported to the view as **"the app is following"**, and nothing
+else. It is not "`scrollTop` happens to be within 64px of the end", and it is
+deliberately not re-measured at the point of reporting.
+
+That second half is load-bearing. The report is made from the ResizeObserver
+while following, which is exactly the moment the document has grown and the stick
+has not written yet: `scrollTop` is still where the previous frame left it, so any
+flush taller than the probe measured as "not near the bottom" and reported a
+detach that had not happened. The jump-to-bottom button appeared and the
+mounted-window pin was taken, and then the rAF stick landed and reverted both, on
+every flush big enough to clear the probe. A tool row appearing, a group folding,
+an image loading and a code block rendering all clear it. The pin churn was the
+worse half: taking and dropping it moves the mounted/virtualized boundary, and
+every move is a handoff commit under a reader who was only watching.
+
+The follow state is already the answer. `handleDomScroll` owns it, decides it from
+a settled position, and nothing downstream may second-guess it from a measurement
+taken mid-update.
 
 ## Holding the position while the document changes
 
@@ -155,6 +198,23 @@ answer "did the app write this value", never "did the app write it _because of_
 the reader", so nothing downstream of a write may be the thing that decides
 whether the write was legitimate. Keep the two causes separable in the
 measurement itself.
+
+### The browser's own scroll anchoring is off, and stays off
+
+`overflow-anchor: none` on the scroll container is not an optimisation. Chrome's
+native scroll anchoring is enabled by default, and on this element it is a
+**fourth** thing writing `scrollTop`, next to the stick, the content anchor and
+the virtualizer's absorb. It selects its own anchor node out of the same mounted
+rows our anchor uses, adjusts on DOM mutation, and does it entirely outside the
+ownership rules below. Either it fires a scroll event, which reads as a position
+change nobody asked for, or it fires none and the recorded metrics go stale under
+the next real event.
+
+An owner that cannot be seen or cancelled is the one violation there is no way to
+reason about, and it is invisible to the unit tests by construction: a hand-built
+scroll box has no native anchoring to disable. Ours stays, because it measures in
+content space and hands off to the virtualizer by explicit ownership. The
+browser's goes.
 
 Two regions, two mechanisms, and **one owner per correction**:
 
@@ -295,8 +355,10 @@ outranks a drag. That is the user asking for the bottom.
 | `agent-stream/view.tsx`                    | Owns `isNearBottom`, the pin state, the jump-to-bottom button                   |
 
 Tests that encode the rules above: `strategy-web.test.tsx` (scrollbar drag
-detaches, clamping does not, the anchor holds a row still, a reader scroll is not
-written back when a commit lands before the scroll event, one older-history
+detaches, clamping does not, a nudge that stays inside the band does not detach, a
+reader who stops a few pixels short of the end re-attaches, a flush that grows the
+document does not report a detach, the anchor holds a row still, a reader scroll is
+not written back when a commit lands before the scroll event, one older-history
 request per page), `web-virtualization.test.ts` (a row resized below the fold
 does not move the reader, a row resized above it is absorbed in **both**
 follow states, a long single turn stays fully mounted while following, and the
