@@ -6,21 +6,7 @@ import {
 } from "@/git/client-forge-module";
 import type { CheckoutPrMergeMethod } from "@otto-code/protocol/messages";
 
-/**
- * Bitbucket Cloud's client-side merge logic.
- *
- * Otto's Bitbucket adapter is registered into the forge registry under the
- * forge id `github`, which is the provider-routing facade (see
- * `server/src/server/bootstrap.ts`), so a Bitbucket workspace's wire `forge`
- * never reads "bitbucket" and this module is never reached by
- * `getClientForgeLogicModule`. It is reached by the facts family instead:
- * `bitbucket-cloud-service.ts` tags its `forgeSpecific` envelope
- * `forge: "bitbucket"`, and `deriveMergeCapability` matches modules by parsing
- * that envelope rather than by id. That is also why there is no `urlGrammar`
- * and no `.view.tsx` sibling here - both of those are looked up by forge id.
- *
- * Server twin: `server/src/services/git-hosting/bitbucket-facts.ts`.
- */
+/** Bitbucket Cloud's client-side merge logic. */
 const BitbucketMergeFactsSchema = z
   .object({
     forge: z.literal("bitbucket"),
@@ -65,8 +51,8 @@ function deriveBitbucketMergeCapability(bitbucket: BitbucketMergeFacts): MergeCa
   };
 }
 
-export const bitbucketForgeLogic = {
-  id: "bitbucket",
+export const bitbucketCloudForgeLogic = {
+  id: "bitbucket-cloud",
   facts: defineForgeFacts({
     family: "bitbucket",
     schema: BitbucketMergeFactsSchema,

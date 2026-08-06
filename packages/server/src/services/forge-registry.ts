@@ -8,7 +8,12 @@ import { createGitLabService, probeGitLabHost } from "./gitlab-service.js";
 export type ForgeServiceFactory = () => ForgeService;
 
 export interface ForgeAdapterRegistration {
-  createService: ForgeServiceFactory;
+  /**
+   * A native forge creates its own service here. Provider-backed forges are
+   * composed at daemon bootstrap, where their credential resolver lives, and
+   * supply the service through WorkspaceGitService's override seam instead.
+   */
+  createService?: ForgeServiceFactory;
   matchesHost?: (host: string) => boolean;
   probeHost?: (host: string) => Promise<boolean>;
 }
@@ -58,7 +63,7 @@ export class ForgeRegistry {
       return null;
     }
     const adapter = this.#adapters.get(normalizedForge);
-    return adapter ? adapter.createService() : null;
+    return adapter?.createService?.() ?? null;
   }
 
   matchHost(host: string): string | null {
@@ -143,6 +148,10 @@ export const defaultForgeRegistry = new ForgeRegistry([
       probeHost: probeGitHubHost,
     },
   ],
+  // Bitbucket Cloud's REST adapter is provider-owned because its credentials
+  // live in the daemon configuration, not a CLI profile. Bootstrap binds that
+  // adapter to this registered Forge id; the registry owns host identity.
+  ["bitbucket-cloud", { matchesHost: matchesCloudHost("bitbucket-cloud") }],
   [
     "gitlab",
     {

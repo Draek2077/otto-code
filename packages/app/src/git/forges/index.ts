@@ -1,5 +1,5 @@
 import type { ClientForgeLogicModule, ForgeSpecificEnvelope } from "@/git/client-forge-module";
-import { bitbucketForgeLogic } from "./bitbucket";
+import { bitbucketCloudForgeLogic } from "./bitbucket-cloud";
 import { codebergForgeLogic } from "./codeberg";
 import { forgejoForgeLogic } from "./forgejo";
 import { giteaForgeLogic } from "./gitea";
@@ -18,8 +18,7 @@ export const CLIENT_FORGE_LOGIC_MODULES: readonly ClientForgeLogicModule[] = [
   giteaForgeLogic,
   forgejoForgeLogic,
   codebergForgeLogic,
-  // Otto-only: reached by facts family, not by forge id - see bitbucket.ts.
-  bitbucketForgeLogic,
+  bitbucketCloudForgeLogic,
 ];
 
 export function getClientForgeLogicModule(id: string): ClientForgeLogicModule | null {

@@ -68,6 +68,17 @@ export const FORGE_DEFINITIONS: ForgeDefinition[] = [
     cloudHosts: ["github.com", "ssh.github.com"],
   },
   {
+    id: "bitbucket-cloud",
+    displayName: "Bitbucket Cloud",
+    changeRequestAbbrev: "PR",
+    changeRequestNoun: "pull request",
+    changeRequestNumberPrefix: "#",
+    issueNumberPrefix: "#",
+    iconKind: "bitbucket-cloud",
+    signIn: null,
+    cloudHosts: ["bitbucket.org"],
+  },
+  {
     id: "gitlab",
     displayName: "GitLab",
     changeRequestAbbrev: "MR",

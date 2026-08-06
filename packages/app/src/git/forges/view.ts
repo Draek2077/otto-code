@@ -1,5 +1,5 @@
 import type { ClientForgeViewModule } from "@/git/client-forge-module";
-import { bitbucketForgeView } from "./bitbucket.view";
+import { bitbucketCloudForgeView } from "./bitbucket-cloud.view";
 import { codebergForgeView } from "./codeberg.view";
 import { forgejoForgeView } from "./forgejo.view";
 import { giteaForgeView } from "./gitea.view";
@@ -17,8 +17,7 @@ export const CLIENT_FORGE_VIEW_MODULES: readonly ClientForgeViewModule[] = [
   giteaForgeView,
   forgejoForgeView,
   codebergForgeView,
-  // Otto-only: paired with the logic module, not reached by forge id today.
-  bitbucketForgeView,
+  bitbucketCloudForgeView,
 ];
 
 export function getClientForgeViewModule(id: string): ClientForgeViewModule | null {

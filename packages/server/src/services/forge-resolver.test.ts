@@ -27,6 +27,7 @@ describe("parseRemoteHost", () => {
 describe("forgeForHost", () => {
   it("maps public registered forge hosts without resolver-specific branches", () => {
     expect(forgeForHost("github.com")).toBe("github");
+    expect(forgeForHost("bitbucket.org")).toBe("bitbucket-cloud");
     expect(forgeForHost("gitlab.com")).toBe("gitlab");
     expect(forgeForHost("gitea.com")).toBe("gitea");
     expect(forgeForHost("codeberg.org")).toBe("codeberg");
@@ -34,7 +35,6 @@ describe("forgeForHost", () => {
 
   it("returns null for hosts with no known adapter", () => {
     expect(forgeForHost("example.com")).toBeNull();
-    expect(forgeForHost("bitbucket.org")).toBeNull();
     expect(forgeForHost("gitlab.example.com")).toBeNull();
     expect(forgeForHost("forgejo.example.org")).toBeNull();
     expect(forgeForHost("notgitlab.example.org")).toBeNull();
@@ -49,6 +49,19 @@ describe("createForgeResolver", () => {
     const resolution = await resolver.resolve("/repo");
     expect(resolution).toMatchObject({ forge: "github", host: "github.com" });
     expect(resolution?.service.getCurrentPullRequestStatus).toBeTypeOf("function");
+  });
+
+  it("resolves Bitbucket Cloud through its registered Forge identity", async () => {
+    const bitbucketService = createForgeService("github");
+    const resolver = createForgeResolver({
+      resolveRemoteUrl: async () => "git@bitbucket.org:acme/repo.git",
+      createService: (forge) => (forge === "bitbucket-cloud" ? bitbucketService : null),
+    });
+
+    await expect(resolver.resolve("/repo")).resolves.toMatchObject({
+      forge: "bitbucket-cloud",
+      host: "bitbucket.org",
+    });
   });
 
   it("resolves a self-managed GitLab remote through the per-host probe", async () => {
@@ -305,6 +318,7 @@ describe("createForgeResolver", () => {
 
   it.each([
     ["github", "git@github.com:owner/repo.git", "github.com"],
+    ["bitbucket-cloud", "git@bitbucket.org:owner/repo.git", "bitbucket.org"],
     ["gitlab", "git@gitlab.com:group/repo.git", "gitlab.com"],
     ["gitea", "git@gitea.com:owner/repo.git", "gitea.com"],
     ["codeberg", "git@codeberg.org:owner/repo.git", "codeberg.org"],
@@ -314,6 +328,8 @@ describe("createForgeResolver", () => {
     });
     const resolver = createForgeResolver({
       resolveRemoteUrl: async () => remoteUrl,
+      createService: (forgeId) =>
+        forgeId === "bitbucket-cloud" ? createForgeService("github") : createForgeService(forgeId),
       probeForge,
     });
 
@@ -324,7 +340,7 @@ describe("createForgeResolver", () => {
   it("returns null and probes a foreign host only once", async () => {
     const probeForge = vi.fn(async () => null);
     const resolver = createForgeResolver({
-      resolveRemoteUrl: async () => "git@bitbucket.org:owner/repo.git",
+      resolveRemoteUrl: async () => "git@unknown.example.org:owner/repo.git",
       probeForge,
       resolveSshHostname: resolveSshHostnameAsLiteralHost,
     });

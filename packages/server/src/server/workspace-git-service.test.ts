@@ -280,6 +280,7 @@ interface CreateServiceTestOptions {
   getCheckoutShortstat?: ReturnType<typeof vi.fn>;
   getPullRequestStatus?: ReturnType<typeof vi.fn>;
   github?: ForgeService;
+  forgeOverrides?: Record<string, ForgeService>;
   resolveAbsoluteGitDir?: ReturnType<typeof vi.fn>;
   hasOriginRemote?: ReturnType<typeof vi.fn>;
   runGitFetch?: ReturnType<typeof vi.fn>;
@@ -317,7 +318,7 @@ function buildDefaultTestServiceDeps() {
 }
 
 function createService(options?: CreateServiceTestOptions) {
-  const { github, ...rest } = options ?? {};
+  const { github, forgeOverrides, ...rest } = options ?? {};
   return new WorkspaceGitServiceImpl({
     logger: createLogger() as unknown as pino.Logger,
     ottoHome: "/tmp/otto-test",
@@ -328,6 +329,7 @@ function createService(options?: CreateServiceTestOptions) {
       // forge resolver looks. Spread at the top level it becomes an ignored
       // `deps.github` and the caller silently gets the default stub instead of
       // the one it just configured.
+      ...(forgeOverrides ? { forgeOverrides } : {}),
       ...(github ? { forgeOverrides: { github } } : {}),
     },
   });
@@ -486,6 +488,45 @@ describe("WorkspaceGitServiceImpl", () => {
         },
       }),
     );
+    expect(getPullRequestStatus).toHaveBeenCalledTimes(1);
+
+    service.dispose();
+  });
+
+  test("getSnapshot loads Bitbucket pull request state through the hosting facade", async () => {
+    const getPullRequestStatus = vi.fn(async () =>
+      createPullRequestStatusResult({
+        status: {
+          url: "https://bitbucket.org/acme/repo/pull-requests/42",
+          title: "Restore the PR sidebar",
+          state: "open",
+          baseRefName: "main",
+          headRefName: "fix/pr-sidebar",
+          isMerged: false,
+        },
+      }),
+    );
+    const service = createService({
+      getCheckoutStatus: vi.fn(async (cwd: string) =>
+        createCheckoutStatus(cwd, { remoteUrl: "git@bitbucket.org:acme/repo.git" }),
+      ),
+      getCheckoutSnapshotFacts: vi.fn(async (cwd: string) => ({
+        ...createCheckoutSnapshotFacts(cwd),
+        remoteUrl: "git@bitbucket.org:acme/repo.git",
+      })),
+      getPullRequestStatus,
+      forgeOverrides: { "bitbucket-cloud": createGitHubServiceStub() },
+    });
+
+    await expect(service.getSnapshot(REPO_CWD)).resolves.toMatchObject({
+      forge: {
+        forge: "bitbucket-cloud",
+        pullRequest: expect.objectContaining({
+          title: "Restore the PR sidebar",
+          url: "https://bitbucket.org/acme/repo/pull-requests/42",
+        }),
+      },
+    });
     expect(getPullRequestStatus).toHaveBeenCalledTimes(1);
 
     service.dispose();

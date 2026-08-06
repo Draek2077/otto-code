@@ -119,7 +119,10 @@ export async function fanOutReconciledWorkspaceUpdates(input: {
 import { VoiceAssistantWebSocketServer } from "./websocket-server.js";
 import { createGitHubHostingService } from "../services/git-hosting/github-hosting-service.js";
 import { createGitHostingResolver } from "../services/git-hosting/resolver.js";
-import { createGitHostingRouter } from "../services/git-hosting/router.js";
+import {
+  createGitHostingProviderForgeAdapter,
+  createGitHostingRouter,
+} from "../services/git-hosting/router.js";
 import { readOttoConfigJson } from "../utils/otto-config-file.js";
 import {
   createOttoWorktree as createRegisteredOttoWorktree,
@@ -1225,10 +1228,8 @@ export async function createOttoDaemon(
     ottoHome: config.ottoHome,
     logger,
   });
-  // All PR/issue functionality routes through the git hosting layer: each
-  // call resolves the target project's configured provider (GitHub via gh
-  // CLI, Bitbucket Cloud via REST). `github` keeps its historical name - it
-  // is the provider-routing facade, not the gh CLI.
+  // All PR/issue functionality routes through the git hosting layer: GitHub
+  // uses gh and Bitbucket Cloud uses its native REST adapter.
   const gitHostingResolver = createGitHostingResolver({
     github: createGitHubHostingService(),
     getDaemonConfig: () => daemonConfigStore.get(),
@@ -1236,6 +1237,10 @@ export async function createOttoDaemon(
     ottoHome: config.ottoHome,
   });
   const github = createGitHostingRouter(gitHostingResolver);
+  const bitbucketCloud = createGitHostingProviderForgeAdapter(
+    gitHostingResolver,
+    "bitbucket-cloud",
+  );
   const unsubscribeGitHostingConfigChange = daemonConfigStore.onChange(() => {
     // Provider credentials may have changed; re-resolve on next use.
     gitHostingResolver.invalidateAll();
@@ -1245,7 +1250,7 @@ export async function createOttoDaemon(
     ottoHome: config.ottoHome,
     worktreesRoot: config.worktreesRoot,
     deps: {
-      forgeOverrides: { github },
+      forgeOverrides: { github, "bitbucket-cloud": bitbucketCloud },
       resolveHostingForCwd: async (cwd) => {
         const resolved = await gitHostingResolver.resolveForCwd(cwd);
         return {

@@ -9391,13 +9391,9 @@ export const CheckoutPrStatusSchema = z.object({
   // Provider-neutral per-PR hosting facts. Absent from old daemons; for
   // GitHub projects both this and the legacy `github` field are populated.
   //
-  // NOT a shim, and deliberately untagged: this does not collapse into `forge`.
-  // Otto registers every hosting provider into the forge registry under the
-  // forge id `github`, which is the provider-routing facade rather than the gh
-  // CLI (bootstrap.ts, `createGitHostingResolver`). So `forge` reads "github"
-  // for a Bitbucket workspace and only `hosting.provider` carries the truth.
-  // The two disagree by design; a reader wanting the real provider must use
-  // this field.
+  // NOT a shim, and deliberately untagged: this carries provider capabilities
+  // alongside the Forge identity. They match for built-in hosts today, but the
+  // provider remains the source of truth for hosting-specific capabilities.
   hosting: z
     .object({
       provider: GitHostingProviderIdWireSchema,
@@ -9435,9 +9431,8 @@ const CheckoutPrStatusPayloadSchema = z.object({
   githubFeaturesEnabled: z.boolean(),
   // Provider-neutral enablement. Present even when status is null so clients
   // can drive search/create-PR affordances for the workspace's provider.
-  // Permanent for the same reason as the `hosting` block on the PR status
-  // schema above: `forge` is a routing-facade id and cannot answer "which
-  // provider is this really".
+  // Permanent so provider-specific capability decisions do not need to infer
+  // behavior from the Forge presentation identity.
   hosting: z
     .object({
       provider: GitHostingProviderIdWireSchema,

@@ -1,6 +1,7 @@
 import type { ForgeService } from "../github-service.js";
+import type { GitHostingProviderId } from "@otto-code/protocol/messages";
 import type { GitHostingResolver } from "./resolver.js";
-import { GitHostingCredentialsMissingError } from "./types.js";
+import { GitHostingCredentialsMissingError, type GitHostingService } from "./types.js";
 
 // A ForgeService-shaped facade that routes every call to the provider the
 // target directory's project selects. Every method on the service interface
@@ -8,13 +9,47 @@ import { GitHostingCredentialsMissingError } from "./types.js";
 // auto-archive, agent tools) become multi-provider by swapping the singleton
 // injection for this router - no per-call-site changes.
 export function createGitHostingRouter(resolver: GitHostingResolver): ForgeService {
-  async function serviceFor(cwd: string) {
-    const resolved = await resolver.resolveForCwd(cwd);
-    if (!resolved.service) {
-      throw new GitHostingCredentialsMissingError(resolved.providerId);
-    }
-    return resolved.service;
+  return createGitHostingForgeAdapter({
+    serviceFor: async (cwd) => serviceFromResolution(await resolver.resolveForCwd(cwd)),
+    invalidate: (cwd) => resolver.invalidate(cwd),
+    dispose: () => resolver.dispose(),
+  });
+}
+
+/**
+ * Bind a Forge adapter to one configured hosting provider. Bitbucket Cloud is
+ * resolved by its Forge id, so it must not re-derive a provider from cwd as the
+ * historical cross-provider router does.
+ */
+export function createGitHostingProviderForgeAdapter(
+  resolver: GitHostingResolver,
+  providerId: GitHostingProviderId,
+): ForgeService {
+  return createGitHostingForgeAdapter({
+    serviceFor: async () => serviceFromResolution(resolver.resolveForProvider(providerId)),
+    invalidate: (cwd) => resolver.invalidate(cwd),
+    // The resolver is daemon-owned and shared with the general hosting router.
+    // This adapter is an injected Forge binding, not its lifecycle owner.
+    dispose: () => {},
+  });
+}
+
+function serviceFromResolution(resolved: {
+  providerId: GitHostingProviderId;
+  service: GitHostingService | null;
+}): GitHostingService {
+  if (!resolved.service) {
+    throw new GitHostingCredentialsMissingError(resolved.providerId);
   }
+  return resolved.service;
+}
+
+function createGitHostingForgeAdapter(options: {
+  serviceFor: (cwd: string) => Promise<GitHostingService>;
+  invalidate: (cwd: string) => void;
+  dispose: () => void;
+}): ForgeService {
+  const serviceFor = options.serviceFor;
 
   return {
     async listPullRequests(input) {
@@ -83,18 +118,14 @@ export function createGitHostingRouter(resolver: GitHostingResolver): ForgeServi
       let inner: { unsubscribe: () => void } | null = null;
       let cancelled = false;
       const subscribe = async () => {
-        const resolved = await resolver.resolveForCwd(input.cwd);
+        const service = await serviceFor(input.cwd);
         if (cancelled) {
           return;
         }
-        if (!resolved.service) {
-          input.onError?.(new GitHostingCredentialsMissingError(resolved.providerId));
+        if (!service.retainCurrentPullRequestStatusPoll) {
           return;
         }
-        if (!resolved.service.retainCurrentPullRequestStatusPoll) {
-          return;
-        }
-        inner = resolved.service.retainCurrentPullRequestStatusPoll(input);
+        inner = service.retainCurrentPullRequestStatusPoll(input);
         if (cancelled) {
           inner.unsubscribe();
         }
@@ -114,11 +145,11 @@ export function createGitHostingRouter(resolver: GitHostingResolver): ForgeServi
     },
 
     invalidate(input) {
-      resolver.invalidate(input.cwd);
+      options.invalidate(input.cwd);
     },
 
     dispose() {
-      resolver.dispose();
+      options.dispose();
     },
   };
 }

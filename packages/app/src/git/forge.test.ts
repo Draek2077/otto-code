@@ -74,6 +74,7 @@ describe("forgeFromRemoteUrl", () => {
     expect(forgeFromRemoteUrl("https://codeberg.org/example/repo.git")).toBe("codeberg");
     expect(forgeFromRemoteUrl("https://gitlab.com/example/repo.git")).toBe("gitlab");
     expect(forgeFromRemoteUrl("https://gitea.com/example/repo.git")).toBe("gitea");
+    expect(forgeFromRemoteUrl("https://bitbucket.org/example/repo.git")).toBe("bitbucket-cloud");
   });
 
   it("does not classify self-managed hosts by substring", () => {
@@ -102,6 +103,6 @@ describe("buildForgeSignInCommand", () => {
   });
 
   it("returns no sign-in command for an unknown forge with no known CLI", () => {
-    expect(buildForgeSignInCommand("bitbucket", "bitbucket.org")).toBeNull();
+    expect(buildForgeSignInCommand("bitbucket-cloud", "bitbucket.org")).toBeNull();
   });
 });

@@ -16,6 +16,9 @@ describe("forge registry", () => {
     expect(gitea?.getCurrentPullRequestStatus).toBeTypeOf("function");
     expect(forgejo?.getCurrentPullRequestStatus).toBeTypeOf("function");
     expect(codeberg?.getCurrentPullRequestStatus).toBeTypeOf("function");
+    // Bitbucket Cloud is provider-backed: bootstrap supplies its configured
+    // REST adapter rather than the global registry constructing one.
+    expect(createForgeService("bitbucket-cloud")).toBeNull();
   });
 
   it("returns null for an unregistered forge", () => {
@@ -32,9 +35,17 @@ describe("forge registry", () => {
     expect(defaultForgeRegistry.has("gitea")).toBe(true);
     expect(defaultForgeRegistry.has("forgejo")).toBe(true);
     expect(defaultForgeRegistry.has("codeberg")).toBe(true);
+    expect(defaultForgeRegistry.has("bitbucket-cloud")).toBe(true);
     expect(defaultForgeRegistry.has("bitbucket")).toBe(false);
     expect(defaultForgeRegistry.ids()).toEqual(
-      expect.arrayContaining(["github", "gitlab", "gitea", "forgejo", "codeberg"]),
+      expect.arrayContaining([
+        "github",
+        "gitlab",
+        "gitea",
+        "forgejo",
+        "codeberg",
+        "bitbucket-cloud",
+      ]),
     );
   });
 
