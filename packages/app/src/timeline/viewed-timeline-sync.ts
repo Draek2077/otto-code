@@ -133,6 +133,18 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
     if (changed) notifyListeners();
   };
 
+  const resetVisibilityCatchUpStatus = (agentIds: string[]) => {
+    let changed = false;
+    for (const agentId of agentIds) {
+      if (!visibilityCatchUpPending.has(agentId)) {
+        visibilityCatchUpPending.add(agentId);
+        changed = true;
+      }
+      if (visibilityCatchUpErrors.delete(agentId)) changed = true;
+    }
+    if (changed) notifyListeners();
+  };
+
   const cancelCatchUp = (agentId: string) => {
     catchUpGenerations.set(agentId, (catchUpGenerations.get(agentId) ?? 0) + 1);
     catchUps.get(agentId)?.cancelRetry?.();
@@ -256,6 +268,9 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
     cancelMembershipRetry?.();
     cancelMembershipRetry = null;
     if (disposed || !connected || deliveryMode !== "selective") return;
+    // A successful subscription retry clears the membership error, but the
+    // agent remains pending until its authoritative catch-up also succeeds.
+    resetVisibilityCatchUpStatus(requested);
     acknowledged = requested;
     if (generation !== membershipGeneration) {
       await reconcileLatestMembership();

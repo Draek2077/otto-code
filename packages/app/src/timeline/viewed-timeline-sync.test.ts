@@ -356,6 +356,25 @@ test("a failed catch-up reports once and retries through the explicit retry poli
   world.expectNoPendingMembership();
 });
 
+test("a successful membership retry clears its error before catch-up completes", async () => {
+  const world = new TimelineWorld();
+  world.sync.setConnected(true);
+  world.sync.replaceVisibleAgentIds("workspace", ["agent-a"]);
+  const failedMembership = await world.nextMembership();
+  failedMembership.fail("subscription unavailable");
+  await world.nextError();
+  expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("error");
+
+  const retryMembership = await world.nextRetry();
+  retryMembership();
+  const restoredMembership = await world.nextMembership();
+  restoredMembership.succeed();
+  const fetch = await world.nextFetch("agent-a");
+  expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("pending");
+  fetch.respond({ hasNewer: false });
+  await vi.waitFor(() => expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("ready"));
+});
+
 test("gap recovery supersedes completed catch-up and pages through the current tail", async () => {
   const world = new TimelineWorld();
   world.sync.setConnected(true);
@@ -418,7 +437,7 @@ test("membership failure autonomously retries without another visibility declara
   const retry = await world.nextMembership();
   retry.succeed();
   const catchUp = await world.nextFetch("agent-a");
-  expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("error");
+  expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("pending");
   catchUp.respond({ hasNewer: false });
   await vi.waitFor(() => expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("ready"));
 
