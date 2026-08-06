@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.3 - 2026-08-06
+
+### Added
+
+- Brain status now updates the instant it changes instead of waiting on the next poll
+- The Brain overview and rail show live inference stage and token throughput as it happens
+- Cancel a running Brain model download from the Models tab or search results
+
+### Fixed
+
+- Fixed Linux desktop installs killing long-running Brain commands like `otto brain serve` a few seconds after they started
+- Fixed `otto brain start` failing right after a Linux install because the self-launched command was built wrong
+- Fixed the Brain runtime status briefly showing "Install llama.cpp" before the host had actually answered whether a runtime was installed
+- Fixed chat messages alternating between code and rendered markdown when a reply wrapped its output in an extra markdown code fence
+- Fixed Codex chats reporting roughly double the actual token usage
+
 ## 0.8.2 - 2026-08-05
 
 ### Added
