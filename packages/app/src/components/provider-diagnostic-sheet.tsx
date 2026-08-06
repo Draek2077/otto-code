@@ -254,9 +254,9 @@ function DiscoveredModelRow({
   );
 }
 
-// The shrinkable text region of a model row: label, mono id, optional
-// description all ellipsize so the trailing control (tier picker / delete)
-// never gets pushed off screen; hovering reveals the full strings.
+// The shrinkable text region of a model row: the friendly Name and stable ID
+// get their own lines so the trailing control can stay vertically centered.
+// Both lines ellipsize; hovering reveals the full values and description.
 function ModelRowText({
   label,
   id,
@@ -270,22 +270,21 @@ function ModelRowText({
     <Tooltip delayDuration={300}>
       <TooltipTrigger asChild>
         <View style={sheetStyles.modelRowText}>
-          <Text style={sheetStyles.modelTitle} numberOfLines={1}>
-            {label}
-          </Text>
-          <Text
-            style={sheetStyles.monoHint}
-            numberOfLines={1}
-            selectable
-            dataSet={CODE_SURFACE_DATASET}
-          >
-            {id}
-          </Text>
-          {description ? (
-            <Text style={sheetStyles.descriptionInline} numberOfLines={1}>
-              {description}
+          <View style={sheetStyles.modelFieldRow}>
+            <Text style={sheetStyles.modelTitle} numberOfLines={1}>
+              {label}
             </Text>
-          ) : null}
+          </View>
+          <View style={sheetStyles.modelFieldRow}>
+            <Text
+              style={sheetStyles.monoHint}
+              numberOfLines={1}
+              selectable
+              dataSet={CODE_SURFACE_DATASET}
+            >
+              {id}
+            </Text>
+          </View>
         </View>
       </TooltipTrigger>
       <TooltipContent side="top" align="start" offset={4} maxWidth={480}>
@@ -1918,11 +1917,6 @@ const sheetStyles = StyleSheet.create((theme) => ({
     // Shrinks before the label: the mono id usually repeats it.
     flexShrink: 3,
   },
-  descriptionInline: {
-    flex: 1,
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.foregroundMuted,
-  },
   errorText: {
     fontSize: theme.fontSize.xs,
     color: theme.colors.destructive,
@@ -2019,14 +2013,18 @@ const sheetStyles = StyleSheet.create((theme) => ({
   modelRowText: {
     flex: 1,
     minWidth: 0,
+    gap: theme.spacing[1],
+  },
+  modelFieldRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[3],
+    minWidth: 0,
   },
   modelTitle: {
+    flex: 1,
+    minWidth: 0,
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
-    flexShrink: 1,
   },
   modelTooltip: {
     gap: theme.spacing[1],

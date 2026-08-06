@@ -102,6 +102,35 @@ function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
+/**
+ * The "an update is on offer" line, for both the downloading (`pending`) and
+ * ready-to-install (`available`) states. They differ only in the key prefix.
+ */
+function formatOfferedStatus(input: {
+  key: "pending" | "available";
+  availableUpdate: DesktopAppUpdateCheckResult | null;
+  lastCheckedAt: number | null;
+  formatVersion: (version: string | null | undefined) => string;
+  formatLastCheckedAt: (timestamp: number) => string;
+}): string {
+  const { key, availableUpdate, lastCheckedAt, formatVersion, formatLastCheckedAt } = input;
+  const checked = lastCheckedAt != null;
+  const suffix = checked ? "AndLastChecked" : "";
+  const time = checked ? formatLastCheckedAt(lastCheckedAt) : undefined;
+
+  if (availableUpdate?.latestVersion) {
+    return i18n.t(`desktop.updates.status.${key}WithVersion${suffix}`, {
+      version: formatVersion(availableUpdate.latestVersion),
+      time,
+    });
+  }
+
+  if (checked) {
+    return i18n.t(`desktop.updates.status.${key}WithLastChecked`, { time });
+  }
+  return i18n.t(`desktop.updates.status.${key}`);
+}
+
 export function formatStatusText(input: {
   status: DesktopAppUpdateStatus;
   availableUpdate: DesktopAppUpdateCheckResult | null;
@@ -136,46 +165,21 @@ export function formatStatusText(input: {
     return i18n.t("desktop.updates.status.upToDate");
   }
 
-  if (status === "pending") {
-    if (availableUpdate?.latestVersion) {
-      return i18n.t(
-        lastCheckedAt != null
-          ? "desktop.updates.status.pendingWithVersionAndLastChecked"
-          : "desktop.updates.status.pendingWithVersion",
-        {
-          version: formatVersion(availableUpdate.latestVersion),
-          time: lastCheckedAt != null ? formatLastCheckedAt(lastCheckedAt) : undefined,
-        },
-      );
-    }
-
-    if (lastCheckedAt != null) {
-      return i18n.t("desktop.updates.status.pendingWithLastChecked", {
-        time: formatLastCheckedAt(lastCheckedAt),
-      });
-    }
-    return i18n.t("desktop.updates.status.pending");
+  // An install that ended without installing leaves its reason here. It
+  // outranks the plain "available"/"downloading" line, which would otherwise
+  // read as though the user had never pressed the button.
+  if (installMessage && (status === "pending" || status === "available")) {
+    return installMessage;
   }
 
-  if (status === "available") {
-    if (availableUpdate?.latestVersion) {
-      return i18n.t(
-        lastCheckedAt != null
-          ? "desktop.updates.status.availableWithVersionAndLastChecked"
-          : "desktop.updates.status.availableWithVersion",
-        {
-          version: formatVersion(availableUpdate.latestVersion),
-          time: lastCheckedAt != null ? formatLastCheckedAt(lastCheckedAt) : undefined,
-        },
-      );
-    }
-
-    if (lastCheckedAt != null) {
-      return i18n.t("desktop.updates.status.availableWithLastChecked", {
-        time: formatLastCheckedAt(lastCheckedAt),
-      });
-    }
-    return i18n.t("desktop.updates.status.available");
+  if (status === "pending" || status === "available") {
+    return formatOfferedStatus({
+      key: status === "pending" ? "pending" : "available",
+      availableUpdate,
+      lastCheckedAt,
+      formatVersion,
+      formatLastCheckedAt,
+    });
   }
 
   if (status === "installed") {
@@ -187,6 +191,19 @@ export function formatStatusText(input: {
   }
 
   return i18n.t("desktop.updates.status.idle");
+}
+
+function resolveCheckedState(result: DesktopAppUpdateCheckResult): {
+  status: DesktopAppUpdateStatus;
+  availableUpdate: DesktopAppUpdateCheckResult | null;
+} {
+  if (result.readyToInstall) {
+    return { status: "available", availableUpdate: result };
+  }
+  if (result.hasUpdate) {
+    return { status: "pending", availableUpdate: result };
+  }
+  return { status: "up-to-date", availableUpdate: null };
 }
 
 export function createDesktopAppUpdater(deps: DesktopAppUpdaterDeps): DesktopAppUpdater {
@@ -248,24 +265,22 @@ export function createDesktopAppUpdater(deps: DesktopAppUpdaterDeps): DesktopApp
         return result;
       }
 
-      let nextStatus: DesktopAppUpdateStatus;
-      let nextAvailable: DesktopAppUpdateCheckResult | null;
-
-      if (result.readyToInstall) {
-        nextStatus = "available";
-        nextAvailable = result;
-      } else if (result.hasUpdate) {
-        nextStatus = "pending";
-        nextAvailable = result;
-      } else {
-        nextStatus = "up-to-date";
-        nextAvailable = null;
+      // A silent background poll is not authoritative about absence: it runs on
+      // the automatic intent, which the staged rollout can defer, and it fires
+      // every PENDING_RECHECK_MS while an update downloads. Letting it clear an
+      // update the user has already been shown is what made the pending state
+      // reset itself to "up to date" mid-download. Only a check the user asked
+      // for may take an update away.
+      if (silent && !result.hasUpdate && state.availableUpdate) {
+        return result;
       }
+
+      const checked = resolveCheckedState(result);
 
       commit({
         ...state,
-        status: nextStatus,
-        availableUpdate: nextAvailable,
+        status: checked.status,
+        availableUpdate: checked.availableUpdate,
         errorMessage: null,
         installMessage: null,
         lastCheckedAt: nextLastCheckedAt,
@@ -295,6 +310,9 @@ export function createDesktopAppUpdater(deps: DesktopAppUpdaterDeps): DesktopApp
   async function installUpdate(options: {
     releaseChannel: DesktopReleaseChannel;
   }): Promise<DesktopAppUpdateInstallResult | null> {
+    const statusBeforeInstall = state.status;
+    const updateBeforeInstall = state.availableUpdate;
+
     commit({
       ...state,
       status: "installing",
@@ -307,9 +325,40 @@ export function createDesktopAppUpdater(deps: DesktopAppUpdaterDeps): DesktopApp
         releaseChannel: options.releaseChannel,
       });
       const nextLastCheckedAt = deps.now();
+
+      if (result.outcome === "failed") {
+        // Reporting a failed download as "up to date" is how a long download
+        // that died looked identical to never having checked. Keep the update
+        // on offer so the action is still there to retry.
+        commit({
+          ...state,
+          status: "error",
+          availableUpdate: updateBeforeInstall,
+          errorMessage: result.message,
+          installMessage: null,
+          lastCheckedAt: nextLastCheckedAt,
+          isInstalling: false,
+        });
+        return result;
+      }
+
+      if (!result.installed) {
+        // Nothing installed, nothing wrong (superseded, still validating, or
+        // handed to a manual download). Say so, and keep the offer.
+        commit({
+          ...state,
+          status: statusBeforeInstall === "installing" ? "pending" : statusBeforeInstall,
+          availableUpdate: updateBeforeInstall,
+          installMessage: result.message,
+          lastCheckedAt: nextLastCheckedAt,
+          isInstalling: false,
+        });
+        return result;
+      }
+
       commit({
         ...state,
-        status: result.installed ? "installed" : "up-to-date",
+        status: "installed",
         availableUpdate: null,
         installMessage: result.message,
         lastCheckedAt: nextLastCheckedAt,

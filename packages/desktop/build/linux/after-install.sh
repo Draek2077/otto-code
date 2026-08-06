@@ -1,15 +1,24 @@
 #!/bin/sh
 # Runs as root during `dpkg --configure` (deb) / `%post` (rpm) right after
-# package files land in /opt/Otto. Symlinks the packaged executable onto
+# package files land in /opt/Otto. Symlinks the bundled CLI wrapper onto
 # /usr/bin so `otto` works in any shell — including non-interactive ones like
 # WSL — without the user ever launching the GUI or clicking "Install CLI" in
-# Settings. The GUI executable detects CLI-style argv and runs as the CLI
-# instead of opening a window (see packages/desktop/src/main.ts), so it
-# doubles as the `otto` binary; mirrors resolveCliInstallSourcePath's choice
-# for packaged non-AppImage Linux installs.
+# Settings. Mirrors resolveCliInstallSourcePath's choice for packaged
+# non-AppImage Linux installs.
+#
+# The link target is resources/bin/otto, NOT the GUI executable at
+# /opt/Otto/Otto. The GUI binary does run CLI argv (main.ts
+# runCliPassthroughIfRequested), but only as a trampoline into this same
+# wrapper — pointing the link here skips a process hop. Until 0.8.3 the link
+# went straight to the GUI binary and the passthrough ran the CLI in-process,
+# which broke exactly the commands that need a plain Node host: `otto brain
+# serve` printed "ready" and then died ~5s later when Electron quit (open
+# handles do not hold Electron open the way they hold Node open), orphaning
+# llama-server on its port and VRAM. The wrapper resolves symlinks back into
+# the bundle, so /usr/bin as the link location is fine.
 set -e
 
-TARGET="/opt/Otto/Otto"
+TARGET="/opt/Otto/resources/bin/otto"
 LINK="/usr/bin/otto"
 
 if [ -x "$TARGET" ]; then

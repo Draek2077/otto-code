@@ -30,7 +30,6 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { CommandCenter, CommandCenterRootActions } from "@/command-center/command-center";
 import { CommandCenterProvider } from "@/command-center/provider";
-import { DevModeBorder } from "@/components/dev-mode-border";
 import { WorktreeSetupCalloutSource } from "@/components/worktree-setup-callout-source";
 import { DownloadToast } from "@/components/download-toast";
 import { QuittingOverlay } from "@/components/quitting-overlay";
@@ -48,7 +47,7 @@ import { WorkspaceShortcutTargetsSubscriber } from "@/components/workspace-short
 import { FloatingPanelPortalHost } from "@/components/ui/floating-panel-portal";
 import { HostChooserModal, useHostChooser } from "@/hosts/host-chooser";
 import { getIsElectronRuntime, useIsCompactFormFactor } from "@/constants/layout";
-import { isDev, isNative, isWeb } from "@/constants/platform";
+import { isNative, isWeb } from "@/constants/platform";
 import { HorizontalScrollProvider } from "@/contexts/horizontal-scroll-context";
 import { SessionProvider } from "@/contexts/session-context";
 import { SidebarCalloutProvider } from "@/contexts/sidebar-callout-context";
@@ -1057,9 +1056,6 @@ function RootAppTree() {
           </RuntimeProviders>
         </RootProviders>
       </View>
-      {/* Navy viewport hairline marking a dev build - see components/dev-mode-border.
-          Gated on isDev so production never mounts it; the native module is a no-op. */}
-      {isDev ? <DevModeBorder /> : null}
     </GestureHandlerRootView>
   );
 }

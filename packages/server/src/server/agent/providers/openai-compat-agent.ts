@@ -58,6 +58,8 @@ import {
   OPENAI_COMPAT_AUTO_COMPACT_FALLBACK,
   OPENAI_COMPAT_AUTO_COMPACT_VALUES,
   OPENAI_COMPAT_DEFAULT_THINKING_OPTION_ID,
+  OPENAI_COMPAT_REASONING_EFFORTS,
+  OPENAI_COMPAT_TOGGLE_THINKING_OPTIONS,
   OPENAI_COMPAT_THINKING_OPTIONS,
   type OpenAICompatAutoCompact,
   type OpenAICompatReasoningEffort,
@@ -584,6 +586,8 @@ export interface OpenAICompatAgentClientOptions {
   mcpToolPermissions?: McpToolPermissionMode | null;
   /** Provider-level compaction defaults; per-agent feature values win. */
   compaction?: ProviderCompactionConfig | null;
+  /** Brain exposes a boolean reasoning toggle; other endpoints use levels. */
+  reasoningEffortMode?: "levels" | "toggle";
   /** Max tool rounds per turn; undefined/null = the built-in default. */
   maxToolRounds?: number | null;
   managedProcesses?: ManagedProcessRegistry | null;
@@ -887,6 +891,73 @@ function parseModelList(json: unknown): string[] {
   });
 }
 
+function parseModelNames(json: unknown): Map<string, string> {
+  if (!json || typeof json !== "object") return new Map();
+  const data = (json as Record<string, unknown>).data;
+  if (!Array.isArray(data)) return new Map();
+  const names = new Map<string, string>();
+  for (const entry of data) {
+    if (!entry || typeof entry !== "object") continue;
+    const id = (entry as { id?: unknown }).id;
+    const name = (entry as { name?: unknown }).name;
+    if (typeof id === "string" && typeof name === "string" && name.trim()) {
+      names.set(id, name);
+    }
+  }
+  return names;
+}
+
+function parseModelReasoningCapabilities(json: unknown): Map<string, boolean> {
+  const capabilities = new Map<string, boolean>();
+  if (!json || typeof json !== "object") return capabilities;
+  const data = (json as Record<string, unknown>).data;
+  if (!Array.isArray(data)) return capabilities;
+  for (const entry of data) {
+    if (!entry || typeof entry !== "object") continue;
+    const record = entry as Record<string, unknown>;
+    if (typeof record.id !== "string") continue;
+    if (typeof record.reasoning === "boolean") capabilities.set(record.id, record.reasoning);
+    else if (typeof record.thinking === "boolean") capabilities.set(record.id, record.thinking);
+  }
+  return capabilities;
+}
+
+function parseModelReasoningEfforts(json: unknown): Map<string, OpenAICompatReasoningEffort[]> {
+  const efforts = new Map<string, OpenAICompatReasoningEffort[]>();
+  if (!json || typeof json !== "object") return efforts;
+  const data = (json as Record<string, unknown>).data;
+  if (!Array.isArray(data)) return efforts;
+  const accepted = new Set(OPENAI_COMPAT_REASONING_EFFORTS);
+  for (const entry of data) {
+    if (!entry || typeof entry !== "object") continue;
+    const record = entry as Record<string, unknown>;
+    if (typeof record.id !== "string") continue;
+    const raw =
+      record.reasoning_efforts ??
+      record.reasoning_options ??
+      record.thinking_options ??
+      (Array.isArray(record.reasoning_effort) ? record.reasoning_effort : undefined);
+    if (!Array.isArray(raw)) continue;
+    const values = raw.flatMap((value) => {
+      if (typeof value !== "string") return [];
+      const normalized = value.toLowerCase() as OpenAICompatReasoningEffort;
+      return accepted.has(normalized) ? [normalized] : [];
+    });
+    if (values.length > 0) efforts.set(record.id, [...new Set(values)]);
+  }
+  return efforts;
+}
+
+function buildReasoningRequestField(
+  mode: "levels" | "toggle",
+  effort: OpenAICompatReasoningEffort,
+): Record<string, string> {
+  if (mode === "toggle") {
+    return { reasoning_effort: effort === "on" ? "on" : "off" };
+  }
+  return effort !== "off" ? { reasoning_effort: effort } : {};
+}
+
 /**
  * Optional per-model context-length fields seen across OpenAI-compatible
  * servers. LM Studio's native listing reports `loaded_context_length` (the
@@ -1136,6 +1207,7 @@ export class OpenAICompatAgentClient implements AgentClient {
   private readonly maxToolRounds: number | null;
   private readonly managedProcesses: ManagedProcessRegistry | null;
   private readonly endpointResolver: (() => ResolvedEndpoint) | null;
+  private readonly reasoningEffortMode: "levels" | "toggle";
 
   constructor(options: OpenAICompatAgentClientOptions) {
     this.provider = options.providerId;
@@ -1150,6 +1222,7 @@ export class OpenAICompatAgentClient implements AgentClient {
     this.maxToolRounds = options.maxToolRounds ?? null;
     this.managedProcesses = options.managedProcesses ?? null;
     this.endpointResolver = options.resolveEndpoint ?? null;
+    this.reasoningEffortMode = options.reasoningEffortMode ?? "levels";
   }
 
   /**
@@ -1187,19 +1260,40 @@ export class OpenAICompatAgentClient implements AgentClient {
     }
     const listing: unknown = await response.json();
     const modelIds = parseModelList(listing);
+    const modelNames = parseModelNames(listing);
     const contextLengths = parseModelContextLengths(listing);
+    const reasoningCapabilities = parseModelReasoningCapabilities(listing);
+    const advertisedReasoningEfforts = parseModelReasoningEfforts(listing);
     const models: AgentModelDefinition[] = modelIds.map((id, index) => {
+      let thinkingOptions:
+        | readonly NonNullable<AgentModelDefinition["thinkingOptions"]>[number][]
+        | undefined;
+      if (this.reasoningEffortMode === "toggle") {
+        const advertised = advertisedReasoningEfforts.get(id);
+        if (advertised) {
+          thinkingOptions = advertised.map((value) => ({
+            id: value,
+            label: value === "on" ? "On" : value[0]!.toUpperCase() + value.slice(1),
+          }));
+        } else {
+          thinkingOptions =
+            reasoningCapabilities.get(id) === false
+              ? undefined
+              : OPENAI_COMPAT_TOGGLE_THINKING_OPTIONS;
+        }
+      } else {
+        thinkingOptions = OPENAI_COMPAT_THINKING_OPTIONS;
+      }
       const model: AgentModelDefinition = {
         provider: this.provider,
         id,
-        label: id,
+        label: modelNames.get(id) ?? id,
         isDefault: index === 0,
-        // Whether a given endpoint model honors reasoning_effort isn't
-        // discoverable from /models, so every model advertises the full set
-        // with "off" as the safe default (off omits the parameter entirely).
-        thinkingOptions: [...OPENAI_COMPAT_THINKING_OPTIONS],
-        defaultThinkingOptionId: OPENAI_COMPAT_DEFAULT_THINKING_OPTION_ID,
       };
+      if (thinkingOptions) {
+        model.thinkingOptions = [...thinkingOptions];
+        model.defaultThinkingOptionId = OPENAI_COMPAT_DEFAULT_THINKING_OPTION_ID;
+      }
       const contextWindowMaxTokens = contextLengths.get(id);
       if (typeof contextWindowMaxTokens === "number") {
         model.contextWindowMaxTokens = contextWindowMaxTokens;
@@ -1242,7 +1336,7 @@ export class OpenAICompatAgentClient implements AgentClient {
           model,
           messages,
           stream: false,
-          ...(effort !== "off" ? { reasoning_effort: effort } : {}),
+          ...buildReasoningRequestField(this.reasoningEffortMode, effort),
         }),
       });
     } catch (error) {
@@ -1347,6 +1441,7 @@ export class OpenAICompatAgentClient implements AgentClient {
       connectors: this.connectors,
       mcpToolPermissions: this.mcpToolPermissions,
       compaction: this.compaction,
+      reasoningEffortMode: this.reasoningEffortMode,
       maxToolRounds: this.maxToolRounds,
       managedProcesses: this.managedProcesses,
     });
@@ -1381,6 +1476,7 @@ export class OpenAICompatAgentClient implements AgentClient {
       connectors: this.connectors,
       mcpToolPermissions: this.mcpToolPermissions,
       compaction: this.compaction,
+      reasoningEffortMode: this.reasoningEffortMode,
       maxToolRounds: this.maxToolRounds,
       managedProcesses: this.managedProcesses,
     });
@@ -1533,6 +1629,7 @@ export class OpenAICompatAgentSession implements AgentSession {
   private readonly label: string;
   private readonly env?: Record<string, string>;
   private readonly endpointResolver: (() => ResolvedEndpoint) | null;
+  private readonly reasoningEffortMode: "levels" | "toggle";
   private readonly logger?: Logger;
   private readonly cwd: string;
   private readonly listeners = new Set<(event: AgentStreamEvent) => void>();
@@ -1618,6 +1715,7 @@ export class OpenAICompatAgentSession implements AgentSession {
     connectors?: readonly ConnectorConfig[] | null;
     mcpToolPermissions?: McpToolPermissionMode;
     compaction?: ProviderCompactionConfig | null;
+    reasoningEffortMode?: "levels" | "toggle";
     maxToolRounds?: number | null;
     managedProcesses?: ManagedProcessRegistry | null;
     /** See OpenAICompatAgentClientOptions.resolveEndpoint. */
@@ -1627,6 +1725,7 @@ export class OpenAICompatAgentSession implements AgentSession {
     this.label = options.label;
     this.env = options.env;
     this.endpointResolver = options.resolveEndpoint ?? null;
+    this.reasoningEffortMode = options.reasoningEffortMode ?? "levels";
     this.logger = options.logger;
     this.id = options.sessionId;
     this.cwd = options.config.cwd;
@@ -3295,7 +3394,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
         // field; servers that don't support it ignore it. Cache hits come back
         // as prompt_tokens_details.cached_tokens (see parseStreamChunk).
         prompt_cache_key: this.id,
-        ...(this.reasoningEffort !== "off" ? { reasoning_effort: this.reasoningEffort } : {}),
+        ...buildReasoningRequestField(this.reasoningEffortMode, this.reasoningEffort),
         ...(toolsPayload.length > 0 ? { tools: toolsPayload, tool_choice: "auto" } : {}),
       }),
     });

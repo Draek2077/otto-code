@@ -1,6 +1,6 @@
 import type { AgentFeature, AgentFeatureSelect, AgentSelectOption } from "../agent-sdk-types.js";
 
-export const OPENAI_COMPAT_REASONING_EFFORTS = ["off", "low", "medium", "high"] as const;
+export const OPENAI_COMPAT_REASONING_EFFORTS = ["off", "on", "low", "medium", "high"] as const;
 
 export type OpenAICompatReasoningEffort = (typeof OPENAI_COMPAT_REASONING_EFFORTS)[number];
 
@@ -17,6 +17,11 @@ export const OPENAI_COMPAT_THINKING_OPTIONS: readonly AgentSelectOption[] = [
   { id: "low", label: "Low" },
   { id: "medium", label: "Medium" },
   { id: "high", label: "High" },
+];
+
+export const OPENAI_COMPAT_TOGGLE_THINKING_OPTIONS: readonly AgentSelectOption[] = [
+  { id: "off", label: "Off", description: "Don't request reasoning", isDefault: true },
+  { id: "on", label: "On", description: "Request reasoning" },
 ];
 
 export const OPENAI_COMPAT_DEFAULT_THINKING_OPTION_ID: OpenAICompatReasoningEffort = "off";

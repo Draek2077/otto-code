@@ -13,8 +13,12 @@ export interface DesktopAppUpdateCheckResult {
   errorMessage: string | null;
 }
 
+/** Mirrors AppUpdateInstallOutcome in the desktop shell's app-update-service. */
+export type DesktopAppUpdateInstallOutcome = "installed" | "deferred" | "failed";
+
 export interface DesktopAppUpdateInstallResult {
   installed: boolean;
+  outcome: DesktopAppUpdateInstallOutcome;
   version: string | null;
   message: string;
 }
@@ -150,11 +154,22 @@ export async function installDesktopAppUpdate({
     throw new Error("Unexpected response while installing desktop update.");
   }
 
+  const installed = result.installed === true;
   return {
-    installed: result.installed === true,
+    installed,
+    // A shell that predates the field says nothing about why it stopped, so
+    // read it as "deferred" rather than inventing a failure the user can see.
+    outcome: parseInstallOutcome(result.outcome, installed),
     version: toStringOrNull(result.version),
     message: toStringOrNull(result.message) ?? i18n.t("desktop.updates.status.installed"),
   };
+}
+
+function parseInstallOutcome(raw: unknown, installed: boolean): DesktopAppUpdateInstallOutcome {
+  if (raw === "installed" || raw === "deferred" || raw === "failed") {
+    return raw;
+  }
+  return installed ? "installed" : "deferred";
 }
 
 export async function runLocalDaemonUpdate(): Promise<LocalDaemonUpdateResult> {

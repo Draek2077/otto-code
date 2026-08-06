@@ -1743,7 +1743,10 @@ function readCodexSubAgentActivity(item: unknown): CodexSubAgentActivity | null 
   };
 }
 
-function shouldIgnoreMirroredLifecycleItem(source: "item" | "codex_event", item: unknown): boolean {
+function shouldIgnoreMirroredLifecycleStart(
+  source: "item" | "codex_event",
+  item: unknown,
+): boolean {
   return source === "codex_event" && !readCodexSubAgentActivity(item);
 }
 
@@ -5760,13 +5763,11 @@ export class CodexAppServerAgentSession implements AgentSession {
   private handleItemCompletedNotification(
     parsed: Extract<ParsedCodexNotification, { kind: "item_completed" }>,
   ): void {
-    // Codex emits mirrored lifecycle notifications via both `codex/event/item_*`
-    // and canonical `item/*`. Render ordinary items only from the canonical
-    // channel, but accept a legacy-only child announcement so it can establish
-    // the provider-subagent route.
-    if (shouldIgnoreMirroredLifecycleItem(parsed.source, parsed.item)) {
-      return;
-    }
+    // Codex normally mirrors lifecycle notifications through both channels,
+    // but app-server versions can emit a legacy completion without its
+    // canonical counterpart. The item-id ledger below de-duplicates a true
+    // mirror, so retain either terminal signal rather than strand a tool row
+    // in its running state.
     if (this.isUserMessageItem(parsed.item)) {
       this.handleUserMessageItem(parsed);
       return;
@@ -5911,7 +5912,7 @@ export class CodexAppServerAgentSession implements AgentSession {
   private handleItemStartedNotification(
     parsed: Extract<ParsedCodexNotification, { kind: "item_started" }>,
   ): void {
-    if (shouldIgnoreMirroredLifecycleItem(parsed.source, parsed.item)) {
+    if (shouldIgnoreMirroredLifecycleStart(parsed.source, parsed.item)) {
       return;
     }
     if (this.isUserMessageItem(parsed.item)) {

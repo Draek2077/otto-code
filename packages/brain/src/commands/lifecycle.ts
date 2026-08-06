@@ -5,7 +5,7 @@
  * they are always explicit user actions, never auto-started.
  */
 import { spawn } from "node:child_process";
-import { openSync } from "node:fs";
+import { existsSync, openSync } from "node:fs";
 import http from "node:http";
 import https from "node:https";
 import type { Command } from "commander";
@@ -120,7 +120,20 @@ export async function runStartCommand(
   }
 
   const { logFile } = resolveBrainPaths();
+  // process.argv[1] is the entry script of whatever host is running us (the npm
+  // CLI's bin, the desktop bundle's dist/index.js, bin/otto-brain). If it is not
+  // a file, we are running somewhere that does not lay argv out like Node - the
+  // detached child would silently get a verb where the script belongs and parse
+  // as garbage, so say so instead.
   const entry = process.argv[1];
+  if (!entry || !existsSync(entry)) {
+    throw new CommandError({
+      code: "NO_ENTRYPOINT",
+      message: "cannot start the brain detached: this host does not expose a CLI entry script",
+      details:
+        "run `otto brain serve` in the foreground, or use the npm CLI (npm i -g @otto-code/cli)",
+    });
+  }
   const args = [...invocationVerbPrefix(command), "serve"];
   if (options.model) args.push("--model", options.model);
 

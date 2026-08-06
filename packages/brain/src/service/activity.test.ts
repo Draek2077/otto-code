@@ -122,6 +122,17 @@ describe("op activity", () => {
 });
 
 describe("ReasoningTracker", () => {
+  it("reports processing from request start until the first model delta", () => {
+    const tracker = new ReasoningTracker();
+    tracker.begin("a");
+    expect(tracker.snapshot).toEqual({
+      activeRequests: 1,
+      processing: 1,
+      thinking: 0,
+      generating: 0,
+    });
+  });
+
   it("is inactive until reasoning is seen", () => {
     const tracker = new ReasoningTracker();
     expect(tracker.active).toBe(false);
@@ -141,6 +152,39 @@ describe("ReasoningTracker", () => {
     expect(tracker.active).toBe(true);
     tracker.observe("a", '{"content":"the answer"}');
     expect(tracker.active).toBe(false);
+  });
+
+  it("distinguishes parallel processing, thinking, and generating requests", () => {
+    const tracker = new ReasoningTracker();
+    tracker.begin("processing");
+    tracker.begin("thinking");
+    tracker.begin("generating");
+    tracker.observe("thinking", '{"reasoning_content":"hmm"}');
+    tracker.observe("generating", '{"content":"answer"}');
+    expect(tracker.snapshot).toEqual({
+      activeRequests: 3,
+      processing: 1,
+      thinking: 1,
+      generating: 1,
+    });
+  });
+
+  it("recognises a stage field split across transport chunks", () => {
+    const tracker = new ReasoningTracker();
+    tracker.begin("a");
+    tracker.observe("a", 'data: {"delta":{"reasoning_');
+    tracker.observe("a", 'content":"hmm"}}\n\n');
+    expect(tracker.snapshot.thinking).toBe(1);
+  });
+
+  it("tracks runtimes that leave reasoning inside think tags", () => {
+    const tracker = new ReasoningTracker();
+    tracker.begin("a");
+    tracker.observe("a", '{"content":"<think>"}');
+    tracker.observe("a", '{"content":"working through it"}');
+    expect(tracker.snapshot.thinking).toBe(1);
+    tracker.observe("a", '{"content":"</think>"}');
+    expect(tracker.snapshot.generating).toBe(1);
   });
 
   it("does not go back to thinking after content has started", () => {
@@ -174,6 +218,7 @@ describe("chunk predicates", () => {
     expect(chunkHasReasoning('{"type":"thinking_delta"}')).toBe(true);
     expect(chunkHasReasoning('{"reasoning_content":"x"}')).toBe(true);
     expect(chunkHasReasoning('{"content":"x"}')).toBe(false);
+    expect(chunkHasReasoning('{"content":"a reasoning answer"}')).toBe(false);
   });
 
   it("recognises both API shapes' content", () => {
@@ -182,5 +227,10 @@ describe("chunk predicates", () => {
     // An empty content delta is not content: it rides on every chunk of some
     // builds and would end the thought on the very first one.
     expect(chunkHasContent('{"content":""}')).toBe(false);
+  });
+
+  it("treats tool-call output as generation rather than silent processing", () => {
+    expect(chunkHasContent('{"delta":{"tool_calls":[{"index":0}]}}')).toBe(true);
+    expect(chunkHasContent('{"type":"input_json_delta","partial_json":"{}"}')).toBe(true);
   });
 });

@@ -2637,6 +2637,48 @@ describe("Codex app-server provider", () => {
       status: "completed",
     });
   });
+
+  test("uses a legacy Codex item completion when its canonical counterpart is absent", () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    asInternals(session).handleNotification("item/started", {
+      threadId: "test-thread",
+      item: {
+        type: "commandExecution",
+        id: "legacy-completion-shell-action",
+        status: "running",
+        command: "git status --short",
+        cwd: "/tmp/codex-question-test",
+      },
+    });
+    asInternals(session).handleNotification("codex/event/item_completed", {
+      threadId: "test-thread",
+      msg: {
+        type: "item_completed",
+        item: {
+          type: "commandExecution",
+          id: "legacy-completion-shell-action",
+          status: "completed",
+          command: "git status --short",
+          cwd: "/tmp/codex-question-test",
+          aggregatedOutput:
+            " M packages/server/src/server/agent/providers/codex-app-server-agent.ts",
+          exitCode: 0,
+        },
+      },
+    });
+
+    const toolCalls = events.flatMap((event) =>
+      event.type === "timeline" && event.item.type === "tool_call" ? [event.item] : [],
+    );
+    expect(toolCalls.map((item) => [item.callId, item.status])).toEqual([
+      ["legacy-completion-shell-action", "running"],
+      ["legacy-completion-shell-action", "completed"],
+    ]);
+  });
+
   test("never treats an unmapped foreign terminal as the root terminal", () => {
     const session = createSession();
     const events: AgentStreamEvent[] = [];

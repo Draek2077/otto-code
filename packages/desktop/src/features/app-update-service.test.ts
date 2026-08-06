@@ -127,6 +127,11 @@ class FakeAppUpdateRuntime implements AppUpdateRuntime {
     const admitted = await this.gate(result.updateInfo);
     const isUpdateAvailable = result.isUpdateAvailable && admitted;
     this.downloadableUpdate = isUpdateAvailable ? result.updateInfo : null;
+    // electron-updater has no separate "deferred by rollout" signal: a refused
+    // admission is reported as update-not-available, same as being up to date.
+    if (!isUpdateAvailable) {
+      this.configuration?.onUpdateNotAvailable();
+    }
     return { ...result, isUpdateAvailable };
   }
 
@@ -206,6 +211,73 @@ describe("app update service", () => {
       date: "2026-04-28T00:00:00.000Z",
       errorMessage: null,
     });
+  });
+
+  // The client polls every 10s while an update is pending, and those polls are
+  // automatic - so a user who manually checked during a staged rollout used to
+  // watch the offer vanish seconds later, mid-download.
+  it("keeps a manually surfaced update when an automatic recheck is deferred by the rollout", async () => {
+    const { runtime, service } = createService();
+    runtime.nextCheck({ isUpdateAvailable: true, updateInfo: rolledOutUpdate });
+    const manual = await service.checkForAppUpdate({
+      currentVersion: "1.2.3",
+      releaseChannel: "stable",
+      intent: "manual",
+    });
+    expect(manual.hasUpdate).toBe(true);
+
+    runtime.nextCheck({ isUpdateAvailable: true, updateInfo: rolledOutUpdate });
+    const automatic = await service.checkForAppUpdate({
+      currentVersion: "1.2.3",
+      releaseChannel: "stable",
+      intent: "automatic",
+    });
+
+    expect(automatic.hasUpdate).toBe(true);
+    expect(automatic.latestVersion).toBe("1.2.4");
+  });
+
+  it("still installs an update that an automatic recheck deferred mid-download", async () => {
+    const { runtime, service } = createService();
+    runtime.nextCheck({ isUpdateAvailable: true, updateInfo: rolledOutUpdate });
+    const download = runtime.beginUpdateDownload(rolledOutUpdate);
+
+    const install = service.downloadAndInstallUpdate({
+      currentVersion: "1.2.3",
+      releaseChannel: "stable",
+    });
+
+    runtime.nextCheck({ isUpdateAvailable: true, updateInfo: rolledOutUpdate });
+    await service.checkForAppUpdate({
+      currentVersion: "1.2.3",
+      releaseChannel: "stable",
+      intent: "automatic",
+    });
+    download.resolve();
+
+    await expect(install).resolves.toMatchObject({ installed: true, version: "1.2.4" });
+    expect(runtime.installedVersions).toEqual(["1.2.4"]);
+  });
+
+  it("still clears a cached update once the app is genuinely up to date", async () => {
+    const { runtime, service } = createService();
+    runtime.nextCheck({ isUpdateAvailable: true, updateInfo: rolledOutUpdate });
+    await service.checkForAppUpdate({
+      currentVersion: "1.2.3",
+      releaseChannel: "stable",
+      intent: "manual",
+    });
+
+    // No manifest at all: the rollout never weighs in, so this is real absence.
+    runtime.nextCheck(null);
+    const result = await service.checkForAppUpdate({
+      currentVersion: "1.2.3",
+      releaseChannel: "stable",
+      intent: "automatic",
+    });
+
+    expect(result.hasUpdate).toBe(false);
+    expect(result.latestVersion).toBe("1.2.3");
   });
 
   it("waits for an automatic poll before starting a manual rollout-bypassing check", async () => {

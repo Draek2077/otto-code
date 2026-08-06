@@ -25,6 +25,19 @@ describe("cli-install-path", () => {
     ).toBe("/home/user/Applications/Otto.AppImage");
   });
 
+  it("uses the bundled shim for packaged deb/rpm linux installs", () => {
+    // Not the GUI executable: it runs the CLI in-process and quits the app the
+    // moment the command's promise resolves, killing `otto brain serve`.
+    expect(
+      resolveCliInstallSourcePath({
+        platform: "linux",
+        isPackaged: true,
+        executablePath: "/opt/Otto/Otto",
+        shimPath: "/opt/Otto/resources/bin/otto",
+      }),
+    ).toBe("/opt/Otto/resources/bin/otto");
+  });
+
   it("falls back to the shim on windows and in development", () => {
     expect(
       resolveCliInstallSourcePath({

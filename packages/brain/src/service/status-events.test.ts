@@ -8,13 +8,21 @@ function flush(): Promise<void> {
 }
 
 describe("statusChangeKey", () => {
-  it("ignores traffic counters, the log length, and per-token slot detail", () => {
+  it("ignores traffic counters, the log length, and slot context capacity", () => {
     const base = {
       state: "ready",
       telemetry: { requests: 1, ok: 1, warning: null },
       recent: [{ verdict: "ok" }],
       logLineCount: 10,
-      slots: { total: 4, busy: 1, idle: 3, prefill: 0, decode: 1, contexts: [512], threads: [{}] },
+      slots: {
+        total: 4,
+        busy: 1,
+        idle: 3,
+        prefill: 0,
+        decode: 1,
+        contexts: [512],
+        threads: [{ slot: 0, generatedTokens: 12 }],
+      },
     };
     const churned = {
       state: "ready",
@@ -28,10 +36,30 @@ describe("statusChangeKey", () => {
         prefill: 0,
         decode: 1,
         contexts: [4096],
-        threads: [{ tokensPerSecond: 92 }],
+        threads: [{ slot: 0, generatedTokens: 12 }],
       },
     };
     expect(statusChangeKey(churned)).toBe(statusChangeKey(base));
+  });
+
+  it("treats bounded live token counters and rates as a change", () => {
+    const earlier = {
+      slots: { busy: 1, decode: 1, threads: [{ slot: 0, generatedTokens: 12 }] },
+    };
+    const later = {
+      slots: {
+        busy: 1,
+        decode: 1,
+        threads: [{ slot: 0, generatedTokens: 25, tokensPerSecond: 52 }],
+      },
+    };
+    expect(statusChangeKey(later)).not.toBe(statusChangeKey(earlier));
+  });
+
+  it("treats aggregate inference-stage movement as a change", () => {
+    const processing = { inference: { activeRequests: 1, processing: 1, thinking: 0 } };
+    const thinking = { inference: { activeRequests: 1, processing: 0, thinking: 1 } };
+    expect(statusChangeKey(thinking)).not.toBe(statusChangeKey(processing));
   });
 
   it("treats the slot phase split as a change", () => {

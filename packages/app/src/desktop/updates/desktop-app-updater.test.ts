@@ -99,6 +99,43 @@ describe("desktop app updater - check", () => {
     await pending;
   });
 
+  // While an update is pending the app polls every PENDING_RECHECK_MS on the
+  // automatic intent, which a staged rollout can defer. Letting that answer
+  // clear the update reset the UI to "up to date" mid-download.
+  it("does not let a silent check take away an update the user was shown", async () => {
+    const { updater, port } = createUpdater();
+    const pending = buildFakeCheckResult({ hasUpdate: true, latestVersion: "1.2.4" });
+    port.nextCheckResult(pending);
+    await updater.checkForUpdates({ releaseChannel: "stable" });
+    expect(updater.getSnapshot().status).toBe("pending");
+
+    port.nextCheckResult(buildFakeCheckResult({ hasUpdate: false }));
+    await updater.checkForUpdates({
+      releaseChannel: "stable",
+      intent: "automatic",
+      silent: true,
+    });
+
+    expect(updater.getSnapshot()).toMatchObject({
+      status: "pending",
+      availableUpdate: pending,
+    });
+  });
+
+  it("still lets a check the user asked for clear a stale update", async () => {
+    const { updater, port } = createUpdater();
+    port.nextCheckResult(buildFakeCheckResult({ hasUpdate: true, latestVersion: "1.2.4" }));
+    await updater.checkForUpdates({ releaseChannel: "stable" });
+
+    port.nextCheckResult(buildFakeCheckResult({ hasUpdate: false }));
+    await updater.checkForUpdates({ releaseChannel: "stable" });
+
+    expect(updater.getSnapshot()).toMatchObject({
+      status: "up-to-date",
+      availableUpdate: null,
+    });
+  });
+
   it("reports 'available' when the check resolves with a downloaded update", async () => {
     const { updater, port } = createUpdater({ now: () => 42 });
     port.nextCheckResult(
@@ -331,13 +368,52 @@ describe("desktop app updater - install", () => {
     });
   });
 
-  it("moves to 'up-to-date' when the install reports nothing to install", async () => {
+  it("keeps the update on offer and explains itself when the install defers", async () => {
     const { updater, port } = createUpdater();
-    port.nextInstallResult(buildFakeInstallResult({ installed: false }));
+    const pending = buildFakeCheckResult({ hasUpdate: true, latestVersion: "1.2.4" });
+    port.nextCheckResult(pending);
+    await updater.checkForUpdates({ releaseChannel: "stable" });
 
+    port.nextInstallResult(
+      buildFakeInstallResult({
+        installed: false,
+        outcome: "deferred",
+        message: "A newer update was found and will be installed later.",
+      }),
+    );
     await updater.installUpdate({ releaseChannel: "stable" });
 
-    expect(updater.getSnapshot().status).toBe("up-to-date");
+    expect(updater.getSnapshot()).toMatchObject({
+      status: "pending",
+      availableUpdate: pending,
+      installMessage: "A newer update was found and will be installed later.",
+      isInstalling: false,
+    });
+  });
+
+  // A download that dies after several minutes used to render as "up to date",
+  // which is indistinguishable from never having checked at all.
+  it("surfaces a failed install instead of claiming the app is up to date", async () => {
+    const { updater, port } = createUpdater();
+    const pending = buildFakeCheckResult({ hasUpdate: true, latestVersion: "1.2.4" });
+    port.nextCheckResult(pending);
+    await updater.checkForUpdates({ releaseChannel: "stable" });
+
+    port.nextInstallResult(
+      buildFakeInstallResult({
+        installed: false,
+        outcome: "failed",
+        message: "Update failed: net::ERR_CONNECTION_RESET",
+      }),
+    );
+    await updater.installUpdate({ releaseChannel: "stable" });
+
+    expect(updater.getSnapshot()).toMatchObject({
+      status: "error",
+      errorMessage: "Update failed: net::ERR_CONNECTION_RESET",
+      availableUpdate: pending,
+      isInstalling: false,
+    });
   });
 
   it("reports the install error and moves to 'error' when the install throws", async () => {

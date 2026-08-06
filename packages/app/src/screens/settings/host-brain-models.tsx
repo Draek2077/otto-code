@@ -155,9 +155,19 @@ function InlineJobProgress({ job }: { job: BrainJob | undefined }) {
 // Runtime
 // ---------------------------------------------------------------------------
 
+/**
+ * Three states, not two: unknown, absent, installed.
+ *
+ * An empty runtime list is only evidence of absence once the host has actually
+ * answered. Before that - the daemon is down, the socket is still coming up -
+ * `runtimes` is `[]` for want of an answer, and treating that as "not installed"
+ * puts an Install call to action in front of a runtime that may well be there.
+ * A stopped daemon read exactly like a missing llama.cpp.
+ */
 export function RuntimeRow({
   serverId,
   runtimes,
+  answered,
   loading,
   busy,
   jobs,
@@ -165,13 +175,16 @@ export function RuntimeRow({
 }: {
   serverId: string;
   runtimes: BrainRuntime[];
+  /** True once this host has answered `brainRuntimeList` at least once. */
+  answered: boolean;
   loading: boolean;
   busy: boolean;
   jobs: BrainJob[];
   onStarted: (job: BrainJob) => void;
 }) {
   const client = useHostRuntimeClient(serverId);
-  const installed = runtimes.length > 0;
+  const installed = answered && runtimes.length > 0;
+  const missing = answered && runtimes.length === 0;
   const job = useMemo(() => jobs.find((j) => j.kind === "runtime-install"), [jobs]);
   const handleInstall = useCallback(() => {
     if (!client) return;
@@ -183,10 +196,11 @@ export function RuntimeRow({
 
   const detail = useMemo(() => {
     if (loading) return "Checking…";
+    if (!answered) return "This host has not answered, so its runtime is unknown.";
     if (!installed) return "No runtime installed. Install llama.cpp to run models locally.";
     const first = runtimes[0];
     return `${first.label}${first.version ? ` · ${first.version}` : ""} (${first.source})`;
-  }, [installed, loading, runtimes]);
+  }, [answered, installed, loading, runtimes]);
 
   return (
     <View style={settingsStyles.rowResponsive}>
@@ -199,7 +213,8 @@ export function RuntimeRow({
           {installedIcon}
           <Text style={styles.installedTagText}>Installed</Text>
         </View>
-      ) : (
+      ) : null}
+      {missing ? (
         <View style={styles.rowTrailing}>
           <Button
             variant="default"
@@ -213,7 +228,7 @@ export function RuntimeRow({
           </Button>
           <InlineJobProgress job={job} />
         </View>
-      )}
+      ) : null}
     </View>
   );
 }
@@ -233,6 +248,7 @@ function CatalogRow({
   jobs,
   onDownload,
   onDownloadQuant,
+  onCancel,
   showBorder,
 }: {
   serverId: string;
@@ -242,6 +258,7 @@ function CatalogRow({
   /** One-click download at the catalog's default quant (no repo to browse). */
   onDownload: (id: string) => void;
   onDownloadQuant: (repo: string, quant: string) => void;
+  onCancel: (jobId: string) => void;
   showBorder: boolean;
 }) {
   const hasRepo = Boolean(model.repo.trim());
@@ -256,6 +273,9 @@ function CatalogRow({
     () => jobs.find((j) => j.kind === "pull" && j.target === model.id),
     [jobs, model.id],
   );
+  const handleCancel = useCallback(() => {
+    if (directJob?.status === "running") onCancel(directJob.id);
+  }, [directJob, onCancel]);
 
   let trailing: ReactElement;
   if (hasRepo) {
@@ -279,6 +299,7 @@ function CatalogRow({
           busy={busy}
           jobs={jobs}
           onDownload={onDownloadQuant}
+          onCancel={onCancel}
         />
       </View>
     );
@@ -296,10 +317,10 @@ function CatalogRow({
           variant="outline"
           size="sm"
           leftIcon={downloadIcon}
-          onPress={handleDownload}
-          disabled={busy}
+          onPress={directJob?.status === "running" ? handleCancel : handleDownload}
+          disabled={directJob?.status !== "running" && busy}
         >
-          Download
+          {directJob?.status === "running" ? "Cancel" : "Download"}
         </Button>
         <InlineJobProgress job={directJob} />
       </View>
@@ -329,6 +350,7 @@ export function CatalogList({
   busy,
   jobs,
   onStarted,
+  onCancel,
 }: {
   serverId: string;
   models: BrainCatalogModel[];
@@ -336,6 +358,7 @@ export function CatalogList({
   busy: boolean;
   jobs: BrainJob[];
   onStarted: (job: BrainJob) => void;
+  onCancel: (jobId: string) => void;
 }) {
   const client = useHostRuntimeClient(serverId);
   const handleDownload = useCallback(
@@ -378,6 +401,7 @@ export function CatalogList({
           jobs={jobs}
           onDownload={handleDownload}
           onDownloadQuant={handleDownloadQuant}
+          onCancel={onCancel}
           showBorder={index > 0}
         />
       ))}
@@ -411,12 +435,14 @@ function QuantPicker({
   busy,
   jobs,
   onDownload,
+  onCancel,
 }: {
   serverId: string;
   repo: string;
   busy: boolean;
   jobs: BrainJob[];
   onDownload: (repo: string, quant: string) => void;
+  onCancel: (jobId: string) => void;
 }) {
   const client = useHostRuntimeClient(serverId);
   const [loaded, setLoaded] = useState(false);
@@ -491,6 +517,12 @@ function QuantPicker({
   const handleDownload = useCallback(() => {
     if (selected) onDownload(repo, selected);
   }, [onDownload, repo, selected]);
+  const handleCancel = useCallback(() => {
+    if (activeJob?.status === "running") onCancel(activeJob.id);
+  }, [activeJob, onCancel]);
+  let actionLabel = "Download";
+  if (alreadyInstalled) actionLabel = "Installed";
+  if (activeJob?.status === "running") actionLabel = "Cancel";
   const selectedDisplay = useMemo(
     () =>
       selectedOption
@@ -529,10 +561,10 @@ function QuantPicker({
         <Button
           variant="outline"
           size="sm"
-          onPress={handleDownload}
-          disabled={!selected || busy || alreadyInstalled}
+          onPress={activeJob?.status === "running" ? handleCancel : handleDownload}
+          disabled={activeJob?.status !== "running" && (!selected || busy || alreadyInstalled)}
         >
-          {alreadyInstalled ? "Installed" : "Download"}
+          {actionLabel}
         </Button>
       </View>
       <InlineJobProgress job={activeJob} />
@@ -547,6 +579,7 @@ function SearchResultRow({
   busy,
   jobs,
   onDownload,
+  onCancel,
 }: {
   serverId: string;
   result: BrainHfSearchResult;
@@ -554,6 +587,7 @@ function SearchResultRow({
   busy: boolean;
   jobs: BrainJob[];
   onDownload: (repo: string, quant: string) => void;
+  onCancel: (jobId: string) => void;
 }) {
   const rowStyle = useMemo(
     () => [styles.tightRow, showBorder && settingsStyles.rowBorder],
@@ -583,6 +617,7 @@ function SearchResultRow({
           busy={busy}
           jobs={jobs}
           onDownload={onDownload}
+          onCancel={onCancel}
         />
       </View>
     </View>
@@ -594,11 +629,13 @@ export function HuggingFaceSearch({
   busy,
   jobs,
   onStarted,
+  onCancel,
 }: {
   serverId: string;
   busy: boolean;
   jobs: BrainJob[];
   onStarted: (job: BrainJob) => void;
+  onCancel: (jobId: string) => void;
 }) {
   const supported = useHostFeature(serverId, "brainHfSearch");
   const client = useHostRuntimeClient(serverId);
@@ -692,6 +729,7 @@ export function HuggingFaceSearch({
           busy={busy}
           jobs={jobs}
           onDownload={handleDownload}
+          onCancel={onCancel}
         />
       ))}
     </View>

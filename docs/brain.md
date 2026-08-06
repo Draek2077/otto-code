@@ -38,7 +38,7 @@ The brain serves its own management surface at `/__host/*`. Its header comment s
 | Route                                       | Does                                                                        |
 | ------------------------------------------- | --------------------------------------------------------------------------- |
 | `GET /__host/status`                        | Liveness, model, telemetry, scheduler, and `capabilities`                   |
-| `GET /__host/status?resources=1`            | The above plus live CPU, RAM, GPU and slot telemetry                        |
+| `GET /__host/status?resources=1`            | The above plus live CPU, RAM and GPU telemetry                              |
 | `GET /__host/events`                        | SSE: a complete cheap status snapshot every time the brain's state moves    |
 | `GET /__host/capabilities`                  | What this brain can serve, as flat booleans                                 |
 | `GET /__host/config`, `POST /__host/config` | The brain's own effective config; the write is gated on `allowRemoteConfig` |
@@ -63,9 +63,9 @@ failure reads as "model not found" rather than as a routing bug. Model-scoped ro
 ### Resources are opt-in
 
 `/__host/status` is also the daemon's liveness poll, and it runs far more often than any UI. Live
-resource telemetry costs an `nvidia-smi` spawn plus a `/slots` round trip on the brain, so it is only
-gathered when the caller asks with `?resources=1`. Only the Brain page's Overview tab, which actually
-renders the numbers, turns it on.
+resource telemetry costs an `nvidia-smi` spawn, so it is only gathered when the caller asks with
+`?resources=1`. Slot activity stays in the cheap status because the rail and live inference panel
+need it. Only the Brain page's Overview tab, which actually renders the resource numbers, opts in.
 
 ### Status is published, not polled
 
@@ -83,11 +83,12 @@ The pieces, and why each is the way it is:
   idempotent recovery on both sides. It also means a consumer overwrites its cached status whole;
   merging would keep a `lastError` alive after the brain had cleared it.
 - **The brain coalesces, and a timer tick is not an event.** `service/status-events.ts` keeps the
-  snapshot that would be sent and compares only the fields worth waking a UI for. Traffic counters,
-  the log line count, and the per-token slot detail are carried in the payload but cannot trigger
-  one, or a generating model would broadcast at token rate. The supervisor's state machine, the
-  scheduler queue and the reasoning flag notify directly; `activity` and the slot phase split are
-  sampled, because one is a file another process writes and the other is a loopback read.
+  snapshot that would be sent and compares only the fields worth waking a UI for. Traffic totals,
+  the log line count and slot context capacity cannot trigger one. Live slot counters and rates can,
+  but only from the publisher's bounded 250 ms sample, never from the model's token loop. The
+  supervisor state machine, scheduler queue and inference stages notify directly; `activity` and
+  slot performance are sampled because one is a file another process writes and the other is a
+  loopback read.
 - **Nothing samples while nobody is listening**, on either side. The brain's publisher runs no timer
   without a subscriber, and the daemon holds no stream without a fan-out listener wired.
 - **A dropped stream is a reachability transition.** The daemon re-probes, publishes whatever is
@@ -134,11 +135,19 @@ the route?). A current daemon can be pointed at an older brain.
    `allowRemoteConfig`, which is what `capabilities.writable` reflects.
 2. The daemon passes that through on `brain.host.status` and advertises
    `server_info.features.brainConsole` when it knows how to proxy the routes.
-3. `capabilities` carries an additive `events`, and status carries an additive `apiVersion`. Both
+3. `capabilities` carries additive `events` and `liveInference` flags, and status carries an additive
+   `apiVersion`. Both
    default to absent, so an older brain reads as "no event stream" rather than as broken. Unknown
    capability names and unknown status fields are kept, not dropped: the brain can grow a feature
    without a daemon upgrade, and the daemon can grow one without a brain upgrade. No exact package
    version match is ever required.
+
+Host API v2 adds `inference`, the exact aggregate count of requests in `processing`, `thinking` and
+`generating`, plus bounded live `slots.threads` token counts and rates. The request stages come from
+the proxy lifecycle, so they move before the next `/slots` sample and remain exact with parallel
+requests. The slot sampler supplies engine-measured output counts and throughput. Current llama.cpp
+nests its generated-token counter under `next_token`; the reader also accepts older top-level field
+spellings so changing the selected runtime does not erase the live view.
 
 The client reads `features.brainConsole` to decide whether the Brain page is offered at all, then
 reads `status.capabilities` to decide which tabs are live. A brain too old for a capability shows
@@ -317,6 +326,13 @@ thing the stream cannot cover: the brain's load and unload endpoints only answer
 _finished_, so pressing Load applies a deliberately small optimistic `starting` to that shared entry
 first. That is the UI predicting the state machine's next step, and it is never extended to the
 inference states - an open request is not evidence a model is thinking.
+
+For inference, host API v2 reports `processing` as soon as a request is dispatched to llama-server,
+then moves it to `thinking` on the first reasoning delta and `generating` on the first content delta.
+The rail prefers these direct lifecycle signals and uses the sampled prefill/decode split only as the
+compatibility signal for older brains. The Overview composes every cheap push into its enriched
+status cache while retaining its last CPU/GPU/RAM sample, so resource collection stays slow and
+opt-in while model activity moves at event speed.
 
 "Always visible" needs a second mount site, because the sidebar is collapsible on desktop and is a
 closed overlay for most of a mobile session. `components/brain/workspace-brain-button.tsx` puts the

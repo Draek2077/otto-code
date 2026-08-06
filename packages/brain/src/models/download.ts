@@ -4,7 +4,7 @@
  * `<managedModelsDir>/<publisher>/<repo>/<file>` to mirror the LM Studio layout
  * the scanner already understands.
  */
-import { createWriteStream, existsSync, mkdirSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -64,6 +64,10 @@ async function streamRepoFile(
   onProgress: ((p: PullProgress) => void) | undefined,
   received: { bytes: number },
 ): Promise<boolean> {
+  const tmp = `${destPath}.part`;
+  // Remove leftovers from an earlier interrupted attempt before starting a
+  // fresh request, including when this request fails before opening a stream.
+  rmSync(tmp, { force: true });
   mkdirSync(path.dirname(destPath), { recursive: true });
   if (existsSync(destPath)) return false;
 
@@ -78,10 +82,15 @@ async function streamRepoFile(
     onProgress?.({ file: label, receivedBytes: received.bytes, totalBytes });
   });
 
-  const tmp = `${destPath}.part`;
-  await pipeline(body, createWriteStream(tmp));
-  const { renameSync } = await import("node:fs");
-  renameSync(tmp, destPath);
+  try {
+    await pipeline(body, createWriteStream(tmp));
+    const { renameSync } = await import("node:fs");
+    renameSync(tmp, destPath);
+  } finally {
+    // Cancellation kills the CLI child while the stream is still writing. Do
+    // not leave a truncated `.part` behind for the next quant attempt.
+    rmSync(tmp, { force: true });
+  }
   return true;
 }
 

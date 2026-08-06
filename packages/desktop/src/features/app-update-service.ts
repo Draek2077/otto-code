@@ -15,8 +15,22 @@ export interface AppUpdateCheckResult {
   errorMessage: string | null;
 }
 
+/**
+ * Why an install attempt ended. `installed` alone cannot carry this: "we could
+ * not install" and "there was nothing to install" look identical to a caller,
+ * so the UI used to render a failed download as "you are up to date".
+ *
+ *  - "installed": the app is quitting into the installer.
+ *  - "deferred":  nothing was installed and nothing is wrong - superseded by a
+ *                 newer release, still validating, or handed off to a manual
+ *                 download (unsigned macOS).
+ *  - "failed":    the download or install errored. `message` says how.
+ */
+export type AppUpdateInstallOutcome = "installed" | "deferred" | "failed";
+
 export interface AppUpdateInstallResult {
   installed: boolean;
+  outcome: AppUpdateInstallOutcome;
   version: string | null;
   message: string;
 }
@@ -130,6 +144,7 @@ function getErrorMessage(error: unknown): string {
 function buildDeferredInstallResult(currentVersion: string): AppUpdateInstallResult {
   return {
     installed: false,
+    outcome: "deferred",
     version: currentVersion,
     message: "Update validation timed out. The update will be installed later.",
   };
@@ -142,6 +157,17 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
   let preparationError: { version: string; message: string } | null = null;
   let preparingUpdateVersion: string | null = null;
   let checkQueue: Promise<void> = Promise.resolve();
+  /**
+   * The version the most recent check was refused by the staged rollout, if any.
+   *
+   * The updater reports a rollout refusal as "no update available" - it has no
+   * separate signal for "exists, but you are not admitted yet". Those two are
+   * not interchangeable here: manual checks bypass the rollout on purpose, so an
+   * automatic recheck landing on a deferral must not retract an update the user
+   * has already been shown and is downloading. Set on every admission decision,
+   * cleared at the start of each check so it only ever describes that check.
+   */
+  let rolloutDeferredVersion: string | null = null;
 
   function isReadyToInstallVersion(version: string): boolean {
     return downloadedUpdateVersion === version;
@@ -164,7 +190,7 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
       releaseChannel,
       shouldAdmitUpdate: async (info) => {
         const parsed = rolloutManifestSchema.parse(info);
-        return shouldAdmitAppUpdate({
+        const admitted = shouldAdmitAppUpdate({
           channel: releaseChannel,
           intent,
           rolloutHours: parsed.rolloutHours,
@@ -172,6 +198,8 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
           now: deps.now(),
           bucket: await deps.bucket(),
         });
+        rolloutDeferredVersion = admitted ? null : info.version;
+        return admitted;
       },
       onUpdateAvailable(info) {
         const alreadyReady = downloadedUpdateVersion === info.version;
@@ -194,6 +222,9 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
         }
       },
       onUpdateNotAvailable() {
+        // A rollout deferral arrives as this same event. Dropping the cached
+        // manifest here is what used to abandon an in-flight download.
+        if (rolloutDeferredVersion !== null) return;
         clearUpdateState();
       },
       onError(error) {
@@ -237,10 +268,27 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
 
     return runCheckExclusively(async () => {
       configureRuntime(releaseChannel, intent);
+      rolloutDeferredVersion = null;
 
       try {
         const result = await deps.runtime.checkForUpdates();
         if (!result || !result.updateInfo || !result.isUpdateAvailable) {
+          // Deferred by the rollout, for the update we already validated and
+          // told the user about: keep offering it. An automatic check may add
+          // an update, never retract one - the manual check that surfaced it
+          // bypassed the rollout deliberately.
+          const deferred = cachedUpdateInfo;
+          if (deferred && rolloutDeferredVersion === deferred.version) {
+            return buildCheckResult({
+              currentVersion,
+              hasUpdate: true,
+              readyToInstall: isReadyToInstallVersion(deferred.version),
+              info: deferred,
+              errorMessage:
+                preparationError?.version === deferred.version ? preparationError.message : null,
+            });
+          }
+
           clearUpdateState();
           return buildCheckResult({
             currentVersion,
@@ -300,6 +348,7 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
     if (!deps.isPackaged()) {
       return {
         installed: false,
+        outcome: "deferred",
         version: currentVersion,
         message: "Auto-update is not available in development mode.",
       };
@@ -313,6 +362,7 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
     if (!check.hasUpdate) {
       return {
         installed: false,
+        outcome: check.errorMessage ? "failed" : "deferred",
         version: currentVersion,
         message: check.errorMessage ?? "No update available.",
       };
@@ -371,6 +421,7 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
     if (!cachedUpdateInfo) {
       return {
         installed: false,
+        outcome: "deferred",
         version: currentVersion,
         message: "No update available. Check for updates first.",
       };
@@ -385,6 +436,7 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
       await performQuitAndInstall(deps.runtime, { onBeforeQuit, restart });
       return {
         installed: true,
+        outcome: "installed",
         version: readyVersion,
         message: "Update downloaded. The app will restart shortly.",
       };
@@ -398,6 +450,7 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
       if (preparation === "superseded") {
         return {
           installed: false,
+          outcome: "deferred",
           version: currentVersion,
           message: "A newer update was found and will be installed later.",
         };
@@ -406,6 +459,7 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
 
       return {
         installed: true,
+        outcome: "installed",
         version: readyVersion,
         message: "Update downloaded. The app will restart shortly.",
       };
@@ -414,6 +468,7 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
       deps.reportInstallError?.(message);
       return {
         installed: false,
+        outcome: "failed",
         version: currentVersion,
         message: `Update failed: ${message}`,
       };

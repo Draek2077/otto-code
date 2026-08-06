@@ -40,7 +40,7 @@ export interface SlotInfo {
   threads?: Array<{
     slot: number;
     phase: "prefill" | "decode";
-    promptTokens: number;
+    promptTokens: number | null;
     generatedTokens: number;
     promptTokensPerSecond: number | null;
     tokensPerSecond: number | null;
@@ -144,6 +144,20 @@ function decodedTokens(rec: Record<string, unknown>): number {
     const value = rec[key];
     if (typeof value === "number" && Number.isFinite(value)) return value;
   }
+  // Current llama.cpp nests the counter in `next_token`; some speculative
+  // builds expose an array there. Older Otto builds only read the top level,
+  // which made every current slot look like decode with a made-up count of 1.
+  const nextToken = rec.next_token;
+  const records = Array.isArray(nextToken) ? nextToken : [nextToken];
+  let nested: number | null = null;
+  for (const value of records) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const count = (value as Record<string, unknown>).n_decoded;
+    if (typeof count === "number" && Number.isFinite(count)) {
+      nested = nested === null ? count : Math.max(nested, count);
+    }
+  }
+  if (nested !== null) return nested;
   // No counter at all: report a non-zero so the slot lands in decode rather than
   // claiming a prefill that may never have been happening.
   return 1;
@@ -181,25 +195,55 @@ export function summariseSlots(rows: unknown[]): SlotInfo {
 
 /** Measures throughput from successive `/slots` snapshots, without guessing. */
 export class SlotActivityTracker {
-  #previous = new Map<number, { at: number; promptTokens: number; generatedTokens: number }>();
+  #previous = new Map<
+    number,
+    {
+      at: number;
+      task: string | number | null;
+      promptTokens: number | null;
+      generatedTokens: number;
+      phase: "prefill" | "decode";
+    }
+  >();
 
   sample(rows: unknown[], now = Date.now()): SlotInfo {
-    const threads = rows.flatMap((row, slot) => {
+    const threads = rows.flatMap((row, index) => {
       const record = row as Record<string, unknown>;
+      const id = record.id;
+      const slot = typeof id === "number" && Number.isFinite(id) ? id : index;
       if (!isProcessing(record)) {
         this.#previous.delete(slot);
         return [];
       }
-      const promptTokens = counter(record, ["n_past", "n_prompt_tokens_processed"]);
+      const promptTokens = optionalCounter(record, ["n_past", "n_prompt_tokens_processed"]);
       const generatedTokens = decodedTokens(record);
-      const phase: "prefill" | "decode" = generatedTokens === 0 ? "prefill" : "decode";
-      const previous = this.#previous.get(slot);
+      const task =
+        typeof record.id_task === "string" || typeof record.id_task === "number"
+          ? record.id_task
+          : null;
+      // A reused slot starts a new measurement window. Comparing the new
+      // request's counters with the old request is how negative or absurd TPS
+      // flashes appeared at action boundaries.
+      const candidate = this.#previous.get(slot);
+      const previous = candidate?.task === task ? candidate : undefined;
+      // llama-server may leave the previous request's decoded counter visible
+      // during the first snapshot of a newly assigned task. The task boundary
+      // is authoritative in that case; otherwise a prompt is shown as decode
+      // and prompt throughput is incorrectly reported as zero.
+      const phase: "prefill" | "decode" =
+        candidate !== undefined && candidate.task !== task
+          ? "prefill"
+          : previous?.phase === "prefill" && generatedTokens <= previous.generatedTokens
+            ? "prefill"
+            : generatedTokens === 0
+              ? "prefill"
+              : "decode";
       const elapsedSeconds = previous ? (now - previous.at) / 1000 : 0;
-      const rate = (current: number, before: number | undefined) =>
-        elapsedSeconds > 0 && before !== undefined && current >= before
+      const rate = (current: number | null, before: number | null | undefined) =>
+        current !== null && elapsedSeconds > 0 && before != null && current >= before
           ? (current - before) / elapsedSeconds
           : null;
-      this.#previous.set(slot, { at: now, promptTokens, generatedTokens });
+      this.#previous.set(slot, { at: now, task, promptTokens, generatedTokens, phase });
       return [
         {
           slot,
@@ -217,12 +261,12 @@ export class SlotActivityTracker {
   }
 }
 
-function counter(record: Record<string, unknown>, keys: string[]): number {
+function optionalCounter(record: Record<string, unknown>, keys: string[]): number | null {
   for (const key of keys) {
     const value = record[key];
     if (typeof value === "number" && Number.isFinite(value)) return value;
   }
-  return 0;
+  return null;
 }
 
 const slotActivityTracker = new SlotActivityTracker();

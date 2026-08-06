@@ -1,8 +1,8 @@
-import { useMemo, type Ref } from "react";
+import { useCallback, type ReactNode, type Ref } from "react";
 import { Pressable, Text, View, type PressableProps } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { resolveBrainRailLabel } from "@/components/brain/brain-state";
-import { createBrainStateIcon } from "@/components/brain/brain-state-icon";
+import { BrainStateIcon } from "@/components/brain/brain-state-icon";
 import { useBrainRail } from "@/components/brain/use-brain-rail-state";
 import { Gauge, Home, Settings, type IconComponent } from "@/components/icons/material-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -39,6 +39,7 @@ export function FooterIconButton({
   testID,
   accessibilityLabel,
   icon: Icon,
+  renderIcon,
   iconSize,
   theme,
   active = false,
@@ -47,7 +48,8 @@ export function FooterIconButton({
   onPress: () => void;
   testID: string;
   accessibilityLabel: string;
-  icon: IconComponent;
+  icon?: IconComponent;
+  renderIcon?: (input: { size: number; color: string }) => ReactNode;
   iconSize?: number;
   theme: SidebarTheme;
   buttonRef?: Ref<View>;
@@ -74,12 +76,14 @@ export function FooterIconButton({
       accessibilityRole="button"
       onPress={onPress}
     >
-      {({ hovered }) => (
-        <Icon
-          size={isCompactLayout ? baseIconSize * 1.5 : baseIconSize}
-          color={footerIconColor(theme, { active, hovered: Boolean(hovered) })}
-        />
-      )}
+      {({ hovered }) => {
+        const size = isCompactLayout ? baseIconSize * 1.5 : baseIconSize;
+        const color = footerIconColor(theme, { active, hovered: Boolean(hovered) });
+        if (renderIcon) {
+          return renderIcon({ size, color });
+        }
+        return Icon ? <Icon size={size} color={color} /> : null;
+      }}
     </Pressable>
   );
 }
@@ -157,7 +161,10 @@ export function SidebarFooterNavRow({
   // need to see without navigating to look for it.
   const brainRail = useBrainRail();
   const brainState = brainRail.state;
-  const brainIcon = useMemo(() => createBrainStateIcon(brainState, theme), [brainState, theme]);
+  const renderBrainIcon = useCallback(
+    ({ size }: { size: number }) => <BrainStateIcon state={brainState} size={size} theme={theme} />,
+    [brainState, theme],
+  );
   // The state's own wording replaces the plain "Brain" tooltip once there is
   // something to say; `labels.brain` stays the label when it is merely idle, so
   // the rail still reads as navigation rather than as a status readout.
@@ -218,7 +225,7 @@ export function SidebarFooterNavRow({
               onPress={onBrain}
               testID="sidebar-brain"
               accessibilityLabel={brainLabel}
-              icon={brainIcon}
+              renderIcon={renderBrainIcon}
               theme={theme}
               active={activeItem === "brain"}
             />

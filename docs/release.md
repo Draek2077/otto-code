@@ -104,6 +104,27 @@ Stable desktop releases go out via a linear time-based rollout for automatic upd
 
 The rollout is driven by a `rolloutHours` field stamped into the GitHub Release manifests (`latest-mac.yml`, `latest-linux.yml`, `latest.yml`) by the `finalize-rollout` job in `desktop-release.yml`.
 
+> **Gotcha - a rollout deferral is not "no update", and an automatic check may never retract one.**
+> electron-updater has a single signal for both: refusing admission in
+> `isUserWithinRollout` emits `update-not-available`, exactly like being up to date.
+> That matters because the client polls every `PENDING_RECHECK_MS` (10s) while an
+> update is pending, and those polls use the **automatic** intent. So a user who
+> clicked **Check** during a live rollout (manual, admitted) watched the offer
+> disappear seconds later when the first automatic poll was deferred - mid-download,
+> looking exactly like the check had never happened. Two rules keep the two apart:
+>
+> - `app-update-service.ts` records the version a check was deferred on
+>   (`rolloutDeferredVersion`) and refuses to clear cached update state or report
+>   "no update" for it. Version equality is tested before the rollout gate upstream,
+>   so a genuinely up-to-date app never sets that flag and still clears normally.
+> - `desktop-app-updater.ts` (client) lets only a user-initiated check take an
+>   update away. A silent poll may add one, never remove one.
+>
+> The same class of bug on the install side: `installed: false` used to render as
+> "You're up to date", so a download that failed after several minutes was
+> indistinguishable from never having checked. Install results now carry an
+> `outcome` (`installed` / `deferred` / `failed`) and the UI shows the reason.
+
 Desktop release builds now publish in two phases:
 
 - Platform build jobs upload the installers/packages (`.dmg`, `.zip`, `.exe`, `.AppImage`, etc.) to the GitHub release.

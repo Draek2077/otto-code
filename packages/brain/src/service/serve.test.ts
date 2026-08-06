@@ -245,8 +245,8 @@ describe("the status event stream", () => {
     });
     try {
       await expect(getJson(listenPort(handle), "/__host/status")).resolves.toMatchObject({
-        apiVersion: 1,
-        capabilities: { events: true },
+        apiVersion: 2,
+        capabilities: { events: true, liveInference: true },
       });
     } finally {
       await handle.stop();

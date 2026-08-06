@@ -205,6 +205,7 @@ export async function downloadAndInstallUpdate(
     await shell.openExternal(MANUAL_DOWNLOAD_URL);
     return {
       installed: false,
+      outcome: "deferred",
       version: manualDownloadRuntime.latestVersion ?? currentVersion,
       message:
         "Opened the download page. macOS builds are unsigned, so update by replacing Otto in your Applications folder.",

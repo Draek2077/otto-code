@@ -4230,6 +4230,19 @@ export class Session {
     const { data, error } = await this.callBrainConsole((manager) =>
       manager.renameModel(modelId, displayName),
     );
+    if (!error) {
+      // Brain is the lmstudio-compatible provider. Refresh every materialized
+      // provider snapshot so settings, workspaces, and open pickers receive
+      // the new display name through the normal push path.
+      void this.providerSnapshotManager
+        .refreshProviderEverywhere("lmstudio")
+        .catch((refreshError: unknown) =>
+          this.sessionLogger.warn(
+            { err: refreshError },
+            "Failed to refresh the Otto Brain provider snapshot after rename",
+          ),
+        );
+    }
     this.emit({
       type: "brain.model.rename.response",
       payload: {
@@ -4247,6 +4260,16 @@ export class Session {
     const { data, error } = await this.callBrainConsole((manager) =>
       manager.resetModelName(modelId),
     );
+    if (!error) {
+      void this.providerSnapshotManager
+        .refreshProviderEverywhere("lmstudio")
+        .catch((refreshError: unknown) =>
+          this.sessionLogger.warn(
+            { err: refreshError },
+            "Failed to refresh the Otto Brain provider snapshot after name reset",
+          ),
+        );
+    }
     this.emit({
       type: "brain.model.rename.reset.response",
       payload: {

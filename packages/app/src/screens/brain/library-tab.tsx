@@ -29,6 +29,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { BrainJob } from "@otto-code/protocol/messages";
 import { Alert } from "@/components/ui/alert";
 import { useHostFeature } from "@/runtime/host-features";
+import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import {
   CatalogList,
   HuggingFaceSearch,
@@ -58,10 +59,12 @@ export function BrainLibraryTab({
 
   const catalogModels = useMemo(() => catalogQuery.data ?? [], [catalogQuery.data]);
   const jobs = useMemo(() => jobsQuery.data ?? [], [jobsQuery.data]);
+  const client = useHostRuntimeClient(serverId);
   useRefreshOnJobCompletion(serverId, jobs);
 
-  // One job at a time on the brain side, so anything running gates the rest.
-  const busy = jobs.some((job) => job.status === "running");
+  // Downloads are independent and may run together. Other operations still
+  // reserve the Brain, so they gate starting or inspecting another operation.
+  const busy = jobs.some((job) => job.status === "running" && job.kind !== "pull");
 
   const handleJobStarted = useCallback(
     (job: BrainJob) => {
@@ -70,6 +73,23 @@ export function BrainLibraryTab({
       );
     },
     [queryClient, serverId],
+  );
+
+  const handleJobCancel = useCallback(
+    (jobId: string) => {
+      if (!client) return;
+      void client
+        .brainJobsCancel(jobId)
+        .then((nextJobs) => {
+          queryClient.setQueryData(["brain-jobs", serverId], nextJobs);
+          return nextJobs;
+        })
+        .catch((error) => {
+          // Keep the running job visible if cancellation failed.
+          console.error("Unable to cancel the download", error);
+        });
+    },
+    [client, queryClient, serverId],
   );
 
   if (isRemote) {
@@ -101,6 +121,7 @@ export function BrainLibraryTab({
             busy={busy}
             jobs={jobs}
             onStarted={handleJobStarted}
+            onCancel={handleJobCancel}
           />
         </View>
       ) : (
@@ -114,6 +135,7 @@ export function BrainLibraryTab({
           busy={busy}
           jobs={jobs}
           onStarted={handleJobStarted}
+          onCancel={handleJobCancel}
         />
       </View>
     </View>

@@ -60,6 +60,30 @@ describe("deriveBrainState", () => {
     expect(deriveBrainState({ ...READY, reasoning: true, slots: { decode: 1 } })).toBe("thinking");
   });
 
+  it("uses host API v2 request stages before slot sampling catches up", () => {
+    expect(
+      deriveBrainState({
+        ...READY,
+        slots: { prefill: 0, decode: 0 },
+        inference: { processing: 1, thinking: 0, generating: 0 },
+      }),
+    ).toBe("prefill");
+    expect(
+      deriveBrainState({
+        ...READY,
+        slots: { prefill: 0, decode: 0 },
+        inference: { processing: 0, thinking: 1, generating: 0 },
+      }),
+    ).toBe("thinking");
+    expect(
+      deriveBrainState({
+        ...READY,
+        slots: { prefill: 0, decode: 0 },
+        inference: { processing: 0, thinking: 0, generating: 1 },
+      }),
+    ).toBe("generating");
+  });
+
   it("shows queued work that has no slot yet", () => {
     expect(deriveBrainState({ ...READY, queued: 2 })).toBe("queued");
     // A queued job behind a slot that is already running is still generation:

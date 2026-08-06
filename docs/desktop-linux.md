@@ -18,15 +18,44 @@ Linux targets: **AppImage, deb, rpm, tar.gz**. `.deb`/`.rpm` install under
 `extraResources` land under `/opt/Otto/resources/`. Post-install/removal hooks run
 as root:
 
-| Script                                                                             | Runs on                     | Does                                                                               |
-| ---------------------------------------------------------------------------------- | --------------------------- | ---------------------------------------------------------------------------------- |
-| [`build/linux/after-install.sh`](../packages/desktop/build/linux/after-install.sh) | deb `postinst`, rpm `%post` | Symlinks `/usr/bin/otto` → `/opt/Otto/Otto`; installs + loads the AppArmor profile |
-| [`build/linux/after-remove.sh`](../packages/desktop/build/linux/after-remove.sh)   | deb `postrm`, rpm `%postun` | Removes the symlink (only if still ours); unloads + deletes the AppArmor profile   |
+| Script                                                                             | Runs on                     | Does                                                                                             |
+| ---------------------------------------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------ |
+| [`build/linux/after-install.sh`](../packages/desktop/build/linux/after-install.sh) | deb `postinst`, rpm `%post` | Symlinks `/usr/bin/otto` → `/opt/Otto/resources/bin/otto`; installs + loads the AppArmor profile |
+| [`build/linux/after-remove.sh`](../packages/desktop/build/linux/after-remove.sh)   | deb `postrm`, rpm `%postun` | Removes the symlink (only if still ours); unloads + deletes the AppArmor profile                 |
 
-The GUI binary detects CLI-style argv and runs as the `otto` CLI instead of opening
-a window, so the one executable doubles as the CLI (see `main.ts`
-`runCliPassthroughIfRequested`). That's why `after-install.sh` can symlink it as
-`otto` without a separate CLI binary.
+### The `otto` link points at the wrapper, never the GUI binary
+
+`/usr/bin/otto` → `/opt/Otto/resources/bin/otto`, the bundled CLI wrapper
+([`bin/otto`](../packages/desktop/bin/otto)). It re-enters the same Electron binary
+with `ELECTRON_RUN_AS_NODE=1`, so the CLI runs on a **plain Node host**: no Chromium,
+no app lifecycle. `after-remove.sh` accepts both this target and the pre-0.8.3
+`/opt/Otto/Otto` so an upgraded-then-removed machine doesn't dangle the link, and
+`ln -sf` in the postinst rewrites the old link on upgrade.
+
+> **Gotcha - the GUI executable is not a CLI host.** It _does_ run CLI-style argv
+> (`main.ts` → `runCliPassthroughIfRequested`), and up to 0.8.3 the postinst linked
+> it directly on that basis. Short commands (`status`, `ls`) hid the problem; the
+> brain exposed it. Two failure modes, both measured on a live `.deb` install:
+>
+> - **Long-running commands get killed.** The passthrough used to import the CLI and
+>   run it in-process, then `app.exit()` once the command's promise resolved. Node
+>   stays alive while a handle is open; Electron's quit does not care.
+>   `otto brain serve` printed `ready`, exited 0 about five seconds later, orphaning its
+>   `llama-server` child squatting on port 20800 and ~4.6 GB of VRAM - which then
+>   made the _next_ start fail too.
+> - **Self-respawning commands built wrong argv.** `otto brain start` spawns a
+>   detached `serve` using `process.argv[1]` as the entry script. Through the GUI
+>   binary that slot holds a verb, not a script, so the child parsed
+>   `['brain', 'brain', 'serve']`, fell through to the default `ui` command, and
+>   died with the misleading _"the interactive UI needs a TTY"_ - the first line in
+>   `otto-brain.log`, and nothing to do with TTYs.
+>
+> The passthrough now **spawns** the CLI child using the same command line the
+> wrapper builds, forwards its exit code, and waits for it. That keeps the AppImage
+> honest too: it has no stable `resources/` path (the mount is ephemeral), so
+> `~/.local/bin/otto` must point at the AppImage file itself and the passthrough is
+> the only way in. `resolveCliInstallSourcePath` picks the AppImage there and the
+> wrapper everywhere else.
 
 ## The Chromium sandbox, per format
 

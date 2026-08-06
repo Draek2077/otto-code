@@ -34,8 +34,8 @@ import { resolveBrainBinPath } from "./brain-manager.js";
  *  - Long operations (pull, runtime install, calibrate, sweep, bench) run as
  *    tracked JOBS. The child's stderr carries progress (`<pct>%`, phase lines);
  *    the client polls jobs() and renders it. Only one job runs at a time - the
- *    ops load models and hold the GPU, and serializing downloads too keeps the
- *    surface simple and predictable.
+ *    ops load models and hold the GPU, while downloads may run concurrently so
+ *    users can fetch more than one quant at a time.
  *
  * The brain writes its own config/models under $OTTO_HOME/otto-brain, so every
  * child inherits OTTO_HOME (and ELECTRON_RUN_AS_NODE so the daemon's Electron
@@ -274,9 +274,14 @@ export class BrainOpsManager {
     args: string[];
   }): BrainJob {
     const active = [...this.jobsById.values()].find((job) => job.status === "running");
-    if (active) {
+    const isDownload = spec.kind === "pull";
+    const activeNonDownload = [...this.jobsById.values()].find(
+      (job) => job.status === "running" && job.kind !== "pull",
+    );
+    const conflict = isDownload ? activeNonDownload : active;
+    if (conflict) {
       throw new Error(
-        `Another operation is already running (${active.label}). Wait for it to finish or cancel it first.`,
+        `Another operation is already running (${conflict.label}). Wait for it to finish or cancel it first.`,
       );
     }
 

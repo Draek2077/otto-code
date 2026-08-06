@@ -28,7 +28,6 @@ import {
   type BrainStateVisual,
 } from "@/components/brain/brain-state";
 import { brainGlyphExtent } from "@/components/icons/brain-glyph-scale";
-import type { IconComponent } from "@/components/icons/material-icons";
 import { useAnimationsEnabled } from "@/hooks/use-animations-enabled";
 import type { Theme } from "@/styles/theme";
 
@@ -83,7 +82,7 @@ export function BrainStateIcon({
   // own resting frame, so nothing is lost but the movement.
   const motion = animationsEnabled ? visual.motion : null;
 
-  const progress = useSweepProgress(motion !== null, visual.durationMs);
+  const progress = useSweepProgress(state, motion !== null, visual.durationMs);
 
   // Laid out at `size`, drawn at `glyph`. The container already centres its
   // children, so the overflow falls evenly on all four edges; `overflow` has to
@@ -169,23 +168,17 @@ function BrainIconBadge({
 }
 
 /**
- * Adapt the state icon to the plain `IconComponent` shape the sidebar's
- * `FooterIconButton` takes, so the rail needs no new rendering path.
+ * One linear 0 → 1 ramp per cycle, restarted only when the state changes.
  *
- * The button's `color` argument is deliberately ignored: it carries the nav's
- * hover and active tints, and a status light that changes colour when you hover
- * it is no longer reporting status. The button's background still marks both.
+ * Status snapshots arrive more often than the state they describe. Keeping the
+ * BrainStateIcon mounted lets those same-state updates redraw the current frame
+ * without cancelling its sweep and sending it back to the beginning.
  */
-export function createBrainStateIcon(state: BrainState, theme: Theme): IconComponent {
-  const BrainStateNavIcon: IconComponent = ({ size, style }) => (
-    <BrainStateIcon state={state} size={size} theme={theme} style={style} />
-  );
-  BrainStateNavIcon.displayName = `BrainStateIcon(${state})`;
-  return BrainStateNavIcon;
-}
-
-/** One linear 0 → 1 ramp per cycle, restarted whenever the motion changes. */
-function useSweepProgress(active: boolean, durationMs: number): SharedValue<number> {
+function useSweepProgress(
+  state: BrainState,
+  active: boolean,
+  durationMs: number,
+): SharedValue<number> {
   const progress = useSharedValue(0);
   useEffect(() => {
     if (!active || durationMs <= 0) {
@@ -211,7 +204,7 @@ function useSweepProgress(active: boolean, durationMs: number): SharedValue<numb
     return () => {
       cancelAnimation(progress);
     };
-  }, [active, durationMs, progress]);
+  }, [active, durationMs, progress, state]);
   return progress;
 }
 

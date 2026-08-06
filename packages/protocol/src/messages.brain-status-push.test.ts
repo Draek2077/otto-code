@@ -82,6 +82,23 @@ describe("the brain event capability", () => {
     expect(status.apiVersion).toBe(1);
   });
 
+  test("parses additive host API v2 inference stages and per-slot metrics", () => {
+    const status = BrainHostStatusSchema.parse({
+      running: true,
+      apiVersion: 2,
+      capabilities: { events: true, liveInference: true },
+      inference: { activeRequests: 2, processing: 0, thinking: 1, generating: 1 },
+      slots: {
+        total: 2,
+        busy: 2,
+        threads: [{ slot: 0, phase: "decode", generatedTokens: 24, tokensPerSecond: 48 }],
+      },
+    });
+    expect(status.capabilities?.liveInference).toBe(true);
+    expect(status.inference?.thinking).toBe(1);
+    expect(status.slots?.threads?.[0]?.tokensPerSecond).toBe(48);
+  });
+
   test("unknown capability names survive, so a brain can grow one without a daemon bump", () => {
     const capabilities = BrainCapabilitiesSchema.parse({ events: true, somethingNewer: true });
     expect(capabilities).toMatchObject({ events: true, somethingNewer: true });

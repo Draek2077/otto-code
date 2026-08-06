@@ -3,8 +3,8 @@
  *
  * This is the TUI's header, status panel and VRAM panel, promoted out of the
  * settings dashboard sheet. It is the only tab that asks for live resource
- * telemetry, because that costs an `nvidia-smi` spawn and a /slots round trip on
- * the brain and nothing else renders the numbers.
+ * telemetry, because that costs an `nvidia-smi` spawn on the brain and nothing
+ * else renders the numbers.
  */
 import { useCallback, useMemo, useState } from "react";
 import { Text, View } from "react-native";
@@ -32,8 +32,9 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { useIsCompactFormFactor } from "@/constants/layout";
-import { useHostRuntimeClient } from "@/runtime/host-runtime";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useIsCompactFormFactor, useIsExtraCompactFormFactor } from "@/constants/layout";
+import { useHostRuntimeClient, useHostRuntimeConnectionStatus } from "@/runtime/host-runtime";
 import {
   prependJob,
   RuntimeRow,
@@ -221,39 +222,60 @@ function LifecycleControls({ serverId, phase }: { serverId: string; phase: Phase
   return (
     <View style={styles.lifecycle}>
       <View style={isCompact ? styles.actionsStacked : styles.actions}>
-        <Button
-          variant="secondary"
-          size="sm"
-          leftIcon={startIcon}
-          onPress={handleStart}
-          loading={pending === "start"}
-          disabled={pending !== null || phase === "running"}
-          testID="brain-overview-start"
-        >
-          Start
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          leftIcon={stopIcon}
-          onPress={handleStop}
-          loading={pending === "stop"}
-          disabled={pending !== null || phase === "stopped"}
-          testID="brain-overview-stop"
-        >
-          Stop
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          leftIcon={restartIcon}
-          onPress={handleRestart}
-          loading={pending === "restart"}
-          disabled={pending !== null}
-          testID="brain-overview-restart"
-        >
-          Restart
-        </Button>
+        <Tooltip delayDuration={250} enabledOnDesktop enabledOnMobile={false}>
+          <TooltipTrigger asChild disabled={pending !== null || phase === "running"}>
+            <Button
+              variant="secondary"
+              size="sm"
+              leftIcon={startIcon}
+              style={styles.iconButton}
+              accessibilityLabel="Start brain"
+              onPress={handleStart}
+              loading={pending === "start"}
+              disabled={pending !== null || phase === "running"}
+              testID="brain-overview-start"
+            />
+          </TooltipTrigger>
+          <TooltipContent side="top" align="center" offset={8}>
+            <Text style={styles.tooltipText}>Start</Text>
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip delayDuration={250} enabledOnDesktop enabledOnMobile={false}>
+          <TooltipTrigger asChild disabled={pending !== null || phase === "stopped"}>
+            <Button
+              variant="secondary"
+              size="sm"
+              leftIcon={stopIcon}
+              style={styles.iconButton}
+              accessibilityLabel="Stop brain"
+              onPress={handleStop}
+              loading={pending === "stop"}
+              disabled={pending !== null || phase === "stopped"}
+              testID="brain-overview-stop"
+            />
+          </TooltipTrigger>
+          <TooltipContent side="top" align="center" offset={8}>
+            <Text style={styles.tooltipText}>Stop</Text>
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip delayDuration={250} enabledOnDesktop enabledOnMobile={false}>
+          <TooltipTrigger asChild disabled={pending !== null}>
+            <Button
+              variant="secondary"
+              size="sm"
+              leftIcon={restartIcon}
+              style={styles.iconButton}
+              accessibilityLabel="Restart brain"
+              onPress={handleRestart}
+              loading={pending === "restart"}
+              disabled={pending !== null}
+              testID="brain-overview-restart"
+            />
+          </TooltipTrigger>
+          <TooltipContent side="top" align="center" offset={8}>
+            <Text style={styles.tooltipText}>Restart</Text>
+          </TooltipContent>
+        </Tooltip>
       </View>
       {error ? <Alert variant="error" description={error} /> : null}
     </View>
@@ -265,11 +287,13 @@ function StatusHero({
   phase,
   serverId,
   canControlLifecycle,
+  fillHeight,
 }: {
   status: BrainHostStatus | null;
   phase: Phase;
   serverId: string;
   canControlLifecycle: boolean;
+  fillHeight?: boolean;
 }) {
   const presentation = PHASE_PRESENTATION[phase];
   const endpoint =
@@ -278,7 +302,7 @@ function StatusHero({
       : null;
 
   return (
-    <View style={styles.hero}>
+    <View style={[styles.hero, fillHeight && styles.fillHeight]}>
       <View style={styles.heroText}>
         <View style={styles.heroTitleRow}>
           <Text style={styles.heroTitle} numberOfLines={1}>
@@ -320,17 +344,50 @@ function VramPanel({ gpu }: { gpu: Record<string, unknown> | null }) {
   );
 }
 
-function ModelActivityPanel({ slots }: { slots: Record<string, unknown> | null }) {
+function modelActivityPhase(input: {
+  enginePhase: unknown;
+  thinking: number;
+  generating: number;
+}): string {
+  if (input.enginePhase === "prefill") return "Processing prompt";
+  if (input.thinking > 0 && input.generating === 0) return "Thinking";
+  if (input.thinking > 0 && input.generating > 0) return "Decoding";
+  return "Generating";
+}
+
+function ModelActivityPanel({
+  slots,
+  inference,
+}: {
+  slots: Record<string, unknown> | null;
+  inference: Record<string, unknown> | null;
+}) {
   const threads = readRecords(slots, "threads");
+  const processing = readNumber(inference, "processing") ?? 0;
+  const thinking = readNumber(inference, "thinking") ?? 0;
+  const generating = readNumber(inference, "generating") ?? 0;
+  const stageSummary = [
+    processing > 0 ? `${processing} processing ${processing === 1 ? "prompt" : "prompts"}` : null,
+    thinking > 0 ? `${thinking} thinking` : null,
+    generating > 0 ? `${generating} generating` : null,
+  ].filter((value): value is string => value !== null);
   return (
     <View style={styles.panel}>
       <Text style={styles.panelTitle}>Live model activity</Text>
-      {threads.length === 0 ? (
+      {stageSummary.length > 0 ? (
+        <Text style={styles.panelCaption}>{stageSummary.join(" · ")}</Text>
+      ) : null}
+      {threads.length === 0 && stageSummary.length === 0 ? (
         <Text style={styles.panelCaption}>No active inference requests.</Text>
-      ) : (
+      ) : null}
+      {threads.length > 0 ? (
         <View style={styles.activityList}>
           {threads.map((thread) => {
-            const phase = thread.phase === "prefill" ? "Reading prompt" : "Generating";
+            const phase = modelActivityPhase({
+              enginePhase: thread.phase,
+              thinking,
+              generating,
+            });
             const rate = readNumber(
               thread,
               thread.phase === "prefill" ? "promptTokensPerSecond" : "tokensPerSecond",
@@ -347,13 +404,16 @@ function ModelActivityPanel({ slots }: { slots: Record<string, unknown> | null }
                   {rate === null ? "Measuring…" : `${Math.round(rate).toLocaleString()} tok/s`}
                 </Text>
                 {tokenCount !== null ? (
-                  <Text style={styles.activityTokens}>{tokenCount.toLocaleString()} tokens</Text>
+                  <Text style={styles.activityTokens}>
+                    {tokenCount.toLocaleString()}{" "}
+                    {thread.phase === "prefill" ? "prompt" : "generated"} tokens
+                  </Text>
                 ) : null}
               </View>
             );
           })}
         </View>
-      )}
+      ) : null}
     </View>
   );
 }
@@ -483,7 +543,15 @@ function HostPanel({ status }: { status: BrainHostStatus | null }) {
 
 /** The llama.cpp runtime this host loads models with - moved here from the
  *  Library tab, since it is host status, not a way to get a model. */
-function RuntimePanel({ serverId, isConnected }: { serverId: string; isConnected: boolean }) {
+function RuntimePanel({
+  serverId,
+  isConnected,
+  fillHeight,
+}: {
+  serverId: string;
+  isConnected: boolean;
+  fillHeight?: boolean;
+}) {
   const queryClient = useQueryClient();
   const runtimesQuery = useBrainRuntimes(serverId, isConnected);
   const jobsQuery = useBrainJobs(serverId, isConnected);
@@ -502,10 +570,14 @@ function RuntimePanel({ serverId, isConnected }: { serverId: string; isConnected
   );
 
   return (
-    <View style={styles.panelFlush}>
+    <View style={[styles.panelFlush, fillHeight && styles.fillHeight]}>
       <RuntimeRow
         serverId={serverId}
         runtimes={runtimes}
+        // An empty list only means "not installed" once this host has actually
+        // answered. Disconnected, the query never runs and `data` stays
+        // undefined - see the note on RuntimeRow.
+        answered={runtimesQuery.data !== undefined}
         loading={runtimesQuery.isLoading}
         busy={busy}
         jobs={jobs}
@@ -529,6 +601,8 @@ export function BrainOverviewTab({
   canManageRuntime: boolean;
 }) {
   const query = useBrainStatus(serverId, { enabled: isConnected, resources: true });
+  const connection = useHostRuntimeConnectionStatus(serverId);
+  const stackTopSections = useIsExtraCompactFormFactor();
   const status = query.data ?? null;
   const phase = resolvePhase(status);
 
@@ -536,6 +610,26 @@ export function BrainOverviewTab({
   const resources = readRecord(statusRecord, "resources");
   const telemetry = readRecord(statusRecord, "telemetry");
   const telemetryWarning = typeof telemetry?.warning === "string" ? telemetry.warning : null;
+
+  // A host we cannot reach tells us nothing about its brain, and every readout
+  // below would otherwise fill in for it: no status reads as "Stopped", an
+  // empty runtime list reads as "not installed", and the lifecycle buttons
+  // offer to start something over a socket that is not there. Say the true
+  // thing instead - a stopped daemon is the common cause, and it is the one
+  // the page used to hide behind a wall of confident zeroes.
+  if (!isConnected && !status) {
+    return connection === "connecting" ? (
+      <View style={styles.centered}>
+        <ThemedLoadingSpinner size="large" />
+      </View>
+    ) : (
+      <Alert
+        variant="info"
+        title="This host is not connected"
+        description="Otto cannot reach this host's daemon, so its brain status is unknown. Start the daemon on that machine and this page will fill in."
+      />
+    );
+  }
 
   if (query.isLoading && !status) {
     return (
@@ -555,21 +649,37 @@ export function BrainOverviewTab({
           no content, which is the failure the brain exists to prevent. */}
       {telemetryWarning ? <Alert variant="warning" description={telemetryWarning} /> : null}
 
-      <StatusHero
-        status={status}
-        phase={phase}
-        serverId={serverId}
-        canControlLifecycle={canControlLifecycle}
-      />
-      {canManageRuntime ? <RuntimePanel serverId={serverId} isConnected={isConnected} /> : null}
+      <View style={stackTopSections ? styles.topSectionsStacked : styles.topSections}>
+        <View style={[styles.topSection, !stackTopSections && styles.topSectionWide]}>
+          <StatusHero
+            status={status}
+            phase={phase}
+            serverId={serverId}
+            canControlLifecycle={canControlLifecycle}
+            fillHeight={!stackTopSections}
+          />
+        </View>
+        {canManageRuntime ? (
+          <View style={[styles.topSection, !stackTopSections && styles.topSectionWide]}>
+            <RuntimePanel
+              serverId={serverId}
+              isConnected={isConnected}
+              fillHeight={!stackTopSections}
+            />
+          </View>
+        ) : null}
+      </View>
       <VramPanel gpu={readRecord(resources, "gpu")} />
-      <ModelActivityPanel slots={readRecord(statusRecord, "slots")} />
       <ResourceTiles
         resources={resources}
         gpu={readRecord(resources, "gpu")}
-        slots={readRecord(resources, "slots")}
+        slots={readRecord(statusRecord, "slots")}
       />
       <DetailSections telemetry={telemetry} status={status} />
+      <ModelActivityPanel
+        slots={readRecord(statusRecord, "slots")}
+        inference={readRecord(statusRecord, "inference")}
+      />
     </View>
   );
 }
@@ -583,6 +693,23 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[12],
     alignItems: "center",
     justifyContent: "center",
+  },
+  topSections: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: theme.spacing[4],
+  },
+  topSectionsStacked: {
+    gap: theme.spacing[4],
+  },
+  topSection: {
+    minWidth: 0,
+  },
+  topSectionWide: {
+    flex: 1,
+  },
+  fillHeight: {
+    flex: 1,
   },
   hero: {
     flexDirection: "row",
@@ -632,6 +759,14 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
     flexWrap: "wrap",
+  },
+  iconButton: {
+    width: 40,
+    paddingHorizontal: 0,
+  },
+  tooltipText: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.xs,
   },
   lifecycle: {
     gap: theme.spacing[2],

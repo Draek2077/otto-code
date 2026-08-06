@@ -1827,6 +1827,12 @@ export const BrainCapabilitiesSchema = z
      * management API had to change for pushed status to ship.
      */
     events: z.boolean().default(false),
+    /**
+     * Status events include bounded live inference stages, token counts and
+     * throughput. False for the first event-stream generation, whose snapshots
+     * only moved at phase boundaries.
+     */
+    liveInference: z.boolean().default(false),
     /** Whether writes are permitted right now (the brain's allowRemoteConfig). */
     writable: z.boolean().default(false),
   })
@@ -1870,7 +1876,7 @@ export const BrainHostStatusSchema = z
      * configuration. Null from a brain that predates the management API.
      */
     capabilities: BrainCapabilitiesSchema.nullable().optional(),
-    /** Live CPU/RAM/GPU/slot telemetry, only when the request asked for it. */
+    /** Live CPU/RAM/GPU telemetry, only when the request asked for it. */
     resources: z.record(z.string(), z.unknown()).nullable().optional(),
     /** How many log lines the brain currently holds, for the Logs tab. */
     logLineCount: z.number().nullable().optional(),
@@ -1901,6 +1907,20 @@ export const BrainHostStatusSchema = z
      */
     reasoning: z.boolean().nullable().optional(),
     /**
+     * Exact aggregate lifecycle counts for requests currently dispatched to
+     * llama-server. Additive in host API v2; absent on older brains.
+     */
+    inference: z
+      .object({
+        activeRequests: z.number().int().nonnegative().optional(),
+        processing: z.number().int().nonnegative().optional(),
+        thinking: z.number().int().nonnegative().optional(),
+        generating: z.number().int().nonnegative().optional(),
+      })
+      .passthrough()
+      .nullable()
+      .optional(),
+    /**
      * Slot occupancy split by phase, so a client can tell a prompt being
      * ingested from a model that has started answering. Rides here rather than
      * inside `resources` on purpose: `resources` costs an `nvidia-smi` spawn and
@@ -1913,6 +1933,21 @@ export const BrainHostStatusSchema = z
         idle: z.number().nullable().optional(),
         prefill: z.number().nullable().optional(),
         decode: z.number().nullable().optional(),
+        /** Bounded-rate per-slot performance samples; host API v2 and newer. */
+        threads: z
+          .array(
+            z
+              .object({
+                slot: z.number().optional(),
+                phase: z.enum(["prefill", "decode"]).optional(),
+                promptTokens: z.number().nullable().optional(),
+                generatedTokens: z.number().nullable().optional(),
+                promptTokensPerSecond: z.number().nullable().optional(),
+                tokensPerSecond: z.number().nullable().optional(),
+              })
+              .passthrough(),
+          )
+          .optional(),
       })
       .passthrough()
       .nullable()
@@ -1934,9 +1969,9 @@ const BrainHostStatusResultSchema = z.object({
 export const BrainHostStatusRequestSchema = z.object({
   type: z.literal("brain.host.status.request"),
   /**
-   * Ask for live CPU/RAM/GPU/slot telemetry alongside the status. Off by default
-   * on purpose: it costs an `nvidia-smi` spawn plus a /slots round trip on the
-   * brain, and this RPC is also the liveness poll. Only a surface actually
+   * Ask for live CPU/RAM/GPU telemetry alongside the status. Off by default on
+   * purpose: it costs an `nvidia-smi` spawn on the brain, and this RPC is also
+   * the liveness poll. Only a surface actually
    * rendering the numbers should turn it on.
    */
   resources: z.boolean().default(false),

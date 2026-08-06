@@ -1,6 +1,6 @@
 /**
- * What long-running work currently owns the brain, and whether the loaded model
- * is mid-reasoning.
+ * What long-running work currently owns the brain, and which stage each live
+ * inference request has reached.
  *
  * Two trackers with deliberately different lifetimes:
  *
@@ -12,11 +12,11 @@
  *   was killed with Ctrl-C never gets to clean up after itself, and a status
  *   that stays stuck on "calibrating" forever is worse than no status at all.
  *
- * - **Reasoning** is per-request and lives only as long as the stream does, so
+ * - **Inference** is per-request and lives only as long as the stream does, so
  *   it is plain in-process state on the router. It never touches disk.
  *
- * Both feed the one `activity` field on the host status, which the client turns
- * into the Brain rail's icon.
+ * Both ride on host status: ops under `activity`, inference under `inference`.
+ * The client uses those independent signals to drive the Overview and rail.
  */
 import { existsSync, readFileSync, rmSync } from "node:fs";
 
@@ -188,11 +188,28 @@ function clampProgress(progress: number | null | undefined): number | null {
  * would cost more than the signal is worth.
  */
 export function chunkHasReasoning(text: string): boolean {
-  return text.includes("thinking") || text.includes("reasoning");
+  return (
+    /"type"\s*:\s*"(?:thinking|reasoning)_delta"/u.test(text) ||
+    /"(?:thinking|reasoning_content)"\s*:\s*"[^"]/u.test(text)
+  );
 }
 
 export function chunkHasContent(text: string): boolean {
-  return text.includes('"text_delta"') || /"content"\s*:\s*"[^"]/.test(text);
+  return (
+    /"type"\s*:\s*"text_delta"/u.test(text) ||
+    /"content"\s*:\s*"[^"]/u.test(text) ||
+    /"tool_calls"\s*:\s*\[\s*\{/u.test(text) ||
+    /"type"\s*:\s*"(?:tool_use|input_json_delta)"/u.test(text)
+  );
+}
+
+export type InferenceStage = "processing" | "thinking" | "generating";
+
+export interface InferenceActivitySnapshot {
+  activeRequests: number;
+  processing: number;
+  thinking: number;
+  generating: number;
 }
 
 /**
@@ -205,21 +222,25 @@ export function chunkHasContent(text: string): boolean {
  * if more reasoning follows - a stream that is producing readable output should
  * not report as though it were still silent.
  *
- * A set rather than a boolean because llama-server runs several slots at once,
- * and one request finishing its thought must not clear the flag for another.
+ * A map rather than one global phase because llama-server runs several slots at
+ * once. One request can be processing a prompt while another thinks and a third
+ * generates content; the aggregate counts must preserve all three.
  */
 export class ReasoningTracker {
-  #reasoning = new Set<string>();
-  #content = new Set<string>();
+  #requests = new Map<string, InferenceStage>();
+  /** Tail of the last transport chunk, so a field name split by TCP is still detected. */
+  #tails = new Map<string, string>();
+  /** Models/runtimes that leave reasoning inline as `<think>…</think>`. */
+  #inlineReasoning = new Set<string>();
   #listeners = new Set<() => void>();
-  #wasActive = false;
+  #lastSnapshot = "0:0:0:0";
 
   /**
-   * Watch the thinking flag itself, not the per-chunk traffic behind it.
+   * Watch stage counts, not the per-chunk traffic behind them.
    *
-   * The status event stream needs to publish the moment a model goes silent to
-   * think and the moment it starts answering - and nothing in between, or a
-   * generating model would emit a snapshot per chunk.
+   * The status event stream needs to publish request start, the moment a model
+   * goes silent to think and the moment it starts answering. Repeated chunks in
+   * one stage do not notify; slot sampling owns bounded token-rate updates.
    */
   onChange(listener: () => void): () => void {
     this.#listeners.add(listener);
@@ -227,9 +248,10 @@ export class ReasoningTracker {
   }
 
   #announce(): void {
-    const active = this.active;
-    if (active === this.#wasActive) return;
-    this.#wasActive = active;
+    const snapshot = this.snapshot;
+    const key = `${snapshot.activeRequests}:${snapshot.processing}:${snapshot.thinking}:${snapshot.generating}`;
+    if (key === this.#lastSnapshot) return;
+    this.#lastSnapshot = key;
     for (const listener of this.#listeners) {
       try {
         listener();
@@ -239,33 +261,74 @@ export class ReasoningTracker {
     }
   }
 
+  /** A completion was dispatched to llama-server and awaits its first output delta. */
+  begin(requestId: string): void {
+    if (this.#requests.has(requestId)) return;
+    this.#requests.set(requestId, "processing");
+    this.#announce();
+  }
+
   /** Note a chunk of `requestId`'s stream. Cheap enough to call per chunk. */
   observe(requestId: string, text: string): void {
-    if (this.#content.has(requestId)) return;
-    if (chunkHasContent(text)) {
-      this.#content.add(requestId);
-      this.#reasoning.delete(requestId);
+    const current = this.#requests.get(requestId);
+    if (current === "generating") return;
+    if (!current) this.#requests.set(requestId, "processing");
+
+    // Node can split an SSE JSON field name at any byte. Keeping a small tail
+    // makes stage recognition independent of transport chunk boundaries without
+    // parsing or retaining the generated content itself.
+    const combined = `${this.#tails.get(requestId) ?? ""}${text}`;
+    this.#tails.set(requestId, combined.slice(-128));
+    if (this.#inlineReasoning.has(requestId)) {
+      if (combined.includes("</think>")) {
+        this.#inlineReasoning.delete(requestId);
+        this.#requests.set(requestId, "generating");
+        this.#announce();
+      }
+      return;
+    }
+    if (combined.includes("<think>")) {
+      this.#inlineReasoning.add(requestId);
+      this.#requests.set(requestId, "thinking");
       this.#announce();
       return;
     }
-    if (chunkHasReasoning(text)) {
-      this.#reasoning.add(requestId);
+    if (chunkHasContent(combined)) {
+      this.#requests.set(requestId, "generating");
+      this.#announce();
+      return;
+    }
+    if (chunkHasReasoning(combined) && current !== "thinking") {
+      this.#requests.set(requestId, "thinking");
       this.#announce();
     }
   }
 
   /** Forget the request. Must be called on end *and* on error, or the flag sticks. */
   end(requestId: string): void {
-    this.#reasoning.delete(requestId);
-    this.#content.delete(requestId);
+    this.#requests.delete(requestId);
+    this.#tails.delete(requestId);
+    this.#inlineReasoning.delete(requestId);
     this.#announce();
   }
 
   get active(): boolean {
-    return this.#reasoning.size > 0;
+    return this.snapshot.thinking > 0;
   }
 
   get count(): number {
-    return this.#reasoning.size;
+    return this.snapshot.thinking;
+  }
+
+  /** Aggregate request stages. Counts stay exact even with several parallel slots. */
+  get snapshot(): InferenceActivitySnapshot {
+    const result: InferenceActivitySnapshot = {
+      activeRequests: this.#requests.size,
+      processing: 0,
+      thinking: 0,
+      generating: 0,
+    };
+    for (const stage of this.#requests.values()) result[stage] += 1;
+    return result;
   }
 }

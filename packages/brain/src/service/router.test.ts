@@ -83,6 +83,7 @@ test("unparseable or unrecognised bodies yield null", () => {
 
 test("describeModel reports the friendly name, not the file path", () => {
   const model = {
+    id: "qwen/Qwen3-4B-Thinking-2507-Q4_K_M.gguf",
     displayName: "Qwen3-4B-Thinking-2507-Q4_K_M",
     modelPath: "C:\\Users\\x\\.lmstudio\\models\\qwen\\Qwen3-4B-Thinking-2507-Q4_K_M.gguf",
     quant: "Q4_K_M",
@@ -96,8 +97,8 @@ test("describeModel reports the friendly name, not the file path", () => {
     profile: { contextSize: 32768 } as Profile,
     createdAt: new Date("2026-07-29T00:00:00Z"),
   });
-  assert.equal(entry.id, "Qwen3-4B-Thinking-2507-Q4_K_M");
-  assert.ok(!entry.id.includes("\\") && !entry.id.includes(".gguf"), "id is not a path");
+  assert.equal(entry.id, "qwen/Qwen3-4B-Thinking-2507-Q4_K_M.gguf");
+  assert.equal(entry.name, "Qwen3-4B-Thinking-2507-Q4_K_M");
   assert.equal(entry.arch, "qwen3");
   assert.equal(entry.quantization, "Q4_K_M");
   assert.equal(entry.type, "llm");
@@ -170,15 +171,17 @@ test("buildModelList lists the whole catalog, marking the running one loaded", (
   const list = buildModelList(supervisor, () => [a, b]);
   assert.deepEqual(
     list.map((e) => e.id),
-    ["Model-A", "Model-B"],
+    ["a/x.gguf", "b/y.gguf"],
     "every model is listed",
   );
   const byId = Object.fromEntries(list.map((e) => [e.id, e]));
-  assert.equal(byId["Model-A"].state, "not-loaded");
-  assert.equal(byId["Model-A"].loaded_context_length, undefined);
-  assert.equal(byId["Model-B"].state, "loaded");
+  assert.equal(byId["a/x.gguf"].name, "Model-A");
+  assert.equal(byId["a/x.gguf"].state, "not-loaded");
+  assert.equal(byId["a/x.gguf"].loaded_context_length, undefined);
+  assert.equal(byId["b/y.gguf"].name, "Model-B");
+  assert.equal(byId["b/y.gguf"].state, "loaded");
   assert.equal(
-    byId["Model-B"].loaded_context_length,
+    byId["b/y.gguf"].loaded_context_length,
     16384,
     "the loaded model reports its running window",
   );
@@ -201,7 +204,8 @@ test("buildModelList still includes the running model if the catalog snapshot la
   } as unknown as Supervisor;
   const list = buildModelList(supervisor, () => []); // empty snapshot
   assert.equal(list.length, 1);
-  assert.equal(list[0].id, "Runner");
+  assert.equal(list[0].id, "r/z.gguf");
+  assert.equal(list[0].name, "Runner");
   assert.equal(list[0].state, "loaded");
 });
 

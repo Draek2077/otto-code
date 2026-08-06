@@ -210,6 +210,8 @@ interface DescribeOptions {
 /** An LM Studio-style model description, an OpenAI model object enriched. */
 export interface ModelEntry {
   id: string;
+  /** Brain's editable human-facing name; `id` remains the stable model key. */
+  name: string;
   object: "model";
   created: number;
   owned_by: string;
@@ -220,6 +222,10 @@ export interface ModelEntry {
   quantization: string | null;
   state: ModelState;
   max_context_length: number | null;
+  /** Whether the model exposes a chat-template reasoning channel. */
+  reasoning: boolean;
+  /** Optional per-model values accepted by the OpenAI-compatible endpoint. */
+  reasoning_efforts?: string[];
   loaded_context_length?: number;
 }
 
@@ -241,8 +247,10 @@ export function describeModel(
   const md: ModelMetadata = model.metadata || {};
 
   const entry: ModelEntry = {
-    // Standard OpenAI fields - id is the friendly name, never the file path.
-    id: model.displayName,
+    // Keep the stable model key separate from Brain's editable display name.
+    // OpenAI-compatible clients send `id`; Otto uses `name` for presentation.
+    id: model.id,
+    name: model.displayName,
     object: "model",
     created: Math.floor((createdAt ? createdAt.getTime() : Date.now()) / 1000),
     owned_by: model.publisher || "local",
@@ -254,7 +262,15 @@ export function describeModel(
     quantization: model.quant || null,
     state,
     max_context_length: md.contextLength ?? null,
+    reasoning: Boolean(md.reasoning ?? model.thinking),
   };
+  const reasoningEfforts = md["reasoning_efforts"];
+  if (
+    Array.isArray(reasoningEfforts) &&
+    reasoningEfforts.every((value): value is string => typeof value === "string")
+  ) {
+    entry.reasoning_efforts = reasoningEfforts;
+  }
   if (state === "loaded" && profile && profile.contextSize) {
     // llama-server splits -c across --parallel slots, so the window a single
     // request actually gets is the total divided by the concurrency.
@@ -518,6 +534,10 @@ function proxyBuffered({
       done();
     });
 
+    // This is the first authoritative inference-stage signal: the request is
+    // being dispatched to llama-server and is waiting for prompt processing or
+    // its first output delta.
+    reasoning?.begin(streamId);
     upstream.end(body);
   });
 }
@@ -687,9 +707,10 @@ export interface RouterOptions {
    */
   hostApi?: HostApi | null;
   /**
-   * Live system telemetry (CPU, RAM, GPU, slots), folded into `/__host/status`
+   * Live system telemetry (CPU, RAM and GPU), folded into `/__host/status`
    * ONLY when the caller asks with `?resources=1`. The daemon's liveness probe
-   * polls status frequently and must not pay an `nvidia-smi` spawn for it; the
+   * polls status frequently and must not pay an `nvidia-smi` spawn for it. Slot
+   * activity is already part of the cheap status; the
    * Brain page's Overview tab opts in.
    */
   getResources?: (() => Promise<unknown>) | null;
@@ -860,6 +881,10 @@ export function createRouter({
       // already computed above.
       activity: readActivity(),
       reasoning: reasoningTracker.active,
+      // Exact aggregate request stages from the proxy lifecycle. Unlike slot
+      // phase sampling, this distinguishes silent prompt processing, reasoning
+      // deltas and user-visible content even when several requests overlap.
+      inference: reasoningTracker.snapshot,
       queued: schedulerStats ? schedulerStats.queued : 0,
       slots,
     };

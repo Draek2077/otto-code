@@ -34,6 +34,37 @@ describe("applyBrainStatusChanged", () => {
     expect(queryClient.getQueryData(queryKey)).toEqual(ready);
   });
 
+  it("updates an existing Overview entry live while retaining its resource sample", () => {
+    const queryClient = new QueryClient();
+    const queryKey = brainStatusQueryKey(serverId, true);
+    const resources = { cpu: 0.5, gpu: { utilization: 72 } };
+    queryClient.setQueryData(queryKey, {
+      ...ready,
+      resources,
+      slots: { busy: 0, threads: [] },
+    });
+    const live: BrainHostStatus = {
+      ...ready,
+      reasoning: true,
+      inference: { activeRequests: 1, processing: 0, thinking: 1, generating: 0 },
+      slots: {
+        busy: 1,
+        decode: 1,
+        threads: [{ slot: 0, phase: "decode", generatedTokens: 12, tokensPerSecond: 48 }],
+      },
+    };
+
+    applyBrainStatusChanged({ serverId, queryClient, message: statusMessage(live) });
+
+    expect(queryClient.getQueryData(queryKey)).toEqual({ ...live, resources });
+  });
+
+  it("does not create an Overview resource entry from a cheap push", () => {
+    const queryClient = new QueryClient();
+    applyBrainStatusChanged({ serverId, queryClient, message: statusMessage(ready) });
+    expect(queryClient.getQueryData(brainStatusQueryKey(serverId, true))).toBeUndefined();
+  });
+
   it("ignores a status broadcast that is not a brain snapshot", () => {
     const queryClient = new QueryClient();
     applyBrainStatusChanged({

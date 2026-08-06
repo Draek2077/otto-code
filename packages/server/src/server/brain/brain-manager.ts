@@ -156,10 +156,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /** Options for a status read. */
 export interface BrainStatusOptions {
   /**
-   * Ask the brain for live CPU/RAM/GPU/slot telemetry alongside the status.
-   * Off by default and deliberately so: this costs an `nvidia-smi` spawn plus a
-   * /slots round trip on the brain, and the daemon's own liveness polling hits
-   * this route far more often than any UI does. Only the Brain page's Overview
+   * Ask the brain for live CPU/RAM/GPU telemetry alongside the status. Off by
+   * default and deliberately so: this costs an `nvidia-smi` spawn on the brain,
+   * and the daemon's own liveness polling hits this route far more often than
+   * any UI does. Only the Brain page's Overview
    * tab, which actually renders the numbers, turns it on.
    */
   resources?: boolean;

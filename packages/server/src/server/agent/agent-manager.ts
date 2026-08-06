@@ -1076,6 +1076,12 @@ interface AgentMetadataPatch {
 }
 
 const SYSTEM_ERROR_PREFIX = "[System Error]";
+const CONTEXT_SIZE_ERROR_MESSAGE =
+  "The request exceeds the model's context size. Try starting a new chat or increasing the model's context size.";
+
+function isContextSizeError(message: string): boolean {
+  return /"type"\s*:\s*"exceed_context_size_error"/.test(message);
+}
 
 function attachPersistenceCwd(
   handle: AgentPersistenceHandle | null,
@@ -6024,14 +6030,10 @@ export class AgentManager {
     if (!isForegroundEvent) {
       agent.lifecycle = "error";
     }
-    agent.lastError = event.error;
+    const displayError = this.formatTurnFailedMessage(event);
+    agent.lastError = isContextSizeError(event.error) ? displayError : event.error;
     this.recordTurnUsage(agent, event.usage, event.provider);
-    await this.appendSystemErrorTimelineMessage(
-      agent,
-      event.provider,
-      this.formatTurnFailedMessage(event),
-      options,
-    );
+    await this.appendSystemErrorTimelineMessage(agent, event.provider, displayError, options);
     this.resolvePendingPermissionsForAgent(agent, event.provider, options, "Turn failed");
     if (!isForegroundEvent) {
       this.emitState(agent);
@@ -6844,6 +6846,9 @@ export class AgentManager {
     event: Extract<AgentStreamEvent, { type: "turn_failed" }>,
   ): string {
     const base = event.error.trim();
+    if (isContextSizeError(base)) {
+      return CONTEXT_SIZE_ERROR_MESSAGE;
+    }
     const parts = [base.length > 0 ? base : "Provider run failed"];
     const code = event.code?.trim();
     if (code) {

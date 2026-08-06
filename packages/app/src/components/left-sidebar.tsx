@@ -28,7 +28,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { resolveBrainRailLabel } from "@/components/brain/brain-state";
-import { createBrainStateIcon } from "@/components/brain/brain-state-icon";
+import { BrainStateIcon } from "@/components/brain/brain-state-icon";
 import { resolveBrainRailRoute, useBrainRail } from "@/components/brain/use-brain-rail-state";
 import { HostPicker } from "@/components/hosts/host-picker";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
@@ -560,13 +560,16 @@ function SidebarFooter({
   // own screen (which renders its own footer row and hardcodes "settings").
   const activeFooterItem = resolveSidebarFooterActiveItem(usePathname());
   // The Brain button reports the local AI host's state rather than being a
-  // static glyph - see createBrainStateIcon's docstring. It lives here, in the
+  // static glyph. It lives here, in the
   // spot the Create Project icon used to occupy, rather than in
   // SidebarFooterNavRow: that row is shared with the Settings sidebar footer,
   // which has no second row to put it in.
   const brainRail = useBrainRail();
   const brainState = brainRail.state;
-  const brainIcon = useMemo(() => createBrainStateIcon(brainState, theme), [brainState, theme]);
+  const renderBrainIcon = useCallback(
+    ({ size }: { size: number }) => <BrainStateIcon state={brainState} size={size} theme={theme} />,
+    [brainState, theme],
+  );
   const brainLabel = resolveBrainRailLabel(brainRail, labels.brain);
 
   return (
@@ -587,7 +590,7 @@ function SidebarFooter({
               onPress={handleBrain}
               testID="sidebar-brain"
               accessibilityLabel={brainLabel}
-              icon={brainIcon}
+              renderIcon={renderBrainIcon}
               theme={theme}
               active={activeFooterItem === "brain"}
             />

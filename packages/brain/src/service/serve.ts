@@ -355,8 +355,9 @@ export async function startService({
       applyConfigPatch,
       getAllowConfigWrite: allowWrite,
       hostApi,
-      getResources: () =>
-        sampleSystem(cpuSampler, { host: supervisor.host, port: supervisor.internalPort }),
+      // `buildCheapStatus` already samples `/slots`. Do not hit it a second
+      // time in parallel: the shared rate tracker needs one ordered timeline.
+      getResources: () => sampleSystem(cpuSampler),
       statusEvents,
     }),
     authToken,

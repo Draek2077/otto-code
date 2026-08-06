@@ -210,6 +210,7 @@ export async function injectDesktopBridge(page: Page, config: DesktopBridgeConfi
           }
           return {
             installed: true,
+            outcome: "installed",
             version: cfg.latestVersion ?? "1.2.3",
             message: "App update installed. Restart required.",
           };

@@ -6667,8 +6667,8 @@ export class DaemonClient {
 
   /**
    * The brain's status. Pass `resources` only from a surface that renders the
-   * live CPU/RAM/GPU/slot numbers: it costs an `nvidia-smi` spawn plus a /slots
-   * round trip on the brain, and this call is also the liveness poll.
+   * live CPU/RAM/GPU numbers: it costs an `nvidia-smi` spawn on the brain, and
+   * this call is also the liveness poll.
    */
   async brainHostStatus(
     options?: { resources?: boolean },

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  launchPassthroughCli,
   parsePassthroughCliArgs,
   parsePassthroughCliArgsFromArgv,
   runPassthroughCli,
@@ -143,11 +144,35 @@ describe("passthrough CLI", () => {
     ).toEqual(["daemon", "set-password"]);
   });
 
-  it("runs passthrough CLI through the programmatic entrypoint", async () => {
-    const runCli = vi.fn(async () => 7);
+  it("runs passthrough CLI as a child process and reports its exit code", async () => {
+    const invocation = {
+      command: "/opt/Otto/Otto",
+      args: ["--disable-warning=DEP0040", "/runner.js", "node-script", "/cli.js", "daemon"],
+      env: { ELECTRON_RUN_AS_NODE: "1" },
+    };
+    const build = vi.fn(() => invocation);
+    const launch = vi.fn(async () => 7);
 
-    await expect(runPassthroughCli(["daemon", "set-password"], { runCli })).resolves.toBe(7);
+    await expect(runPassthroughCli(["daemon", "set-password"], { build, launch })).resolves.toBe(7);
 
-    expect(runCli).toHaveBeenCalledWith(["daemon", "set-password"]);
+    expect(build).toHaveBeenCalledWith(["daemon", "set-password"]);
+    expect(launch).toHaveBeenCalledWith(invocation);
+  });
+
+  // The bug this replaced: the CLI ran inside the Electron main process, which
+  // quits as soon as the command's promise resolves and never waits on open
+  // handles - so `otto brain serve` printed "ready" and died seconds later.
+  it("stays with a child that holds an open handle until it exits", async () => {
+    const code = await launchPassthroughCli({
+      command: process.execPath,
+      args: [
+        "-e",
+        "const s = require('net').createServer().listen(0);" +
+          "setTimeout(() => { s.close(); process.exit(4); }, 150);",
+      ],
+      env: process.env,
+    });
+
+    expect(code).toBe(4);
   });
 });

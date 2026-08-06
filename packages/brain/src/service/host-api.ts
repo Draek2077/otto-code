@@ -49,7 +49,7 @@ const DEFAULT_LOG_LINES = 200;
  * the API is this" for the rare change that no single flag describes. A daemon
  * reads both and never requires an exact package-version match.
  */
-export const HOST_API_VERSION = 1;
+export const HOST_API_VERSION = 2;
 
 /**
  * How often the SSE stream writes a comment line when nothing has changed.
@@ -95,6 +95,8 @@ export interface HostCapabilities {
    * management API had to change for this to ship.
    */
   events: boolean;
+  /** Bounded live inference stages, token counts and throughput on status events. */
+  liveInference: boolean;
   /** Whether writes are currently permitted (allowRemoteConfig). */
   writable: boolean;
 }
@@ -274,6 +276,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
     // installs its snapshot source, and advertising a stream we cannot serve
     // would make a daemon stop polling and see nothing.
     events: Boolean(deps.statusEvents?.ready),
+    liveInference: Boolean(deps.statusEvents?.ready),
     writable: deps.getAllowWrite(),
   });
 
@@ -403,7 +406,13 @@ export function createHostApi(deps: HostApiDeps): HostApi {
         return;
       }
       updateDisplayName(model.id, displayName);
-      sendJson(res, { displayName });
+      // The catalog is kept in memory between requests. Refresh it here so
+      // the next inventory request, and all model lookups, see the persisted
+      // name immediately instead of reverting to the scan-derived name until
+      // the brain is restarted. Reset already follows this pattern below.
+      const catalog = deps.rescan();
+      const updated = resolveModel(catalog, model.id);
+      sendJson(res, { displayName: updated ? updated.displayName : displayName });
     });
   };
 

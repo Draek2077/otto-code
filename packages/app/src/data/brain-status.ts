@@ -9,9 +9,11 @@
  *
  * Two things this module deliberately does NOT do:
  *
- *  - **It does not touch the `resources: true` variant.** That payload costs an
- *    `nvidia-smi` spawn on the brain host, so it is never pushed and stays a
- *    pull for the Overview tab that renders the numbers.
+ *  - **It never invents fresh resources.** CPU/GPU/RAM still come only from the
+ *    Overview's opt-in pull. When that enriched cache exists, a cheap push
+ *    replaces its status fields while retaining only the last resource sample;
+ *    this is how live inference reaches Overview without spawning nvidia-smi at
+ *    event cadence.
  *  - **It does not merge.** A snapshot is complete by contract, so writing it
  *    whole is what makes a missed message and a reconnect the same recovery.
  *
@@ -58,9 +60,20 @@ export function applyBrainStatusChanged(input: {
   if (!isBrainStatusChangedPayload(input.message.payload)) {
     return;
   }
-  input.queryClient.setQueryData(
-    brainStatusQueryKey(input.serverId, false),
-    input.message.payload.brain,
+  const brain = input.message.payload.brain;
+  input.queryClient.setQueryData(brainStatusQueryKey(input.serverId, false), brain);
+  input.queryClient.setQueryData<BrainHostStatus>(
+    brainStatusQueryKey(input.serverId, true),
+    (current) =>
+      current
+        ? {
+            ...brain,
+            // The pushed snapshot is complete for every cheap field. Resources
+            // are deliberately absent, so retain that one enriched field from
+            // the Overview's slower opt-in sample.
+            resources: current.resources,
+          }
+        : current,
   );
 }
 

@@ -379,6 +379,12 @@ export interface BrainStateInput {
   slots?: { prefill?: number | null; decode?: number | null } | null;
   /** Whether any live slot is inside a reasoning block. */
   reasoning?: boolean | null;
+  /** Exact aggregate proxy stages from host API v2. */
+  inference?: {
+    processing?: number | null;
+    thinking?: number | null;
+    generating?: number | null;
+  } | null;
   /** A long-running op that owns the host. */
   activity?: { kind?: string | null } | null;
 }
@@ -489,6 +495,18 @@ function deriveLifecycleState(input: BrainStateInput): BrainState | null {
  * grew, and they are the ones most likely to gain siblings.
  */
 function deriveInferenceState(input: BrainStateInput): BrainState | null {
+  // Host API v2 reports request lifecycle changes synchronously from the proxy,
+  // before the next `/slots` sample. Prefer it so the rail moves as soon as the
+  // request is dispatched to the model rather than after the first generated token.
+  if ((input.inference?.thinking ?? 0) > 0) {
+    return "thinking";
+  }
+  if ((input.inference?.generating ?? 0) > 0) {
+    return "generating";
+  }
+  if ((input.inference?.processing ?? 0) > 0) {
+    return "prefill";
+  }
   // Reasoning outranks decode: a model emitting reasoning tokens is decoding
   // too, and "thinking" is the more useful of the two claims.
   if (input.reasoning) {

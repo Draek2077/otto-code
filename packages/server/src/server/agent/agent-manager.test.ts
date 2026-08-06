@@ -6923,6 +6923,28 @@ test("turn_failed surfaces provider code and diagnostic in system error message"
   expect(systemError?.text).toContain("No preset version installed for command claude");
 });
 
+test("turn_failed condenses context-size provider errors for display", () => {
+  const formatTurnFailedMessage = (
+    AgentManager.prototype as unknown as {
+      formatTurnFailedMessage: (event: AgentStreamEvent & { type: "turn_failed" }) => string;
+    }
+  ).formatTurnFailedMessage;
+
+  const message = formatTurnFailedMessage.call(
+    {},
+    {
+      type: "turn_failed",
+      provider: "openai-compat",
+      error:
+        'Otto Brain responded 400 to /chat/completions: {"error":{"code":400,"message":"request exceeds the available context size","type":"exceed_context_size_error"}}',
+    },
+  );
+
+  expect(message).toBe(
+    "The request exceeds the model's context size. Try starting a new chat or increasing the model's context size.",
+  );
+});
+
 test("permission request notifies once without forcing unread attention state", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-attention-permission-"));
   const storagePath = join(workdir, "agents");

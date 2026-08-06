@@ -39,6 +39,14 @@ const DEFAULT_MAINTAIN_VISIBLE_CONTENT_POSITION = Object.freeze({
   autoscrollToTopThreshold: 0,
 });
 const HISTORY_START_THRESHOLD_PX = 96;
+// FlatList normally keeps an inverted list at offset zero as the live header
+// grows, so issuing scrollToOffset for every small stream flush only interrupts
+// touch and momentum handling. A large batch is different: Android can finish
+// laying it out after that native preservation window, leaving the visual
+// viewport behind even though the last reported offset was still zero. Once
+// enough uncommanded growth has accumulated, make the next sticky attempt a
+// real native scroll rather than trusting the stale zero offset.
+const NATIVE_BOTTOM_ANCHOR_RECHECK_GROWTH_PX = 96;
 
 function keyExtractor(item: { id: string }): string {
   return item.id;
@@ -157,6 +165,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     contentMeasuredForKey: null as string | null,
   });
   const scrollOffsetYRef = useRef(0);
+  const uncommandedBottomGrowthRef = useRef(0);
   const programmaticScrollEventBudgetRef = useRef(0);
   const [isNativeViewportSettling, setIsNativeViewportSettling] = useState(false);
   const nativeViewportSettlingFrameIdRef = useRef<number | null>(null);
@@ -236,7 +245,11 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
       // (~48ms) doesn't need a scroll command. Re-issuing scrollToOffset here
       // aborts in-flight touch/momentum handling and restarts scroll state on
       // every flush, which shows up as jitter and flashing while streaming.
-      if (!animated && scrollOffsetYRef.current <= 1) {
+      if (
+        !animated &&
+        scrollOffsetYRef.current <= 1 &&
+        uncommandedBottomGrowthRef.current < NATIVE_BOTTOM_ANCHOR_RECHECK_GROWTH_PX
+      ) {
         onNearBottomChange(true);
         return;
       }
@@ -251,6 +264,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
         ...streamViewportMetricsRef.current,
         offsetY: 0,
       };
+      uncommandedBottomGrowthRef.current = 0;
       onNearBottomChange(true);
     },
     [onNearBottomChange],
@@ -316,6 +330,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
       contentMeasuredForKey: null,
     };
     scrollOffsetYRef.current = 0;
+    uncommandedBottomGrowthRef.current = 0;
     clearNativeViewportSettling();
     setIsNativeViewportSettling(false);
     historyStartReadyRef.current = false;
@@ -459,6 +474,11 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     }
     const previousContentHeight = streamViewportMetricsRef.current.contentHeight;
     const nextContentHeight = Math.max(0, height);
+    if (scrollOffsetYRef.current <= 1 && nextContentHeight > previousContentHeight) {
+      uncommandedBottomGrowthRef.current += nextContentHeight - previousContentHeight;
+    } else if (nextContentHeight < previousContentHeight) {
+      uncommandedBottomGrowthRef.current = 0;
+    }
     streamViewportMetricsRef.current = {
       ...streamViewportMetricsRef.current,
       containerKey: "native-virtualized",

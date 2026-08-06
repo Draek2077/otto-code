@@ -38,7 +38,7 @@ export type BrainStatusListener = (snapshot: BrainStatusSnapshot) => void;
  * llama-server's `/slots`. Everything else notifies directly. Sampling is not
  * a heartbeat: an unchanged sample emits nothing.
  */
-const DEFAULT_SAMPLE_INTERVAL_MS = 1000;
+const DEFAULT_SAMPLE_INTERVAL_MS = 250;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -52,9 +52,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  *
  *  - `telemetry` totals and `recent` advance on every completion.
  *  - `logLineCount` advances on every llama-server log line.
- *  - `slots.contexts` and `slots.threads` carry per-token counters and rates,
- *    so a generating model would otherwise emit at token rate. The phase split
- *    (busy/idle/prefill/decode) is the part the rail actually renders.
+ *  - `slots.contexts` is capacity detail that changes independently of work.
+ *
+ * `slots.threads` is intentionally included. It is sampled at a bounded 4 Hz,
+ * not notified per model token, so it gives the Overview live counts and rates
+ * without turning a fast model into a token-rate broadcast.
  *
  * `telemetry.warning` is kept: the reasoning-only advice is a state the UI
  * shows, not a counter.
@@ -79,6 +81,7 @@ export function statusChangeKey(snapshot: BrainStatusSnapshot): string {
     capabilities: snapshot.capabilities ?? null,
     activity: snapshot.activity ?? null,
     reasoning: snapshot.reasoning ?? null,
+    inference: snapshot.inference ?? null,
     queued: snapshot.queued ?? null,
     schedulerWaiting: scheduler?.waiting ?? null,
     schedulerLastTurn: scheduler?.lastTurn ?? null,
@@ -90,6 +93,7 @@ export function statusChangeKey(snapshot: BrainStatusSnapshot): string {
           idle: slots.idle ?? null,
           prefill: slots.prefill ?? null,
           decode: slots.decode ?? null,
+          threads: slots.threads ?? null,
         }
       : null,
   });

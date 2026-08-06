@@ -193,6 +193,7 @@ const PROVIDER_CLIENT_FACTORIES: Record<string, ProviderClientFactory> = {
       connectors: options?.connectors,
       mcpToolPermissions: options?.providerOverride?.mcpToolPermissions,
       compaction: options?.providerOverride?.compaction,
+      reasoningEffortMode: "toggle",
       maxToolRounds: options?.providerOverride?.maxToolRounds,
       managedProcesses: options?.managedProcesses,
     }),
