@@ -1081,7 +1081,7 @@ function SelectorContent({
       modelBody = emptyState;
     }
     return (
-      <View>
+      <View style={styles.providerViewBody}>
         {familyPersonalitiesNode}
         {modelBody}
       </View>
@@ -1891,6 +1891,15 @@ const styles = StyleSheet.create((theme) => ({
   emptyStateText: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
+  },
+  // The mobile-native provider view renders straight into the sheet's
+  // flex-bounded frame (no wrapping ScrollView - see mobileChildrenScrollEnabled
+  // in Combobox) so its virtualized FlatList can measure a real height. Without
+  // flex here this View auto-sizes to content, the FlatList's flex: 1 has
+  // nothing to fill, and the model list silently renders as zero height.
+  providerViewBody: {
+    flex: 1,
+    minHeight: 0,
   },
   virtualizedModelList: {
     flex: 1,
