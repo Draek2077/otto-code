@@ -3963,6 +3963,26 @@ export class AgentManager {
       { agentId, provider: agent.provider, queueSize: agent.steerQueue.length },
       "agent.manager.steer_queue.enqueue",
     );
+
+    // A terminal event finalizes the turn before the stream generator settles
+    // its pending-run record. If a queue request lands after that finalize has
+    // chosen idle but before the pending run is cleared, the normal finalize
+    // drain has already been missed. Claim the batch here and let the existing
+    // dispatcher wait for the old generator to settle before starting it.
+    if (
+      agent.lifecycle === "idle" &&
+      !agent.activeForegroundTurnId &&
+      !agent.pendingSteerDrain &&
+      this.foregroundRuns.hasPendingRun(agentId)
+    ) {
+      const drainBatch = takeNextSteerQueueBatch(agent.steerQueue);
+      if (drainBatch) {
+        agent.steerQueue = drainBatch.rest;
+        agent.pendingSteerDrain = true;
+        (agent as ActiveManagedAgent).lifecycle = "running";
+        void this.dispatchSteerQueueBatch(agentId, drainBatch.entries);
+      }
+    }
     this.touchUpdatedAt(agent);
     this.emitState(agent);
     return { queued: true, entry };

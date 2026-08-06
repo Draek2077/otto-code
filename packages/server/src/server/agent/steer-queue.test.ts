@@ -468,6 +468,29 @@ describe("queued delivery", () => {
     expect(manager.getSteerQueue(agentId)).toEqual([]);
   });
 
+  test("a message queued while the completed turn is settling still drains", async () => {
+    const { manager, agentId, session } = await createRunningAgent();
+    let queuedResult: ReturnType<typeof startAgentRun> | undefined;
+    manager.subscribe(
+      (event) => {
+        if (event.type === "agent_state" && event.agent.lifecycle === "idle" && !queuedResult) {
+          queuedResult = startAgentRun(manager, agentId, "run the follow-up", logger, {
+            delivery: "queue",
+          });
+        }
+      },
+      { agentId, replayState: false },
+    );
+
+    session.completeTurn();
+
+    await settle();
+
+    expect(queuedResult?.queued).toBe(true);
+    expect(session.prompts).toEqual(["first turn", "run the follow-up"]);
+    expect(manager.getSteerQueue(agentId)).toEqual([]);
+  });
+
   test("interrupt delivery still clobbers the running turn", async () => {
     const { manager, agentId, session } = await createRunningAgent();
 
