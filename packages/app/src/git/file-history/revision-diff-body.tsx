@@ -3,6 +3,8 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { GitBlameCommit } from "@otto-code/protocol/messages";
 import { DiffScroll } from "@/components/diff-scroll";
+import { MarkdownRenderer } from "@/components/markdown/renderer";
+import { isMarkdownPath } from "@/editor/markdown/markdown-path";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
@@ -123,6 +125,7 @@ export function RevisionDiffBody({
   onSelectBlameCommit,
 }: RevisionDiffBodyProps) {
   const isCompact = useIsCompactFormFactor();
+  const [formatted, setFormatted] = useState(false);
   const [scrollWidth, setScrollWidth] = useState(0);
   const verticalScrollRef = useRef<ScrollView>(null);
   const horizontalScrollRef = useRef<ScrollView>(null);
@@ -158,6 +161,13 @@ export function RevisionDiffBody({
   );
 
   const gutterWidth = blameWidth + oldNumberWidth + newNumberWidth;
+  const formattedAvailable =
+    isMarkdownPath(file.path) &&
+    file.status !== "binary" &&
+    file.status !== "too_large" &&
+    rows.length <= 2000;
+  const formattedAccessibilityState = useMemo(() => ({ checked: formatted }), [formatted]);
+  const toggleFormatted = useCallback(() => setFormatted((value) => !value), []);
   const horizontalOverlayStyle = useMemo(
     () => [styles.horizontalScrollbarHost, inlineUnistylesStyle({ left: gutterWidth })],
     [gutterWidth],
@@ -169,55 +179,102 @@ export function RevisionDiffBody({
 
   return (
     <View style={styles.host}>
-      <ScrollView
-        ref={verticalScrollRef}
-        style={styles.verticalScroll}
-        onLayout={scrollbar.onLayout}
-        onScroll={scrollbar.onScroll}
-        onContentSizeChange={scrollbar.onContentSizeChange}
-        scrollEventThrottle={16}
-        showsVerticalScrollIndicator={!isWeb}
-        nestedScrollEnabled
-      >
-        <View style={styles.row} dataSet={CODE_SURFACE_DATASET}>
-          <View style={inlineUnistylesStyle({ width: gutterWidth })}>
-            {rows.map((row, index) => (
-              <GutterRow
-                key={row.key}
-                row={row}
-                oldNumberWidth={oldNumberWidth}
-                newNumberWidth={newNumberWidth}
-                blame={blameRows[index] ?? null}
-                blameWidth={blameWidth}
-                onSelectBlameCommit={onSelectBlameCommit}
-              />
-            ))}
-          </View>
-          <DiffScroll
-            scrollViewWidth={scrollWidth}
-            onScrollViewWidthChange={setScrollWidth}
-            style={styles.codeScroll}
-            scrollRef={horizontalScrollRef}
-            onScroll={horizontalScrollbar.onScroll}
-            onContentSizeChange={horizontalScrollbar.onContentSizeChange}
-            onLayout={horizontalScrollbar.onLayout}
+      {formattedAvailable ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={formattedAccessibilityState}
+          onPress={toggleFormatted}
+          style={[styles.formattedToggle, formatted && styles.formattedToggleSelected]}
+          testID="git-history-formatted-toggle"
+        >
+          <Text style={styles.formattedToggleText}>{formatted ? "Raw diff" : "Formatted"}</Text>
+        </Pressable>
+      ) : null}
+      {formatted && formattedAvailable ? (
+        <FormattedMarkdownHistoryDiff file={file} />
+      ) : (
+        <>
+          <ScrollView
+            ref={verticalScrollRef}
+            style={styles.verticalScroll}
+            onLayout={scrollbar.onLayout}
+            onScroll={scrollbar.onScroll}
+            onContentSizeChange={scrollbar.onContentSizeChange}
+            scrollEventThrottle={16}
+            showsVerticalScrollIndicator={!isWeb}
+            nestedScrollEnabled
           >
-            <View style={codeContainerStyle}>
-              {rows.map((row) => (
-                <CodeRow key={row.key} row={row} />
-              ))}
+            <View style={styles.row} dataSet={CODE_SURFACE_DATASET}>
+              <View style={inlineUnistylesStyle({ width: gutterWidth })}>
+                {rows.map((row, index) => (
+                  <GutterRow
+                    key={row.key}
+                    row={row}
+                    oldNumberWidth={oldNumberWidth}
+                    newNumberWidth={newNumberWidth}
+                    blame={blameRows[index] ?? null}
+                    blameWidth={blameWidth}
+                    onSelectBlameCommit={onSelectBlameCommit}
+                  />
+                ))}
+              </View>
+              <DiffScroll
+                scrollViewWidth={scrollWidth}
+                onScrollViewWidthChange={setScrollWidth}
+                style={styles.codeScroll}
+                scrollRef={horizontalScrollRef}
+                onScroll={horizontalScrollbar.onScroll}
+                onContentSizeChange={horizontalScrollbar.onContentSizeChange}
+                onLayout={horizontalScrollbar.onLayout}
+              >
+                <View style={codeContainerStyle}>
+                  {rows.map((row) => (
+                    <CodeRow key={row.key} row={row} />
+                  ))}
+                </View>
+              </DiffScroll>
             </View>
-          </DiffScroll>
-        </View>
-      </ScrollView>
-      {scrollbar.overlay}
-      {/* Inset past the gutter, which does not scroll horizontally: the bar has
+          </ScrollView>
+          {scrollbar.overlay}
+          {/* Inset past the gutter, which does not scroll horizontally: the bar has
           to span exactly the region it scrolls, or its travel lies about where
           in the line you are. */}
-      <View style={horizontalOverlayStyle} pointerEvents="box-none">
-        {horizontalScrollbar.overlay}
-      </View>
+          <View style={horizontalOverlayStyle} pointerEvents="box-none">
+            {horizontalScrollbar.overlay}
+          </View>
+        </>
+      )}
     </View>
+  );
+}
+
+function FormattedMarkdownHistoryDiff({ file }: { file: ParsedDiffFile }) {
+  const lines = buildRows(file).filter((row) => row.line.type !== "header");
+  return (
+    <ScrollView style={styles.formattedScroll} contentContainerStyle={styles.formattedContent}>
+      {lines.map((row) => {
+        let lineStyle = styles.formattedContext;
+        let marker = " ";
+        if (row.line.type === "add") {
+          lineStyle = styles.formattedAdded;
+          marker = "+";
+        } else if (row.line.type === "remove") {
+          lineStyle = styles.formattedRemoved;
+          marker = "−";
+        }
+        return (
+          <View key={row.key} style={[styles.formattedRow, lineStyle]}>
+            <Text style={styles.formattedGutter}>
+              {row.newLineNumber ?? row.oldLineNumber ?? ""}
+            </Text>
+            <Text style={styles.formattedMarker}>{marker}</Text>
+            <View style={styles.formattedBody}>
+              <MarkdownRenderer text={row.line.content || "\n"} remoteImages="altText" />
+            </View>
+          </View>
+        );
+      })}
+    </ScrollView>
   );
 }
 
@@ -415,6 +472,45 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 0,
     position: "relative",
   },
+  formattedToggle: {
+    alignSelf: "flex-end",
+    margin: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 4,
+    backgroundColor: theme.colors.surface2,
+  },
+  formattedToggleSelected: {
+    backgroundColor: theme.colors.accentBorder,
+  },
+  formattedToggleText: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.xs,
+  },
+  formattedScroll: { flex: 1 },
+  formattedContent: { paddingBottom: theme.spacing[3] },
+  formattedRow: { flexDirection: "row", alignItems: "flex-start", minHeight: 28 },
+  formattedContext: { backgroundColor: theme.colors.surface1 },
+  formattedAdded: { backgroundColor: "rgba(46, 160, 67, 0.15)" },
+  formattedRemoved: { backgroundColor: "rgba(248, 81, 73, 0.1)" },
+  formattedGutter: {
+    width: 52,
+    paddingTop: 5,
+    paddingRight: 8,
+    color: theme.colors.foregroundMuted,
+    fontFamily: theme.fontFamily.mono,
+    fontSize: theme.fontSize.xs,
+    textAlign: "right",
+  },
+  formattedMarker: {
+    width: 22,
+    paddingTop: 5,
+    color: theme.colors.foregroundMuted,
+    fontFamily: theme.fontFamily.mono,
+    fontSize: theme.fontSize.code,
+    textAlign: "center",
+  },
+  formattedBody: { flex: 1, minWidth: 0, paddingHorizontal: theme.spacing[2] },
   verticalScroll: {
     flex: 1,
   },
