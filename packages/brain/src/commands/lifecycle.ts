@@ -46,7 +46,9 @@ export async function runServeCommand(
   const scheme = handle.secure ? "https" : "http";
   process.stdout.write(`router listening on ${scheme}://${handle.displayHost}:${handle.port}\n`);
   process.stdout.write(
-    `ready: ${handle.model.displayName}, ${vram.formatGiB(handle.supervisor.vramAtReadyBytes ?? 0)} VRAM in use\n`,
+    handle.model
+      ? `ready: ${handle.model.displayName}, ${vram.formatGiB(handle.supervisor.vramAtReadyBytes ?? 0)} VRAM in use\n`
+      : "ready: no model loaded; use the Library tab or `otto brain pull` to download one\n",
   );
   process.stdout.write("press Ctrl+C to stop\n");
 

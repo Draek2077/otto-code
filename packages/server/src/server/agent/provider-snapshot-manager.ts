@@ -48,6 +48,23 @@ const DEFAULT_DIAGNOSTIC_TIMEOUT_MS = 120_000;
 const REFRESH_TIMEOUT_ENV_VAR = "OTTO_PROVIDER_REFRESH_TIMEOUT_MS";
 export const GLOBAL_PROVIDER_SNAPSHOT_KEY = "otto:global";
 
+/**
+ * How long a failed probe stays cached before an ordinary snapshot read is
+ * allowed to retry it.
+ *
+ * Without a window, `error` and `unavailable` are terminal: `loadProvider`
+ * skips any entry that is not `loading`, and `resolveProvidersToWarm` only
+ * warms `loading` entries. One lost probe therefore froze the provider until
+ * someone hit Refresh in Settings, which is the only caller that forces.
+ * Codex lost that race routinely, because its catalog fetch spawns a second
+ * `codex app-server` that cannot take the sqlite state lock under `~/.codex`
+ * while a chat's own app-server holds it.
+ *
+ * Long enough that repeated reads do not re-spawn probes in a loop, short
+ * enough that reopening the model picker heals the row.
+ */
+const PROVIDER_PROBE_RETRY_AFTER_MS = 30_000;
+
 // Provider refresh probes can be slow on cold starts (e.g. Copilot's first
 // `copilot --acp` invocation, OpenCode workspace probes with many MCP servers).
 // Allow operators to bump the ceiling via env var without rebuilding.
@@ -231,6 +248,10 @@ interface ProviderSnapshotTarget {
 export class ProviderSnapshotManager {
   private readonly snapshots = new Map<string, Map<AgentProvider, ProviderSnapshotEntry>>();
   private readonly providerLoads = new Map<string, Map<AgentProvider, ProviderLoad>>();
+  // cwdKey → provider → epoch ms of the last failed probe. Drives
+  // PROVIDER_PROBE_RETRY_AFTER_MS; cleared the moment a probe succeeds, so a
+  // healthy provider never carries one.
+  private readonly probeFailures = new Map<string, Map<AgentProvider, number>>();
   private readonly events = new EventEmitter();
   private destroyed = false;
   private readonly refreshTimeoutMs: number;
@@ -631,6 +652,7 @@ export class ProviderSnapshotManager {
     this.events.removeAllListeners();
     this.snapshots.clear();
     this.providerLoads.clear();
+    this.probeFailures.clear();
   }
 
   private buildRegistry(): Record<AgentProvider, ProviderDefinition> {
@@ -796,7 +818,17 @@ export class ProviderSnapshotManager {
         defaultModeId: definition?.defaultModeId ?? null,
       };
 
-      if (!definition?.enabled || !current || current.status === "loading") {
+      // A provider with no entry yet is one this registry rebuild just added;
+      // seeding it "unavailable" is what getUnprobedProviderIds keys off to
+      // probe it. An in-flight probe is a different case and must not be
+      // demoted: "unavailable" is only re-probed once its retry window lapses,
+      // so rewriting `loading` here froze whichever provider happened to be
+      // mid-probe when a daemon-config change landed. Codex was almost always
+      // that provider, because its catalog fetch spawns a whole app-server.
+      // Leaving it "loading" is self-healing - resolveProvidersToWarm picks
+      // loading entries up on the next read, and applyMutableProviderConfig
+      // has already dropped the orphaned load.
+      if (!definition?.enabled || !current) {
         entries.set(provider, {
           ...metadata,
           status: "unavailable",
@@ -850,12 +882,64 @@ export class ProviderSnapshotManager {
       this.resetSnapshotToLoading(cwd, missingProviders);
     }
 
-    return providersToInspect.filter((provider) => snapshot.get(provider)?.status === "loading");
+    return providersToInspect.filter((provider) => {
+      const status = snapshot.get(provider)?.status;
+      if (status === "loading") {
+        return true;
+      }
+      // A failed probe is retried once its window lapses. Without this, a
+      // single lost probe was terminal for the life of the daemon.
+      return (
+        (status === "error" || status === "unavailable") && this.isProbeRetryable(cwd, provider)
+      );
+    });
+  }
+
+  private recordProbeFailure(cwdKey: string, provider: AgentProvider): void {
+    let failures = this.probeFailures.get(cwdKey);
+    if (!failures) {
+      failures = new Map<AgentProvider, number>();
+      this.probeFailures.set(cwdKey, failures);
+    }
+    failures.set(provider, Date.now());
+  }
+
+  private clearProbeFailure(cwdKey: string, provider: AgentProvider): void {
+    const failures = this.probeFailures.get(cwdKey);
+    if (!failures) {
+      return;
+    }
+    failures.delete(provider);
+    if (failures.size === 0) {
+      this.probeFailures.delete(cwdKey);
+    }
+  }
+
+  /** True when this provider's last probe failed long enough ago to retry. */
+  private isProbeRetryable(cwdKey: string, provider: AgentProvider): boolean {
+    const failedAt = this.probeFailures.get(cwdKey)?.get(provider);
+    return failedAt !== undefined && Date.now() - failedAt >= PROVIDER_PROBE_RETRY_AFTER_MS;
   }
 
   private clearCachedProviders(providers?: AgentProvider[]): void {
     const providerSet = providers ? new Set(providers) : null;
     const loadingEntries = this.createLoadingEntries();
+
+    // These entries are about to become "loading", which warms unconditionally.
+    // Dropping the stamps keeps the retry window from outliving the failure it
+    // was recorded for.
+    if (!providerSet) {
+      this.probeFailures.clear();
+    } else {
+      for (const [cwdKey, failures] of this.probeFailures) {
+        for (const provider of providerSet) {
+          failures.delete(provider);
+        }
+        if (failures.size === 0) {
+          this.probeFailures.delete(cwdKey);
+        }
+      }
+    }
 
     for (const [cwd, providerLoads] of Array.from(this.providerLoads.entries())) {
       if (!providerSet) {
@@ -911,7 +995,12 @@ export class ProviderSnapshotManager {
       return existingLoad.promise;
     }
     const existingEntry = this.snapshots.get(options.snapshotCwd)?.get(options.provider);
-    if (existingEntry && existingEntry.status !== "loading" && !options.force) {
+    if (
+      existingEntry &&
+      existingEntry.status !== "loading" &&
+      !options.force &&
+      !this.isProbeRetryable(options.snapshotCwd, options.provider)
+    ) {
       return Promise.resolve();
     }
 
@@ -970,6 +1059,8 @@ export class ProviderSnapshotManager {
 
     try {
       if (!definition.enabled) {
+        // Not a failed probe: a disabled provider changes state through config,
+        // which reconciles the snapshot. No retry stamp, so it stays put.
         setEntry({ ...base, status: "unavailable", enabled: false });
         return;
       }
@@ -981,7 +1072,15 @@ export class ProviderSnapshotManager {
         `Timed out checking ${definition.label} availability after ${this.refreshTimeoutMs}ms`,
       );
       if (!available) {
-        setEntry({ ...base, status: "unavailable", enabled: true });
+        if (setEntry({ ...base, status: "unavailable", enabled: true })) {
+          this.recordProbeFailure(snapshotCwd, provider);
+          // This transition used to be silent, which is why a frozen provider
+          // row left no trace in the daemon log at all.
+          this.logger.debug(
+            { provider, cwd: snapshotCwd },
+            "Provider reported unavailable; retrying on a later snapshot read",
+          );
+        }
         return;
       }
 
@@ -992,7 +1091,7 @@ export class ProviderSnapshotManager {
         `Timed out refreshing ${definition.label} after ${this.refreshTimeoutMs}ms`,
       );
 
-      setEntry({
+      const emitted = setEntry({
         ...base,
         defaultModeId:
           catalog.defaultModeId === undefined ? definition.defaultModeId : catalog.defaultModeId,
@@ -1002,6 +1101,9 @@ export class ProviderSnapshotManager {
         modes: catalog.modes,
         fetchedAt: new Date().toISOString(),
       });
+      if (emitted) {
+        this.clearProbeFailure(snapshotCwd, provider);
+      }
     } catch (error) {
       const emitted = setEntry({
         ...base,
@@ -1010,6 +1112,7 @@ export class ProviderSnapshotManager {
         error: toErrorMessage(error),
       });
       if (emitted) {
+        this.recordProbeFailure(snapshotCwd, provider);
         this.logger.warn(
           { err: error, provider, cwd: snapshotCwd },
           "Failed to refresh provider snapshot",

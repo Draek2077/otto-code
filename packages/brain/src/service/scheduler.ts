@@ -37,6 +37,13 @@ export interface SchedulerOptions {
   supervisor: SchedulerSupervisor;
   loadModel: (model: Model) => Promise<void>;
   logger?: ((message: string) => void) | null;
+  /**
+   * Called whenever the queue depth or the turn changes - i.e. whenever
+   * `stats()` would answer differently. The status event stream publishes from
+   * this instead of sampling, so "queued behind a model switch" reaches the UI
+   * the moment it becomes true rather than up to a poll later.
+   */
+  onChange?: (() => void) | null;
 }
 
 /** A queued completion request bound to a resolved catalog model. */
@@ -61,14 +68,25 @@ export class Scheduler {
   queue: QueuedJob[]; // { modelId, model, run, resolve, reject }
   lastTurnId: string | null;
   pumping: boolean;
+  onChange: (() => void) | null;
 
-  constructor({ supervisor, loadModel, logger = null }: SchedulerOptions) {
+  constructor({ supervisor, loadModel, logger = null, onChange = null }: SchedulerOptions) {
     this.supervisor = supervisor;
     this.loadModel = loadModel; // async (model) => resolves once it is ready
     this.logger = logger; // optional (message: string) => void
     this.queue = []; // { modelId, model, run, resolve, reject }
     this.lastTurnId = null;
     this.pumping = false;
+    this.onChange = onChange;
+  }
+
+  /** Announce a queue/turn change. Never lets a status listener break a turn. */
+  #announce(): void {
+    try {
+      this.onChange?.();
+    } catch {
+      // Status reporting is not allowed to fail a queued completion.
+    }
   }
 
   /** Id of the model that is actually loaded and ready, or null. */
@@ -92,6 +110,7 @@ export class Scheduler {
   submit(model: Model, run: () => Promise<unknown>): Promise<unknown> {
     return new Promise((resolve, reject) => {
       this.queue.push({ modelId: model.id, model, run, resolve, reject });
+      this.#announce();
       queueMicrotask(() => this.pump());
     });
   }
@@ -101,6 +120,7 @@ export class Scheduler {
     const taken: QueuedJob[] = [];
     for (const job of this.queue) (pred(job) ? taken : kept).push(job);
     this.queue = kept;
+    if (taken.length > 0) this.#announce();
     return taken;
   }
 
@@ -147,6 +167,7 @@ export class Scheduler {
         }
 
         this.lastTurnId = turnId;
+        this.#announce();
         await this.#serveTurn(turnId);
       }
     } finally {

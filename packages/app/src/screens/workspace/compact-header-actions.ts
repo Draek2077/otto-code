@@ -2,10 +2,10 @@
  * Responsive fitting for the compact workspace header's action strip.
  *
  * The strip is `[menu toggle] [title / subtitle] [...] [Voice cues] [Visualizer]
- * [Play]` in the header's `left` container plus `[Explorer]` in `right`. The
- * "..." menu is the one non-negotiable control, and the project name / workspace
- * subtitle must always keep at least `MIN_TITLE_WIDTH` - so when the row can't
- * hold everything the optional buttons drop in the order Voice cues,
+ * [Brain] [Play]` in the header's `left` container plus `[Explorer]` in `right`.
+ * The "..." menu is the one non-negotiable control, and the project name /
+ * workspace subtitle must always keep at least `MIN_TITLE_WIDTH` - so when the
+ * row can't hold everything the optional buttons drop in the order Voice cues,
  * Visualizer, Explorer, Play.
  *
  * A dropped button is moved, not lost: every action the fit drops reappears as
@@ -14,6 +14,11 @@
  * cues go first because the same switch also lives in Agents settings, and Play
  * goes last because starting a workspace script is the most launch-like action
  * in the strip.
+ *
+ * Brain is the exception and is not in that order at all: it is pinned, because
+ * it is a status light rather than an action, and a status light folded into a
+ * closed menu reports nothing. It is charged to the fixed chrome instead, so the
+ * droppable four still spend an honest budget when it is on screen.
  */
 
 /** Optional compact header buttons, listed in the order they drop. */
@@ -59,6 +64,12 @@ export interface CompactHeaderActionsInput {
   voiceCuesAvailable: boolean;
   hasWorkspaceScripts: boolean;
   hasWorkspaceDirectory: boolean;
+  /**
+   * The pinned Brain status light is on screen (the sidebar is collapsed, or
+   * this is compact). It never drops, so it is charged to fixed chrome rather
+   * than competing for a slot.
+   */
+  hasBrainButton: boolean;
 }
 
 export interface CompactHeaderActionsFit {
@@ -110,7 +121,11 @@ export function resolveCompactHeaderActions(
   }
   const fitted =
     input.isCompact && input.rowWidth > 0
-      ? fitCompactHeaderActions({ rowWidth: input.rowWidth, requested })
+      ? fitCompactHeaderActions({
+          rowWidth: input.rowWidth,
+          requested,
+          pinnedWidth: input.hasBrainButton ? ACTION_WIDTH : 0,
+        })
       : requested;
   const dropped = (action: CompactHeaderAction) => requested.has(action) && !fitted.has(action);
   return {
@@ -130,8 +145,10 @@ export function resolveCompactHeaderActions(
 function fitCompactHeaderActions(input: {
   rowWidth: number;
   requested: ReadonlySet<CompactHeaderAction>;
+  /** Width already spoken for by pinned buttons (Brain), which never drop. */
+  pinnedWidth: number;
 }): ReadonlySet<CompactHeaderAction> {
-  const budget = input.rowWidth - FIXED_CHROME_WIDTH;
+  const budget = input.rowWidth - FIXED_CHROME_WIDTH - input.pinnedWidth;
   const slots = Math.max(0, Math.floor(budget / ACTION_WIDTH));
   const visible = new Set<CompactHeaderAction>();
   for (let index = DROP_ORDER.length - 1; index >= 0 && visible.size < slots; index -= 1) {

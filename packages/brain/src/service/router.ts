@@ -9,7 +9,8 @@ import { query as queryGpu } from "../gpu.js";
 import { rankModels, type RankedModel } from "../ops/results.js";
 import type { GpuInfo, Model, ModelMetadata } from "../types.js";
 import type { Profile } from "../config/schema.js";
-import type { HostApi } from "./host-api.js";
+import { HOST_API_VERSION, type HostApi } from "./host-api.js";
+import type { BrainStatusPublisher, BrainStatusSnapshot } from "./status-events.js";
 import {
   errorBody,
   errorMessage,
@@ -692,6 +693,13 @@ export interface RouterOptions {
    * Brain page's Overview tab opts in.
    */
   getResources?: (() => Promise<unknown>) | null;
+  /**
+   * The live status source served at `GET /__host/events`. The router installs
+   * its snapshot builder here and notifies it whenever something authoritative
+   * moves, so the same assembly answers both the pull and the push and the two
+   * can never disagree. Absent means this brain does not advertise events.
+   */
+  statusEvents?: BrainStatusPublisher | null;
 }
 
 export function createRouter({
@@ -711,10 +719,16 @@ export function createRouter({
   getAllowConfigWrite = () => false,
   hostApi = null,
   getResources = null,
+  statusEvents = null,
 }: RouterOptions): (req: http.IncomingMessage, res: http.ServerResponse) => void {
   const agent = new http.Agent({ keepAlive: true, maxSockets: 32 });
   const scheduler = loadModel
-    ? new Scheduler({ supervisor, loadModel, logger: (m) => logger?.warn?.(m) })
+    ? new Scheduler({
+        supervisor,
+        loadModel,
+        logger: (m) => logger?.warn?.(m),
+        onChange: statusEvents ? () => statusEvents.notify() : null,
+      })
     : null;
 
   // A (re)start means whatever produced the current warning no longer applies -
@@ -803,6 +817,63 @@ export function createRouter({
     });
   };
 
+  /**
+   * The cheap host status: everything `/__host/status` answers except the
+   * opt-in `resources` block.
+   *
+   * One assembly feeds both the pull (`/__host/status`) and the push
+   * (`/__host/events`). Keeping them as one function is the point: a field that
+   * only the polled answer carried would be a field the rail silently lost the
+   * moment a daemon stopped polling.
+   */
+  const buildCheapStatus = async (): Promise<BrainStatusSnapshot> => {
+    const schedulerStats = scheduler ? scheduler.stats() : null;
+    // Slots come from a loopback GET on the resident llama-server. That is
+    // cheap enough to pay on every sample - unlike GPU sampling, which spawns
+    // `nvidia-smi` and stays opt-in. Skipped entirely unless a model is
+    // resident, since there is nothing listening otherwise.
+    const slots =
+      supervisor.state === "ready"
+        ? await sampleSlots({ host: supervisor.host, port: supervisor.internalPort }).catch(
+            () => null,
+          )
+        : null;
+    return {
+      version,
+      // Additive, and separate from `version`: the package version says which
+      // build this is, this says which generation of the management contract it
+      // speaks. A daemon reads this and `capabilities` rather than pinning a
+      // package version.
+      apiVersion: HOST_API_VERSION,
+      ...supervisor.status(),
+      telemetry: { ...telemetry.totals, warning: telemetry.warning },
+      scheduler: schedulerStats,
+      recent: telemetry.records.slice(-10),
+      logLineCount: supervisor.logLines.length,
+      // Carried inline rather than fetched from /__host/capabilities: the
+      // daemon reads status constantly, and a separately cached copy would go
+      // stale the moment the owner toggles allowRemoteConfig.
+      capabilities: hostApi ? hostApi.capabilities() : null,
+      // The three signals the Brain rail's icon is derived from. All are cheap
+      // enough for the liveness path: `activity` is one stat of a file that is
+      // usually absent, `reasoning` is in-process state, and `queued` is
+      // already computed above.
+      activity: readActivity(),
+      reasoning: reasoningTracker.active,
+      queued: schedulerStats ? schedulerStats.queued : 0,
+      slots,
+    };
+  };
+
+  // Publish rather than be polled. The publisher decides what counts as a
+  // change (see status-events.ts); everything here just says "look again".
+  if (statusEvents) {
+    statusEvents.setSource(buildCheapStatus);
+    supervisor.on("state", () => statusEvents.notify());
+    supervisor.on("crashed", () => statusEvents.notify());
+    reasoningTracker.onChange(() => statusEvents.notify());
+  }
+
   return function handler(req: http.IncomingMessage, res: http.ServerResponse): void {
     // Host-management read surface (`/__host/*`): the single API both the TUI and
     // Otto's GUI consume, so the two never drift. Status is live; config and
@@ -810,48 +881,19 @@ export function createRouter({
     const path = (req.url || "").split("?")[0];
 
     if (path === "/__host/status") {
-      const schedulerStats = scheduler ? scheduler.stats() : null;
-      const base = {
-        version,
-        ...supervisor.status(),
-        telemetry: { ...telemetry.totals, warning: telemetry.warning },
-        scheduler: schedulerStats,
-        recent: telemetry.records.slice(-10),
-        logLineCount: supervisor.logLines.length,
-        // Carried inline rather than fetched from /__host/capabilities: the
-        // daemon polls status constantly, and a separately cached copy would go
-        // stale the moment the owner toggles allowRemoteConfig.
-        capabilities: hostApi ? hostApi.capabilities() : null,
-        // The three signals the Brain rail's icon is derived from. All are cheap
-        // enough for the liveness poll: `activity` is one stat of a file that is
-        // usually absent, `reasoning` is in-process state, and `queued` is
-        // already computed above. Slot phases are the one that costs a round
-        // trip, and are fetched below.
-        activity: readActivity(),
-        reasoning: reasoningTracker.active,
-        queued: schedulerStats ? schedulerStats.queued : 0,
-      };
-
-      // Slots come from a loopback GET on the resident llama-server. That is
-      // cheap enough to pay on every poll - unlike the GPU sampling below, which
-      // spawns `nvidia-smi` and stays opt-in. Skipped entirely unless a model is
-      // resident, since there is nothing listening otherwise.
-      const slotsPromise =
-        supervisor.state === "ready"
-          ? sampleSlots({ host: supervisor.host, port: supervisor.internalPort }).catch(() => null)
-          : Promise.resolve(null);
-
-      // Resources cost an `nvidia-smi` spawn, so they are opt-in: the daemon's
-      // liveness probe polls this route far more often than any UI does, and
-      // must not pay for a panel it is not rendering.
+      // Resources cost an `nvidia-smi` spawn, so they are opt-in: the daemon
+      // reads this route far more often than any UI does, and must not pay for
+      // a panel it is not rendering.
       const wantsResources = /[?&]resources=1(&|$)/.test(req.url || "");
       if (!wantsResources || !getResources) {
-        void slotsPromise.then((slots) => sendJson(res, { ...base, slots }));
+        void buildCheapStatus().then((base) => sendJson(res, base));
         return;
       }
-      Promise.all([slotsPromise, getResources().catch(() => null)])
-        .then(([slots, resources]) => sendJson(res, { ...base, slots, resources }))
-        .catch(() => sendJson(res, { ...base, slots: null, resources: null }));
+      Promise.all([buildCheapStatus(), getResources().catch(() => null)])
+        .then(([base, resources]) => sendJson(res, { ...base, resources }))
+        .catch((error: unknown) =>
+          sendError(res, 500, `could not build the host status: ${errorMessage(error)}`),
+        );
       return;
     }
     // Config write: apply an editable patch (model/lock live, the rest persisted).

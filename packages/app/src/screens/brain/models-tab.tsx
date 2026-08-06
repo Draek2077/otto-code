@@ -43,6 +43,7 @@ import {
   useRefreshOnJobCompletion,
 } from "@/screens/settings/host-brain-models";
 import type { Theme } from "@/styles/theme";
+import { applyOptimisticBrainLifecycle } from "@/data/brain-status";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { BrainProfileEditor } from "./profile-editor";
 import {
@@ -478,6 +479,7 @@ function ModelActions({
   onJobStarted: (job: BrainJob) => void;
 }) {
   const client = useHostRuntimeClient(serverId);
+  const queryClient = useQueryClient();
   const [pending, setPending] = useState<ModelAction | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -536,15 +538,20 @@ function ModelActions({
   // that `requiresRestart` gets applied.
   const handleLoad = useCallback(() => {
     if (client) {
+      // The brain's load endpoint answers only once the load has finished, so
+      // the shared cache is nudged first; the next authoritative snapshot from
+      // the brain replaces it either way.
+      applyOptimisticBrainLifecycle({ queryClient, serverId, lifecycle: "loading" });
       void run("load", () => client.brainModelLoad(model.id), onReloaded);
     }
-  }, [client, model.id, run, onReloaded]);
+  }, [client, model.id, queryClient, run, onReloaded, serverId]);
 
   const handleUnload = useCallback(() => {
     if (client) {
+      applyOptimisticBrainLifecycle({ queryClient, serverId, lifecycle: "unloading" });
       void run("unload", () => client.brainModelUnload());
     }
-  }, [client, run]);
+  }, [client, queryClient, run, serverId]);
 
   const handleDelete = useCallback(() => {
     void (async () => {

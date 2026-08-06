@@ -53,6 +53,19 @@ const MAX_FAST_RESTARTS = 3;
 const RESTART_WINDOW_MS = 60_000;
 const RESTART_DELAY_MS = 1_000;
 
+/**
+ * How long the daemon tolerates silence on the status stream before treating it
+ * as dead. The brain writes a keepalive comment every 20s, so this only trips on
+ * a stream that is genuinely gone in a way TCP has not noticed yet - a suspended
+ * remote host, a NAT table that dropped the mapping.
+ */
+const EVENT_STREAM_IDLE_TIMEOUT_MS = 60_000;
+/** Reconnect backoff for the status stream: first retry, then doubling to the cap. */
+const EVENT_RECONNECT_MIN_MS = 1_000;
+const EVENT_RECONNECT_MAX_MS = 30_000;
+/** Refuse an absurd SSE frame rather than buffering it. A snapshot is a few KB. */
+const MAX_EVENT_FRAME_BYTES = 4 * 1024 * 1024;
+
 const DEFAULT_BRAIN_HOST = "127.0.0.1";
 const DEFAULT_BRAIN_PORT = 1234;
 
@@ -67,6 +80,19 @@ export interface BrainManagerOptions {
    * be re-probed rather than left showing a stale green dot.
    */
   onReachabilityChanged?: () => void;
+  /**
+   * Called with a complete cheap status snapshot whenever the brain's own state
+   * changes. Wired late by the WebSocket server, which broadcasts it as
+   * `brain_status_changed`. See subscribeStatusEvents for where the snapshots
+   * come from.
+   */
+  onStatusChanged?: (status: BrainHostStatus) => void;
+  /**
+   * Called when `supportsStatusEvents()` flips, so the daemon can re-broadcast
+   * `server_info`. Availability is not a fixed daemon capability: it depends on
+   * the brain currently selected, which the operator can repoint at any time.
+   */
+  onStatusEventSupportChanged?: () => void;
 }
 
 /**
@@ -159,6 +185,8 @@ export class BrainManager {
   private readonly managedProcesses: ManagedProcessRegistry;
   private readonly ottoHome: string;
   private readonly onReachabilityChanged: (() => void) | null;
+  private onStatusChanged: ((status: BrainHostStatus) => void) | null;
+  private onStatusEventSupportChanged: (() => void) | null;
 
   private child: ChildProcess | null = null;
   private managedProcessId: string | null = null;
@@ -187,11 +215,52 @@ export class BrainManager {
   /** Connection-pooling dispatcher for the otto-brain provider; see resolveProviderDispatcher. */
   private providerDispatcher: { signature: string; dispatcher: Agent } | null = null;
 
+  // --- Status event subscription (see subscribeStatusEvents) ----------------
+  /** The open SSE request, or null. Exactly one per configured brain, never per client. */
+  private eventRequest: http.ClientRequest | null = null;
+  /** Bumped on every reconcile so a late callback from a torn-down stream is ignored. */
+  private eventGeneration = 0;
+  private eventRetryTimer: NodeJS.Timeout | null = null;
+  private eventRetryDelayMs = EVENT_RECONNECT_MIN_MS;
+  /** Whether the currently selected brain advertises and serves the event stream. */
+  private eventsSupported = false;
+  /** Serialized last published snapshot, so an identical one is not re-broadcast. */
+  private lastPublishedStatus: string | null = null;
+  private reconcilePending = false;
+  private shuttingDown = false;
+
   constructor(options: BrainManagerOptions) {
     this.logger = options.logger.child({ module: "brain-manager" });
     this.managedProcesses = options.managedProcesses;
     this.ottoHome = options.ottoHome;
     this.onReachabilityChanged = options.onReachabilityChanged ?? null;
+    this.onStatusChanged = options.onStatusChanged ?? null;
+    this.onStatusEventSupportChanged = options.onStatusEventSupportChanged ?? null;
+  }
+
+  /**
+   * Wire the status fan-out after construction, mirroring how the WebSocket
+   * server late-wires the manager itself. Subscribing starts immediately: the
+   * first reconcile establishes the stream (or discovers the brain is too old
+   * for one) without waiting for a client to ask.
+   */
+  setStatusListeners(listeners: {
+    onStatusChanged: (status: BrainHostStatus) => void;
+    onStatusEventSupportChanged: () => void;
+  }): void {
+    this.onStatusChanged = listeners.onStatusChanged;
+    this.onStatusEventSupportChanged = listeners.onStatusEventSupportChanged;
+    this.requestStatusStreamReconcile();
+  }
+
+  /**
+   * Whether pushed status is actually available right now: this daemon
+   * implements the adapter AND the brain it currently points at advertises
+   * `capabilities.events`. This is what `server_info.features.brainStatusPush`
+   * reports, and a client that reads false keeps its own status poll.
+   */
+  supportsStatusEvents(): boolean {
+    return this.eventsSupported;
   }
 
   /**
@@ -296,6 +365,31 @@ export class BrainManager {
     } catch (error) {
       this.logger.warn({ err: error }, "Brain reachability listener failed");
     }
+    // Every reachability change is also a status-subscription change: a brain
+    // that just started needs a stream, one that stopped needs its stream torn
+    // down and its "off" state published. One hook rather than a call at each
+    // of the four lifecycle sites, so a new site cannot forget it.
+    this.requestStatusStreamReconcile();
+  }
+
+  /**
+   * Coalesce reconciles onto the next tick.
+   *
+   * One `applySettings` can raise the reachability signal more than once - it
+   * stops a stale child and then applies the new endpoint - and each reconcile
+   * costs a status read. Collapsing them means the settled intent is what gets
+   * probed, not every intermediate step on the way to it.
+   */
+  private requestStatusStreamReconcile(): void {
+    if (this.reconcilePending || this.shuttingDown) {
+      return;
+    }
+    this.reconcilePending = true;
+    const timer = setTimeout(() => {
+      this.reconcilePending = false;
+      void this.reconcileStatusStream();
+    }, 0);
+    timer.unref?.();
   }
 
   /**
@@ -421,6 +515,10 @@ export class BrainManager {
   /** For daemon teardown: kill the child so it never outlives the daemon. */
   async shutdown(): Promise<void> {
     await this.stop();
+    // After stop(): its reachability notification would otherwise schedule a
+    // retry we are about to stop honouring.
+    this.shuttingDown = true;
+    this.teardownEventStream();
     const dispatcher = this.providerDispatcher;
     this.providerDispatcher = null;
     await dispatcher?.dispatcher.close().catch(() => undefined);
@@ -456,14 +554,28 @@ export class BrainManager {
         lastError: this.lastLogLine(),
       };
     }
+    return this.mergeHostStatus(hostStatus, pid);
+  }
+
+  /**
+   * Join the brain's own status body with the fields only the daemon knows.
+   *
+   * Shared by the polled read and the pushed snapshot so the two cannot drift:
+   * a field the poll added and the push did not would be a field the UI lost
+   * the moment the stream took over.
+   */
+  private mergeHostStatus(
+    hostStatus: Record<string, unknown>,
+    pid: number | null,
+  ): BrainHostStatus {
     const merged: Record<string, unknown> = {
       host: this.endpoint.probeHost,
       port: this.endpoint.port,
       secure: this.endpoint.secure,
       ...hostStatus,
       running: true,
-      // The probe just answered, so by definition. Set after the spread: the
-      // brain does not know whether the daemon can see it, only the daemon does.
+      // The brain answered, so by definition. Set after the spread: the brain
+      // does not know whether the daemon can see it, only the daemon does.
       reachable: true,
       pid,
     };
@@ -498,15 +610,255 @@ export class BrainManager {
         lastError: "The remote brain did not answer.",
       };
     }
-    const merged: Record<string, unknown> = {
-      ...endpointFields,
-      ...hostStatus,
-      running: true,
-      reachable: true,
-      pid: null,
+    return this.mergeHostStatus(hostStatus, null);
+  }
+
+  // --- Status event subscription -------------------------------------------
+  /**
+   * One subscription per configured brain, never one per connected client.
+   *
+   * The shape is deliberately: read the ordinary status once, decide from
+   * `capabilities.events` whether this brain can stream, and only then open the
+   * stream. That order is the compatibility contract - a brain too old to have
+   * heard of events answers the first half exactly as it always did, and the
+   * daemon simply never asks for the second half. Every daemon-owned lifecycle
+   * transition (spawn, exit, stop, settings applied) re-enters here, so the
+   * pre-connect states the brain itself cannot report are still published.
+   *
+   * A stream that drops is itself a reachability transition: the retry re-probes
+   * and publishes whatever is actually true, which is either a brain that came
+   * back or an unreachable one.
+   */
+  private async reconcileStatusStream(): Promise<void> {
+    // No fan-out wired means nobody to publish to, and a subscription exists to
+    // be fanned out. Mirrors the brain's own publisher, which samples only while
+    // something is listening. `setStatusListeners` reconciles when that changes.
+    if (this.shuttingDown || !this.onStatusChanged) {
+      return;
+    }
+    const generation = ++this.eventGeneration;
+    this.teardownEventStream();
+
+    if (!this.isReachable()) {
+      // Off, not configured, or no child: publish the daemon's own answer and
+      // stop. A lifecycle event will bring us back, and it should get a fast
+      // first attempt rather than inheriting the last outage's backoff.
+      this.eventRetryDelayMs = EVENT_RECONNECT_MIN_MS;
+      this.setEventsSupported(false);
+      this.publishStatus(await this.statusSafely());
+      return;
+    }
+
+    const status = await this.statusSafely();
+    if (generation !== this.eventGeneration) {
+      return;
+    }
+    this.publishStatus(status);
+
+    const supported = status.reachable === true && status.capabilities?.events === true;
+    this.setEventsSupported(supported);
+    if (!supported) {
+      // Either the brain is too old for events (nothing to retry - the client's
+      // compatibility poll covers it, and a version change arrives as a restart)
+      // or it did not answer at all (retry, so a brain that comes back is
+      // noticed without anyone reloading anything).
+      if (status.reachable !== true) {
+        this.scheduleStatusStreamRetry();
+      }
+      return;
+    }
+    this.connectEventStream(generation);
+  }
+
+  /** `status()` never throws today; this keeps the reconcile loop safe if it ever does. */
+  private async statusSafely(): Promise<BrainHostStatus> {
+    try {
+      return await this.status();
+    } catch (error) {
+      this.logger.warn({ err: error }, "Failed to read otto-brain status");
+      return { running: false, reachable: false };
+    }
+  }
+
+  /**
+   * Open the SSE stream. Goes through `dispatchRequest` like every other brain
+   * call, so the token, the TLS mode and the certificate pin are exactly the
+   * ones the management API uses - the stream is not a second transport with
+   * its own trust story.
+   */
+  private connectEventStream(generation: number): void {
+    const request = this.dispatchRequest(
+      {
+        host: this.endpoint.probeHost,
+        port: this.endpoint.port,
+        path: "/__host/events",
+        method: "GET",
+        // Not a request timeout: this response never ends. It is an idle
+        // timeout, and the brain's keepalive comments reset it.
+        timeout: EVENT_STREAM_IDLE_TIMEOUT_MS,
+        headers: {
+          accept: "text/event-stream",
+          ...(this.endpoint.token ? { "x-otto-brain-token": this.endpoint.token } : {}),
+        },
+      },
+      (res) => {
+        if (generation !== this.eventGeneration) {
+          res.destroy();
+          return;
+        }
+        if (res.statusCode !== 200) {
+          // The brain advertised events and then refused to serve them. Treat it
+          // as unsupported rather than retrying into a wall.
+          res.resume();
+          this.logger.warn(
+            { status: res.statusCode },
+            "otto-brain refused the status event stream",
+          );
+          this.setEventsSupported(false);
+          return;
+        }
+        // A stream that opened is a healthy endpoint; the next drop starts its
+        // backoff from the bottom rather than from wherever the last one ended.
+        this.eventRetryDelayMs = EVENT_RECONNECT_MIN_MS;
+        this.readEventStream(res, generation);
+      },
+    );
+    request.on("timeout", () => request.destroy(new Error("the brain status stream went silent")));
+    request.on("error", (error: Error) => {
+      if (generation !== this.eventGeneration) {
+        return;
+      }
+      this.logger.debug({ err: error }, "otto-brain status stream ended");
+      this.eventRequest = null;
+      this.scheduleStatusStreamRetry();
+    });
+    request.end();
+    this.eventRequest = request;
+  }
+
+  /** Parse `event: status` frames and publish each complete snapshot. */
+  private readEventStream(res: http.IncomingMessage, generation: number): void {
+    let buffer = "";
+    res.setEncoding("utf8");
+    res.on("data", (chunk: string) => {
+      if (generation !== this.eventGeneration) {
+        return;
+      }
+      buffer += chunk;
+      if (buffer.length > MAX_EVENT_FRAME_BYTES) {
+        this.logger.warn("otto-brain status stream sent an oversized frame; reconnecting");
+        buffer = "";
+        res.destroy();
+        return;
+      }
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary !== -1) {
+        const frame = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        this.handleEventFrame(frame);
+        boundary = buffer.indexOf("\n\n");
+      }
+    });
+    const ended = () => {
+      if (generation !== this.eventGeneration) {
+        return;
+      }
+      this.eventRequest = null;
+      this.scheduleStatusStreamRetry();
     };
-    const parsed = BrainHostStatusSchema.safeParse(merged);
-    return parsed.success ? parsed.data : { running: true };
+    res.on("end", ended);
+    res.on("close", ended);
+    res.on("error", ended);
+  }
+
+  private handleEventFrame(frame: string): void {
+    let event = "message";
+    const data: string[] = [];
+    for (const rawLine of frame.split("\n")) {
+      const line = rawLine.replace(/\r$/u, "");
+      // Comments (the keepalive) and unknown fields are ignored by contract.
+      if (line.startsWith(":") || line.length === 0) {
+        continue;
+      }
+      const separator = line.indexOf(":");
+      const field = separator === -1 ? line : line.slice(0, separator);
+      const value = separator === -1 ? "" : line.slice(separator + 1).replace(/^ /u, "");
+      if (field === "event") {
+        event = value;
+      } else if (field === "data") {
+        data.push(value);
+      }
+    }
+    if (event !== "status" || data.length === 0) {
+      return;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(data.join("\n"));
+    } catch {
+      this.logger.warn("otto-brain status stream sent an unparseable snapshot");
+      return;
+    }
+    if (!isRecord(parsed)) {
+      return;
+    }
+    const pid = this.mode === "remote" ? null : (this.child?.pid ?? null);
+    this.publishStatus(this.mergeHostStatus(parsed, pid));
+  }
+
+  /**
+   * Publish a snapshot to the daemon's fan-out, suppressing an identical repeat.
+   *
+   * The brain already coalesces its own state changes, but the daemon adds
+   * fields of its own (pid, endpoint, reachability), and a reconcile that finds
+   * nothing changed must not wake every connected client.
+   */
+  private publishStatus(status: BrainHostStatus): void {
+    const serialized = JSON.stringify(status);
+    if (serialized === this.lastPublishedStatus) {
+      return;
+    }
+    this.lastPublishedStatus = serialized;
+    try {
+      this.onStatusChanged?.(status);
+    } catch (error) {
+      this.logger.warn({ err: error }, "Brain status listener failed");
+    }
+  }
+
+  private setEventsSupported(supported: boolean): void {
+    if (supported === this.eventsSupported) {
+      return;
+    }
+    this.eventsSupported = supported;
+    try {
+      this.onStatusEventSupportChanged?.();
+    } catch (error) {
+      this.logger.warn({ err: error }, "Brain status-event support listener failed");
+    }
+  }
+
+  private scheduleStatusStreamRetry(): void {
+    if (this.eventRetryTimer || this.shuttingDown) {
+      return;
+    }
+    const delay = this.eventRetryDelayMs;
+    this.eventRetryDelayMs = Math.min(delay * 2, EVENT_RECONNECT_MAX_MS);
+    this.eventRetryTimer = setTimeout(() => {
+      this.eventRetryTimer = null;
+      void this.reconcileStatusStream();
+    }, delay);
+    this.eventRetryTimer.unref?.();
+  }
+
+  private teardownEventStream(): void {
+    if (this.eventRetryTimer) {
+      clearTimeout(this.eventRetryTimer);
+      this.eventRetryTimer = null;
+    }
+    const request = this.eventRequest;
+    this.eventRequest = null;
+    request?.destroy();
   }
 
   /**

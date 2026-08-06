@@ -47,6 +47,12 @@ rides in a request.
    cache-write tokens were dropped; and pricing the resend-sum at full input rates overstates dollars
    on one screen while real spend stays invisible on another. **An unmeasured multiplier is worse
    than a known one** - this is why instrumentation ranks as a fix, not as reporting.
+   Accounting can also be wrong in the other direction. Codex reported OpenAI-shaped usage into
+   leaves that are defined as disjoint, which counted the cached prefix twice and made every Codex
+   token figure read about 2x real. Codex now de-duplicates the cached slice, sums every request in
+   a turn rather than the last one, and reports what a failed or interrupted turn burned. The
+   per-provider questions that catch this class of bug are the checklist in
+   [subagent-accounting.md](subagent-accounting.md#per-provider-checklist).
 
 > The specific numbers above are from a dated measurement pass and will drift. The _shapes_ - fixed
 > per-request tax, quadratic-in-rounds resend, spawn-per-generation, hidden per-turn calls, blind

@@ -1099,6 +1099,153 @@ describe("ProviderSnapshotManager applyMutableProviderConfig", () => {
   });
 });
 
+// A probe that lost once must not be lost for the life of the daemon. Before
+// these, "error" and "unavailable" were terminal for a given cwd and only an
+// explicit Settings refresh (the sole force:true caller) could clear them, so
+// one flaky Codex catalog spawn cost the user their model list until they went
+// and pressed a button.
+describe("ProviderSnapshotManager failed-probe recovery", () => {
+  const OTHERS_DISABLED = {
+    claude: { enabled: false },
+    copilot: { enabled: false },
+    opencode: { enabled: false },
+    pi: { enabled: false },
+    omp: { enabled: false },
+    "otto-brain": { enabled: false },
+  } as const;
+
+  async function flushMicrotasks(): Promise<void> {
+    for (let i = 0; i < 20; i += 1) {
+      await Promise.resolve();
+    }
+  }
+
+  test("re-probes a provider whose catalog fetch failed once the retry window lapses", async () => {
+    const cwd = "/tmp/project";
+    const fetchCatalog = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Codex app-server exited with code 1"))
+      .mockResolvedValue({
+        models: [{ provider: "codex", id: "gpt-5.4-mini", label: "GPT 5.4 Mini" }],
+        modes: [] as AgentMode[],
+      });
+    const manager = new ProviderSnapshotManager({
+      logger: createTestLogger(),
+      providerOverrides: { ...OTHERS_DISABLED },
+      extraClients: {
+        codex: createExtraClient("codex", { isAvailable: async () => true, fetchCatalog }),
+      },
+    });
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    try {
+      const failed = await manager.getProvider({ cwd, provider: "codex", wait: true });
+      expect(failed.status).toBe("error");
+
+      // Inside the window the failure stays cached, so a burst of reads cannot
+      // turn one bad spawn into a spawn loop.
+      const stillFailed = await manager.getProvider({ cwd, provider: "codex", wait: true });
+      expect(stillFailed.status).toBe("error");
+      expect(fetchCatalog).toHaveBeenCalledTimes(1);
+
+      now.mockReturnValue(1_031_000);
+      const healed = await manager.getProvider({ cwd, provider: "codex", wait: true });
+      expect(healed.status).toBe("ready");
+      expect(healed.models?.map((model) => model.id)).toEqual(["gpt-5.4-mini"]);
+      expect(fetchCatalog).toHaveBeenCalledTimes(2);
+    } finally {
+      now.mockRestore();
+      manager.destroy();
+    }
+  });
+
+  test("re-probes a provider that reported unavailable once the retry window lapses", async () => {
+    const cwd = "/tmp/project";
+    const isAvailable = vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true);
+    const manager = new ProviderSnapshotManager({
+      logger: createTestLogger(),
+      providerOverrides: { ...OTHERS_DISABLED },
+      extraClients: { codex: createExtraClient("codex", { isAvailable }) },
+    });
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    try {
+      expect((await manager.getProvider({ cwd, provider: "codex", wait: true })).status).toBe(
+        "unavailable",
+      );
+      expect(isAvailable).toHaveBeenCalledTimes(1);
+
+      now.mockReturnValue(1_031_000);
+      expect((await manager.getProvider({ cwd, provider: "codex", wait: true })).status).toBe(
+        "ready",
+      );
+      expect(isAvailable).toHaveBeenCalledTimes(2);
+    } finally {
+      now.mockRestore();
+      manager.destroy();
+    }
+  });
+
+  test("a provider disabled by config stays unavailable and is never re-probed", async () => {
+    const cwd = "/tmp/project";
+    const isAvailable = vi.fn(async () => true);
+    const manager = new ProviderSnapshotManager({
+      logger: createTestLogger(),
+      providerOverrides: { ...OTHERS_DISABLED, codex: { enabled: false } },
+      extraClients: { codex: createExtraClient("codex", { isAvailable }) },
+    });
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    try {
+      expect((await manager.getProvider({ cwd, provider: "codex", wait: true })).status).toBe(
+        "unavailable",
+      );
+      now.mockReturnValue(1_031_000);
+      expect((await manager.getProvider({ cwd, provider: "codex", wait: true })).status).toBe(
+        "unavailable",
+      );
+      expect(isAvailable).not.toHaveBeenCalled();
+    } finally {
+      now.mockRestore();
+      manager.destroy();
+    }
+  });
+
+  test("applyMutableProviderConfig leaves an in-flight probe loading instead of demoting it", async () => {
+    const cwd = "/tmp/project";
+    let releaseCatalog: (() => void) | undefined;
+    const fetchCatalog = vi.fn(
+      () =>
+        new Promise((resolveCatalog) => {
+          releaseCatalog = () => resolveCatalog({ models: [], modes: [] });
+        }),
+    );
+    const manager = new ProviderSnapshotManager({
+      logger: createTestLogger(),
+      providerOverrides: { ...OTHERS_DISABLED },
+      extraClients: {
+        codex: createExtraClient("codex", { isAvailable: async () => true, fetchCatalog }),
+      },
+    });
+    try {
+      manager.getSnapshot(cwd);
+      await flushMicrotasks();
+      expect(fetchCatalog).toHaveBeenCalled();
+      expect(manager.getSnapshot(cwd).find((entry) => entry.provider === "codex")?.status).toBe(
+        "loading",
+      );
+
+      // The reconcile that used to freeze Codex. It runs up to three times per
+      // daemon-config change (providers, model tiers, connectors).
+      manager.applyMutableProviderConfig({});
+
+      expect(manager.getSnapshot(cwd).find((entry) => entry.provider === "codex")?.status).toBe(
+        "loading",
+      );
+    } finally {
+      releaseCatalog?.();
+      manager.destroy();
+    }
+  });
+});
+
 describe("ProviderSnapshotManager lifecycle", () => {
   test("on/off attaches and detaches change listeners", () => {
     const manager = new ProviderSnapshotManager({

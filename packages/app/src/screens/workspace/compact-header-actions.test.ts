@@ -4,6 +4,9 @@ import {
   type CompactHeaderActionsInput,
 } from "@/screens/workspace/compact-header-actions";
 
+// Compact always carries the pinned Brain light (the sidebar is an overlay
+// there), so the fixture does too - a compact input with `hasBrainButton: false`
+// cannot happen, and a table calibrated against one would lie about the widths.
 const DEVELOPER_MOBILE: CompactHeaderActionsInput = {
   isCompact: true,
   rowWidth: 600,
@@ -12,6 +15,7 @@ const DEVELOPER_MOBILE: CompactHeaderActionsInput = {
   voiceCuesAvailable: true,
   hasWorkspaceScripts: true,
   hasWorkspaceDirectory: true,
+  hasBrainButton: true,
 };
 
 function survivors(overrides: Partial<CompactHeaderActionsInput> = {}) {
@@ -44,18 +48,31 @@ describe("resolveCompactHeaderActions", () => {
   });
 
   it("drops Voice cues first, then Visualizer, then Explorer, and keeps Play longest", () => {
-    expect(survivors({ rowWidth: 420 })).toEqual(["play", "visualizer", "explorer"]);
-    expect(survivors({ rowWidth: 380 })).toEqual(["play", "explorer"]);
-    expect(survivors({ rowWidth: 320 })).toEqual(["play"]);
-    expect(survivors({ rowWidth: 260 })).toEqual([]);
+    expect(survivors({ rowWidth: 474 })).toEqual(["play", "visualizer", "explorer"]);
+    expect(survivors({ rowWidth: 434 })).toEqual(["play", "explorer"]);
+    expect(survivors({ rowWidth: 374 })).toEqual(["play"]);
+    expect(survivors({ rowWidth: 314 })).toEqual([]);
+  });
+
+  // Brain is pinned, so it is charged to fixed chrome instead of competing for
+  // a slot: the same row width fits exactly one more droppable button without
+  // it. It is never a menu fallback either - see workspace-brain-button.tsx.
+  it("charges the pinned Brain light one slot's worth of the row budget", () => {
+    expect(survivors({ rowWidth: 434, hasBrainButton: false })).toEqual([
+      "play",
+      "visualizer",
+      "explorer",
+    ]);
+    expect(survivors({ rowWidth: 434 })).toEqual(["play", "explorer"]);
+    expect(menuFallbacks({ rowWidth: 434, hasBrainButton: false })).toEqual(["voiceCues"]);
   });
 
   // The cue mute is the one button whose loss costs nothing - the same switch
   // is in Agents settings - so it yields its slot to everything else.
   it("keeps the voice-cue mute off a crowded row even when the host supports it", () => {
-    expect(survivors({ rowWidth: 380 })).not.toContain("voiceCues");
+    expect(survivors({ rowWidth: 434 })).not.toContain("voiceCues");
     expect(
-      survivors({ rowWidth: 380, hasWorkspaceScripts: false, visualizerEnabled: false }),
+      survivors({ rowWidth: 434, hasWorkspaceScripts: false, visualizerEnabled: false }),
     ).toEqual(["explorer", "voiceCues"]);
   });
 
@@ -77,7 +94,7 @@ describe("resolveCompactHeaderActions", () => {
     ]);
     expect(survivors({ visualizerEnabled: false })).toEqual(["play", "explorer", "voiceCues"]);
     // Play outlives the others, but only where the workspace has scripts.
-    expect(survivors({ hasWorkspaceScripts: false, rowWidth: 320 })).toEqual(["explorer"]);
+    expect(survivors({ hasWorkspaceScripts: false, rowWidth: 374 })).toEqual(["explorer"]);
   });
 
   it("never drops anything on desktop, however narrow the measurement", () => {
@@ -97,7 +114,7 @@ describe("resolveCompactHeaderActions", () => {
     const fit = resolveCompactHeaderActions({
       ...DEVELOPER_MOBILE,
       isDeveloperMode: false,
-      rowWidth: 320,
+      rowWidth: 374,
     });
     expect(fit.showPlainExplorer).toBe(true);
     expect(fit.showPlay).toBe(false);
@@ -105,10 +122,10 @@ describe("resolveCompactHeaderActions", () => {
   });
 
   it("moves every dropped button into the menu instead of losing it", () => {
-    expect(menuFallbacks({ rowWidth: 420 })).toEqual(["voiceCues"]);
-    expect(menuFallbacks({ rowWidth: 380 })).toEqual(["visualizer", "voiceCues"]);
-    expect(menuFallbacks({ rowWidth: 320 })).toEqual(["visualizer", "explorer", "voiceCues"]);
-    expect(menuFallbacks({ rowWidth: 260 })).toEqual([
+    expect(menuFallbacks({ rowWidth: 474 })).toEqual(["voiceCues"]);
+    expect(menuFallbacks({ rowWidth: 434 })).toEqual(["visualizer", "voiceCues"]);
+    expect(menuFallbacks({ rowWidth: 374 })).toEqual(["visualizer", "explorer", "voiceCues"]);
+    expect(menuFallbacks({ rowWidth: 314 })).toEqual([
       "play",
       "visualizer",
       "explorer",
@@ -126,12 +143,12 @@ describe("resolveCompactHeaderActions", () => {
   });
 
   it("offers no menu fallback for an action the workspace did not request", () => {
-    expect(menuFallbacks({ rowWidth: 260, hasWorkspaceScripts: false })).toEqual([
+    expect(menuFallbacks({ rowWidth: 314, hasWorkspaceScripts: false })).toEqual([
       "visualizer",
       "explorer",
       "voiceCues",
     ]);
-    expect(menuFallbacks({ rowWidth: 260, visualizerEnabled: false })).toEqual([
+    expect(menuFallbacks({ rowWidth: 314, visualizerEnabled: false })).toEqual([
       "play",
       "explorer",
       "voiceCues",
