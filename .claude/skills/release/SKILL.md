@@ -68,7 +68,11 @@ npm run release:patch         # release:check → version:all:patch (bump+commit
 
 `release:patch` bumps every workspace, publishes the six `@otto-code/*` packages, and pushes HEAD + tag. The tag push triggers CI (see step 5).
 
-**If publish fails mid-chain** (auth expired, registry hiccup): the version commit + tag exist but are unpushed. Don't re-run the full chain - resume with `npm run release:publish` then `npm run release:push`.
+**`npm run release:publish` needs 2FA - the user always runs it, never the agent.** It hits npm's interactive one-time-password/browser-auth gate (`EOTP`) for each of the six `@otto-code/*` packages. **NEVER attempt the publish or OTP step yourself** - don't pass `--otp=`, don't run the browser auth, don't ask for or enter a code. This is a hard standing rule, not a fallback for when something goes wrong.
+
+Expect `npm run release:patch` to run through `release:check` and `version:all:patch` (bump+commit+tag) and then stop at the `EOTP` prompt on `release:publish` - that's the normal, expected outcome, not a failure to work around. When it stops there: tell the user the version commit + tag are ready, and have them run `npm run release:publish` themselves in their own terminal. Once they confirm all six packages published, resume with the non-credentialed `npm run release:push` (pushes HEAD + tag, triggers CI).
+
+**If the chain fails before publish** (e.g. a dirty tree from a stray build artifact, an auth/registry hiccup unrelated to 2FA): fix the underlying cause, then resume - don't re-run the full chain from `release:patch`. If the version commit + tag already exist, resume at `npm run release:publish` (user-run) then `npm run release:push`. If they don't exist yet, resume at `npm run version:all:patch`.
 
 ### 5. Done - `release:push` is the last step
 
@@ -103,6 +107,7 @@ Promotion runs the **stable** completion checklist, including the sanity check.
 
 ## Hard rules
 
+- **Never run `npm run release:publish` or enter an npm OTP/2FA code yourself.** That step is always the user's to run, in their own terminal. See step 4.
 - **Never bump minor/major to fix or retrigger a build.** Build/CI failures are fixed on the current version. To rebuild a target, push a retry tag - see `docs/release.md` → "Fixing a failed release build" (Docker-only retries use `docker.yml` dispatch, never a re-pushed `v*` tag).
 - **No code in the changelog commit or the release commit.** Code shims are their own reviewed commit.
 - **"Stable" means stable** - don't offer a beta first when the user said stable.
