@@ -57,6 +57,48 @@ no app lifecycle. `after-remove.sh` accepts both this target and the pre-0.8.3
 > the only way in. `resolveCliInstallSourcePath` picks the AppImage there and the
 > wrapper everywhere else.
 
+### Taskbar/dock icon detached from the running window
+
+> **Gotcha - Electron's Linux app id comes from the packaged `package.json` "name",
+> not `productName`.** GNOME/KDE/Cinnamon match a running window to its launcher by
+> comparing the window's WM*CLASS (X11) / `app_id` (Wayland) against the installed
+> `.desktop` file's `StartupWMClass`. `electron-builder.yml`'s generated `.desktop`
+> entry defaulted `StartupWMClass` to `appInfo.productName` ("Otto"), which hasn't
+> changed since the rebrand - but Electron itself derives the \_running* window's id
+> from `packages/desktop/package.json`'s `"name"` field (`@otto-code/desktop`),
+> sanitized to `otto-code-desktop`, independent of `productName`, `executableName`,
+> and `app.setName()` in `main.ts` (all of which run too late and target the wrong
+> mechanism). `Otto` vs. `otto-code-desktop` never matched. Confirmed live on a
+> `.deb` install under GNOME: the running window showed as a detached, generic-icon
+> app, and clicking the pinned launcher spawned a new instance every time instead of
+> focusing the existing one.
+>
+> This was latent, not new - `package.json`'s scoped name predates the 0.8.3
+> release - but the Electron 41.2.0 → 41.10.3 devDependency bump in 0.8.3 is the
+> likely trigger: Electron changed its Linux app-id inference around v41.5.1, and
+> whatever the previous default resolved to apparently happened to line up (or the
+> mismatch wasn't yet surfaced by the desktop environments in use).
+>
+> Fix (applied): `packages/desktop/electron-builder.yml` sets
+> `linux.desktop.entry.StartupWMClass: otto-code-desktop` to match what Electron
+> actually reports, rather than trying to change what Electron reports. The
+> `.desktop` **filename** stays `Otto.desktop` (`app-builder-lib` derives it from
+> `productFilename`, unaffected by this override), so existing pinned shortcuts
+> keep pointing at the same file - only its `StartupWMClass` line changes on next
+> install. `packages/desktop/package.json` also sets
+> `"desktopName": "otto-code-desktop.desktop"` as a defense-in-depth match in case
+> a future Electron/electron-builder version starts honoring that field instead of
+> falling back to the sanitized `"name"` - it resolves to the same id either way, so
+> it can't reintroduce the mismatch.
+>
+> Don't "fix" this by renaming the generated `.desktop` file to
+> `otto-code-desktop.desktop` (Wayland's filename-based matching) - that changes
+> the file every existing pinned shortcut points at and orphans it on upgrade,
+> same failure mode as the mismatch itself. Verify on a live `.deb`/`.rpm` install
+> after this change: `xprop WM_CLASS` on X11, or pin the icon and relaunch on
+> Wayland, and confirm a second launch focuses the existing window instead of
+> opening a new one.
+
 ## The Chromium sandbox, per format
 
 `.deb`/`.rpm` keep the **SUID `chrome-sandbox` on** (matching VS Code). The

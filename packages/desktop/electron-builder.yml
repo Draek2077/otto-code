@@ -67,6 +67,17 @@ linux:
   artifactName: "Otto-${version}-${arch}.${ext}"
   maintainer: "Draekz <https://github.com/Draek2077>"
   vendor: "Otto"
+  # Electron derives the running window's Linux app id (X11 WM_CLASS / Wayland
+  # app_id) from the packaged app.asar's package.json "name" field, sanitized -
+  # "@otto-code/desktop" becomes "otto-code-desktop" - not from productName or
+  # StartupWMClass. Without this override the generated .desktop entry's default
+  # StartupWMClass (productName, "Otto") never matches, so GNOME/KDE/Cinnamon
+  # treat the launcher and the running window as unrelated: the taskbar/dock
+  # icon detaches and every launch opens a fresh, unpinned instance. See the
+  # "Taskbar/dock icon detached" gotcha in docs/desktop-linux.md.
+  desktop:
+    entry:
+      StartupWMClass: otto-code-desktop
   extraResources:
     - from: bin/otto
       to: bin/otto
