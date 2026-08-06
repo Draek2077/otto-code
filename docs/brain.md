@@ -27,6 +27,9 @@ to a TLS certificate path, and burying them there is what made them hard to find
 The Brain page is reached from the Brain icon in the bottom-left icon rail. It is a top-level route
 outside any workspace, because a brain belongs to a host, not to a project.
 
+When Brain is disabled in Settings → Host → Brain, its rail icon stays grey and its tooltip reads
+"Brain - Disabled". Selecting it opens that host's Brain settings section so the owner can enable it.
+
 ## The management API
 
 The brain serves its own management surface at `/__host/*`. Its header comment states the intent:
@@ -36,6 +39,7 @@ The brain serves its own management surface at `/__host/*`. Its header comment s
 | ------------------------------------------- | --------------------------------------------------------------------------- |
 | `GET /__host/status`                        | Liveness, model, telemetry, scheduler, and `capabilities`                   |
 | `GET /__host/status?resources=1`            | The above plus live CPU, RAM, GPU and slot telemetry                        |
+| `GET /__host/events`                        | SSE: a complete cheap status snapshot every time the brain's state moves    |
 | `GET /__host/capabilities`                  | What this brain can serve, as flat booleans                                 |
 | `GET /__host/config`, `POST /__host/config` | The brain's own effective config; the write is gated on `allowRemoteConfig` |
 | `GET /__host/evals`                         | Benchmark rankings, latest results and variance                             |
@@ -62,6 +66,41 @@ failure reads as "model not found" rather than as a routing bug. Model-scoped ro
 resource telemetry costs an `nvidia-smi` spawn plus a `/slots` round trip on the brain, so it is only
 gathered when the caller asks with `?resources=1`. Only the Brain page's Overview tab, which actually
 renders the numbers, turns it on.
+
+### Status is published, not polled
+
+The brain owns its own state, so it publishes it. `GET /__host/events` is an authenticated SSE
+stream over the same endpoint, token and TLS policy as every other `/__host/*` route, and each
+`event: status` carries a **complete** cheap status snapshot.
+
+The pieces, and why each is the way it is:
+
+- **The daemon opens one stream per configured brain, never one per connected client.** It reads the
+  ordinary `/__host/status` once to get a baseline, checks `capabilities.events`, and only then
+  connects. That order is the compatibility contract: a brain too old to have heard of events
+  answers the first half exactly as it always did and is simply never asked for the second.
+- **Snapshots are complete, never deltas.** A missed event and a reconnect are then the same,
+  idempotent recovery on both sides. It also means a consumer overwrites its cached status whole;
+  merging would keep a `lastError` alive after the brain had cleared it.
+- **The brain coalesces, and a timer tick is not an event.** `service/status-events.ts` keeps the
+  snapshot that would be sent and compares only the fields worth waking a UI for. Traffic counters,
+  the log line count, and the per-token slot detail are carried in the payload but cannot trigger
+  one, or a generating model would broadcast at token rate. The supervisor's state machine, the
+  scheduler queue and the reasoning flag notify directly; `activity` and the slot phase split are
+  sampled, because one is a file another process writes and the other is a loopback read.
+- **Nothing samples while nobody is listening**, on either side. The brain's publisher runs no timer
+  without a subscriber, and the daemon holds no stream without a fan-out listener wired.
+- **A dropped stream is a reachability transition.** The daemon re-probes, publishes whatever is
+  actually true (a brain that came back, or an unreachable one), and reconnects with bounded
+  backoff. The brain writes an SSE comment every 20s so an idle stream is not mistaken for a dead
+  one, and it ends its streams on shutdown, since `server.close()` waits on open connections.
+- **`resources` is never pushed.** It spawns `nvidia-smi`; see "Resources are opt-in" above. The
+  Overview tab keeps pulling it.
+
+The daemon rebroadcasts each snapshot to its clients as a `brain_status_changed` status message,
+scoped by the delivering connection's `serverId` so two connected hosts cannot overwrite each
+other's brain state. `data/brain-status.ts` writes it into the one cache entry every Brain surface
+reads, and reconnect repair invalidates that entry once.
 
 ## Why the daemon proxies rather than shells out
 
@@ -95,11 +134,23 @@ the route?). A current daemon can be pointed at an older brain.
    `allowRemoteConfig`, which is what `capabilities.writable` reflects.
 2. The daemon passes that through on `brain.host.status` and advertises
    `server_info.features.brainConsole` when it knows how to proxy the routes.
+3. `capabilities` carries an additive `events`, and status carries an additive `apiVersion`. Both
+   default to absent, so an older brain reads as "no event stream" rather than as broken. Unknown
+   capability names and unknown status fields are kept, not dropped: the brain can grow a feature
+   without a daemon upgrade, and the daemon can grow one without a brain upgrade. No exact package
+   version match is ever required.
 
 The client reads `features.brainConsole` to decide whether the Brain page is offered at all, then
 reads `status.capabilities` to decide which tabs are live. A brain too old for a capability shows
 "Update the brain on this host." There is no fallback path and no degraded reimplementation, per the
 feature contract in [`CLAUDE.md`](../CLAUDE.md).
+
+**`features.brainStatusPush` is the one flag that is not a fixed daemon capability.** The daemon can
+only push what the brain publishes, so it is true only while the _currently selected_ brain also
+advertises `capabilities.events`, and the daemon rebroadcasts `server_info` when that flips. Pointing
+the host at an older brain therefore walks the flag back down, and the client restores its status
+poll. That poll is the explicit compatibility path, gated once at the query boundary rather than
+branched through the surfaces that read the status.
 
 ## Write authorization
 
@@ -258,6 +309,24 @@ carries a state machine rather than being a static glyph. A model loading, or a 
 the machine for ten minutes, is exactly the sort of thing you need to see without going to look for
 it. `components/brain/brain-state.ts` holds the states, the tints and the motion;
 `use-brain-rail-state.ts` derives one from the host status.
+
+The status it derives from arrives pushed (see "Status is published, not polled"), which is what
+makes the button honest about a transition instead of a beat behind one. The rail, the workspace
+title button and the Brain console share a single cache entry, so all three change together. One
+thing the stream cannot cover: the brain's load and unload endpoints only answer once the work has
+_finished_, so pressing Load applies a deliberately small optimistic `starting` to that shared entry
+first. That is the UI predicting the state machine's next step, and it is never extended to the
+inference states - an open request is not evidence a model is thinking.
+
+"Always visible" needs a second mount site, because the sidebar is collapsible on desktop and is a
+closed overlay for most of a mobile session. `components/brain/workspace-brain-button.tsx` puts the
+same live glyph in the workspace title bar, between the Visualizer button and Explorer, and renders
+only while the sidebar is not showing its own, so the two are never on screen at once. It is pinned:
+the responsive fit in `screens/workspace/compact-header-actions.ts` drops Voice cues, Visualizer,
+Explorer and Play into the "..." menu as the row narrows, but never the Brain. A status light inside
+a closed menu reports nothing, and the menu's leading-icon slot draws a flat glyph anyway, so the
+animation that carries the whole signal would not survive the move. It is charged to that fit's fixed
+chrome instead, so the four droppable buttons still spend an honest width budget.
 
 Two rules hold it together, and both exist because the alternative produces an icon that lies.
 

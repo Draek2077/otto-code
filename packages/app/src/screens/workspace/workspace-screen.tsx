@@ -59,6 +59,10 @@ import invariant from "tiny-invariant";
 import { SidebarMenuToggle } from "@/components/headers/menu-header";
 import { HeaderToggleButton, headerIconSlotStyle } from "@/components/headers/header-toggle-button";
 import { HeaderActiveTeamSwitchers } from "@/components/active-team-switcher";
+import {
+  shouldShowHeaderBrainButton,
+  WorkspaceBrainButton,
+} from "@/components/brain/workspace-brain-button";
 import { useTutorialAnchor } from "@/tutorial/use-tutorial-anchor";
 import { ScreenHeader } from "@/components/headers/screen-header";
 import { ScreenTitle } from "@/components/headers/screen-title";
@@ -1695,6 +1699,9 @@ interface WorkspaceHeaderTitleBarProps {
   showVisualizerAction: boolean;
   showVoiceCuesAction: boolean;
   showPlayAction: boolean;
+  // Pinned, not fitted: the Brain status light never drops to the "..." menu.
+  // True whenever the sidebar is not showing its own Brain button.
+  showBrainAction: boolean;
   // The dropped actions' "..." menu fallbacks; always false on desktop.
   showVisualizerMenuItem: boolean;
   showVoiceCuesMenuItem: boolean;
@@ -1751,6 +1758,7 @@ function WorkspaceHeaderTitleBar({
   showVisualizerAction,
   showVoiceCuesAction,
   showPlayAction,
+  showBrainAction,
   showVisualizerMenuItem,
   showVoiceCuesMenuItem,
   showExplorerMenuItem,
@@ -1851,6 +1859,11 @@ function WorkspaceHeaderTitleBar({
             last used - and switching surfaces lives inside the Visualizer
             itself (the tab toolbar's PIP control, the PIP's expand control).
             See use-visualizer-surface.ts. */}
+        {/* The Brain status light, standing in for the sidebar's own whenever
+            the sidebar is collapsed or overlaid. Right of the Visualizer and
+            left of Explorer, and never fitted away - see
+            workspace-brain-button.tsx. */}
+        {showBrainAction ? <WorkspaceBrainButton /> : null}
         {isMobile && showPlayAction ? (
           <WorkspaceScriptsButton
             serverId={normalizedServerId}
@@ -2691,6 +2704,13 @@ function WorkspaceScreenContent({
   // budget.
   const visualizerEnabled = useFeatureEnabled("visualizer");
   const voiceCuesAvailable = useVoiceCuesAvailable(normalizedServerId);
+  // The Brain status light moves into the header whenever the sidebar is not
+  // showing its own, so the local AI host's state is visible at all times rather
+  // than only while the sidebar happens to be open.
+  const showBrainAction = shouldShowHeaderBrainButton({
+    isCompact: isMobile,
+    isSidebarOpen,
+  });
   const headerActionFit = useMemo(
     () =>
       resolveCompactHeaderActions({
@@ -2701,6 +2721,7 @@ function WorkspaceScreenContent({
         voiceCuesAvailable,
         hasWorkspaceScripts: workspaceScripts.length > 0,
         hasWorkspaceDirectory: Boolean(workspaceDirectory),
+        hasBrainButton: showBrainAction,
       }),
     [
       isMobile,
@@ -2710,6 +2731,7 @@ function WorkspaceScreenContent({
       voiceCuesAvailable,
       workspaceScripts.length,
       workspaceDirectory,
+      showBrainAction,
     ],
   );
   const closeWorkspaceTabWithCleanup = useCallback(
@@ -4717,6 +4739,7 @@ function WorkspaceScreenContent({
                 showVisualizerAction={headerActionFit.showVisualizer}
                 showVoiceCuesAction={headerActionFit.showVoiceCues}
                 showPlayAction={headerActionFit.showPlay}
+                showBrainAction={showBrainAction}
                 showVisualizerMenuItem={headerActionFit.menuVisualizer}
                 showVoiceCuesMenuItem={headerActionFit.menuVoiceCues}
                 showExplorerMenuItem={headerActionFit.menuExplorer}

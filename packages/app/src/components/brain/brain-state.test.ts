@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   BRAIN_STATE_LABELS,
   BRAIN_STATE_VISUALS,
+  BRAIN_DISABLED_LABEL,
   deriveBrainState,
   isBusyBrainState,
+  resolveBrainRailLabel,
+  resolveBrainRailPresentation,
   type BrainState,
 } from "@/components/brain/brain-state";
 
@@ -212,5 +215,45 @@ describe("brain state visuals", () => {
     expect(BRAIN_STATE_VISUALS.generating.motion).toBe("right-to-left");
     expect(BRAIN_STATE_VISUALS.loading.motion).toBe("bottom-to-top");
     expect(BRAIN_STATE_VISUALS.unloading.motion).toBe("top-to-bottom");
+  });
+});
+
+describe("Brain rail enablement", () => {
+  it("keeps a disabled Brain grey and labels it as disabled", () => {
+    expect(resolveBrainRailPresentation("idle", false)).toEqual({
+      state: "off",
+      label: BRAIN_DISABLED_LABEL,
+      disabled: true,
+    });
+  });
+
+  it("preserves the live state until the enablement setting has loaded", () => {
+    expect(resolveBrainRailPresentation("generating", undefined)).toEqual({
+      state: "generating",
+      label: null,
+      disabled: false,
+    });
+  });
+});
+
+describe("resolveBrainRailLabel", () => {
+  it("reads as navigation while the brain is merely idle", () => {
+    expect(resolveBrainRailLabel(resolveBrainRailPresentation("idle", true), "Brain")).toBe(
+      "Brain",
+    );
+    // No bundle to draw on (the title-bar button) falls back to the same word.
+    expect(resolveBrainRailLabel(resolveBrainRailPresentation("idle", true))).toBe("Brain");
+  });
+
+  it("says what the brain is doing as soon as there is something to say", () => {
+    expect(resolveBrainRailLabel(resolveBrainRailPresentation("generating", true), "Brain")).toBe(
+      BRAIN_STATE_LABELS.generating,
+    );
+  });
+
+  it("lets the disabled wording win over both the idle label and the state's own", () => {
+    expect(resolveBrainRailLabel(resolveBrainRailPresentation("generating", false), "Brain")).toBe(
+      BRAIN_DISABLED_LABEL,
+    );
   });
 });

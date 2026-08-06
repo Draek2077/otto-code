@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import type { MutableBrainConfig } from "@otto-code/protocol/messages";
+import type { BrainHostStatus, MutableBrainConfig } from "@otto-code/protocol/messages";
 import { DEFAULT_MUTABLE_BRAIN_CONFIG } from "@otto-code/protocol/messages";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
@@ -413,5 +413,298 @@ describe("BrainManager.getProviderEndpoint", () => {
     } finally {
       await listening.shutdown();
     }
+  });
+});
+
+interface EventBrainServer extends TestBrainServer {
+  /** Push a snapshot to every currently subscribed daemon. */
+  publish(snapshot: Record<string, unknown>): void;
+  /** End every open stream, as a brain that went away would. */
+  dropStreams(): void;
+  streamCount(): number;
+}
+
+/**
+ * A brain whose `/__host/status` advertises `capabilities.events` and whose
+ * `/__host/events` is a real SSE endpoint.
+ */
+function startEventBrainServer(options: { events: boolean }): Promise<EventBrainServer> {
+  const requests: SeenRequest[] = [];
+  let streams: http.ServerResponse[] = [];
+  const server = http.createServer((req, res) => {
+    const token = req.headers["x-otto-brain-token"];
+    requests.push({
+      method: req.method,
+      path: req.url,
+      token: typeof token === "string" ? token : undefined,
+    });
+    if ((req.url ?? "").startsWith("/__host/events")) {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.write(`event: status\ndata: ${JSON.stringify({ state: "stopped" })}\n\n`);
+      streams.push(res);
+      res.on("close", () => {
+        streams = streams.filter((open) => open !== res);
+      });
+      return;
+    }
+    res.setHeader("content-type", "application/json");
+    res.end(
+      JSON.stringify({ state: "ready", capabilities: { load: true, events: options.events } }),
+    );
+  });
+  return listen(server, requests).then((base) => ({
+    ...base,
+    publish: (snapshot: Record<string, unknown>) => {
+      for (const res of streams) {
+        res.write(`event: status\ndata: ${JSON.stringify(snapshot)}\n\n`);
+      }
+    },
+    dropStreams: () => {
+      for (const res of streams.splice(0)) res.end();
+    },
+    streamCount: () => streams.length,
+  }));
+}
+
+function hasState(published: BrainHostStatus[], state: string): boolean {
+  return published.some((status) => status.state === state);
+}
+
+function hasModel(published: BrainHostStatus[], model: string): boolean {
+  return published.some((status) => status.model === model);
+}
+
+function sawUnreachable(published: BrainHostStatus[]): boolean {
+  return published.some((status) => status.reachable === false);
+}
+
+function sawPathPrefix(requests: SeenRequest[], prefix: string): boolean {
+  return requests.some((request) => request.path?.startsWith(prefix) === true);
+}
+
+/** Wait for a condition the subscription reaches asynchronously. */
+async function until(predicate: () => boolean, label: string): Promise<void> {
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`timed out waiting for ${label}`);
+}
+
+/**
+ * The daemon subscribes to the brain's own event stream once per configured
+ * brain and fans the snapshots out. These cover the compatibility decision (does
+ * this brain advertise events at all?), the transport it uses, and what happens
+ * when the stream dies - which is a reachability transition, not a lost socket.
+ */
+describe("BrainManager status event subscription", () => {
+  let ottoHome: string;
+  let manager: BrainManager | null;
+  let brainServer: EventBrainServer | TestBrainServer | null;
+
+  beforeEach(() => {
+    ottoHome = mkdtempSync(path.join(tmpdir(), "otto-brain-events-test-"));
+    manager = null;
+    brainServer = null;
+  });
+
+  afterEach(async () => {
+    await manager?.shutdown();
+    await brainServer?.close();
+    rmSync(ottoHome, { recursive: true, force: true });
+  });
+
+  function createManager(onStatusChanged: (status: BrainHostStatus) => void): BrainManager {
+    const created = new BrainManager({
+      logger: createTestLogger(),
+      managedProcesses: createRegistryStub(),
+      ottoHome,
+    });
+    created.setStatusListeners({ onStatusChanged, onStatusEventSupportChanged: () => {} });
+    return created;
+  }
+
+  test("subscribes to a brain that advertises events and republishes its snapshots", async () => {
+    const events = await startEventBrainServer({ events: true });
+    brainServer = events;
+    const published: BrainHostStatus[] = [];
+    manager = createManager((status) => published.push(status));
+
+    await manager.applySettings(
+      remoteConfig({
+        host: "127.0.0.1",
+        port: events.port,
+        secure: false,
+        authToken: "secret-token",
+      }),
+    );
+    await until(() => events.streamCount() === 1, "the daemon to subscribe");
+    expect(manager.supportsStatusEvents()).toBe(true);
+
+    events.publish({ state: "starting", model: "a-model" });
+    await until(() => hasState(published, "starting"), "the pushed snapshot");
+
+    // The daemon's own fields are joined onto the brain's body exactly as the
+    // polled read does it: a pushed snapshot must not be a smaller shape.
+    expect(published.find((status) => status.state === "starting")).toMatchObject({
+      state: "starting",
+      model: "a-model",
+      running: true,
+      reachable: true,
+      host: "127.0.0.1",
+      port: events.port,
+    });
+    // One subscription per brain, never one per connected client.
+    expect(events.streamCount()).toBe(1);
+    expect(events.requests.every((request) => request.token === "secret-token")).toBe(true);
+    expect(events.requests.some((request) => request.path === "/__host/events")).toBe(true);
+  });
+
+  test("never opens a stream against a brain that reports events: false", async () => {
+    const events = await startEventBrainServer({ events: false });
+    brainServer = events;
+    manager = createManager(() => {});
+
+    await manager.applySettings(
+      remoteConfig({ host: "127.0.0.1", port: events.port, secure: false }),
+    );
+    await until(() => sawPathPrefix(events.requests, "/__host/status"), "the initial status read");
+    // Give a stream attempt every chance to appear before ruling it out.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(events.requests.some((request) => request.path === "/__host/events")).toBe(false);
+    expect(manager.supportsStatusEvents()).toBe(false);
+  });
+
+  test("walks the feature flag down as the selected brain changes", async () => {
+    const events = await startEventBrainServer({ events: true });
+    brainServer = events;
+    const supportChanges: boolean[] = [];
+    const created = new BrainManager({
+      logger: createTestLogger(),
+      managedProcesses: createRegistryStub(),
+      ottoHome,
+    });
+    manager = created;
+    created.setStatusListeners({
+      onStatusChanged: () => {},
+      onStatusEventSupportChanged: () => supportChanges.push(created.supportsStatusEvents()),
+    });
+
+    await created.applySettings(
+      remoteConfig({ host: "127.0.0.1", port: events.port, secure: false }),
+    );
+    await until(() => created.supportsStatusEvents(), "support to be announced");
+    expect(supportChanges).toEqual([true]);
+
+    // Repointed at nothing: availability is a property of the SELECTED brain,
+    // not a fixed daemon capability.
+    await created.applySettings(remoteConfig({ host: "" }));
+    await until(() => !created.supportsStatusEvents(), "support to be withdrawn");
+    expect(supportChanges).toEqual([true, false]);
+  });
+
+  test("publishes an unreachable snapshot when the stream drops", async () => {
+    const events = await startEventBrainServer({ events: true });
+    brainServer = events;
+    const published: BrainHostStatus[] = [];
+    manager = createManager((status) => published.push(status));
+
+    await manager.applySettings(
+      remoteConfig({ host: "127.0.0.1", port: events.port, secure: false }),
+    );
+    await until(() => events.streamCount() === 1, "the daemon to subscribe");
+
+    // The brain goes away entirely: streams end and nothing answers afterwards.
+    events.dropStreams();
+    await events.close();
+    brainServer = null;
+
+    await until(() => sawUnreachable(published), "the unreachable snapshot");
+    expect(published.at(-1)).toMatchObject({ running: false, reachable: false });
+  });
+
+  test("suppresses an identical snapshot rather than waking every client", async () => {
+    const events = await startEventBrainServer({ events: true });
+    brainServer = events;
+    const published: BrainHostStatus[] = [];
+    manager = createManager((status) => published.push(status));
+
+    await manager.applySettings(
+      remoteConfig({ host: "127.0.0.1", port: events.port, secure: false }),
+    );
+    await until(() => events.streamCount() === 1, "the daemon to subscribe");
+
+    events.publish({ state: "ready", model: "a-model" });
+    await until(() => hasModel(published, "a-model"), "the first snapshot");
+    const afterFirst = published.length;
+
+    events.publish({ state: "ready", model: "a-model" });
+    events.publish({ state: "ready", model: "a-model" });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(published.length).toBe(afterFirst);
+  });
+
+  test("subscribes over the pinned TLS transport", async () => {
+    const requests: SeenRequest[] = [];
+    let streamOpened = false;
+    const server = https.createServer({ cert: TEST_CERT, key: TEST_KEY }, (req, res) => {
+      const token = req.headers["x-otto-brain-token"];
+      requests.push({
+        method: req.method,
+        path: req.url,
+        token: typeof token === "string" ? token : undefined,
+      });
+      if ((req.url ?? "").startsWith("/__host/events")) {
+        streamOpened = true;
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.write(`event: status\ndata: ${JSON.stringify({ state: "ready" })}\n\n`);
+        return;
+      }
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ state: "ready", capabilities: { events: true } }));
+    });
+    brainServer = await listen(server, requests);
+    manager = createManager(() => {});
+
+    await manager.applySettings(
+      remoteConfig({
+        host: "127.0.0.1",
+        port: brainServer.port,
+        secure: true,
+        authToken: "secret-token",
+        certFingerprint: TEST_CERT_FINGERPRINT,
+      }),
+    );
+    await until(() => streamOpened, "the pinned stream to open");
+    expect(requests.every((request) => request.token === "secret-token")).toBe(true);
+  });
+
+  test("does not reach a remote whose certificate fails its pin", async () => {
+    const requests: SeenRequest[] = [];
+    const server = https.createServer({ cert: TEST_CERT, key: TEST_KEY }, (req, res) => {
+      requests.push({ method: req.method, path: req.url, token: undefined });
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ state: "ready", capabilities: { events: true } }));
+    });
+    brainServer = await listen(server, requests);
+    manager = createManager(() => {});
+
+    await manager.applySettings(
+      remoteConfig({
+        host: "127.0.0.1",
+        port: brainServer.port,
+        secure: true,
+        authToken: "secret-token",
+        certFingerprint: WRONG_FINGERPRINT,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    // Nothing reached the HTTP layer, so nothing - the stream included - ever
+    // wrote the auth token to an unauthenticated peer.
+    expect(requests).toHaveLength(0);
+    expect(manager.supportsStatusEvents()).toBe(false);
   });
 });

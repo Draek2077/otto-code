@@ -178,6 +178,13 @@ which maintains its own `RenderRules` object for iOS text-hoisting reasons. Addi
 means editing `MarkdownFence`, not the rules; forget the `message.tsx` rule and the feature works
 everywhere except chat, which is the surface most people see first.
 
+Before parsing, `fence-recovery.ts` repairs one narrow malformed-output shape: a document beginning
+with a triple-backtick `markdown` wrapper whose literal contents contain plain triple-backtick fences. CommonMark
+correctly treats the first inner marker as the outer close, so the renderer would otherwise alternate
+between code and live markdown. When the complete ambiguous pattern is present, the outer opening and
+final closing marker are raised by one backtick. This is recovery for model output, not a new Markdown
+syntax: ordinary fences, non-`markdown` fences, and already correctly sized wrappers stay untouched.
+
 ### A streaming fence is throttled, and that is load-bearing
 
 An open fence cannot be promoted out of the live tail block (`utils/split-markdown-blocks.ts`), so

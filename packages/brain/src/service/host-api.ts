@@ -35,11 +35,31 @@ import type { GpuInfo, Model } from "../types.js";
 import * as vram from "../vram.js";
 import type { SystemSample } from "../sysmon.js";
 import { errorMessage, readJsonBody, sendError, sendJson } from "./http-util.js";
+import type { BrainStatusPublisher, BrainStatusSnapshot } from "./status-events.js";
 import type { Supervisor } from "./supervisor.js";
 
 const MAX_PATCH_BYTES = 256 * 1024;
 const MAX_DISPLAY_NAME = 200;
 const DEFAULT_LOG_LINES = 200;
+
+/**
+ * The management API's own version, additive to the capability flags.
+ *
+ * Capabilities answer "can this brain do X"; this answers "which generation of
+ * the API is this" for the rare change that no single flag describes. A daemon
+ * reads both and never requires an exact package-version match.
+ */
+export const HOST_API_VERSION = 1;
+
+/**
+ * How often the SSE stream writes a comment line when nothing has changed.
+ *
+ * This is transport keepalive, not a status event: a proxy or a NAT table with
+ * an idle timeout would otherwise silently drop a stream from a brain that is
+ * simply sitting still, and the daemon would report an unreachable brain that is
+ * fine. Comments are ignored by every SSE parser, so no reader sees them.
+ */
+const SSE_KEEPALIVE_MS = 20_000;
 
 /**
  * What this brain can serve. The daemon folds this into `brain.host.status` and
@@ -66,6 +86,15 @@ export interface HostCapabilities {
   rename: boolean;
   /** POST /__host/model/rename/reset */
   reset: boolean;
+  /**
+   * GET /__host/events: a live SSE stream of complete status snapshots.
+   *
+   * The one capability a daemon reads *before* deciding how to watch this brain.
+   * False (including on every brain that predates the stream) means the daemon
+   * keeps polling `/__host/status`, which is why nothing about the older
+   * management API had to change for this to ship.
+   */
+  events: boolean;
   /** Whether writes are currently permitted (allowRemoteConfig). */
   writable: boolean;
 }
@@ -87,6 +116,12 @@ export interface HostApiDeps {
   /** The managed models directory, for disk accounting. Null when unresolvable. */
   getModelsDir: () => string | null;
   sampleResources: () => Promise<SystemSample>;
+  /**
+   * The live status source behind `GET /__host/events`. Absent (or not yet
+   * carrying a snapshot source) means this brain does not advertise events and
+   * its daemon keeps polling status.
+   */
+  statusEvents?: BrainStatusPublisher | null;
 }
 
 /** One row of the model inventory: the scan, metadata, profile and score joined. */
@@ -235,6 +270,10 @@ export function createHostApi(deps: HostApiDeps): HostApi {
     inventory: true,
     rename: true,
     reset: true,
+    // Read live rather than captured: the publisher is inert until the router
+    // installs its snapshot source, and advertising a stream we cannot serve
+    // would make a daemon stop polling and see nothing.
+    events: Boolean(deps.statusEvents?.ready),
     writable: deps.getAllowWrite(),
   });
 
@@ -487,6 +526,60 @@ export function createHostApi(deps: HostApiDeps): HostApi {
     });
   };
 
+  /**
+   * Stream complete status snapshots as SSE.
+   *
+   * Authentication is the listener's, not this route's: `withAuth` in serve.ts
+   * gates every `/__host/*` path with the same token and TLS policy, so an
+   * unauthenticated caller never reaches this function.
+   *
+   * The stream is unidirectional and outlives the request, which is exactly why
+   * SSE rather than a socket the brain would have to dial back to a daemon: a
+   * remote brain has no idea where its daemon is, and the daemon already knows
+   * how to reach the brain over an authenticated HTTP(S) endpoint.
+   */
+  const handleEvents = (
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    publisher: BrainStatusPublisher,
+  ): void => {
+    res.writeHead(200, {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+      // Tells nginx-shaped intermediaries not to buffer, which would defeat the
+      // whole point by holding each snapshot until the response ended.
+      "x-accel-buffering": "no",
+    });
+    res.flushHeaders?.();
+
+    const write = (snapshot: BrainStatusSnapshot): void => {
+      if (res.writableEnded || res.destroyed) return;
+      res.write(`event: status\ndata: ${JSON.stringify(snapshot)}\n\n`);
+    };
+    let unsubscribe = (): void => {};
+    const keepalive = setInterval(() => {
+      if (res.writableEnded || res.destroyed) return;
+      res.write(": keepalive\n\n");
+    }, SSE_KEEPALIVE_MS);
+    keepalive.unref?.();
+
+    const teardown = (): void => {
+      clearInterval(keepalive);
+      unsubscribe();
+    };
+    // The publisher ends the response on host shutdown: an open SSE response is
+    // an open connection, and `server.close()` waits for those.
+    unsubscribe = publisher.subscribe(write, () => {
+      clearInterval(keepalive);
+      if (!res.writableEnded && !res.destroyed) res.end();
+    });
+    // Both ends matter: `close` on the request covers a client that walked away,
+    // and `close` on the response covers the service shutting the socket down.
+    req.on("close", teardown);
+    res.on("close", teardown);
+  };
+
   function handleHostApi(req: http.IncomingMessage, res: http.ServerResponse): boolean {
     const raw = req.url || "";
     if (!raw.startsWith("/__host/")) return false;
@@ -498,6 +591,16 @@ export function createHostApi(deps: HostApiDeps): HostApi {
 
     if (route === "/__host/capabilities" && method === "GET") {
       sendJson(res, capabilities());
+      return true;
+    }
+
+    if (route === "/__host/events" && method === "GET") {
+      const publisher = deps.statusEvents;
+      if (!publisher?.ready) {
+        sendError(res, 404, "this brain does not serve a status event stream");
+        return true;
+      }
+      handleEvents(req, res, publisher);
       return true;
     }
 

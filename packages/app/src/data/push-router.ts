@@ -8,6 +8,7 @@ import type {
 import { agentCommandsQueryRoot } from "@/hooks/agent-commands-query";
 import { reconcileCheckoutStatusWithUncommittedDiff } from "@/git/checkout-status-cache";
 import { orderCheckoutDiffFiles } from "@/git/diff-order";
+import { applyBrainStatusChanged, invalidateBrainStatusAfterReconnect } from "@/data/brain-status";
 import { daemonConfigQueryKey } from "@/data/daemon-config";
 import { providersSnapshotQueryKey, providersSnapshotQueryRoot } from "@/data/providers-snapshot";
 import { applyRunUpdate, applyRunsCleared } from "@/data/runs";
@@ -115,6 +116,10 @@ const RECONNECT_REPAIR_POLICIES: ReconnectRepairPolicy[] = [
     invalidate: ({ queryClient, serverId }) => {
       void queryClient.invalidateQueries({ queryKey: daemonConfigQueryKey(serverId) });
     },
+  },
+  {
+    domain: "brainStatus",
+    invalidate: invalidateBrainStatusAfterReconnect,
   },
   {
     domain: "checkoutDiff",
@@ -343,6 +348,11 @@ export function mountServerDataPushRouter(input: PushRouterInput): () => void {
     applyDaemonConfigStatus({ queryClient: input.queryClient, serverId: input.serverId, message });
     applyLspActivityStatus({ serverId: input.serverId, message });
     applyLspDiagnosticsStatus({ serverId: input.serverId, message });
+    applyBrainStatusChanged({
+      queryClient: input.queryClient,
+      serverId: input.serverId,
+      message,
+    });
   });
   const unsubscribeCheckoutDiffUpdate = input.client.on("checkout_diff_update", (message) => {
     applyCheckoutDiffUpdate({

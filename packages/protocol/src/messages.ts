@@ -1818,6 +1818,15 @@ export const BrainCapabilitiesSchema = z
     load: z.boolean().default(false),
     resources: z.boolean().default(false),
     inventory: z.boolean().default(false),
+    /**
+     * GET /__host/events: a live SSE stream of complete status snapshots.
+     *
+     * The daemon reads this before deciding how to watch the brain. False (the
+     * default, and what every brain built before the stream reports) keeps the
+     * daemon on the ordinary status poll, which is why nothing else about the
+     * management API had to change for pushed status to ship.
+     */
+    events: z.boolean().default(false),
     /** Whether writes are permitted right now (the brain's allowRemoteConfig). */
     writable: z.boolean().default(false),
   })
@@ -1832,6 +1841,14 @@ export const BrainHostStatusSchema = z
     running: z.boolean(),
     pid: z.number().nullable().optional(),
     version: z.string().nullable().optional(),
+    /**
+     * Which generation of the brain's management contract the far side speaks.
+     *
+     * Additive and separate from `version`, which is the package build. A daemon
+     * reads this plus `capabilities` instead of pinning an exact brain version;
+     * absent means a brain from before the field existed.
+     */
+    apiVersion: z.number().nullable().optional(),
     host: z.string().nullable().optional(),
     port: z.number().nullable().optional(),
     displayHost: z.string().nullable().optional(),
@@ -7195,6 +7212,14 @@ export const ServerInfoStatusPayloadSchema = z
         // brain version independently.
         // COMPAT(brainConsole): added in v0.7.7, drop the gate when daemon floor >= v0.7.7.
         brainConsole: z.boolean().optional(),
+        // COMPAT(brainStatusPush): added in v0.8.3, drop the gate when daemon
+        // floor >= v0.8.3. The daemon subscribes to the brain's own SSE status
+        // stream and broadcasts `brain_status_changed`. Unlike the flags above
+        // this is not a fixed daemon capability: it is true only while the
+        // SELECTED brain also advertises `capabilities.events`, and the daemon
+        // re-broadcasts server_info when that changes. A client that sees it
+        // false keeps the explicit status poll.
+        brainStatusPush: z.boolean().optional(),
         // COMPAT(agentForkContext): added in v0.1.102, remove gate after 2026-12-28.
         agentForkContext: z.boolean().optional(),
         // COMPAT(providerRemove): added in v0.1.105, drop the gate when daemon floor >= v0.1.105.
@@ -7677,7 +7702,28 @@ export const LspDiagnosticsChangedStatusPayloadSchema = z
   })
   .passthrough();
 
+/**
+ * The brain's own state, pushed the moment it changes.
+ *
+ * A complete cheap `BrainHostStatus` snapshot, never a delta - which is what
+ * makes a missed message and a reconnect the same, idempotent, recovery. It
+ * excludes `resources`, whose collection spawns `nvidia-smi` on the brain host
+ * and stays an opt-in pull for the Overview tab.
+ *
+ * Scoped by the daemon connection that delivers it: the client writes it under
+ * that runtime's `serverId`, so two connected hosts cannot overwrite each
+ * other's brain state. Gated by `server_info.features.brainStatusPush`, which
+ * is true only when both the daemon and the brain it reaches support the stream.
+ */
+export const BrainStatusChangedStatusPayloadSchema = z
+  .object({
+    status: z.literal("brain_status_changed"),
+    brain: BrainHostStatusSchema,
+  })
+  .passthrough();
+
 export const KnownStatusPayloadSchema = z.discriminatedUnion("status", [
+  BrainStatusChangedStatusPayloadSchema,
   LspActivityChangedStatusPayloadSchema,
   LspDiagnosticsChangedStatusPayloadSchema,
   AgentCreatedStatusPayloadSchema,

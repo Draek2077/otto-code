@@ -7,8 +7,10 @@
  * can do, and that is the only branch.
  */
 import { useMemo } from "react";
+import { brainStatusQueryKey, PUSHED_BRAIN_STATUS_STALE_MS } from "@/data/brain-status";
 import { useFetchQuery } from "@/data/query";
 import type { BrainCapabilities, BrainHostStatus } from "@otto-code/protocol/messages";
+import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 
 /** How often the Overview tab refreshes while it is on screen. */
@@ -17,9 +19,9 @@ const STATUS_POLL_MS = 2000;
 const INVENTORY_STALE_MS = 30_000;
 const LOGS_POLL_MS = 3000;
 
-export function brainStatusQueryKey(serverId: string, resources: boolean) {
-  return ["brain-console-status", serverId, resources] as const;
-}
+// The cache key lives in the data layer because the push router writes it; this
+// re-export keeps the Brain page's own imports pointed at one place.
+export { brainStatusQueryKey };
 
 export function brainInventoryQueryKey(serverId: string) {
   return ["brain-console-inventory", serverId] as const;
@@ -43,12 +45,17 @@ export function useBrainStatus(
 ) {
   const client = useHostRuntimeClient(serverId);
   const resources = options.resources ?? false;
+  // The one gate, at the query boundary rather than scattered through the tabs:
+  // a daemon that pushes cheap status owns this cache entry, so polling it as
+  // well would only be a slower second opinion. The `resources` variant is
+  // never pushed (it spawns `nvidia-smi`), so it keeps its poll either way.
+  const pushed = useHostFeature(serverId, "brainStatusPush") && !resources;
   return useFetchQuery({
     queryKey: brainStatusQueryKey(serverId, resources),
     enabled: options.enabled && Boolean(client),
     dataShape: "value",
-    staleTimeMs: STATUS_POLL_MS,
-    refetchInterval: STATUS_POLL_MS,
+    staleTimeMs: pushed ? PUSHED_BRAIN_STATUS_STALE_MS : STATUS_POLL_MS,
+    refetchInterval: pushed ? false : STATUS_POLL_MS,
     queryFn: async () => {
       if (!client) {
         throw new Error("This host is not connected.");

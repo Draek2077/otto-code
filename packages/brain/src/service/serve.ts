@@ -33,6 +33,7 @@ import * as results from "../ops/results.js";
 import { createCpuSampler, sample as sampleSystem } from "../sysmon.js";
 import { createHostApi } from "./host-api.js";
 import { createRouter, Telemetry } from "./router.js";
+import { BrainStatusPublisher } from "./status-events.js";
 import { Supervisor } from "./supervisor.js";
 import * as tailscale from "./tailscale.js";
 import { CertManager, resolveTlsOptions, type SecurePair } from "./tls.js";
@@ -118,7 +119,8 @@ export interface ServiceHandle {
   supervisor: Supervisor;
   host: string;
   port: number;
-  model: Model;
+  /** The model loaded during startup, if one was available. */
+  model: Model | null;
   /** Whether the listener terminates TLS (config.tls.mode !== "off"). */
   secure: boolean;
   /** The address to show a user: the MagicDNS/cert hostname when TLS is on, else the bind host. */
@@ -137,14 +139,10 @@ export async function startService({
     runLog.write(line);
     onLog(line);
   };
+  // The management API must be useful before any setup exists: the Brain page
+  // is where the owner downloads both a runtime and their first model. Keep the
+  // listener up without either; loadModel reports the missing prerequisite.
   const runtime = resolveRuntime(config, env);
-  if (!runtime) {
-    throw new CommandError({
-      code: "NO_RUNTIME",
-      message: "no llama.cpp runtime available",
-      details: "run `otto brain runtime install` to download one, or install LM Studio",
-    });
-  }
 
   const paths = resolveBrainPaths(env);
   const tlsOptions = await resolveTlsOptions(config, paths);
@@ -191,11 +189,21 @@ export async function startService({
   // this, and every reader goes through a getter so nobody holds a stale array.
   let catalog = scanModels(config, env);
   const needle = modelNeedle ?? config.defaultModel ?? store.lastModelId ?? undefined;
-  const model = needle ? pickModel(catalog, needle) : pickAutoModel(catalog);
-  let profile = forModel(store, model, config.defaults);
+  let model: Model | null = null;
+  if (catalog.length > 0) {
+    try {
+      model = needle ? pickModel(catalog, needle) : pickAutoModel(catalog);
+    } catch (error) {
+      // A removed default or last-used model must not take the management
+      // service down. An explicit CLI selection remains an actionable error.
+      if (modelNeedle) throw error;
+      log(`note: ${error instanceof Error ? error.message : "configured model is unavailable"}`);
+    }
+  }
+  let profile = model ? forModel(store, model, config.defaults) : null;
 
   const gpu = await queryGpu();
-  if (gpu) {
+  if (gpu && model && profile) {
     const fit = vram.fitToBudget({
       model,
       profile,
@@ -203,14 +211,18 @@ export async function startService({
       totalVramBytes: gpu.totalBytes,
     });
     if (!fit.adjusted && !fit.budget.fits) {
-      throw new CommandError({
-        code: "DOES_NOT_FIT",
-        message: `refusing to start: ${fit.reason}`,
-        details: "use a smaller quant, or run `otto brain calibrate` for a measured budget",
-      });
+      // Starting the host is what exposes the Library and model profile UI.
+      // An automatic startup candidate that cannot load must therefore leave
+      // the host alive and unloaded, not make the only recovery surface vanish.
+      log(
+        `note: not loading ${model.displayName}: ${fit.reason ?? "does not fit in available VRAM"}`,
+      );
+      model = null;
+      profile = null;
+    } else {
+      if (fit.adjusted && fit.reason) log(`note: ${fit.reason}`);
+      profile = fit.profile;
     }
-    if (fit.adjusted && fit.reason) log(`note: ${fit.reason}`);
-    profile = fit.profile;
   }
 
   const telemetry = new Telemetry();
@@ -227,6 +239,12 @@ export async function startService({
   // can never overlap two supervisor.start() calls, whichever caller triggers them.
   let modelSwitchChain: Promise<void> = Promise.resolve();
   const loadModelUnsafe = async (target: Model): Promise<void> => {
+    // A runtime can be installed from the Library tab after this service starts.
+    // Resolve it at load time so the user does not have to restart the brain.
+    supervisor.runtime = resolveRuntime(config, env);
+    if (!supervisor.runtime) {
+      throw new Error("no llama.cpp runtime available; install one from the Library tab");
+    }
     const gpuInfo = await queryGpu();
     let fitProfile = forModel(store, target, config.defaults);
     if (gpuInfo) {
@@ -287,6 +305,12 @@ export async function startService({
   // between successive calls, so a fresh one per request would always return null.
   const cpuSampler = createCpuSampler();
 
+  // Constructed here, ahead of both consumers, because the router installs the
+  // snapshot builder into it and the management API serves it at
+  // /__host/events. One instance, so `capabilities.events` and the stream can
+  // never disagree about whether this brain publishes.
+  const statusEvents = new BrainStatusPublisher();
+
   const hostApi = createHostApi({
     supervisor,
     getCatalog: () => catalog,
@@ -313,6 +337,7 @@ export async function startService({
     getModelsDir: () => managedModelsDir(config, env),
     sampleResources: () =>
       sampleSystem(cpuSampler, { host: supervisor.host, port: supervisor.internalPort }),
+    statusEvents,
   });
 
   const handler = withAuth(
@@ -332,6 +357,7 @@ export async function startService({
       hostApi,
       getResources: () =>
         sampleSystem(cpuSampler, { host: supervisor.host, port: supervisor.internalPort }),
+      statusEvents,
     }),
     authToken,
   );
@@ -362,9 +388,15 @@ export async function startService({
   });
   certManager?.start();
 
-  await supervisor.start(model, profile);
-  store.lastModelId = model.id;
-  saveProfilesStore(store, paths);
+  if (model && profile && runtime) {
+    await supervisor.start(model, profile);
+    store.lastModelId = model.id;
+    saveProfilesStore(store, paths);
+  } else if (!runtime) {
+    log("ready: no llama.cpp runtime installed; use the Library tab to download one");
+  } else {
+    log("ready: no model installed; use the Library tab to download one");
+  }
   writePidFile(
     {
       pid: process.pid,
@@ -376,12 +408,18 @@ export async function startService({
     },
     env,
   );
-  log(`ready: ${model.displayName} on ${bindHost}:${port}; run log ${runLog.path}`);
+  log(
+    `ready: ${supervisor.model?.displayName ?? "no model loaded"} on ${bindHost}:${port}; run log ${runLog.path}`,
+  );
 
   const stop = async (): Promise<void> => {
     certManager?.stop();
     log("Brain service stopping");
+    // Before server.close(), which waits on open connections: a subscribed
+    // daemon holds an SSE response open indefinitely by design.
+    statusEvents.close();
     await supervisor.stop();
+    server.closeIdleConnections?.();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     removePidFile(env);
   };
@@ -391,7 +429,7 @@ export async function startService({
     supervisor,
     host: bindHost,
     port,
-    model,
+    model: supervisor.model,
     secure: Boolean(tlsOptions),
     displayHost,
     stop,

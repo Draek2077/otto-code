@@ -62,6 +62,7 @@ import {
   type WorkspaceImageSource,
 } from "./image-context";
 import { groupMarkdownParts, type MarkdownPartGroup } from "./part-groups";
+import { recoverMisnestedMarkdownFence } from "./fence-recovery";
 
 export type MarkdownStyles = Record<string, TextStyle & ViewStyle & { [key: string]: unknown }>;
 
@@ -172,16 +173,17 @@ export function MarkdownRenderer({
   onToggleTask = null,
 }: MarkdownRendererProps) {
   const oversized = text.length > MAX_MARKDOWN_PARSE_LENGTH;
+  const recoveredText = useMemo(() => recoverMisnestedMarkdownFence(text), [text]);
   const markdownRules = useMemo(() => rules ?? createSharedMarkdownRules(), [rules]);
   const parts = useMemo(
     () =>
       enableHtmlish && !oversized
-        ? splitHtmlishMarkdown(text, {
+        ? splitHtmlishMarkdown(recoveredText, {
             remoteImages,
             localImages: workspaceImages ? "workspace" : "off",
           })
-        : [{ kind: "markdown" as const, text }],
-    [enableHtmlish, oversized, remoteImages, text, workspaceImages],
+        : [{ kind: "markdown" as const, text: recoveredText }],
+    [enableHtmlish, oversized, recoveredText, remoteImages, workspaceImages],
   );
   const rendererProps = useMemo(
     () => ({

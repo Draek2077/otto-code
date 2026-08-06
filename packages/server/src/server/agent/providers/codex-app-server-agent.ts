@@ -888,6 +888,40 @@ function filterCodexThreadsByCwd(
   return threads.filter((thread) => typeof thread.cwd === "string" && matchesCwd(thread.cwd));
 }
 
+/** A usage leaf that may arrive snake_case (core serialization) or camelCase
+ * (app-server wire). Zero is a real reading here, so this does not reuse
+ * {@link firstPositiveFiniteNumber}, which treats 0 as absent. */
+function readUsageLeaf(
+  source: Record<string, unknown> | undefined,
+  snakeKey: string,
+  camelKey: string,
+): number | undefined {
+  for (const key of [snakeKey, camelKey]) {
+    const value = source?.[key];
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Codex reports OpenAI-shaped usage, where `input_tokens` is the WHOLE prompt
+ * and `cached_input_tokens` is the slice of that prompt served from cache.
+ * {@link AgentUsage} defines its three input leaves as DISJOINT - they sum to
+ * total input - so the cached slice has to be taken out of the input leaf right
+ * here, exactly as the openai-compat provider already does.
+ *
+ * Passing OpenAI's inclusive figure straight through booked the cached prefix
+ * twice and made every Codex token figure in Otto read ~2x real. Proven on a
+ * live 3.5-hour session: Codex reported `input_tokens: 216887` /
+ * `cached_input_tokens: 215808` for a turn, and the usage ledger recorded
+ * exactly 432,695 tokens in for it.
+ *
+ * The context-window leaves are unaffected: `total_tokens` is already a single
+ * non-overlapping figure, which is why the meter stayed honest while the ledger
+ * did not.
+ */
 export function toAgentUsage(tokenUsage: unknown): AgentUsage | undefined {
   const usage = toObjectRecord(tokenUsage);
   if (!usage) return undefined;
@@ -897,14 +931,57 @@ export function toAgentUsage(tokenUsage: unknown): AgentUsage | undefined {
     usage.modelContextWindow,
   );
   const contextWindowUsedTokens = firstPositiveFiniteNumber(last?.total_tokens, last?.totalTokens);
+  const promptTokens = readUsageLeaf(last, "input_tokens", "inputTokens");
+  const cachedInputTokens = readUsageLeaf(last, "cached_input_tokens", "cachedInputTokens");
   return {
-    inputTokens: typeof last?.inputTokens === "number" ? last.inputTokens : undefined,
-    cachedInputTokens:
-      typeof last?.cachedInputTokens === "number" ? last.cachedInputTokens : undefined,
-    outputTokens: typeof last?.outputTokens === "number" ? last.outputTokens : undefined,
+    inputTokens:
+      promptTokens === undefined ? undefined : Math.max(0, promptTokens - (cachedInputTokens ?? 0)),
+    cachedInputTokens,
+    outputTokens: readUsageLeaf(last, "output_tokens", "outputTokens"),
     ...(contextWindowMaxTokens !== undefined ? { contextWindowMaxTokens } : {}),
     ...(contextWindowUsedTokens !== undefined ? { contextWindowUsedTokens } : {}),
   };
+}
+
+/** Sum one usage leaf, keeping "never reported" as undefined rather than 0. */
+function addUsageLeaf(prior: number | undefined, next: number | undefined): number | undefined {
+  if (prior === undefined && next === undefined) {
+    return undefined;
+  }
+  return (prior ?? 0) + (next ?? 0);
+}
+
+/**
+ * Fold one request's usage into the turn's running spend.
+ *
+ * Codex reports `last` per model request, and one Otto turn is many requests: a
+ * measured tool-heavy session averaged ~12 of them per turn. The billable
+ * leaves therefore ADD, exactly as Claude's SDK already reports a turn as the
+ * sum of its internal rounds, so a Codex turn and a Claude turn mean the same
+ * thing downstream.
+ *
+ * The `contextWindow*` leaves are occupancy, not spend. They are absolute by
+ * nature and take the newest reading instead of accumulating - summing them
+ * would make the composer meter climb without bound.
+ */
+export function accumulateCodexTurnUsage(
+  prior: AgentUsage | undefined,
+  request: AgentUsage,
+): AgentUsage {
+  const merged: AgentUsage = { ...request };
+  const inputTokens = addUsageLeaf(prior?.inputTokens, request.inputTokens);
+  const cachedInputTokens = addUsageLeaf(prior?.cachedInputTokens, request.cachedInputTokens);
+  const outputTokens = addUsageLeaf(prior?.outputTokens, request.outputTokens);
+  if (inputTokens !== undefined) {
+    merged.inputTokens = inputTokens;
+  }
+  if (cachedInputTokens !== undefined) {
+    merged.cachedInputTokens = cachedInputTokens;
+  }
+  if (outputTokens !== undefined) {
+    merged.outputTokens = outputTokens;
+  }
+  return merged;
 }
 
 function extractUserText(content: unknown): string | null {
@@ -3160,7 +3237,14 @@ export class CodexAppServerAgentSession implements AgentSession {
   private warnedUnknownNotificationMethods = new Set<string>();
   private warnedInvalidNotificationPayloads = new Set<string>();
   private warnedIncompleteEditToolCallIds = new Set<string>();
-  private latestUsage: AgentUsage | undefined;
+  /**
+   * Spend accumulated across every model request of the CURRENT turn, plus the
+   * newest context-window reading. See {@link accumulateCodexTurnUsage}.
+   *
+   * Reset at both turn boundaries, so a turn that dies before it issues a single
+   * request reports nothing rather than re-booking the previous turn's spend.
+   */
+  private turnUsage: AgentUsage | undefined;
   private latestPlanResult: { callId: string; text: string; turnId: string | null } | null = null;
   private readonly userMessageTurnIndexes = new Map<string, number>();
   private readonly userMessageTurnIds: string[] = [];
@@ -5360,14 +5444,23 @@ export class CodexAppServerAgentSession implements AgentSession {
     const terminalStatus =
       parsed.status === "failed" || parsed.status === "interrupted" ? parsed.status : "completed";
     this.settleActiveForegroundToolCalls(terminalStatus, parsed.errorMessage);
+    // A failed or interrupted turn already burned every request it made, and the
+    // manager books `usage` on all three outcomes. Reporting it only on the
+    // happy path made Esc-heavy and retrying sessions look free.
     if (parsed.status === "failed") {
       this.emitEvent({
         type: "turn_failed",
         provider: CODEX_PROVIDER,
         error: parsed.errorMessage ?? "Codex turn failed",
+        ...(this.turnUsage ? { usage: this.turnUsage } : {}),
       });
     } else if (parsed.status === "interrupted") {
-      this.emitEvent({ type: "turn_canceled", provider: CODEX_PROVIDER, reason: "interrupted" });
+      this.emitEvent({
+        type: "turn_canceled",
+        provider: CODEX_PROVIDER,
+        reason: "interrupted",
+        ...(this.turnUsage ? { usage: this.turnUsage } : {}),
+      });
     } else {
       if (this.planModeEnabled && this.latestPlanResult?.text) {
         this.emitSyntheticPlanApprovalRequest(this.latestPlanResult.text);
@@ -5375,7 +5468,7 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.emitEvent({
         type: "turn_completed",
         provider: CODEX_PROVIDER,
-        usage: this.latestUsage,
+        usage: this.turnUsage,
       });
     }
     this.activeForegroundTurnId = null;
@@ -5385,6 +5478,7 @@ export class CodexAppServerAgentSession implements AgentSession {
   }
 
   private resetTurnTrackingState(): void {
+    this.turnUsage = undefined;
     this.latestPlanResult = null;
     this.emittedItemStartedIds.clear();
     this.emittedItemCompletedIds.clear();
@@ -5428,14 +5522,23 @@ export class CodexAppServerAgentSession implements AgentSession {
   private handleTokenUsageUpdatedNotification(
     parsed: Extract<ParsedCodexNotification, { kind: "token_usage_updated" }>,
   ): void {
-    this.latestUsage = toAgentUsage(parsed.tokenUsage);
-    if (this.latestUsage) {
-      this.notifySubscribers({
-        type: "usage_updated",
-        provider: CODEX_PROVIDER,
-        usage: this.latestUsage,
-      });
+    // A child thread's spend belongs to that sub-agent. Folding it in here would
+    // inflate the parent turn AND overwrite the parent's context-window reading
+    // with the child's, which is why turn/started and turn/completed already
+    // refuse child threads above.
+    if (this.getSubAgentCallIdForThread(parsed.threadId)) {
+      return;
     }
+    const requestUsage = toAgentUsage(parsed.tokenUsage);
+    if (!requestUsage) {
+      return;
+    }
+    this.turnUsage = accumulateCodexTurnUsage(this.turnUsage, requestUsage);
+    this.notifySubscribers({
+      type: "usage_updated",
+      provider: CODEX_PROVIDER,
+      usage: this.turnUsage,
+    });
   }
 
   private resolveContextCompactionTrigger(itemId?: string): "auto" | "manual" | undefined {

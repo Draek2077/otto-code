@@ -1312,19 +1312,21 @@ describe("Codex app-server provider", () => {
 
   const logger = createTestLogger();
 
+  // Codex's `input_tokens` is the whole prompt, cached slice included, so the
+  // disjoint `inputTokens` leaf every consumer sums is 30000 - 5000.
   test("extracts context window usage from snake_case token payloads", () => {
     expect(
       toAgentUsage({
         model_context_window: 200000,
         last: {
           total_tokens: 50000,
-          inputTokens: 30000,
-          cachedInputTokens: 5000,
-          outputTokens: 15000,
+          input_tokens: 30000,
+          cached_input_tokens: 5000,
+          output_tokens: 15000,
         },
       }),
     ).toEqual({
-      inputTokens: 30000,
+      inputTokens: 25000,
       cachedInputTokens: 5000,
       outputTokens: 15000,
       contextWindowMaxTokens: 200000,
@@ -1344,12 +1346,38 @@ describe("Codex app-server provider", () => {
         },
       }),
     ).toEqual({
-      inputTokens: 30000,
+      inputTokens: 25000,
       cachedInputTokens: 5000,
       outputTokens: 15000,
       contextWindowMaxTokens: 200000,
       contextWindowUsedTokens: 50000,
     });
+  });
+
+  // The cached prefix is a SLICE of the prompt, never an addition to it. Booking
+  // `input_tokens + cached_input_tokens` made a real 216,887-token turn land in
+  // the ledger as 432,695 - the whole reason Codex read ~2x Claude.
+  test("books the cached prefix once, not twice", () => {
+    const usage = toAgentUsage({
+      modelContextWindow: 258400,
+      last: {
+        totalTokens: 216957,
+        inputTokens: 216887,
+        cachedInputTokens: 215808,
+        outputTokens: 70,
+      },
+    });
+
+    expect(usage?.inputTokens).toBe(1079);
+    expect(usage?.cachedInputTokens).toBe(215808);
+    expect((usage?.inputTokens ?? 0) + (usage?.cachedInputTokens ?? 0)).toBe(216887);
+  });
+
+  test("clamps to zero rather than going negative on a fully cached prompt", () => {
+    expect(
+      toAgentUsage({ last: { totalTokens: 1000, inputTokens: 900, cachedInputTokens: 1000 } })
+        ?.inputTokens,
+    ).toBe(0);
   });
 
   test("keeps existing usage behavior when context window fields are missing", () => {
@@ -1362,7 +1390,7 @@ describe("Codex app-server provider", () => {
         },
       }),
     ).toEqual({
-      inputTokens: 30000,
+      inputTokens: 25000,
       cachedInputTokens: 5000,
       outputTokens: 15000,
     });
@@ -1382,7 +1410,7 @@ describe("Codex app-server provider", () => {
         },
       }),
     ).toEqual({
-      inputTokens: 30000,
+      inputTokens: 25000,
       cachedInputTokens: 5000,
       outputTokens: 15000,
     });
@@ -4523,7 +4551,7 @@ describe("Codex app-server provider", () => {
       provider: "codex",
       turnId: "test-turn",
       usage: {
-        inputTokens: 30000,
+        inputTokens: 25000,
         cachedInputTokens: 5000,
         outputTokens: 15000,
         contextWindowMaxTokens: 200000,
@@ -4535,12 +4563,176 @@ describe("Codex app-server provider", () => {
       provider: "codex",
       turnId: "test-turn",
       usage: {
-        inputTokens: 30000,
+        inputTokens: 25000,
         cachedInputTokens: 5000,
         outputTokens: 15000,
         contextWindowMaxTokens: 200000,
         contextWindowUsedTokens: 50000,
       },
+    });
+  });
+
+  // Codex reports usage per model REQUEST, and one turn is many requests. These
+  // cover the turn-level accumulation that keeps a Codex turn comparable to a
+  // Claude turn (which the SDK already reports as the sum of its rounds).
+  function sendCodexRequestUsage(
+    session: ReturnType<typeof createSession>,
+    input: {
+      totalTokens: number;
+      inputTokens: number;
+      cachedInputTokens: number;
+      outputTokens: number;
+    },
+  ): void {
+    asInternals(session).handleNotification("thread/tokenUsage/updated", {
+      tokenUsage: { modelContextWindow: 258400, last: input },
+    });
+  }
+
+  test("sums every request in a turn instead of booking only the last one", () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    asInternals(session).handleNotification("turn/started", { turn: { id: "turn-usage-1" } });
+    sendCodexRequestUsage(session, {
+      totalTokens: 12000,
+      inputTokens: 10000,
+      cachedInputTokens: 8000,
+      outputTokens: 2000,
+    });
+    sendCodexRequestUsage(session, {
+      totalTokens: 21000,
+      inputTokens: 18000,
+      cachedInputTokens: 16000,
+      outputTokens: 3000,
+    });
+    asInternals(session).handleNotification("turn/completed", {
+      turn: { status: "completed", error: null },
+    });
+
+    const completed = events.at(-1);
+    expect(completed).toEqual({
+      type: "turn_completed",
+      provider: "codex",
+      turnId: "test-turn",
+      usage: {
+        // Fresh input per request is 10000-8000 and 18000-16000.
+        inputTokens: 4000,
+        cachedInputTokens: 24000,
+        outputTokens: 5000,
+        contextWindowMaxTokens: 258400,
+        // Occupancy is absolute: the newest reading, never the sum.
+        contextWindowUsedTokens: 21000,
+      },
+    });
+  });
+
+  test("starts each turn from zero rather than re-booking the previous turn", () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    asInternals(session).handleNotification("turn/started", { turn: { id: "turn-usage-1" } });
+    sendCodexRequestUsage(session, {
+      totalTokens: 12000,
+      inputTokens: 10000,
+      cachedInputTokens: 8000,
+      outputTokens: 2000,
+    });
+    asInternals(session).handleNotification("turn/completed", {
+      turn: { status: "completed", error: null },
+    });
+    asInternals(session).handleNotification("turn/started", { turn: { id: "turn-usage-2" } });
+    sendCodexRequestUsage(session, {
+      totalTokens: 13000,
+      inputTokens: 12000,
+      cachedInputTokens: 11500,
+      outputTokens: 1000,
+    });
+    asInternals(session).handleNotification("turn/completed", {
+      turn: { status: "completed", error: null },
+    });
+
+    const completed = events.at(-1);
+    expect(completed?.type).toBe("turn_completed");
+    expect(completed).toHaveProperty("usage", {
+      inputTokens: 500,
+      cachedInputTokens: 11500,
+      outputTokens: 1000,
+      contextWindowMaxTokens: 258400,
+      contextWindowUsedTokens: 13000,
+    });
+  });
+
+  test("reports a turn with no request at all as unmeasured, not as the last turn's spend", () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    asInternals(session).handleNotification("turn/started", { turn: { id: "turn-usage-1" } });
+    sendCodexRequestUsage(session, {
+      totalTokens: 12000,
+      inputTokens: 10000,
+      cachedInputTokens: 8000,
+      outputTokens: 2000,
+    });
+    asInternals(session).handleNotification("turn/completed", {
+      turn: { status: "completed", error: null },
+    });
+    asInternals(session).handleNotification("turn/started", { turn: { id: "turn-usage-2" } });
+    asInternals(session).handleNotification("turn/completed", {
+      turn: { status: "completed", error: null },
+    });
+
+    const completed = events.at(-1);
+    expect(completed?.type).toBe("turn_completed");
+    expect(completed).toHaveProperty("usage", undefined);
+  });
+
+  test("carries the accrued spend onto an interrupted turn", () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    asInternals(session).handleNotification("turn/started", { turn: { id: "turn-usage-1" } });
+    sendCodexRequestUsage(session, {
+      totalTokens: 12000,
+      inputTokens: 10000,
+      cachedInputTokens: 8000,
+      outputTokens: 2000,
+    });
+    asInternals(session).handleNotification("turn/completed", {
+      turn: { status: "interrupted", error: null },
+    });
+
+    expect(events.at(-1)).toMatchObject({
+      type: "turn_canceled",
+      provider: "codex",
+      usage: { inputTokens: 2000, cachedInputTokens: 8000, outputTokens: 2000 },
+    });
+  });
+
+  test("carries the accrued spend onto a failed turn", () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    asInternals(session).handleNotification("turn/started", { turn: { id: "turn-usage-1" } });
+    sendCodexRequestUsage(session, {
+      totalTokens: 12000,
+      inputTokens: 10000,
+      cachedInputTokens: 8000,
+      outputTokens: 2000,
+    });
+    asInternals(session).handleNotification("turn/completed", {
+      turn: { status: "failed", error: { message: "boom" } },
+    });
+
+    expect(events.at(-1)).toMatchObject({
+      type: "turn_failed",
+      provider: "codex",
+      usage: { inputTokens: 2000, cachedInputTokens: 8000, outputTokens: 2000 },
     });
   });
 
