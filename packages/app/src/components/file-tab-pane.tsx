@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Download,
   FileText,
+  FolderOpen,
   History,
   List,
   Save,
@@ -90,7 +91,7 @@ import { RenameSymbolDialog } from "@/editor/rename/rename-symbol-dialog";
 import { EditorDiagnosticsPanel, useDismissibleProblems } from "@/editor/editor-diagnostics-panel";
 import { useGoToDefinition, type GoToDefinitionTarget } from "@/editor/use-go-to-definition";
 import { useTextEditorFeature } from "@/editor/use-text-editor-feature";
-import { revealFileInChanges, useChangedFilePaths } from "@/git/changes-reveal";
+import { revealFileInChanges, revealFileInFiles, useChangedFilePaths } from "@/git/changes-reveal";
 import { openFileHistoryTab } from "@/git/file-history/open-file-history-tab";
 import type { FileHistoryRange } from "@/git/file-history/use-file-history-data";
 import { useGitFileHistoryFeature } from "@/git/use-git-file-history-feature";
@@ -153,6 +154,7 @@ const warningIconColorMapping = (theme: Theme) => ({
 const ThemedSearch = withUnistyles(Search);
 const ThemedList = withUnistyles(List);
 const ThemedHistory = withUnistyles(History);
+const ThemedFolderOpen = withUnistyles(FolderOpen);
 const ThemedSourceControl = withUnistyles(SourceControlPanelIcon);
 const ThemedWandStars = withUnistyles(WandStars);
 const ThemedDownload = withUnistyles(Download);
@@ -500,6 +502,7 @@ function PreviewOnlyView({
   fileInfo,
   onFileInfo,
   onOpenHistory,
+  onNavigateToFile,
   onViewChanges,
   onRefine,
 }: {
@@ -516,6 +519,7 @@ function PreviewOnlyView({
   fileInfo: FilePreviewFileInfo | null;
   onFileInfo: (info: FilePreviewFileInfo | null) => void;
   onOpenHistory: ((range: FileHistoryRange | null) => void) | null;
+  onNavigateToFile: (() => void) | null;
   onViewChanges: (() => void) | null;
   /** Opens the Refine job tab for this file; null when unavailable. */
   onRefine: (() => void) | null;
@@ -630,6 +634,7 @@ function PreviewOnlyView({
       <View style={styles.previewToolbar}>
         <FileGitToolbarGroup
           onOpenHistory={handleOpenHistory}
+          onNavigateToFile={onNavigateToFile}
           onViewChanges={onViewChanges}
           showLeadingSeparator={false}
         />
@@ -823,15 +828,17 @@ function FileAiToolbarGroup({
  */
 function FileGitToolbarGroup({
   onOpenHistory,
+  onNavigateToFile,
   onViewChanges,
   showLeadingSeparator,
 }: {
   onOpenHistory: (() => void) | null;
+  onNavigateToFile: (() => void) | null;
   onViewChanges: (() => void) | null;
   showLeadingSeparator: boolean;
 }) {
   const { t } = useTranslation();
-  if (!onOpenHistory && !onViewChanges) {
+  if (!onOpenHistory && !onNavigateToFile && !onViewChanges) {
     return null;
   }
   return (
@@ -845,9 +852,17 @@ function FileGitToolbarGroup({
           onPress={onOpenHistory}
         />
       ) : null}
+      {onNavigateToFile ? (
+        <ToolbarIconButton
+          label={t("workspace.fileActions.navigateToFile")}
+          testID="file-navigate-to-file"
+          Icon={ThemedFolderOpen}
+          onPress={onNavigateToFile}
+        />
+      ) : null}
       {onViewChanges ? (
         <ToolbarIconButton
-          label={t("workspace.git.diff.viewChanges")}
+          label={t("workspace.fileActions.navigateToChanges")}
           testID="file-view-changes"
           Icon={ThemedSourceControl}
           onPress={onViewChanges}
@@ -1218,6 +1233,7 @@ function EditorModeView({
   controllerRef,
   onFileInfo,
   onOpenHistory,
+  onNavigateToFile,
   onViewChanges,
   onRefine,
 }: {
@@ -1235,6 +1251,7 @@ function EditorModeView({
   controllerRef: RefObject<EditorController | null>;
   onFileInfo: (info: FilePreviewFileInfo | null) => void;
   onOpenHistory: ((range: FileHistoryRange | null) => void) | null;
+  onNavigateToFile: (() => void) | null;
   onViewChanges: (() => void) | null;
   /** Opens the Refine job tab for this file; null when unavailable. */
   onRefine: (() => void) | null;
@@ -1854,6 +1871,7 @@ function EditorModeView({
         />
         <FileGitToolbarGroup
           onOpenHistory={handleOpenHistory}
+          onNavigateToFile={onNavigateToFile}
           onViewChanges={onViewChanges}
           showLeadingSeparator
         />
@@ -2228,6 +2246,20 @@ export function FileTabPane({
     };
   }, [changedPaths, editGate.kind, location.path, serverId, workspaceRoot]);
 
+  const onNavigateToFile = useMemo(() => {
+    if (editGate.kind !== "free") {
+      return null;
+    }
+    return () => {
+      revealFileInFiles({
+        serverId,
+        cwd: workspaceRoot,
+        path: location.path,
+        isGit: true,
+      });
+    };
+  }, [editGate.kind, location.path, serverId, workspaceRoot]);
+
   // Refine - the AI rewrite, as a reviewable job in its own tab.
   //
   // In-project only, for the same reason as history and changes: the job runs
@@ -2383,6 +2415,7 @@ export function FileTabPane({
         fileInfo={fileInfo}
         onFileInfo={setFileInfo}
         onOpenHistory={onOpenHistory}
+        onNavigateToFile={onNavigateToFile}
         onViewChanges={onViewChanges}
         onRefine={onRefine}
       />
@@ -2401,6 +2434,7 @@ export function FileTabPane({
         controllerRef={controllerRef}
         onFileInfo={setFileInfo}
         onOpenHistory={onOpenHistory}
+        onNavigateToFile={onNavigateToFile}
         onViewChanges={onViewChanges}
         onRefine={onRefine}
       />

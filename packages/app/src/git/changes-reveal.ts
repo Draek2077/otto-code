@@ -137,3 +137,20 @@ export function revealFileInChanges({
   requestChangesReveal(path);
   setExplorerTabForCheckout({ serverId, cwd, isGit: true, tab: "changes" });
 }
+
+/** Send the user to a file in the Files tree, including its parent folders. */
+export function revealFileInFiles({
+  serverId,
+  cwd,
+  path,
+  isGit = false,
+}: {
+  serverId: string;
+  cwd: string;
+  path: string;
+  isGit?: boolean;
+}): void {
+  const { requestFilesReveal, setExplorerTabForCheckout } = usePanelStore.getState();
+  requestFilesReveal(path);
+  setExplorerTabForCheckout({ serverId, cwd, isGit, tab: "files" });
+}

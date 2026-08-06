@@ -1438,6 +1438,8 @@ export const en = {
     },
     fileActions: {
       openFile: "Open file",
+      navigateToFile: "Navigate to file",
+      navigateToChanges: "Navigate to changes",
       copyPath: "Copy path",
       download: "Download",
       addToChat: "Add to chat…",

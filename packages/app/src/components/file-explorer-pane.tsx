@@ -96,7 +96,7 @@ import { FileNameSheet, type FileNameSheetMode } from "@/file-explorer/file-name
 import { filterVisibleExplorerEntries, isHiddenExplorerPath } from "@/file-explorer/visibility";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
-import { revealFileInChanges, useChangedFilePaths } from "@/git/changes-reveal";
+import { revealFileInChanges, revealFileInFiles, useChangedFilePaths } from "@/git/changes-reveal";
 import { openFileHistoryTab } from "@/git/file-history/open-file-history-tab";
 import { isNative, isWeb } from "@/constants/platform";
 
@@ -1452,10 +1452,15 @@ export function FileExplorerPane({
   }, [canIndexCode, clearFinderOpenRequest, finderOpenToken]);
   const handleFinderOpenFile = useCallback(
     (path: string) => {
-      selectExplorerEntry(path);
+      revealFileInFiles({
+        serverId,
+        cwd: normalizedWorkspaceRoot,
+        path,
+        isGit: Boolean(checkoutStatus?.isGit),
+      });
       onOpenFile?.(path);
     },
-    [onOpenFile, selectExplorerEntry],
+    [checkoutStatus?.isGit, normalizedWorkspaceRoot, onOpenFile, serverId],
   );
 
   if (!hasWorkspaceScope) {

@@ -1452,6 +1452,8 @@ export const fr: TranslationResources = {
     },
     fileActions: {
       openFile: "Ouvrir le fichier",
+      navigateToFile: "Aller au fichier",
+      navigateToChanges: "Aller aux modifications",
       copyPath: "Copier le chemin",
       download: "Télécharger",
       addToChat: "Ajouter au chat…",

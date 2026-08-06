@@ -1381,6 +1381,8 @@ export const zhCN: TranslationResources = {
     },
     fileActions: {
       openFile: "打开文件",
+      navigateToFile: "导航到文件",
+      navigateToChanges: "导航到更改",
       copyPath: "复制路径",
       download: "下载",
       addToChat: "添加到聊天…",

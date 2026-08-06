@@ -1436,6 +1436,8 @@ export const ptBR: TranslationResources = {
     },
     fileActions: {
       openFile: "Abrir arquivo",
+      navigateToFile: "Navegar até o arquivo",
+      navigateToChanges: "Navegar até as alterações",
       copyPath: "Copiar caminho",
       download: "Baixar",
       addToChat: "Adicionar ao chat…",

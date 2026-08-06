@@ -1426,6 +1426,8 @@ export const ja: TranslationResources = {
     },
     fileActions: {
       openFile: "ファイルを開く",
+      navigateToFile: "ファイルへ移動",
+      navigateToChanges: "変更へ移動",
       copyPath: "パスをコピー",
       download: "ダウンロード",
       addToChat: "チャットに追加…",

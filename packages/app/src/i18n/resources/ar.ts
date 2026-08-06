@@ -1398,6 +1398,8 @@ export const ar: TranslationResources = {
     },
     fileActions: {
       openFile: "افتح الملف",
+      navigateToFile: "انتقل إلى الملف",
+      navigateToChanges: "انتقل إلى التغييرات",
       copyPath: "نسخ المسار",
       download: "تحميل",
       addToChat: "إضافة إلى الدردشة…",

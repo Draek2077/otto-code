@@ -1431,6 +1431,8 @@ export const ru: TranslationResources = {
     },
     fileActions: {
       openFile: "Открыть файл",
+      navigateToFile: "Перейти к файлу",
+      navigateToChanges: "Перейти к изменениям",
       copyPath: "Копировать путь",
       download: "Скачать",
       addToChat: "Добавить в чат…",
