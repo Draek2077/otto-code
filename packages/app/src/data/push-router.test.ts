@@ -1,8 +1,14 @@
 import { QueryClient, QueryObserver, skipToken } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { MutableDaemonConfig, SessionOutboundMessage } from "@otto-code/protocol/messages";
+import type {
+  BrainHostStatus,
+  MutableDaemonConfig,
+  SessionOutboundMessage,
+} from "@otto-code/protocol/messages";
+import { deriveBrainState } from "@/components/brain/brain-state";
 import { checkoutDiffQueryKey, checkoutStatusQueryKey } from "@/git/query-keys";
 import { buildTerminalsQueryKey } from "@/screens/workspace/terminals/state";
+import { brainStatusQueryKey } from "@/data/brain-status";
 import { daemonConfigQueryKey } from "@/data/daemon-config";
 import { providersSnapshotQueryKey } from "@/data/providers-snapshot";
 import {
@@ -197,6 +203,10 @@ function createFakeClient(config: { rejectCheckoutDiffSubscribe?: boolean } = {}
     subscribeTerminalCalls,
     unsubscribeTerminalCalls,
   };
+}
+
+function brainStatus(brain: BrainHostStatus): StatusMessage {
+  return { type: "status", payload: { status: "brain_status_changed", brain } };
 }
 
 function providerUpdate(generatedAt: string): ProvidersSnapshotUpdateMessage {
@@ -734,6 +744,71 @@ describe("server data push router", () => {
     unmount();
   });
 
+  it("writes a pushed brain snapshot into the cache both Brain surfaces read", () => {
+    const queryClient = new QueryClient();
+    const fake = createFakeClient();
+    const serverId = "server-1";
+    const unmount = mountServerDataPushRouter({ client: fake.client, queryClient, serverId });
+
+    const brainKey = brainStatusQueryKey(serverId, false);
+    // Every Brain surface - the rail button, the workspace title button and the
+    // console's cheap status - observes this one entry. A pushed snapshot has to
+    // reach an existing observer with no fetch of its own.
+    const observer = new QueryObserver<BrainHostStatus>(queryClient, {
+      queryKey: brainKey,
+      queryFn: skipToken,
+      staleTime: Infinity,
+    });
+    const seen: (BrainHostStatus | undefined)[] = [];
+    const unsubscribeObserver = observer.subscribe((result) => seen.push(result.data));
+
+    fake.emit(brainStatus({ running: true, reachable: true, state: "starting" }));
+    expect(deriveBrainState(queryClient.getQueryData<BrainHostStatus>(brainKey))).toBe("loading");
+
+    fake.emit(brainStatus({ running: true, reachable: true, state: "ready" }));
+    expect(deriveBrainState(queryClient.getQueryData<BrainHostStatus>(brainKey))).toBe("idle");
+    expect(seen.map((status) => status?.state)).toEqual(
+      expect.arrayContaining(["starting", "ready"]),
+    );
+
+    // The resource variant is never pushed: it costs an `nvidia-smi` spawn on
+    // the brain host and stays a pull for the Overview tab.
+    expect(queryClient.getQueryData(brainStatusQueryKey(serverId, true))).toBeUndefined();
+
+    unsubscribeObserver();
+    unmount();
+  });
+
+  it("keeps one host's pushed brain snapshot out of another host's cache", () => {
+    const queryClient = new QueryClient();
+    const first = createFakeClient();
+    const second = createFakeClient();
+    const unmountFirst = mountServerDataPushRouter({
+      client: first.client,
+      queryClient,
+      serverId: "server-1",
+    });
+    const unmountSecond = mountServerDataPushRouter({
+      client: second.client,
+      queryClient,
+      serverId: "server-2",
+    });
+
+    first.emit(brainStatus({ running: true, reachable: true, state: "ready", model: "one" }));
+    second.emit(brainStatus({ running: false, reachable: false, state: "stopped" }));
+
+    expect(queryClient.getQueryData(brainStatusQueryKey("server-1", false))).toMatchObject({
+      state: "ready",
+      model: "one",
+    });
+    expect(queryClient.getQueryData(brainStatusQueryKey("server-2", false))).toMatchObject({
+      state: "stopped",
+    });
+
+    unmountFirst();
+    unmountSecond();
+  });
+
   it("invalidates only the reconnect-repair scopes for one server", () => {
     const queryClient = new QueryClient();
     const serverId = "server-1";
@@ -742,8 +817,12 @@ describe("server data push router", () => {
     const daemonConfigKey = daemonConfigQueryKey(serverId);
     const diffKey = checkoutDiffQueryKey(serverId, "/repo", "uncommitted", undefined, false);
     const terminalKey = buildTerminalsQueryKey(serverId, "/repo", "workspace-a");
+    const brainKey = brainStatusQueryKey(serverId, false);
+    const brainResourcesKey = brainStatusQueryKey(serverId, true);
     const otherProviderKey = providersSnapshotQueryKey(otherServerId);
 
+    queryClient.setQueryData(brainKey, { running: true, reachable: true, state: "ready" });
+    queryClient.setQueryData(brainResourcesKey, { running: true, reachable: true, state: "ready" });
     queryClient.setQueryData(providerKey, { entries: [], generatedAt: "now", requestId: "p" });
     queryClient.setQueryData(daemonConfigKey, daemonConfig);
     queryClient.setQueryData(diffKey, { cwd: "/repo", files: [], error: null, requestId: "d" });
@@ -760,6 +839,11 @@ describe("server data push router", () => {
     expect(queryClient.getQueryState(daemonConfigKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(diffKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(terminalKey)?.isInvalidated).toBe(true);
+    // One fresh cheap read repairs the gap the dropped subscription left. The
+    // resource variant is deliberately left alone - re-fetching it would spawn
+    // `nvidia-smi` on every reconnect for a panel that may not even be open.
+    expect(queryClient.getQueryState(brainKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(brainResourcesKey)?.isInvalidated).toBe(false);
     expect(queryClient.getQueryState(otherProviderKey)?.isInvalidated).toBe(false);
   });
 });

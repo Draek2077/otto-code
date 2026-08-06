@@ -27,9 +27,9 @@ import Animated, { runOnJS, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
-import { BRAIN_STATE_LABELS } from "@/components/brain/brain-state";
+import { resolveBrainRailLabel } from "@/components/brain/brain-state";
 import { createBrainStateIcon } from "@/components/brain/brain-state-icon";
-import { useBrainRailState } from "@/components/brain/use-brain-rail-state";
+import { resolveBrainRailRoute, useBrainRail } from "@/components/brain/use-brain-rail-state";
 import { HostPicker } from "@/components/hosts/host-picker";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
 import {
@@ -73,7 +73,6 @@ import { MobilePanelOverlay } from "@/mobile-panels/presentation";
 import {
   buildOpenProjectRoute,
   buildArtifactsRoute,
-  buildBrainRoute,
   buildNewWorkspaceRoute,
   buildRunsRoute,
   buildSchedulesRoute,
@@ -170,6 +169,7 @@ export const LeftSidebar = memo(function LeftSidebar() {
     selectIsAgentListOpen(state, { isCompact: isCompactLayout }),
   );
   const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
+  const brainRail = useBrainRail();
 
   const {
     projects,
@@ -262,14 +262,18 @@ export const LeftSidebar = memo(function LeftSidebar() {
     router.push(buildStatsRoute());
   }, []);
 
+  // Destructured, not passed whole: `useBrainRail` returns a fresh object every
+  // poll, so depending on it would rebuild these handlers on every tick.
+  const { disabled: isBrainDisabled, serverId: brainServerId } = brainRail;
+
   const handleBrainMobile = useCallback(() => {
     showMobileAgent();
-    router.push(buildBrainRoute());
-  }, [showMobileAgent]);
+    router.push(resolveBrainRailRoute({ disabled: isBrainDisabled, serverId: brainServerId }));
+  }, [isBrainDisabled, brainServerId, showMobileAgent]);
 
   const handleBrainDesktop = useCallback(() => {
-    router.push(buildBrainRoute());
-  }, []);
+    router.push(resolveBrainRailRoute({ disabled: isBrainDisabled, serverId: brainServerId }));
+  }, [isBrainDisabled, brainServerId]);
 
   const handleViewMoreNavigate = useCallback(() => {
     router.push(buildSessionsRoute());
@@ -560,9 +564,10 @@ function SidebarFooter({
   // spot the Create Project icon used to occupy, rather than in
   // SidebarFooterNavRow: that row is shared with the Settings sidebar footer,
   // which has no second row to put it in.
-  const brainState = useBrainRailState();
+  const brainRail = useBrainRail();
+  const brainState = brainRail.state;
   const brainIcon = useMemo(() => createBrainStateIcon(brainState, theme), [brainState, theme]);
-  const brainLabel = brainState === "idle" ? labels.brain : BRAIN_STATE_LABELS[brainState];
+  const brainLabel = resolveBrainRailLabel(brainRail, labels.brain);
 
   return (
     <View style={styles.sidebarFooter}>

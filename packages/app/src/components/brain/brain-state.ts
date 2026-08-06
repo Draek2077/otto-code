@@ -68,6 +68,55 @@ export const BRAIN_STATE_LABELS: Record<BrainState, string> = {
   benchmarking: "Brain - benchmarking",
 };
 
+export const BRAIN_DISABLED_LABEL = "Brain - Disabled";
+
+/**
+ * What the button says when the brain is merely idle. English-only on purpose,
+ * matching `BRAIN_STATE_LABELS` above and the sidebar's own `labels.brain`.
+ */
+export const BRAIN_NAV_LABEL = "Brain";
+
+export interface BrainRailPresentation {
+  state: BrainState;
+  label: string | null;
+  disabled: boolean;
+}
+
+/**
+ * Applies the daemon's explicit enablement setting to the rail's otherwise
+ * live status presentation. A disabled Brain is intentionally distinct from a
+ * stopped or unavailable one: it stays grey and tells the user where to enable
+ * it, even if a stale status response still says the host is healthy.
+ */
+export function resolveBrainRailPresentation(
+  state: BrainState,
+  enabled: boolean | undefined,
+): BrainRailPresentation {
+  if (enabled === false) {
+    return { state: "off", label: BRAIN_DISABLED_LABEL, disabled: true };
+  }
+  return { state, label: null, disabled: false };
+}
+
+/**
+ * The one wording rule every Brain button shares (sidebar footer, settings
+ * footer, workspace title bar): the state's own sentence replaces the plain
+ * "Brain" once there is something to say, so the button still reads as
+ * navigation while it is merely idle.
+ *
+ * `idleLabel` is a parameter because the sidebar rows pass their own label
+ * bundle; callers with no bundle pass {@link BRAIN_NAV_LABEL}.
+ */
+export function resolveBrainRailLabel(
+  presentation: BrainRailPresentation,
+  idleLabel: string = BRAIN_NAV_LABEL,
+): string {
+  if (presentation.label) {
+    return presentation.label;
+  }
+  return presentation.state === "idle" ? idleLabel : BRAIN_STATE_LABELS[presentation.state];
+}
+
 /**
  * Which glyph the state draws, resolved to markup by `brain-icon-glyphs.ts`.
  *

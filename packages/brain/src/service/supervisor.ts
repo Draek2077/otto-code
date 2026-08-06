@@ -24,7 +24,7 @@ export const DEFAULT_INTERNAL_PORT = 20800;
 export type SupervisorState = "stopped" | "starting" | "ready" | "failed" | "stopping";
 
 export interface SupervisorOptions {
-  runtime: Runtime;
+  runtime: Runtime | null;
   internalPort?: number;
   host?: string;
   readyTimeoutMs?: number;
@@ -50,7 +50,7 @@ export interface SupervisorStatus {
  * stable one so switching models never asks a client to reconnect elsewhere.
  */
 export class Supervisor extends EventEmitter {
-  runtime: Runtime;
+  runtime: Runtime | null;
   internalPort: number;
   host: string;
   readyTimeoutMs: number;
@@ -119,6 +119,13 @@ export class Supervisor extends EventEmitter {
   async start(model: Model, profile: Profile): Promise<this> {
     await this.stop();
 
+    if (!this.runtime) {
+      this.lastError = "no llama.cpp runtime available";
+      this.#setState("failed", this.lastError);
+      throw new Error(this.lastError);
+    }
+    const runtime = this.runtime;
+
     this.model = model;
     this.profile = profile;
     this.lastError = null;
@@ -131,13 +138,13 @@ export class Supervisor extends EventEmitter {
       { port: this.internalPort, host: this.host },
     );
     this.args = args;
-    this.command = formatCommand(this.runtime, args);
+    this.command = formatCommand(runtime, args);
     this.#log(`launching: ${this.command}`);
 
     const started = Date.now();
-    this.child = spawn(this.runtime.exe, args, {
-      cwd: this.runtime.dir,
-      env: buildEnv(this.runtime),
+    this.child = spawn(runtime.exe, args, {
+      cwd: runtime.dir,
+      env: buildEnv(runtime),
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -288,7 +295,7 @@ export class Supervisor extends EventEmitter {
       startedAt: this.startedAt ? this.startedAt.toISOString() : null,
       lastError: this.lastError,
       upstream: this.upstreamBase,
-      runtime: `${this.runtime.label} v${this.runtime.version}`,
+      runtime: this.runtime ? `${this.runtime.label} v${this.runtime.version}` : "not installed",
     };
   }
 }

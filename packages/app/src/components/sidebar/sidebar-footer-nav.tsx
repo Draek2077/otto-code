@@ -1,9 +1,9 @@
 import { useMemo, type Ref } from "react";
 import { Pressable, Text, View, type PressableProps } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { BRAIN_STATE_LABELS } from "@/components/brain/brain-state";
+import { resolveBrainRailLabel } from "@/components/brain/brain-state";
 import { createBrainStateIcon } from "@/components/brain/brain-state-icon";
-import { useBrainRailState } from "@/components/brain/use-brain-rail-state";
+import { useBrainRail } from "@/components/brain/use-brain-rail-state";
 import { Gauge, Home, Settings, type IconComponent } from "@/components/icons/material-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -155,12 +155,13 @@ export function SidebarFooterNavRow({
   // static glyph: it is the only always-visible surface the brain has, and a
   // model loading or a benchmark owning the machine is the sort of thing you
   // need to see without navigating to look for it.
-  const brainState = useBrainRailState();
+  const brainRail = useBrainRail();
+  const brainState = brainRail.state;
   const brainIcon = useMemo(() => createBrainStateIcon(brainState, theme), [brainState, theme]);
   // The state's own wording replaces the plain "Brain" tooltip once there is
   // something to say; `labels.brain` stays the label when it is merely idle, so
   // the rail still reads as navigation rather than as a status readout.
-  const brainLabel = brainState === "idle" ? labels.brain : BRAIN_STATE_LABELS[brainState];
+  const brainLabel = resolveBrainRailLabel(brainRail, labels.brain);
 
   return (
     <View style={styles.footerIconRow}>

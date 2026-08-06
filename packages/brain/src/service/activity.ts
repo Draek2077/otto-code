@@ -211,6 +211,33 @@ export function chunkHasContent(text: string): boolean {
 export class ReasoningTracker {
   #reasoning = new Set<string>();
   #content = new Set<string>();
+  #listeners = new Set<() => void>();
+  #wasActive = false;
+
+  /**
+   * Watch the thinking flag itself, not the per-chunk traffic behind it.
+   *
+   * The status event stream needs to publish the moment a model goes silent to
+   * think and the moment it starts answering - and nothing in between, or a
+   * generating model would emit a snapshot per chunk.
+   */
+  onChange(listener: () => void): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
+  }
+
+  #announce(): void {
+    const active = this.active;
+    if (active === this.#wasActive) return;
+    this.#wasActive = active;
+    for (const listener of this.#listeners) {
+      try {
+        listener();
+      } catch {
+        // Status reporting must never break a proxied completion.
+      }
+    }
+  }
 
   /** Note a chunk of `requestId`'s stream. Cheap enough to call per chunk. */
   observe(requestId: string, text: string): void {
@@ -218,10 +245,12 @@ export class ReasoningTracker {
     if (chunkHasContent(text)) {
       this.#content.add(requestId);
       this.#reasoning.delete(requestId);
+      this.#announce();
       return;
     }
     if (chunkHasReasoning(text)) {
       this.#reasoning.add(requestId);
+      this.#announce();
     }
   }
 
@@ -229,6 +258,7 @@ export class ReasoningTracker {
   end(requestId: string): void {
     this.#reasoning.delete(requestId);
     this.#content.delete(requestId);
+    this.#announce();
   }
 
   get active(): boolean {

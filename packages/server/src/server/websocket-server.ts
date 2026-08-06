@@ -917,6 +917,24 @@ export class VoiceAssistantWebSocketServer {
   public setBrainManager(manager: BrainManager | null): void {
     this.brainManager = manager;
     if (manager) {
+      // The brain publishes its own state; the daemon subscribes once and fans
+      // it out here. Listeners are wired before applySettings so the very first
+      // reconcile - the one that spawns the child - already has somewhere to
+      // publish to.
+      manager.setStatusListeners({
+        onStatusChanged: (brain) => {
+          this.broadcast(
+            wrapSessionMessage({
+              type: "status",
+              payload: { status: "brain_status_changed", brain },
+            }),
+          );
+        },
+        // Availability tracks the SELECTED brain, so repointing at an older
+        // host has to walk the feature flag back down. Clients read the new
+        // server_info and restore their compatibility poll.
+        onStatusEventSupportChanged: () => this.broadcastCapabilitiesUpdate(),
+      });
       void manager.applySettings(this.daemonConfigStore.get().brain).catch((err: unknown) => {
         this.logger.warn({ err }, "Failed to apply brain settings");
       });
@@ -2057,6 +2075,12 @@ export class VoiceAssistantWebSocketServer {
         // far side serves them is answered separately by `capabilities` on
         // brain.host.status.
         brainConsole: true,
+        // COMPAT(brainStatusPush): added in v0.8.3, drop the gate when daemon
+        // floor >= v0.8.3. Not a fixed capability like the flags around it: the
+        // daemon can only push what the brain publishes, so this is true only
+        // while the selected brain also advertises `capabilities.events`.
+        // BrainManager re-broadcasts server_info when that flips.
+        brainStatusPush: this.brainManager?.supportsStatusEvents() === true,
         // COMPAT(brainManage): added in v0.7.5, remove gate after 2026-07-30
         // once daemon floor >= v0.7.5. Daemon drives the brain's model/runtime
         // verbs (scan/catalog/runtime list) and long jobs (pull/runtime
