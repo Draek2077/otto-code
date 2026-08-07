@@ -116,6 +116,13 @@ See [docs/development.md](docs/development.md) for full setup, build sync requir
   workflow, check its contract before using it; do not infer its semantics or authorization. Treat
   reported issues as unverified until measured, and distinguish observations from hypotheses in
   task descriptions and handoffs. Ask when ambiguity would change the action.
+- **Release handoff:** When the user has reviewed the changelog and says “go” for a release, carry
+  the release through all non-interactive steps: commit the approved changelog, run the release
+  checks, create the version commit and tag, and start npm publishing. Stop at the first npm
+  authentication or 2FA prompt, tell the user exactly what completed and what remains, and hand
+  the interactive publish step to the user. Do not wait silently, guess an OTP, or treat a tool
+  timeout as evidence that the release failed. After the user completes the interactive step,
+  resume only the remaining release actions, typically pushing the branch and tag.
 - **NEVER add auth checks to tests** - agent providers handle their own auth.
 - **Before changing app routes, startup routing, remembered workspace restore, or active workspace selection, read [docs/expo-router.md](docs/expo-router.md).**
 - **NEVER run the full test suite locally.** The test suites are heavy and will freeze the machine, especially if multiple agents run them in parallel. Rules:
