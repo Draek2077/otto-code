@@ -104,10 +104,16 @@ function ProviderSubagentPanel() {
       .catch(() => undefined);
   }, [client, serverId, supported, target.parentAgentId, target.subagentId]);
 
-  const loadOlder = useCallback(() => {
-    if (!client || !supported || isLoadingOlder || !timeline?.hasOlder || !timeline.epoch) return;
+  // Returns whether a load is underway, which the stream viewport's pagination
+  // state machine needs: it abandons its in-flight request unless this answers
+  // `true`. Already-loading is `true` (one is underway, keep waiting); nothing to
+  // load is `false` (release the request rather than wait for a page that will
+  // never arrive). See loadOlderAgentHistory for the same contract.
+  const loadOlder = useCallback((): boolean => {
+    if (isLoadingOlder) return true;
+    if (!client || !supported || !timeline?.hasOlder || !timeline.epoch) return false;
     const firstSeq = timeline.rows.size ? Math.min(...timeline.rows.keys()) : null;
-    if (firstSeq === null) return;
+    if (firstSeq === null) return false;
     setIsLoadingOlder(true);
     void client
       .fetchProviderSubagentTimeline(target.parentAgentId, target.subagentId, {
@@ -121,6 +127,7 @@ function ProviderSubagentPanel() {
       })
       .catch(() => undefined)
       .finally(() => setIsLoadingOlder(false));
+    return true;
   }, [
     client,
     isLoadingOlder,

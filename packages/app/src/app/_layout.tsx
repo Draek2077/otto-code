@@ -104,6 +104,7 @@ import { useColorScheme } from "@/hooks/use-color-scheme";
 import { applyAppearance } from "@/screens/settings/appearance/apply-appearance";
 import { applyColorScheme } from "@/screens/settings/appearance/apply-color-scheme";
 import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
+import { installWebScrollbarStyles } from "@/styles/install-web-scrollbar-styles";
 import type { LightThemeName, DarkThemeName } from "@/styles/theme";
 import type { HostProfile } from "@/types/host-connection";
 import { toggleDesktopSidebarsWithCheckoutIntent } from "@/utils/desktop-sidebar-toggle";
@@ -1063,6 +1064,14 @@ function RootAppTree() {
 const FOCUS_MODE_KEYBOARD_ACTIONS: readonly KeyboardActionId[] = ["workspace.focus.toggle"];
 
 export default function RootLayout() {
+  // Installs the `::-webkit-scrollbar` rules for scrollers that use the browser's
+  // own scrollbar rather than one of Otto's overlays. Defining those rules is also
+  // what opts a scroller out of Chromium's auto-hiding overlay scrollbar, which
+  // cannot be grabbed and takes no layout width - so without this the chat
+  // transcript has a scrollbar you can only see by brushing the gutter, and the
+  // gutter-press test in the web stream strategy has no real gutter to measure.
+  // No-op on native.
+  useEffect(() => installWebScrollbarStyles(), []);
   const [fontsLoaded] = useFonts({ Inter_400Regular, JetBrainsMono_400Regular });
 
   useEffect(() => {

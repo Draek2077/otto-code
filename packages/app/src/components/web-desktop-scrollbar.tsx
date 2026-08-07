@@ -42,6 +42,7 @@ interface WebPointerStyle {
 }
 
 interface PointerLikeEvent {
+  pointerId?: number;
   clientX?: number;
   clientY?: number;
   pageX?: number;
@@ -116,6 +117,7 @@ interface WebDesktopScrollbarOverlayProps {
   enabled: boolean;
   metrics: ScrollbarMetrics;
   onScrollToOffset: (offset: number) => void;
+  onDragStart?: (event: PointerLikeEvent) => void;
   inverted?: boolean;
   axis?: ScrollbarAxis;
 }
@@ -192,6 +194,7 @@ export function WebDesktopScrollbarOverlay({
   enabled,
   metrics,
   onScrollToOffset,
+  onDragStart,
   inverted = false,
   axis = "vertical",
 }: WebDesktopScrollbarOverlayProps) {
@@ -373,11 +376,12 @@ export function WebDesktopScrollbarOverlay({
       event?.preventDefault?.();
       event?.stopPropagation?.();
       event?.nativeEvent?.preventDefault?.();
+      onDragStart?.(event);
       dragStartOffsetRef.current = normalizedOffsetRef.current;
       dragStartClientCoordinateRef.current = clientCoordinate;
       setIsDragging(true);
     },
-    [axis],
+    [axis, onDragStart],
   );
 
   const handleGrabHoverIn = useCallback(() => {

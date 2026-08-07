@@ -33,14 +33,34 @@ export interface LoadOlderAgentHistoryDeps {
   failedMessage?: string;
 }
 
+/**
+ * Loads the previous page of an agent's timeline.
+ *
+ * Returns whether the caller should consider a load to be underway. The web
+ * viewport's history-start pagination state machine asks for a page and then
+ * abandons its in-flight request unless this answers `true`, so the two "nothing
+ * happened" cases have to be distinguished:
+ *
+ * - A load is already in flight: `true`, because one *is* underway and the
+ *   machine should keep waiting for it rather than re-arming.
+ * - There is nothing to load, or no client to load it with: `false`, so the
+ *   machine releases the request instead of waiting for a page that will never
+ *   arrive.
+ *
+ * A failed fetch still counts as started. It began, it was reported to the
+ * reader by toast, and the machine re-arms on the next scroll into the band.
+ */
 export async function loadOlderAgentHistory(
   agentId: string,
   deps: LoadOlderAgentHistoryDeps,
-): Promise<void> {
+): Promise<boolean> {
   const { client, cursor, hasOlder, isLoadingOlder, setInFlight, toast, logger, failedMessage } =
     deps;
-  if (!client || !cursor || !hasOlder || isLoadingOlder) {
-    return;
+  if (isLoadingOlder) {
+    return true;
+  }
+  if (!client || !cursor || !hasOlder) {
+    return false;
   }
 
   setInFlight(true);
@@ -58,6 +78,7 @@ export async function loadOlderAgentHistory(
   } finally {
     setInFlight(false);
   }
+  return true;
 }
 
 export function useLoadOlderAgentHistory({
@@ -99,9 +120,9 @@ export function useLoadOlderAgentHistory({
     [agentId, serverId, setOlderFetchInFlight],
   );
 
-  const loadOlder = useCallback(() => {
+  const loadOlder = useCallback(async (): Promise<boolean> => {
     const session = useSessionStore.getState().sessions[serverId];
-    void loadOlderAgentHistory(agentId, {
+    return await loadOlderAgentHistory(agentId, {
       client: session?.client
         ? {
             fetchAgentTimeline: (timelineAgentId, request) =>

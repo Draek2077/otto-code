@@ -170,6 +170,40 @@ export function useWebElementScrollbar(
     [elementRef],
   );
 
+  const signalScrollbarDrag = useCallback(
+    (event: {
+      clientY?: number;
+      pageY?: number;
+      pointerId?: number;
+      nativeEvent?: { clientY?: number; pageY?: number };
+    }) => {
+      const element = elementRef.current;
+      if (!element || typeof window === "undefined") {
+        return;
+      }
+      const clientY =
+        event.nativeEvent?.clientY ?? event.clientY ?? event.nativeEvent?.pageY ?? event.pageY;
+      const bounds = element.getBoundingClientRect();
+      // The themed overlay is a sibling of the browser scroller. Re-emit its
+      // grab on the scroller so listeners that classify native scrollbar gutter
+      // presses still see the same reader intent. The actual pointer id is
+      // preserved, allowing the strategy's pointerup listener to close the
+      // gesture normally.
+      element.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          bubbles: true,
+          button: 0,
+          clientX: bounds.right - 1,
+          clientY: clientY ?? bounds.top,
+          pointerId: event.pointerId ?? 0,
+          pointerType: "mouse",
+          isPrimary: true,
+        }),
+      );
+    },
+    [elementRef],
+  );
+
   const onScrollToHorizontalOffset = useCallback(
     (offset: number) => {
       elementRef.current?.scrollTo({ left: offset, behavior: "auto" });
@@ -182,7 +216,12 @@ export function useWebElementScrollbar(
   return (
     <>
       {vertical ? (
-        <WebDesktopScrollbarOverlay enabled metrics={metrics} onScrollToOffset={onScrollToOffset} />
+        <WebDesktopScrollbarOverlay
+          enabled
+          metrics={metrics}
+          onScrollToOffset={onScrollToOffset}
+          onDragStart={signalScrollbarDrag}
+        />
       ) : null}
       {horizontal ? (
         <WebDesktopScrollbarOverlay

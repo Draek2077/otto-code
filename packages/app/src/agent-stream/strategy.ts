@@ -42,6 +42,8 @@ export interface StreamEdgeSlotProps {
 export interface StreamViewportHandle {
   scrollToBottom: (reason?: BottomAnchorLocalRequest["reason"]) => void;
   prepareForViewportChange: () => void;
+  // Only the web viewport implements this. Nothing in Otto calls it yet.
+  scrollToMessage?: (itemId: string) => void;
 }
 
 export interface StreamSegmentRenderers {
@@ -69,7 +71,13 @@ export interface StreamRenderInput {
   routeBottomAnchorRequest: BottomAnchorRouteRequest | null;
   isAuthoritativeHistoryReady: boolean;
   onNearBottomChange: (value: boolean) => void;
-  onNearHistoryStart: () => void;
+  // The history row under the top of the viewport, for surfaces that mark where the reader
+  // is in the transcript. Only the web viewport measures it today.
+  onReadingPositionChange?: (rowId: string | null) => void;
+  // Returns whether a load actually started. The web viewport's pagination state machine
+  // abandons its in-flight request when this reports anything other than `true`, so a
+  // handler that cannot answer will have every older-history page marked abandoned.
+  onNearHistoryStart: () => boolean | Promise<boolean>;
   isLoadingOlderHistory: boolean;
   hasOlderHistory: boolean;
   olderHistoryProgressKey: string | null;

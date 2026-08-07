@@ -8,6 +8,7 @@ import React, {
   useMemo,
   useRef,
   useState,
+  useLayoutEffect,
   useSyncExternalStore,
   type ComponentProps,
   type ReactNode,
@@ -30,6 +31,7 @@ import { useMutation } from "@tanstack/react-query";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { Check, ChevronDown, X } from "@/components/icons/material-icons";
 import { ChatSeamFade } from "@/components/chat-seam-fade";
+import { useWebElementScrollbar } from "@/components/use-web-scrollbar";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
 import { usePanelStore } from "@/stores/panel-store";
 import {
@@ -287,7 +289,8 @@ export interface AgentStreamViewProps {
     hasOlder: boolean;
     isLoadingOlder: boolean;
     progressKey: string | null;
-    onLoadOlder: () => void;
+    /** Must report whether a load is underway; see StreamRenderInput.onNearHistoryStart. */
+    onLoadOlder: () => boolean | Promise<boolean>;
   };
 }
 
@@ -392,7 +395,7 @@ function buildForkDraftTabTarget(
 interface ResolvedHistoryPagination {
   isLoadingOlder: boolean;
   hasOlder: boolean;
-  loadOlder: () => void;
+  loadOlder: () => boolean | Promise<boolean>;
   /** Changes when a page lands, so the list can keep the reader's anchor. */
   olderHistoryProgressKey: string | null;
 }
@@ -450,6 +453,20 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const autoExpandReasoning = useSettings((settings) => settings.autoExpandReasoning);
     const toolCallDetailLevel = useSettings((settings) => settings.toolCallDetailLevel);
     const viewportRef = useRef<StreamViewportHandle | null>(null);
+    const streamContainerHostRef = useRef<View | null>(null);
+    const [webScrollElement, setWebScrollElement] = useState<HTMLElement | null>(null);
+    const webScrollElementRef = useMemo(() => ({ current: webScrollElement }), [webScrollElement]);
+    const webScrollbar = useWebElementScrollbar(webScrollElementRef, { enabled: isWeb });
+
+    useLayoutEffect(() => {
+      if (!isWeb) {
+        return;
+      }
+      const host = streamContainerHostRef.current as unknown as HTMLElement | null;
+      setWebScrollElement(
+        host?.querySelector<HTMLElement>('[data-testid="agent-chat-scroll"]') ?? null,
+      );
+    }, [agentId]);
     const isMobile = useIsCompactFormFactor();
     const streamRenderStrategy = useMemo(
       () =>
@@ -1291,7 +1308,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           toast={toast}
         >
           <WidgetChatProvider serverId={resolvedServerId} agentId={agentId}>
-            <View style={stylesheet.container}>
+            <View ref={streamContainerHostRef} style={stylesheet.container}>
               <MessageOuterSpacingProvider disableOuterSpacing>
                 {streamRenderStrategy.render({
                   agentId,
@@ -1327,6 +1344,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               later-sibling paint order is what keeps the button above them. */}
               <ChatSeamFade edge="top" />
               <ChatSeamFade edge="bottom" />
+              {webScrollbar}
               {!isNearBottom && (
                 <Animated.View
                   style={stylesheet.scrollToBottomContainer}
