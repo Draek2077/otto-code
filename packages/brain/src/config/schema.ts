@@ -199,6 +199,7 @@ export const CatalogModelSchema = z
     moe: z.boolean().optional(),
     vision: z.boolean().optional(),
     thinking: z.boolean().optional(),
+    reasoningEfforts: z.array(z.string()).optional(),
     contextMax: z.number().optional(),
     useCases: z.array(z.string()).optional(),
     tier: z.string().optional(),

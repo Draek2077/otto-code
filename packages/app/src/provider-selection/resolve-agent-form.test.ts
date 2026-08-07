@@ -175,6 +175,40 @@ describe("resolveThinkingOptionId", () => {
       }),
     ).toBe("low");
   });
+
+  it("maps a remembered canonical effort onto a different model's options", () => {
+    const models: AgentModelDefinition[] = [
+      {
+        provider: "otto-brain",
+        id: "gpt-oss-20b",
+        label: "GPT-OSS 20B",
+        thinkingOptions: [
+          { id: "off", label: "Off" },
+          { id: "low", label: "Low" },
+          { id: "medium", label: "Medium" },
+          { id: "high", label: "High" },
+        ],
+        defaultThinkingOptionId: "medium",
+      },
+      {
+        provider: "otto-brain",
+        id: "local-toggle",
+        label: "Local Toggle",
+        thinkingOptions: [
+          { id: "off", label: "Off" },
+          { id: "on", label: "On" },
+        ],
+        defaultThinkingOptionId: "on",
+      },
+    ];
+    expect(
+      resolveThinkingOptionId({
+        availableModels: models,
+        modelId: "local-toggle",
+        requestedThinkingOptionId: "medium",
+      }),
+    ).toBe("on");
+  });
 });
 
 describe("combineInitialValues", () => {
@@ -1073,6 +1107,42 @@ describe("resolveAgentForm", () => {
       });
 
       expect(next.form.thinkingOptionId).toBe("low");
+    });
+
+    it("restores the remembered effort for the newly selected model", () => {
+      const state = makeState({ provider: "otto-brain", model: "local-toggle" });
+      const models: AgentModelDefinition[] = [
+        {
+          provider: "otto-brain",
+          id: "gpt-oss-20b",
+          label: "GPT-OSS 20B",
+          thinkingOptions: [
+            { id: "off", label: "Off" },
+            { id: "low", label: "Low" },
+            { id: "medium", label: "Medium" },
+            { id: "high", label: "High" },
+          ],
+          defaultThinkingOptionId: "medium",
+        },
+        {
+          provider: "otto-brain",
+          id: "local-toggle",
+          label: "Local Toggle",
+          thinkingOptions: [
+            { id: "off", label: "Off" },
+            { id: "on", label: "On" },
+          ],
+          defaultThinkingOptionId: "on",
+        },
+      ];
+      const next = resolveAgentForm(state, {
+        type: "SET_MODEL_FROM_USER",
+        modelId: "gpt-oss-20b",
+        availableModels: models,
+        preferredThinkingOptionId: "high",
+      });
+
+      expect(next.form.thinkingOptionId).toBe("high");
     });
 
     it("falls back to provider default model when modelId is blank", () => {

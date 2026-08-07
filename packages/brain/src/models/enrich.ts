@@ -84,6 +84,7 @@ export function enrichWithCatalog(models: Model[], catalog: Catalog): Model[] {
       useCases: entry.useCases,
       tier: entry.tier,
       thinking: entry.thinking,
+      reasoningEfforts: entry.reasoningEfforts,
       contextMax: entry.contextMax,
     };
   });

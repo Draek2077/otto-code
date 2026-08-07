@@ -107,6 +107,19 @@ test("describeModel reports the friendly name, not the file path", () => {
   assert.equal(entry.loaded_context_length, 32768);
 });
 
+test("describeModel reports catalog reasoning efforts", () => {
+  const entry = describeModel({
+    id: "gpt-oss-20b.gguf",
+    displayName: "gpt-oss-20B",
+    quant: "MXFP4",
+    publisher: "ggml-org",
+    mmprojPath: null,
+    metadata: {},
+    reasoningEfforts: ["low", "medium", "high"],
+  } as unknown as Model);
+  assert.deepEqual(entry.reasoning_efforts, ["low", "medium", "high"]);
+});
+
 test("describeModel reports the per-request window when slots split the context", () => {
   const model = {
     displayName: "M",

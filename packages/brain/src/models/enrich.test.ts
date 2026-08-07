@@ -48,6 +48,22 @@ test("attaches catalog coding metadata when a scanned path matches hfRepo", () =
   assert.equal(enriched.catalogHfRepo, "unsloth/Qwen3-Coder-30B-GGUF");
 });
 
+test("carries catalog reasoning efforts onto a scanned model", () => {
+  const scanned = model("openai/gpt-oss-20b-GGUF/gpt-oss-20b-MXFP4.gguf");
+  const [enriched] = enrichWithCatalog(
+    [scanned],
+    catalog([
+      {
+        ...CODER,
+        id: "gpt-oss-20b",
+        hfRepo: "openai/gpt-oss-20b-GGUF",
+        reasoningEfforts: ["low", "medium", "high"],
+      },
+    ]),
+  );
+  assert.deepEqual(enriched.reasoningEfforts, ["low", "medium", "high"]);
+});
+
 test("matching is case-insensitive on the repo path", () => {
   const scanned = model("UNSLOTH/qwen3-coder-30b-gguf/Qwen3-Coder-30B-Q4_K_M.gguf");
   assert.equal(matchCatalogEntry(scanned, catalog([CODER]))?.id, "qwen3-coder-30b");

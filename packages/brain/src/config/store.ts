@@ -63,7 +63,28 @@ export function saveProfilesStore(
 
 export function loadCatalog(paths: BrainPaths = resolveBrainPaths()): Catalog {
   const current = readJson(paths.catalogFile, CatalogSchema);
-  if (current) return current;
+  if (current) {
+    // The catalog is intentionally persisted so local Brain homes survive
+    // package updates, but additive metadata still needs to reach existing
+    // homes. Backfill only fields introduced by the seed catalog; user-owned
+    // catalog values remain authoritative.
+    const legacy = readJson(path.join(packageRoot(), "config", "downloads.json"), CatalogSchema);
+    if (!legacy) return current;
+    const seedById = new Map(legacy.models.map((model) => [model.id, model]));
+    let changed = false;
+    const models = current.models.map((model) => {
+      const seed = seedById.get(model.id);
+      if (model.reasoningEfforts === undefined && seed?.reasoningEfforts !== undefined) {
+        changed = true;
+        return { ...model, reasoningEfforts: seed.reasoningEfforts };
+      }
+      return model;
+    });
+    if (!changed) return current;
+    const merged = { ...current, models };
+    writeJson(paths.catalogFile, merged);
+    return merged;
+  }
 
   const legacy = path.join(packageRoot(), "config", "downloads.json");
   const migrated = readJson(legacy, CatalogSchema);

@@ -51,6 +51,7 @@ async function startEndpoint(options?: {
   v1ContextLength?: number;
   /** Serve LM Studio's native /api/v0/models listing with loaded_context_length. */
   nativeContextLength?: number;
+  modelFields?: Record<string, unknown>;
 }): Promise<TestEndpoint & { completionBodies: Array<Record<string, unknown>> }> {
   const completionBodies: Array<Record<string, unknown>> = [];
   const server = createServer((req, res) => {
@@ -60,7 +61,11 @@ async function startEndpoint(options?: {
         typeof options?.v1ContextLength === "number"
           ? { max_model_len: options.v1ContextLength }
           : {};
-      res.end(JSON.stringify({ data: [{ id: "test-model-a", ...extra }, { id: "test-model-b" }] }));
+      res.end(
+        JSON.stringify({
+          data: [{ id: "test-model-a", ...extra, ...options?.modelFields }, { id: "test-model-b" }],
+        }),
+      );
       return;
     }
     if (req.method === "GET" && req.url === "/api/v0/models") {
@@ -136,11 +141,15 @@ async function startEndpoint(options?: {
   return { server, baseUrl: `http://127.0.0.1:${port}`, completionBodies };
 }
 
-function createClient(baseUrl: string): OpenAICompatAgentClient {
+function createClient(
+  baseUrl: string,
+  reasoningEffortMode?: "levels" | "toggle",
+): OpenAICompatAgentClient {
   return new OpenAICompatAgentClient({
     providerId: "lmstudio",
     label: "LM Studio",
     env: { OPENAI_BASE_URL: baseUrl },
+    reasoningEffortMode,
   });
 }
 
@@ -298,6 +307,33 @@ describe("OPENAI_COMPAT_MODES unattended resolution", () => {
 });
 
 describe("OpenAICompatAgentClient", () => {
+  test("Brain preserves Off and forwards advertised graduated levels", async () => {
+    const endpoint = await startEndpoint({
+      modelFields: {
+        reasoning: true,
+        reasoning_efforts: ["low", "medium", "high"],
+      },
+    });
+    const client = createClient(endpoint.baseUrl, "toggle");
+    const catalog = await client.fetchCatalog({ scope: "global", force: true });
+
+    expect(catalog.models[0]?.thinkingOptions?.map((option) => option.id)).toEqual([
+      "off",
+      "low",
+      "medium",
+      "high",
+    ]);
+
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+      thinkingOptionId: "high",
+    });
+    await session.run("Say hello");
+    expect(endpoint.completionBodies[0]?.reasoning_effort).toBe("high");
+  });
+
   test("discovers models from GET /v1/models with the first as default", async () => {
     const endpoint = await startEndpoint();
     const client = createClient(endpoint.baseUrl);

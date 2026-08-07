@@ -22,10 +22,10 @@
       "status": "candidate"
     },
     {
-      "id": "Qwen/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-Q5_K_M.gguf",
+      "id": "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-Q5_K_M.gguf",
       "name": "Qwen3-Coder-30B-A3B-Instruct",
       "publisher": "Qwen",
-      "hfRepo": "Qwen/Qwen3-Coder-30B-A3B-Instruct-GGUF",
+      "hfRepo": "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF",
       "quant": "Q5_K_M",
       "approxWeightsBytes": 22548578304,
       "params": "30B MoE (~3B active)",

@@ -21,6 +21,7 @@ import type {
   AgentRunOptions,
   AgentRunResult,
   AgentRuntimeInfo,
+  AgentSelectOption,
   AgentSession,
   AgentSessionConfig,
   AgentSlashCommand,
@@ -953,9 +954,58 @@ function buildReasoningRequestField(
   effort: OpenAICompatReasoningEffort,
 ): Record<string, string> {
   if (mode === "toggle") {
-    return { reasoning_effort: effort === "on" ? "on" : "off" };
+    // Brain normally exposes a boolean toggle, but some models (notably
+    // GPT-OSS) advertise graduated levels through the same endpoint. Keep the
+    // toggle wire values unchanged while forwarding an advertised level.
+    return { reasoning_effort: effort === "on" ? "on" : effort };
   }
   return effort !== "off" ? { reasoning_effort: effort } : {};
+}
+
+function buildAdvertisedThinkingOptions(
+  advertised: readonly OpenAICompatReasoningEffort[],
+): readonly NonNullable<AgentModelDefinition["thinkingOptions"]>[number][] {
+  const values = [...new Set(advertised)];
+  let defaultId = "off";
+  if (values.includes("medium")) {
+    defaultId = "medium";
+  } else if (values.includes("on")) {
+    defaultId = "on";
+  }
+  const options: AgentSelectOption[] = [
+    {
+      id: "off",
+      label: "Off",
+      description: "Don't request reasoning",
+    },
+  ];
+  for (const option of options) {
+    if (option.id === defaultId) option.isDefault = true;
+  }
+  for (const value of values) {
+    if (value === "off") continue;
+    const option: AgentSelectOption = {
+      id: value,
+      label: value === "on" ? "On" : value[0]!.toUpperCase() + value.slice(1),
+    };
+    if (value === defaultId) option.isDefault = true;
+    options.push(option);
+  }
+  return options;
+}
+
+function buildToggleThinkingOptions(reasoning: boolean): readonly AgentSelectOption[] {
+  return OPENAI_COMPAT_TOGGLE_THINKING_OPTIONS.map((option) => {
+    const next: AgentSelectOption = {
+      id: option.id,
+      label: option.label,
+    };
+    if (option.description) next.description = option.description;
+    if ((option.id === "on" && reasoning) || (option.id === "off" && !reasoning)) {
+      next.isDefault = true;
+    }
+    return next;
+  });
 }
 
 /**
@@ -1271,15 +1321,12 @@ export class OpenAICompatAgentClient implements AgentClient {
       if (this.reasoningEffortMode === "toggle") {
         const advertised = advertisedReasoningEfforts.get(id);
         if (advertised) {
-          thinkingOptions = advertised.map((value) => ({
-            id: value,
-            label: value === "on" ? "On" : value[0]!.toUpperCase() + value.slice(1),
-          }));
+          thinkingOptions = buildAdvertisedThinkingOptions(advertised);
         } else {
           thinkingOptions =
             reasoningCapabilities.get(id) === false
               ? undefined
-              : OPENAI_COMPAT_TOGGLE_THINKING_OPTIONS;
+              : buildToggleThinkingOptions(reasoningCapabilities.get(id) === true);
         }
       } else {
         thinkingOptions = OPENAI_COMPAT_THINKING_OPTIONS;
@@ -1292,7 +1339,9 @@ export class OpenAICompatAgentClient implements AgentClient {
       };
       if (thinkingOptions) {
         model.thinkingOptions = [...thinkingOptions];
-        model.defaultThinkingOptionId = OPENAI_COMPAT_DEFAULT_THINKING_OPTION_ID;
+        model.defaultThinkingOptionId =
+          thinkingOptions.find((option) => option.isDefault)?.id ??
+          OPENAI_COMPAT_DEFAULT_THINKING_OPTION_ID;
       }
       const contextWindowMaxTokens = contextLengths.get(id);
       if (typeof contextWindowMaxTokens === "number") {

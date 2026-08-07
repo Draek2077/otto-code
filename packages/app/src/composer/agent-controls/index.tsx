@@ -57,6 +57,7 @@ import { personalityHasRole } from "@otto-code/protocol/agent-personalities";
 import { getActiveAgentTeam, isTeamMember } from "@otto-code/protocol/agent-teams";
 import { resolvePersonalityForForm } from "@/provider-selection/personality-form";
 import { resolveProviderDefinition } from "@/utils/provider-definitions";
+import { resolveThinkingOptionId } from "@/provider-selection/resolve-agent-form";
 import {
   buildFavoriteModelKey,
   mergeProviderPreferences,
@@ -2147,6 +2148,23 @@ export const AgentControls = memo(function AgentControls({
 
   const agentProvider = agent?.provider;
 
+  const persistAgentThinkingPreference = useCallback(
+    (thinkingOptionId: string) => {
+      const modelId = modelSelection.activeModelId;
+      if (!agentProvider || !modelId) return;
+      void updatePreferences((current) =>
+        mergeProviderPreferences({
+          preferences: current,
+          provider: agentProvider,
+          updates: { thinkingByModel: { [modelId]: thinkingOptionId } },
+        }),
+      ).catch((error) => {
+        console.warn("[AgentControls] persist thinking preference failed", error);
+      });
+    },
+    [agentProvider, modelSelection.activeModelId, updatePreferences],
+  );
+
   // A started agent's picker is no-save: switching its model retargets THIS
   // agent and nothing else. It must not write the device's last-used-model
   // preference, because that preference exists to seed the create surfaces -
@@ -2157,18 +2175,32 @@ export const AgentControls = memo(function AgentControls({
       if (!client || !agentProvider) {
         return;
       }
+      const preferredThinkingOptionId =
+        preferences?.providerPreferences?.[agentProvider]?.thinkingByModel?.[modelId]?.trim() ?? "";
+      const nextThinkingOptionId = resolveThinkingOptionId({
+        availableModels: models,
+        modelId,
+        requestedThinkingOptionId: preferredThinkingOptionId,
+      });
       // The notice reports a mode the pick had to leave (Claude's Auto picks
       // the model per turn). The mode chip beside this control also updates,
       // but it is easy to miss while the model menu has the user's attention.
       void client
         .setAgentModel(agentId, modelId)
-        .then((notice) => showProviderNoticeToast(toast, notice))
+        .then(async (notice) => {
+          showProviderNoticeToast(toast, notice);
+          if (nextThinkingOptionId && client.setAgentThinkingOption) {
+            const effortNotice = await client.setAgentThinkingOption(agentId, nextThinkingOptionId);
+            showProviderNoticeToast(toast, effortNotice);
+          }
+          return undefined;
+        })
         .catch((error) => {
           console.warn("[AgentControls] setAgentModel failed", error);
           toast.error(toErrorMessage(error));
         });
     },
-    [agentId, agentProvider, client, toast],
+    [agentId, agentProvider, client, models, preferences?.providerPreferences, toast],
   );
 
   const handleToggleFavoriteModel = useCallback(
@@ -2187,16 +2219,20 @@ export const AgentControls = memo(function AgentControls({
       if (!client || !agentProvider) {
         return;
       }
-      // No-save, same as handleSelectModel - effort rides with the model.
+      // Effort is live on this agent and also remembered for this model.
       void client
         .setAgentThinkingOption(agentId, thinkingOptionId)
-        .then((notice) => showProviderNoticeToast(toast, notice))
+        .then((notice) => {
+          showProviderNoticeToast(toast, notice);
+          persistAgentThinkingPreference(thinkingOptionId);
+          return undefined;
+        })
         .catch((error) => {
           console.warn("[AgentControls] setAgentThinkingOption failed", error);
           toast.error(toErrorMessage(error));
         });
     },
-    [agentId, agentProvider, client, toast],
+    [agentId, agentProvider, client, persistAgentThinkingPreference, toast],
   );
 
   const handleSetFeature = useCallback(

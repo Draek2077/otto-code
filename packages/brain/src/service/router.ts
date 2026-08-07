@@ -262,9 +262,15 @@ export function describeModel(
     quantization: model.quant || null,
     state,
     max_context_length: md.contextLength ?? null,
-    reasoning: Boolean(md.reasoning ?? model.thinking),
+    // GGUF template detection is deliberately conservative. A false result
+    // means "not detected", not proof that a catalog-marked reasoner is not
+    // one, so preserve the catalog's positive capability metadata.
+    reasoning: Boolean(md.reasoning || model.thinking),
   };
-  const reasoningEfforts = md["reasoning_efforts"];
+  // Prefer explicit GGUF metadata when a runtime supplies it, but preserve
+  // catalog knowledge for models whose chat template does not encode the
+  // accepted request levels (GPT-OSS is one such model).
+  const reasoningEfforts = md["reasoning_efforts"] ?? model.reasoningEfforts;
   if (
     Array.isArray(reasoningEfforts) &&
     reasoningEfforts.every((value): value is string => typeof value === "string")

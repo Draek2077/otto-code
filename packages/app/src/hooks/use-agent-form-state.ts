@@ -544,10 +544,18 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
   const setModelFromUser = useCallback(
     (modelId: string) => {
       appliedFromPersonalityRef.current = false;
-      dispatch({ type: "SET_MODEL_FROM_USER", modelId, availableModels });
       const provider = reducerStateRef.current.form.provider;
+      const normalizedModelId = normalizeSelectedModelId(modelId);
+      const preferredThinkingOptionId = provider
+        ? (preferences?.providerPreferences?.[provider]?.thinkingByModel?.[normalizedModelId] ?? "")
+        : "";
+      dispatch({
+        type: "SET_MODEL_FROM_USER",
+        modelId,
+        availableModels,
+        preferredThinkingOptionId,
+      });
       if (provider) {
-        const normalizedModelId = normalizeSelectedModelId(modelId);
         const nextModelId = normalizedModelId || resolveDefaultModelId(availableModels);
         void updatePreferences((current) =>
           mergeSelectedComposerPreferences({
@@ -560,7 +568,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
         );
       }
     },
-    [availableModels, updatePreferences],
+    [availableModels, preferences?.providerPreferences, updatePreferences],
   );
 
   const setThinkingOptionFromUser = useCallback(

@@ -60,6 +60,8 @@ export interface Model {
   tier?: string;
   /** Whether the catalog marks this as a thinking/reasoning model. */
   thinking?: boolean;
+  /** Per-request reasoning levels accepted by the model's OpenAI-compatible API. */
+  reasoningEfforts?: string[];
   /** The catalog's advertised max context, if known. */
   contextMax?: number;
   /** Back-reference: the id of the reconciled catalog entry, if matched. */

@@ -1,4 +1,5 @@
 import type { AgentProviderDefinition } from "@otto-code/protocol/provider-manifest";
+import { parseEffortLevel, resolveEffortOption } from "@otto-code/protocol/effort";
 import type {
   AgentModelDefinition,
   AgentProvider,
@@ -99,6 +100,7 @@ export type AgentFormAction =
       type: "SET_MODEL_FROM_USER";
       modelId: string;
       availableModels: AgentModelDefinition[] | null;
+      preferredThinkingOptionId?: string;
     }
   | { type: "CLEAR_PROVIDER_SELECTION_FROM_USER" }
   | { type: "SET_THINKING_OPTION_FROM_USER"; thinkingOptionId: string }
@@ -154,6 +156,27 @@ export function resolveThinkingOptionId(args: {
     return normalizedThinkingOptionId;
   }
 
+  if (normalizedThinkingOptionId) {
+    // A toggle model has no canonical low/medium/high scale. Any remembered
+    // non-Off canonical effort means the user wants reasoning enabled.
+    const requestedLevel = parseEffortLevel(normalizedThinkingOptionId);
+    if (
+      requestedLevel !== null &&
+      requestedLevel !== "off" &&
+      thinkingOptions.some((option) => option.id === "on")
+    ) {
+      return "on";
+    }
+    try {
+      return resolveEffortOption({
+        requested: normalizedThinkingOptionId,
+        thinkingOptions,
+      }).optionId;
+    } catch {
+      // Fully custom option ids can only be restored by exact id; fall through
+      // to the model's honest default when a remembered value is unavailable.
+    }
+  }
   return effectiveModel?.defaultThinkingOptionId ?? thinkingOptions[0]?.id ?? "";
 }
 
@@ -539,6 +562,7 @@ function completeResolution(
   return { ...nextState, form: resolved };
 }
 
+// oxlint-disable-next-line complexity
 export function resolveAgentForm(
   state: AgentFormReducerState,
   action: AgentFormAction,
@@ -603,7 +627,8 @@ export function resolveAgentForm(
       const nextThinkingOptionId = resolveThinkingOptionId({
         availableModels: action.providerModels,
         modelId: nextModelId,
-        requestedThinkingOptionId: "",
+        requestedThinkingOptionId:
+          action.providerPrefs?.thinkingByModel?.[nextModelId]?.trim() ?? "",
       });
       const nextModeId = pickNextModeForProviderAndModel({
         currentProvider: state.form.provider,
@@ -642,9 +667,9 @@ export function resolveAgentForm(
       const nextThinkingOptionId = resolveThinkingOptionId({
         availableModels: action.availableModels,
         modelId: nextModelId,
-        requestedThinkingOptionId: state.userModified.thinkingOptionId
-          ? state.form.thinkingOptionId
-          : "",
+        requestedThinkingOptionId:
+          action.preferredThinkingOptionId?.trim() ||
+          (state.userModified.thinkingOptionId ? state.form.thinkingOptionId : ""),
       });
       return {
         ...state,
