@@ -32,7 +32,7 @@ const POLL_INTERVAL_MS = 5_000;
 function usageAndExit(code = 1) {
   process.stderr.write(
     "Usage: node scripts/ensure-github-release.mjs --tag <tag> --repo <owner/name> " +
-      "--mode <create|wait> [--prerelease] [--timeout-seconds <n>]\n",
+      "--mode <create|wait> [--draft] [--prerelease] [--timeout-seconds <n>]\n",
   );
   process.exit(code);
 }
@@ -42,6 +42,7 @@ function parseArgs(argv) {
     tag: "",
     repo: "",
     mode: "",
+    draft: false,
     prerelease: false,
     timeoutSeconds: 600,
   };
@@ -72,6 +73,10 @@ function parseArgs(argv) {
       args.prerelease = true;
       continue;
     }
+    if (arg === "--draft") {
+      args.draft = true;
+      continue;
+    }
     if (arg === "--help" || arg === "-h") {
       usageAndExit(0);
     }
@@ -100,7 +105,7 @@ function releaseExists(tag, repo) {
   }
 }
 
-function createRelease(tag, repo, prerelease) {
+function createRelease(tag, repo, { draft, prerelease }) {
   const createArgs = [
     "release",
     "create",
@@ -114,6 +119,9 @@ function createRelease(tag, repo, prerelease) {
   ];
   if (prerelease) {
     createArgs.push("--prerelease");
+  }
+  if (draft) {
+    createArgs.push("--draft");
   }
   execFileSync("gh", createArgs, { stdio: "inherit" });
 }
@@ -129,7 +137,7 @@ if (args.mode === "create") {
   }
 
   try {
-    createRelease(args.tag, args.repo, args.prerelease);
+    createRelease(args.tag, args.repo, args);
     console.log(`Created release ${args.tag}`);
   } catch (error) {
     // Only one workflow is supposed to create a given tag, so a failure here is

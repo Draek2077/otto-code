@@ -127,10 +127,10 @@ The rollout is driven by a `rolloutHours` field stamped into the GitHub Release 
 
 Desktop release builds now publish in two phases:
 
-- Platform build jobs upload the installers/packages (`.dmg`, `.zip`, `.exe`, `.AppImage`, etc.) to the GitHub release.
-- The final job merges/stamps the manifests and uploads all `.yml` files only after they already contain the final `releaseDate` and `rolloutHours`.
+- Platform build jobs upload the installers/packages (`.dmg`, `.zip`, `.exe`, `.AppImage`, etc.) to a **draft** GitHub release.
+- The final job merges/stamps the manifests and uploads all `.yml` files only after they already contain the final `releaseDate` and `rolloutHours`, then publishes the release.
 
-Updater clients only discover a release through those `.yml` manifests, so there is no silent 100% admission window before rollout metadata is present.
+Updater clients only discover published releases through those `.yml` manifests, so they can never select a release before its installer and rollout metadata are present.
 
 ### Default behavior
 

@@ -99,6 +99,7 @@ jobs:
             --tag "$RELEASE_TAG" \
             --repo "${{ github.repository }}" \
             --mode create \
+            --draft \
             "${prerelease_flag[@]}"
 
   # Job-level `if` cannot read the secrets context, so this tiny job exposes
@@ -626,3 +627,10 @@ jobs:
             }
           ' "${files[@]}"
           gh release upload "$RELEASE_TAG" "${files[@]}" --clobber --repo "${{ github.repository }}"
+
+      - name: Publish completed release
+        if: env.IS_SMOKE_TAG != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: gh release edit "$RELEASE_TAG" --draft=false --repo "${{ github.repository }}"

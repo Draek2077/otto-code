@@ -838,4 +838,30 @@ describe("app update service", () => {
       errorMessage: null,
     });
   });
+
+  it("keeps a downloaded update ready when a recheck reports it unavailable", async () => {
+    const { runtime, service } = createService();
+    runtime.nextCheck({ isUpdateAvailable: true, updateInfo: rolledOutUpdate });
+    await service.checkForAppUpdate({
+      currentVersion: "1.2.3",
+      releaseChannel: "stable",
+      intent: "manual",
+    });
+    runtime.finishUpdateDownload(rolledOutUpdate);
+
+    // electron-updater can report its now-downloaded release as unavailable on
+    // the next check. It is still an update for the running app.
+    runtime.nextCheck({ isUpdateAvailable: false, updateInfo: rolledOutUpdate });
+    const result = await service.checkForAppUpdate({
+      currentVersion: "1.2.3",
+      releaseChannel: "stable",
+      intent: "automatic",
+    });
+
+    expect(result).toMatchObject({
+      hasUpdate: true,
+      readyToInstall: true,
+      latestVersion: "1.2.4",
+    });
+  });
 });

@@ -224,7 +224,16 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
       onUpdateNotAvailable() {
         // A rollout deferral arrives as this same event. Dropping the cached
         // manifest here is what used to abandon an in-flight download.
-        if (rolloutDeferredVersion !== null) return;
+        // Electron-updater also emits this after it has finished downloading
+        // the offered release. That does not mean the running app is current:
+        // the downloaded installer remains the update we must offer until the
+        // app restarts into it.
+        if (
+          rolloutDeferredVersion !== null ||
+          (cachedUpdateInfo !== null && isReadyToInstallVersion(cachedUpdateInfo.version))
+        ) {
+          return;
+        }
         clearUpdateState();
       },
       onError(error) {
@@ -247,6 +256,29 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
       () => undefined,
     );
     return result;
+  }
+
+  function getReadyDownloadedCheckResult(
+    currentVersion: string,
+    result: RuntimeUpdateCheckResult | null,
+  ): AppUpdateCheckResult | null {
+    const downloaded = cachedUpdateInfo;
+    if (
+      !downloaded ||
+      result?.updateInfo?.version !== downloaded.version ||
+      !isReadyToInstallVersion(downloaded.version)
+    ) {
+      return null;
+    }
+
+    return buildCheckResult({
+      currentVersion,
+      hasUpdate: true,
+      readyToInstall: true,
+      info: downloaded,
+      errorMessage:
+        preparationError?.version === downloaded.version ? preparationError.message : null,
+    });
   }
 
   async function checkForAppUpdate({
@@ -273,6 +305,12 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
       try {
         const result = await deps.runtime.checkForUpdates();
         if (!result || !result.updateInfo || !result.isUpdateAvailable) {
+          // Once Electron has downloaded an update, later checks can report it
+          // as unavailable. Preserve that installer rather than turning a
+          // ready-to-install update into "You're up to date".
+          const readyDownload = getReadyDownloadedCheckResult(currentVersion, result);
+          if (readyDownload) return readyDownload;
+
           // Deferred by the rollout, for the update we already validated and
           // told the user about: keep offering it. An automatic check may add
           // an update, never retract one - the manual check that surfaced it
