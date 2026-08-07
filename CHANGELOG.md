@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.8.4 - 2026-08-06
+
+### Added
+
+- View a file revision as rendered Markdown from Git history
+- Navigate from an open file back to its location in the file tree
+- Use Bitbucket Cloud as a first-class Git hosting provider
+- Remember reasoning preferences per model and apply advertised reasoning levels to OpenAI-compatible models
+
+### Fixed
+
+- Fixed chat history loading, scrolling, and prompt jumps losing the reader's place
+- Restored the draggable chat scrollbar on the web
+- Fixed steering messages being left behind when an agent turn finalized at the same time
+- Fixed timeline entries remaining pending when catch-up required another attempt
+- Fixed the mobile model selector collapsing to zero height
+- Fixed Linux desktop startup metadata so installed launches are recognized correctly
+- Fixed desktop browser snapshots reading the wrong MCP response field
+
 ## 0.8.3 - 2026-08-06
 
 ### Added
