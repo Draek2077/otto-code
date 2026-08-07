@@ -38,6 +38,7 @@ if (OUT) {
   process.on("exit", (code) => record("exit", { code }));
 
   const cp = require("node:child_process");
+  const { promisify } = require("node:util");
   const flatten = (command, args) =>
     [command, ...(Array.isArray(args) ? args : [])].map(String).join(" ");
   const wrap = (name) => {
@@ -45,7 +46,7 @@ if (OUT) {
     if (typeof original !== "function") {
       return;
     }
-    cp[name] = function (...callArgs) {
+    const wrapped = function (...callArgs) {
       try {
         const cmd = flatten(callArgs[0], callArgs[1]);
         if (/taskkill/i.test(cmd)) {
@@ -56,6 +57,16 @@ if (OUT) {
       }
       return original.apply(this, callArgs);
     };
+    // exec/execFile carry a util.promisify.custom implementation that
+    // resolves { stdout, stderr } instead of the generic single-arg
+    // fallback. A plain reassignment here drops that symbol, so every
+    // promisify(execFile)/promisify(exec) call in the app under test
+    // silently degrades to resolving just the raw stdout string - exactly
+    // the "stdout is undefined" failures this file was written to explain.
+    if (original[promisify.custom]) {
+      wrapped[promisify.custom] = original[promisify.custom];
+    }
+    cp[name] = wrapped;
   };
   for (const name of ["spawn", "exec", "execFile", "spawnSync", "execSync", "execFileSync"]) {
     wrap(name);
