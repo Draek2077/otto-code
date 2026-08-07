@@ -97,6 +97,15 @@ function turnEventSignatures(events: AgentStreamEvent[]): TurnEventSignature[] {
   return events.map((event) => [event.type, "turnId" in event ? event.turnId : undefined]);
 }
 
+function completedToolTimelineEvents(events: AgentStreamEvent[]): AgentStreamEvent[] {
+  return events.filter(
+    (event) =>
+      event.type === "timeline" &&
+      event.item.type === "tool_call" &&
+      event.item.status === "completed",
+  );
+}
+
 function userMessageEvents(params: {
   sessionId: string;
   messageId: string;
@@ -1241,6 +1250,102 @@ describe("OpenCode adapter startTurn error handling", () => {
       "opencode-turn-0",
       "opencode-turn-0",
     ]);
+  });
+
+  test("forwards a terminal tool part published after OpenCode reports the turn idle", async () => {
+    const eventsGate = createTestDeferred<void>();
+    const globalEvents = [
+      { payload: { type: "server.connected", properties: {} } },
+      {
+        directory: "/tmp/test",
+        payload: {
+          type: "message.updated",
+          properties: {
+            info: { id: "msg_assistant", sessionID: "ses_unit_test", role: "assistant" },
+          },
+        },
+      },
+      {
+        directory: "/tmp/test",
+        payload: {
+          type: "message.part.updated",
+          properties: {
+            part: {
+              id: "prt_late_tool",
+              sessionID: "ses_unit_test",
+              messageID: "msg_assistant",
+              type: "tool",
+              tool: "bash",
+              callID: "call_late_tool",
+              state: { status: "running", input: { command: "echo hello" } },
+            },
+          },
+        },
+      },
+      {
+        directory: "/tmp/test",
+        payload: {
+          type: "session.status",
+          properties: { sessionID: "ses_unit_test", status: { type: "idle" } },
+        },
+      },
+      {
+        directory: "/tmp/test",
+        payload: {
+          type: "message.part.updated",
+          properties: {
+            part: {
+              id: "prt_late_tool",
+              sessionID: "ses_unit_test",
+              messageID: "msg_assistant",
+              type: "tool",
+              tool: "bash",
+              callID: "call_late_tool",
+              state: {
+                status: "completed",
+                input: { command: "echo hello" },
+                output: "hello",
+              },
+            },
+          },
+        },
+      },
+    ];
+    const fakeClient = {
+      global: {
+        event: vi.fn().mockResolvedValue({
+          stream: (async function* () {
+            await eventsGate.promise;
+            yield* globalEvents;
+          })(),
+        }),
+      },
+      session: {
+        promptAsync: vi.fn().mockImplementation(async () => {
+          eventsGate.resolve();
+          return { data: {}, error: undefined };
+        }),
+      },
+    } as never;
+    const session = new __openCodeInternals.OpenCodeAgentSession(
+      { provider: "opencode", cwd: "/tmp/test" },
+      fakeClient,
+      "ses_unit_test",
+      createTestLogger(),
+    );
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.startTurn("hello");
+
+    await vi.waitFor(() => expect(completedToolTimelineEvents(events)).toHaveLength(1));
+    expect(events.map((event) => event.type)).toEqual([
+      "turn_started",
+      "timeline",
+      "turn_completed",
+      "timeline",
+    ]);
+    expect(events.at(-1)).toMatchObject({ turnId: "opencode-turn-0" });
   });
 
   test("unwraps OpenCode global event payloads during a turn", async () => {

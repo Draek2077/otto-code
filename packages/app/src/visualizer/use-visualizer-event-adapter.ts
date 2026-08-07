@@ -625,9 +625,12 @@ function reconcileNodeLifecycle(state: AdapterState, node: TrackedNode, agent: A
   if (isTerminal && !node.terminalEmitted) {
     node.terminalEmitted = true;
     state.pending.push(buildAgentCompleteEvent({ ctx: nodeCtx(node), time }));
-    if (node.isRoot) {
-      state.pendingSessionMessages.push({ type: "session-ended", sessionId: node.sessionId });
-    }
+    // A root's provider session can close while its chat remains a durable,
+    // viewable record. Keep that chat in the Visualizer's session picker; only
+    // archiving (above) or removing it from the authoritative directory may
+    // remove the picker entry. Treating a closed root as `session-ended` made
+    // Codex chats disappear to "Waiting for chat activity" after a turn even
+    // though their transcript and agent record were still present.
     return;
   }
   if (!isTerminal && node.terminalEmitted) {

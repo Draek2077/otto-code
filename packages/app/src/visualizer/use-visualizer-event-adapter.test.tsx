@@ -523,6 +523,33 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     ).toBe(true);
   });
 
+  it("keeps a closed root chat in the session picker until it is archived or removed", async () => {
+    setAgents([makeAgent({ id: "root-1", title: "Codex chat", provider: "codex" })]);
+    renderAdapter();
+    await settle();
+    messages.length = 0;
+
+    upsertAgent(
+      makeAgent({
+        id: "root-1",
+        title: "Codex chat",
+        provider: "codex",
+        status: "closed",
+        lastActivityAt: new Date(BASE_TIME.getTime() + 30_000),
+        updatedAt: new Date(BASE_TIME.getTime() + 30_000),
+      }),
+    );
+    await settle();
+
+    expect(messages.some((m) => m.type === "session-ended")).toBe(false);
+    expect(messages.some((m) => m.type === "close-session")).toBe(false);
+    expect(
+      collectEvents(messages).some(
+        (event) => event.type === "agent_complete" && event.payload.name === "Codex chat",
+      ),
+    ).toBe(true);
+  });
+
   it("routes the observed subagent's own live timeline onto its node", async () => {
     setAgents([
       makeAgent({ id: "root-1", title: "My chat" }),

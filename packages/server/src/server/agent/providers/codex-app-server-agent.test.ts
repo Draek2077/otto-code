@@ -26,6 +26,7 @@ import {
   mapCodexPlanToToolCall,
   normalizeCodexOutputSchema,
   toAgentUsage,
+  accumulateCodexTurnUsage,
 } from "./codex-app-server-agent.js";
 import { CodexAppServerClient } from "./codex/app-server-transport.js";
 import {
@@ -1416,6 +1417,15 @@ describe("Codex app-server provider", () => {
     });
   });
 
+  test("accumulates the separately priced cost of every Codex request", () => {
+    expect(
+      accumulateCodexTurnUsage(
+        { inputTokens: 1, totalCostUsd: 0.01 },
+        { inputTokens: 2, totalCostUsd: 0.02 },
+      ),
+    ).toMatchObject({ inputTokens: 3, totalCostUsd: 0.03 });
+  });
+
   test("normalizes raw output schemas for Codex structured outputs", () => {
     const input = {
       type: "object",
@@ -2607,7 +2617,7 @@ describe("Codex app-server provider", () => {
     });
   });
 
-  test("settles an active action when Codex omits its terminal tool event", () => {
+  test("waits for a late terminal action event after Codex reports turn completion", () => {
     const session = createSession();
     const events: AgentStreamEvent[] = [];
     session.subscribe((event) => events.push(event));
@@ -2627,7 +2637,25 @@ describe("Codex app-server provider", () => {
       turn: { status: "completed" },
     });
 
-    const toolCalls = events.flatMap((event) =>
+    let toolCalls = events.flatMap((event) =>
+      event.type === "timeline" && event.item.type === "tool_call" ? [event.item] : [],
+    );
+    expect(toolCalls.map((item) => item.status)).toEqual(["running"]);
+
+    asInternals(session).handleNotification("item/completed", {
+      threadId: "test-thread",
+      item: {
+        type: "commandExecution",
+        id: "orphaned-shell-action",
+        status: "completed",
+        command: "git push origin main",
+        cwd: "/tmp/codex-question-test",
+        aggregatedOutput: "Everything up-to-date",
+        exitCode: 0,
+      },
+    });
+
+    toolCalls = events.flatMap((event) =>
       event.type === "timeline" && event.item.type === "tool_call" ? [event.item] : [],
     );
     expect(toolCalls.map((item) => item.status)).toEqual(["running", "completed"]);
@@ -4596,6 +4624,7 @@ describe("Codex app-server provider", () => {
         inputTokens: 25000,
         cachedInputTokens: 5000,
         outputTokens: 15000,
+        totalCostUsd: 0.28875,
         contextWindowMaxTokens: 200000,
         contextWindowUsedTokens: 50000,
       },
@@ -4608,6 +4637,7 @@ describe("Codex app-server provider", () => {
         inputTokens: 25000,
         cachedInputTokens: 5000,
         outputTokens: 15000,
+        totalCostUsd: 0.28875,
         contextWindowMaxTokens: 200000,
         contextWindowUsedTokens: 50000,
       },
@@ -4663,6 +4693,7 @@ describe("Codex app-server provider", () => {
         inputTokens: 4000,
         cachedInputTokens: 24000,
         outputTokens: 5000,
+        totalCostUsd: 0.091,
         contextWindowMaxTokens: 258400,
         // Occupancy is absolute: the newest reading, never the sum.
         contextWindowUsedTokens: 21000,
@@ -4702,6 +4733,7 @@ describe("Codex app-server provider", () => {
       inputTokens: 500,
       cachedInputTokens: 11500,
       outputTokens: 1000,
+      totalCostUsd: 0.019125,
       contextWindowMaxTokens: 258400,
       contextWindowUsedTokens: 13000,
     });

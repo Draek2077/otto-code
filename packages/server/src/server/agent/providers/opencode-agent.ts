@@ -2921,6 +2921,10 @@ class OpenCodeAgentSession implements AgentSession {
   private readonly subscribers = new Set<(event: AgentStreamEvent) => void>();
   private nextTurnOrdinal = 0;
   private turnState: OpenCodeTurnState = { status: "idle" };
+  /** OpenCode can publish `session.status: idle` before the final tool part.
+   * Keep that terminal update attached to the completed turn, but never let it
+   * leak into a later foreground turn. */
+  private lateForegroundToolTurnId: string | null = null;
   private readonly runningToolCalls = new Map<string, ToolCallTimelineItem>();
   private subAgentsByCallId = new Map<string, OpenCodeSubAgentActivityState>();
   private subAgentCallIdByChildSessionId = new Map<string, string>();
@@ -3130,6 +3134,7 @@ class OpenCodeAgentSession implements AgentSession {
     }
 
     this.runningToolCalls.clear();
+    this.lateForegroundToolTurnId = null;
     this.subAgentsByCallId.clear();
     this.subAgentCallIdByChildSessionId.clear();
     const turnAbortController = new AbortController();
@@ -3607,16 +3612,8 @@ class OpenCodeAgentSession implements AgentSession {
         foregroundEvents.push(translatedEvent);
       }
     }
-    if (!turnId && this.shouldStartAutonomousTurn(event, foregroundEvents)) {
-      turnId = this.startAutonomousTurn();
-    }
+    turnId = this.resolveForegroundTurnId({ event, foregroundEvents, turnId, eventCount });
     if (!turnId) {
-      this.emitBackgroundPermissionRequests(foregroundEvents);
-      this.traceOpenCode("provider.opencode.event.skip", {
-        n: eventCount,
-        reason: "no_active_turn",
-        type: event.type,
-      });
       return;
     }
     this.traceOpenCode("provider.opencode.parsed_event", {
@@ -3656,6 +3653,49 @@ class OpenCodeAgentSession implements AgentSession {
     }
   }
 
+  private resolveForegroundTurnId(params: {
+    event: OpenCodeEvent;
+    foregroundEvents: readonly AgentStreamEvent[];
+    turnId: string | null;
+    eventCount: number;
+  }): string | null {
+    if (params.turnId) {
+      return params.turnId;
+    }
+    if (this.emitLateForegroundToolTerminals(params.foregroundEvents)) {
+      return null;
+    }
+    if (this.shouldStartAutonomousTurn(params.event, params.foregroundEvents)) {
+      return this.startAutonomousTurn();
+    }
+    this.emitBackgroundPermissionRequests(params.foregroundEvents);
+    this.traceOpenCode("provider.opencode.event.skip", {
+      n: params.eventCount,
+      reason: "no_active_turn",
+      type: params.event.type,
+    });
+    return null;
+  }
+
+  private emitLateForegroundToolTerminals(events: readonly AgentStreamEvent[]): boolean {
+    if (!this.lateForegroundToolTurnId) {
+      return false;
+    }
+    let emitted = false;
+    for (const event of events) {
+      if (
+        event.type !== "timeline" ||
+        event.item.type !== "tool_call" ||
+        event.item.status === "running"
+      ) {
+        continue;
+      }
+      this.notifySubscribers(event, this.lateForegroundToolTurnId);
+      emitted = true;
+    }
+    return emitted;
+  }
+
   private shouldStartAutonomousTurn(
     event: OpenCodeEvent,
     foregroundEvents: readonly AgentStreamEvent[],
@@ -3693,6 +3733,7 @@ class OpenCodeAgentSession implements AgentSession {
     const turnId = this.createTurnId();
     this.turnState = { status: "running", turnId };
     this.runningToolCalls.clear();
+    this.lateForegroundToolTurnId = null;
     this.subAgentsByCallId.clear();
     this.subAgentCallIdByChildSessionId.clear();
     this.pendingUserMessageText = null;
@@ -3718,8 +3759,10 @@ class OpenCodeAgentSession implements AgentSession {
     }
     if (event.type === "turn_canceled" || event.type === "turn_failed") {
       this.synthesizeInterruptedToolCalls(turnId);
+      this.lateForegroundToolTurnId = null;
     } else {
       this.runningToolCalls.clear();
+      this.lateForegroundToolTurnId = turnId;
     }
     this.pendingUserMessageText = null;
     this.pendingClientMessageId = null;

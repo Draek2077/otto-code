@@ -69,6 +69,7 @@ import { createPathEquivalenceMatcher } from "../../../utils/path.js";
 import { spawnProcess } from "../../../utils/spawn.js";
 import { extractCodexTerminalSessionId, nonEmptyString } from "./tool-call-mapper-utils.js";
 import { buildCodexFeatures, codexModelSupportsFastMode } from "./codex-feature-definitions.js";
+import { priceCodexUsageUsd } from "./codex-pricing.js";
 import {
   CodexAppServerClient,
   parseCodexThreadForkResponse,
@@ -972,6 +973,7 @@ export function accumulateCodexTurnUsage(
   const inputTokens = addUsageLeaf(prior?.inputTokens, request.inputTokens);
   const cachedInputTokens = addUsageLeaf(prior?.cachedInputTokens, request.cachedInputTokens);
   const outputTokens = addUsageLeaf(prior?.outputTokens, request.outputTokens);
+  const totalCostUsd = addUsageLeaf(prior?.totalCostUsd, request.totalCostUsd);
   if (inputTokens !== undefined) {
     merged.inputTokens = inputTokens;
   }
@@ -980,6 +982,9 @@ export function accumulateCodexTurnUsage(
   }
   if (outputTokens !== undefined) {
     merged.outputTokens = outputTokens;
+  }
+  if (totalCostUsd !== undefined) {
+    merged.totalCostUsd = totalCostUsd;
   }
   return merged;
 }
@@ -5425,6 +5430,12 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.emitSubAgentActivityUpdate(subAgentCallId, "running");
       return;
     }
+    // `turn/completed` can arrive before Codex's item-completed notification.
+    // Do not end a visible action there: the item event carries its real result.
+    // A new root turn is the first unambiguous point at which an old action can
+    // no longer produce that terminal event, so it is the safe stale-action
+    // fallback for older Codex app-server versions that omit one.
+    this.settleActiveForegroundToolCalls("completed", null);
     this.currentTurnId = parsed.turnId;
     this.resetTurnTrackingState();
     this.emitEvent({ type: "turn_started", provider: CODEX_PROVIDER });
@@ -5444,9 +5455,14 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.emitSubAgentActivityUpdate(subAgentCallId, status);
       return;
     }
-    const terminalStatus =
-      parsed.status === "failed" || parsed.status === "interrupted" ? parsed.status : "completed";
-    this.settleActiveForegroundToolCalls(terminalStatus, parsed.errorMessage);
+    // Successful turns do not imply every action event has arrived yet. Codex
+    // may report `turn/completed` before its action's terminal notification;
+    // ending it here made the visualizer hide real in-flight work. Failed and
+    // interrupted turns cannot produce a successful terminal result, so settle
+    // their outstanding actions immediately.
+    if (parsed.status === "failed" || parsed.status === "interrupted") {
+      this.settleActiveForegroundToolCalls(parsed.status, parsed.errorMessage);
+    }
     // A failed or interrupted turn already burned every request it made, and the
     // manager books `usage` on all three outcomes. Reporting it only on the
     // happy path made Esc-heavy and retrying sessions look free.
@@ -5477,10 +5493,14 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.activeForegroundTurnId = null;
     this.activeClientMessageId = null;
     this.pendingSubAgentNotificationsByThreadId.clear();
-    this.resetTurnTrackingState();
+    this.resetTurnTrackingState({
+      // Preserve successful-turn actions until their late item-completed event
+      // arrives (or the next root turn proves the event was omitted).
+      preserveActiveForegroundToolCalls: parsed.status === "completed",
+    });
   }
 
-  private resetTurnTrackingState(): void {
+  private resetTurnTrackingState(options?: { preserveActiveForegroundToolCalls?: boolean }): void {
     this.turnUsage = undefined;
     this.latestPlanResult = null;
     this.emittedItemStartedIds.clear();
@@ -5488,7 +5508,9 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.emittedProviderSubagentUserMessageKeys.clear();
     this.emittedExecCommandStartedCallIds.clear();
     this.emittedExecCommandCompletedCallIds.clear();
-    this.activeForegroundToolCalls.clear();
+    if (!options?.preserveActiveForegroundToolCalls) {
+      this.activeForegroundToolCalls.clear();
+    }
     this.pendingAgentMessages.clear();
     this.pendingReasoning.clear();
     this.pendingCommandOutputDeltas.clear();
@@ -5536,7 +5558,11 @@ export class CodexAppServerAgentSession implements AgentSession {
     if (!requestUsage) {
       return;
     }
-    this.turnUsage = accumulateCodexTurnUsage(this.turnUsage, requestUsage);
+    const totalCostUsd = priceCodexUsageUsd(requestUsage, this.config.model);
+    this.turnUsage = accumulateCodexTurnUsage(
+      this.turnUsage,
+      totalCostUsd === undefined ? requestUsage : { ...requestUsage, totalCostUsd },
+    );
     this.notifySubscribers({
       type: "usage_updated",
       provider: CODEX_PROVIDER,

@@ -206,7 +206,7 @@ function HighlightedToken({ token }: { token: HighlightToken }) {
   return <Text style={syntaxTokenStyleFor(token.style)}>{token.text}</Text>;
 }
 
-function HighlightedText({
+const HighlightedText = memo(function HighlightedText({
   tokens,
   textMetricsStyle,
   wrapLines = false,
@@ -234,7 +234,7 @@ function HighlightedText({
       ))}
     </Text>
   );
-}
+});
 
 interface DiffFileSectionProps {
   file: ParsedDiffFile;
@@ -250,6 +250,7 @@ interface DiffFileSectionProps {
   selected?: boolean;
   onToggleSelected?: (path: string) => void;
   onToggle: (path: string) => void;
+  onOpenFile?: (path: string, options?: { edit?: boolean; lineStart?: number }) => void;
   onHeaderHeightChange?: (path: string, height: number) => void;
   onShowContextMenu?: (input: DiffContextMenuRequest) => void;
   testID?: string;
@@ -362,7 +363,7 @@ function lineTypeBackground(type: DiffLine["type"] | undefined | null) {
   return styles.contextLineContainer;
 }
 
-function DiffGutterCell({
+const DiffGutterCell = memo(function DiffGutterCell({
   lineNumber,
   type,
   gutterWidth,
@@ -433,9 +434,9 @@ function DiffGutterCell({
       </Text>
     </InlineReviewGutterCell>
   );
-}
+});
 
-function DiffTextLine({
+const DiffTextLine = memo(function DiffTextLine({
   line,
   wrapLines,
   textMetricsStyle,
@@ -503,9 +504,9 @@ function DiffTextLine({
       )}
     </LongPressableLine>
   );
-}
+});
 
-function SplitTextLine({
+const SplitTextLine = memo(function SplitTextLine({
   line,
   wrapLines,
   textMetricsStyle,
@@ -566,9 +567,9 @@ function SplitTextLine({
       )}
     </LongPressableLine>
   );
-}
+});
 
-function DiffLineView({
+const DiffLineView = memo(function DiffLineView({
   line,
   lineNumber,
   gutterWidth,
@@ -638,9 +639,9 @@ function DiffLineView({
       )}
     </LongPressableLine>
   );
-}
+});
 
-function SplitDiffLine({
+const SplitDiffLine = memo(function SplitDiffLine({
   line,
   gutterWidth,
   wrapLines,
@@ -706,7 +707,7 @@ function SplitDiffLine({
       )}
     </LongPressableLine>
   );
-}
+});
 
 function InlineReviewThreadContent({
   reviewTarget,
@@ -818,7 +819,7 @@ function InlineReviewRow({
   );
 }
 
-function SplitDiffColumn({
+const SplitDiffColumn = memo(function SplitDiffColumn({
   rows,
   side,
   gutterWidth,
@@ -996,7 +997,7 @@ function SplitDiffColumn({
       </DiffScroll>
     </View>
   );
-}
+});
 
 const DiffFileHeader = memo(function DiffFileHeader({
   file,
@@ -1008,6 +1009,7 @@ const DiffFileHeader = memo(function DiffFileHeader({
   selected = false,
   onToggleSelected,
   onToggle,
+  onOpenFile,
   onHeaderHeightChange,
   onShowContextMenu,
   testID,
@@ -1044,6 +1046,10 @@ const DiffFileHeader = memo(function DiffFileHeader({
     },
     [file.path, onShowContextMenu],
   );
+
+  const handleDoubleClick = useCallback(() => {
+    onOpenFile?.(file.path, { edit: true });
+  }, [file.path, onOpenFile]);
 
   const handleLayout = useCallback(
     (event: LayoutChangeEvent) => {
@@ -1108,6 +1114,8 @@ const DiffFileHeader = memo(function DiffFileHeader({
             onPressIn={handlePressIn}
             onPressOut={handlePressOut}
             onPress={toggleExpanded}
+            // @ts-ignore - onDoubleClick is web-only and not in RN types.
+            onDoubleClick={onOpenFile ? handleDoubleClick : undefined}
             // @ts-ignore - onContextMenu is web-only and not in RN types.
             onContextMenu={onShowContextMenu ? handleContextMenu : undefined}
           >
@@ -1198,7 +1206,7 @@ function isDiffBodyTooLargeToRender(file: ParsedDiffFile): boolean {
 // expanded individually, and each over-cap file is itself placeholdered above.
 const MAX_EXPAND_ALL_FILE_COUNT = 500;
 
-function DiffFileBody({
+const DiffFileBody = memo(function DiffFileBody({
   file,
   layout,
   wrapLines,
@@ -1224,6 +1232,31 @@ function DiffFileBody({
   const [hoveredReviewTargetKey, setHoveredReviewTargetKey] = useState<string | null>(null);
   const { t } = useTranslation();
 
+  const isBinary = file.status === "binary";
+  const isTooLarge = useMemo(
+    () => file.status === "too_large" || isDiffBodyTooLargeToRender(file),
+    [file],
+  );
+  const maxLineNo = useMemo(() => {
+    if (isBinary || isTooLarge) {
+      return 0;
+    }
+    let max = 0;
+    for (const hunk of file.hunks) {
+      max = Math.max(max, hunk.oldStart + hunk.oldCount, hunk.newStart + hunk.newCount);
+    }
+    return max;
+  }, [file, isBinary, isTooLarge]);
+  const gutterWidth = lineNumberGutterWidth(maxLineNo, codeFontSize);
+  const splitRows = useMemo(
+    () => (!isBinary && !isTooLarge && layout === "split" ? buildSplitDiffRows(file) : null),
+    [file, isBinary, isTooLarge, layout],
+  );
+  const unifiedLines = useMemo(
+    () => (!isBinary && !isTooLarge && layout !== "split" ? buildUnifiedDiffLines(file) : null),
+    [file, isBinary, isTooLarge, layout],
+  );
+
   const handleLayout = useCallback(
     (event: LayoutChangeEvent) => {
       setBodyWidth(event.nativeEvent.layout.width);
@@ -1244,9 +1277,6 @@ function DiffFileBody({
   return (
     <View style={FILE_SECTION_BODY_STYLE} onLayout={handleLayout} testID={testID}>
       {(() => {
-        const isBinary = file.status === "binary";
-        // Treat an over-cap "ok" file exactly like a server-flagged too_large one.
-        const isTooLarge = file.status === "too_large" || isDiffBodyTooLargeToRender(file);
         if (isBinary || isTooLarge) {
           return (
             <View style={styles.statusMessageContainer}>
@@ -1257,18 +1287,8 @@ function DiffFileBody({
           );
         }
 
-        let maxLineNo = 0;
-        for (const hunk of file.hunks) {
-          maxLineNo = Math.max(
-            maxLineNo,
-            hunk.oldStart + hunk.oldCount,
-            hunk.newStart + hunk.newCount,
-          );
-        }
-        const gutterWidth = lineNumberGutterWidth(maxLineNo, codeFontSize);
-
         if (layout === "split") {
-          const rows = buildSplitDiffRows(file);
+          const rows = splitRows ?? [];
           return (
             <View style={DIFF_CONTENT_SPLIT_ROW_STYLE} dataSet={CODE_SURFACE_DATASET}>
               <SplitDiffColumn
@@ -1294,7 +1314,7 @@ function DiffFileBody({
           );
         }
 
-        const computedLines = buildUnifiedDiffLines(file);
+        const computedLines = unifiedLines ?? [];
 
         if (wrapLines) {
           return (
@@ -1387,7 +1407,7 @@ function DiffFileBody({
       })()}
     </View>
   );
-}
+});
 
 interface GitDiffPaneProps {
   serverId: string;
@@ -3231,6 +3251,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
             selected={!deselectedPaths.has(item.file.path)}
             onToggleSelected={handleToggleFileSelected}
             onToggle={handleToggleExpanded}
+            onOpenFile={onOpenFile}
             onHeaderHeightChange={handleHeaderHeightChange}
             onShowContextMenu={handleShowFileContextMenu}
             testID={`diff-file-${item.fileIndex}`}
@@ -3265,6 +3286,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
       handleToggleExpanded,
       handleToggleFileSelected,
       handleToggleFolder,
+      onOpenFile,
       reviewActions,
       viewMode,
       wrapLines,

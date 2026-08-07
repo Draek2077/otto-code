@@ -112,6 +112,10 @@ See [docs/development.md](docs/development.md) for full setup, build sync requir
     docs) are load-bearing. Leave them alone.
 - **NEVER restart the main Otto daemon on port 6868 without permission** - that is the installed app's daemon over `~/.otto`, it manages all running agents, and if you're an agent, restarting it kills your own process. The dev daemon on `6788` is the one you may restart freely.
 - **NEVER assume a timeout means the service needs restarting** - timeouts can be transient.
+- **Verify before acting on specific requests.** When the user names a specific tool, command, or
+  workflow, check its contract before using it; do not infer its semantics or authorization. Treat
+  reported issues as unverified until measured, and distinguish observations from hypotheses in
+  task descriptions and handoffs. Ask when ambiguity would change the action.
 - **NEVER add auth checks to tests** - agent providers handle their own auth.
 - **Before changing app routes, startup routing, remembered workspace restore, or active workspace selection, read [docs/expo-router.md](docs/expo-router.md).**
 - **NEVER run the full test suite locally.** The test suites are heavy and will freeze the machine, especially if multiple agents run them in parallel. Rules:

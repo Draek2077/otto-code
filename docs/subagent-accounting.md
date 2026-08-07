@@ -77,7 +77,7 @@ They must never appear in one readout. See [glossary.md](glossary.md).
 
 This is the rule the whole feature exists to enforce, and it is not negotiable:
 
-- **Cost is reported, never estimated.** No surface may derive dollars from tokens × a rate. The Visualizer used to (`tokens × a hardcoded blended $/M rate`) and was wrong by three compounding multipliers - stale rate, no cache discount, and the pricing-invariant trap below. That code is gone; see the 2026-07-25 entry in `vendor/agent-flow/OTTO-PATCHES.md`.
+- **Cost is provider-priced, never guessed.** Providers may either report a dollar cost or price their own exact token split from their published rate card. The Visualizer must not derive dollars itself: it does not know the provider, model, cache split, or active price card. See the 2026-07-25 entry in `vendor/agent-flow/OTTO-PATCHES.md`.
 - **Unpriceable ⇒ blank.** A local model or an OpenAI-compatible endpoint with no pricing shows tokens and no cost. That is the correct answer, not a gap to fill.
 - **Partially priced ⇒ a floor, shown as one.** `costCoverage: "partial"` renders `≥ $X`. Presenting a floor as a total is the same lie in a smaller font.
 
@@ -89,7 +89,7 @@ This is the rule the whole feature exists to enforce, and it is not negotiable:
 
 ## Pricing invariant (the "a provider with claude in it" trap)
 
-Cost is real only where a provider reports or can price it (today: Claude). **Never dispatch pricing by model id from neutral code.** A non-Claude provider (an OpenAI-compatible gateway or router) can legitimately serve a `claude-*` model id at entirely different prices - keying Anthropic rates off the id alone would misprice it. Pricing is invoked **only** from code that knows it is genuinely that provider. The neutral core stays pricing-free; each provider prices its own tree and writes the result into the neutral `totalCostUsd`. See the guard comment in `claude-pricing.ts`.
+Cost is real only where a provider reports it or can price its own exact split from a published rate card (today: Claude and Codex). **Never dispatch pricing by model id from neutral code.** A non-Claude provider (an OpenAI-compatible gateway or router) can legitimately serve a `claude-*` or `gpt-*` model id at entirely different prices. Pricing is invoked **only** from code that knows it is genuinely that provider. The neutral core stays pricing-free; each provider prices its own tree and writes the result into the neutral `totalCostUsd`. See the guards in `claude-pricing.ts` and `codex-pricing.ts`.
 
 If a provider verifies its price table (Claude re-prices the turn's whole-tree token totals from the SDK's own per-model `modelUsage.costUSD` and logs drift - `verifyClaudeTreePricing`), that check is diagnostic only; the residual keeps the books balanced regardless.
 

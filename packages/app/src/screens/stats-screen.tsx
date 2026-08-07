@@ -42,7 +42,6 @@ import { confirmDialog } from "@/utils/confirm-dialog";
 import {
   AlarmClock,
   Bot,
-  Brain,
   Clapperboard,
   DollarSign,
   Download,
@@ -50,6 +49,7 @@ import {
   MessageSquare,
   Moon,
   Palette,
+  Psychology,
   Puzzle,
   Robot,
   Scissors,
@@ -69,7 +69,7 @@ const ThemedBot = withUnistyles(Bot);
 const ThemedPuzzle = withUnistyles(Puzzle);
 const ThemedClapperboard = withUnistyles(Clapperboard);
 const ThemedMoon = withUnistyles(Moon);
-const ThemedBrain = withUnistyles(Brain);
+const ThemedPsychology = withUnistyles(Psychology);
 const ThemedWrench = withUnistyles(Wrench);
 const ThemedPalette = withUnistyles(Palette);
 const ThemedAlarmClock = withUnistyles(AlarmClock);
@@ -115,7 +115,7 @@ const LEFT_MAIN_TILES: { field: keyof ActivityCounters; label: string; Icon: typ
     { field: "subagentsInvoked", label: "Sub-agents invoked", Icon: ThemedPuzzle },
     { field: "runsOrchestrated", label: "Orchestrations run", Icon: ThemedClapperboard },
     { field: "backgroundTasksInvoked", label: "Background tasks", Icon: ThemedMoon },
-    { field: "thoughts", label: "Thoughts", Icon: ThemedBrain },
+    { field: "thoughts", label: "Thoughts", Icon: ThemedPsychology },
     { field: "toolsCalled", label: "Tools called", Icon: ThemedWrench },
   ];
 

@@ -1172,6 +1172,24 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
       // a phone as on a desktop.
       createOverviewRulerExtension({ readTheme: () => activeTheme }),
       EditorView.domEventHandlers({
+        mousedown: (event, v) => {
+          // Match the convention used by Rider and other IDEs: Ctrl-click on
+          // Windows/Linux and Cmd-click on macOS follows the symbol under the
+          // pointer. The existing host callback owns the LSP/index lookup, so
+          // this remains provider- and language-server agnostic.
+          if (!options.onGoToDefinitionShortcut || (!event.ctrlKey && !event.metaKey)) {
+            return false;
+          }
+          const pos = v.posAtCoords({ x: event.clientX, y: event.clientY });
+          if (pos === null) {
+            return false;
+          }
+          v.dispatch({ selection: { anchor: pos }, userEvent: "select.pointer" });
+          v.focus();
+          options.onGoToDefinitionShortcut();
+          event.preventDefault();
+          return true;
+        },
         contextmenu: (event, v) => {
           if (!options.onContextMenu) {
             return false;
