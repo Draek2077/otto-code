@@ -27,6 +27,17 @@ const FILE_ATTACHMENT: ComposerAttachment = {
   },
 };
 
+const IMAGE_ATTACHMENT: ComposerAttachment = {
+  kind: "image",
+  metadata: {
+    id: "att-image-1",
+    mimeType: "image/png",
+    storageType: "web-indexeddb",
+    storageKey: "att-image-1",
+    createdAt: 0,
+  },
+};
+
 function entry(overrides: Partial<QueuedAgentMessagePayload> = {}): QueuedAgentMessagePayload {
   return { id: ENTRY_ID, preview: "queued", enqueuedAt: ENQUEUED_AT, ...overrides };
 }
@@ -147,17 +158,30 @@ describe("useComposerQueue - the daemon broadcast beats the sidecar write", () =
     expect(sendable[0]?.attachments).toEqual([FILE_ATTACHMENT]);
   });
 
-  it("hands the attachments to a 'Send now' take that lands in the same window", async () => {
+  it("keeps an image rooted until an edit takes it back out of the daemon queue", async () => {
     seedSession({ steerQueue: true });
     const send = installRacingSend([ENTRY_ID]);
-    const removeQueuedAgentMessage = vi.fn(async () => ({ id: ENTRY_ID, text: "look at this" }));
+    const removeQueuedAgentMessage = vi.fn(async () => {
+      // The daemon's removal broadcast may reconcile the sidecar before its
+      // RPC response reaches the edit handler.
+      broadcastQueueEntries([]);
+      await Promise.resolve();
+      return { id: ENTRY_ID, text: "look at this" };
+    });
     const { result } = renderQueue({ ...send.client, removeQueuedAgentMessage } as never);
 
     let enqueued!: Promise<void>;
     await act(async () => {
-      enqueued = result.current.enqueue("look at this", [FILE_ATTACHMENT]);
+      enqueued = result.current.enqueue("look at this", [IMAGE_ATTACHMENT]);
       await send.reached(0);
     });
+
+    // Queueing clears the draft immediately, so the session-held sidecar is
+    // now the image's GC root until the queue entry is edited or delivered.
+    expect(
+      useSessionStore.getState().sessions[SERVER_ID]?.queuedMessages.get(AGENT_ID)?.[0]
+        ?.attachments,
+    ).toEqual([IMAGE_ATTACHMENT]);
 
     let pending!: Promise<ComposerQueueItem | null>;
     await act(async () => {
@@ -168,7 +192,10 @@ describe("useComposerQueue - the daemon broadcast beats the sidecar write", () =
     const taken = await pending;
 
     expect(taken).not.toBeNull();
-    expect(taken?.attachments).toEqual([FILE_ATTACHMENT]);
+    expect(taken?.attachments).toEqual([IMAGE_ATTACHMENT]);
+    expect(
+      useSessionStore.getState().sessions[SERVER_ID]?.queuedMessages.get(AGENT_ID),
+    ).toBeUndefined();
   });
 
   it("waits for an enqueue that starts while it is already settling", async () => {

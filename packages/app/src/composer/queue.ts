@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 
 import type { AttachmentMetadata, ComposerAttachment } from "@/attachments/types";
@@ -55,18 +55,13 @@ const EMPTY_ITEMS: readonly ComposerQueueItem[] = [];
  */
 function projectDaemonQueueItems(
   daemonItems: readonly QueuedAgentMessagePayload[],
-  sidecar: Map<string, ComposerAttachment[]>,
+  sidecar: readonly { id: string; attachments: ComposerAttachment[] }[],
 ): ComposerQueueItem[] {
-  const live = new Set(daemonItems.map((entry) => entry.id));
-  for (const id of sidecar.keys()) {
-    if (!live.has(id)) {
-      sidecar.delete(id);
-    }
-  }
+  const attachmentsById = new Map(sidecar.map((item) => [item.id, item.attachments]));
   return daemonItems.map((entry) => ({
     id: entry.id,
     text: entry.preview,
-    attachments: sidecar.get(entry.id) ?? [],
+    attachments: attachmentsById.get(entry.id) ?? [],
     source: entry.source,
     attachmentCount: entry.attachmentCount,
   }));
@@ -105,11 +100,14 @@ function isSendableAsUserTurn(item: ComposerQueueItem): boolean {
  * build of the daemon feature.
  *
  * Attachments only ever exist client-side, so the daemon-backed path keeps a
- * local sidecar keyed by the daemon's entry id purely so this client can put
- * them back - in the box on "edit", or in the merged turn on "Send all". The
- * daemon still owns whether an entry exists and when it runs; losing the
- * sidecar (reload, other device) costs those two client-side re-sends, and the
- * entry still drains with its attachments intact from the daemon's own copy.
+ * session-held sidecar keyed by the daemon's entry id purely so this client can
+ * put them back - in the box on "edit", or in the merged turn on "Send all".
+ * It must be session-held, rather than hook-local: attachment GC traces queued
+ * messages through session state, and an image is otherwise collectible after
+ * the composer clears it while queueing. The daemon still owns whether an entry
+ * exists and when it runs; losing the sidecar (reload, other device) costs
+ * those two client-side re-sends, and the entry still drains with its
+ * attachments intact from the daemon's own copy.
  *
  * The sidecar is written when the send answers, which is a tick AFTER the
  * daemon has already broadcast the new entry - so nothing may decide anything
@@ -138,8 +136,8 @@ export function useComposerQueue(input: {
     ),
   );
 
-  const attachmentSidecar = useRef(new Map<string, ComposerAttachment[]>());
   const inFlightEnqueues = useRef(new Set<Promise<void>>());
+  const pendingSidecarSequence = useRef(0);
 
   /**
    * Wait for every enqueue still in flight.
@@ -169,6 +167,27 @@ export function useComposerQueue(input: {
     [serverId, setQueuedMessages],
   );
 
+  // The sidecar is also the GC root for images queued against a daemon-owned
+  // queue. Trim entries as the daemon reports that they have run or cleared.
+  useEffect(() => {
+    if (!daemonOwnsQueue || daemonItems === undefined) return;
+    const live = new Set(daemonItems.map((entry) => entry.id));
+    setQueuedMessages(serverId, (previous) => {
+      const next = new Map(previous);
+      const current = next.get(agentId) ?? [];
+      const retained = current.filter(
+        (item) => item.id.startsWith("pending:") || live.has(item.id),
+      );
+      if (retained.length === current.length) return previous;
+      if (retained.length === 0) {
+        next.delete(agentId);
+      } else {
+        next.set(agentId, retained);
+      }
+      return next;
+    });
+  }, [agentId, daemonItems, daemonOwnsQueue, serverId, setQueuedMessages]);
+
   const items = useMemo<readonly ComposerQueueItem[]>(() => {
     if (!daemonOwnsQueue) {
       return localItems;
@@ -176,7 +195,7 @@ export function useComposerQueue(input: {
     if (!daemonItems || daemonItems.length === 0) {
       return EMPTY_ITEMS;
     }
-    return projectDaemonQueueItems(daemonItems, attachmentSidecar.current);
+    return projectDaemonQueueItems(daemonItems, localItems);
   }, [daemonItems, daemonOwnsQueue, localItems]);
 
   const enqueue = useCallback(
@@ -189,15 +208,54 @@ export function useComposerQueue(input: {
         throw new Error("Not connected");
       }
       const send = async () => {
+        // The draft is cleared before enqueue resolves. Keep images rooted while
+        // that request is in flight, then replace this temporary key with the
+        // daemon's real queue-entry id.
+        const pendingId = `pending:${++pendingSidecarSequence.current}`;
+        if (attachments.length > 0) {
+          setQueuedMessages(serverId, (previous) => {
+            const next = new Map(previous);
+            next.set(agentId, [...(next.get(agentId) ?? []), { id: pendingId, text, attachments }]);
+            return next;
+          });
+        }
         const wirePayload = splitComposerAttachmentsForSubmit(attachments);
-        const images = await encodeImages(wirePayload.images);
-        const result = await client.sendAgentMessage(agentId, text, {
-          delivery: "queue",
-          images: images ?? [],
-          attachments: wirePayload.attachments,
-        });
-        if (result.queuedMessageId && attachments.length > 0) {
-          attachmentSidecar.current.set(result.queuedMessageId, attachments);
+        try {
+          const images = await encodeImages(wirePayload.images);
+          const result = await client.sendAgentMessage(agentId, text, {
+            delivery: "queue",
+            images: images ?? [],
+            attachments: wirePayload.attachments,
+          });
+          if (attachments.length > 0) {
+            setQueuedMessages(serverId, (previous) => {
+              const next = new Map(previous);
+              const current = (next.get(agentId) ?? []).filter((item) => item.id !== pendingId);
+              if (result.queuedMessageId) {
+                current.push({ id: result.queuedMessageId, text, attachments });
+              }
+              if (current.length === 0) {
+                next.delete(agentId);
+              } else {
+                next.set(agentId, current);
+              }
+              return next;
+            });
+          }
+        } catch (error) {
+          if (attachments.length > 0) {
+            setQueuedMessages(serverId, (previous) => {
+              const next = new Map(previous);
+              const current = (next.get(agentId) ?? []).filter((item) => item.id !== pendingId);
+              if (current.length === 0) {
+                next.delete(agentId);
+              } else {
+                next.set(agentId, current);
+              }
+              return next;
+            });
+          }
+          throw error;
         }
       };
       const started = send();
@@ -211,7 +269,7 @@ export function useComposerQueue(input: {
       });
       await started;
     },
-    [agentId, client, daemonOwnsQueue, encodeImages, queueWriter],
+    [agentId, client, daemonOwnsQueue, encodeImages, queueWriter, serverId, setQueuedMessages],
   );
 
   const take = useCallback(
@@ -227,15 +285,28 @@ export function useComposerQueue(input: {
       if (!client) {
         throw new Error("Not connected");
       }
+      // The daemon broadcasts the removal before answering this RPC. Read the
+      // sidecar first so reconciliation cannot clean up the image while the
+      // edit request is still in flight.
+      const attachments =
+        queueWriter.read(agentId).find((item) => item.id === id)?.attachments ?? [];
       const removed = await client.removeQueuedAgentMessage(agentId, id);
       if (!removed) {
         return null;
       }
-      const attachments = attachmentSidecar.current.get(id) ?? [];
-      attachmentSidecar.current.delete(id);
+      setQueuedMessages(serverId, (previous) => {
+        const next = new Map(previous);
+        const current = (next.get(agentId) ?? []).filter((item) => item.id !== id);
+        if (current.length === 0) {
+          next.delete(agentId);
+        } else {
+          next.set(agentId, current);
+        }
+        return next;
+      });
       return { id: removed.id, text: removed.text, attachments };
     },
-    [agentId, client, daemonOwnsQueue, queueWriter, settleEnqueues],
+    [agentId, client, daemonOwnsQueue, queueWriter, serverId, setQueuedMessages, settleEnqueues],
   );
 
   /**
@@ -254,7 +325,7 @@ export function useComposerQueue(input: {
     }
     const entries =
       useSessionStore.getState().sessions[serverId]?.agents?.get(agentId)?.queuedMessages ?? [];
-    return projectDaemonQueueItems(entries, attachmentSidecar.current).filter(isSendableAsUserTurn);
+    return projectDaemonQueueItems(entries, queueWriter.read(agentId)).filter(isSendableAsUserTurn);
   }, [agentId, daemonOwnsQueue, queueWriter, serverId, settleEnqueues]);
 
   // A daemon that owns the queue but predates agent.queue.reorder has no way to
