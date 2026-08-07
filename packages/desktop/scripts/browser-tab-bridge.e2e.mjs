@@ -337,9 +337,11 @@ async function runRegression({ page, client, serverId, targetUrl }) {
     "browser_list_tabs lost the original tab after guest replacement",
   );
 
-  const snapshot = await callBrowserTool(client, "browser_snapshot", { browserId });
-  const ref = snapshot.snapshot.match(/button "Bridge target" \[ref=(@e\d+)\]/)?.[1];
-  assert(ref, `browser_snapshot did not expose the target button: ${snapshot.snapshot}`);
+  const snapshotResponse = await client.callTool({ name: "browser_snapshot", args: { browserId } });
+  mcpPayload(snapshotResponse, "browser_snapshot");
+  const snapshotText = snapshotResponse.content?.[0]?.text;
+  const ref = snapshotText?.match(/button "Bridge target" \[ref=(@e\d+)\]/)?.[1];
+  assert(ref, `browser_snapshot did not expose the target button: ${snapshotText}`);
 
   const clicked = await callBrowserTool(client, "browser_click", { browserId, ref });
   assert(
