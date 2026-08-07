@@ -352,10 +352,10 @@ const CATALOG_DATA = [
     id: "qwen-code",
     title: "Qwen Code",
     description: "Alibaba's Qwen coding assistant",
-    version: "0.21.6",
+    version: "0.21.7",
     iconId: "qwen-code",
     installLink: "https://qwenlm.github.io/qwen-code-docs/en/users/overview",
-    command: ["npx", "-y", "@qwen-code/qwen-code@0.21.6", "--acp", "--experimental-skills"],
+    command: ["npx", "-y", "@qwen-code/qwen-code@0.21.7", "--acp", "--experimental-skills"],
   },
   {
     id: "sigit",

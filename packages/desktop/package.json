@@ -40,7 +40,7 @@
     "electron-builder": "26.8.1",
     "typescript": "5.9.3",
     "unzip-crx-3": "^0.2.0",
-    "vitest": "^4.1.6",
+    "vitest": "^4.1.10",
     "wait-on": "8.0.5"
   },
   "desktopName": "otto-code-desktop.desktop"
