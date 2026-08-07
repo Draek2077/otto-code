@@ -491,7 +491,9 @@ describe.skipIf(isPlatform("win32"))("worktree-bootstrap POSIX-only", () => {
       const webPort = Number(apiEnv.OTTO_SERVICE_WEB_PORT);
       expect(Number.isInteger(apiPort)).toBe(true);
       expect(Number.isInteger(webPort)).toBe(true);
-      expect(routeStore.listRoutes()).toEqual([
+      expect(
+        [...routeStore.listRoutes()].sort((a, b) => a.scriptName.localeCompare(b.scriptName)),
+      ).toEqual([
         {
           hostname: "api--feature-peer-env--repo.localhost",
           port: apiPort,
