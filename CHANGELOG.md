@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.8.5 - 2026-08-07
+
+### Added
+
+- Show token pricing and estimated costs for Codex and OpenCode usage across agent accounting,
+  statistics, diffs, and visualizer events
+
+### Fixed
+
+- Preserve queued image attachments while a queue request is in flight, and restore them when
+  editing or sending queued messages
+- Keep queued attachment state rooted until the daemon removes the corresponding queue entry
+- Preserve downloaded desktop updates across automatic rechecks
+
 ## 0.8.4 - 2026-08-06
 
 ### Added
