@@ -3470,8 +3470,8 @@ export const en = {
         description: "Control and script agents from your terminal",
       },
       skills: {
-        title: "Orchestration skills",
-        description: "Teach your agents to orchestrate through the CLI",
+        title: "Otto skills",
+        description: "Teach your agents to orchestrate agents and learn project knowledge",
         updateAvailable: "Update available",
         updateTitle: "Update Otto skills?",
         updateFallback: "Sync bundled skills to your machine.",
