@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { Text } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { Mic, MicOff, MicVocal } from "@/components/icons/material-icons";
+import { VoiceSelection, VoiceSelectionOff } from "@/components/icons/material-icons";
 import { headerIconSlotStyle } from "@/components/headers/header-toggle-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAppSettings } from "@/hooks/use-settings";
@@ -15,10 +15,13 @@ import {
 import { getWakeWordCapability } from "@/wake-word/wake-word-capability";
 import { getWakeWordIconKind } from "./wake-word-icon";
 import { getWakeWordLabel } from "./wake-word-label";
+import {
+  shouldShowWakeWordToolbarButton,
+  shouldStartWakeWordListening,
+} from "./wake-word-control-state";
 
-const ThemedMic = withUnistyles(Mic);
-const ThemedMicOff = withUnistyles(MicOff);
-const ThemedMicVocal = withUnistyles(MicVocal);
+const ThemedVoiceSelection = withUnistyles(VoiceSelection);
+const ThemedVoiceSelectionOff = withUnistyles(VoiceSelectionOff);
 function stateColor(state: WakeWordState) {
   return (theme: Theme) => {
     let color = theme.colors.foregroundMuted;
@@ -31,14 +34,15 @@ function stateColor(state: WakeWordState) {
 
 function WakeWordIcon({ state, size }: { state: WakeWordState; size: number }) {
   const icon = getWakeWordIconKind(state);
-  if (icon === "muted") return <ThemedMicOff size={size} uniProps={stateColor(state)} />;
-  if (icon === "recording") return <ThemedMicVocal size={size} uniProps={stateColor(state)} />;
-  return <ThemedMic size={size} uniProps={stateColor(state)} />;
+  if (icon === "muted") {
+    return <ThemedVoiceSelectionOff size={size} uniProps={stateColor(state)} />;
+  }
+  return <ThemedVoiceSelection size={size} uniProps={stateColor(state)} />;
 }
 
-/** The workspace control reports status and opens its configuration.
- * Pressing it is the privacy control itself: it immediately disables Hey Otto
- * and lets the listening controller tear down through the settings lifecycle. */
+/** Quick listening pause for Hey Otto. The Settings switch owns whether the
+ * feature exists at all; this button only stops or resumes the detector while
+ * leaving the feature configured and the button available. */
 export function WorkspaceWakeWordButton() {
   const { settings, updateSettings } = useAppSettings();
   const isCompact = useIsCompactFormFactor();
@@ -48,24 +52,28 @@ export function WorkspaceWakeWordButton() {
     getWakeWordStatus,
   );
   const size = useIconSize(1.5).md;
-  const enabled = settings.wakeWordEnabled;
+  const featureEnabled = settings.wakeWordEnabled;
+  const listeningPaused = settings.wakeWordListeningPaused;
   const supported = getWakeWordCapability().available;
-  const label = getWakeWordLabel(detectorState);
+  const listeningEnabled = shouldStartWakeWordListening({ featureEnabled, listeningPaused });
+  const visible = shouldShowWakeWordToolbarButton({ featureEnabled, supported });
+  const displayedState = listeningPaused ? "disabled" : detectorState;
+  const label = getWakeWordLabel(displayedState);
   const onPress = useCallback(() => {
-    void updateSettings({ wakeWordEnabled: !enabled });
-  }, [enabled, updateSettings]);
+    void updateSettings({ wakeWordListeningPaused: !listeningPaused });
+  }, [listeningPaused, updateSettings]);
   const triggerStyle = useMemo(
     () =>
       ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
         isCompact && headerIconSlotStyle.compactSlot,
         !isCompact && headerIconSlotStyle.slot,
-        enabled && headerIconSlotStyle.slotActive,
+        listeningEnabled && headerIconSlotStyle.slotActive,
         (Boolean(hovered) || Boolean(pressed)) && headerIconSlotStyle.slotHovered,
       ],
-    [enabled, isCompact],
+    [isCompact, listeningEnabled],
   );
 
-  if (!supported || !enabled) return null;
+  if (!visible) return null;
 
   return (
     <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
@@ -76,7 +84,7 @@ export function WorkspaceWakeWordButton() {
         accessibilityRole="button"
         accessibilityLabel={label}
       >
-        <WakeWordIcon state={detectorState} size={size} />
+        <WakeWordIcon state={displayedState} size={size} />
       </TooltipTrigger>
       <TooltipContent side="bottom" align="center" offset={8}>
         <Text style={styles.tooltipText}>{label}</Text>

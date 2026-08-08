@@ -222,6 +222,8 @@
   "ViewColumn": "view_column",
   "Visibility": "visibility",
   "VoiceOverOff": "voice_over_off",
+  "VoiceSelection": "voice_selection",
+  "VoiceSelectionOff": "voice_selection_off",
   "Volume2": "volume_up",
   "VolumeX": "volume_off",
   "WandStars": "wand_stars",

@@ -36,6 +36,7 @@ import {
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
 import { useDictation } from "@/hooks/use-dictation";
 import { useWakeWordListening } from "@/hooks/use-wake-word-listening";
+import { shouldStartWakeWordListening } from "@/voice/wake-word-control-state";
 import { useAppSettings } from "@/hooks/use-settings";
 import { DictationOverlay } from "@/components/dictation-controls";
 import { RealtimeVoiceOverlay } from "@/components/realtime-voice-overlay";
@@ -65,7 +66,7 @@ import { useDismissKeyboardOnOpen } from "@/components/ui/keyboard-dismiss";
 import { useWebElementScrollbar } from "@/components/use-web-scrollbar";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useIosHardwareKeyboardSubmit } from "@/hooks/use-ios-hardware-keyboard-submit";
-import { formatShortcut, type ShortcutKey } from "@/utils/format-shortcut";
+import { formatShortcut } from "@/utils/format-shortcut";
 import { mergeRefs } from "@/utils/merge-refs";
 import { useTutorialAnchor } from "@/tutorial/use-tutorial-anchor";
 import { getShortcutOs } from "@/utils/shortcut-platform";
@@ -86,8 +87,6 @@ import { computeCanStartDictation, runAlternateSendAction, runDefaultSendAction 
 import { ComposerToolbarWidthContext } from "./toolbar-width-context";
 import { applyDictationTranscript } from "./dictation-delivery";
 import { playDictationStartCue } from "@/voice/dictation-start-cue";
-
-const DEFAULT_SEND_KEYS: ShortcutKey[][] = [["Enter"]];
 
 export interface AttachmentMenuItem {
   id: string;
@@ -471,19 +470,8 @@ function VoiceTooltipBody({
   );
 }
 
-function SendTooltipBody({
-  label,
-  sendKeys,
-}: {
-  label: string;
-  sendKeys: ShortcutChord | null | undefined;
-}) {
-  return (
-    <View style={styles.tooltipRow}>
-      <Text style={styles.tooltipText}>{label}</Text>
-      {sendKeys ? <Shortcut chord={sendKeys} /> : null}
-    </View>
-  );
+function SendTooltipBody({ label }: { label: string }) {
+  return <Text style={styles.tooltipText}>{label}</Text>;
 }
 
 function SendButtonContent({
@@ -853,7 +841,6 @@ function SendButtonTooltip({
   submitIcon,
   submitButtonTestID,
   buttonIconSize,
-  sendKeys,
   sendTooltipLabel,
 }: {
   shouldShow: boolean;
@@ -867,7 +854,6 @@ function SendButtonTooltip({
   submitIcon: "arrow" | "return";
   submitButtonTestID: string | undefined;
   buttonIconSize: number;
-  sendKeys: ShortcutChord | null | undefined;
   sendTooltipLabel: string;
 }) {
   if (!shouldShow) return null;
@@ -888,7 +874,7 @@ function SendButtonTooltip({
         />
       </TooltipTrigger>
       <TooltipContent side="top" align="center" offset={8}>
-        <SendTooltipBody label={sendTooltipLabel} sendKeys={sendKeys} />
+        <SendTooltipBody label={sendTooltipLabel} />
       </TooltipContent>
     </Tooltip>
   );
@@ -1188,6 +1174,24 @@ interface SendButtonStateOutput {
   canPressLoadingButton: boolean;
   isSendButtonDisabled: boolean;
   defaultActionQueues: boolean;
+}
+
+function resolveActionSubmitIcon(input: {
+  canPressLoadingButton: boolean;
+  defaultActionQueues: boolean;
+  isAgentRunning: boolean;
+  submitIcon: "arrow" | "return";
+}): "arrow" | "return" {
+  if (input.canPressLoadingButton) {
+    return "arrow";
+  }
+  if (input.defaultActionQueues) {
+    return "return";
+  }
+  if (input.isAgentRunning) {
+    return "arrow";
+  }
+  return input.submitIcon;
 }
 
 function computeSendButtonState(input: SendButtonStateInput): SendButtonStateOutput {
@@ -1529,7 +1533,10 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
     useWakeWordListening({
       settings: {
-        enabled: appSettings.wakeWordEnabled,
+        enabled: shouldStartWakeWordListening({
+          featureEnabled: appSettings.wakeWordEnabled,
+          listeningPaused: appSettings.wakeWordListeningPaused,
+        }),
         phrase: appSettings.wakeWordPhrase,
         sensitivity: appSettings.wakeWordSensitivity,
         silenceTimeoutMs: appSettings.wakeWordSilenceTimeoutMs,
@@ -1867,6 +1874,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       defaultActionQueues,
       t,
     });
+    const actionSubmitIcon = resolveActionSubmitIcon({
+      canPressLoadingButton,
+      defaultActionQueues,
+      isAgentRunning,
+      submitIcon,
+    });
 
     const handleInputChange = useCallback(
       (nextValue: string) => {
@@ -2068,10 +2081,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                     submitAccessibilityLabel={submitAccessibilityLabel}
                     sendButtonCombinedStyle={sendButtonCombinedStyle}
                     isSubmitLoading={isSubmitLoading}
-                    submitIcon={submitIcon}
+                    submitIcon={actionSubmitIcon}
                     submitButtonTestID={submitButtonTestID}
                     buttonIconSize={buttonIconSize}
-                    sendKeys={DEFAULT_SEND_KEYS}
                     sendTooltipLabel={sendTooltipLabel}
                   />
                 </View>
@@ -2208,6 +2220,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
     width: compactUp(28),
     height: compactUp(28),
     borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.surface2,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -2231,6 +2244,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
     width: compactUp(28),
     height: compactUp(28),
     borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.surface2,
     alignItems: "center",
     justifyContent: "center",
   },

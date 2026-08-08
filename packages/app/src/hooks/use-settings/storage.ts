@@ -221,8 +221,14 @@ export interface AppSettings {
   // the feature configured and the header button present; disabling removes the
   // button entirely, because there is nothing left to mute. Device-local.
   agentVoiceCuesMuted: boolean;
-  // Device-local and opt-in. Omission must never open the microphone.
+  // Feature-level gate for Hey Otto. Device-local and opt-in. Omission must
+  // never load the detector or open the microphone.
   wakeWordEnabled: boolean;
+  // Temporary listening pause controlled by the workspace toolbar. This is
+  // deliberately independent of `wakeWordEnabled`: pausing keeps the feature
+  // configured and its toolbar button visible, while disabling the feature in
+  // Settings removes the button and prevents detector startup. Device-local.
+  wakeWordListeningPaused: boolean;
   wakeWordPhrase: string;
   wakeWordSensitivity: number;
   wakeWordSilenceTimeoutMs: number;
@@ -574,6 +580,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   agentVoiceCuesVolume: 50,
   agentVoiceCuesMuted: false,
   wakeWordEnabled: false,
+  wakeWordListeningPaused: false,
   wakeWordPhrase: "Hey Otto",
   wakeWordSensitivity: 0.7,
   wakeWordSilenceTimeoutMs: 1100,
@@ -955,6 +962,9 @@ function pickAgentVoiceCueSettings(stored: Partial<AppSettings>): Partial<AppSet
     result.agentVoiceCuesMuted = stored.agentVoiceCuesMuted;
   }
   if (typeof stored.wakeWordEnabled === "boolean") result.wakeWordEnabled = stored.wakeWordEnabled;
+  if (typeof stored.wakeWordListeningPaused === "boolean") {
+    result.wakeWordListeningPaused = stored.wakeWordListeningPaused;
+  }
   if (typeof stored.wakeWordPhrase === "string" && stored.wakeWordPhrase.trim())
     result.wakeWordPhrase = stored.wakeWordPhrase.trim();
   if (typeof stored.wakeWordSensitivity === "number" && Number.isFinite(stored.wakeWordSensitivity))

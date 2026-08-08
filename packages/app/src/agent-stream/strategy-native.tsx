@@ -39,22 +39,11 @@ const DEFAULT_MAINTAIN_VISIBLE_CONTENT_POSITION = Object.freeze({
   autoscrollToTopThreshold: 0,
 });
 const HISTORY_START_THRESHOLD_PX = 96;
-// FlatList normally keeps an inverted list at offset zero as the live header
-// grows, so issuing scrollToOffset for every small stream flush only interrupts
-// touch and momentum handling. A large batch is different: Android can finish
-// laying it out after that native preservation window, leaving the visual
-// viewport behind even though the last reported offset was still zero. Once
-// enough uncommanded growth has accumulated, make the next sticky attempt a
-// real native scroll rather than trusting the stale zero offset. Keep this to
-// roughly three transcript lines: Android can animate its preservation more
-// slowly than stream updates arrive, and a wider allowance visibly falls
-// behind before it is corrected.
-// The indicator remains strict: it describes whether the reader is actually
-// at the end. The larger snap zone is only an action threshold while follow
-// mode owns the viewport, never a claim that the view has already reached it.
 const NATIVE_BOTTOM_INDICATOR_THRESHOLD_PX = 8;
-const NATIVE_BOTTOM_SNAP_THRESHOLD_PX = 64;
-const NATIVE_BOTTOM_ANCHOR_RECHECK_GROWTH_PX = NATIVE_BOTTOM_SNAP_THRESHOLD_PX;
+// A reader should have to move about a dozen transcript lines before taking
+// ownership from follow mode. Short flicks are treated as an accidental gap
+// and return to the newest edge when the native scroll sequence finishes.
+const NATIVE_BOTTOM_SNAP_THRESHOLD_PX = 288;
 
 function keyExtractor(item: { id: string }): string {
   return item.id;
@@ -173,8 +162,11 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     contentMeasuredForKey: null as string | null,
   });
   const scrollOffsetYRef = useRef(0);
-  const uncommandedBottomGrowthRef = useRef(0);
   const programmaticScrollEventBudgetRef = useRef(0);
+  const isAnimatedProgrammaticScrollActiveRef = useRef(false);
+  const isNativeUserScrollActiveRef = useRef(false);
+  const isNativeMomentumScrollActiveRef = useRef(false);
+  const pendingNativeUserScrollEndFrameRef = useRef<number | null>(null);
   const [isNativeViewportSettling, setIsNativeViewportSettling] = useState(false);
   const nativeViewportSettlingFrameIdRef = useRef<number | null>(null);
   const historyStartReadyRef = useRef(false);
@@ -248,19 +240,18 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
       if (!isPaneVisibleRef.current) {
         return;
       }
-      // While pinned at offset 0 the inverted FlatList keeps growing content
-      // anchored natively, so the sticky re-stick issued on every stream flush
-      // (~48ms) doesn't need a scroll command. Re-issuing scrollToOffset here
-      // aborts in-flight touch/momentum handling and restarts scroll state on
-      // every flush, which shows up as jitter and flashing while streaming.
-      if (
-        !animated &&
-        scrollOffsetYRef.current <= 1 &&
-        uncommandedBottomGrowthRef.current < NATIVE_BOTTOM_ANCHOR_RECHECK_GROWTH_PX
-      ) {
+      if (!animated && isAnimatedProgrammaticScrollActiveRef.current) {
+        return;
+      }
+      // At offset zero an inverted list already represents the newest edge.
+      // Reissuing this command for every stream flush interrupts native touch
+      // and momentum handling. Following mode disables native visible-content
+      // preservation below, so no later layout correction can move this edge.
+      if (!animated && scrollOffsetYRef.current <= 1) {
         onNearBottomChange(true);
         return;
       }
+      isAnimatedProgrammaticScrollActiveRef.current = animated;
       programmaticScrollEventBudgetRef.current = 3;
       flatListRef.current?.scrollToOffset({
         offset: 0,
@@ -272,7 +263,6 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
         ...streamViewportMetricsRef.current,
         offsetY: 0,
       };
-      uncommandedBottomGrowthRef.current = 0;
       onNearBottomChange(true);
     },
     [onNearBottomChange],
@@ -299,6 +289,76 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
   });
   const bottomAnchorControllerRef = useRef(bottomAnchorController);
   bottomAnchorControllerRef.current = bottomAnchorController;
+
+  const finishNativeUserScroll = useStableEvent(() => {
+    if (!isNativeUserScrollActiveRef.current) {
+      return;
+    }
+    if (pendingNativeUserScrollEndFrameRef.current !== null) {
+      cancelAnimationFrame(pendingNativeUserScrollEndFrameRef.current);
+      pendingNativeUserScrollEndFrameRef.current = null;
+    }
+    isNativeUserScrollActiveRef.current = false;
+    isNativeMomentumScrollActiveRef.current = false;
+    const metrics = streamViewportMetricsRef.current;
+    const isNearBottom = isNearBottomForStreamRenderStrategy({
+      strategy,
+      offsetY: metrics.offsetY,
+      threshold: NATIVE_BOTTOM_SNAP_THRESHOLD_PX,
+      contentHeight: metrics.contentHeight,
+      viewportHeight: metrics.viewportHeight,
+    });
+    bottomAnchorControllerRef.current.endUserScroll({ isNearBottom });
+    if (isNearBottom && metrics.offsetY > NATIVE_BOTTOM_INDICATOR_THRESHOLD_PX) {
+      scrollToBottom(false);
+    }
+  });
+
+  const handleScrollBeginDrag = useStableEvent(() => {
+    if (pendingNativeUserScrollEndFrameRef.current !== null) {
+      cancelAnimationFrame(pendingNativeUserScrollEndFrameRef.current);
+      pendingNativeUserScrollEndFrameRef.current = null;
+    }
+    isNativeUserScrollActiveRef.current = true;
+    isNativeMomentumScrollActiveRef.current = false;
+    isAnimatedProgrammaticScrollActiveRef.current = false;
+    programmaticScrollEventBudgetRef.current = 0;
+    bottomAnchorControllerRef.current.beginUserScroll();
+  });
+
+  const handleScrollEndDrag = useStableEvent(() => {
+    if (!isNativeUserScrollActiveRef.current) {
+      return;
+    }
+    pendingNativeUserScrollEndFrameRef.current = requestAnimationFrame(() => {
+      pendingNativeUserScrollEndFrameRef.current = null;
+      if (!isNativeMomentumScrollActiveRef.current) {
+        finishNativeUserScroll();
+      }
+    });
+  });
+
+  const handleMomentumScrollBegin = useStableEvent(() => {
+    if (!isNativeUserScrollActiveRef.current) {
+      return;
+    }
+    isNativeMomentumScrollActiveRef.current = true;
+    if (pendingNativeUserScrollEndFrameRef.current !== null) {
+      cancelAnimationFrame(pendingNativeUserScrollEndFrameRef.current);
+      pendingNativeUserScrollEndFrameRef.current = null;
+    }
+  });
+
+  const handleMomentumScrollEnd = useStableEvent(() => {
+    if (isAnimatedProgrammaticScrollActiveRef.current) {
+      isAnimatedProgrammaticScrollActiveRef.current = false;
+      bottomAnchorControllerRef.current.reevaluate(false);
+      return;
+    }
+    if (isNativeUserScrollActiveRef.current) {
+      finishNativeUserScroll();
+    }
+  });
 
   useLayoutEffect(() => {
     const wasPaneVisible = wasPaneVisibleRef.current;
@@ -338,7 +398,13 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
       contentMeasuredForKey: null,
     };
     scrollOffsetYRef.current = 0;
-    uncommandedBottomGrowthRef.current = 0;
+    isAnimatedProgrammaticScrollActiveRef.current = false;
+    isNativeUserScrollActiveRef.current = false;
+    isNativeMomentumScrollActiveRef.current = false;
+    if (pendingNativeUserScrollEndFrameRef.current !== null) {
+      cancelAnimationFrame(pendingNativeUserScrollEndFrameRef.current);
+      pendingNativeUserScrollEndFrameRef.current = null;
+    }
     clearNativeViewportSettling();
     setIsNativeViewportSettling(false);
     historyStartReadyRef.current = false;
@@ -347,6 +413,10 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     });
     return () => {
       cancelAnimationFrame(frame);
+      if (pendingNativeUserScrollEndFrameRef.current !== null) {
+        cancelAnimationFrame(pendingNativeUserScrollEndFrameRef.current);
+        pendingNativeUserScrollEndFrameRef.current = null;
+      }
     };
   }, [agentId, clearNativeViewportSettling]);
 
@@ -429,6 +499,10 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
       contentHeight: streamViewportMetricsRef.current.contentHeight,
       viewportHeight: streamViewportMetricsRef.current.viewportHeight,
     });
+    const isAnimatedProgrammaticScroll = isAnimatedProgrammaticScrollActiveRef.current;
+    if (isAnimatedProgrammaticScroll && atBottomForIndicator) {
+      isAnimatedProgrammaticScrollActiveRef.current = false;
+    }
     onNearBottomChange(atBottomForIndicator);
 
     const distanceFromOldestEdge =
@@ -443,7 +517,15 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
       onNearHistoryStart();
     }
 
-    if (programmaticScrollEventBudgetRef.current > 0 && contentOffset.y <= 8) {
+    if (isAnimatedProgrammaticScroll) {
+      if (atBottomForIndicator) {
+        programmaticScrollEventBudgetRef.current = 0;
+        bottomAnchorController.handleScrollNearBottomChange({
+          nextIsNearBottom: true,
+          scrollDelta: 0,
+        });
+      }
+    } else if (programmaticScrollEventBudgetRef.current > 0 && contentOffset.y <= 8) {
       programmaticScrollEventBudgetRef.current -= 1;
     } else {
       programmaticScrollEventBudgetRef.current = 0;
@@ -460,6 +542,8 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     if (
       withinBottomSnapZone &&
       !atBottomForIndicator &&
+      !isAnimatedProgrammaticScroll &&
+      !isNativeUserScrollActiveRef.current &&
       bottomAnchorControllerRef.current.mode === "sticky-bottom"
     ) {
       scrollToBottom(false);
@@ -499,13 +583,8 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     if (!isPaneVisibleRef.current) {
       return;
     }
-    const previousContentHeight = streamViewportMetricsRef.current.contentHeight;
     const nextContentHeight = Math.max(0, height);
-    if (scrollOffsetYRef.current <= 1 && nextContentHeight > previousContentHeight) {
-      uncommandedBottomGrowthRef.current += nextContentHeight - previousContentHeight;
-    } else if (nextContentHeight < previousContentHeight) {
-      uncommandedBottomGrowthRef.current = 0;
-    }
+    const previousContentHeight = streamViewportMetricsRef.current.contentHeight;
     streamViewportMetricsRef.current = {
       ...streamViewportMetricsRef.current,
       containerKey: "native-virtualized",
@@ -588,9 +667,21 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
         style={listStyle}
         onLayout={handleListLayout}
         onScroll={handleScroll}
+        onScrollBeginDrag={handleScrollBeginDrag}
+        onScrollEndDrag={handleScrollEndDrag}
+        onMomentumScrollBegin={handleMomentumScrollBegin}
+        onMomentumScrollEnd={handleMomentumScrollEnd}
         scrollEventThrottle={16}
         onContentSizeChange={handleContentSizeChange}
-        maintainVisibleContentPosition={DEFAULT_MAINTAIN_VISIBLE_CONTENT_POSITION}
+        // React Native applies maintainVisibleContentPosition after Android's
+        // layout pass. That is correct while a detached reader owns a visible
+        // row, but while following it can overwrite offset 0 after a large live
+        // header mutation. At the newest edge, offset 0 is the anchor.
+        maintainVisibleContentPosition={
+          bottomAnchorController.mode === "detached"
+            ? DEFAULT_MAINTAIN_VISIBLE_CONTENT_POSITION
+            : undefined
+        }
         // Sized for a phone, where every mounted cell is a markdown bubble that
         // has to re-render whenever the list does. windowSize 21 kept ten
         // viewports of chat alive above and below the screen; 7 keeps one on
@@ -612,9 +703,14 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     ),
     [
       baseListContentContainerStyle,
+      bottomAnchorController.mode,
       handleContentSizeChange,
       handleListLayout,
+      handleMomentumScrollBegin,
+      handleMomentumScrollEnd,
       handleScroll,
+      handleScrollBeginDrag,
+      handleScrollEndDrag,
       historyFooterContent,
       historyRows,
       listStyle,

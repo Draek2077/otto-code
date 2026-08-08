@@ -33,6 +33,18 @@ describe("collectAppSettingsUpdates", () => {
     ).toEqual({ autoExpandReasoning: true, toolCallDetailLevel: "overview" });
   });
 
+  it("routes the Hey Otto feature gate and listening pause independently", () => {
+    expect(
+      collectAppSettingsUpdates({
+        wakeWordEnabled: true,
+        wakeWordListeningPaused: true,
+      }),
+    ).toEqual({
+      wakeWordEnabled: true,
+      wakeWordListeningPaused: true,
+    });
+  });
+
   it("drops fields the app store does not own", () => {
     // Desktop-owned; the caller handles it separately.
     expect(collectAppSettingsUpdates({ releaseChannel: "beta" })).toEqual({});

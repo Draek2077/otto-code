@@ -111,10 +111,10 @@ export function AgentVoiceCuesRow({ serverId }: { serverId: string }) {
       ) : null}
       <View style={ROW_WITH_BORDER} testID="wake-word-settings">
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>Hey Otto wake-word listening</Text>
+          <Text style={settingsStyles.rowTitle}>Hey Otto</Text>
           <Text style={settingsStyles.rowHint}>
             {wakeWordSupported
-              ? "Off by default. A local/native detector listens for the phrase; idle audio is never sent to Otto, the daemon, or any provider. Enabling this may keep the microphone active and requires system permission."
+              ? "Off by default. When enabled, a local/native detector listens for the phrase; idle audio is never sent to Otto, the daemon, or any provider. When disabled, the detector is not started and the microphone is not opened. Use the workspace microphone button to pause listening without disabling Hey Otto."
               : (wakeWordCapability.reason ??
                 "Unavailable in this build. Hey Otto requires a bundled native on-device keyword model.")}
           </Text>
@@ -122,7 +122,7 @@ export function AgentVoiceCuesRow({ serverId }: { serverId: string }) {
         <Switch
           value={wakeWordSupported && settings.wakeWordEnabled}
           onValueChange={onWakeWordEnabled}
-          accessibilityLabel="Hey Otto wake-word listening"
+          accessibilityLabel="Enable Hey Otto"
           testID="wake-word-enabled-switch"
           disabled={!wakeWordSupported}
         />

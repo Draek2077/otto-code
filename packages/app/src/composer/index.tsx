@@ -2622,6 +2622,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
     width: compactUp(28),
     height: compactUp(28),
     borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.surface2,
     alignItems: "center",
     justifyContent: "center",
   },

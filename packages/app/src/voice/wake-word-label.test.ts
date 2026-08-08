@@ -15,7 +15,7 @@ describe("getWakeWordLabel", () => {
 });
 
 describe("getWakeWordIconKind", () => {
-  it("uses a slashed microphone for errors so they cannot look like recording", () => {
+  it("uses the off voice-selection icon for errors so they cannot look like recording", () => {
     expect(getWakeWordIconKind("error")).toBe("muted");
     expect(getWakeWordIconKind("recording")).toBe("recording");
   });

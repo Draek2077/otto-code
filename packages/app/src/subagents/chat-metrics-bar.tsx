@@ -222,6 +222,8 @@ const styles = StyleSheet.create((theme) => ({
   row: {
     flexDirection: "row",
     alignItems: "center",
+    alignContent: "center",
+    alignSelf: "center",
     // Wraps rather than truncating: on a phone the metrics reflow onto a second
     // line instead of silently dropping the ones that matter most.
     flexWrap: "wrap",
@@ -231,6 +233,7 @@ const styles = StyleSheet.create((theme) => ({
   metric: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: theme.spacing[1],
   },
   icon: {

@@ -257,6 +257,19 @@ describe("bottom anchor controller driver", () => {
     expect(harness.scrollToBottom).not.toHaveBeenCalled();
   });
 
+  it("detaches only when a completed user scroll ends away from the bottom", () => {
+    const harness = createDriverHarness({ isNearBottom: false });
+
+    harness.driver.beginUserScroll();
+    harness.driver.handleScrollNearBottomChange({ nextIsNearBottom: false, scrollDelta: 96 });
+
+    expect(harness.driver.getSnapshot().mode).toBe("sticky-bottom");
+
+    harness.driver.endUserScroll({ isNearBottom: false });
+
+    expect(harness.driver.getSnapshot().mode).toBe("detached");
+  });
+
   it("switches back to sticky-bottom for explicit jump-to-bottom", () => {
     const harness = createDriverHarness({
       isNearBottom: false,

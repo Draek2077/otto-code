@@ -1123,6 +1123,22 @@ describe("agent voice cues", () => {
     expect(settings.agentVoiceCues).toBe(true);
   });
 
+  it("keeps the Hey Otto listening pause independent of the feature switch", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({
+          wakeWordEnabled: true,
+          wakeWordListeningPaused: true,
+        }),
+      }),
+    });
+
+    const settings = await loadAppSettingsFromStorage(deps);
+
+    expect(settings.wakeWordEnabled).toBe(true);
+    expect(settings.wakeWordListeningPaused).toBe(true);
+  });
+
   it("clamps a persisted agentVoiceCuesVolume into 0..100", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({

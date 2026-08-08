@@ -99,6 +99,7 @@ import {
   WorkspaceVoiceCuesMenuItem,
 } from "@/voice/workspace-voice-cues-button";
 import { WorkspaceWakeWordButton } from "@/voice/workspace-wake-word-button";
+import { shouldShowWakeWordToolbarButton } from "@/voice/wake-word-control-state";
 import { getWakeWordCapability } from "@/wake-word/wake-word-capability";
 import { openContextManagementTab } from "@/context-management/open-context-management-tab";
 import { useCloseDisabledFeatureTabs } from "@/features/use-close-disabled-feature-tabs";
@@ -1100,7 +1101,10 @@ function useEnabledAfterInteractions(enabled: boolean): boolean {
 }
 
 function isWorkspaceMicrophoneAvailable(enabled: boolean): boolean {
-  return enabled && getWakeWordCapability().available;
+  return shouldShowWakeWordToolbarButton({
+    featureEnabled: enabled,
+    supported: getWakeWordCapability().available,
+  });
 }
 
 function useCloseTabs(): UseCloseTabsResult {

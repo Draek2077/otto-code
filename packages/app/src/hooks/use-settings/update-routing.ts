@@ -34,6 +34,7 @@ const APP_SETTINGS_UPDATE_KEYS = [
   "mountedWorkspaceLimit",
   "toolCallDetailLevel",
   "wakeWordEnabled",
+  "wakeWordListeningPaused",
   "wakeWordPhrase",
   "wakeWordSensitivity",
   "wakeWordSilenceTimeoutMs",
