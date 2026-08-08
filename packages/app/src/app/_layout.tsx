@@ -44,6 +44,8 @@ import { ProviderSettingsHost } from "@/components/provider-settings-host";
 import { RootErrorBoundary } from "@/components/root-error-boundary";
 import { WorkspaceSetupDialog } from "@/components/workspace-setup-dialog";
 import { WorkspaceShortcutTargetsSubscriber } from "@/components/workspace-shortcut-targets-subscriber";
+import { ClientResourceBar } from "@/components/client-resource-bar";
+import { resolveClientResourceBarPlacement } from "@/components/client-resource-bar-placement";
 import { FloatingPanelPortalHost } from "@/components/ui/floating-panel-portal";
 import { HostChooserModal, useHostChooser } from "@/hosts/host-chooser";
 import { getIsElectronRuntime, useIsCompactFormFactor } from "@/constants/layout";
@@ -54,6 +56,7 @@ import { SidebarCalloutProvider } from "@/contexts/sidebar-callout-context";
 import { ToastProvider } from "@/contexts/toast-context";
 import { VoiceProvider } from "@/contexts/voice-context";
 import {
+  initialStartupBlocker,
   resolveStartupBlocker,
   resolveStartupNavigationReady,
   shouldRunStartupGiveUpTimer,
@@ -146,7 +149,7 @@ const HostRuntimeBootstrapContext = createContext<HostRuntimeBootstrapState>({
   retry: () => {},
   hasGivenUpWaitingForHost: false,
   storeReady: false,
-  startupBlocker: { kind: "none" },
+  startupBlocker: initialStartupBlocker(shouldUseDesktopDaemon()),
 });
 
 function PushNotificationRouter() {
@@ -593,7 +596,16 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   // The command-center registry is what draft composers publish their model
   // choices into, so the provider has to sit above every surface that renders a
   // composer - not just above <CommandCenter /> itself.
-  return <CommandCenterProvider>{content}</CommandCenterProvider>;
+  return (
+    <CommandCenterProvider>
+      <View style={layoutStyles.appShell}>
+        {content}
+        {resolveClientResourceBarPlacement(settings.clientResourceBarAllPages) === "app-shell" ? (
+          <ClientResourceBar />
+        ) : null}
+      </View>
+    </CommandCenterProvider>
+  );
 }
 
 function SidebarChrome({
@@ -1096,6 +1108,9 @@ export default function RootLayout() {
 }
 
 const layoutStyles = StyleSheet.create((theme) => ({
+  appShell: {
+    flex: 1,
+  },
   surfaceFill: {
     flex: 1,
     backgroundColor: theme.colors.surface0,

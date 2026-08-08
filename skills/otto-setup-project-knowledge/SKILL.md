@@ -1,0 +1,33 @@
+---
+name: otto-setup-project-knowledge
+description: Initialize and verify Otto's repository-owned project knowledge store for a project. Use when a user asks to set up, enable, initialize, or prepare project knowledge before seeding it.
+---
+
+# Set up Otto project knowledge
+
+Prepare the current repository for durable project knowledge. Setup is intentionally empty: it
+creates the storage contract for facts, project charters, and evaluated references but does not
+infer or record their contents.
+
+## Workflow
+
+1. Read `docs/project-knowledge.md` if present. Keep the store under `.otto/` and never create a
+   parallel `BRAIN.md`, `brain/`, database, or hand-maintained knowledge system.
+2. Check the host capability `server_info.features.projectKnowledge`. If it is absent or false,
+   tell the user to update the host and stop. Do not create a fallback store.
+3. Call `bootstrap_project_knowledge` for the current repository. It is safe to run repeatedly and
+   creates `.otto/KNOWLEDGE.md`, `.otto/knowledge/index.md`, the root-page skeleton, and canonical
+   locations for factual pages, projects, and references as records are introduced.
+4. Verify the result by listing or reading the generated files through normal repository tools and
+   by querying project knowledge if the tool is available.
+5. Report exactly what was initialized and recommend `$otto-onboard-project` for evidence-backed
+   seeding. Do not claim that setup discovered architecture or decisions.
+
+## Rules
+
+- Do not populate pages during setup.
+- Do not hand-edit generated Markdown.
+- Do not install hooks, rewrite agent configuration, or add dependencies. Otto's daemon capability
+  and skills already provide the integration boundary.
+- Preserve existing pages and legacy data. Bootstrap may migrate the old JSON source on first read;
+  do not delete it manually.

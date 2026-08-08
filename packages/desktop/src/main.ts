@@ -143,6 +143,7 @@ import { registerCrashDialog, showStartupErrorDialog } from "./crash-dialog.js";
 import { autoUpdateInstalledSkills } from "./integrations/skills/index.js";
 import { registerBrowserAutomationIpc } from "./features/browser-automation/ipc.js";
 import { BrowserKeyboard } from "./features/browser-keyboard/index.js";
+import { registerWakeWordHandlers } from "./features/wake-word.js";
 import {
   getCachedMinimizeOnCloseSetting,
   refreshTrayVisibility,
@@ -1446,6 +1447,7 @@ async function bootstrap(): Promise<void> {
   registerNotificationHandlers();
   registerOpenerHandlers();
   registerEditorTargetHandlers();
+  registerWakeWordHandlers();
   registerBrowserAutomationIpc();
 
   // In-app "Open in new window": opens a window that lands on the given project

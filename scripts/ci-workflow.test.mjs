@@ -101,3 +101,17 @@ test("change gating allows superseded workflow runs to cancel", () => {
     "always() keeps jobs alive after concurrency cancellation; use !cancelled() for fail-open gating",
   );
 });
+
+test("Android native CI compiles and tests the wake-word distribution", () => {
+  const workflow = readFileSync(workflowPath, "utf8");
+  const jobStart = workflow.indexOf("  android-native-tests:\n");
+  const jobEnd = workflow.indexOf("\n  sdk-tests:\n", jobStart);
+  assert.ok(jobStart >= 0 && jobEnd > jobStart, "no android-native-tests job found");
+  const job = workflow.slice(jobStart, jobEnd);
+  assert.match(job, /actions\/setup-java@/);
+  assert.match(job, /gradle\/actions\/setup-gradle@/);
+  assert.match(job, /:otto-code-expo-two-way-audio:testDebugUnitTest/);
+  assert.match(job, /WakeWordHandoffBufferTest/);
+
+  assert.match(workflow, /android_native:\n(?:.|\n)*packages\/expo-two-way-audio\/\*\*/);
+});

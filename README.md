@@ -268,7 +268,7 @@ does; `docs/` documents how it is built.
 [Desktop Linux](docs/desktop-linux.md) ·
 [Docker](docs/docker.md)
 
-**Reference** - [References and sources](docs/references.md) ·
+**Reference** - [Project knowledge](docs/project-knowledge.md) ·
 [OpenCode event baseline](docs/opencode-global-event-baseline.md)
 
 ### Repository documents

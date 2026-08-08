@@ -121,6 +121,13 @@ function buildSeededDesktopSettingsDocument(): string {
   // shouldStartBuiltInDaemon() (packages/app/src/app/_layout.tsx) from ever
   // calling start_desktop_daemon at boot, so this Electron instance never
   // tries to spawn its own daemon alongside the isolated e2e one.
+  //
+  // daemonStopOnQuitDefaultApplied: true is equally load-bearing. Without it,
+  // desktop-settings.ts's stop-on-quit migration fires on load and resets
+  // keepRunningAfterQuit back to the `false` default, so quitting this capture
+  // app shuts a daemon down - and since this lane inherits the runner's env,
+  // the home it resolves is whatever OTTO_HOME says. Seeding the flag keeps the
+  // `true` below meaning what it says.
   return `${JSON.stringify(
     {
       version: 1,
@@ -130,7 +137,10 @@ function buildSeededDesktopSettingsDocument(): string {
         tray: { minimizeOnClose: true, startMinimized: false },
         quit: { warnBeforeQuit: false, onlyWarnForActiveAgents: false },
       },
-      migrations: { legacyRendererSettingsImported: true },
+      migrations: {
+        legacyRendererSettingsImported: true,
+        daemonStopOnQuitDefaultApplied: true,
+      },
     },
     null,
     2,
@@ -167,12 +177,23 @@ export async function launchDesktopElectron(
 
   const devServerUrl = `http://localhost:${input.metroPort}`;
 
+  // The main process resolves its Otto home from OTTO_HOME, and every daemon
+  // path it owns (status probes, version-mismatch restarts, stop-on-quit) acts
+  // on that home. globalSetup only puts the isolated home on the *daemon's*
+  // env, so without this the capture app resolves ~/.otto and manages the
+  // developer's installed daemon on 6868 instead of the e2e one.
+  const ottoHome = process.env.E2E_OTTO_HOME;
+  if (!ottoHome) {
+    throw new Error("E2E_OTTO_HOME is not set (expected from Playwright globalSetup).");
+  }
+
   const app = await electron.launch({
     args: [desktopDir],
     cwd: desktopDir,
     executablePath: electronPath as unknown as string,
     env: {
       ...process.env,
+      OTTO_HOME: ottoHome,
       EXPO_DEV_URL: devServerUrl,
       OTTO_ELECTRON_USER_DATA_DIR: userDataDir,
       // Otherwise a second launch racing an already-running dev/prod Electron

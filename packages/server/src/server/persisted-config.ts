@@ -405,6 +405,14 @@ export const PersistedConfigSchema = z
           .passthrough()
           .optional(),
         enableTerminalAgentHooks: z.boolean().optional(),
+        // Terminal tab title preferences. Both fields are optional so existing
+        // configs retain the current automatic-title behavior.
+        terminalTitleMode: z.enum(["auto", "default"]).optional(),
+        terminalTitleIncludePaths: z.boolean().optional(),
+        // Windows-only preference for ordinary interactive terminals.
+        defaultTerminalShell: z
+          .enum(["command-prompt", "windows-powershell", "powershell-7"])
+          .optional(),
         appendSystemPrompt: z.string().optional(),
         terminalProfiles: z.array(TerminalProfileSchema).optional(),
         cors: z

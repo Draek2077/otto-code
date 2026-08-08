@@ -129,6 +129,15 @@ import type {
   PersonalityMemoryUpdateResponseMessage,
   PersonalityMemoryTransferResponseMessage,
   PersonalityMemoryStatsResponseMessage,
+  ProjectKnowledgeListResponseMessage,
+  ProjectKnowledgeGetResponseMessage,
+  ProjectKnowledgeCreateResponseMessage,
+  ProjectKnowledgeApplyResponseMessage,
+  ProjectKnowledgeStatusResponseMessage,
+  ProjectKnowledgeProjectApplyResponseMessage,
+  ProjectKnowledgeReferenceApplyResponseMessage,
+  ProjectKnowledgeRootApplyResponseMessage,
+  ProjectKnowledgeDeleteResponseMessage,
   ProjectAddResponse,
   ProjectScaffoldGit,
   ProjectScaffoldProgress,
@@ -1207,6 +1216,7 @@ export interface RenameBranchInput {
 export interface RenameTerminalInput {
   terminalId: string;
   title: string;
+  clear?: boolean;
   requestId?: string;
 }
 type OpenProjectPayload = OpenProjectResponseMessage["payload"];
@@ -6336,6 +6346,152 @@ export class DaemonClient {
     });
   }
 
+  async listProjectKnowledge(
+    workspaceId: string,
+    requestId?: string,
+  ): Promise<ProjectKnowledgeListResponseMessage["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "project.knowledge.list.request", workspaceId },
+    });
+  }
+  async getProjectKnowledge(
+    input: { workspaceId: string; id: string },
+    requestId?: string,
+  ): Promise<ProjectKnowledgeGetResponseMessage["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "project.knowledge.get.request", ...input },
+    });
+  }
+  async createProjectKnowledge(
+    input: {
+      workspaceId: string;
+      id?: string;
+      kind: "decision" | "constraint" | "requirement" | "architecture" | "project" | "reference";
+      title: string;
+      statement: string;
+      evidence?: string;
+      tags?: string[];
+      affects?: string[];
+      status?: "proposed" | "confirmed" | "superseded";
+      deliveryStatus?:
+        | "charter"
+        | "in_build"
+        | "partial"
+        | "blocked"
+        | "complete"
+        | "reference"
+        | "deferred"
+        | "cancelled";
+      progress?: { completed: number; total: number; unit: string };
+      referenceDisposition?: "unevaluated" | "read" | "adopted" | "rejected" | "dependency";
+      sourceUrl?: string;
+    },
+    requestId?: string,
+  ): Promise<ProjectKnowledgeCreateResponseMessage["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "project.knowledge.create.request", ...input },
+    });
+  }
+  async applyProjectKnowledge(
+    input: {
+      workspaceId: string;
+      id: string;
+      title?: string;
+      statement?: string;
+      evidence?: string;
+      provenanceText?: string;
+      provenanceSource?: string;
+      provenanceAffects?: string[];
+      expectedUpdatedAt?: string;
+    },
+    requestId?: string,
+  ): Promise<ProjectKnowledgeApplyResponseMessage["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "project.knowledge.apply.request", ...input },
+    });
+  }
+  async setProjectKnowledgeStatus(
+    input: {
+      workspaceId: string;
+      id: string;
+      status: "proposed" | "confirmed" | "superseded";
+      reason?: string;
+    },
+    requestId?: string,
+  ): Promise<ProjectKnowledgeStatusResponseMessage["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "project.knowledge.status.request", ...input },
+    });
+  }
+  async applyProjectKnowledgeProject(
+    input: {
+      workspaceId: string;
+      id: string;
+      deliveryStatus?:
+        | "charter"
+        | "in_build"
+        | "partial"
+        | "blocked"
+        | "complete"
+        | "reference"
+        | "deferred"
+        | "cancelled";
+      progress?: { completed: number; total: number; unit: string } | null;
+      reason: string;
+      expectedUpdatedAt?: string;
+    },
+    requestId?: string,
+  ): Promise<ProjectKnowledgeProjectApplyResponseMessage["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "project.knowledge.project.apply.request", ...input },
+    });
+  }
+  async applyProjectKnowledgeReference(
+    input: {
+      workspaceId: string;
+      id: string;
+      disposition?: "unevaluated" | "read" | "adopted" | "rejected" | "dependency";
+      sourceUrl?: string | null;
+      reason: string;
+      expectedUpdatedAt?: string;
+    },
+    requestId?: string,
+  ): Promise<ProjectKnowledgeReferenceApplyResponseMessage["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "project.knowledge.reference.apply.request", ...input },
+    });
+  }
+  async applyProjectKnowledgeRoot(
+    input: { workspaceId: string; slug: string; body: string },
+    requestId?: string,
+  ): Promise<ProjectKnowledgeRootApplyResponseMessage["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "project.knowledge.root.apply.request", ...input },
+    });
+  }
+  async deleteProjectKnowledge(
+    input: {
+      workspaceId: string;
+      id: string;
+      reason: string;
+      expectedUpdatedAt?: string;
+    },
+    requestId?: string,
+  ): Promise<ProjectKnowledgeDeleteResponseMessage["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "project.knowledge.delete.request", ...input },
+    });
+  }
+
   // ============================================================================
   // Personality memory
   // ============================================================================
@@ -7655,6 +7811,7 @@ export class DaemonClient {
         type: "terminal.rename.request",
         terminalId: input.terminalId,
         title: input.title,
+        ...(input.clear ? { clear: true } : {}),
       },
       responseType: "terminal.rename.response",
     });

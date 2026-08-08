@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ingest Project Knowledge"
+  short_description: "Turn project evidence into reviewable knowledge proposals"
+  default_prompt: "Use $otto-ingest-project-knowledge to capture this conversation, document, or research result as project knowledge proposals."

@@ -585,6 +585,7 @@ export const ptBR: TranslationResources = {
       retry: "Tentar ditado novamente",
       insert: "Inserir transcrição",
       insertAndSend: "Inserir transcrição e enviar",
+      cleanUp: "Limpar transcrição",
       failed: "Falha no ditado: {{error}}",
       failedRetry: "Falha no ditado. Toque para tentar novamente.",
     },

@@ -5,52 +5,37 @@
  * dimensions of the PNGs/video, and the Electron lane's resize target (see
  * e2e/helpers/image.ts's resizePngToTarget).
  */
-export const DESKTOP_CAPTURE_RESOLUTION = { width: 2560, height: 1440 } as const;
-
-/** Fallback UI zoom when DEMO_ZOOM isn't set (the interactive tool sets it). */
-export const DEFAULT_DESKTOP_CAPTURE_SCALE = 2.5;
-
-/**
- * Ceiling for the zoom. Logical width is 2560 ÷ scale, and the app flips to its
- * compact/mobile layout (split panes gone, sidebars overlaid) below the `md`
- * breakpoint of 768px - see src/constants/layout.ts. 2560 ÷ 768 ≈ 3.33, so this
- * is the point past which a desktop capture stops being a desktop layout.
- */
-export const MAX_DESKTOP_CAPTURE_SCALE = 3.3;
-
-function resolveCaptureScale(): number {
-  const raw = process.env.DEMO_ZOOM;
-  if (!raw) return DEFAULT_DESKTOP_CAPTURE_SCALE;
+function resolveCaptureDimension(
+  name: "DEMO_CAPTURE_WIDTH" | "DEMO_CAPTURE_HEIGHT" | "DEMO_LAYOUT_WIDTH" | "DEMO_LAYOUT_HEIGHT",
+  fallback: number,
+): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
   const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_DESKTOP_CAPTURE_SCALE;
-  // Clamp so a hand-set DEMO_ZOOM can't silently collapse the desktop layout.
-  return Math.min(Math.max(parsed, 1), MAX_DESKTOP_CAPTURE_SCALE);
+  return Number.isInteger(parsed) && parsed >= 768 ? parsed : fallback;
 }
 
 /**
- * Effective UI zoom for the desktop lanes, and the device-scale factor they
- * capture at. Chosen at run time via the DEMO_ZOOM env var (the `npm run
- * demo:run` picker sets it); defaults to DEFAULT_DESKTOP_CAPTURE_SCALE.
- *
- * The window lays out at DESKTOP_LAYOUT_VIEWPORT (logical CSS pixels = output ÷
- * this) but every pixel is captured at this multiple, so the app renders bigger
- * while the output still lands at full DESKTOP_CAPTURE_RESOLUTION. Higher =
- * bigger UI, but less content on screen and less logical *height* (2.5 → 576,
- * 3.0 → 480). Do NOT capture at scale 1 with the viewport set to the output
- * resolution - the app then lays out as if on a giant screen, every control
- * tiny. See MAX_DESKTOP_CAPTURE_SCALE for the ceiling.
+ * Physical output size for the desktop capture lanes. The QHD default is the
+ * pipeline contract; an explicitly paired `DEMO_CAPTURE_WIDTH` /
+ * `DEMO_CAPTURE_HEIGHT` is reserved for a one-off deliverable such as the
+ * website hero and never changes other runs.
  */
-export const DESKTOP_CAPTURE_SCALE = resolveCaptureScale();
+export const DESKTOP_CAPTURE_RESOLUTION = {
+  width: resolveCaptureDimension("DEMO_CAPTURE_WIDTH", 2560),
+  height: resolveCaptureDimension("DEMO_CAPTURE_HEIGHT", 1440),
+} as const;
 
 /**
- * Logical (CSS-pixel) viewport for the desktop lanes: the output resolution
- * divided by the capture scale (rounded to whole pixels). At 2.5× this is
- * 1024×576 - the app lays out at that density and captures at
- * DESKTOP_CAPTURE_SCALE to reach DESKTOP_CAPTURE_RESOLUTION. Used as the
- * Playwright browser viewport for the web lane and the real window size (DIP)
- * for the Electron lane.
+ * Logical desktop viewport for every staged desktop capture. 1536×864 is the
+ * usable canvas of a 3840×2160 monitor at 250% Windows display scaling: real
+ * desktop density, three-pane layouts intact, and no tiny-QHD UI.
  */
 export const DESKTOP_LAYOUT_VIEWPORT = {
-  width: Math.round(DESKTOP_CAPTURE_RESOLUTION.width / DESKTOP_CAPTURE_SCALE),
-  height: Math.round(DESKTOP_CAPTURE_RESOLUTION.height / DESKTOP_CAPTURE_SCALE),
+  width: resolveCaptureDimension("DEMO_LAYOUT_WIDTH", 1536),
+  height: resolveCaptureDimension("DEMO_LAYOUT_HEIGHT", 864),
 } as const;
+
+/** Turns the fixed logical canvas into the requested web-capture output. */
+export const DESKTOP_CAPTURE_SCALE =
+  DESKTOP_CAPTURE_RESOLUTION.width / DESKTOP_LAYOUT_VIEWPORT.width;

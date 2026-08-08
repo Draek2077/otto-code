@@ -585,6 +585,7 @@ export const ja: TranslationResources = {
       retry: "音声入力を再試行",
       insert: "文字起こしを挿入",
       insertAndSend: "文字起こしを挿入して送信",
+      cleanUp: "文字起こしを整える",
       failed: "音声入力に失敗しました: {{error}}",
       failedRetry: "音声入力に失敗しました。再試行をタップしてください。",
     },

@@ -82,6 +82,9 @@ export interface TerminalSessionControllerOptions {
   // Bytes queued on the client transport but not yet sent, or null when the
   // transport exposes no backpressure signal (e.g. the multiplexed relay socket).
   getClientBufferedAmount?: () => number | null;
+  /** Resolves the host-configured shell for an ordinary interactive terminal. */
+  getDefaultTerminalCommand?: () => { command: string; args?: string[] } | undefined;
+  getTerminalTitleSettings?: () => { mode: "auto" | "default"; includePaths: boolean };
 }
 
 interface TerminalWorkspaceRef {
@@ -130,6 +133,13 @@ export class TerminalSessionController {
   private readonly listTerminalWorkspaceRoots: () => Promise<readonly string[]>;
   private readonly clientSupportsWrapReflow: () => boolean;
   private readonly getClientBufferedAmount: () => number | null;
+  private readonly getDefaultTerminalCommand: () =>
+    | { command: string; args?: string[] }
+    | undefined;
+  private readonly getTerminalTitleSettings: () => {
+    mode: "auto" | "default";
+    includePaths: boolean;
+  };
 
   // A subscription is scoped to a (cwd, workspaceId) pair, keyed by
   // terminalSubscriptionKey: two workspaces sharing a cwd subscribe and unsub
@@ -158,6 +168,9 @@ export class TerminalSessionController {
       (async () => (await this.listTerminalWorkspaceRefs()).map((workspace) => workspace.cwd));
     this.clientSupportsWrapReflow = options.clientSupportsWrapReflow ?? (() => false);
     this.getClientBufferedAmount = options.getClientBufferedAmount ?? (() => 0);
+    this.getDefaultTerminalCommand = options.getDefaultTerminalCommand ?? (() => undefined);
+    this.getTerminalTitleSettings =
+      options.getTerminalTitleSettings ?? (() => ({ mode: "auto", includePaths: false }));
   }
 
   start(): void {
@@ -543,12 +556,16 @@ export class TerminalSessionController {
         return;
       }
 
+      const defaultTerminalCommand = msg.command ? undefined : this.getDefaultTerminalCommand();
+      const titleSettings = this.getTerminalTitleSettings();
       const session = await this.terminalManager.createTerminal({
         cwd: msg.cwd,
         workspaceId,
         name: msg.name,
-        command: msg.command,
-        args: msg.args,
+        titleMode: titleSettings.mode,
+        titleIncludePaths: titleSettings.includePaths,
+        command: msg.command ?? defaultTerminalCommand?.command,
+        args: msg.args ?? defaultTerminalCommand?.args,
         rows: msg.size?.rows,
         cols: msg.size?.cols,
       });
@@ -615,7 +632,7 @@ export class TerminalSessionController {
     };
 
     const title = msg.title.trim();
-    if (title.length === 0) {
+    if (!msg.clear && title.length === 0) {
       respond(false, "Title is required");
       return;
     }
@@ -628,7 +645,9 @@ export class TerminalSessionController {
       return;
     }
 
-    const renamed = this.terminalManager.setTerminalTitle(msg.terminalId, title);
+    const renamed = msg.clear
+      ? this.terminalManager.clearTerminalTitle(msg.terminalId)
+      : this.terminalManager.setTerminalTitle(msg.terminalId, title);
     respond(renamed, renamed ? null : "Terminal not found");
   }
 

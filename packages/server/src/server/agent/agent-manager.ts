@@ -423,6 +423,12 @@ export interface AgentManagerOptions {
     personalityName: string;
     cwd: string | undefined;
   }) => Promise<string | null>;
+  /**
+   * Resolves the compact active-page project knowledge catalog. Called from the
+   * shared spawn/resume/refresh choke point so every provider discovers the
+   * same repository knowledge before its first task turn.
+   */
+  resolveProjectKnowledgeBrief?: (params: { cwd: string | undefined }) => Promise<string | null>;
   /** Fun-stats counters - see packages/server/src/server/activity-stats. */
   onActivity?: ActivityIncrementFn;
   /**
@@ -1408,6 +1414,7 @@ export class AgentManager {
   private onWorkspaceStateMayHaveChanged?: (params: { cwd: string }) => void;
   private onPersonalitySpawn?: (personalityId: string) => void;
   private resolvePersonalityMemoryBrief?: AgentManagerOptions["resolvePersonalityMemoryBrief"];
+  private resolveProjectKnowledgeBrief?: AgentManagerOptions["resolveProjectKnowledgeBrief"];
   private onActivity?: ActivityIncrementFn;
   private onUsageEvent?: (event: UsageEvent) => void;
   private logger: Logger;
@@ -1424,6 +1431,7 @@ export class AgentManager {
     this.onWorkspaceStateMayHaveChanged = options.onWorkspaceStateMayHaveChanged;
     this.onPersonalitySpawn = options.onPersonalitySpawn;
     this.resolvePersonalityMemoryBrief = options.resolvePersonalityMemoryBrief;
+    this.resolveProjectKnowledgeBrief = options.resolveProjectKnowledgeBrief;
     this.onActivity = options.onActivity;
     this.onUsageEvent = options.onUsageEvent;
     this.mcpBaseUrl = options.mcpBaseUrl ?? null;
@@ -3081,9 +3089,13 @@ export class AgentManager {
     // personality mid-chat gives you its prompt and its brain but not what it
     // has learned. The augmented prompt goes to the provider; `nextSystemPrompt`
     // (memory-free) is what persists, keeping the ownership check above valid.
-    const providerSystemPrompt = promptIsPersonalityOwned
+    const promptWithMemory = promptIsPersonalityOwned
       ? await this.withPersonalityMemory(nextSystemPrompt, snapshot, agent.config.cwd)
       : nextSystemPrompt;
+    const providerSystemPrompt = await this.withProjectKnowledge(
+      promptWithMemory,
+      agent.config.cwd,
+    );
 
     const daemonAppendSystemPrompt = this.appendSystemPrompt.trim();
     const personalityUpdate: AgentPersonalityUpdate = {
@@ -7266,14 +7278,16 @@ export class AgentManager {
       stripInternalOttoMcpServer(config),
       env ? { env } : {},
     );
-    const launchConfig = await this.applyPersonalityMemory(
-      this.applyDaemonAppendSystemPrompt(
-        withRuntimeOttoMcpServer({
-          config: storedConfig,
-          agentId,
-          mcpBaseUrl: this.mcpBaseUrl,
-          mcpAuthToken: this.mcpAuthToken,
-        }),
+    const launchConfig = await this.applyProjectKnowledge(
+      await this.applyPersonalityMemory(
+        this.applyDaemonAppendSystemPrompt(
+          withRuntimeOttoMcpServer({
+            config: storedConfig,
+            agentId,
+            mcpBaseUrl: this.mcpBaseUrl,
+            mcpAuthToken: this.mcpAuthToken,
+          }),
+        ),
       ),
     );
     return { storedConfig, launchConfig };
@@ -7326,6 +7340,29 @@ export class AgentManager {
     if (!brief) {
       return systemPrompt;
     }
+    const existing = systemPrompt?.trim();
+    return existing ? `${existing}\n\n${brief}` : brief;
+  }
+
+  /** Runtime-only, just like personality memory: the catalog is re-read on each session start. */
+  private async applyProjectKnowledge(config: AgentSessionConfig): Promise<AgentSessionConfig> {
+    const systemPrompt = await this.withProjectKnowledge(config.systemPrompt, config.cwd);
+    return systemPrompt === config.systemPrompt ? config : { ...config, systemPrompt };
+  }
+
+  private async withProjectKnowledge(
+    systemPrompt: string | undefined,
+    cwd: string | undefined,
+  ): Promise<string | undefined> {
+    if (!this.resolveProjectKnowledgeBrief) return systemPrompt;
+    let brief: string | null;
+    try {
+      brief = await this.resolveProjectKnowledgeBrief({ cwd });
+    } catch (error) {
+      this.logger.warn({ err: error, cwd }, "Failed to resolve project knowledge catalog");
+      return systemPrompt;
+    }
+    if (!brief) return systemPrompt;
     const existing = systemPrompt?.trim();
     return existing ? `${existing}\n\n${brief}` : brief;
   }

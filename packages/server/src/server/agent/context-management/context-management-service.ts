@@ -35,6 +35,7 @@ export interface PersonalityMemoryBrief {
 }
 
 const EMPTY_MEMORY_BRIEF: PersonalityMemoryBrief = { text: "", estTokens: 0 };
+const EMPTY_PROJECT_KNOWLEDGE_BRIEF: PersonalityMemoryBrief = { text: "", estTokens: 0 };
 
 export interface WorkspaceContextLocation {
   cwd: string;
@@ -79,6 +80,10 @@ export interface ContextManagementServiceDeps {
    */
   resolvePersonalityMemoryBrief?: (params: {
     personalityId: string;
+    projectRoot: string;
+  }) => Promise<PersonalityMemoryBrief>;
+  /** The active-page catalog injected into every chat in this project. */
+  resolveProjectKnowledgeBrief?: (params: {
     projectRoot: string;
   }) => Promise<PersonalityMemoryBrief>;
   thresholds?: ContextThresholds;
@@ -201,6 +206,13 @@ export class ContextManagementService {
       ...(personalityId ? { personalityId } : {}),
       ...(personalityId ? { personalityMemoryTokens } : {}),
     };
+    const projectKnowledgeTokens = (await this.resolveProjectKnowledgeBrief(location.projectRoot))
+      .estTokens;
+    if (projectKnowledgeTokens > 0) {
+      runtimeTokensByCategory.otto_injected =
+        (runtimeTokensByCategory.otto_injected ?? 0) + projectKnowledgeTokens;
+    }
+    const projectKnowledgeFields = projectKnowledgeTokens > 0 ? { projectKnowledgeTokens } : {};
 
     if (!isContextScanSupported(provider)) {
       // Not a failure: some providers genuinely ingest no project files, and
@@ -227,6 +239,7 @@ export class ContextManagementService {
         supported: false,
         supportsImports: false,
         ...personalityFields,
+        ...projectKnowledgeFields,
       };
     }
 
@@ -267,6 +280,7 @@ export class ContextManagementService {
       supported: scan.supported,
       supportsImports: scan.supportsImports,
       ...personalityFields,
+      ...projectKnowledgeFields,
     };
   }
 
@@ -293,7 +307,12 @@ export class ContextManagementService {
     const memoryBrief = location
       ? await this.resolveMemoryBrief(input.personalityId, location.projectRoot)
       : EMPTY_MEMORY_BRIEF;
-    const injected = [runtime?.injectedPromptText, memoryBrief.text].filter(Boolean).join("\n\n");
+    const projectKnowledgeBrief = location
+      ? await this.resolveProjectKnowledgeBrief(location.projectRoot)
+      : EMPTY_PROJECT_KNOWLEDGE_BRIEF;
+    const injected = [runtime?.injectedPromptText, memoryBrief.text, projectKnowledgeBrief.text]
+      .filter(Boolean)
+      .join("\n\n");
     if (injected) runtimeTextByCategory.otto_injected = injected;
     if (runtime?.systemPromptText) runtimeTextByCategory.system_prompt = runtime.systemPromptText;
     if (runtime?.mcpToolsText) runtimeTextByCategory.mcp_tools = runtime.mcpToolsText;
@@ -323,6 +342,19 @@ export class ContextManagementService {
         "Failed to resolve personality memory weight; reporting without it",
       );
       return EMPTY_MEMORY_BRIEF;
+    }
+  }
+
+  private async resolveProjectKnowledgeBrief(projectRoot: string): Promise<PersonalityMemoryBrief> {
+    if (!this.deps.resolveProjectKnowledgeBrief) return EMPTY_PROJECT_KNOWLEDGE_BRIEF;
+    try {
+      return await this.deps.resolveProjectKnowledgeBrief({ projectRoot });
+    } catch (error) {
+      this.deps.logger.warn(
+        { err: error, projectRoot },
+        "Failed to resolve project knowledge weight; reporting without it",
+      );
+      return EMPTY_PROJECT_KNOWLEDGE_BRIEF;
     }
   }
 }

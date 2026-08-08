@@ -9,10 +9,14 @@ import {
   DURATION_TICK_MS,
   PCM_DICTATION_FORMAT,
   toError,
+  type DictationStartOptions,
   type DictationStatus,
   type UseDictationOptions,
   type UseDictationResult,
+  cleanDictationText,
 } from "./use-dictation.shared";
+
+const DEFAULT_VOICE_ACTIVITY_SILENCE_MS = 1100;
 
 export function useDictation(options: UseDictationOptions): UseDictationResult {
   const { t } = useTranslation();
@@ -25,6 +29,8 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     canStart,
     canConfirm,
     enableDuration = false,
+    silenceTimeoutMs = DEFAULT_VOICE_ACTIVITY_SILENCE_MS,
+    cleanUp = false,
   } = options;
 
   const [isRecording, setIsRecording] = useState(false);
@@ -34,6 +40,18 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<DictationStatus>("idle");
   const latestPartialTranscriptRef = useRef("");
+  const cleanUpRef = useRef(cleanUp);
+  useEffect(() => {
+    cleanUpRef.current = cleanUp;
+  }, [cleanUp]);
+  const speechDetectedRef = useRef(false);
+  const finishOnSilenceRef = useRef(false);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The web/Electron capture volume is RMS * 2. Typical speech from laptop
+  // microphones is around 0.05-0.07 here, while the observed room-noise floor
+  // is below 0.01. Keep the threshold between those bands so voice-activated
+  // dictation can arm its silence timer without changing manual PTT behavior.
+  const VOICE_ACTIVITY_THRESHOLD = 0.04;
 
   const onTranscriptRef = useRef(onTranscript);
   useEffect(() => {
@@ -199,7 +217,12 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
       if (!transcriptText) {
         return;
       }
-      onTranscriptRef.current?.(transcriptText, { requestId });
+      onTranscriptRef.current?.(
+        cleanUpRef.current ? cleanDictationText(transcriptText) : transcriptText,
+        {
+          requestId,
+        },
+      );
     },
     [clearStreamingState],
   );
@@ -247,61 +270,71 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     audioStopRef.current = audio.stop;
   }, [audio.stop]);
 
-  const startDictation = useCallback(async () => {
-    if (
-      actionGateRef.current.starting ||
-      actionGateRef.current.confirming ||
-      actionGateRef.current.cancelling
-    ) {
-      return;
-    }
-    if (isRecordingRef.current || isProcessingRef.current) {
-      return;
-    }
-    const startAllowed = canStart ? canStart() : true;
-    if (!startAllowed) {
-      return;
-    }
-
-    actionGateRef.current.starting = true;
-    setError(null);
-    setPartialTranscript("");
-    setDuration(0);
-    setIsProcessing(false);
-    setStatus("recording");
-    clearStreamingState();
-
-    try {
-      await audio.start();
-      isRecordingRef.current = true;
-      setIsRecording(true);
-      if (enableDuration) {
-        startDurationTracking();
+  const startDictation = useCallback(
+    async (startOptions: DictationStartOptions = {}) => {
+      if (
+        actionGateRef.current.starting ||
+        actionGateRef.current.confirming ||
+        actionGateRef.current.cancelling
+      ) {
+        return;
       }
-      if (client?.isConnected) {
-        await startNewStream("start");
+      if (isRecordingRef.current || isProcessingRef.current) {
+        return;
       }
-    } catch (err) {
-      await audio.stop().catch(() => undefined);
-      stopDurationTracking();
-      isRecordingRef.current = false;
-      setIsRecording(false);
-      setStatus("idle");
-      reportError(err, "Failed to start dictation");
-    } finally {
-      actionGateRef.current.starting = false;
-    }
-  }, [
-    audio,
-    canStart,
-    clearStreamingState,
-    client,
-    enableDuration,
-    reportError,
-    startDurationTracking,
-    startNewStream,
-    stopDurationTracking,
-  ]);
+      const startAllowed = canStart ? canStart() : true;
+      if (!startAllowed) {
+        return;
+      }
+
+      actionGateRef.current.starting = true;
+      setError(null);
+      setPartialTranscript("");
+      setDuration(0);
+      setIsProcessing(false);
+      setStatus("recording");
+      finishOnSilenceRef.current = startOptions.finishOnSilence === true;
+      speechDetectedRef.current = startOptions.speechAlreadyDetected === true;
+      clearStreamingState();
+
+      try {
+        await audio.start();
+        isRecordingRef.current = true;
+        setIsRecording(true);
+        if (enableDuration) {
+          startDurationTracking();
+        }
+        if (client?.isConnected) {
+          await startNewStream("start");
+        }
+        if (startOptions.preRollPcm) {
+          senderRef.current?.enqueueSegment(startOptions.preRollPcm);
+        }
+      } catch (err) {
+        await audio.stop().catch(() => undefined);
+        stopDurationTracking();
+        finishOnSilenceRef.current = false;
+        speechDetectedRef.current = false;
+        isRecordingRef.current = false;
+        setIsRecording(false);
+        setStatus("idle");
+        reportError(err, "Failed to start dictation");
+      } finally {
+        actionGateRef.current.starting = false;
+      }
+    },
+    [
+      audio,
+      canStart,
+      clearStreamingState,
+      client,
+      enableDuration,
+      reportError,
+      startDurationTracking,
+      startNewStream,
+      stopDurationTracking,
+    ],
+  );
 
   const cancelDictation = useCallback(async () => {
     attemptGuardRef.current.cancel();
@@ -313,6 +346,8 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     }
     actionGateRef.current.cancelling = true;
     stopDurationTracking();
+    finishOnSilenceRef.current = false;
+    speechDetectedRef.current = false;
     setDuration(0);
     setError(null);
 
@@ -349,6 +384,8 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     }
 
     actionGateRef.current.confirming = true;
+    finishOnSilenceRef.current = false;
+    speechDetectedRef.current = false;
     setError(null);
     stopDurationTracking();
     setIsProcessing(true);
@@ -389,6 +426,41 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     stopDurationTracking,
     ensureFinalTranscript,
   ]);
+
+  useEffect(() => {
+    if (!finishOnSilenceRef.current || !isRecording) {
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
+      return undefined;
+    }
+    if (audio.volume >= VOICE_ACTIVITY_THRESHOLD) {
+      speechDetectedRef.current = true;
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
+      return;
+    }
+    if (!speechDetectedRef.current || silenceTimerRef.current) return undefined;
+    silenceTimerRef.current = setTimeout(
+      () => {
+        silenceTimerRef.current = null;
+        if (isRecordingRef.current && !isProcessingRef.current) void confirmDictation();
+      },
+      Math.max(300, Math.min(5000, silenceTimeoutMs)),
+    );
+  }, [audio.volume, confirmDictation, isRecording, silenceTimeoutMs]);
+
+  useEffect(() => {
+    return () => {
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const retryFailedDictation = useCallback(async () => {
     if (!senderRef.current?.hasSegments()) {
@@ -433,6 +505,8 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
   const reset = useCallback(() => {
     setIsRecording(false);
     isRecordingRef.current = false;
+    finishOnSilenceRef.current = false;
+    speechDetectedRef.current = false;
     setIsProcessing(false);
     isProcessingRef.current = false;
     stopDurationTracking();
@@ -471,6 +545,7 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
 }
 
 export type {
+  DictationStartOptions,
   DictationStatus,
   UseDictationOptions,
   UseDictationResult,

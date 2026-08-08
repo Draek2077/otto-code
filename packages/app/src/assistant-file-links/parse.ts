@@ -111,7 +111,11 @@ function normalizePathToken(value: string): string | null {
     return null;
   }
 
-  return trimmed.replace(/\\/g, "/");
+  const normalized = trimmed.replace(/\\/g, "/");
+  // Browsers serialize a Windows file path as /C:/... when it passes through
+  // an anchor href. Keep it a Windows drive path: treating it as POSIX makes
+  // Node resolve it as C:\\C:\\... on Windows.
+  return normalized.replace(/^\/([A-Za-z]:\/)/, "$1");
 }
 
 function parseLineFragment(value: string): Pick<InlinePathTarget, "lineStart" | "lineEnd"> | null {

@@ -35,6 +35,10 @@ export const OTTO_SKILL_NAMES = [
   "otto-committee",
   "otto-handoff",
   "otto-loop",
+  "otto-ingest-project-knowledge",
+  "otto-onboard-project",
+  "otto-project-knowledge",
+  "otto-setup-project-knowledge",
   // Keep removed bundle names here so auto-update deletes stale installed copies.
   "otto-epic",
   "otto-orchestrate",

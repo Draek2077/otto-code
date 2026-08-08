@@ -231,7 +231,7 @@ test("preview verification: fix the contrast, prove it in the preview", async ()
     await applyDemoAppearance(window, demoThemeAppearance(THEME));
     // targetSize: the real Electron window reflects this machine's actual
     // display scale factor (e.g. 2x on a HiDPI dev box), so a DESKTOP_LAYOUT_VIEWPORT
-    // (1024×576 DIP) window screenshots at 2048×1152 on a 2x box, 3072×1728 on a
+    // (1536×864 DIP) window screenshots at 3072×1728 on a 2x box, 4608×2592 on a
     // 3x one - DemoRecorder resizes every shot to the exact target, matching the
     // web lane's output pixel-for-pixel regardless of which machine ran it.
     const recorder = await DemoRecorder.start(window, `02-preview-verify-${THEME}`, {

@@ -1,5 +1,6 @@
 import { agentPanelRegistration } from "@/panels/agent-panel";
 import { contextManagementPanelRegistration } from "@/panels/context-management-panel-registration";
+import { projectKnowledgePanelRegistration } from "@/panels/project-knowledge-panel-registration";
 import { artifactPanelRegistration } from "@/panels/artifact-panel";
 import { browserPanelRegistration } from "@/panels/browser-panel";
 import { draftPanelRegistration } from "@/panels/draft-panel";
@@ -37,6 +38,7 @@ export function ensurePanelsRegistered(): void {
   registerPanel(refinePanelRegistration);
   registerPanel(visualizerPanelRegistration);
   registerPanel(contextManagementPanelRegistration);
+  registerPanel(projectKnowledgePanelRegistration);
   registerPanel(orchestrationGraphPanelRegistration);
   // DEFERRED(paseoDiffTab): Paseo's diff tab is not registered here. Their
   // `diff-panel.tsx` needs a restructured `@/git/diff-pane` exporting

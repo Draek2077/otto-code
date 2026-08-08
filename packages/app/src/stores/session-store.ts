@@ -380,6 +380,8 @@ export interface DaemonServerInfo {
   serverId: string;
   hostname: string | null;
   version: string | null;
+  platform?: string;
+  terminalShells?: NonNullable<ServerInfoStatusPayload["terminalShells"]>;
   desktopManaged?: boolean;
   capabilities?: ServerCapabilities;
   features?: ServerInfoStatusPayload["features"];
@@ -814,10 +816,19 @@ function areServerInfoFeaturesEqual(
   return JSON.stringify(current ?? null) === JSON.stringify(next ?? null);
 }
 
+function areTerminalShellsEqual(
+  current: ServerInfoStatusPayload["terminalShells"] | undefined,
+  next: ServerInfoStatusPayload["terminalShells"] | undefined,
+): boolean {
+  return JSON.stringify(current ?? null) === JSON.stringify(next ?? null);
+}
+
 function isSessionServerInfoUnchanged(input: {
   currentServerInfo: SessionState["serverInfo"] | undefined;
   nextHostname: string | null;
   nextVersion: string | null;
+  nextPlatform: string | undefined;
+  nextTerminalShells: ServerInfoStatusPayload["terminalShells"] | undefined;
   nextDesktopManaged: boolean | undefined;
   nextCapabilities: ServerCapabilities | undefined;
   nextFeatures: ServerInfoStatusPayload["features"] | undefined;
@@ -827,6 +838,8 @@ function isSessionServerInfoUnchanged(input: {
     currentServerInfo,
     nextHostname,
     nextVersion,
+    nextPlatform,
+    nextTerminalShells,
     nextDesktopManaged,
     nextCapabilities,
     nextFeatures,
@@ -837,6 +850,8 @@ function isSessionServerInfoUnchanged(input: {
     currentServerInfo?.serverId === input.nextServerId &&
     prevHostname === nextHostname &&
     prevVersion === nextVersion &&
+    currentServerInfo?.platform === nextPlatform &&
+    areTerminalShellsEqual(currentServerInfo?.terminalShells, nextTerminalShells) &&
     currentServerInfo?.desktopManaged === nextDesktopManaged &&
     areServerCapabilitiesEqual(currentServerInfo?.capabilities, nextCapabilities) &&
     areServerInfoFeaturesEqual(currentServerInfo?.features, nextFeatures)
@@ -1019,6 +1034,8 @@ export const useSessionStore = create<SessionStore>()(
 
           const nextHostname = info.hostname?.trim() || null;
           const nextVersion = info.version?.trim() || null;
+          const nextPlatform = info.platform;
+          const nextTerminalShells = info.terminalShells;
           const nextDesktopManaged = info.desktopManaged;
           const nextCapabilities = info.capabilities;
           const nextFeatures = info.features;
@@ -1028,6 +1045,8 @@ export const useSessionStore = create<SessionStore>()(
               currentServerInfo: session.serverInfo,
               nextHostname,
               nextVersion,
+              nextPlatform,
+              nextTerminalShells,
               nextDesktopManaged,
               nextCapabilities,
               nextFeatures,
@@ -1047,6 +1066,8 @@ export const useSessionStore = create<SessionStore>()(
                   serverId: info.serverId,
                   hostname: nextHostname,
                   version: nextVersion,
+                  ...(nextPlatform ? { platform: nextPlatform } : {}),
+                  ...(nextTerminalShells ? { terminalShells: nextTerminalShells } : {}),
                   ...(nextDesktopManaged !== undefined
                     ? { desktopManaged: nextDesktopManaged }
                     : {}),

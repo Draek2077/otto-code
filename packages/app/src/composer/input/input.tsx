@@ -35,11 +35,14 @@ import {
 } from "@/components/icons/material-icons";
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
 import { useDictation } from "@/hooks/use-dictation";
+import { useWakeWordListening } from "@/hooks/use-wake-word-listening";
+import { useAppSettings } from "@/hooks/use-settings";
 import { DictationOverlay } from "@/components/dictation-controls";
 import { RealtimeVoiceOverlay } from "@/components/realtime-voice-overlay";
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { useSessionStore } from "@/stores/session-store";
 import { useVoiceOptional } from "@/contexts/voice-context";
+import { useVoiceAudioEngineOptional } from "@/contexts/voice-context";
 import { useToast } from "@/contexts/toast-context";
 import { resolveVoiceUnavailableMessage } from "@/utils/server-info-capabilities";
 import {
@@ -81,6 +84,8 @@ import {
 } from "./labels";
 import { computeCanStartDictation, runAlternateSendAction, runDefaultSendAction } from "./state";
 import { ComposerToolbarWidthContext } from "./toolbar-width-context";
+import { applyDictationTranscript } from "./dictation-delivery";
+import { playDictationStartCue } from "@/voice/dictation-start-cue";
 
 const DEFAULT_SEND_KEYS: ShortcutKey[][] = [["Enter"]];
 
@@ -718,6 +723,8 @@ function MessageInputOverlay({
   onAcceptAndSendRecording,
   onRetryFailedRecording,
   onDiscardFailedRecording,
+  cleanUp,
+  onToggleCleanUp,
   onRealtimeVoiceStop,
 }: {
   showDictationOverlay: boolean;
@@ -741,6 +748,8 @@ function MessageInputOverlay({
   onAcceptAndSendRecording: () => Promise<void>;
   onRetryFailedRecording: () => void;
   onDiscardFailedRecording: () => void;
+  cleanUp: boolean;
+  onToggleCleanUp: () => void;
   onRealtimeVoiceStop: () => void;
 }) {
   if (showDictationOverlay) {
@@ -757,6 +766,8 @@ function MessageInputOverlay({
         onAcceptAndSend={onAcceptAndSendRecording}
         onRetry={dictationStatus === "failed" ? onRetryFailedRecording : undefined}
         onDiscard={dictationStatus === "failed" ? onDiscardFailedRecording : undefined}
+        cleanUp={cleanUp}
+        onToggleCleanUp={onToggleCleanUp}
       />
     );
   }
@@ -883,42 +894,6 @@ function SendButtonTooltip({
   );
 }
 
-interface DictationTranscriptContext {
-  value: string;
-  defaultSendBehavior: "interrupt" | "queue";
-  isAgentRunning: boolean;
-  onQueue: ((payload: MessagePayload) => void) | undefined;
-  onSubmit: SubmitMessageHandler;
-  onChangeText: (text: string) => void;
-  attachments: ComposerAttachment[];
-  cwd: string;
-  autoSend: boolean;
-}
-
-function applyDictationTranscript(text: string, ctx: DictationTranscriptContext): void {
-  if (!text) return;
-  const shouldPad = ctx.value.length > 0 && !/\s$/.test(ctx.value);
-  const nextValue = `${ctx.value}${shouldPad ? " " : ""}${text}`;
-
-  if (!ctx.autoSend) {
-    ctx.onChangeText(nextValue);
-    return;
-  }
-
-  if (ctx.defaultSendBehavior === "queue" && ctx.isAgentRunning && ctx.onQueue) {
-    ctx.onQueue({ text: nextValue, attachments: ctx.attachments, cwd: ctx.cwd });
-    ctx.onChangeText("");
-    return;
-  }
-
-  ctx.onSubmit({
-    text: nextValue,
-    attachments: ctx.attachments,
-    cwd: ctx.cwd,
-    forceSend: ctx.isAgentRunning || undefined,
-  });
-}
-
 interface ToggleRealtimeVoiceContext {
   voice:
     | {
@@ -966,6 +941,7 @@ interface StartDictationContext {
   isDictatingRef: React.MutableRefObject<boolean>;
   toast: { error: (msg: string) => void };
   startDictation: () => Promise<void>;
+  onStart?: () => void;
 }
 
 async function startDictationIfAvailableImpl(ctx: StartDictationContext): Promise<void> {
@@ -979,6 +955,7 @@ async function startDictationIfAvailableImpl(ctx: StartDictationContext): Promis
     return;
   }
   ctx.isDictatingRef.current = true;
+  ctx.onStart?.();
   await ctx.startDictation();
 }
 
@@ -1369,7 +1346,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const iconSize = useIconSize();
     const buttonIconSize = isWeb ? iconSize.md : iconSize.lg;
     const toast = useToast();
+    const { settings: appSettings } = useAppSettings();
     const voice = useVoiceOptional();
+    const voiceAudioEngine = useVoiceAudioEngineOptional();
     const voiceMuteToggleKeys = useShortcutKeys("voice-mute-toggle");
     const dictationToggleKeys = useShortcutKeys("dictation-toggle");
     const focusInputKeys = useShortcutKeys("focus-message-input");
@@ -1422,6 +1401,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const inputHeightRef = useRef(MIN_INPUT_HEIGHT);
     const overlayTransition = useSharedValue(0);
     const sendAfterTranscriptRef = useRef(false);
+    const [cleanDictation, setCleanDictation] = useState(false);
     const valueRef = useRef(value);
     const serverInfo = useSessionStore(
       useCallback(
@@ -1449,7 +1429,14 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
     const handleDictationTranscript = useCallback(
       (text: string, _meta: { requestId: string }) => {
+        // Delivery is captured when dictation starts. Reading live settings
+        // here makes a completed wake utterance race with settings renders and
+        // loses the one-shot auto-send intent.
         const autoSend = sendAfterTranscriptRef.current;
+        console.info("[MessageInput] dictation transcript delivery mode", {
+          autoSend,
+          agentRunning: isAgentRunning,
+        });
         sendAfterTranscriptRef.current = false;
         applyDictationTranscript(text, {
           value: valueRef.current,
@@ -1462,6 +1449,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           cwd,
           autoSend,
         });
+        setCleanDictation(false);
       },
       [onChangeText, onSubmit, onQueue, attachments, cwd, isAgentRunning, defaultSendBehavior],
     );
@@ -1518,6 +1506,40 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       canStart: canStartDictation,
       canConfirm: canConfirmDictation,
       enableDuration: true,
+      silenceTimeoutMs: appSettings.wakeWordSilenceTimeoutMs,
+      cleanUp: cleanDictation,
+    });
+
+    const startWakeWordDictation = useCallback(
+      (
+        autoSend = appSettings.wakeWordAutoSend,
+        preRollPcm?: string,
+        speechAlreadyDetected?: boolean,
+      ) => {
+        sendAfterTranscriptRef.current = autoSend;
+        playDictationStartCue(voiceAudioEngine);
+        return startDictation({
+          preRollPcm,
+          finishOnSilence: true,
+          speechAlreadyDetected,
+        });
+      },
+      [appSettings.wakeWordAutoSend, startDictation, voiceAudioEngine],
+    );
+
+    useWakeWordListening({
+      settings: {
+        enabled: appSettings.wakeWordEnabled,
+        phrase: appSettings.wakeWordPhrase,
+        sensitivity: appSettings.wakeWordSensitivity,
+        silenceTimeoutMs: appSettings.wakeWordSilenceTimeoutMs,
+        autoSend: appSettings.wakeWordAutoSend,
+      },
+      startDictation: startWakeWordDictation,
+      cancelDictation,
+      isRecording: isDictating,
+      isProcessing: isDictationProcessing,
+      onError: (error) => toast.error(error.message),
     });
 
     const isDictatingRef = useRef(isDictating);
@@ -1538,24 +1560,18 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const showRealtimeOverlay = isRealtimeVoiceForCurrentAgent;
     const showOverlay = showDictationOverlay || showRealtimeOverlay;
 
-    useEffect(() => {
-      if (isDictating || isDictationProcessing) {
-        return;
-      }
+    const startDictationIfAvailable = useCallback(() => {
+      // Only the wake-word entry point may request automatic submission.
       sendAfterTranscriptRef.current = false;
-    }, [dictationStatus, isDictating, isDictationProcessing]);
-
-    const startDictationIfAvailable = useCallback(
-      () =>
-        startDictationIfAvailableImpl({
-          dictationUnavailableMessage,
-          canStartDictation,
-          isDictatingRef,
-          toast,
-          startDictation,
-        }),
-      [canStartDictation, dictationUnavailableMessage, startDictation, toast],
-    );
+      return startDictationIfAvailableImpl({
+        dictationUnavailableMessage,
+        canStartDictation,
+        isDictatingRef,
+        toast,
+        startDictation,
+        onStart: () => playDictationStartCue(voiceAudioEngine),
+      });
+    }, [canStartDictation, dictationUnavailableMessage, startDictation, toast, voiceAudioEngine]);
 
     // Animate overlay
     useEffect(() => {
@@ -1592,17 +1608,21 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     );
 
     const handleCancelRecording = useCallback(async () => {
+      sendAfterTranscriptRef.current = false;
       await cancelDictation();
+      setCleanDictation(false);
     }, [cancelDictation]);
 
     const handleAcceptRecording = useCallback(async () => {
       sendAfterTranscriptRef.current = false;
       await confirmDictation();
+      setCleanDictation(false);
     }, [confirmDictation]);
 
     const handleAcceptAndSendRecording = useCallback(async () => {
       sendAfterTranscriptRef.current = true;
       await confirmDictation();
+      setCleanDictation(false);
     }, [confirmDictation]);
 
     const handleRetryFailedRecording = useCallback(() => {
@@ -1612,6 +1632,10 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const handleDiscardFailedRecording = useCallback(() => {
       discardFailedDictation();
     }, [discardFailedDictation]);
+
+    const handleToggleCleanUp = useCallback(() => {
+      setCleanDictation((previous) => !previous);
+    }, []);
 
     const handleStopRealtimeVoice = useCallback(
       () =>
@@ -2072,6 +2096,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             onAcceptAndSendRecording={handleAcceptAndSendRecording}
             onRetryFailedRecording={handleRetryFailedRecording}
             onDiscardFailedRecording={handleDiscardFailedRecording}
+            cleanUp={cleanDictation}
+            onToggleCleanUp={handleToggleCleanUp}
             onRealtimeVoiceStop={handleRealtimeVoiceStop}
           />
         </Animated.View>

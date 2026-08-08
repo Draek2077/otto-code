@@ -60,6 +60,9 @@ import {
   type WorkspaceTitleSource,
   type WorkspaceToolsPlacement,
 } from "./storage";
+import { collectAppSettingsUpdates } from "./update-routing";
+
+export { collectAppSettingsUpdates } from "./update-routing";
 
 export {
   APP_SETTINGS_KEY,
@@ -137,57 +140,6 @@ export interface UseSettingsReturn {
 }
 
 type SettingsSelector<TSelected> = (settings: Settings) => TSelected;
-
-// Per-field allowlist for routing merged-Settings updates to the AppSettings
-// store. Desktop-owned fields (manageBuiltInDaemon, releaseChannel) are handled
-// separately by the caller - ADD NEW AppSettings FIELDS HERE, or writes to them
-// through `useSettings()` are silently dropped.
-//
-// This was a chain of one `if` per field until it outgrew the cyclomatic-
-// complexity ceiling; a list can't outgrow anything.
-const APP_SETTINGS_UPDATE_KEYS = [
-  "colorSchemeMode",
-  "lightTheme",
-  "darkTheme",
-  "language",
-  "sendBehavior",
-  "serviceUrlBehavior",
-  "linkOpenBehavior",
-  "terminalScrollbackLines",
-  "uiFontFamily",
-  "monoFontFamily",
-  "uiFontSize",
-  "codeFontSize",
-  "fontContrast",
-  "syntaxTheme",
-  "rulerEnabled",
-  "rulerColumn",
-  "workspaceTitleSource",
-  "autoExpandReasoning",
-  "wrapCodeLines",
-  "interfaceMode",
-  "suggestedTasksEnabled",
-  "suggestedTasksDefaultMode",
-  "verticalTabRailWidth",
-  "resourceMonitorEnabled",
-  "mountedWorkspaceLimit",
-  "toolCallDetailLevel",
-] as const satisfies readonly (keyof AppSettings)[];
-
-/** Exported for tests: the allowlist is only observable through what it lets through. */
-export function collectAppSettingsUpdates(updates: Partial<Settings>): Partial<AppSettings> {
-  const appUpdates: Partial<AppSettings> = {};
-  for (const key of APP_SETTINGS_UPDATE_KEYS) {
-    const value = updates[key];
-    if (value !== undefined) {
-      // `key` indexes both records identically, but TS can't correlate the two
-      // per-key value types across a loop, so the write is widened here. The
-      // `satisfies` above is what actually keeps the keys honest.
-      (appUpdates as Record<string, unknown>)[key] = value;
-    }
-  }
-  return appUpdates;
-}
 
 export function useAppSettings(): UseAppSettingsReturn {
   const queryClient = useQueryClient();

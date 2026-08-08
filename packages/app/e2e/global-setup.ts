@@ -682,6 +682,32 @@ async function clearStarterPersonalities(targetHome: string): Promise<void> {
 }
 
 /**
+ * Demo captures are recorded against an isolated, disposable host where the
+ * operator has already approved browser access. Persist the two daemon gates
+ * before startup so clicking Preview or Browser never interrupts a capture
+ * with the normal trust dialog. Regular E2E and production hosts retain the
+ * secure browser-tools-off default from docs/preview.md.
+ */
+async function enableDemoCaptureTools(targetHome: string): Promise<void> {
+  if (process.env.E2E_DEMO_CAPTURE !== "1") {
+    return;
+  }
+
+  const configPath = path.join(targetHome, "config.json");
+  let existing: Record<string, unknown> = { version: 1 };
+  if (existsSync(configPath)) {
+    existing = JSON.parse(await readFile(configPath, "utf8")) as Record<string, unknown>;
+  }
+  const daemon = (existing.daemon ??= {}) as Record<string, unknown>;
+  const mcp = (daemon.mcp ??= {}) as Record<string, unknown>;
+  mcp.injectIntoAgents = true;
+  const browserTools = (daemon.browserTools ??= {}) as Record<string, unknown>;
+  browserTools.enabled = true;
+  await writeFile(configPath, `${JSON.stringify(existing, null, 2)}\n`);
+  console.log(`[e2e] Enabled Browser Tools for demo capture in ${configPath}`);
+}
+
+/**
  * Writes the openai-compatible provider block pointed at LM Studio into the
  * E2E daemon's isolated OTTO_HOME config so *.local.spec.ts specs can create
  * live agents through the daemon's native tool loop. Merges over any forked
@@ -1061,6 +1087,7 @@ export default async function globalSetup() {
 
   await applyOttoHomeFork(ottoHome);
   await clearStarterPersonalities(ottoHome);
+  await enableDemoCaptureTools(ottoHome);
 
   const localAiConfig = readLocalAiEnv();
   if (localAiConfig) {

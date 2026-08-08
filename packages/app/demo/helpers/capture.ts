@@ -2,6 +2,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Page, TestInfo } from "@playwright/test";
 import { resizePngToTarget, type ImageSize } from "../../e2e/helpers/image";
+import { DESKTOP_CAPTURE_RESOLUTION, DESKTOP_LAYOUT_VIEWPORT } from "./resolution";
 
 /**
  * Capture recorder for demo scenarios. Screenshots and a step manifest land in
@@ -67,7 +68,14 @@ export class DemoRecorder {
     options?: { targetSize?: ImageSize },
   ): Promise<DemoRecorder> {
     const outDir = path.resolve(__dirname, "../.out", scenario);
-    const recorder = new DemoRecorder(page, scenario, outDir, options?.targetSize);
+    const viewport = page.viewportSize();
+    const targetSize =
+      options?.targetSize ??
+      (viewport?.width === DESKTOP_LAYOUT_VIEWPORT.width &&
+      viewport.height === DESKTOP_LAYOUT_VIEWPORT.height
+        ? DESKTOP_CAPTURE_RESOLUTION
+        : undefined);
+    const recorder = new DemoRecorder(page, scenario, outDir, targetSize);
     // Wipe the scenario dir first: renamed/renumbered steps from earlier takes
     // must not linger as stale PNGs beside the current manifest.
     await rm(outDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
@@ -100,13 +108,13 @@ export class DemoRecorder {
     const video = this.page.video();
     const videoSourcePath = video ? await video.path().catch(() => null) : null;
     // Record the *physical* pixel size of the assets so the site manifest
-    // matches the PNGs. On the web lane the viewport is logical (e.g. 1024×576)
+    // matches the PNGs. On the web lane the viewport is logical (e.g. 1536×864)
     // but screenshots capture at the deviceScaleFactor, so multiply by the
     // page's devicePixelRatio to get the real 2560×1440. On the Electron lane
     // viewportSize() is null and shots are already resized to targetSize.
     let viewport = this.targetSize ?? { width: 0, height: 0 };
     const logical = this.page.viewportSize();
-    if (logical) {
+    if (logical && !this.targetSize) {
       const dpr = await this.page.evaluate(() => window.devicePixelRatio).catch(() => 1);
       viewport = {
         width: Math.round(logical.width * dpr),

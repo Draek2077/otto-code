@@ -19,6 +19,24 @@ Two ways to install:
 
 When the desktop app finds installed Otto skills, it keeps the bundled skills up to date on startup. If automatic update fails, use Settings → Integrations → Update or the manual command above.
 
+## Project knowledge skills
+
+- `/otto-setup-project-knowledge` initializes and verifies the empty `.otto` Markdown store.
+- `/otto-onboard-project` researches code, documentation, tests, and Git history, fills the six
+  rich Markdown project-map roots, then records human-linked proposals for decisions, constraints,
+  requirements, and architecture.
+- `/otto-project-knowledge` provides the operating workflow for querying, updating, reviewing, and
+  safely maintaining existing pages.
+- `/otto-ingest-project-knowledge` captures a conversation, document, test, or research result as
+  reviewable proposals.
+
+Every chat receives a compact catalog of confirmed pages. Full page content is read only when it is
+relevant. Proposals remain review-only until a user confirms them in Manage knowledge.
+
+```
+/otto-onboard-project onboard this repository's project knowledge
+```
+
 ## `/otto`, Otto Reference
 
 The foundational skill. Otto reference for managing agents and worktrees. Load it when an agent needs to create agents, send them prompts, or manage worktrees.

@@ -122,6 +122,16 @@ describe("deriveProjectGroupingDisplayName", () => {
     ).toBe("Draek2077/otto-code");
   });
 
+  test("uses the owner and repository from a non-GitHub remote", () => {
+    expect(
+      deriveProjectGroupingDisplayName({
+        rootPath: path.resolve("projects-settings-gitlab-test"),
+        remoteUrl: "https://gitlab.com/acme/app.git",
+        worktreeRoot: path.resolve("projects-settings-gitlab-test"),
+      }),
+    ).toBe("acme/app");
+  });
+
   test("uses the selected directory name without a remote", () => {
     expect(
       deriveProjectGroupingDisplayName({

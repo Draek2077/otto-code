@@ -14,6 +14,7 @@ import { buildTerminalsQueryKey } from "@/screens/workspace/terminals/state";
 import { usePanelStore } from "@/stores/panel-store";
 import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceDirectory, useWorkspaceFields } from "@/stores/session-store-hooks";
+import { revealDirectoryInFiles } from "@/git/changes-reveal";
 
 type ListTerminalsPayload = ListTerminalsResponse["payload"];
 
@@ -86,6 +87,24 @@ function TerminalPanel() {
   const workspaceDirectory = workspaceFields?.workspaceDirectory || null;
   const isGitCheckout = workspaceFields?.isGitCheckout ?? false;
   const openFileExplorerForCheckout = usePanelStore((state) => state.openFileExplorerForCheckout);
+  const handleNavigateToFolder = useCallback(
+    (path: string) => {
+      if (!workspaceDirectory) {
+        return;
+      }
+      revealDirectoryInFiles({
+        serverId,
+        cwd: workspaceDirectory,
+        path,
+        isGit: isGitCheckout,
+      });
+      openFileExplorerForCheckout({
+        isCompact: true,
+        checkout: { serverId, cwd: workspaceDirectory, isGit: isGitCheckout },
+      });
+    },
+    [isGitCheckout, openFileExplorerForCheckout, serverId, workspaceDirectory],
+  );
   const handleOpenFileExplorer = useCallback(() => {
     if (!workspaceDirectory) {
       return;
@@ -117,6 +136,7 @@ function TerminalPanel() {
       isWorkspaceFocused={isWorkspaceFocused}
       isPaneFocused={isPaneFocused}
       onOpenFileExplorer={handleOpenFileExplorer}
+      onNavigateToFolder={handleNavigateToFolder}
       onOpenWorkspaceFile={openFileInWorkspace}
     />
   );

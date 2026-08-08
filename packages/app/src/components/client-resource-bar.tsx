@@ -8,7 +8,8 @@ import { resolveResourceBarLayout } from "@/components/client-resource-bar.layou
 import { compactUp, SPACING } from "@/styles/theme";
 
 // A dense readout of everything the resource monitor currently knows, pinned to
-// the bottom of the Metrics screen. Grouped left-to-right by what it answers:
+// the bottom of the Metrics screen or the whole app according to Settings.
+// Grouped left-to-right by what it answers:
 // how smooth is it, how much is retained, how loud is the daemon connection -
 // and finally what is growing fastest, which is the one field that turns the
 // strip from a gauge into a lead.

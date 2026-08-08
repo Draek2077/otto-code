@@ -596,6 +596,7 @@ export const en = {
       retry: "Retry dictation",
       insert: "Insert transcription",
       insertAndSend: "Insert transcription and send",
+      cleanUp: "Clean up transcription",
       failed: "Dictation failed: {{error}}",
       failedRetry: "Dictation failed. Tap retry.",
     },

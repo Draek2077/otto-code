@@ -5,6 +5,7 @@ let ON_INPUT_VOLUME_LEVEL_EVENT_NAME = "onInputVolumeLevelData"
 let ON_OUTPUT_VOLUME_LEVEL_EVENT_NAME = "onOutputVolumeLevelData"
 let ON_RECORDING_CHANGE_EVENT_NAME = "onRecordingChange"
 let ON_AUDIO_INTERRUPTION_EVENT_NAME = "onAudioInterruption"
+let ON_WAKE_WORD_DETECTED_EVENT_NAME = "onWakeWordDetected"
 
 public class ExpoTwoWayAudioModule: Module {
     private var audioEngine: AudioEngine?
@@ -130,6 +131,21 @@ public class ExpoTwoWayAudioModule: Module {
             self.audioEngine?.resumePlayback()
         }
 
+        Function("getWakeWordCapabilities") { () -> [String: Any] in
+            // The bridge is ready for a model-backed implementation. Until a
+            // bundled native model exists, fail closed and never open audio
+            // for this feature.
+            return ["available": false, "safePhraseSupported": false]
+        }
+
+        AsyncFunction("startWakeWordDetection") { (_phrase: String, _sensitivity: Double) throws -> Void in
+            throw NSError(domain: "ExpoTwoWayAudio", code: 1001, userInfo: [
+                NSLocalizedDescriptionKey: "This build does not include a native wake-word model."
+            ])
+        }
+
+        AsyncFunction("stopWakeWordDetection") { () -> Void in }
+
         AsyncFunction("getMicrophonePermissionsAsync") { (promise: Promise) in
             EXPermissionsMethodsDelegate.getPermissionWithPermissionsManager(
                 self.appContext?.permissions,
@@ -155,6 +171,7 @@ public class ExpoTwoWayAudioModule: Module {
             ON_OUTPUT_VOLUME_LEVEL_EVENT_NAME,
             ON_RECORDING_CHANGE_EVENT_NAME,
             ON_AUDIO_INTERRUPTION_EVENT_NAME,
+            ON_WAKE_WORD_DETECTED_EVENT_NAME,
         ])
     }
 

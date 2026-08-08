@@ -221,6 +221,12 @@ export interface AppSettings {
   // the feature configured and the header button present; disabling removes the
   // button entirely, because there is nothing left to mute. Device-local.
   agentVoiceCuesMuted: boolean;
+  // Device-local and opt-in. Omission must never open the microphone.
+  wakeWordEnabled: boolean;
+  wakeWordPhrase: string;
+  wakeWordSensitivity: number;
+  wakeWordSilenceTimeoutMs: number;
+  wakeWordAutoSend: boolean;
   // Loudness of SPOKEN REPLIES as a 0-100 percent - voice mode, auto-speech, and
   // the per-message play button, plus voice mode's thinking tone. The third and
   // last audio channel, alongside the cue volume above and the Visualizer's
@@ -308,6 +314,9 @@ export interface AppSettings {
   // everything spawned under it (see subagents/chat-totals.ts). Off by default -
   // it earns its height only for people who watch cost. Device-local.
   chatMetricsBar: boolean;
+  // Move the client performance resource bar from the Metrics page to the app
+  // shell footer, keeping it visible below every page and outside scroll regions.
+  clientResourceBarAllPages: boolean;
   // Keep the pinned tab-bar and diff-toolbar options hidden until the pointer
   // is over their toolbar area (web only - hover). When false (default), pinned
   // options are always visible.
@@ -564,6 +573,11 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   agentVoiceCues: true,
   agentVoiceCuesVolume: 50,
   agentVoiceCuesMuted: false,
+  wakeWordEnabled: false,
+  wakeWordPhrase: "Hey Otto",
+  wakeWordSensitivity: 0.7,
+  wakeWordSilenceTimeoutMs: 1100,
+  wakeWordAutoSend: false,
   voicePlaybackVolume: 50,
   agentAutoSpeechEnabled: {},
   previewServerCloseBehavior: "keep-running",
@@ -579,6 +593,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   blackTabBackground: false,
   groupConsecutiveActions: true,
   chatMetricsBar: false,
+  clientResourceBarAllPages: false,
   hidePinnedToolbarOptions: false,
   hideChatMessageDetails: true,
   chatTimestampDisplay: "absolute",
@@ -893,6 +908,7 @@ const WORKSPACE_LAYOUT_BOOLEAN_KEYS = [
   "blackTabBackground",
   "groupConsecutiveActions",
   "chatMetricsBar",
+  "clientResourceBarAllPages",
   "hidePinnedToolbarOptions",
   "hideChatMessageDetails",
   "hasCompletedTutorial",
@@ -938,6 +954,21 @@ function pickAgentVoiceCueSettings(stored: Partial<AppSettings>): Partial<AppSet
   if (typeof stored.agentVoiceCuesMuted === "boolean") {
     result.agentVoiceCuesMuted = stored.agentVoiceCuesMuted;
   }
+  if (typeof stored.wakeWordEnabled === "boolean") result.wakeWordEnabled = stored.wakeWordEnabled;
+  if (typeof stored.wakeWordPhrase === "string" && stored.wakeWordPhrase.trim())
+    result.wakeWordPhrase = stored.wakeWordPhrase.trim();
+  if (typeof stored.wakeWordSensitivity === "number" && Number.isFinite(stored.wakeWordSensitivity))
+    result.wakeWordSensitivity = Math.max(0, Math.min(1, stored.wakeWordSensitivity));
+  if (
+    typeof stored.wakeWordSilenceTimeoutMs === "number" &&
+    Number.isFinite(stored.wakeWordSilenceTimeoutMs)
+  )
+    result.wakeWordSilenceTimeoutMs = Math.max(
+      300,
+      Math.min(5000, Math.round(stored.wakeWordSilenceTimeoutMs)),
+    );
+  if (typeof stored.wakeWordAutoSend === "boolean")
+    result.wakeWordAutoSend = stored.wakeWordAutoSend;
   return result;
 }
 
@@ -1000,6 +1031,18 @@ function pickWorkspaceLayoutSettings(stored: Partial<AppSettings>): Partial<AppS
     result.workspaceTitleSource = stored.workspaceTitleSource;
   }
   copyStoredBooleans(stored, result, WORKSPACE_LAYOUT_BOOLEAN_KEYS);
+  // COMPAT(clientResourceBarAllPages): added in v0.8.5, drop after 2027-02-07.
+  // Pre-release builds mislabeled this preference as chat metrics. Preserve an
+  // enabled local choice while moving it to the resource bar's correct name.
+  const legacyClientResourceBarAllPages = (
+    stored as Partial<AppSettings> & { chatMetricsBarAllPages?: unknown }
+  ).chatMetricsBarAllPages;
+  if (
+    typeof stored.clientResourceBarAllPages !== "boolean" &&
+    typeof legacyClientResourceBarAllPages === "boolean"
+  ) {
+    result.clientResourceBarAllPages = legacyClientResourceBarAllPages;
+  }
   if (
     typeof stored.workspaceToolsPlacement === "string" &&
     VALID_WORKSPACE_TOOLS_PLACEMENTS.has(stored.workspaceToolsPlacement as WorkspaceToolsPlacement)

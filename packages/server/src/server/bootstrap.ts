@@ -143,6 +143,7 @@ import { RetainedTranscriptStore } from "./agent/retained-transcript-store.js";
 import { PersonalityStatsStore } from "./agent/personality-stats-store.js";
 import { PersonalityMemoryStore } from "./agent/personality-memory/personality-memory-store.js";
 import { PersonalityMemoryService } from "./agent/personality-memory/personality-memory-service.js";
+import { ProjectKnowledgeService } from "./agent/project-knowledge/project-knowledge-service.js";
 import {
   ActivityStatsStore,
   type ActivityIncrementFn,
@@ -748,6 +749,26 @@ function buildInitialAttachmentImageRetention(persistedConfig: PersistedConfig):
   };
 }
 
+function buildInitialTerminalPreferences(
+  persistedConfig: PersistedConfig,
+): Pick<
+  MutableDaemonConfig,
+  "terminalTitleMode" | "terminalTitleIncludePaths" | "defaultTerminalShell"
+> {
+  const daemon = persistedConfig.daemon;
+  return {
+    ...(daemon?.terminalTitleMode !== undefined
+      ? { terminalTitleMode: daemon.terminalTitleMode }
+      : {}),
+    ...(daemon?.terminalTitleIncludePaths !== undefined
+      ? { terminalTitleIncludePaths: daemon.terminalTitleIncludePaths }
+      : {}),
+    ...(daemon?.defaultTerminalShell !== undefined
+      ? { defaultTerminalShell: daemon.defaultTerminalShell }
+      : {}),
+  };
+}
+
 function buildInitialMetadataGeneration(
   config: OttoDaemonConfig,
 ): MutableDaemonConfig["metadataGeneration"] {
@@ -841,6 +862,7 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
     hideMergeIntoBaseAction: persistedConfig.daemon?.hideMergeIntoBaseAction ?? false,
     ...buildInitialAttachmentImageRetention(persistedConfig),
     enableTerminalAgentHooks: config.enableTerminalAgentHooks ?? false,
+    ...buildInitialTerminalPreferences(persistedConfig),
     appendSystemPrompt: config.appendSystemPrompt ?? "",
     speech: createInitialMutableSpeechConfig(config),
     ...(persistedGitHosting ? { gitHosting: persistedGitHosting } : {}),
@@ -1279,6 +1301,10 @@ export async function createOttoDaemon(
     resolveProjectRoot: (cwd) => workspaceGitService.resolveRepoRoot(cwd),
     logger,
   });
+  const projectKnowledge = new ProjectKnowledgeService({
+    resolveProjectRoot: (cwd) => workspaceGitService.resolveRepoRoot(cwd),
+    logger,
+  });
 
   const providerSnapshotLogger = logger.child({ module: "provider-snapshot-manager" });
   const providerSnapshotManager = new ProviderSnapshotManager({
@@ -1318,6 +1344,11 @@ export async function createOttoDaemon(
     // create_agent, schedule runs, orchestration, resume - carries the
     // personality's accrued lessons without threading anything per-caller.
     resolvePersonalityMemoryBrief: (params) => personalityMemory.resolveBriefForSpawn(params),
+    resolveProjectKnowledgeBrief: async ({ cwd }) => {
+      if (!cwd) return null;
+      const brief = await projectKnowledge.briefForCwd(cwd);
+      return brief.text || null;
+    },
     onActivity: recordActivity,
     onUsageEvent: (event) => usageLogStore.append(event),
     mcpAuthToken: agentMcpAuthToken,
@@ -1894,6 +1925,7 @@ export async function createOttoDaemon(
     readAgentPersonalities: () => daemonConfigStore.get().agentPersonalities?.personalities ?? [],
     readAgentTeams: () => daemonConfigStore.get().agentTeams,
     personalityMemory,
+    projectKnowledge,
     github,
     workspaceGitService,
     findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,
@@ -2284,6 +2316,7 @@ export async function createOttoDaemon(
 
             wsServer.setPersonalityStatsProvider(() => personalityStatsStore.get());
             wsServer.setPersonalityMemoryService(personalityMemory);
+            wsServer.setProjectKnowledgeService(projectKnowledge);
             wsServer.setNodeOutputStore(nodeOutputStore);
             wsServer.setPromptTemplateStore(promptTemplateStore);
             // Late-wired like the stores above: hands the brain manager to the

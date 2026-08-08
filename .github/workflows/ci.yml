@@ -30,6 +30,7 @@ jobs:
       desktop: ${{ steps.filter.outputs.shared != 'false' || steps.filter.outputs.desktop != 'false' }}
       desktop_package: ${{ steps.filter.outputs.shared != 'false' || steps.filter.outputs.desktop_package != 'false' }}
       app: ${{ steps.filter.outputs.shared != 'false' || steps.filter.outputs.app != 'false' }}
+      android_native: ${{ steps.filter.outputs.shared != 'false' || steps.filter.outputs.android_native != 'false' }}
       sdk: ${{ steps.filter.outputs.shared != 'false' || steps.filter.outputs.sdk != 'false' }}
       playwright: ${{ steps.filter.outputs.shared != 'false' || steps.filter.outputs.playwright != 'false' }}
       relay: ${{ steps.filter.outputs.shared != 'false' || steps.filter.outputs.relay != 'false' }}
@@ -84,6 +85,8 @@ jobs:
             desktop_package:
               - '.github/workflows/ci.yml'
               - 'packages/desktop/**'
+              - 'packages/expo-two-way-audio/**'
+              - 'vendor/agent-flow/LICENSE'
             app:
               - 'packages/app/**'
               - 'packages/client/**'
@@ -91,6 +94,11 @@ jobs:
               - 'packages/highlight/**'
               - 'packages/protocol/**'
               - 'packages/relay/**'
+            android_native:
+              - '.github/workflows/ci.yml'
+              - 'packages/app/android/**'
+              - 'packages/expo-two-way-audio/**'
+              - 'vendor/agent-flow/LICENSE'
             sdk:
               - 'packages/client/**'
               - 'packages/protocol/**'
@@ -425,6 +433,43 @@ jobs:
 
       - name: Run app unit tests
         run: npm run test --workspace=@otto-code/app
+
+  android-native-tests:
+    needs: changes
+    if: >-
+      ${{ !cancelled() &&
+          (github.event_name == 'workflow_dispatch' ||
+           needs.changes.result != 'success' ||
+           needs.changes.outputs.android_native != 'false') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Install dependencies with retry
+        run: node scripts/npm-retry.mjs ci
+
+      - name: Compile and test the Android wake-word module
+        working-directory: packages/app/android
+        run: >-
+          ./gradlew
+          :otto-code-expo-two-way-audio:testDebugUnitTest
+          --tests expo.modules.twowayaudio.WakeWordHandoffBufferTest
+          --no-daemon
 
   sdk-tests:
     needs: changes

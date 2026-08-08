@@ -1,7 +1,9 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -63,6 +65,71 @@ function createFakeMacBundle(options: { includeHelper: boolean }): {
 }
 
 describe("desktop packaging", () => {
+  it("bundles a checksum-pinned wake-word model in every installer", () => {
+    const config = readFileSync(join(packageRoot, "electron-builder.yml"), "utf8");
+    expect(config).toContain("from: ../expo-two-way-audio/models/wake-word");
+    expect(config).toContain("from: ../expo-two-way-audio/wake-word-model.json");
+    expect(config).toContain("to: wake-word/model.json");
+    expect(config).toContain("to: wake-word/LICENSE-APACHE-2.0.txt");
+
+    const sharedPackageRoot = join(packageRoot, "..", "expo-two-way-audio");
+    const manifest = JSON.parse(
+      readFileSync(join(sharedPackageRoot, "wake-word-model.json"), "utf8"),
+    ) as {
+      assets: Record<string, string>;
+      assetBytes: Record<string, number>;
+      assetSha256: Record<string, string>;
+      androidRuntime: {
+        file: string;
+        bytes: number;
+        sha256: string;
+      };
+    };
+
+    expect(Object.keys(manifest.assets)).toEqual([
+      "encoder",
+      "decoder",
+      "joiner",
+      "tokens",
+      "keywords",
+    ]);
+    for (const assetName of Object.values(manifest.assets)) {
+      const assetPath = join(sharedPackageRoot, "models", "wake-word", assetName);
+      expect(existsSync(assetPath), `${assetName} must be checked in`).toBe(true);
+      const asset = readFileSync(assetPath);
+      expect(asset.byteLength, `${assetName} byte length`).toBe(manifest.assetBytes[assetName]);
+      expect(createHash("sha256").update(asset).digest("hex"), `${assetName} checksum`).toBe(
+        manifest.assetSha256[assetName],
+      );
+    }
+
+    const androidRuntimePath = join(sharedPackageRoot, manifest.androidRuntime.file);
+    const androidRuntime = readFileSync(androidRuntimePath);
+    expect(androidRuntime.byteLength, "Android Sherpa AAR byte length").toBe(
+      manifest.androidRuntime.bytes,
+    );
+    expect(
+      createHash("sha256").update(androidRuntime).digest("hex"),
+      "Android Sherpa AAR checksum",
+    ).toBe(manifest.androidRuntime.sha256);
+
+    const androidBuild = readFileSync(join(sharedPackageRoot, "android", "build.gradle"), "utf8");
+    expect(androidBuild).toContain('implementation files("libs/sherpa-onnx-1.12.28.aar")');
+    expect(androidBuild).toContain('assets.srcDir file("../models")');
+    expect(androidBuild).toContain('tasks.register("verifyWakeWordDistribution")');
+  });
+
+  it("points the Nix launcher at the same checked-in wake-word model", () => {
+    const nixPackage = readFileSync(
+      join(packageRoot, "..", "..", "nix", "desktop-package.nix"),
+      "utf8",
+    );
+    expect(nixPackage).toContain(
+      '--set OTTO_WAKE_WORD_MODEL_DIR "$out/share/otto-desktop/packages/expo-two-way-audio/models/wake-word"',
+    );
+    expect(nixPackage).toContain("models/wake-word/LICENSE-APACHE-2.0.txt");
+  });
+
   it("unpacks server zsh shell integration files for external shells", () => {
     const config = readFileSync(join(packageRoot, "electron-builder.yml"), "utf8");
 

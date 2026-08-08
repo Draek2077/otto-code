@@ -274,22 +274,6 @@ async function chooseProvider() {
   ]);
 }
 
-// Desktop UI zoom → DEMO_ZOOM, read by demo/helpers/resolution.ts. Higher =
-// bigger UI but less content and less logical height; 3.0 is the ceiling before
-// the app drops to its compact/mobile layout (see MAX_DESKTOP_CAPTURE_SCALE).
-// Labels show the resulting logical layout size (output 2560×1440 ÷ zoom).
-async function chooseZoom() {
-  return select(
-    "Desktop UI zoom (bigger = larger UI, less on screen):",
-    [
-      { label: "2.0× - more content, smaller UI (1280×720 layout)", value: "2" },
-      { label: "2.5× - balanced (1024×576 layout)", value: "2.5" },
-      { label: "3.0× - biggest UI, least content (853×480 layout)", value: "3" },
-    ],
-    { initialIndex: 1 },
-  );
-}
-
 async function confirmSpend(themeCount) {
   const cost =
     themeCount > 1 ? "TWO real provider turns (one per theme)" : "one real provider turn";
@@ -341,12 +325,9 @@ function printReviewHint(outDirs) {
 }
 
 async function runFreeOrReal(scenario) {
-  const zoom = await chooseZoom();
-  if (zoom === CANCEL) return;
   const themes = await chooseTheme();
   if (themes === CANCEL) return;
   const env = baseEnv();
-  env.DEMO_ZOOM = zoom;
   const outDirs = themes.map((project) => `${scenario.id}-${project.replace("demo-", "")}`);
 
   if (scenario.kind === "real") {
@@ -379,12 +360,7 @@ async function runFreeOrReal(scenario) {
 }
 
 async function runSpread() {
-  // Zoom drives the desktop spread shots; the mobile/tablet/ios projects keep
-  // their own store-listing viewports and ignore it.
-  const zoom = await chooseZoom();
-  if (zoom === CANCEL) return;
   const env = baseEnv();
-  env.DEMO_ZOOM = zoom;
   const args = [
     "playwright",
     "test",
@@ -411,10 +387,7 @@ async function runSpread() {
 }
 
 async function runElectron(scenario) {
-  const zoom = await chooseZoom();
-  if (zoom === CANCEL) return;
   const env = baseEnv();
-  env.DEMO_ZOOM = zoom;
   const outDirs = [
     scenario.id === "02-preview-verify" ? "02-preview-verify-twilight" : "electron-smoke",
   ];

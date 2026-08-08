@@ -1,0 +1,4 @@
+interface:
+  display_name: "Onboard Project"
+  short_description: "Seed Otto project knowledge from repository evidence"
+  default_prompt: "Use $otto-onboard-project to initialize and seed this repository's project knowledge for review."

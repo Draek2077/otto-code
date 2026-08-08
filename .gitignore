@@ -96,7 +96,8 @@ CLAUDE.local.md
 .debug.conversations/
 .debug/
 .dev/
-.otto/
+# Repo-owned project knowledge is reviewed and shared through Git.
+.otto/project-knowledge.json
 .wrangler/
 **/.wrangler/
 **/.tanstack/

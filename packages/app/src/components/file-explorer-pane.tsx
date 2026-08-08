@@ -1288,6 +1288,10 @@ export function FileExplorerPane({
       handleToggleHiddenFiles();
     }
     const parents = collectRevealParentDirectories(revealPath);
+    const isDirectoryReveal = filesRevealRequest.kind === "directory";
+    if (isDirectoryReveal) {
+      parents.push(revealPath);
+    }
     const missingExpanded = parents.filter((parent) => !expandedPaths.has(parent));
     if (missingExpanded.length > 0) {
       setExpandedPathsForWorkspace(workspaceStateKey, [
@@ -1299,6 +1303,9 @@ export function FileExplorerPane({
       if (!directories.has(parent)) {
         void requestDirectoryListing(parent, { recordHistory: false, setCurrentPath: false });
       }
+    }
+    if (isDirectoryReveal) {
+      setExpandedPathsForWorkspace(workspaceStateKey, [...Array.from(expandedPaths), ...parents]);
     }
     selectExplorerEntry(revealPath);
     setPendingRevealPath(revealPath);

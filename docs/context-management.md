@@ -58,14 +58,14 @@ The tool claims control only where control exists, which is roughly 80% of the w
 The tree root is **"Sent before you type"**. Context files are one branch of six
 (`ContextCategory`, `agent/context-management/types.ts`):
 
-| Category        | Source                                                 | Otto's visibility                        |
-| --------------- | ------------------------------------------------------ | ---------------------------------------- |
-| `context_files` | the CLAUDE.md / AGENTS.md graph plus imports           | convention scan                          |
-| `memory_index`  | `MEMORY.md` (entries are recalled, **not** fixed)      | convention scan                          |
-| `skills_roster` | name + description per skill **and per subagent**      | filesystem scan                          |
-| `mcp_tools`     | tool JSON schemas per connected server                 | daemon-known                             |
-| `otto_injected` | personality prompt, team snapshot, injected Otto tools | daemon-owned, exact                      |
-| `system_prompt` | provider preset                                        | opaque for CLIs; exact for openai-compat |
+| Category        | Source                                                                            | Otto's visibility                        |
+| --------------- | --------------------------------------------------------------------------------- | ---------------------------------------- |
+| `context_files` | the CLAUDE.md / AGENTS.md graph plus imports                                      | convention scan                          |
+| `memory_index`  | `MEMORY.md` (entries are recalled, **not** fixed)                                 | convention scan                          |
+| `skills_roster` | name + description per skill **and per subagent**                                 | filesystem scan                          |
+| `mcp_tools`     | tool JSON schemas per connected server                                            | daemon-known                             |
+| `otto_injected` | personality prompt, team snapshot, project-knowledge catalog, injected Otto tools | daemon-owned, exact                      |
+| `system_prompt` | provider preset                                                                   | opaque for CLIs; exact for openai-compat |
 
 Measuring only markdown was the failure mode this inventory exists to prevent. The fork's own
 token-cost audit measured ~9.7–14.9K tok/request for this repo against ~6K `CLAUDE.md` + ~5K

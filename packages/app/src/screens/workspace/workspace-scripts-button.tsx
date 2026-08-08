@@ -1066,7 +1066,7 @@ const styles = StyleSheet.create((theme) => ({
   // button beside it exactly.
   ghostButton: {
     padding: {
-      xs: theme.spacing[3],
+      xs: theme.spacing[3] - 2,
       md: theme.spacing[2],
     },
     borderRadius: theme.borderRadius.lg,

@@ -2,11 +2,12 @@
  * Responsive fitting for the compact workspace header's action strip.
  *
  * The strip is `[menu toggle] [title / subtitle] [...] [Voice cues] [Visualizer]
- * [Brain] [Play]` in the header's `left` container plus `[Explorer]` in `right`.
+ * [Play] [Microphone] [Brain]` in the header's `left` container plus
+ * `[Explorer]` in `right`.
  * The "..." menu is the one non-negotiable control, and the project name /
  * workspace subtitle must always keep at least `MIN_TITLE_WIDTH` - so when the
  * row can't hold everything the optional buttons drop in the order Voice cues,
- * Visualizer, Explorer, Play.
+ * Visualizer, Play. Microphone, Brain, and Explorer are required controls.
  *
  * A dropped button is moved, not lost: every action the fit drops reappears as
  * an item in the "..." menu (the `menu*` flags below), so narrowing the window
@@ -15,16 +16,15 @@
  * goes last because starting a workspace script is the most launch-like action
  * in the strip.
  *
- * Brain is the exception and is not in that order at all: it is pinned, because
- * it is a status light rather than an action, and a status light folded into a
- * closed menu reports nothing. It is charged to the fixed chrome instead, so the
- * droppable four still spend an honest budget when it is on screen.
+ * Required controls are charged to the fixed chrome. The microphone is a
+ * privacy control, while Brain is a status light, so neither belongs in a
+ * closed menu. Explorer is the primary file access control.
  */
 
 /** Optional compact header buttons, listed in the order they drop. */
-const DROP_ORDER = ["voiceCues", "visualizer", "explorer", "play"] as const;
+const DROP_ORDER = ["voiceCues", "visualizer", "play"] as const;
 
-type CompactHeaderAction = (typeof DROP_ORDER)[number];
+type CompactHeaderAction = (typeof DROP_ORDER)[number] | "explorer";
 
 /**
  * Floor for the title/subtitle group. The header truncates both lines, so this
@@ -62,12 +62,12 @@ export interface CompactHeaderActionsInput {
    * speak. Not gated on developer mode: a mute for something audible belongs
    * wherever the noise reaches you. */
   voiceCuesAvailable: boolean;
+  microphoneAvailable: boolean;
   hasWorkspaceScripts: boolean;
   hasWorkspaceDirectory: boolean;
   /**
-   * The pinned Brain status light is on screen (the sidebar is collapsed, or
-   * this is compact). It never drops, so it is charged to fixed chrome rather
-   * than competing for a slot.
+   * The Brain status light is on screen (the sidebar is collapsed, or this is
+   * compact). It never drops, so it is charged to fixed chrome.
    */
   hasBrainButton: boolean;
 }
@@ -119,12 +119,18 @@ export function resolveCompactHeaderActions(
   if (input.isDeveloperMode || input.hasWorkspaceDirectory) {
     requested.add("explorer");
   }
+  const required = new Set<CompactHeaderAction>();
+  if (input.isDeveloperMode || input.hasWorkspaceDirectory) required.add("explorer");
   const fitted =
     input.isCompact && input.rowWidth > 0
       ? fitCompactHeaderActions({
           rowWidth: input.rowWidth,
           requested,
-          pinnedWidth: input.hasBrainButton ? ACTION_WIDTH : 0,
+          required,
+          requiredWidth:
+            (input.microphoneAvailable ? ACTION_WIDTH : 0) +
+            (input.hasBrainButton ? ACTION_WIDTH : 0) +
+            (required.has("explorer") ? ACTION_WIDTH : 0),
         })
       : requested;
   const dropped = (action: CompactHeaderAction) => requested.has(action) && !fitted.has(action);
@@ -145,13 +151,18 @@ export function resolveCompactHeaderActions(
 function fitCompactHeaderActions(input: {
   rowWidth: number;
   requested: ReadonlySet<CompactHeaderAction>;
-  /** Width already spoken for by pinned buttons (Brain), which never drop. */
-  pinnedWidth: number;
+  required: ReadonlySet<CompactHeaderAction>;
+  /** Width already spoken for by required controls, which never drop. */
+  requiredWidth: number;
 }): ReadonlySet<CompactHeaderAction> {
-  const budget = input.rowWidth - FIXED_CHROME_WIDTH - input.pinnedWidth;
+  const budget = input.rowWidth - FIXED_CHROME_WIDTH - input.requiredWidth;
   const slots = Math.max(0, Math.floor(budget / ACTION_WIDTH));
-  const visible = new Set<CompactHeaderAction>();
-  for (let index = DROP_ORDER.length - 1; index >= 0 && visible.size < slots; index -= 1) {
+  const visible = new Set(input.required);
+  for (
+    let index = DROP_ORDER.length - 1;
+    index >= 0 && visible.size < slots + input.required.size;
+    index -= 1
+  ) {
     const action = DROP_ORDER[index]!;
     if (input.requested.has(action)) {
       visible.add(action);

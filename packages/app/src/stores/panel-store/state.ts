@@ -72,6 +72,11 @@ export const DEFAULT_CONTEXT_SIDEBAR_WIDTH = 320;
 export const MIN_CONTEXT_SIDEBAR_WIDTH = 240;
 export const MAX_CONTEXT_SIDEBAR_WIDTH = 720;
 
+// Manage knowledge's left column. Persisted app-wide as a reading preference.
+export const DEFAULT_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH = 340;
+export const MIN_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH = 260;
+export const MAX_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH = 520;
+
 export const DEFAULT_EXPLORER_FILES_SPLIT_RATIO = 0.38;
 export const MIN_EXPLORER_FILES_SPLIT_RATIO = 0.2;
 export const MAX_EXPLORER_FILES_SPLIT_RATIO = 0.8;
@@ -334,6 +339,9 @@ export function migratePanelState(
   } else {
     state.contextSidebarWidth = clampContextSidebarWidth(state.contextSidebarWidth);
   }
+  state.projectKnowledgeSidebarWidth = normalizeProjectKnowledgeSidebarWidth(
+    state.projectKnowledgeSidebarWidth,
+  );
   if (typeof state.explorerShowHiddenFiles !== "boolean") {
     state.explorerShowHiddenFiles = true;
   }
@@ -346,6 +354,16 @@ export function migratePanelState(
   }
 
   return state;
+}
+
+function normalizeProjectKnowledgeSidebarWidth(width: unknown): number {
+  if (typeof width !== "number" || !Number.isFinite(width)) {
+    return DEFAULT_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH;
+  }
+  return Math.max(
+    MIN_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH,
+    Math.min(MAX_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH, width),
+  );
 }
 
 export { buildExplorerCheckoutKey, resolveExplorerTabForCheckout };

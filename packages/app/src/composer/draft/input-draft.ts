@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UserComposerAttachment } from "@/attachments/types";
 import type { DraftAgentControlsProps } from "@/composer/agent-controls";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
@@ -139,9 +139,59 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     (state) => state.attachmentFocusRequestByDraftKey[draftKey] ?? 0,
   );
   const [hydratedDraftKey, setHydratedDraftKey] = useState<string | null>(null);
-  const text = draft?.text ?? "";
+  // Text is intentionally local while typing. Updating the draft store for
+  // every keypress makes the entire composer tree (and, for an active agent,
+  // its parent panel) participate in the input's urgent render path. Drafts
+  // remain durable through the checkpoint below and are flushed on teardown.
+  const [text, setTextState] = useState("");
+  const textRef = useRef("");
+  const textEditedRef = useRef(false);
+  const textPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const attachments = draft?.attachments ?? [];
   const isHydrated = hydratedDraftKey === draftKey;
+
+  const flushText = useCallback(
+    (nextText: string) => {
+      if (textPersistTimerRef.current !== null) {
+        clearTimeout(textPersistTimerRef.current);
+        textPersistTimerRef.current = null;
+      }
+      const store = useDraftStore.getState();
+      const current = store.getDraftInput(draftKey) ?? { text: "", attachments: [] };
+      const next = { ...current, text: nextText };
+      if (!hasDraftContent(next)) {
+        store.clearDraftInput({ draftKey, lifecycle: "abandoned" });
+        return;
+      }
+      store.saveDraftInput({ draftKey, draft: next });
+    },
+    [draftKey],
+  );
+
+  // Hydration is asynchronous. Adopt the hydrated value unless the user has
+  // already started editing, in which case their live text is authoritative.
+  useEffect(() => {
+    if (hydratedDraftKey !== draftKey || textEditedRef.current) {
+      return;
+    }
+    const hydratedText = draft?.text ?? "";
+    textRef.current = hydratedText;
+    setTextState(hydratedText);
+  }, [draft?.text, draftKey, hydratedDraftKey]);
+
+  useEffect(() => {
+    textEditedRef.current = false;
+    textRef.current = "";
+    setTextState("");
+  }, [draftKey]);
+
+  useEffect(() => {
+    return () => {
+      if (textEditedRef.current) {
+        flushText(textRef.current);
+      }
+    };
+  }, [flushText]);
 
   const saveDraft = useCallback(
     (
@@ -151,7 +201,10 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       },
     ) => {
       const store = useDraftStore.getState();
-      const current = store.getDraftInput(draftKey) ?? { text: "", attachments: [] };
+      const current = {
+        ...(store.getDraftInput(draftKey) ?? { text: "", attachments: [] }),
+        text: textRef.current,
+      };
       const next = update(current);
       if (!hasDraftContent(next)) {
         store.clearDraftInput({ draftKey, lifecycle: "abandoned" });
@@ -164,9 +217,18 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
 
   const setText = useCallback(
     (nextText: string) => {
-      saveDraft((current) => ({ ...current, text: nextText }));
+      textEditedRef.current = true;
+      textRef.current = nextText;
+      setTextState(nextText);
+      if (textPersistTimerRef.current !== null) {
+        clearTimeout(textPersistTimerRef.current);
+      }
+      textPersistTimerRef.current = setTimeout(() => {
+        textPersistTimerRef.current = null;
+        flushText(nextText);
+      }, 200);
     },
-    [saveDraft],
+    [flushText],
   );
 
   const setAttachments = useCallback(
@@ -181,6 +243,13 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
 
   const clear = useCallback(
     (lifecycle: "sent" | "abandoned") => {
+      if (textPersistTimerRef.current !== null) {
+        clearTimeout(textPersistTimerRef.current);
+        textPersistTimerRef.current = null;
+      }
+      textEditedRef.current = false;
+      textRef.current = "";
+      setTextState("");
       useDraftStore.getState().clearDraftInput({ draftKey, lifecycle });
     },
     [draftKey],

@@ -6,7 +6,7 @@ This repo (otto-code) is a fork with one mission: extend Otto into a **fully fea
 
 The founding proof was the **Preview subsystem** - a rebuild of the Claude Code app's built-in `Claude_Preview` MCP server, shipped for all providers: agents start dev servers from a launch config, then verify browser-rendered changes (accessibility snapshots, DOM inspection, console/network capture, click/fill, viewport resize, screenshots), showing proof instead of asking the user to check manually. Read [docs/preview.md](docs/preview.md) before working on anything preview-related - it carries the design principles that must survive future changes (token economy, guardrail-bearing tool descriptions, daemon-enforced tab binding). The dev-server half lives in `packages/server/src/server/preview/`; the verification half is the daemon's browser-tools subsystem (`packages/server/src/server/browser-tools/`) executing against the Otto browser pane. Extend these; don't build a parallel browser stack.
 
-The same leveling-up pattern has since shipped artifacts, the natively-tooled OpenAI-compatible provider (daemon-owned tool loop, MCP client, compaction, rewind), observed subagents for Claude, a provider-neutral git-hosting layer (GitHub + Bitbucket Cloud, see [docs/git-providers.md](docs/git-providers.md)), and agent personalities (named per-host templates with roles, spawnable by orchestrating agents, see [docs/agent-personalities.md](docs/agent-personalities.md)) - with the remaining per-provider gaps tracked as initiatives in `projects/`. When adding a capability, design it provider-agnostic first and treat single-provider support as the proof, not the finish line.
+The same leveling-up pattern has since shipped artifacts, the natively-tooled OpenAI-compatible provider (daemon-owned tool loop, MCP client, compaction, rewind), observed subagents for Claude, a provider-neutral git-hosting layer (GitHub + Bitbucket Cloud, see [docs/git-providers.md](docs/git-providers.md)), and agent personalities (named per-host templates with roles, spawnable by orchestrating agents, see [docs/agent-personalities.md](docs/agent-personalities.md)) - with remaining initiatives tracked as first-class project pages in Otto Knowledge. When adding a capability, design it provider-agnostic first and treat single-provider support as the proof, not the finish line.
 
 ## Repository map
 
@@ -19,15 +19,16 @@ Four trees. Know which one you are in before you write anything down.
 | Tree                                  | What it holds                                                                                | Tense               |
 | ------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------- |
 | **[`docs/`](docs/README.md)**         | The official software documentation - how Otto works. **This is the spec we build against.** | Present             |
-| **[`projects/`](projects/README.md)** | Charters for unbuilt work, and **the single open-work ledger**                               | Future              |
+| [`.otto/knowledge/projects/`](.otto/knowledge/projects/) | Project charters, delivery status, progress, and history; manage through Otto Knowledge      | Future and history  |
+| [`.otto/knowledge/references/`](.otto/knowledge/references/) | External sources and their project-specific evaluation                                    | Present and history |
+| [`projects/`](projects/README.md)     | Temporary read-only migration source for legacy charters; do not update                      | Legacy              |
 | [`archdocs/`](archdocs/README.md)     | The system-level architecture record - AsciiDoc + Mermaid, one level above `docs/`           | Present, wide-angle |
 | [`findings/`](findings/README.md)     | Measured investigations: method, numbers, what they ruled out. **Never status**              | Past                |
 | **This file**                         | Working rules for agents in this repo                                                        | Imperative          |
 
-**The indexes are [`docs/README.md`](docs/README.md) and [`projects/README.md`](projects/README.md).
-This file does not duplicate them** - it used to carry both tables, and two copies of an index means
-one of them is wrong. At the start of non-trivial work, open the relevant index and skim what
-matters.
+**The documentation index is [`docs/README.md`](docs/README.md).** Every chat receives the compact
+active Knowledge catalog. At the start of non-trivial work, read the relevant confirmed Knowledge
+pages and documentation before broad repository research.
 
 **"The docs", "check the docs", or "check the X docs" always mean `docs/` - not the web.** Look there
 before fetching anything online; it captures gotchas and conventions you cannot derive from the code
@@ -63,28 +64,26 @@ Non-negotiable. Each one exists because someone got it wrong first.
 - **Code-level facts** → inline comments next to the code.
 - **System, process and gotcha-level facts** → a page in `docs/`, **and a row in
   [`docs/README.md`](docs/README.md)**. An unlisted page is an invisible page.
-- **Point-in-time plans** (a feature build-out, a charter, a refactor plan) → `projects/<name>/`,
-  one folder per initiative, **and a row in [`projects/README.md`](projects/README.md)**.
-- **Status - what is done and what is not** → [`projects/README.md`](projects/README.md) only. It is
-  the single source of truth. Do not start a second registry or a dated batch document; that is how
-  four competing ledgers happened last time. This bans a rival **status** ledger, not evidence:
-  a measured investigation belongs in [`findings/`](findings/README.md), whose own rules forbid it
-  from carrying status and require it to link to the row here instead.
+- **Point-in-time plans** (a feature build-out, a charter, a refactor plan) → a first-class project
+  page through `record_project_charter`. Use rich Markdown for the complete charter.
+- **Status and progress** → the same project page through `update_project_delivery`. Review status
+  says whether the charter is trusted; delivery status and structured progress say what is done.
+  Do not start a second registry or dated progress document. This bans a rival **status** ledger,
+  not evidence: a measured investigation still belongs in [`findings/`](findings/README.md).
 - **A measured investigation** (numbers, method, what was ruled out) →
   [`findings/`](findings/README.md), one folder per question, one dated file per run. The durable
   half graduates into `docs/`; the evidence stays as the audit trail.
-- **An external source that shaped a decision** → [`docs/references.md`](docs/references.md),
-  including sources you evaluated and rejected.
+- **An external source that shaped a decision** → a first-class reference page through
+  `record_project_reference`, including sources evaluated and rejected.
 
 ### When a project ships
 
-Fold its durable facts into the relevant `docs/` page, move any remaining tail into
-[`projects/README.md`](projects/README.md), then **remove the folder**. A shipped project left in
-`projects/` is the most common way that tree rots.
+Fold durable product facts into the relevant `docs/` page, update the project page's charter and
+delivery metadata with reasons, then mark it complete. Keep the append-only project timeline as
+history. Cancel or defer work through delivery status rather than moving it into a second archive.
 
-Removed folders move to `archive/` at the repo root, which is **gitignored** - out of the repo, still
-on disk. Nothing there is active work; do not pick items up from it. If something is genuinely dead,
-delete it rather than archiving it.
+The legacy `projects/` tree and `docs/references.md` are retained only until their migrated pages and
+management UI receive final review. Do not update them or treat them as current truth.
 
 ## Quick start
 

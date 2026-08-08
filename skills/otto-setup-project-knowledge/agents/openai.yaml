@@ -1,0 +1,4 @@
+interface:
+  display_name: "Set Up Project Knowledge"
+  short_description: "Initialize and verify Otto's repository knowledge store"
+  default_prompt: "Use $otto-setup-project-knowledge to initialize and verify this repository's project knowledge store."

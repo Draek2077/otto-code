@@ -575,6 +575,7 @@ export const ar: TranslationResources = {
       retry: "أعد محاولة الإملاء",
       insert: "إدراج النسخ",
       insertAndSend: "أدخل النسخ وأرسل",
+      cleanUp: "تنظيف النسخ",
       failed: "فشل الإملاء:{{error}}",
       failedRetry: "فشل الإملاء. اضغط على إعادة المحاولة.",
     },

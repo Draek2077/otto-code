@@ -6,3 +6,7 @@
 # Windows scripts that must keep CRLF endings.
 *.bat text eol=crlf
 *.cmd text eol=crlf
+
+# Bundled local-inference models are binary release inputs, never text-normalized.
+*.onnx -text
+*.aar -text

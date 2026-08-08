@@ -19,7 +19,7 @@ import {
   findOccupyingWorkspaceForCwd,
   WorkspaceDirectoryOccupiedError,
 } from "../../otto-worktree-service.js";
-import { deriveProjectKey } from "../../project-key.js";
+import { deriveProjectGroupingDisplayName, deriveProjectKey } from "../../project-key.js";
 import { areEquivalentPaths, createRealpathAwarePathMatcher } from "../../../utils/path.js";
 
 export interface ResolveOrCreateWorkspaceIdInput {
@@ -178,7 +178,11 @@ export function createWorkspaceProvisioningService(deps: {
     return projectRegistry.getOrCreateActiveByRoot({
       rootPath,
       kind: checkout.isGit ? "git" : "non_git",
-      displayName: basename(rootPath) || rootPath,
+      displayName: deriveProjectGroupingDisplayName({
+        rootPath,
+        remoteUrl: checkout.remoteUrl,
+        worktreeRoot: checkout.worktreeRoot,
+      }),
       projectKey: deriveProjectKey({
         rootPath,
         remoteUrl: checkout.remoteUrl,
@@ -200,7 +204,11 @@ export function createWorkspaceProvisioningService(deps: {
       projectId: workspace.projectId,
       rootPath,
       kind: checkout.isGit ? "git" : "non_git",
-      displayName: basename(rootPath) || rootPath,
+      displayName: deriveProjectGroupingDisplayName({
+        rootPath,
+        remoteUrl: checkout.remoteUrl,
+        worktreeRoot: checkout.worktreeRoot,
+      }),
       projectKey: deriveProjectKey({
         rootPath,
         remoteUrl: checkout.remoteUrl,

@@ -66,6 +66,9 @@ export interface ArchiveDependencies {
   ottoWorktreesBaseRoot?: string;
   github: ForgeService;
   workspaceGitService: Pick<WorkspaceGitService, "getSnapshot" | "invalidateAuxiliaryReads">;
+  // Detach archived records before their Otto-owned backing directory is removed.
+  // Shared directories keep their remaining workspace observers.
+  removeWorkspaceObserverForWorkspaceId?: (workspaceId: string) => void;
   agentManager: Pick<AgentManager, "listAgents" | "archiveAgent" | "archiveSnapshot">;
   agentStorage: Pick<AgentStorage, "list">;
   // Resolves the worktree at a path to its workspaceId for archive-by-path. The
@@ -202,6 +205,10 @@ export async function archiveByScope(
       targetWorkspaceIds,
       request.requestId,
     );
+
+    for (const workspaceId of archivedWorkspaceIds) {
+      dependencies.removeWorkspaceObserverForWorkspaceId?.(workspaceId);
+    }
 
     await dropGitOperationLogsForArchivedRecords(dependencies, target, archivedWorkspaceIds);
 

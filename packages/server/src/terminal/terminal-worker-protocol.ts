@@ -18,6 +18,8 @@ export interface WorkerTerminalInfo {
   cwd: string;
   workspaceId?: string;
   title?: string;
+  titleMode?: "auto" | "default";
+  titleIncludePaths?: boolean;
   activity: TerminalActivity | null;
 }
 
@@ -52,6 +54,17 @@ export type TerminalWorkerRequest =
       requestId: string;
       cwd: string;
       env: Record<string, string>;
+    }
+  | {
+      type: "setTitle";
+      requestId: string;
+      terminalId: string;
+      title: string;
+    }
+  | {
+      type: "clearTitle";
+      requestId: string;
+      terminalId: string;
     }
   | {
       type: "setActivity";

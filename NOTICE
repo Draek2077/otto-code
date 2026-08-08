@@ -88,5 +88,17 @@ rationale in vendor/agent-flow/OTTO-PATCHES.md, which serves as the notice of
 state changes. The Agent Flow name and logos are trademarks of their owner and
 are not used as Otto branding or as a user-facing feature label.
 
+  Sherpa-ONNX GigaSpeech keyword-spotting model
+  Source: https://github.com/k2-fsa/sherpa-onnx/releases/tag/kws-models
+  Training corpus: https://github.com/SpeechColab/GigaSpeech
+  License: Apache License, Version 2.0
+
+Otto's "Hey Otto" feature includes the quantized runtime subset of
+`sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01` and a generated keyword
+file. Android builds also include the official Sherpa-ONNX 1.12.28 AAR. Exact
+source and file checksums are recorded in
+packages/expo-two-way-audio/wake-word-model.json. Packaged copies carry the
+Apache License 2.0 text and the model-specific notice beside the model files.
+
 Otto is an independent project. It is not endorsed by, sponsored by, or
 affiliated with the Paseo project or its authors.

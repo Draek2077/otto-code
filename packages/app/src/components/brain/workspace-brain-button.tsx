@@ -20,7 +20,7 @@ import { withUnistyles } from "react-native-unistyles";
 import { resolveBrainRailLabel } from "@/components/brain/brain-state";
 import { BrainStateIcon } from "@/components/brain/brain-state-icon";
 import { resolveBrainRailRoute, useBrainRail } from "@/components/brain/use-brain-rail-state";
-import { HeaderToggleButton } from "@/components/headers/header-toggle-button";
+import { HeaderToggleButton, headerIconSlotStyle } from "@/components/headers/header-toggle-button";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useIconSize, type Theme } from "@/styles/theme";
 
@@ -67,6 +67,7 @@ export function WorkspaceBrainButton() {
       accessible
       accessibilityRole="button"
       accessibilityLabel={label}
+      style={isCompact ? headerIconSlotStyle.compactSlot : undefined}
     >
       {/* Not a function child: the button's hover and pressed tints are
           deliberately not applied to the glyph. A status light that changes

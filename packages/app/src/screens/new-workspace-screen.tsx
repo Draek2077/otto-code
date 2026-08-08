@@ -61,7 +61,7 @@ import {
   findWorkspaceForProject,
 } from "./new-workspace-existing-workspace";
 import { useWorkspace } from "@/stores/session-store-hooks";
-import { generateDraftId } from "@/stores/draft-keys";
+import { buildNewWorkspaceDraftKey, generateDraftId } from "@/stores/draft-keys";
 import { useDraftStore } from "@/stores/draft-store";
 import { isActiveCreateFlowForDraft, useCreateFlowStore } from "@/stores/create-flow-store";
 import {
@@ -812,18 +812,6 @@ function getContentStyle(input: { isCompact: boolean; insetBottom: number }) {
     return [styles.content, styles.contentCompact, { paddingBottom: input.insetBottom }];
   }
   return [styles.content, styles.contentCentered];
-}
-
-function buildNewWorkspaceDraftKey(input: {
-  selectedServerId: string;
-  selectedSourceDirectory: string | null;
-  draftId?: string;
-}): string {
-  const explicitDraftId = input.draftId?.trim();
-  if (explicitDraftId) {
-    return `new-workspace:draft:${explicitDraftId}`;
-  }
-  return `new-workspace:${input.selectedServerId}:${input.selectedSourceDirectory ?? "choose-project"}`;
 }
 
 function getSelectedPickerItem(selection: PickerSelection | null): PickerItem | null {
@@ -1744,11 +1732,7 @@ export function NewWorkspaceScreen({
   const projectIconDataByProjectKey = useProjectIconDataByProjectKey({
     projects: projectIconTargets,
   });
-  const draftKey = buildNewWorkspaceDraftKey({
-    selectedServerId,
-    selectedSourceDirectory,
-    draftId,
-  });
+  const draftKey = buildNewWorkspaceDraftKey(draftId);
   const forkDraftSetup = usePendingWorkspaceDraftSetup(draftId);
   const draftContextScopeKey = useDraftWorkspaceAttachmentScopeKey(draftId);
   const visibleDraftContextScopeKeys = useMemo(

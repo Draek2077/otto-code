@@ -310,6 +310,19 @@ describe("parseAssistantFileLink", () => {
     });
   });
 
+  it("normalizes browser-serialized Windows paths with a leading slash", () => {
+    expect(
+      parseAssistantFileLink("/C:/repo/src/app.tsx#L12", {
+        workspaceRoot: "C:/repo",
+      }),
+    ).toEqual({
+      raw: "/C:/repo/src/app.tsx#L12",
+      path: "C:/repo/src/app.tsx",
+      lineStart: 12,
+      lineEnd: undefined,
+    });
+  });
+
   it("parses absolute Windows hrefs with VS Code-style line suffixes inside the active workspace", () => {
     expect(
       parseAssistantFileLink("C:/repo/src/app.tsx:12-20", {

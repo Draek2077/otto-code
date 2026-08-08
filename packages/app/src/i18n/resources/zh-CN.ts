@@ -571,6 +571,7 @@ export const zhCN: TranslationResources = {
       retry: "重试听写",
       insert: "插入转写",
       insertAndSend: "插入转写并发送",
+      cleanUp: "清理转写文本",
       failed: "听写失败：{{error}}",
       failedRetry: "听写失败。点按重试。",
     },

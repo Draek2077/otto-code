@@ -1,6 +1,9 @@
 package expo.modules.twowayaudio
 
 import AudioEngine
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import androidx.core.os.bundleOf
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -14,6 +17,7 @@ class ExpoTwoWayAudioModule : Module() {
         private const val ON_OUTPUT_VOLUME_LEVEL_EVENT = "onOutputVolumeLevelData"
         private const val ON_RECORDING_CHANGE_EVENT = "onRecordingChange"
         private const val ON_AUDIO_INTERRUPTION_EVENT = "onAudioInterruption"
+        private const val ON_WAKE_WORD_DETECTED_EVENT = "onWakeWordDetected"
         var audioEngine: AudioEngine? = null
     }
 
@@ -79,8 +83,42 @@ class ExpoTwoWayAudioModule : Module() {
          }
 
          Function("resumePlayback") {
-             audioEngine?.resumePlayback()
+            audioEngine?.resumePlayback()
          }
+
+        Function("getWakeWordCapabilities") {
+            val context = appContext.reactContext
+            val available = context != null && AndroidWakeWordDetector.isAvailable(context)
+            mapOf(
+                "available" to available,
+                "safePhraseSupported" to available,
+                "modelVersion" to if (available) AndroidWakeWordDetector.modelVersion else null,
+            )
+        }
+
+        AsyncFunction("startWakeWordDetection") { phrase: String, sensitivity: Double ->
+            val context = appContext.reactContext
+                ?: throw IllegalStateException("Android application context is unavailable.")
+            if (!AndroidWakeWordDetector.isAvailable(context)) {
+                throw IllegalStateException("This build does not include a native wake-word model.")
+            }
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) !=
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                throw IllegalStateException(
+                    "Microphone access is required for Hey Otto. Allow microphone access in system settings, then try again.",
+                )
+            }
+            if (audioEngine == null) {
+                audioEngine = AudioEngine(context)
+                setupCallbacks()
+            }
+            audioEngine?.startWakeWordDetection(phrase, sensitivity)
+        }
+
+        AsyncFunction("stopWakeWordDetection") {
+            audioEngine?.stopWakeWordDetection()
+        }
 
         Function("getMicrophoneModeIOS") {
             throw UnsupportedOperationException("getMicrophoneModeIOS is only supported on iOS")
@@ -112,7 +150,8 @@ class ExpoTwoWayAudioModule : Module() {
             ON_INPUT_VOLUME_LEVEL_EVENT,
             ON_OUTPUT_VOLUME_LEVEL_EVENT,
             ON_RECORDING_CHANGE_EVENT,
-            ON_AUDIO_INTERRUPTION_EVENT
+            ON_AUDIO_INTERRUPTION_EVENT,
+            ON_WAKE_WORD_DETECTED_EVENT
         )
     }
 
@@ -132,6 +171,12 @@ class ExpoTwoWayAudioModule : Module() {
                 sendEvent(ON_RECORDING_CHANGE_EVENT, bundleOf(
                     "data" to (audioEngine?.isRecording ?: false)
                 ))
+            }
+            onWakeWordDetectedCallback = { phrase ->
+                sendEvent(
+                    ON_WAKE_WORD_DETECTED_EVENT,
+                    bundleOf("data" to bundleOf("phrase" to phrase)),
+                )
             }
         }
     }

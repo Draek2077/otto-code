@@ -83,6 +83,17 @@ export interface DesktopEditorBridge {
   openTarget?: (input: DesktopEditorOpenTargetInput) => Promise<void>;
 }
 
+export interface DesktopWakeWordBridge {
+  capabilities?: () => Promise<{
+    available: boolean;
+    safePhraseSupported: boolean;
+    modelVersion?: string;
+  }>;
+  start?: (input: { phrase: string; sensitivity: number }) => Promise<void>;
+  audio?: (pcm: string) => Promise<void>;
+  stop?: () => Promise<void>;
+}
+
 export interface DesktopWebUtilsBridge {
   getPathForFile?: (file: File) => string;
 }
@@ -196,6 +207,7 @@ export interface DesktopHostBridge {
   notification?: DesktopNotificationBridge;
   opener?: DesktopOpenerBridge;
   editor?: DesktopEditorBridge;
+  wakeWord?: DesktopWakeWordBridge;
   webUtils?: DesktopWebUtilsBridge;
   menu?: DesktopMenuBridge;
   browser?: DesktopBrowserBridge;

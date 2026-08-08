@@ -1,4 +1,3 @@
-import type { Dialog } from "@playwright/test";
 import { expect, test, type Page } from "./fixtures";
 import { gotoAppShell, openSettings } from "./helpers/app";
 import { connectDaemonClient } from "./helpers/daemon-client-loader";
@@ -41,19 +40,16 @@ async function expectProviderSource(
     .toBe(source);
 }
 
-async function clickRemoveProviderAndAcceptWarning(page: Page): Promise<Dialog> {
-  let warning: Dialog | undefined;
-  page.once("dialog", (dialog) => {
-    warning = dialog;
-    expect(dialog.message()).toContain(`Remove ${CUSTOM_PROVIDER.name}?`);
-    expect(dialog.message()).toContain("This deletes the provider entry from config.json.");
-    void dialog.accept();
-  });
+async function clickRemoveProviderAndAcceptWarning(page: Page): Promise<void> {
   await page.getByTestId(`provider-remove-${CUSTOM_PROVIDER.id}`).click();
-  if (!warning) {
-    throw new Error("Expected a provider removal confirmation dialog, but none was shown.");
-  }
-  return warning;
+  const confirmation = page.getByTestId("confirm-dialog");
+  await expect(confirmation).toBeVisible();
+  await expect(confirmation).toContainText(`Remove ${CUSTOM_PROVIDER.name}?`);
+  await expect(confirmation).toContainText(
+    "This deletes the provider and its configuration from this host.",
+  );
+  await confirmation.getByTestId("confirm-dialog-confirm").click();
+  await expect(confirmation).not.toBeVisible();
 }
 
 test.describe("provider removal", () => {

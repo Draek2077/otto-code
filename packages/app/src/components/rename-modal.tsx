@@ -19,6 +19,7 @@ export interface AdaptiveRenameModalProps {
   onClose: () => void;
   onSubmit: (value: string) => Promise<void> | void;
   validate?: (value: string) => string | null;
+  allowEmpty?: boolean;
   maxLength?: number;
   testID?: string;
 }
@@ -32,6 +33,7 @@ export function AdaptiveRenameModal({
   onClose,
   onSubmit,
   validate,
+  allowEmpty = false,
   maxLength,
   testID,
 }: AdaptiveRenameModalProps) {
@@ -66,10 +68,10 @@ export function AdaptiveRenameModal({
 
   const computeError = useCallback(
     (value: string): string | null => {
-      if (!value.trim()) return t("common.errors.nameRequired");
+      if (!allowEmpty && !value.trim()) return t("common.errors.nameRequired");
       return validate ? validate(value) : null;
     },
-    [validate, t],
+    [allowEmpty, validate, t],
   );
 
   const handleChange = useCallback((value: string) => {

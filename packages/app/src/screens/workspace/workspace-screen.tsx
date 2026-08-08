@@ -98,6 +98,8 @@ import {
   WorkspaceVoiceCuesButton,
   WorkspaceVoiceCuesMenuItem,
 } from "@/voice/workspace-voice-cues-button";
+import { WorkspaceWakeWordButton } from "@/voice/workspace-wake-word-button";
+import { getWakeWordCapability } from "@/wake-word/wake-word-capability";
 import { openContextManagementTab } from "@/context-management/open-context-management-tab";
 import { useCloseDisabledFeatureTabs } from "@/features/use-close-disabled-feature-tabs";
 import { useFeatureEnabled } from "@/features/use-feature-enabled";
@@ -1097,6 +1099,10 @@ function useEnabledAfterInteractions(enabled: boolean): boolean {
   return enabled && interactionsSettled;
 }
 
+function isWorkspaceMicrophoneAvailable(enabled: boolean): boolean {
+  return enabled && getWakeWordCapability().available;
+}
+
 function useCloseTabs(): UseCloseTabsResult {
   const pendingRef = useRef(new Set<string>());
   const [closingTabIds, setClosingTabIds] = useState<Set<string>>(EMPTY_SET);
@@ -1360,6 +1366,7 @@ function PlainExplorerToggle({
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
         accessibilityState={accessibilityState}
+        style={headerIconSlotStyle.compactSlot}
       >
         {({ hovered }) =>
           isExplorerOpen ? (
@@ -1699,6 +1706,7 @@ interface WorkspaceHeaderTitleBarProps {
   showVisualizerAction: boolean;
   showVoiceCuesAction: boolean;
   showPlayAction: boolean;
+  microphoneAvailable: boolean;
   // Pinned, not fitted: the Brain status light never drops to the "..." menu.
   // True whenever the sidebar is not showing its own Brain button.
   showBrainAction: boolean;
@@ -1758,6 +1766,7 @@ function WorkspaceHeaderTitleBar({
   showVisualizerAction,
   showVoiceCuesAction,
   showPlayAction,
+  microphoneAvailable,
   showBrainAction,
   showVisualizerMenuItem,
   showVoiceCuesMenuItem,
@@ -1859,11 +1868,6 @@ function WorkspaceHeaderTitleBar({
             last used - and switching surfaces lives inside the Visualizer
             itself (the tab toolbar's PIP control, the PIP's expand control).
             See use-visualizer-surface.ts. */}
-        {/* The Brain status light, standing in for the sidebar's own whenever
-            the sidebar is collapsed or overlaid. Right of the Visualizer and
-            left of Explorer, and never fitted away - see
-            workspace-brain-button.tsx. */}
-        {showBrainAction ? <WorkspaceBrainButton /> : null}
         {isMobile && showPlayAction ? (
           <WorkspaceScriptsButton
             serverId={normalizedServerId}
@@ -1878,6 +1882,11 @@ function WorkspaceHeaderTitleBar({
             ghostIconSize={headerActionIconSize.lg}
           />
         ) : null}
+        {microphoneAvailable ? <WorkspaceWakeWordButton /> : null}
+        {/* The Brain status light, standing in for the sidebar's own whenever
+            the sidebar is collapsed or overlaid. It is immediately before
+            Explorer and never fitted away - see workspace-brain-button.tsx. */}
+        {showBrainAction ? <WorkspaceBrainButton /> : null}
       </View>
     </View>
   );
@@ -2704,6 +2713,7 @@ function WorkspaceScreenContent({
   // budget.
   const visualizerEnabled = useFeatureEnabled("visualizer");
   const voiceCuesAvailable = useVoiceCuesAvailable(normalizedServerId);
+  const microphoneAvailable = isWorkspaceMicrophoneAvailable(settings.wakeWordEnabled);
   // The Brain status light moves into the header whenever the sidebar is not
   // showing its own, so the local AI host's state is visible at all times rather
   // than only while the sidebar happens to be open.
@@ -2719,6 +2729,7 @@ function WorkspaceScreenContent({
         isDeveloperMode,
         visualizerEnabled,
         voiceCuesAvailable,
+        microphoneAvailable,
         hasWorkspaceScripts: workspaceScripts.length > 0,
         hasWorkspaceDirectory: Boolean(workspaceDirectory),
         hasBrainButton: showBrainAction,
@@ -2729,6 +2740,7 @@ function WorkspaceScreenContent({
       isDeveloperMode,
       visualizerEnabled,
       voiceCuesAvailable,
+      microphoneAvailable,
       workspaceScripts.length,
       workspaceDirectory,
       showBrainAction,
@@ -4509,6 +4521,7 @@ function WorkspaceScreenContent({
                 accessibilityRole="button"
                 accessibilityLabel={explorerToggleLabel}
                 accessibilityState={explorerToggleAccessibilityState}
+                style={headerIconSlotStyle.compactSlot}
               >
                 {({ hovered }) => {
                   if (isExplorerOpen) {
@@ -4739,6 +4752,7 @@ function WorkspaceScreenContent({
                 showVisualizerAction={headerActionFit.showVisualizer}
                 showVoiceCuesAction={headerActionFit.showVoiceCues}
                 showPlayAction={headerActionFit.showPlay}
+                microphoneAvailable={microphoneAvailable}
                 showBrainAction={showBrainAction}
                 showVisualizerMenuItem={headerActionFit.menuVisualizer}
                 showVoiceCuesMenuItem={headerActionFit.menuVoiceCues}

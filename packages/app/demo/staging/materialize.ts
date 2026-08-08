@@ -3,6 +3,7 @@ import { cp, mkdir, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { resolveDemoRemote } from "./remote";
 
 /**
  * Turns a checked-in demo template (see templates/<name>/) into a real git
@@ -46,7 +47,7 @@ export interface MaterializedRepo {
   name: string;
   path: string;
   defaultBranch: string;
-  /** Synthetic origin used so the UI groups the project under owner/repo. */
+  /** Origin used for project grouping and GitHub PR/check lookups. */
   originUrl: string;
   cleanup(): Promise<void>;
 }
@@ -131,10 +132,8 @@ export async function materializeTemplate(
   const reposRoot = options?.reposRoot ?? resolveDemoReposRoot();
   const repoPath = path.join(reposRoot, manifest.name);
   const originOwner = options?.originOwner ?? "otto-demos";
-  // Deliberately NOT github.com: a github origin makes the daemon's GitHub
-  // forge layer poll a repo that doesn't exist (gh errors surface in the UI).
-  // Any remote host still yields the owner/repo project display name.
-  const originUrl = `https://git.demoforge.dev/${originOwner}/${manifest.name}.git`;
+  const remote = resolveDemoRemote(templateName, originOwner);
+  const originUrl = remote.url;
 
   await rm(repoPath, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   await mkdir(repoPath, { recursive: true });
@@ -142,7 +141,6 @@ export async function materializeTemplate(
   git(repoPath, ["init", "-b", manifest.defaultBranch]);
   git(repoPath, ["config", "commit.gpgsign", "false"]);
   git(repoPath, ["config", "core.autocrlf", "false"]);
-  // Origin is display-only: the daemon reads it for project grouping and never fetches.
   git(repoPath, ["remote", "add", "origin", originUrl]);
 
   const mainHeads: string[] = [];
@@ -166,6 +164,22 @@ export async function materializeTemplate(
       commitAll(repoPath, commit, manifest.authors);
     }
     git(repoPath, ["checkout", manifest.defaultBranch]);
+  }
+
+  if (remote.demoBranch) {
+    try {
+      // The enriched GitHub lane must be on a real PR branch. Tracking the
+      // remote branch lets the daemon associate the workspace with its PR and
+      // gives the Changes/PR surfaces an actual base/head relationship.
+      git(repoPath, ["fetch", "origin", remote.demoBranch]);
+      git(repoPath, ["checkout", "-B", remote.demoBranch, `origin/${remote.demoBranch}`]);
+    } catch (error) {
+      throw new Error(
+        `GitHub demo branch ${remote.demoBranch} is missing from ${remote.owner}/${remote.name}; ` +
+          `run npm run demo:github:setup first.`,
+        { cause: error },
+      );
+    }
   }
 
   if (manifest.workingChanges) {

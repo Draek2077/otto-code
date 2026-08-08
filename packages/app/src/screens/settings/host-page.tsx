@@ -16,7 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Pressable, Text, View } from "react-native";
 import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
-import type { TerminalProfile } from "@otto-code/protocol/messages";
+import type { ServerInfoStatusPayload, TerminalProfile } from "@otto-code/protocol/messages";
 import {
   getTerminalProfileIcon,
   resolveTerminalProfiles,
@@ -25,6 +25,7 @@ import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-moda
 import { AdaptiveRenameModal } from "@/components/rename-modal";
 import { SettingsTextAreaCard } from "@/components/settings-textarea";
 import { Button } from "@/components/ui/button";
+import { SelectField, type SelectFieldOption } from "@/components/ui/select-field";
 import { Switch } from "@/components/ui/switch";
 import {
   ProfileDraft,
@@ -42,6 +43,7 @@ import { useDaemonStatus } from "@/desktop/hooks/use-daemon-status";
 import { loadDesktopSettings, useDesktopSettings } from "@/desktop/settings/desktop-settings";
 import { PairDeviceModal } from "@/desktop/components/pair-device-modal";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
+import { useHostFeature } from "@/runtime/host-features";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 import {
   getHostRuntimeStore,
@@ -1960,6 +1962,133 @@ function TerminalProfilesSection({ serverId }: { serverId: string }) {
   );
 }
 
+type WindowsTerminalShell = NonNullable<ServerInfoStatusPayload["terminalShells"]>[number];
+
+function WindowsTerminalShellSection({ serverId }: { serverId: string }) {
+  const { config, patchConfig } = useDaemonConfig(serverId);
+  const serverInfo = useSessionStore((state) => state.sessions[serverId]?.serverInfo ?? null);
+  const [isSaving, setIsSaving] = useState(false);
+  const platform = serverInfo?.platform;
+  const terminalShells = serverInfo?.terminalShells;
+  const shells = useMemo(
+    () => (platform === "win32" ? (terminalShells ?? []) : []),
+    [platform, terminalShells],
+  );
+  const selectedShell = config?.defaultTerminalShell;
+  const shellOptions = useMemo<SelectFieldOption<WindowsTerminalShell["id"]>[]>(
+    () => shells.map((shell) => ({ id: shell.id, value: shell.id, label: shell.label })),
+    [shells],
+  );
+  const selectedDisplay = useMemo(() => {
+    const shell = shells.find((candidate) => candidate.id === selectedShell);
+    return shell ? { label: shell.label } : { label: "System default" };
+  }, [selectedShell, shells]);
+
+  const selectShell = useCallback(
+    async (id: "command-prompt" | "windows-powershell" | "powershell-7") => {
+      if (isSaving || selectedShell === id) return;
+      setIsSaving(true);
+      try {
+        await patchConfig({ defaultTerminalShell: id });
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [isSaving, patchConfig, selectedShell],
+  );
+
+  if (shells.length === 0) return null;
+
+  return (
+    <SettingsSection title="Default terminal shell">
+      <View style={settingsStyles.card} testID="windows-terminal-shells-card">
+        <View style={settingsStyles.rowResponsive}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>Shell</Text>
+            <Text style={settingsStyles.rowHint}>Used for new terminal sessions.</Text>
+          </View>
+          <SelectField<WindowsTerminalShell["id"]>
+            field={false}
+            size="sm"
+            label="Default terminal shell"
+            value={selectedShell ?? null}
+            selectedDisplay={selectedDisplay}
+            options={shellOptions}
+            onChange={selectShell}
+            placeholder="System default"
+            emptyText="No terminal shells detected."
+            disabled={isSaving}
+            triggerTestID="windows-terminal-shell-select"
+          />
+        </View>
+      </View>
+    </SettingsSection>
+  );
+}
+
+function TerminalAppearanceSection({ serverId }: { serverId: string }) {
+  const { config, patchConfig } = useDaemonConfig(serverId);
+  const supported = useHostFeature(serverId, "terminalTitleSettings");
+  const [isSaving, setIsSaving] = useState(false);
+  const mode = config?.terminalTitleMode ?? "auto";
+  const includePaths = config?.terminalTitleIncludePaths ?? false;
+
+  const update = useCallback(
+    async (patch: {
+      terminalTitleMode?: "auto" | "default";
+      terminalTitleIncludePaths?: boolean;
+    }) => {
+      if (isSaving) return;
+      setIsSaving(true);
+      try {
+        await patchConfig(patch);
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [isSaving, patchConfig],
+  );
+  const setAutoTitle = useCallback(
+    (value: boolean) => void update({ terminalTitleMode: value ? "auto" : "default" }),
+    [update],
+  );
+  const setIncludePaths = useCallback(
+    (value: boolean) => void update({ terminalTitleIncludePaths: value }),
+    [update],
+  );
+  if (!supported) return null;
+
+  return (
+    <SettingsSection title="Terminal appearance">
+      <View style={settingsStyles.card} testID="terminal-title-settings-card">
+        <View style={settingsStyles.rowResponsive}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>Auto title</Text>
+            <Text style={settingsStyles.rowHint}>
+              Show the active shell or command. Turn off to keep the stable default name.
+            </Text>
+          </View>
+          <Switch
+            value={mode === "auto"}
+            onValueChange={setAutoTitle}
+            disabled={isSaving}
+            accessibilityLabel="Auto title"
+          />
+        </View>
+        {mode === "auto" ? (
+          <View style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>Include paths in executable titles</Text>
+              <Text style={settingsStyles.rowHint}>Off keeps titles concise, such as cmd.exe.</Text>
+            </View>
+            <Switch value={includePaths} onValueChange={setIncludePaths} disabled={isSaving} />
+          </View>
+        ) : null}
+      </View>
+    </SettingsSection>
+  );
+}
+
 export function HostTerminalsPage({ serverId }: { serverId: string }) {
   const host = useHostProfile(serverId);
 
@@ -1972,6 +2101,8 @@ export function HostTerminalsPage({ serverId }: { serverId: string }) {
       <SettingsSection title="Terminal agents">
         <EnableTerminalAgentHooksCard serverId={serverId} />
       </SettingsSection>
+      <TerminalAppearanceSection serverId={serverId} />
+      <WindowsTerminalShellSection serverId={serverId} />
       <TerminalProfilesSection serverId={serverId} />
     </View>
   );

@@ -13,6 +13,7 @@ const DEVELOPER_MOBILE: CompactHeaderActionsInput = {
   isDeveloperMode: true,
   visualizerEnabled: true,
   voiceCuesAvailable: true,
+  microphoneAvailable: true,
   hasWorkspaceScripts: true,
   hasWorkspaceDirectory: true,
   hasBrainButton: true,
@@ -47,24 +48,15 @@ describe("resolveCompactHeaderActions", () => {
     expect(survivors()).toEqual(["play", "visualizer", "explorer", "voiceCues"]);
   });
 
-  it("drops Voice cues first, then Visualizer, then Explorer, and keeps Play longest", () => {
-    expect(survivors({ rowWidth: 474 })).toEqual(["play", "visualizer", "explorer"]);
-    expect(survivors({ rowWidth: 434 })).toEqual(["play", "explorer"]);
-    expect(survivors({ rowWidth: 374 })).toEqual(["play"]);
-    expect(survivors({ rowWidth: 314 })).toEqual([]);
+  it("keeps Microphone, Brain, and Explorer while dropping secondary actions", () => {
+    expect(survivors({ rowWidth: 474 })).toEqual(["play", "explorer"]);
+    expect(survivors({ rowWidth: 434 })).toEqual(["explorer"]);
+    expect(survivors({ rowWidth: 374 })).toEqual(["explorer"]);
+    expect(survivors({ rowWidth: 314 })).toEqual(["explorer"]);
   });
 
-  // Brain is pinned, so it is charged to fixed chrome instead of competing for
-  // a slot: the same row width fits exactly one more droppable button without
-  // it. It is never a menu fallback either - see workspace-brain-button.tsx.
-  it("charges the pinned Brain light one slot's worth of the row budget", () => {
-    expect(survivors({ rowWidth: 434, hasBrainButton: false })).toEqual([
-      "play",
-      "visualizer",
-      "explorer",
-    ]);
-    expect(survivors({ rowWidth: 434 })).toEqual(["play", "explorer"]);
-    expect(menuFallbacks({ rowWidth: 434, hasBrainButton: false })).toEqual(["voiceCues"]);
+  it("charges required controls against the row budget", () => {
+    expect(survivors({ rowWidth: 434, microphoneAvailable: false })).toEqual(["play", "explorer"]);
   });
 
   // The cue mute is the one button whose loss costs nothing - the same switch
@@ -73,7 +65,7 @@ describe("resolveCompactHeaderActions", () => {
     expect(survivors({ rowWidth: 434 })).not.toContain("voiceCues");
     expect(
       survivors({ rowWidth: 434, hasWorkspaceScripts: false, visualizerEnabled: false }),
-    ).toEqual(["explorer", "voiceCues"]);
+    ).toEqual(["explorer"]);
   });
 
   it("never shows the voice-cue mute on a host that cannot speak cues", () => {
@@ -81,8 +73,8 @@ describe("resolveCompactHeaderActions", () => {
   });
 
   it("leaves only the menu on an extremely narrow row", () => {
-    expect(survivors({ rowWidth: 40 })).toEqual([]);
-    expect(survivors({ rowWidth: 1 })).toEqual([]);
+    expect(survivors({ rowWidth: 40 })).toEqual(["explorer"]);
+    expect(survivors({ rowWidth: 1 })).toEqual(["explorer"]);
   });
 
   it("never shows a button the workspace did not request, however wide the row", () => {
@@ -122,15 +114,10 @@ describe("resolveCompactHeaderActions", () => {
   });
 
   it("moves every dropped button into the menu instead of losing it", () => {
-    expect(menuFallbacks({ rowWidth: 474 })).toEqual(["voiceCues"]);
-    expect(menuFallbacks({ rowWidth: 434 })).toEqual(["visualizer", "voiceCues"]);
-    expect(menuFallbacks({ rowWidth: 374 })).toEqual(["visualizer", "explorer", "voiceCues"]);
-    expect(menuFallbacks({ rowWidth: 314 })).toEqual([
-      "play",
-      "visualizer",
-      "explorer",
-      "voiceCues",
-    ]);
+    expect(menuFallbacks({ rowWidth: 474 })).toEqual(["visualizer", "voiceCues"]);
+    expect(menuFallbacks({ rowWidth: 434 })).toEqual(["play", "visualizer", "voiceCues"]);
+    expect(menuFallbacks({ rowWidth: 374 })).toEqual(["play", "visualizer", "voiceCues"]);
+    expect(menuFallbacks({ rowWidth: 314 })).toEqual(["play", "visualizer", "voiceCues"]);
   });
 
   it("offers no menu fallback while every button still fits", () => {
@@ -145,12 +132,10 @@ describe("resolveCompactHeaderActions", () => {
   it("offers no menu fallback for an action the workspace did not request", () => {
     expect(menuFallbacks({ rowWidth: 314, hasWorkspaceScripts: false })).toEqual([
       "visualizer",
-      "explorer",
       "voiceCues",
     ]);
     expect(menuFallbacks({ rowWidth: 314, visualizerEnabled: false })).toEqual([
       "play",
-      "explorer",
       "voiceCues",
     ]);
   });

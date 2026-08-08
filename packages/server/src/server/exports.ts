@@ -47,6 +47,7 @@ export {
   type SherpaLoaderEnvKey,
   type SherpaLoaderEnvResolution,
 } from "./speech/providers/local/sherpa/sherpa-runtime-env.js";
+export { loadSherpaOnnxNode } from "./speech/providers/local/sherpa/sherpa-onnx-node-loader.js";
 
 // Provider binary resolution
 export {

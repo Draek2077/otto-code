@@ -177,6 +177,20 @@ afterEach(() => {
 });
 
 describe("terminal emulator runtime in a real browser", () => {
+  it("insets the xterm scrollable surface without offsetting the scrollbar", async () => {
+    await page.viewport(900, 600);
+    const mounted = createTerminalHost({ width: 720, height: 360 });
+
+    await waitFor({
+      predicate: () => mounted.host.querySelector(".xterm-scrollable-element") !== null,
+    });
+
+    const terminalElement = mounted.host.querySelector<HTMLElement>(".xterm");
+    const scrollableElement = mounted.host.querySelector<HTMLElement>(".xterm-scrollable-element");
+    expect(terminalElement?.style.padding).toBe("");
+    expect(scrollableElement?.style.padding).toBe("5px");
+  });
+
   it("passes configured scrollback to xterm", async () => {
     await page.viewport(900, 600);
     createTerminalHost({ width: 720, height: 360, scrollback: 42_000 });

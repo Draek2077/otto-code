@@ -59,6 +59,7 @@ import { useToast } from "@/contexts/toast-context";
 import { toErrorMessage } from "@/utils/error-messages";
 import { showProviderNoticeToast } from "@/utils/provider-notice-toast";
 import { applyCheckoutStatusUpdateFromEvent } from "@/git/checkout-status-cache";
+import { useGitLogStore } from "@/git/log-store";
 import { useProviderSubagentStore } from "@/subagents/provider-store";
 import { revalidateSessionAfterResume } from "@/contexts/session-resume-revalidation";
 
@@ -563,6 +564,8 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       serverId: serverInfo.serverId,
       hostname: serverInfo.hostname,
       version: serverInfo.version,
+      ...(serverInfo.platform ? { platform: serverInfo.platform } : {}),
+      ...(serverInfo.terminalShells ? { terminalShells: serverInfo.terminalShells } : {}),
       ...(serverInfo.desktopManaged !== undefined
         ? { desktopManaged: serverInfo.desktopManaged }
         : {}),
@@ -883,6 +886,16 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       applyCheckoutStatusUpdateFromEvent({ queryClient, serverId, message });
     });
 
+    const unsubGitOperationLog = client.on("checkout.git.log_appended.notification", (message) => {
+      if (message.type !== "checkout.git.log_appended.notification") return;
+      useGitLogStore.getState().mergeEntries({
+        serverId,
+        cwd: message.payload.cwd,
+        operation: message.payload.operation,
+        entries: message.payload.entries,
+      });
+    });
+
     const unsubWorkspaceSetupProgress = client.on("workspace_setup_progress", (message) => {
       if (message.type !== "workspace_setup_progress") return;
       applyWorkspaceSetupProgress(message.payload);
@@ -910,6 +923,8 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
           serverId: serverInfo.serverId,
           hostname: serverInfo.hostname,
           version: serverInfo.version,
+          ...(serverInfo.platform ? { platform: serverInfo.platform } : {}),
+          ...(serverInfo.terminalShells ? { terminalShells: serverInfo.terminalShells } : {}),
           ...(serverInfo.desktopManaged !== undefined
             ? { desktopManaged: serverInfo.desktopManaged }
             : {}),
@@ -1192,6 +1207,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       unsubAgentAttention();
       unsubScriptStatusUpdate();
       unsubCheckoutStatusUpdate();
+      unsubGitOperationLog();
       unsubWorkspaceSetupProgress();
       unsubWorkspaceSetupStatusResponse();
       unsubStatus();

@@ -14,9 +14,13 @@ import android.os.Build
 import android.os.PowerManager
 import android.util.Log
 import androidx.annotation.RequiresApi
+import expo.modules.twowayaudio.AndroidWakeWordDetector
+import expo.modules.twowayaudio.WakeWordHandoffBuffer
 import java.util.LinkedList
 import java.util.Queue
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 import kotlin.math.pow
 
 
@@ -25,7 +29,7 @@ class AudioEngine (context: Context) {
     private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
     private val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
 
-    private lateinit var audioRecord: AudioRecord
+    private var audioRecord: AudioRecord? = null
     private lateinit var audioManager: AudioManager
     private lateinit var audioTrack: AudioTrack
     private var audioFocusRequest: AudioFocusRequest? = null
@@ -34,6 +38,13 @@ class AudioEngine (context: Context) {
     private var noiseSuppressor: NoiseSuppressor? = null
     private val executorServiceMicrophone = Executors.newFixedThreadPool(1)
     private val executorServicePlayback = Executors.newFixedThreadPool(1)
+    private val executorServiceHandoff = Executors.newSingleThreadScheduledExecutor()
+    private val wakeWordDetector = AndroidWakeWordDetector(context.applicationContext)
+    private val wakeWordHandoff = WakeWordHandoffBuffer(SAMPLE_RATE * 2 * 2)
+    private var wakeWordHandoffTimeout: ScheduledFuture<*>? = null
+    @Volatile private var captureActive = false
+    @Volatile private var captureGeneration = 0
+    @Volatile private var wakeWordDetectionActive = false
     private var speakerDevice: AudioDeviceInfo? = null
     private var bridgeWindowStartedAtMs = System.currentTimeMillis()
     private var micEvents = 0
@@ -43,7 +54,7 @@ class AudioEngine (context: Context) {
     private var playbackWrites = 0
     private var playbackWriteBytes = 0L
 
-    var isRecording = false
+    @Volatile var isRecording = false
     private var isRecordingBeforePause = false
     var isPlaying = false
 
@@ -52,6 +63,7 @@ class AudioEngine (context: Context) {
     var onInputVolumeCallback: ((Float) -> Unit)? = null
     var onOutputVolumeCallback: ((Float) -> Unit)? = null
     var onAudioInterruptionCallback: ((String) -> Unit)? = null
+    var onWakeWordDetectedCallback: ((String) -> Unit)? = null
 
     init {
         initializeAudio(context)
@@ -217,9 +229,13 @@ class AudioEngine (context: Context) {
     }
 
     private fun handleAudioFocusBlocked() {
+        wakeWordDetectionActive = false
+        wakeWordDetector.stop()
+        cancelWakeWordHandoff()
         if (isRecording) {
             stopRecording()
         }
+        stopCapture()
         audioFocusRequest?.let { request ->
             audioManager.abandonAudioFocusRequest(request)
             audioFocusRequest = null
@@ -237,13 +253,23 @@ class AudioEngine (context: Context) {
     @RequiresApi(Build.VERSION_CODES.Q)
     @SuppressLint("MissingPermission")
     private fun startRecording(): Boolean {
+        cancelWakeWordHandoffTimeout()
+        val started = startCapture()
+        if (!started) return false
+        isRecording = true
+        return true
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun startCapture(): Boolean {
+        if (captureActive) return true
         if (!requestAudioFocus()) {
             handleAudioFocusBlocked()
             return false
         }
 
         val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
-        audioRecord = AudioRecord(
+        val nextAudioRecord = AudioRecord(
             MediaRecorder.AudioSource.VOICE_COMMUNICATION,
             SAMPLE_RATE,
             CHANNEL_CONFIG,
@@ -251,12 +277,13 @@ class AudioEngine (context: Context) {
             bufferSize
         )
 
-        if (audioRecord.state != AudioRecord.STATE_INITIALIZED) {
+        if (nextAudioRecord.state != AudioRecord.STATE_INITIALIZED) {
+            nextAudioRecord.release()
             throw RuntimeException("Audio Record can't initialize!")
         }
 
         if (AcousticEchoCanceler.isAvailable()){
-            echoCanceler = AcousticEchoCanceler.create(audioRecord.audioSessionId)
+            echoCanceler = AcousticEchoCanceler.create(nextAudioRecord.audioSessionId)
             if (echoCanceler != null) {
                 echoCanceler?.enabled = true
                 Log.i("AudioEngine", "Echo Canceler enabled")
@@ -264,41 +291,55 @@ class AudioEngine (context: Context) {
         }
 
         if (NoiseSuppressor.isAvailable()){
-            noiseSuppressor = NoiseSuppressor.create(audioRecord.audioSessionId)
+            noiseSuppressor = NoiseSuppressor.create(nextAudioRecord.audioSessionId)
             if (noiseSuppressor != null) {
                 noiseSuppressor?.enabled = true
                 Log.i("AudioEngine", "Noise Suppressor enabled")
             }
         }
 
-        audioRecord.startRecording()
-        isRecording = true
-        startMicSampleTap()
+        val generation = captureGeneration + 1
+        captureGeneration = generation
+        audioRecord = nextAudioRecord
+        captureActive = true
+        nextAudioRecord.startRecording()
+        startMicSampleTap(nextAudioRecord, generation)
         return true
     }
 
-    private fun startMicSampleTap(){
+    private fun startMicSampleTap(record: AudioRecord, generation: Int){
         executorServiceMicrophone.execute {
             val buffer = ByteArray(1024)
             try {
-                while (isRecording) {
-                    val read = audioRecord.read(buffer, 0, buffer.size)
+                while (captureActive && captureGeneration == generation) {
+                    val read = record.read(buffer, 0, buffer.size)
                     if (read > 0) {
                         val data = buffer.copyOf(read)
-                        micEvents += 1
-                        micBytes += data.size.toLong()
-                        flushBridgeStats("mic")
-                        val micVolume = calculateRMSLevel(data)
-                        onInputVolumeCallback?.invoke(micVolume)
-                        onMicDataCallback?.invoke(data)
+                        val detectedNow = wakeWordDetectionActive && wakeWordDetector.acceptPcm16(data)
+                        if (detectedNow) {
+                            beginWakeWordHandoff()
+                            onWakeWordDetectedCallback?.invoke("Hey Otto")
+                        } else if (wakeWordHandoff.isPending && !isRecording) {
+                            bufferWakeWordHandoff(data)
+                        }
+
+                        if (isRecording) {
+                            flushWakeWordHandoff()
+                            micEvents += 1
+                            micBytes += data.size.toLong()
+                            flushBridgeStats("mic")
+                            val micVolume = calculateRMSLevel(data)
+                            onInputVolumeCallback?.invoke(micVolume)
+                            onMicDataCallback?.invoke(data)
+                        }
                     }
                 }
                 Log.d("AudioEngine", "Mic sample tap stopped.")
             }catch (e: Exception){
                 Log.e("AudioEngine", "Error reading mic sample data", e)
+                captureActive = false
                 isRecording = false
-                tearDown()
-                throw e
+                onAudioInterruptionCallback?.invoke("blocked")
             }
         }
     }
@@ -306,11 +347,25 @@ class AudioEngine (context: Context) {
     private fun stopRecording() {
         if (!isRecording) return
         isRecording = false
-        if (audioRecord.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
-            audioRecord.stop()
-            audioRecord.release()
-        }
+        if (!wakeWordDetectionActive && !wakeWordHandoff.isPending) stopCapture()
         onInputVolumeCallback?.invoke(0.0F)
+    }
+
+    private fun stopCapture() {
+        if (!captureActive && audioRecord == null) return
+        captureActive = false
+        captureGeneration += 1
+        val record = audioRecord
+        audioRecord = null
+        try {
+            if (record?.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                record.stop()
+            }
+        } catch (error: IllegalStateException) {
+            Log.w("AudioEngine", "AudioRecord was already stopped", error)
+        } finally {
+            record?.release()
+        }
     }
 
     @RequiresApi(Build.VERSION_CODES.Q)
@@ -325,6 +380,66 @@ class AudioEngine (context: Context) {
 
         isRecording = value
         return isRecording
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    fun startWakeWordDetection(phrase: String, sensitivity: Double) {
+        check(!isRecording) { "Cannot start wake-word detection while dictation is recording." }
+        cancelWakeWordHandoff()
+        wakeWordDetector.start(phrase, sensitivity)
+        wakeWordDetectionActive = true
+        if (!startCapture()) {
+            wakeWordDetectionActive = false
+            wakeWordDetector.stop()
+            throw IllegalStateException("Microphone capture could not start for wake-word detection.")
+        }
+        Log.i("HeyOtto", "Foreground wake-word capture started")
+    }
+
+    fun stopWakeWordDetection() {
+        wakeWordDetectionActive = false
+        wakeWordDetector.stop()
+        if (!wakeWordHandoff.isPending && !isRecording) stopCapture()
+        Log.i("HeyOtto", "Wake-word detector stopped")
+    }
+
+    private fun beginWakeWordHandoff() {
+        wakeWordDetectionActive = false
+        wakeWordHandoff.begin()
+        cancelWakeWordHandoffTimeout()
+        wakeWordHandoffTimeout = executorServiceHandoff.schedule({
+            if (!isRecording) {
+                Log.w("HeyOtto", "Dictation did not begin within the 3-second handoff window")
+                cancelWakeWordHandoff()
+                wakeWordDetector.stop()
+                stopCapture()
+            }
+        }, 3, TimeUnit.SECONDS)
+    }
+
+    private fun bufferWakeWordHandoff(data: ByteArray) {
+        wakeWordHandoff.append(data)
+    }
+
+    private fun flushWakeWordHandoff() {
+        if (!wakeWordHandoff.isPending) return
+        val buffered = wakeWordHandoff.drain()
+        cancelWakeWordHandoffTimeout()
+        Log.i(
+            "HeyOtto",
+            "Handing ${buffered.sumOf { it.size }} buffered PCM bytes to dictation",
+        )
+        buffered.forEach { onMicDataCallback?.invoke(it) }
+    }
+
+    private fun cancelWakeWordHandoff() {
+        wakeWordHandoff.cancel()
+        cancelWakeWordHandoffTimeout()
+    }
+
+    private fun cancelWakeWordHandoffTimeout() {
+        wakeWordHandoffTimeout?.cancel(false)
+        wakeWordHandoffTimeout = null
     }
 
     fun playPCMData(data: ByteArray) {
@@ -391,7 +506,11 @@ class AudioEngine (context: Context) {
     @RequiresApi(Build.VERSION_CODES.Q)
     fun pauseRecordingAndPlayer() {
         isRecordingBeforePause = isRecording
+        wakeWordDetectionActive = false
+        wakeWordDetector.stop()
+        cancelWakeWordHandoff()
         isRecording = toggleRecording(false)
+        stopCapture()
         audioTrack.pause()
     }
 
@@ -430,7 +549,11 @@ class AudioEngine (context: Context) {
 
     @SuppressLint("NewApi")
     fun tearDown() {
+        wakeWordDetectionActive = false
+        wakeWordDetector.stop()
+        cancelWakeWordHandoff()
         stopRecording()
+        stopCapture()
         audioTrack.stop()
         audioManager.mode = AudioManager.MODE_NORMAL
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -440,6 +563,7 @@ class AudioEngine (context: Context) {
             audioManager.abandonAudioFocusRequest(request)
         }
         executorServiceMicrophone.shutdownNow()
+        executorServiceHandoff.shutdownNow()
     }
 
 

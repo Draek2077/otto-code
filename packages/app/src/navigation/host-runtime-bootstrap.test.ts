@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  initialStartupBlocker,
   resolveStartupBlocker,
   resolveStartupNavigationReady,
   resolveHostIndexRoute,
@@ -126,6 +127,11 @@ describe("startup blocking policy", () => {
     daemonStartIsRunning: false,
     daemonStartError: null,
   };
+
+  it("starts desktop navigation behind the startup splash until bootstrap state is known", () => {
+    expect(initialStartupBlocker(true)).toEqual({ kind: "managed-daemon-starting" });
+    expect(initialStartupBlocker(false)).toEqual({ kind: "none" });
+  });
 
   it("runs the give-up timer when no startup blocker is active", () => {
     const blocker = resolveStartupBlocker(noBlockerInput);

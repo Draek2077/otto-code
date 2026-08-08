@@ -106,6 +106,8 @@ buildNpmPackage rec {
     cp package.json $out/share/otto-desktop/
     cp -a packages $out/share/otto-desktop/
     cp -a node_modules $out/share/otto-desktop/
+    install -Dm644 vendor/agent-flow/LICENSE \
+      $out/share/otto-desktop/packages/expo-two-way-audio/models/wake-word/LICENSE-APACHE-2.0.txt
 
     # Skills directory referenced at runtime by some agents
     if [ -d skills ]; then
@@ -129,7 +131,8 @@ buildNpmPackage rec {
     makeWrapper ${electron}/bin/electron $out/bin/otto-desktop \
       --add-flags "$out/share/otto-desktop/packages/desktop/dist/main.js" \
       --add-flags "--no-sandbox" \
-      --set EXPO_DEV_URL "otto://app/"
+      --set EXPO_DEV_URL "otto://app/" \
+      --set OTTO_WAKE_WORD_MODEL_DIR "$out/share/otto-desktop/packages/expo-two-way-audio/models/wake-word"
 
     copyDesktopItems
 

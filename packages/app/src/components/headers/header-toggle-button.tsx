@@ -96,6 +96,19 @@ export const headerIconSlotStyle = StyleSheet.create((theme) => ({
     },
     borderRadius: theme.borderRadius.lg,
   },
+  // Compact workspace-header actions sit in a flush icon strip. Their normal
+  // touch-target padding is intentionally generous, but using it here would
+  // make the adjacent slots look twice as far apart. Keep the target centered
+  // while trimming only 2px from each compact edge.
+  compactSlot: {
+    padding: {
+      xs: theme.spacing[3] - 2,
+      md: theme.spacing[2],
+    },
+    borderRadius: theme.borderRadius.lg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   // Selected is the resting shade - the same fill the explorer's selected tab
   // uses, so a toggled-on title-bar button and a selected tab match. Hover is
   // ONE step off it, and is applied AFTER selected in `combinedStyle`, so

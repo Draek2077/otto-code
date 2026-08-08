@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { buildDraftStoreKey } from "./draft-keys";
+import { buildDraftStoreKey, buildNewWorkspaceDraftKey } from "./draft-keys";
+
+describe("buildNewWorkspaceDraftKey", () => {
+  it("keeps the main New Workspace draft stable across project changes", () => {
+    expect(buildNewWorkspaceDraftKey()).toBe("new-workspace");
+  });
+
+  it("keeps fork drafts isolated by draft id", () => {
+    expect(buildNewWorkspaceDraftKey("draft-123")).toBe("new-workspace:draft:draft-123");
+  });
+});
 
 describe("buildDraftStoreKey", () => {
   it("isolates agent drafts by server and agent ids", () => {

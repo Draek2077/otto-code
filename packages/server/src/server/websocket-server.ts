@@ -8,6 +8,7 @@ import type { AgentManager, AgentMetricsSnapshot } from "./agent/agent-manager.j
 import type { AgentStorage } from "./agent/agent-storage.js";
 import type { DownloadTokenStore } from "./file-download/token-store.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
+import { detectWindowsTerminalShells } from "../terminal/windows-terminal-shells.js";
 import type pino from "pino";
 import type { ProjectRegistry, WorkspaceRegistry } from "./workspace-registry.js";
 import { createNoopProjectLinkStore, type ProjectLinkStore } from "./project-links.js";
@@ -19,6 +20,7 @@ import type { RunService } from "./orchestration/run-service.js";
 import type { GraphStore } from "./orchestration/graph-store.js";
 import type { NodeOutputStore } from "./orchestration/node-output.js";
 import type { PersonalityMemoryService } from "./agent/personality-memory/personality-memory-service.js";
+import type { ProjectKnowledgeService } from "./agent/project-knowledge/project-knowledge-service.js";
 import type { PromptTemplateStore } from "./orchestration/prompt-template-store.js";
 import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
 import { redactDaemonConfigForClient } from "./daemon-config-store.js";
@@ -609,6 +611,7 @@ export class VoiceAssistantWebSocketServer {
     | (() => Record<string, number> | Promise<Record<string, number>>)
     | null = null;
   private personalityMemoryService: PersonalityMemoryService | null = null;
+  private projectKnowledgeService: ProjectKnowledgeService | null = null;
   private terminalManager!: TerminalManager | null;
   private serviceProxy!: ServiceProxySubsystem | null;
   private scriptRuntimeStore!: WorkspaceScriptRuntimeStore | null;
@@ -901,6 +904,10 @@ export class VoiceAssistantWebSocketServer {
    */
   public setPersonalityMemoryService(service: PersonalityMemoryService | null): void {
     this.personalityMemoryService = service;
+  }
+
+  public setProjectKnowledgeService(service: ProjectKnowledgeService | null): void {
+    this.projectKnowledgeService = service;
   }
 
   public setNodeOutputStore(store: NodeOutputStore | null): void {
@@ -1699,6 +1706,7 @@ export class VoiceAssistantWebSocketServer {
         : undefined,
       getPersonalityStats: this.getPersonalityStatsFn ?? undefined,
       personalityMemory: this.personalityMemoryService,
+      projectKnowledge: this.projectKnowledgeService,
       serverId: this.serverId,
       daemonVersion: this.daemonVersion,
       daemonRuntimeConfig: this.daemonRuntimeConfig,
@@ -1830,6 +1838,8 @@ export class VoiceAssistantWebSocketServer {
       serverId: this.serverId,
       hostname: getHostname(),
       version: this.daemonVersion,
+      platform: process.platform,
+      ...(process.platform === "win32" ? { terminalShells: detectWindowsTerminalShells() } : {}),
       // COMPAT(desktopManaged): added in v0.1.X, remove optional parsing after 2027-01-16.
       desktopManaged: this.daemonRuntimeConfig?.desktopManaged === true,
       ...(this.serverCapabilities ? { capabilities: this.serverCapabilities } : {}),
@@ -1850,6 +1860,8 @@ export class VoiceAssistantWebSocketServer {
         daemonStatusRpc: true,
         // COMPAT(terminalRestoreModes): added in v0.1.81, remove gate after 2026-11-23.
         "terminal-restore-modes": true,
+        // COMPAT(terminalTitleSettings): added in v0.8.5, remove gate after 2027-02-07.
+        terminalTitleSettings: true,
         // COMPAT(rewind): added in v0.1.X, drop the gate when floor >= v0.1.X.
         rewind: true,
         // COMPAT(checkoutRefresh): added in v0.1.86, remove gate after 2026-11-29.
@@ -1991,6 +2003,8 @@ export class VoiceAssistantWebSocketServer {
         // daemon can store and serve lessons", and a host without the store must
         // not advertise a surface that would answer every request with nothing.
         personalityMemory: this.personalityMemoryService !== null,
+        // COMPAT(projectKnowledge): added in v0.8.5, drop the gate when daemon floor >= v0.8.5.
+        projectKnowledge: this.projectKnowledgeService !== null,
         // COMPAT(projectLinks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
         projectLinks: true,
         // COMPAT(fileOutsideWorkspace): added in v0.5.8, drop the gate when daemon floor >= v0.5.8.

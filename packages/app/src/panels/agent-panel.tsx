@@ -1263,49 +1263,6 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
 }) {
   const { t } = useTranslation();
-  const rawAgentInputDraft = useAgentInputDraft({
-    draftKey: buildDraftStoreKey({
-      serverId,
-      agentId,
-    }),
-  });
-  // Stabilize the agentInputDraft object identity so that memo(AgentComposerSection) can bail out
-  // when only toast state changes (which does not affect any draft field).
-  const {
-    text,
-    setText,
-    attachments,
-    setAttachments,
-    clear,
-    isHydrated,
-    composerState,
-    attachmentFocusRequestId,
-    personalitySelection,
-  } = rawAgentInputDraft;
-  const agentInputDraft = useMemo(
-    (): AgentInputDraft => ({
-      text,
-      setText,
-      attachments,
-      setAttachments,
-      clear,
-      isHydrated,
-      composerState,
-      attachmentFocusRequestId,
-      personalitySelection,
-    }),
-    [
-      text,
-      setText,
-      attachments,
-      setAttachments,
-      clear,
-      isHydrated,
-      composerState,
-      attachmentFocusRequestId,
-      personalitySelection,
-    ],
-  );
   const suggestedTaskRows = useSuggestedTasksForParent({ serverId, parentAgentId: agentId });
   const hasSuggestedTasks = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.suggestedTasks === true,
@@ -1345,7 +1302,6 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
         archivedAt={agentState.archivedAt}
         cwd={cwd}
         isSubmitLoading={false}
-        agentInputDraft={agentInputDraft}
         onAttentionInputFocus={onAttentionInputFocus}
         onAttentionPromptSend={onAttentionPromptSend}
         onComposerHeightChange={handleComposerHeightChange}
@@ -1380,44 +1336,42 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   );
 
   return (
-    <RewindComposerRestoreProvider text={agentInputDraft.text} setText={agentInputDraft.setText}>
-      <View style={styles.root} onLayout={onPaneLayout}>
-        <FileDropZone style={styles.container} disabled={isArchivingCurrentAgent}>
-          {/* Above the transcript, at toolbar weight: this chat's total spend
+    <View style={styles.root} onLayout={onPaneLayout}>
+      <FileDropZone style={styles.container} disabled={isArchivingCurrentAgent}>
+        {/* Above the transcript, at toolbar weight: this chat's total spend
               and everything spawned under it. Off unless switched on in
               Settings. See subagents/chat-metrics-bar.tsx. */}
-          <ChatMetricsBar serverId={serverId} agentId={agentId} />
+        <ChatMetricsBar serverId={serverId} agentId={agentId} />
 
-          {contentContainer}
+        {contentContainer}
 
-          {showHistorySyncError ? (
-            <SidebarCallout
-              title={t("agentPanel.states.timelineSyncFailed")}
-              variant="error"
-              testID="agent-timeline-sync-error"
-            />
-          ) : null}
+        {showHistorySyncError ? (
+          <SidebarCallout
+            title={t("agentPanel.states.timelineSyncFailed")}
+            variant="error"
+            testID="agent-timeline-sync-error"
+          />
+        ) : null}
 
-          {composerSection}
+        {composerSection}
 
-          {showHistorySyncOverlay ? (
-            <View style={styles.historySyncOverlay} testID="agent-history-overlay">
-              <ThemedActivityIndicator size="large" uniProps={foregroundMutedColorMapping} />
-            </View>
-          ) : null}
-
-          <ToastViewport toast={toast} onDismiss={dismiss} placement="panel" />
-        </FileDropZone>
-
-        {isArchivingCurrentAgent ? (
-          <View style={styles.archivingOverlay} testID="agent-archiving-overlay">
-            <ThemedActivityIndicator size="large" uniProps={foregroundColorMapping} />
-            <Text style={styles.archivingTitle}>{t("agentPanel.states.archivingTitle")}</Text>
-            <Text style={styles.archivingSubtitle}>{t("agentPanel.states.archivingSubtitle")}</Text>
+        {showHistorySyncOverlay ? (
+          <View style={styles.historySyncOverlay} testID="agent-history-overlay">
+            <ThemedActivityIndicator size="large" uniProps={foregroundMutedColorMapping} />
           </View>
         ) : null}
-      </View>
-    </RewindComposerRestoreProvider>
+
+        <ToastViewport toast={toast} onDismiss={dismiss} placement="panel" />
+      </FileDropZone>
+
+      {isArchivingCurrentAgent ? (
+        <View style={styles.archivingOverlay} testID="agent-archiving-overlay">
+          <ThemedActivityIndicator size="large" uniProps={foregroundColorMapping} />
+          <Text style={styles.archivingTitle}>{t("agentPanel.states.archivingTitle")}</Text>
+          <Text style={styles.archivingSubtitle}>{t("agentPanel.states.archivingSubtitle")}</Text>
+        </View>
+      ) : null}
+    </View>
   );
 });
 
@@ -1529,7 +1483,6 @@ const AgentComposerSection = memo(function AgentComposerSection({
   archivedAt,
   cwd,
   isSubmitLoading,
-  agentInputDraft,
   onAttentionInputFocus,
   onAttentionPromptSend,
   onComposerHeightChange,
@@ -1543,13 +1496,18 @@ const AgentComposerSection = memo(function AgentComposerSection({
   archivedAt: Date | null;
   cwd: string;
   isSubmitLoading: boolean;
-  agentInputDraft: AgentInputDraft;
   onAttentionInputFocus: () => void;
   onAttentionPromptSend: () => void;
   onComposerHeightChange: (height: number) => void;
   onMessageSent: () => void;
   viewportHeight: number;
 }) {
+  const agentInputDraft = useAgentInputDraft({
+    draftKey: buildDraftStoreKey({
+      serverId,
+      agentId: agentId ?? "",
+    }),
+  });
   const isObserved = useSessionStore((state) => {
     if (!agentId) {
       return false;
@@ -1576,19 +1534,21 @@ const AgentComposerSection = memo(function AgentComposerSection({
   }
 
   return (
-    <ActiveAgentComposer
-      agentId={agentId}
-      serverId={serverId}
-      isPaneFocused={isPaneFocused}
-      cwd={cwd}
-      isSubmitLoading={isSubmitLoading}
-      agentInputDraft={agentInputDraft}
-      onAttentionInputFocus={onAttentionInputFocus}
-      onAttentionPromptSend={onAttentionPromptSend}
-      onComposerHeightChange={onComposerHeightChange}
-      onMessageSent={onMessageSent}
-      viewportHeight={viewportHeight}
-    />
+    <RewindComposerRestoreProvider text={agentInputDraft.text} setText={agentInputDraft.setText}>
+      <ActiveAgentComposer
+        agentId={agentId}
+        serverId={serverId}
+        isPaneFocused={isPaneFocused}
+        cwd={cwd}
+        isSubmitLoading={isSubmitLoading}
+        agentInputDraft={agentInputDraft}
+        onAttentionInputFocus={onAttentionInputFocus}
+        onAttentionPromptSend={onAttentionPromptSend}
+        onComposerHeightChange={onComposerHeightChange}
+        onMessageSent={onMessageSent}
+        viewportHeight={viewportHeight}
+      />
+    </RewindComposerRestoreProvider>
   );
 });
 

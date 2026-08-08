@@ -584,6 +584,7 @@ export const es: TranslationResources = {
       retry: "Reintentar el dictado",
       insert: "Insertar transcripción",
       insertAndSend: "Insertar transcripción y enviar",
+      cleanUp: "Limpiar transcripción",
       failed: "Fallo en el dictado:{{error}}",
       failedRetry: "El dictado falló. Toca reintentar.",
     },

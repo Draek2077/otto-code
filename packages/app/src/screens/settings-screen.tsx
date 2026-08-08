@@ -1107,6 +1107,12 @@ function DiagnosticsSection({
     },
     [updateSettings],
   );
+  const handleClientResourceBarAllPagesChange = useCallback(
+    (clientResourceBarAllPages: boolean) => {
+      void updateSettings({ clientResourceBarAllPages });
+    },
+    [updateSettings],
+  );
   const handlePlayPress = useCallback(() => {
     void handlePlaybackTest();
   }, [handlePlaybackTest]);
@@ -1138,6 +1144,21 @@ function DiagnosticsSection({
             onValueChange={handleResourceMonitorEnabledChange}
             accessibilityLabel="Performance monitoring"
             testID="settings-resource-monitor-switch"
+          />
+        </View>
+        <View style={settingsStyles.rowResponsive}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>Show Metrics footer on all pages</Text>
+            <Text style={settingsStyles.rowHint}>
+              Move the client performance metrics strip from the Metrics page to the bottom of the
+              whole app.
+            </Text>
+          </View>
+          <Switch
+            value={settings.clientResourceBarAllPages}
+            onValueChange={handleClientResourceBarAllPagesChange}
+            accessibilityLabel="Show Metrics footer on all pages"
+            testID="settings-client-resource-bar-all-pages-switch"
           />
         </View>
         <View style={settingsStyles.rowResponsive}>

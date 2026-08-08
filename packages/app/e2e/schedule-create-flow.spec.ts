@@ -54,7 +54,7 @@ test.describe("Schedule create flow", () => {
 
     // Project target.
     await page.getByRole("button", { name: /select project/i }).click();
-    await page.getByTestId(`schedule-project-option-${workspace.projectId}`).click();
+    await page.getByTestId(`schedule-project-option-${workspace.projectKey}`).click();
     const projectTrigger = page.getByTestId("schedule-project-trigger");
     await expect(projectTrigger).toContainText(workspace.projectDisplayName);
     await expectSettled(projectTrigger);

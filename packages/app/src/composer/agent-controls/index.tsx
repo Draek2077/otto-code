@@ -1348,6 +1348,7 @@ const DESKTOP_SEARCH_THRESHOLD = 6;
 function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
+  const [modelTooltipOpen, setModelTooltipOpen] = useState(false);
   const {
     provider,
     providerOptions,
@@ -1395,6 +1396,11 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
     modelIdentity,
   } = props;
 
+  const handleModelSelectorOpen = useCallback(() => {
+    setModelTooltipOpen(false);
+    onModelSelectorOpen?.();
+  }, [onModelSelectorOpen]);
+
   return (
     <>
       {providerOptions && providerOptions.length > 0 ? (
@@ -1427,7 +1433,13 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
       ) : null}
 
       {canSelectModel ? (
-        <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+        <Tooltip
+          open={modelTooltipOpen}
+          onOpenChange={setModelTooltipOpen}
+          delayDuration={0}
+          enabledOnDesktop
+          enabledOnMobile={false}
+        >
           <TooltipTrigger asChild triggerRefProp="ref">
             <View>
               <RoleModelSelector
@@ -1439,7 +1451,7 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
                 onToggleFavorite={onToggleFavoriteModel}
                 isLoading={isModelLoading}
                 disabled={modelDisabled}
-                onOpen={onModelSelectorOpen}
+                onOpen={handleModelSelectorOpen}
                 onClose={onDropdownClose}
                 onRetryProvider={onRetryModelProvider}
                 isRetryingProvider={isRetryingModelProvider}
@@ -2391,6 +2403,7 @@ export function DraftAgentControls({
   personality,
 }: DraftAgentControlsProps) {
   const { t } = useTranslation();
+  const [modelTooltipOpen, setModelTooltipOpen] = useState(false);
   const { preferences, updatePreferences } = useFormPreferences();
   const isCompactFormFactor = useIsCompactFormFactor();
   const isCompact = isCompactLayout ?? isCompactFormFactor;
@@ -2449,6 +2462,11 @@ export function DraftAgentControls({
     selectedMode,
   });
 
+  const handleModelSelectorOpen = useCallback(() => {
+    setModelTooltipOpen(false);
+    onModelSelectorOpen?.();
+  }, [onModelSelectorOpen]);
+
   const draftModeChip = useMemo(
     () => (
       <DraftAgentModeControl
@@ -2475,7 +2493,13 @@ export function DraftAgentControls({
   if (!isCompact) {
     return (
       <View style={styles.container}>
-        <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+        <Tooltip
+          open={modelTooltipOpen}
+          onOpenChange={setModelTooltipOpen}
+          delayDuration={0}
+          enabledOnDesktop
+          enabledOnMobile={false}
+        >
           <TooltipTrigger asChild triggerRefProp="ref">
             <View style={styles.tooltipAnchor}>
               <RoleModelSelector
@@ -2487,7 +2511,7 @@ export function DraftAgentControls({
                 onToggleFavorite={handleToggleFavorite}
                 isLoading={isAllModelsLoading}
                 disabled={disabled}
-                onOpen={onModelSelectorOpen}
+                onOpen={handleModelSelectorOpen}
                 onClose={onDropdownClose}
                 onRetryProvider={onRetryModelProvider}
                 isRetryingProvider={isRetryingModelProvider}

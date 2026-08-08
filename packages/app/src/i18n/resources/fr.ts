@@ -585,6 +585,7 @@ export const fr: TranslationResources = {
       retry: "Réessayer la dictée",
       insert: "Insérer la transcription",
       insertAndSend: "Insérer la transcription et envoyer",
+      cleanUp: "Nettoyer la transcription",
       failed: "Échec de la dictée:{{error}}",
       failedRetry: "La dictée a échoué. Appuyez sur réessayer.",
     },

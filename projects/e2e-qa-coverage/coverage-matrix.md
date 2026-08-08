@@ -240,6 +240,20 @@ manager and the brain itself are both mockable at the RPC boundary, and no row n
 | Logs tail renders and stops following once scrolled up                                           | ❌     | seed lines, scroll, assert "Jump to latest" appears                               | T1   | P2  |
 | Settings → Host → Brain keeps connection/security/lifecycle and links out to the page            | ❌     | assert no Models/Operations cards, and `host-brain-open-console-button` navigates | T1   | P1  |
 
+## 11b. Project knowledge
+
+The Markdown store, project/reference metadata, summary calculations, and prompt-discovery
+invariants have unit coverage. Browser-level management workflows remain explicit gaps here.
+
+| Behavior                                                                         | Status | Specs / plan                                                    | Tier | Pri |
+| -------------------------------------------------------------------------------- | ------ | --------------------------------------------------------------- | ---- | --- |
+| Manage knowledge opens and lists six roots plus atomic pages                     | ❌     | seed daemon store, open workspace menu, assert roots and pages  | T1   | P1  |
+| Rich Markdown, wiki links, and complete timeline render in the page reader       | ❌     | seed rich page, assert rendered structures and timeline         | T1   | P1  |
+| Root page editing saves through the daemon and survives reload                   | ❌     | edit architecture root, reload, assert rich body                | T1   | P1  |
+| Proposed and superseded pages stay out of ordinary agent discovery and retrieval | ❌     | daemon integration assertion plus visible review filters        | T1   | P1  |
+| Projects mode separates review state from delivery and reports progress metrics  | ❌     | create charter, update delivery, assert counts and percentage   | T1   | P1  |
+| References mode records source URL plus adopted or rejected evaluation           | ❌     | create reference, update evaluation, reload and assert timeline | T1   | P1  |
+
 ## 12. Schedules & runs
 
 | Behavior                                                                                              | Status | Specs / plan                             | Tier | Pri |

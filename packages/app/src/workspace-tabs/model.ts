@@ -90,6 +90,7 @@ export type WorkspaceTabTarget =
   // One per workspace: the report is a property of the workspace and its
   // provider, so a second tab would show the same thing.
   | { kind: "contextManagement" }
+  | { kind: "projectKnowledge" }
   // The orchestration graph designer (projects/orchestration-graphs): edit one
   // reusable graph template in a node-editor canvas. One tab per graph per
   // workspace. `runId` carries the Draft orchestration the dialog minted so

@@ -154,10 +154,11 @@ export function formatChatCost(totals: ChatTotals): ChatCostDisplay | null {
     return null;
   }
   const formatted = formatMicroUsd(Math.round(totals.costUsd * 1_000_000));
+  const amount = formatted.startsWith("$") ? formatted.slice(1) : formatted;
   if (totals.costCoverage === "partial") {
-    return { text: `≥ ${formatted}`, tooltipKey: "chatMetrics.costPartialHint" };
+    return { text: `≥ ${amount}`, tooltipKey: "chatMetrics.costPartialHint" };
   }
-  return { text: formatted, tooltipKey: "chatMetrics.costHint" };
+  return { text: amount, tooltipKey: "chatMetrics.costHint" };
 }
 
 // The icon arrives as a COMPONENT, not an element: passing JSX through a prop

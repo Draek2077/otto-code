@@ -29,6 +29,7 @@ import type {
   TerminalWorkspaceContributionChangedEvent,
 } from "../terminal/terminal-manager.js";
 import { TerminalSessionController } from "../terminal/terminal-session-controller.js";
+import { detectWindowsTerminalShells } from "../terminal/windows-terminal-shells.js";
 import type { TerminalActivity } from "@otto-code/protocol/terminal-activity";
 import type { BinaryFrame } from "@otto-code/protocol/binary-frames/index";
 import { CursorError } from "./pagination/cursor.js";
@@ -110,6 +111,7 @@ import {
 import { convertEdge } from "./agent/context-management/edge-convert.js";
 import { fixFindings } from "./agent/context-management/finding-fix.js";
 import type { PersonalityMemoryService } from "./agent/personality-memory/personality-memory-service.js";
+import type { ProjectKnowledgeService } from "./agent/project-knowledge/project-knowledge-service.js";
 import { composeSystemPromptParts } from "./agent/system-prompt.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import type {
@@ -700,6 +702,8 @@ export interface SessionOptions {
    * memory RPCs answer with a plain "not available on this host".
    */
   personalityMemory?: PersonalityMemoryService | null;
+  /** Repo-owned knowledge, used to make its recurring prompt cost inspectable. */
+  projectKnowledge?: ProjectKnowledgeService | null;
   serverId?: string;
   daemonVersion?: string;
   daemonRuntimeConfig?: DaemonRuntimeConfig;
@@ -921,6 +925,7 @@ export class Session {
   // every read is a truthiness check, and normalizing would add a branch to a
   // constructor already at the complexity ceiling.
   private readonly personalityMemory: PersonalityMemoryService | null | undefined;
+  private readonly projectKnowledge: ProjectKnowledgeService | null | undefined;
   // Generates the Visualizer's short spoken cue lines for a personality (join /
   // thinking / done), via the Writer mini-task chain. Cached per personality.
   private readonly voiceCueGenerator: VoiceCueGenerator;
@@ -1049,6 +1054,7 @@ export class Session {
       dictation,
       previewTts,
       personalityMemory,
+      projectKnowledge,
       serverId,
       daemonVersion,
       daemonRuntimeConfig,
@@ -1059,6 +1065,7 @@ export class Session {
     this.previewTts = previewTts;
     this.getPersonalityStats = defaults.getPersonalityStats;
     this.personalityMemory = personalityMemory;
+    this.projectKnowledge = projectKnowledge;
     this.scopes = [...scopes];
     this.appVersion = defaults.appVersion;
     this.clientCapabilities = parseClientCapabilities(clientCapabilities);
@@ -1353,6 +1360,38 @@ export class Session {
       clientSupportsWrapReflow: () =>
         this.clientCapabilities.has(CLIENT_CAPS.terminalReflowableSnapshot),
       getClientBufferedAmount: () => this.getTransportBufferedAmount(),
+      getDefaultTerminalCommand: () => {
+        if (process.platform !== "win32") {
+          return undefined;
+        }
+        const selectedShell = this.daemonConfigStore.get().defaultTerminalShell;
+        if (
+          !selectedShell ||
+          !detectWindowsTerminalShells().some((shell) => shell.id === selectedShell)
+        ) {
+          return undefined;
+        }
+        switch (selectedShell) {
+          case "command-prompt":
+            return {
+              command:
+                process.env.ComSpec || process.env.COMSPEC || "C:\\Windows\\System32\\cmd.exe",
+            };
+          case "windows-powershell":
+            return { command: "powershell.exe" };
+          case "powershell-7":
+            return { command: "pwsh.exe" };
+          default:
+            return undefined;
+        }
+      },
+      getTerminalTitleSettings: () => {
+        const config = this.daemonConfigStore.get();
+        return {
+          mode: config.terminalTitleMode ?? "auto",
+          includePaths: config.terminalTitleIncludePaths ?? false,
+        };
+      },
     });
     this.agentUpdates = createAgentUpdatesService({
       emit: (message) => this.emit(message),
@@ -1441,6 +1480,11 @@ export class Session {
         if (!this.personalityMemory) return { text: "", estTokens: 0 };
         const view = await this.personalityMemory.view({ personalityId, projectRoot });
         return { text: view.brief.text, estTokens: view.brief.estTokens };
+      },
+      resolveProjectKnowledgeBrief: async ({ projectRoot }) => {
+        if (!this.projectKnowledge) return { text: "", estTokens: 0 };
+        const brief = await this.projectKnowledge.briefForCwd(projectRoot);
+        return { text: brief.text, estTokens: brief.estTokens };
       },
       resolveLocation: async (workspaceId) => {
         const workspace = await this.workspaceRegistry.get(workspaceId);
@@ -4558,6 +4602,10 @@ export class Session {
   }
 
   private dispatchProviderMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    const projectKnowledgeMessage = this.dispatchProjectKnowledgeMessage(msg);
+    if (projectKnowledgeMessage) return projectKnowledgeMessage;
+    const personalityMemoryMessage = this.dispatchPersonalityMemoryMessage(msg);
+    if (personalityMemoryMessage) return personalityMemoryMessage;
     switch (msg.type) {
       case "list_provider_models_request":
         return this.providerCatalogSession.handleListProviderModelsRequest(msg);
@@ -4589,6 +4637,37 @@ export class Session {
         return this.handleContextEdgeConvertRequest(msg);
       case "context.findings.fix.request":
         return this.handleContextFindingsFixRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+
+  private dispatchProjectKnowledgeMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "project.knowledge.list.request":
+        return this.handleProjectKnowledgeListRequest(msg);
+      case "project.knowledge.get.request":
+        return this.handleProjectKnowledgeGetRequest(msg);
+      case "project.knowledge.create.request":
+        return this.handleProjectKnowledgeCreateRequest(msg);
+      case "project.knowledge.apply.request":
+        return this.handleProjectKnowledgeApplyRequest(msg);
+      case "project.knowledge.status.request":
+        return this.handleProjectKnowledgeStatusRequest(msg);
+      case "project.knowledge.project.apply.request":
+        return this.handleProjectKnowledgeProjectApplyRequest(msg);
+      case "project.knowledge.reference.apply.request":
+        return this.handleProjectKnowledgeReferenceApplyRequest(msg);
+      case "project.knowledge.root.apply.request":
+        return this.handleProjectKnowledgeRootApplyRequest(msg);
+      case "project.knowledge.delete.request":
+        return this.handleProjectKnowledgeDeleteRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+  private dispatchPersonalityMemoryMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
       case "personality.memory.list.request":
         return this.handlePersonalityMemoryListRequest(msg);
       case "personality.memory.update.request":
@@ -4887,6 +4966,232 @@ export class Session {
         },
       });
     }
+  }
+
+  private async projectKnowledgeCwd(workspaceId: string): Promise<string | null> {
+    return (await this.workspaceRegistry.get(workspaceId))?.cwd ?? null;
+  }
+  private async handleProjectKnowledgeListRequest(
+    msg: Extract<SessionInboundMessage, { type: "project.knowledge.list.request" }>,
+  ): Promise<void> {
+    const cwd = await this.projectKnowledgeCwd(msg.workspaceId);
+    if (!this.projectKnowledge || !cwd) {
+      this.emit({
+        type: "project.knowledge.list.response",
+        payload: {
+          requestId: msg.requestId,
+          records: [],
+          rootPages: [],
+          findings: [],
+          brief: "",
+          briefTokens: 0,
+          includedIds: [],
+          omittedCount: 0,
+        },
+      });
+      return;
+    }
+    const view = await this.projectKnowledge.catalogView(cwd);
+    this.emit({
+      type: "project.knowledge.list.response",
+      payload: {
+        requestId: msg.requestId,
+        // Full Markdown and timeline stay pull-on-demand through get. A real
+        // charter corpus is otherwise large enough to time out the list RPC.
+        records: view.records,
+        rootPages: view.rootPages,
+        findings: view.findings,
+        brief: view.brief.text,
+        briefTokens: view.brief.estTokens,
+        includedIds: view.brief.includedIds,
+        omittedCount: view.brief.omittedCount,
+      },
+    });
+  }
+  private async handleProjectKnowledgeGetRequest(
+    msg: Extract<SessionInboundMessage, { type: "project.knowledge.get.request" }>,
+  ): Promise<void> {
+    const cwd = await this.projectKnowledgeCwd(msg.workspaceId);
+    this.emit({
+      type: "project.knowledge.get.response",
+      payload: {
+        requestId: msg.requestId,
+        record:
+          this.projectKnowledge && cwd
+            ? await this.projectKnowledge.get(cwd, msg.id, { includeInactive: true })
+            : null,
+      },
+    });
+  }
+  private async handleProjectKnowledgeCreateRequest(
+    msg: Extract<SessionInboundMessage, { type: "project.knowledge.create.request" }>,
+  ): Promise<void> {
+    const cwd = await this.projectKnowledgeCwd(msg.workspaceId);
+    if (!this.projectKnowledge || !cwd)
+      throw new Error("Project knowledge is unavailable for this workspace.");
+    const record = await this.projectKnowledge.record({
+      cwd,
+      ...(msg.id ? { id: msg.id } : {}),
+      kind: msg.kind,
+      title: msg.title,
+      statement: msg.statement,
+      ...(msg.evidence ? { evidence: msg.evidence } : {}),
+      ...(msg.tags ? { tags: msg.tags } : {}),
+      ...(msg.affects ? { affects: msg.affects } : {}),
+      ...(msg.status ? { status: msg.status } : {}),
+      ...(msg.deliveryStatus ? { deliveryStatus: msg.deliveryStatus } : {}),
+      ...(msg.progress ? { progress: msg.progress } : {}),
+      ...(msg.referenceDisposition ? { referenceDisposition: msg.referenceDisposition } : {}),
+      ...(msg.sourceUrl ? { sourceUrl: msg.sourceUrl } : {}),
+    });
+    this.contextManagement.invalidate(msg.workspaceId);
+    await this.pushContextReport(msg.workspaceId);
+    this.emit({
+      type: "project.knowledge.create.response",
+      payload: { requestId: msg.requestId, record },
+    });
+  }
+  private async handleProjectKnowledgeApplyRequest(
+    msg: Extract<SessionInboundMessage, { type: "project.knowledge.apply.request" }>,
+  ): Promise<void> {
+    const cwd = await this.projectKnowledgeCwd(msg.workspaceId);
+    if (!this.projectKnowledge || !cwd)
+      throw new Error("Project knowledge is unavailable for this workspace.");
+    const result =
+      msg.statement !== undefined
+        ? await this.projectKnowledge.updateTruth({
+            cwd,
+            id: msg.id,
+            statement: msg.statement,
+            reason: msg.provenanceText ?? "",
+            ...(msg.provenanceSource ? { source: msg.provenanceSource } : {}),
+            ...(msg.provenanceAffects ? { affects: msg.provenanceAffects } : {}),
+            ...(msg.expectedUpdatedAt ? { expectedUpdatedAt: msg.expectedUpdatedAt } : {}),
+          })
+        : await this.projectKnowledge.applyReviewedMutation({
+            cwd,
+            id: msg.id,
+            ...(msg.title !== undefined ? { title: msg.title } : {}),
+            ...(msg.evidence !== undefined ? { evidence: msg.evidence } : {}),
+            ...(msg.expectedUpdatedAt ? { expectedUpdatedAt: msg.expectedUpdatedAt } : {}),
+          });
+    if (result.record) {
+      this.contextManagement.invalidate(msg.workspaceId);
+      await this.pushContextReport(msg.workspaceId);
+    }
+    this.emit({
+      type: "project.knowledge.apply.response",
+      payload: {
+        requestId: msg.requestId,
+        record: result.record,
+        ...(result.error ? { error: result.error } : {}),
+      },
+    });
+  }
+  private async handleProjectKnowledgeStatusRequest(
+    msg: Extract<SessionInboundMessage, { type: "project.knowledge.status.request" }>,
+  ): Promise<void> {
+    const cwd = await this.projectKnowledgeCwd(msg.workspaceId);
+    if (!this.projectKnowledge || !cwd)
+      throw new Error("Project knowledge is unavailable for this workspace.");
+    const record = await this.projectKnowledge.setStatus(cwd, msg.id, msg.status, msg.reason);
+    if (record) {
+      this.contextManagement.invalidate(msg.workspaceId);
+      await this.pushContextReport(msg.workspaceId);
+    }
+    this.emit({
+      type: "project.knowledge.status.response",
+      payload: { requestId: msg.requestId, record },
+    });
+  }
+  private async handleProjectKnowledgeProjectApplyRequest(
+    msg: Extract<SessionInboundMessage, { type: "project.knowledge.project.apply.request" }>,
+  ): Promise<void> {
+    const cwd = await this.projectKnowledgeCwd(msg.workspaceId);
+    if (!this.projectKnowledge || !cwd)
+      throw new Error("Project knowledge is unavailable for this workspace.");
+    const result = await this.projectKnowledge.updateProject({
+      cwd,
+      id: msg.id,
+      ...(msg.deliveryStatus ? { deliveryStatus: msg.deliveryStatus } : {}),
+      ...(msg.progress !== undefined ? { progress: msg.progress } : {}),
+      reason: msg.reason,
+      ...(msg.expectedUpdatedAt ? { expectedUpdatedAt: msg.expectedUpdatedAt } : {}),
+    });
+    if (result.record) {
+      this.contextManagement.invalidate(msg.workspaceId);
+      await this.pushContextReport(msg.workspaceId);
+    }
+    this.emit({
+      type: "project.knowledge.project.apply.response",
+      payload: {
+        requestId: msg.requestId,
+        record: result.record,
+        ...(result.error ? { error: result.error } : {}),
+      },
+    });
+  }
+  private async handleProjectKnowledgeReferenceApplyRequest(
+    msg: Extract<SessionInboundMessage, { type: "project.knowledge.reference.apply.request" }>,
+  ): Promise<void> {
+    const cwd = await this.projectKnowledgeCwd(msg.workspaceId);
+    if (!this.projectKnowledge || !cwd)
+      throw new Error("Project knowledge is unavailable for this workspace.");
+    const result = await this.projectKnowledge.updateReference({
+      cwd,
+      id: msg.id,
+      ...(msg.disposition ? { disposition: msg.disposition } : {}),
+      ...(msg.sourceUrl !== undefined ? { sourceUrl: msg.sourceUrl } : {}),
+      reason: msg.reason,
+      ...(msg.expectedUpdatedAt ? { expectedUpdatedAt: msg.expectedUpdatedAt } : {}),
+    });
+    if (result.record) {
+      this.contextManagement.invalidate(msg.workspaceId);
+      await this.pushContextReport(msg.workspaceId);
+    }
+    this.emit({
+      type: "project.knowledge.reference.apply.response",
+      payload: {
+        requestId: msg.requestId,
+        record: result.record,
+        ...(result.error ? { error: result.error } : {}),
+      },
+    });
+  }
+  private async handleProjectKnowledgeRootApplyRequest(
+    msg: Extract<SessionInboundMessage, { type: "project.knowledge.root.apply.request" }>,
+  ): Promise<void> {
+    const cwd = await this.projectKnowledgeCwd(msg.workspaceId);
+    if (!this.projectKnowledge || !cwd)
+      throw new Error("Project knowledge is unavailable for this workspace.");
+    const page = await this.projectKnowledge.updateRoot({ cwd, slug: msg.slug, body: msg.body });
+    this.contextManagement.invalidate(msg.workspaceId);
+    await this.pushContextReport(msg.workspaceId);
+    this.emit({
+      type: "project.knowledge.root.apply.response",
+      payload: { requestId: msg.requestId, page },
+    });
+  }
+  private async handleProjectKnowledgeDeleteRequest(
+    msg: Extract<SessionInboundMessage, { type: "project.knowledge.delete.request" }>,
+  ): Promise<void> {
+    const cwd = await this.projectKnowledgeCwd(msg.workspaceId);
+    if (!this.projectKnowledge || !cwd)
+      throw new Error("Project knowledge is unavailable for this workspace.");
+    const result = await this.projectKnowledge.delete({
+      cwd,
+      id: msg.id,
+      reason: msg.reason,
+      ...(msg.expectedUpdatedAt ? { expectedUpdatedAt: msg.expectedUpdatedAt } : {}),
+    });
+    if (result.deleted) {
+      this.contextManagement.invalidate(msg.workspaceId);
+      await this.pushContextReport(msg.workspaceId);
+    }
+    this.emit({
+      type: "project.knowledge.delete.response",
+      payload: { requestId: msg.requestId, ...result },
+    });
   }
 
   private async handleContextEdgeConvertRequest(
@@ -9860,6 +10165,8 @@ export class Session {
           ottoWorktreesBaseRoot: this.worktreesRoot,
           github: this.github,
           workspaceGitService: this.workspaceGitService,
+          removeWorkspaceObserverForWorkspaceId: (workspaceId) =>
+            this.workspaceGitObserver.removeForWorkspaceId(workspaceId),
           agentManager: this.agentManager,
           agentStorage: this.agentStorage,
           findWorkspaceIdForCwd: (cwd) => this.findWorkspaceIdForCwd(cwd),

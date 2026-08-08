@@ -780,6 +780,15 @@ export const MutableDaemonConfigSchema = z
     attachmentImageMaxAgeDays: z.number().int().min(0).default(30),
     attachmentImageMaxTotalMb: z.number().int().min(0).default(512),
     enableTerminalAgentHooks: z.boolean().default(false),
+    // Gated by server_info.features.terminalTitleSettings. The daemon owns
+    // title policy because terminals can be created from any connected client.
+    terminalTitleMode: z.enum(["auto", "default"]).optional(),
+    terminalTitleIncludePaths: z.boolean().optional(),
+    // Windows-only preference for ordinary interactive terminals. Absent keeps
+    // the operating system's normal default shell on every platform.
+    defaultTerminalShell: z
+      .enum(["command-prompt", "windows-powershell", "powershell-7"])
+      .optional(),
     appendSystemPrompt: z.string().default(""),
     terminalProfiles: z.array(TerminalProfileSchema).optional(),
     // Absent on daemons without the speechSettings feature.
@@ -854,6 +863,11 @@ export const MutableDaemonConfigPatchSchema = z
     attachmentImageMaxAgeDays: z.number().int().min(0).optional(),
     attachmentImageMaxTotalMb: z.number().int().min(0).optional(),
     enableTerminalAgentHooks: z.boolean().optional(),
+    terminalTitleMode: z.enum(["auto", "default"]).optional(),
+    terminalTitleIncludePaths: z.boolean().optional(),
+    defaultTerminalShell: z
+      .enum(["command-prompt", "windows-powershell", "powershell-7"])
+      .optional(),
     appendSystemPrompt: z.string().optional(),
     terminalProfiles: z.array(TerminalProfileSchema).optional(),
     // Gated by server_info features.speechSettings; every field is optional so
@@ -4225,6 +4239,9 @@ export const ContextReportSchema = z.object({
   // is a z.enum travelling daemon->client, so a new member would make a new
   // daemon's report unparseable by an older client.
   personalityMemoryTokens: z.number().optional(),
+  // COMPAT(projectKnowledge): additive; repo-owned knowledge is folded into
+  // otto_injected, while this field keeps its recurring cost inspectable.
+  projectKnowledgeTokens: z.number().optional(),
 });
 
 // Pushed with the full current report whenever a watched context file changes.
@@ -4297,6 +4314,229 @@ export const ContextPromptPreviewGetResponseMessageSchema = z.object({
   payload: z.object({
     requestId: z.string(),
     preview: ContextPromptPreviewSchema.nullable(),
+  }),
+});
+
+// Repo-owned project knowledge is canonical Markdown under `.otto/knowledge`,
+// with daemon-owned writes so worktrees resolve to one store and every truth
+// change retains its timeline evidence.
+export const ProjectKnowledgeKindSchema = z.enum([
+  "decision",
+  "constraint",
+  "requirement",
+  "architecture",
+  "project",
+  "reference",
+]);
+export const ProjectKnowledgeStatusSchema = z.enum(["proposed", "confirmed", "superseded"]);
+export const ProjectDeliveryStatusSchema = z.enum([
+  "charter",
+  "in_build",
+  "partial",
+  "blocked",
+  "complete",
+  "reference",
+  "deferred",
+  "cancelled",
+]);
+export const ProjectReferenceDispositionSchema = z.enum([
+  "unevaluated",
+  "read",
+  "adopted",
+  "rejected",
+  "dependency",
+]);
+export const ProjectProgressSchema = z.object({
+  completed: z.number().int().nonnegative(),
+  total: z.number().int().positive(),
+  unit: z.string().min(1).max(48),
+});
+export const ProjectKnowledgeRecordSchema = z.object({
+  id: z.string(),
+  kind: ProjectKnowledgeKindSchema,
+  title: z.string(),
+  statement: z.string(),
+  statementDigest: z.string().optional(),
+  evidence: z.string().optional(),
+  tags: z.array(z.string()),
+  status: ProjectKnowledgeStatusSchema,
+  deliveryStatus: ProjectDeliveryStatusSchema.optional(),
+  progress: ProjectProgressSchema.optional(),
+  referenceDisposition: ProjectReferenceDispositionSchema.optional(),
+  sourceUrl: z.string().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  provenance: z
+    .array(
+      z.object({
+        text: z.string(),
+        recordedAt: z.string(),
+        source: z.string().optional(),
+        kind: z.string().optional(),
+        affects: z.array(z.string()).optional(),
+      }),
+    )
+    .optional(),
+  path: z.string().optional(),
+});
+export const ProjectKnowledgeFindingSchema = z.object({
+  kind: z.enum(["stale", "overlapping_tags", "overlapping_statement"]),
+  recordId: z.string(),
+  relatedRecordId: z.string().optional(),
+  message: z.string(),
+});
+export const ProjectKnowledgeRootPageSchema = z.object({
+  slug: z.string(),
+  title: z.string(),
+  path: z.string(),
+  body: z.string(),
+});
+export const ProjectKnowledgeListRequestMessageSchema = z.object({
+  type: z.literal("project.knowledge.list.request"),
+  requestId: z.string(),
+  workspaceId: z.string(),
+});
+export const ProjectKnowledgeListResponseMessageSchema = z.object({
+  type: z.literal("project.knowledge.list.response"),
+  payload: z.object({
+    requestId: z.string(),
+    records: z.array(ProjectKnowledgeRecordSchema),
+    rootPages: z.array(ProjectKnowledgeRootPageSchema).optional(),
+    findings: z.array(ProjectKnowledgeFindingSchema),
+    brief: z.string(),
+    briefTokens: z.number(),
+    includedIds: z.array(z.string()),
+    omittedCount: z.number(),
+  }),
+});
+export const ProjectKnowledgeGetRequestMessageSchema = z.object({
+  type: z.literal("project.knowledge.get.request"),
+  requestId: z.string(),
+  workspaceId: z.string(),
+  id: z.string(),
+});
+export const ProjectKnowledgeGetResponseMessageSchema = z.object({
+  type: z.literal("project.knowledge.get.response"),
+  payload: z.object({ requestId: z.string(), record: ProjectKnowledgeRecordSchema.nullable() }),
+});
+export const ProjectKnowledgeCreateRequestMessageSchema = z.object({
+  type: z.literal("project.knowledge.create.request"),
+  requestId: z.string(),
+  workspaceId: z.string(),
+  id: z.string().optional(),
+  kind: ProjectKnowledgeKindSchema,
+  title: z.string().max(160),
+  statement: z.string(),
+  evidence: z.string().optional(),
+  tags: z.array(z.string().max(48)).max(32).optional(),
+  affects: z.array(z.string()).optional(),
+  status: ProjectKnowledgeStatusSchema.optional(),
+  deliveryStatus: ProjectDeliveryStatusSchema.optional(),
+  progress: ProjectProgressSchema.optional(),
+  referenceDisposition: ProjectReferenceDispositionSchema.optional(),
+  sourceUrl: z.string().optional(),
+});
+export const ProjectKnowledgeCreateResponseMessageSchema = z.object({
+  type: z.literal("project.knowledge.create.response"),
+  payload: z.object({ requestId: z.string(), record: ProjectKnowledgeRecordSchema }),
+});
+export const ProjectKnowledgeApplyRequestMessageSchema = z.object({
+  type: z.literal("project.knowledge.apply.request"),
+  requestId: z.string(),
+  workspaceId: z.string(),
+  id: z.string(),
+  title: z.string().max(160).optional(),
+  statement: z.string().optional(),
+  evidence: z.string().optional(),
+  provenanceText: z.string().optional(),
+  provenanceSource: z.string().max(160).optional(),
+  provenanceAffects: z.array(z.string()).optional(),
+  expectedUpdatedAt: z.string().optional(),
+});
+export const ProjectKnowledgeApplyResponseMessageSchema = z.object({
+  type: z.literal("project.knowledge.apply.response"),
+  payload: z.object({
+    requestId: z.string(),
+    record: ProjectKnowledgeRecordSchema.nullable(),
+    error: z.string().optional(),
+  }),
+});
+export const ProjectKnowledgeStatusRequestMessageSchema = z.object({
+  type: z.literal("project.knowledge.status.request"),
+  requestId: z.string(),
+  workspaceId: z.string(),
+  id: z.string(),
+  status: ProjectKnowledgeStatusSchema,
+  reason: z.string().optional(),
+});
+export const ProjectKnowledgeStatusResponseMessageSchema = z.object({
+  type: z.literal("project.knowledge.status.response"),
+  payload: z.object({ requestId: z.string(), record: ProjectKnowledgeRecordSchema.nullable() }),
+});
+export const ProjectKnowledgeProjectApplyRequestMessageSchema = z.object({
+  type: z.literal("project.knowledge.project.apply.request"),
+  requestId: z.string(),
+  workspaceId: z.string(),
+  id: z.string(),
+  deliveryStatus: ProjectDeliveryStatusSchema.optional(),
+  progress: ProjectProgressSchema.nullable().optional(),
+  reason: z.string(),
+  expectedUpdatedAt: z.string().optional(),
+});
+export const ProjectKnowledgeProjectApplyResponseMessageSchema = z.object({
+  type: z.literal("project.knowledge.project.apply.response"),
+  payload: z.object({
+    requestId: z.string(),
+    record: ProjectKnowledgeRecordSchema.nullable(),
+    error: z.string().optional(),
+  }),
+});
+export const ProjectKnowledgeReferenceApplyRequestMessageSchema = z.object({
+  type: z.literal("project.knowledge.reference.apply.request"),
+  requestId: z.string(),
+  workspaceId: z.string(),
+  id: z.string(),
+  disposition: ProjectReferenceDispositionSchema.optional(),
+  sourceUrl: z.string().nullable().optional(),
+  reason: z.string(),
+  expectedUpdatedAt: z.string().optional(),
+});
+export const ProjectKnowledgeReferenceApplyResponseMessageSchema = z.object({
+  type: z.literal("project.knowledge.reference.apply.response"),
+  payload: z.object({
+    requestId: z.string(),
+    record: ProjectKnowledgeRecordSchema.nullable(),
+    error: z.string().optional(),
+  }),
+});
+export const ProjectKnowledgeRootApplyRequestMessageSchema = z.object({
+  type: z.literal("project.knowledge.root.apply.request"),
+  requestId: z.string(),
+  workspaceId: z.string(),
+  slug: z.string(),
+  body: z.string(),
+});
+export const ProjectKnowledgeRootApplyResponseMessageSchema = z.object({
+  type: z.literal("project.knowledge.root.apply.response"),
+  payload: z.object({
+    requestId: z.string(),
+    page: ProjectKnowledgeRootPageSchema.nullable(),
+  }),
+});
+export const ProjectKnowledgeDeleteRequestMessageSchema = z.object({
+  type: z.literal("project.knowledge.delete.request"),
+  requestId: z.string(),
+  workspaceId: z.string(),
+  id: z.string(),
+  reason: z.string(),
+  expectedUpdatedAt: z.string().optional(),
+});
+export const ProjectKnowledgeDeleteResponseMessageSchema = z.object({
+  type: z.literal("project.knowledge.delete.response"),
+  payload: z.object({
+    requestId: z.string(),
+    deleted: z.boolean(),
+    error: z.string().optional(),
   }),
 });
 
@@ -6569,6 +6809,9 @@ export const RenameTerminalRequestSchema = z.object({
   type: z.literal("terminal.rename.request"),
   terminalId: z.string(),
   title: z.string(),
+  // COMPAT(terminalTitleSettings): old daemons ignore this field and retain
+  // their existing rename behavior.
+  clear: z.boolean().optional(),
   requestId: z.string(),
 });
 
@@ -6793,6 +7036,15 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   StatsActivityGetRequestMessageSchema,
   ContextReportGetRequestMessageSchema,
   ContextPromptPreviewGetRequestMessageSchema,
+  ProjectKnowledgeListRequestMessageSchema,
+  ProjectKnowledgeGetRequestMessageSchema,
+  ProjectKnowledgeCreateRequestMessageSchema,
+  ProjectKnowledgeApplyRequestMessageSchema,
+  ProjectKnowledgeStatusRequestMessageSchema,
+  ProjectKnowledgeProjectApplyRequestMessageSchema,
+  ProjectKnowledgeReferenceApplyRequestMessageSchema,
+  ProjectKnowledgeRootApplyRequestMessageSchema,
+  ProjectKnowledgeDeleteRequestMessageSchema,
   ContextEdgeConvertRequestMessageSchema,
   ContextFindingsFixRequestMessageSchema,
   PersonalityMemoryListRequestMessageSchema,
@@ -7149,6 +7401,17 @@ export const ServerInfoStatusPayloadSchema = z
     serverId: z.string().trim().min(1),
     hostname: ServerInfoHostnameSchema.optional(),
     version: ServerInfoVersionSchema.optional(),
+    // The daemon's OS and detected interactive shells. Optional so older hosts
+    // remain parseable; only Windows hosts advertise terminalShells.
+    platform: z.string().optional(),
+    terminalShells: z
+      .array(
+        z.object({
+          id: z.enum(["command-prompt", "windows-powershell", "powershell-7"]),
+          label: z.string(),
+        }),
+      )
+      .optional(),
     // COMPAT(desktopManaged): added in v0.1.X, remove optional parsing after 2027-01-16.
     desktopManaged: z.boolean().optional(),
     capabilities: ServerCapabilitiesFromUnknownSchema.optional(),
@@ -7170,6 +7433,8 @@ export const ServerInfoStatusPayloadSchema = z
         daemonStatusRpc: z.boolean().optional(),
         // COMPAT(terminalRestoreModes): added in v0.1.81, remove gate after 2026-11-23.
         "terminal-restore-modes": z.boolean().optional(),
+        // COMPAT(terminalTitleSettings): added in v0.8.5, remove gate after 2027-02-07.
+        terminalTitleSettings: z.boolean().optional(),
         // COMPAT(rewind): added in v0.1.X, drop the gate when floor >= v0.1.X.
         rewind: z.boolean().optional(),
         // COMPAT(checkoutRefresh): added in v0.1.86, remove gate after 2026-11-29.
@@ -7315,6 +7580,8 @@ export const ServerInfoStatusPayloadSchema = z
         // client-side fallback could read.
         // COMPAT(personalityMemory): added in v0.7.0, drop the gate when daemon floor >= v0.7.0.
         personalityMemory: z.boolean().optional(),
+        // COMPAT(projectKnowledge): added in v0.8.5, drop the gate when daemon floor >= v0.8.5.
+        projectKnowledge: z.boolean().optional(),
         // Script discovery - the daemon scans a workspace for the Scripts its
         // project files already declare (package.json scripts, and later
         // Makefile targets, .NET launch profiles) and serves them from
@@ -11861,6 +12128,15 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   StatsActivityGetResponseMessageSchema,
   ContextReportGetResponseMessageSchema,
   ContextPromptPreviewGetResponseMessageSchema,
+  ProjectKnowledgeListResponseMessageSchema,
+  ProjectKnowledgeGetResponseMessageSchema,
+  ProjectKnowledgeCreateResponseMessageSchema,
+  ProjectKnowledgeApplyResponseMessageSchema,
+  ProjectKnowledgeStatusResponseMessageSchema,
+  ProjectKnowledgeProjectApplyResponseMessageSchema,
+  ProjectKnowledgeReferenceApplyResponseMessageSchema,
+  ProjectKnowledgeRootApplyResponseMessageSchema,
+  ProjectKnowledgeDeleteResponseMessageSchema,
   ContextEdgeConvertResponseMessageSchema,
   ContextFindingsFixResponseMessageSchema,
   PersonalityMemoryListResponseMessageSchema,
@@ -12156,6 +12432,33 @@ export type ProviderUsageListResponseMessage = z.infer<
 export type ActivityCounters = z.infer<typeof ActivityCountersSchema>;
 export type StatsActivityGetResponseMessage = z.infer<typeof StatsActivityGetResponseMessageSchema>;
 export type ContextReportGetResponseMessage = z.infer<typeof ContextReportGetResponseMessageSchema>;
+export type ProjectKnowledgeListResponseMessage = z.infer<
+  typeof ProjectKnowledgeListResponseMessageSchema
+>;
+export type ProjectKnowledgeGetResponseMessage = z.infer<
+  typeof ProjectKnowledgeGetResponseMessageSchema
+>;
+export type ProjectKnowledgeCreateResponseMessage = z.infer<
+  typeof ProjectKnowledgeCreateResponseMessageSchema
+>;
+export type ProjectKnowledgeApplyResponseMessage = z.infer<
+  typeof ProjectKnowledgeApplyResponseMessageSchema
+>;
+export type ProjectKnowledgeStatusResponseMessage = z.infer<
+  typeof ProjectKnowledgeStatusResponseMessageSchema
+>;
+export type ProjectKnowledgeProjectApplyResponseMessage = z.infer<
+  typeof ProjectKnowledgeProjectApplyResponseMessageSchema
+>;
+export type ProjectKnowledgeReferenceApplyResponseMessage = z.infer<
+  typeof ProjectKnowledgeReferenceApplyResponseMessageSchema
+>;
+export type ProjectKnowledgeRootApplyResponseMessage = z.infer<
+  typeof ProjectKnowledgeRootApplyResponseMessageSchema
+>;
+export type ProjectKnowledgeDeleteResponseMessage = z.infer<
+  typeof ProjectKnowledgeDeleteResponseMessageSchema
+>;
 export type ContextPromptSection = z.infer<typeof ContextPromptSectionSchema>;
 export type ContextPromptPreview = z.infer<typeof ContextPromptPreviewSchema>;
 export type ContextPromptPreviewGetRequestMessage = z.infer<

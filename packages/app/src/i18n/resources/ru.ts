@@ -583,6 +583,7 @@ export const ru: TranslationResources = {
       retry: "Повторить диктовку",
       insert: "Вставить транскрипцию",
       insertAndSend: "Вставьте транскрипцию и отправьте",
+      cleanUp: "Очистить транскрипцию",
       failed: "Диктовка не удалась:{{error}}",
       failedRetry: "Диктант не удался. Нажмите «Повторить».",
     },

@@ -654,6 +654,15 @@ function buildPersistedDaemonSection(
       enabled: mutable.dotnetSolutionManagement.enabled,
     },
     enableTerminalAgentHooks: mutable.enableTerminalAgentHooks,
+    ...(mutable.terminalTitleMode !== undefined
+      ? { terminalTitleMode: mutable.terminalTitleMode }
+      : {}),
+    ...(mutable.terminalTitleIncludePaths !== undefined
+      ? { terminalTitleIncludePaths: mutable.terminalTitleIncludePaths }
+      : {}),
+    ...(mutable.defaultTerminalShell !== undefined
+      ? { defaultTerminalShell: mutable.defaultTerminalShell }
+      : {}),
     appendSystemPrompt: mutable.appendSystemPrompt,
     ...(mutable.terminalProfiles !== undefined
       ? { terminalProfiles: mutable.terminalProfiles }

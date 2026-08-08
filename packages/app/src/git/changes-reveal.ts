@@ -154,3 +154,20 @@ export function revealFileInFiles({
   requestFilesReveal(path);
   setExplorerTabForCheckout({ serverId, cwd, isGit, tab: "files" });
 }
+
+/** Send the user to a directory in the Files tree and open its contents. */
+export function revealDirectoryInFiles({
+  serverId,
+  cwd,
+  path,
+  isGit = false,
+}: {
+  serverId: string;
+  cwd: string;
+  path: string;
+  isGit?: boolean;
+}): void {
+  const { requestFilesReveal, setExplorerTabForCheckout } = usePanelStore.getState();
+  requestFilesReveal(path, "directory");
+  setExplorerTabForCheckout({ serverId, cwd, isGit, tab: "files" });
+}

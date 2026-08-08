@@ -76,6 +76,7 @@ export function normalizeWorkspaceTabTarget(
   if (value.kind === "contextManagement") {
     return { kind: "contextManagement" };
   }
+  if (value.kind === "projectKnowledge") return { kind: "projectKnowledge" };
   if (value.kind === "orchestrationGraph") {
     const graphId = trimNonEmpty(value.graphId);
     if (!graphId) {
@@ -316,7 +317,7 @@ export function workspaceTabTargetsEqual(
     return positionKeyedTargetsEqual(left, right);
   }
   // Singleton per workspace - kind alone settles identity.
-  if (left.kind === "contextManagement") {
+  if (left.kind === "contextManagement" || left.kind === "projectKnowledge") {
     return true;
   }
   // One designer tab per graph; the draft runId doesn't change identity (the
@@ -380,6 +381,7 @@ const SIMPLE_TAB_ID_BUILDERS: {
   artifact: (target) => `artifact_${target.artifactId}`,
   gitLog: (target) => `gitlog_${target.operation}`,
   contextManagement: () => "context-management",
+  projectKnowledge: () => "project-knowledge",
   orchestrationGraph: (target) => `orchestration-graph_${target.graphId}`,
   provider_subagent: (target) => `provider-subagent_${target.parentAgentId}_${target.subagentId}`,
   commit_diff: (target) => `commit-diff_${target.sha}`,

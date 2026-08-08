@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, TextInput, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -7,7 +7,11 @@ import type { Theme } from "@/styles/theme";
 import { isWeb } from "@/constants/platform";
 import { formatShortcut } from "@/utils/format-shortcut";
 import { getIsElectronRuntime } from "@/constants/layout";
-import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
+import {
+  AdaptiveModalSheet,
+  AdaptiveTextInput,
+  type SheetHeader,
+} from "@/components/adaptive-modal-sheet";
 import { Shortcut } from "@/components/ui/shortcut";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { getShortcutOs } from "@/utils/shortcut-platform";
@@ -23,9 +27,6 @@ const SNAP_POINTS: string[] = ["70%", "92%"];
 const SEARCH_ICON_SIZE = 16;
 
 const ThemedSearch = withUnistyles(Search);
-const ThemedTextInput = withUnistyles(TextInput, (theme: Theme) => ({
-  placeholderTextColor: theme.colors.foregroundMuted,
-}));
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 /**
@@ -97,10 +98,17 @@ export function KeyboardShortcutsDialog() {
   }, [sections, platform, overrides]);
 
   const [query, setQuery] = useState("");
+  const searchInputRef = useRef<TextInput | null>(null);
   // A stale filter on reopen would look like a dialog that has lost most of its
   // shortcuts, so the query does not survive a close.
   useEffect(() => {
     if (!open) setQuery("");
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !isWeb) return;
+    const timer = setTimeout(() => searchInputRef.current?.focus(), 50);
+    return () => clearTimeout(timer);
   }, [open]);
 
   // Matching runs against the RESOLVED chord rather than the row's default keys,
@@ -138,7 +146,8 @@ export function KeyboardShortcutsDialog() {
           <View style={styles.searchIcon}>
             <ThemedSearch size={SEARCH_ICON_SIZE} uniProps={foregroundMutedColorMapping} />
           </View>
-          <ThemedTextInput
+          <AdaptiveTextInput
+            ref={searchInputRef}
             testID="keyboard-shortcuts-search"
             value={query}
             onChangeText={setQuery}
@@ -148,6 +157,7 @@ export function KeyboardShortcutsDialog() {
             style={[styles.searchInput, isWeb && { outlineStyle: "none" }]}
             autoCapitalize="none"
             autoCorrect={false}
+            autoFocus={isWeb}
           />
         </View>
         {filteredSections.length === 0 ? (

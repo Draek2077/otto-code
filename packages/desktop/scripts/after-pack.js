@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { createHash } = require("crypto");
 
 const { smokePackagedDesktopApp } = require("./smoke-packaged-desktop-app.js");
 
@@ -13,6 +14,60 @@ const RIPGREP_PLATFORM_DIR = {
   linux: { arm64: "arm64-linux", x64: "x64-linux" },
   win32: { arm64: "arm64-win32", x64: "x64-win32" },
 };
+
+function getResourcesDir(appOutDir, platform) {
+  return platform === "darwin"
+    ? path.join(appOutDir, `${EXECUTABLE_NAME}.app`, "Contents", "Resources")
+    : path.join(appOutDir, "resources");
+}
+
+function verifyBundledWakeWordModel(appOutDir, platform) {
+  const modelDir = path.join(getResourcesDir(appOutDir, platform), "wake-word");
+  const manifestPath = path.join(modelDir, "model.json");
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error(`Bundled wake-word manifest is missing: ${manifestPath}`);
+  }
+
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  const assetNames = Object.values(manifest.assets || {});
+  if (assetNames.length === 0) {
+    throw new Error(`Bundled wake-word manifest has no assets: ${manifestPath}`);
+  }
+  for (const legalFile of ["LICENSE-APACHE-2.0.txt", "THIRD_PARTY_NOTICES.md"]) {
+    const legalPath = path.join(modelDir, legalFile);
+    if (!fs.existsSync(legalPath)) {
+      throw new Error(`Bundled wake-word legal notice is missing: ${legalPath}`);
+    }
+  }
+
+  for (const assetName of assetNames) {
+    if (typeof assetName !== "string") {
+      throw new Error(`Bundled wake-word manifest has an invalid asset name: ${manifestPath}`);
+    }
+    const assetPath = path.join(modelDir, assetName);
+    if (!fs.existsSync(assetPath)) {
+      throw new Error(`Bundled wake-word asset is missing: ${assetPath}`);
+    }
+
+    const expectedBytes = manifest.assetBytes?.[assetName];
+    const actualBytes = fs.statSync(assetPath).size;
+    if (actualBytes !== expectedBytes) {
+      throw new Error(
+        `Bundled wake-word asset size mismatch for ${assetName}: expected ${expectedBytes}, got ${actualBytes}`,
+      );
+    }
+
+    const expectedSha256 = manifest.assetSha256?.[assetName];
+    const actualSha256 = createHash("sha256").update(fs.readFileSync(assetPath)).digest("hex");
+    if (actualSha256 !== expectedSha256) {
+      throw new Error(
+        `Bundled wake-word asset checksum mismatch for ${assetName}: expected ${expectedSha256}, got ${actualSha256}`,
+      );
+    }
+  }
+
+  console.log(`Verified bundled wake-word model: ${assetNames.length} assets`);
+}
 
 function rmSafe(target) {
   fs.rmSync(target, { recursive: true, force: true });
@@ -74,10 +129,7 @@ function pruneSharpLibvips(nodeModules, platform, arch) {
 }
 
 function pruneNativeModules(appOutDir, platform, arch) {
-  const resourcesDir =
-    platform === "darwin"
-      ? path.join(appOutDir, `${EXECUTABLE_NAME}.app`, "Contents", "Resources")
-      : path.join(appOutDir, "resources");
+  const resourcesDir = getResourcesDir(appOutDir, platform);
 
   const nodeModules = path.join(resourcesDir, "app.asar.unpacked", "node_modules");
   if (!fs.existsSync(nodeModules)) return;
@@ -113,6 +165,7 @@ exports.default = async function afterPack(context) {
   const platform = context.electronPlatformName;
   const arch = ARCH_MAP[context.arch] || process.arch;
 
+  verifyBundledWakeWordModel(context.appOutDir, platform);
   pruneNativeModules(context.appOutDir, platform, arch);
 
   if (platform === "linux" || platform === "win32") {
@@ -125,6 +178,8 @@ exports.default = async function afterPack(context) {
     }
   }
 };
+
+exports.verifyBundledWakeWordModel = verifyBundledWakeWordModel;
 
 async function smokeUnpackedAppIfRequested(appOutDir) {
   if (process.env.OTTO_DESKTOP_SMOKE !== "1") {

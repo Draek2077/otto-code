@@ -29,6 +29,12 @@ asarUnpack:
 extraResources:
   - from: ../app/dist
     to: app-dist
+  - from: ../expo-two-way-audio/models/wake-word
+    to: wake-word
+  - from: ../expo-two-way-audio/wake-word-model.json
+    to: wake-word/model.json
+  - from: ../../vendor/agent-flow/LICENSE
+    to: wake-word/LICENSE-APACHE-2.0.txt
   - from: ../../skills
     to: skills
   - from: assets/tray-icon.png

@@ -19,6 +19,7 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { ActivityCounters } from "@otto-code/protocol/messages";
 import type { Theme } from "@/styles/theme";
 import { ClientResourceBar } from "@/components/client-resource-bar";
+import { resolveClientResourceBarPlacement } from "@/components/client-resource-bar-placement";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { formatTokenCount } from "@/components/context-window-meter.utils";
@@ -34,6 +35,7 @@ import {
   type ActivityStatsRollups,
 } from "@/hooks/use-activity-stats";
 import { useUsageLogFeature } from "@/hooks/use-usage-log";
+import { useAppSettingValue, type AppSettings } from "@/hooks/use-settings";
 import { UsageLogList, UsageTotalsBar, type UsageTotals } from "@/components/usage-log-list";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
 import { Button } from "@/components/ui/button";
@@ -60,6 +62,8 @@ import {
 } from "@/components/icons/material-icons";
 
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const selectClientResourceBarAllPages = (settings: AppSettings) =>
+  settings.clientResourceBarAllPages;
 
 const ThemedSend = withUnistyles(Send);
 const ThemedMailReceived = withUnistyles(MailReceived);
@@ -258,6 +262,7 @@ export function StatsScreen(): ReactElement {
 
 function StatsScreenContent(): ReactElement {
   const hosts = useHosts();
+  const clientResourceBarAllPages = useAppSettingValue(selectClientResourceBarAllPages);
   // Log-tab range totals, reported up by each host's UsageLogList so they can be
   // pinned below the scroll region instead of scrolling away at the list's end.
   // Keyed by serverId; a host drops out when it leaves the Log tab (reports null).
@@ -335,12 +340,13 @@ function StatsScreenContent(): ReactElement {
               </ChatWidthBounds>
             </View>
           )}
-          {/* Client-side resource readout, and always the last band on the
-              screen: the daemon counters above say what Otto did, this says
-              what it is currently costing the machine it is running on. It sits
-              below the Log tab's range totals because those belong to the
-              ledger they total - the machine readout belongs to the window. */}
-          <ClientResourceBar />
+          {/* Client-side resource readout, and the last band on this screen
+              unless Settings moves that same band to the application shell.
+              The daemon counters above say what Otto did; this says what it is
+              currently costing the machine it is running on. */}
+          {resolveClientResourceBarPlacement(clientResourceBarAllPages) === "metrics-page" ? (
+            <ClientResourceBar />
+          ) : null}
         </View>
       )}
     </View>

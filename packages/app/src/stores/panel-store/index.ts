@@ -16,14 +16,17 @@ import {
   clampExplorerWidth,
   clampSidebarWidth,
   DEFAULT_CONTEXT_SIDEBAR_WIDTH,
+  DEFAULT_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH,
   DEFAULT_EXPLORER_FILES_SPLIT_RATIO,
   DEFAULT_EXPLORER_SIDEBAR_WIDTH,
   DEFAULT_SIDEBAR_WIDTH,
   MAX_CONTEXT_SIDEBAR_WIDTH,
+  MAX_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH,
   MAX_EXPLORER_FILES_SPLIT_RATIO,
   MAX_EXPLORER_SIDEBAR_WIDTH,
   MAX_SIDEBAR_WIDTH,
   MIN_CONTEXT_SIDEBAR_WIDTH,
+  MIN_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH,
   MIN_EXPLORER_FILES_SPLIT_RATIO,
   MIN_EXPLORER_SIDEBAR_WIDTH,
   MIN_SIDEBAR_WIDTH,
@@ -103,6 +106,7 @@ export interface PanelState {
   // Context Management's left column. App-wide rather than per-workspace: it's a
   // reading preference about this tool, not a fact about any one project.
   contextSidebarWidth: number;
+  projectKnowledgeSidebarWidth: number;
   explorerSortOption: SortOption;
   explorerShowHiddenFiles: boolean;
   explorerFilesSplitRatio: number;
@@ -116,7 +120,7 @@ export interface PanelState {
   // Ephemeral (not persisted): set when another pane (e.g. the Changes view)
   // wants a file revealed in the Files tree; the file explorer consumes it
   // back to null. The token disambiguates repeat reveals of the same path.
-  filesRevealRequest: { path: string; token: number } | null;
+  filesRevealRequest: { path: string; token: number; kind?: "file" | "directory" } | null;
   // Ephemeral (not persisted): the mirror image of filesRevealRequest - set when
   // another surface (the Files tree's "View changes", the file tab's toolbar)
   // wants a file revealed in the Changes tab; the diff pane consumes it back to
@@ -172,6 +176,7 @@ export interface PanelState {
   setSidebarWidth: (width: number) => void;
   setExplorerWidth: (width: number) => void;
   setContextSidebarWidth: (width: number) => void;
+  setProjectKnowledgeSidebarWidth: (width: number) => void;
   setExplorerSortOption: (option: SortOption) => void;
   toggleExplorerShowHiddenFiles: () => void;
   setExplorerFilesSplitRatio: (ratio: number) => void;
@@ -179,7 +184,7 @@ export interface PanelState {
   clearProjectSearchFocusRequest: () => void;
   requestFileFinderOpen: () => void;
   clearFileFinderOpenRequest: () => void;
-  requestFilesReveal: (path: string) => void;
+  requestFilesReveal: (path: string, kind?: "file" | "directory") => void;
   clearFilesRevealRequest: () => void;
   requestChangesReveal: (path: string) => void;
   clearChangesRevealRequest: () => void;
@@ -221,6 +226,7 @@ export const usePanelStore = create<PanelState>()(
       sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
       explorerWidth: DEFAULT_EXPLORER_SIDEBAR_WIDTH,
       contextSidebarWidth: DEFAULT_CONTEXT_SIDEBAR_WIDTH,
+      projectKnowledgeSidebarWidth: DEFAULT_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH,
       explorerSortOption: "name",
       explorerShowHiddenFiles: true,
       explorerFilesSplitRatio: DEFAULT_EXPLORER_FILES_SPLIT_RATIO,
@@ -387,6 +393,13 @@ export const usePanelStore = create<PanelState>()(
       setExplorerWidth: (width) => set({ explorerWidth: clampExplorerWidth(width) }),
       setContextSidebarWidth: (width) =>
         set({ contextSidebarWidth: clampContextSidebarWidth(width) }),
+      setProjectKnowledgeSidebarWidth: (width) =>
+        set({
+          projectKnowledgeSidebarWidth: Math.max(
+            MIN_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH,
+            Math.min(MAX_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH, width),
+          ),
+        }),
       setExplorerSortOption: (option) => set({ explorerSortOption: option }),
       toggleExplorerShowHiddenFiles: () =>
         set((state) => ({ explorerShowHiddenFiles: !state.explorerShowHiddenFiles })),
@@ -402,9 +415,13 @@ export const usePanelStore = create<PanelState>()(
       requestFileFinderOpen: () =>
         set((state) => ({ fileFinderOpenToken: state.fileFinderOpenToken + 1 })),
       clearFileFinderOpenRequest: () => set({ fileFinderOpenToken: 0 }),
-      requestFilesReveal: (path) =>
+      requestFilesReveal: (path, kind = "file") =>
         set((state) => ({
-          filesRevealRequest: { path, token: (state.filesRevealRequest?.token ?? 0) + 1 },
+          filesRevealRequest: {
+            path,
+            kind,
+            token: (state.filesRevealRequest?.token ?? 0) + 1,
+          },
         })),
       clearFilesRevealRequest: () => set({ filesRevealRequest: null }),
       requestChangesReveal: (path) =>

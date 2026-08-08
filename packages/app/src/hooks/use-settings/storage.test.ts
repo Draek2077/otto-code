@@ -100,6 +100,18 @@ describe("loadAppSettingsFromStorage", () => {
     expect(result.workspaceTitleSource).toBe("branch");
   });
 
+  it("retains the enabled all-pages resource footer from its pre-release key", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ chatMetricsBarAllPages: true }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.clientResourceBarAllPages).toBe(true);
+  });
+
   it("drops an unknown workspace title source back to title", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({

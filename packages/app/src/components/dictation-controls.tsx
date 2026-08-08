@@ -2,7 +2,15 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useMemo } from "react";
 import { View, Text, Pressable } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { X, ArrowUp, RefreshCcw, Check, Mic, Pencil } from "@/components/icons/material-icons";
+import {
+  X,
+  ArrowUp,
+  RefreshCcw,
+  Check,
+  Mic,
+  Pencil,
+  WandStars,
+} from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
 import { VolumeMeter } from "./volume-meter";
 import { FOOTER_HEIGHT } from "@/constants/layout";
@@ -21,6 +29,8 @@ interface DictationControlsProps {
   onAcceptAndSend: () => void;
   onRetry?: () => void;
   onDiscard?: () => void;
+  cleanUp?: boolean;
+  onToggleCleanUp?: () => void;
   disabled?: boolean;
 }
 
@@ -42,6 +52,8 @@ export function DictationControls({
   onAcceptAndSend,
   onRetry,
   onDiscard,
+  cleanUp = false,
+  onToggleCleanUp,
   disabled = false,
 }: DictationControlsProps) {
   const { theme } = useUnistyles();
@@ -114,6 +126,13 @@ export function DictationControls({
         {!actionsDisabled && !isFailed ? (
           <>
             <Pressable
+              onPress={onToggleCleanUp}
+              accessibilityLabel={t("message.dictation.cleanUp")}
+              style={[styles.actionButton, cleanUp && styles.actionButtonSelected]}
+            >
+              <WandStars size={theme.iconSize.sm} color={theme.colors.foreground} />
+            </Pressable>
+            <Pressable
               onPress={onAccept}
               accessibilityLabel={t("message.dictation.insert")}
               style={[styles.actionButton, styles.actionButtonSecondary]}
@@ -150,6 +169,8 @@ export function DictationOverlay({
   onAcceptAndSend,
   onRetry,
   onDiscard,
+  cleanUp = false,
+  onToggleCleanUp,
 }: Omit<DictationControlsProps, "onStart" | "disabled" | "transcript"> & { errorText?: string }) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -238,6 +259,14 @@ export function DictationOverlay({
         {!actionsDisabled && !isFailed ? (
           <>
             <Pressable
+              onPress={onToggleCleanUp}
+              accessibilityRole="button"
+              accessibilityLabel={t("message.dictation.cleanUp")}
+              style={[overlayStyles.actionButton, cleanUp && overlayStyles.actionButtonSelected]}
+            >
+              <WandStars size={theme.iconSize.lg} color={theme.colors.accentForeground} />
+            </Pressable>
+            <Pressable
               onPress={onAccept}
               accessibilityRole="button"
               accessibilityLabel={t("message.dictation.insert")}
@@ -307,6 +336,9 @@ const styles = StyleSheet.create((theme) => ({
   actionButtonSecondary: {
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface0,
+  },
+  actionButtonSelected: {
+    backgroundColor: theme.colors.surface2,
   },
   actionButtonConfirm: {
     borderColor: theme.colors.foreground,
@@ -388,6 +420,9 @@ const overlayStyles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.full,
     alignItems: "center",
     justifyContent: "center",
+  },
+  actionButtonSelected: {
+    backgroundColor: "rgba(255, 255, 255, 0.4)",
   },
   buttonDisabled: {
     opacity: 0.5,

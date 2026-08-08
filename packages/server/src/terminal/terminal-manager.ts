@@ -60,6 +60,8 @@ export interface TerminalManager {
     workspaceId: string;
     name?: string;
     title?: string;
+    titleMode?: "auto" | "default";
+    titleIncludePaths?: boolean;
     env?: Record<string, string>;
     command?: string;
     args?: string[];
@@ -76,6 +78,7 @@ export interface TerminalManager {
     options?: TerminalStateSnapshotOptions,
   ): Promise<TerminalStateSnapshot | null>;
   setTerminalTitle(id: string, title: string): boolean;
+  clearTerminalTitle(id: string): boolean;
   setTerminalActivity(id: string, state: TerminalActivityState): Promise<boolean>;
   clearTerminalAttention(id: string): Promise<boolean>;
   killTerminal(id: string): void;
@@ -317,6 +320,8 @@ export function createTerminalManager(
       workspaceId: string;
       name?: string;
       title?: string;
+      titleMode?: "auto" | "default";
+      titleIncludePaths?: boolean;
       env?: Record<string, string>;
       command?: string;
       args?: string[];
@@ -353,6 +358,8 @@ export function createTerminalManager(
             workspaceId: options.workspaceId,
             name: options.name ?? defaultName,
             ...(options.title ? { title: options.title } : {}),
+            ...(options.titleMode ? { titleMode: options.titleMode } : {}),
+            ...(options.titleIncludePaths ? { titleIncludePaths: true } : {}),
             ...(options.command ? { command: options.command } : {}),
             ...(options.args ? { args: options.args } : {}),
             ...(options.rows !== undefined ? { rows: options.rows } : {}),
@@ -407,6 +414,13 @@ export function createTerminalManager(
       }
 
       session.setTitle(title);
+      return true;
+    },
+
+    clearTerminalTitle(id: string): boolean {
+      const session = terminalsById.get(id);
+      if (!session) return false;
+      session.clearTitle();
       return true;
     },
 

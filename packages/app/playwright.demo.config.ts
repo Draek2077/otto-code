@@ -5,6 +5,18 @@ import {
   DESKTOP_LAYOUT_VIEWPORT,
 } from "./demo/helpers/resolution";
 
+// Windows dev machines commonly have Edge but not Playwright's bundled
+// Chromium. Set the same default as demo/scripts/run.mjs early enough for the
+// shared global setup's browser warm-up as well as the test projects.
+if (process.platform === "win32" && !process.env.E2E_BROWSER_CHANNEL) {
+  process.env.E2E_BROWSER_CHANNEL = "msedge";
+}
+
+// The demo lane is a deliberately trusted, disposable host. Its global setup
+// persists Browser Tools before the daemon starts so Preview and Browser can
+// open on camera without an opt-in dialog interrupting a capture.
+process.env.E2E_DEMO_CAPTURE = "1";
+
 // Demo capture config: reuses the e2e global-setup stack (isolated daemon +
 // temp OTTO_HOME + Metro web on dynamic ports) but records every run - video
 // always on at the capture viewport, no retries (a bad take should fail
@@ -12,12 +24,9 @@ import {
 const baseURL =
   process.env.E2E_BASE_URL ?? `http://localhost:${process.env.E2E_METRO_PORT ?? "8081"}`;
 
-// Desktop lanes lay out at DESKTOP_LAYOUT_VIEWPORT (1024×576 logical at the
-// current 2.5× scale) and capture at DESKTOP_CAPTURE_SCALE device pixels, so
-// the app renders at a comfortable size while the PNGs/video still come out at
-// full 16:9 QHD (2560×1440). Setting the viewport straight to the QHD output
-// would make the app lay out as if on a giant screen - every control tiny. The
-// zoom knob and its ceiling live in demo/helpers/resolution.ts.
+// Every desktop demo lays out at 1536×864 logical pixels, matching a 4K
+// monitor at 250% Windows scaling. Export resolution is independent, so the
+// UI density stays consistent across hero, website, and store assets.
 const CAPTURE_VIEWPORT = DESKTOP_LAYOUT_VIEWPORT;
 const CAPTURE_SCALE = DESKTOP_CAPTURE_SCALE;
 const CAPTURE_VIDEO_SIZE = DESKTOP_CAPTURE_RESOLUTION;

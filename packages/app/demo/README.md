@@ -13,12 +13,12 @@ This file is the short version: how to run what's already built.
 **The easy way - run this, answer the prompts:**
 
 ```bash
-npm run demo:run
+npm run demo
 ```
 
-Interactive menu: pick a scenario, pick a UI zoom, pick a theme, pick a provider
-(only asked when it matters). It handles every env var itself (`DEMO_REAL`,
-`DEMO_ZOOM`, `DEMO_PROVIDER`, `DEMO_MODEL`, `E2E_LOCAL_AI`, the Windows
+Interactive menu: pick a scenario, pick a theme, pick a provider (only asked
+when it matters). It handles every env var itself (`DEMO_REAL`,
+`DEMO_PROVIDER`, `DEMO_MODEL`, `E2E_LOCAL_AI`, the Windows
 `E2E_BROWSER_CHANNEL` flag) - nothing to remember or type by hand. It also asks
 for confirmation before any run that spends real provider tokens, builds the
 desktop app first for Electron scenarios, and prints the output folder to review
@@ -28,8 +28,11 @@ Everything below is the manual/scriptable equivalent, useful for CI, one-off
 overrides, or if you just prefer typing commands directly.
 
 ```bash
-# Free scenarios (no provider tokens). Captures BOTH themes (Twilight + Daylight).
-npm run demo -- 04-personalities 05-agent-teams 06-model-picker
+# Full batch run: every scenario, both themes, no picker.
+npm run demo:all
+
+# Free scenarios (no provider tokens), filtered manually.
+npm run demo:twilight -- 04-personalities 05-agent-teams 06-model-picker
 
 # One theme only - faster iteration while authoring
 npm run demo:twilight -- 04-personalities
@@ -59,11 +62,11 @@ npm run demo:og-image          # site og:image / twitter:image (1200x630)
 Omit the trailing filter args to run every scenario in that lane. Filters
 match on filename fragment.
 
-**Windows:** local runs need `E2E_BROWSER_CHANNEL=msedge` prefixed on the
-command (Chrome/Chromium isn't installed by default).
+**Windows:** demo configs automatically use the installed Edge channel when no
+`E2E_BROWSER_CHANNEL` is supplied (Chrome/Chromium isn't installed by default).
 
 Runs are long - first invocation ~7 min (Metro cold start), warm ~2 min.
-`npm run demo` doubles that (both themes = two full passes). Run in the
+`npm run demo:all` doubles that (both themes = two full passes). Run in the
 background and read the log after; don't block on it in the foreground.
 
 ## Where output lands
@@ -105,6 +108,36 @@ demo/
     feature-graphic.mjs           # renders assets/feature-graphic.html -> PNG
     og-image.mjs                   # renders assets/og-image.html -> PNG
 ```
+
+## Using the real GitHub demo repositories
+
+The demo defaults to the prepared GitHub repositories, so a normal capture needs no extra setup:
+
+```powershell
+npm run demo:spread
+```
+
+To override the repositories or seed them again:
+
+```bash
+$env:DEMO_GITHUB_REPOS='{"mango-storefront":"Draek2077/mango-storefront","pulse-api":"Draek2077/pulse-api"}'
+gh auth status
+npm run demo:github:setup
+npm run demo:spread
+```
+
+`demo:github:setup` is repeatable for the named branches and seeds each configured repo with
+open, draft, failed-check, pending-check, closed, and merged PRs. It also adds open and closed
+labeled issues, two status contexts per PR, PR comments, and review comments. The setup publishes
+branches such as `demo/checkout-flow`, so you can keep creating new PRs from the same checkout.
+It only touches the repositories named by `DEMO_GITHUB_REPOS`; do not point it at a production
+repository.
+
+The value is keyed by the checked-in template names. Every demo scenario uses the same resolver,
+so the walkthroughs, feature spreads, hero and Electron captures all point at the same GitHub
+projects. The remote repositories should be seeded with the template history and the PR/check/
+issue data you want visible; the capture lane does not create or delete remote data. Set
+`DEMO_GITHUB_OFFLINE=1` only when you explicitly need the offline synthetic-origin lane.
 
 ## Choosing a provider for real-run scenarios
 
@@ -162,22 +195,13 @@ scenario shape - seeding, pacing, manifest - is the same; use
 screen capture - a page screenshot can never include it).
 
 **Desktop captures output 2560×1440 (16:9 QHD)**, `demo/helpers/resolution.ts`'s
-`DESKTOP_CAPTURE_RESOLUTION`. That's the _output_ pixel size, not the layout
-size: the app lays out at `DESKTOP_LAYOUT_VIEWPORT` (1024×576 logical at the
-current 2.5× scale) and is captured at `DESKTOP_CAPTURE_SCALE`, so the UI
-renders large while the PNGs still land at full QHD. Setting the viewport
-straight to 2560×1440 with scale 1 is the classic mistake - the app then lays
-out as if on a giant screen and every control renders tiny.
-
-The zoom is the `DEMO_ZOOM` env var (logical width = 2560 ÷ zoom); the
-`demo:run` menu asks for it, or set it by hand for the manual commands
-(`cross-env DEMO_ZOOM=3 npm run demo -- hero-shot`). It defaults to
-`DEFAULT_DESKTOP_CAPTURE_SCALE` (2.5) when unset. **Hard ceiling ≈ 3.0:** below
-the `md` breakpoint of 768px logical width the app flips to its compact/mobile
-layout (split panes gone), and 2560 ÷ 768 ≈ 3.33 - so 3.0 (853px wide) is the
-biggest zoom that stays a real desktop layout, and `resolution.ts` clamps higher
-values. Higher zoom also shrinks logical _height_ (2.5 → 576, 3.0 → 480),
-leaving tall content less vertical room.
+`DESKTOP_CAPTURE_RESOLUTION`. That is the _output_ pixel size, not the layout
+size: every desktop scenario lays out at `DESKTOP_LAYOUT_VIEWPORT` (1536×864
+logical pixels), equivalent to a 4K monitor at 250% Windows display scaling.
+The export scale is derived from the requested output size, so all desktop
+assets keep the same balanced, full-desktop density. Do not set a QHD viewport
+at scale 1 - that makes the app lay out as if on a giant monitor and every
+control becomes tiny.
 
 The web lane gets this from the Playwright project's `viewport` +
 `deviceScaleFactor`. The Electron lane can't rely on a fixed scale - a real OS

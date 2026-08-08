@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import { AgentManager } from "./agent-manager.js";
+import { ProjectKnowledgeService } from "./project-knowledge/project-knowledge-service.js";
 import type { ResolvedPersonalitySnapshot } from "./agent-personalities.js";
 import type {
   AgentClient,
@@ -192,6 +193,7 @@ function createHarness(
     appendSystemPrompt?: string;
     /** Stands in for the personality-memory service's brief resolver. */
     memoryBrief?: string | null;
+    knowledgeBrief?: string | null;
   } = {},
 ): Harness {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-personality-test-"));
@@ -206,6 +208,9 @@ function createHarness(
     },
     ...(options.memoryBrief !== undefined
       ? { resolvePersonalityMemoryBrief: async () => options.memoryBrief ?? null }
+      : {}),
+    ...(options.knowledgeBrief !== undefined
+      ? { resolveProjectKnowledgeBrief: async () => options.knowledgeBrief ?? null }
       : {}),
   });
   return {
@@ -648,6 +653,68 @@ test("nothing to remember leaves the launch prompt byte-identical", async () => 
     expect(harness.client.lastSession!.config.systemPrompt).toBe("You are Vera.");
   } finally {
     harness.cleanup();
+  }
+});
+
+test("every chat receives project knowledge discovery without persisting the catalog", async () => {
+  const harness = createHarness({
+    knowledgeBrief: "## Project knowledge catalog\n\n- [[daemon-owns-memory]]",
+  });
+  try {
+    const agent = await harness.manager.createAgent(
+      { provider: "codex", cwd: harness.workdir, systemPrompt: "Project instructions." },
+      undefined,
+      { workspaceId: undefined },
+    );
+    expect(harness.client.lastSession!.config.systemPrompt).toContain("[[daemon-owns-memory]]");
+    expect(harness.client.lastSession!.config.systemPrompt).toContain("Project instructions.");
+    expect(agent.config.systemPrompt).toBe("Project instructions.");
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("a new chat can discover active truth, read it, and record a proposal", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-project-knowledge-test-"));
+  const client = new PersonalityTestClient();
+  const knowledge = new ProjectKnowledgeService({
+    resolveProjectRoot: async () => workdir,
+    logger,
+  });
+  try {
+    await knowledge.record({
+      cwd: workdir,
+      kind: "decision",
+      title: "Daemon owns project memory",
+      statement: "Project knowledge writes go through the daemon.",
+      status: "confirmed",
+    });
+    const manager = new AgentManager({
+      clients: { codex: client },
+      logger,
+      resolveProjectKnowledgeBrief: async ({ cwd }) =>
+        cwd ? (await knowledge.briefForCwd(cwd)).text : null,
+    });
+
+    await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+      workspaceId: undefined,
+    });
+
+    expect(client.lastSession?.config.systemPrompt).toContain("[[daemon-owns-project-memory]]");
+    expect((await knowledge.get(workdir, "daemon-owns-project-memory"))?.statement).toContain(
+      "writes go through the daemon",
+    );
+    const proposal = await knowledge.record({
+      cwd: workdir,
+      kind: "constraint",
+      title: "Proposals need review",
+      statement: "New durable claims stay inactive until a user confirms them.",
+      evidence: "Established during the lifecycle integration test.",
+    });
+    expect(proposal.status).toBe("proposed");
+    expect((await knowledge.briefForCwd(workdir)).includedIds).not.toContain(proposal.id);
+  } finally {
+    rmSync(workdir, { recursive: true, force: true });
   }
 });
 

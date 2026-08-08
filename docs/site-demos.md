@@ -116,17 +116,16 @@ declarative list in the spec, so adding one is a route plus a name.
 
 ### Resolution and zoom - the classic mistake
 
-2560×1440 is the **output** pixel size, not the layout size. The app lays out at
-`DESKTOP_LAYOUT_VIEWPORT` (1024×576 logical at the default 2.5× scale) and is captured at
-`DESKTOP_CAPTURE_SCALE`, so the UI renders large while the PNGs land at full QHD. **Setting the
-viewport straight to 2560×1440 with scale 1 makes the app lay out as if on a giant screen and every
-control renders tiny.**
+2560×1440 is the **output** pixel size, not the layout size. Every desktop scenario lays out at
+`DESKTOP_LAYOUT_VIEWPORT` (1536×864 logical pixels), the usable canvas of a 4K monitor at 250%
+Windows display scaling. The web lane derives device scale from its requested output; the recorder
+then normalizes its PNG to that exact target. **Setting the viewport straight to 2560×1440 with
+scale 1 makes the app lay out as if on a giant screen and every control renders tiny.**
 
-The zoom is `DEMO_ZOOM` (logical width = 2560 ÷ zoom), defaulting to 2.5. **The hard ceiling is
-≈ 3.0:** below the `md` breakpoint of 768px logical width the app flips to its compact layout and
-split panes disappear, and 2560 ÷ 768 ≈ 3.33 - so 3.0 (853px wide) is the biggest zoom that stays a
-real desktop layout. `resolution.ts` clamps higher values. Higher zoom also shrinks logical
-_height_ (2.5 → 576, 3.0 → 480), leaving tall content less room.
+Desktop density is intentionally fixed across staged captures. The interactive runner no longer
+offers a zoom choice: a hero, walkthrough, and feature spread must depict the same believable
+desktop, not three incompatible UI scales. Phone, tablet, and iOS projects retain their store
+listing viewports.
 
 The web lane gets this from the Playwright project's `viewport` + `deviceScaleFactor`. **The
 Electron lane cannot** - a real OS window's screenshot reflects the capturing machine's actual
@@ -146,9 +145,12 @@ Chromium screenshots, no daemon needed.
 
 ## The staged world
 
-Two fake-but-real repos, checked in as file templates with **real code**, materialized at capture
+Two repos, backed by checked-in file templates with **real code**, are materialized at capture
 time into real git checkouts with authored history (8–15 commits, plausible messages, back-dated
-timestamps, a feature branch):
+timestamps, a feature branch). By default they use a harmless synthetic origin. For enriched
+captures, `DEMO_GITHUB_REPOS` maps each template to the real GitHub repository that has been set
+up for demos; the same local history is then grouped under that GitHub project and the app can
+load its live PR, review, issue, check and merge details.
 
 | Repo               | What it is                                                                                                    | Why                                                                                                                              |
 | ------------------ | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
@@ -217,10 +219,19 @@ Every entry cost a failed run to learn. Read it before writing a scenario, and a
 2. **Personality names are ≤20-char single-word handles** (letters, digits, `-`, `_`).
 3. **Prefill `voiceCues`** on seeded personalities, or daemon-side saves route through AI cue
    generation.
-4. **Synthetic origins must not be `github.com`.** The forge layer polls `gh pr view` and its
-   failure surfaces as a red banner in the changes panel. The materializer uses
-   `git.demoforge.dev`; any remote host still yields an `owner/repo` project display name, since
-   `deriveProjectGroupingName` takes the last two path segments.
+4. **GitHub-backed captures are the default.** The checked-in mapping points at
+   `Draek2077/mango-storefront` and `Draek2077/pulse-api`, which are seeded with the standard
+   branch/PR matrix. Run `npm run demo:github:setup` to seed them again, or set `DEMO_GITHUB_REPOS`
+   to a JSON object such as
+   `{"mango-storefront":"your-org/mango-storefront","pulse-api":"your-org/pulse-api"}`
+   before capture. Authenticate `gh` before capture. The setup seeds the configured
+   repositories with the standard branch/PR matrix: open, draft, failed-check, pending-check,
+   closed and merged PRs, plus labeled issues, comments, reviews and status contexts. The setup
+   publishes branches such as `demo/checkout-flow` so a new PR can be created from the same repo.
+   GitHub-backed materialization checks out that seeded branch before applying the staged working
+   changes, so the workspace has a current PR, a base/head diff, and a visible PR tab at capture
+   time.
+   Set `DEMO_GITHUB_OFFLINE=1` only to opt out of GitHub and use the synthetic origin.
 5. **Background `git fetch origin --prune` failures in the daemon log are harmless** - the
    synthetic origin does not exist. Do not chase them.
 6. **A materialized repo has no `node_modules`.** `materialize.ts` does not run a template's own
@@ -296,8 +307,8 @@ Every entry cost a failed run to learn. Read it before writing a scenario, and a
 
 **Tooling**
 
-24. **Windows local runs need Edge** - prefix `E2E_BROWSER_CHANNEL=msedge`; Chromium is not
-    installed by default.
+24. **Windows local runs use Edge by default** - the demo configs set
+    `E2E_BROWSER_CHANNEL=msedge` when no channel is supplied; Chromium is not installed by default.
 25. **Runs are long and must not be watched.** First invocation ~7 min (Metro cold start), warm
     ~2 min, and capturing both themes roughly doubles it. Run in the background and read the log
     afterwards.

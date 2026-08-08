@@ -8,6 +8,15 @@
 // `cross-env E2E_DESKTOP_RUNTIME=1` on the command line; setting it here
 // instead keeps this a self-contained lane with one npm script.
 process.env.E2E_DESKTOP_RUNTIME = "1";
+// Keep Electron captures aligned with the web demo lane: this isolated,
+// disposable host starts with agent-facing Browser and Preview tools enabled.
+process.env.E2E_DEMO_CAPTURE = "1";
+// The shared global setup warms Metro through a browser before Electron
+// launches. Prefer the installed Windows browser when bundled Chromium is not
+// present, matching the web demo configuration.
+if (process.platform === "win32" && !process.env.E2E_BROWSER_CHANNEL) {
+  process.env.E2E_BROWSER_CHANNEL = "msedge";
+}
 
 import { defineConfig } from "@playwright/test";
 

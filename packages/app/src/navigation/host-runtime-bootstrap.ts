@@ -78,6 +78,10 @@ export interface ResolveStartupBlockerInput {
   daemonStartError: string | null;
 }
 
+export function initialStartupBlocker(isDesktopRuntime: boolean): StartupBlocker {
+  return isDesktopRuntime ? { kind: "managed-daemon-starting" } : { kind: "none" };
+}
+
 export function resolveStartupBlocker(input: ResolveStartupBlockerInput): StartupBlocker {
   if (!input.isDesktopRuntime) {
     return { kind: "none" };

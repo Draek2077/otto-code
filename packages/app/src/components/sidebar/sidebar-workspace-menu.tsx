@@ -13,6 +13,7 @@ import {
 } from "@/components/icons/material-icons";
 import { isNative, isWeb } from "@/constants/platform";
 import { openContextManagementTab } from "@/context-management/open-context-management-tab";
+import { openProjectKnowledgeTab } from "@/project-knowledge/open-project-knowledge-tab";
 import type { Theme } from "@/styles/theme";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import {
@@ -131,6 +132,10 @@ export function WorkspaceMenuItems({
     if (!serverId || !workspaceId) return;
     openContextManagementTab({ serverId, workspaceId, navigate: true });
   }, [serverId, workspaceId]);
+  const handleManageKnowledge = useCallback(() => {
+    if (!serverId || !workspaceId) return;
+    openProjectKnowledgeTab({ serverId, workspaceId, navigate: true });
+  }, [serverId, workspaceId]);
   return (
     <>
       {onCopyPath ? (
@@ -176,6 +181,11 @@ export function WorkspaceMenuItems({
           onSelect={handleManageContext}
         >
           {t("workspace.contextManagement.openAction")}
+        </Item>
+      ) : null}
+      {serverId && workspaceId ? (
+        <Item leading={contextLeadingIcon} onSelect={handleManageKnowledge}>
+          Manage knowledge
         </Item>
       ) : null}
       {onOpenBaseCheckout ? (

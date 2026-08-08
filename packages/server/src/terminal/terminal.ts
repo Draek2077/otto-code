@@ -96,6 +96,7 @@ export interface TerminalSession {
   setActivity(state: TerminalActivityState): void;
   clearActivityAttention(): boolean;
   setTitle(title: string): void;
+  clearTitle(): void;
   getExitInfo(): TerminalExitInfo | null;
   kill(): void;
   killAndWait(options?: { gracefulTimeoutMs?: number; forceTimeoutMs?: number }): Promise<void>;
@@ -129,6 +130,8 @@ export interface CreateTerminalOptions {
   cols?: number;
   name?: string;
   title?: string;
+  titleMode?: "auto" | "default";
+  titleIncludePaths?: boolean;
   command?: string;
   args?: string[];
 }
@@ -146,10 +149,6 @@ function toTerminalActivity(snapshot: {
     ...(snapshot.attentionReason ? { attentionReason: snapshot.attentionReason } : {}),
     changedAt: snapshot.changedAt,
   };
-}
-
-function resolveInitialTitleMode(presetTitle: string | undefined): "auto" | "manual" {
-  return presetTitle?.trim() ? "manual" : "auto";
 }
 
 interface BuildTerminalEnvironmentInput {
@@ -653,7 +652,7 @@ function extractCursorState(terminal: TerminalType): TerminalState["cursor"] {
   };
 }
 
-function normalizeProcessToken(token: string): string {
+function normalizeProcessToken(token: string, includePaths: boolean): string {
   if (token.length === 0) {
     return token;
   }
@@ -674,7 +673,7 @@ function normalizeProcessToken(token: string): string {
   const assignmentMatch = rawToken.match(/^([A-Za-z_][A-Za-z0-9_]*=)(.+)$/);
   const prefix = assignmentMatch ? assignmentMatch[1] : "";
   const value = assignmentMatch ? assignmentMatch[2] : rawToken;
-  if (!value.includes("/")) {
+  if (includePaths || (!value.includes("/") && !value.includes("\\"))) {
     return token;
   }
 
@@ -682,7 +681,10 @@ function normalizeProcessToken(token: string): string {
   return quote ? `${quote}${normalized}${quote}` : normalized;
 }
 
-export function normalizeProcessTitle(processTitle: string): string | undefined {
+export function normalizeProcessTitle(
+  processTitle: string,
+  options: { includePaths?: boolean } = {},
+): string | undefined {
   const trimmed = processTitle.trim().replace(/\s+/g, " ");
   if (trimmed.length === 0) {
     return undefined;
@@ -690,7 +692,7 @@ export function normalizeProcessTitle(processTitle: string): string | undefined 
 
   const normalized = trimmed
     .split(" ")
-    .map((token) => normalizeProcessToken(token))
+    .map((token) => normalizeProcessToken(token, options.includePaths === true))
     .join(" ")
     .trim();
   return normalized.length > 0 ? normalized : undefined;
@@ -720,8 +722,11 @@ const PACKAGE_MANAGER_SCRIPT_NAMES = new Map<string, string>([
   ["yarn.js", "yarn"],
 ]);
 
-export function humanizeProcessTitle(processTitle: string): string | undefined {
-  const normalized = normalizeProcessTitle(processTitle);
+export function humanizeProcessTitle(
+  processTitle: string,
+  options: { includePaths?: boolean } = {},
+): string | undefined {
+  const normalized = normalizeProcessTitle(processTitle, options);
   if (!normalized) {
     return undefined;
   }
@@ -755,7 +760,28 @@ export function humanizeProcessTitle(processTitle: string): string | undefined {
     }
   }
 
-  return normalized;
+  if (options.includePaths) {
+    return normalized;
+  }
+  const command = basename(first);
+  return [command, ...tokens.slice(1)].join(" ").trim();
+}
+
+function resolveInitialTerminalTitle(input: {
+  presetTitle?: string;
+  titleMode: "auto" | "default" | "manual";
+  titleIncludePaths: boolean;
+  name: string;
+  command?: string;
+  args: string[];
+}): string | undefined {
+  const manualTitle = input.presetTitle?.trim() || undefined;
+  const processTitle = input.command ? [input.command, ...input.args].join(" ") : null;
+  const autoTitle = processTitle
+    ? (humanizeProcessTitle(processTitle, { includePaths: input.titleIncludePaths }) ??
+      normalizeProcessTitle(processTitle, { includePaths: input.titleIncludePaths }))
+    : undefined;
+  return manualTitle ?? (input.titleMode === "default" ? input.name : autoTitle);
 }
 
 function extractLastOutputLines(terminal: TerminalType, limit: number): string[] {
@@ -821,6 +847,8 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     cols = 80,
     name = "Terminal",
     title: presetTitle,
+    titleMode: configuredTitleMode = "auto",
+    titleIncludePaths = false,
     command,
     args = [],
   } = options;
@@ -844,7 +872,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   const recentOutputChunks: string[] = [];
   let recentOutputLength = 0;
   let title: string | undefined;
-  let titleMode = resolveInitialTitleMode(presetTitle);
+  let titleMode: "auto" | "default" | "manual" = presetTitle ? "manual" : configuredTitleMode;
   let pendingTitle: string | undefined;
   let titleDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   let pendingInput = "";
@@ -918,6 +946,12 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     titleChangeSubscription = null;
   }
 
+  function normalizeAutomaticTitle(nextTitle: string): string | undefined {
+    const trimmed = nextTitle.trim();
+    if (!trimmed) return undefined;
+    return titleIncludePaths ? trimmed : (normalizeProcessTitle(trimmed) ?? trimmed);
+  }
+
   function setTitle(nextTitle: string): void {
     const manualTitle = nextTitle.trim();
     if (!manualTitle) {
@@ -930,12 +964,36 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     emitTitleChange(manualTitle);
   }
 
-  const initialManualTitle = presetTitle?.trim() || undefined;
-  const processTitle = command ? [command, ...args].join(" ") : null;
-  let initialTitle = initialManualTitle;
-  if (!initialTitle && processTitle) {
-    initialTitle = humanizeProcessTitle(processTitle) ?? normalizeProcessTitle(processTitle);
+  function clearTitle(): void {
+    if (titleMode !== "manual") return;
+    titleMode = configuredTitleMode;
+    emitTitleChange(titleMode === "default" ? name : autoTitle);
+    if (titleMode === "auto" && !titleChangeSubscription) {
+      titleChangeSubscription = terminal.onTitleChange((nextTitle) => {
+        if (disposed || killed || titleMode !== "auto") return;
+        pendingTitle = normalizeAutomaticTitle(nextTitle);
+        if (titleDebounceTimer) clearTimeout(titleDebounceTimer);
+        titleDebounceTimer = setTimeout(() => {
+          titleDebounceTimer = null;
+          emitTitleChange(pendingTitle);
+          pendingTitle = undefined;
+        }, TERMINAL_TITLE_DEBOUNCE_MS);
+      });
+    }
   }
+
+  const autoTitle = command
+    ? (humanizeProcessTitle([command, ...args].join(" "), { includePaths: titleIncludePaths }) ??
+      normalizeProcessTitle([command, ...args].join(" "), { includePaths: titleIncludePaths }))
+    : undefined;
+  const initialTitle = resolveInitialTerminalTitle({
+    presetTitle,
+    titleMode,
+    titleIncludePaths,
+    name,
+    command,
+    args,
+  });
   emitTitleChange(initialTitle);
 
   // Respond to DA1 queries (CSI c or CSI 0 c) - apps like nvim query terminal capabilities
@@ -984,7 +1042,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       if (disposed || killed) {
         return;
       }
-      pendingTitle = nextTitle.trim().length > 0 ? nextTitle : undefined;
+      pendingTitle = normalizeAutomaticTitle(nextTitle);
       if (titleDebounceTimer) {
         clearTimeout(titleDebounceTimer);
       }
@@ -1478,6 +1536,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     setActivity,
     clearActivityAttention,
     setTitle,
+    clearTitle,
     getExitInfo,
     kill,
     killAndWait,

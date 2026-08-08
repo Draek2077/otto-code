@@ -789,6 +789,38 @@ describe("DaemonConfigStore", () => {
     expect(persisted.daemon?.enableTerminalAgentHooks).toBe(true);
   });
 
+  test("patch persists terminal title and Windows shell preferences into config.json", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+      },
+      undefined,
+    );
+
+    store.patch({
+      terminalTitleMode: "default",
+      terminalTitleIncludePaths: true,
+      defaultTerminalShell: "powershell-7",
+    });
+
+    const persisted = loadPersistedConfig(ottoHome);
+    expect(persisted.daemon).toMatchObject({
+      terminalTitleMode: "default",
+      terminalTitleIncludePaths: true,
+      defaultTerminalShell: "powershell-7",
+    });
+  });
+
   test("patch persists metadata generation providers into config.json", () => {
     const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
     tempDirs.push(ottoHome);

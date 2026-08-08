@@ -73,6 +73,47 @@ export async function fetchDaemonResolution({
   workspaceRoot,
   getDirectorySuggestions,
 }: FetchDaemonResolutionInput): Promise<InlinePathTarget> {
+  return fetchDaemonPathResolution({
+    ambiguousQuery,
+    token,
+    target,
+    workspaceRoot,
+    getDirectorySuggestions,
+    includeFiles: true,
+    expectedKind: "file",
+  });
+}
+
+export async function fetchDaemonDirectoryResolution({
+  ambiguousQuery,
+  token,
+  target,
+  workspaceRoot,
+  getDirectorySuggestions,
+}: FetchDaemonResolutionInput): Promise<InlinePathTarget> {
+  return fetchDaemonPathResolution({
+    ambiguousQuery,
+    token,
+    target,
+    workspaceRoot,
+    getDirectorySuggestions,
+    includeFiles: false,
+    expectedKind: "directory",
+  });
+}
+
+async function fetchDaemonPathResolution({
+  ambiguousQuery,
+  token,
+  target,
+  workspaceRoot,
+  getDirectorySuggestions,
+  includeFiles,
+  expectedKind,
+}: FetchDaemonResolutionInput & {
+  includeFiles: boolean;
+  expectedKind: "file" | "directory";
+}): Promise<InlinePathTarget> {
   const trimmedRoot = workspaceRoot?.trim();
   if (!trimmedRoot) {
     throw new UnresolvedFileLinkError(token);
@@ -83,16 +124,17 @@ export async function fetchDaemonResolution({
     suggestions = await getDirectorySuggestions({
       query: ambiguousQuery,
       cwd: trimmedRoot,
-      includeFiles: true,
-      includeDirectories: false,
+      ...(includeFiles
+        ? { includeFiles: true, includeDirectories: false }
+        : { includeFiles: false, includeDirectories: true }),
       matchMode: "suffix",
       limit: 1,
-    });
+    } as Parameters<GetDirectorySuggestions>[0]);
   } catch {
     throw new UnresolvedFileLinkError(token);
   }
 
-  const match = suggestions.entries.find((entry) => entry.kind === "file");
+  const match = suggestions.entries.find((entry) => entry.kind === expectedKind);
   if (!match || suggestions.error) {
     throw new UnresolvedFileLinkError(token);
   }

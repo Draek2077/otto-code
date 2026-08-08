@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manage Project Knowledge"
+  short_description: "Read and update Otto project knowledge safely"
+  default_prompt: "Use $otto-project-knowledge to inspect, review, or update this repository's durable project knowledge."

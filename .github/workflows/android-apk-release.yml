@@ -265,6 +265,19 @@ jobs:
             exit 1
           fi
 
+          apk_entries="$(unzip -Z1 "$apk")"
+          for required_entry in \
+            assets/wake-word/model.json \
+            assets/wake-word/encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx \
+            assets/wake-word/keywords.txt \
+            assets/wake-word/LICENSE-APACHE-2.0.txt \
+            lib/arm64-v8a/libsherpa-onnx-jni.so; do
+            if ! grep -Fxq "$required_entry" <<< "$apk_entries"; then
+              echo "Android release is missing Hey Otto asset: $required_entry" >&2
+              exit 1
+            fi
+          done
+
           # Fail loudly on a debug-signed APK: it would install for nobody who
           # already has Otto, and the failure is otherwise silent until a user
           # tries to update.

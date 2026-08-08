@@ -93,3 +93,20 @@ For Android, the following permissions are needed: `RECORD_AUDIO`, `MODIFY_AUDIO
 ```javascript
 expo.android.permissions: ["RECORD_AUDIO", "MODIFY_AUDIO_SETTINGS"]
 ```
+
+## Wake-word bridge
+
+The module exposes a model-isolated wake-word bridge (`getWakeWordCapabilities`,
+`startWakeWordDetection`, `stopWakeWordDetection`, and `onWakeWordDetected`).
+Android packages the Sherpa-ONNX 1.12.28 AAR and the shared `Hey Otto` model in
+the APK/AAB. Its detector consumes 16 kHz mono PCM inside `AudioEngine`; idle
+samples and volume events never cross into JavaScript or the Otto daemon. After
+detection, the engine keeps the same `AudioRecord` alive and buffers up to two
+seconds of command speech until dictation explicitly takes ownership. Listening
+stops whenever the app leaves the foreground.
+
+iOS and plain browser builds remain unavailable and fail closed. A model-backed
+build reports a stable `modelVersion` only when the native API and required
+assets are present. The pinned runtime, model, asset names, source URLs, byte
+counts, and SHA-256 checksums are recorded in `wake-word-model.json`; Gradle
+verifies them before every Android build.

@@ -1,7 +1,8 @@
 # Projects - charters and the open-work ledger
 
-**This file is the single source of truth for what is done and what is not.** It stays at the base of
-`projects/` permanently. Nothing else in this tree tracks status.
+> **Legacy migration source.** Project charters, delivery status, progress, and history now live in
+> confirmed `.otto/knowledge/projects/` pages and are managed through Otto Knowledge. Do not update
+> this file or the folders below. They remain temporarily for migration and UI parity review.
 
 Navigation: [Repository documentation index](../README.md#documentation) ·
 [Software documentation (`docs/`)](../docs/README.md) · [Agent working rules (`CLAUDE.md`)](../CLAUDE.md)

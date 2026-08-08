@@ -28,9 +28,10 @@ function resolveGlyphColor(input: { showing: boolean; hovered: boolean }) {
 
 // Same slot chrome as the neighboring "..." menu trigger and explorer toggle,
 // held while a Visualizer surface is open so the on-state needs no hover.
-function resolveTriggerStyle(showing: boolean) {
+function resolveTriggerStyle(showing: boolean, isCompact: boolean) {
   return ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
-    headerIconSlotStyle.slot,
+    isCompact && headerIconSlotStyle.compactSlot,
+    !isCompact && headerIconSlotStyle.slot,
     showing && headerIconSlotStyle.slotActive,
     (Boolean(hovered) || Boolean(pressed)) && headerIconSlotStyle.slotHovered,
   ];
@@ -61,7 +62,10 @@ export function WorkspaceVisualizerButton({
   const glyphSize = isCompact ? iconSize.lg : iconSize.md;
   const { showing, toggle } = useVisualizerSurface(serverId, workspaceId);
   const isShowing = showing !== null;
-  const triggerStyle = useMemo(() => resolveTriggerStyle(isShowing), [isShowing]);
+  const triggerStyle = useMemo(
+    () => resolveTriggerStyle(isShowing, isCompact),
+    [isCompact, isShowing],
+  );
 
   if (!workspaceId) {
     return null;

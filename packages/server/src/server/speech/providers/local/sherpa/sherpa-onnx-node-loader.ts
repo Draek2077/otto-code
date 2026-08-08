@@ -11,6 +11,7 @@ import { createExternalCommandProcessEnv } from "../../../../otto-env.js";
 
 export interface SherpaOnnxNodeModule {
   OfflineRecognizer: new (config: unknown) => unknown;
+  KeywordSpotter?: new (config: unknown) => unknown;
   OnlineRecognizer?: new (config: unknown) => unknown;
   OfflineTts?: new (config: unknown) => unknown;
   Vad?: new (config: unknown, bufferSizeInSeconds: number) => unknown;

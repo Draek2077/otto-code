@@ -375,6 +375,10 @@ export function createWorkerTerminalManager(
         for (const listener of Array.from(record.titleChangeListeners)) {
           listener(manualTitle);
         }
+        sendBestEffortRequest({ type: "setTitle", terminalId: record.info.id, title: manualTitle });
+      },
+      clearTitle(): void {
+        sendBestEffortRequest({ type: "clearTitle", terminalId: record.info.id });
       },
       getExitInfo(): TerminalExitInfo | null {
         return record.exitInfo;
@@ -761,6 +765,13 @@ export function createWorkerTerminalManager(
         return false;
       }
       session.setTitle(title);
+      return true;
+    },
+
+    clearTerminalTitle(id: string): boolean {
+      const session = recordsById.get(id)?.session;
+      if (!session) return false;
+      session.clearTitle();
       return true;
     },
 

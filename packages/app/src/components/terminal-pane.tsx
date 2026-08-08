@@ -39,7 +39,13 @@ import {
   type TerminalRendererReadyChange,
 } from "@/utils/terminal-renderer-readiness";
 import { useAppSettings } from "@/hooks/use-settings";
-import { classifyForResolution, fetchDaemonResolution } from "@/assistant-file-links/resolver";
+import { resolveWorkspaceFilePaths } from "@/workspace/file-open";
+import {
+  classifyForResolution,
+  fetchDaemonDirectoryResolution,
+  fetchDaemonResolution,
+  getAmbiguousSuggestionQuery,
+} from "@/assistant-file-links/resolver";
 import type {
   TerminalLocalFileLinkSource,
   TerminalLocalFileLinkTarget,
@@ -57,6 +63,7 @@ interface TerminalPaneProps {
   isWorkspaceFocused: boolean;
   isPaneFocused: boolean;
   onOpenFileExplorer: () => void;
+  onNavigateToFolder: (path: string) => void;
   onOpenWorkspaceFile: (request: WorkspaceFileOpenRequest) => void;
 }
 
@@ -169,6 +176,7 @@ export function TerminalPane({
   isWorkspaceFocused,
   isPaneFocused,
   onOpenFileExplorer,
+  onNavigateToFolder,
   onOpenWorkspaceFile,
 }: TerminalPaneProps) {
   const { t } = useTranslation();
@@ -701,21 +709,57 @@ export function TerminalPane({
         { workspaceRoot: cwd },
       );
       if (resolution.kind === "resolved") {
-        return resolution.value.kind === "file" ? resolution.value.target : null;
+        if (resolution.value.kind !== "file") {
+          return null;
+        }
+        if (client && !resolution.value.target.lineStart) {
+          const normalizedRoot = cwd.replace(/\\/g, "/").replace(/\/+$/, "");
+          const normalizedTarget = resolution.value.target.path.replace(/\\/g, "/");
+          if (normalizedTarget === normalizedRoot) {
+            return { ...resolution.value.target, kind: "directory" };
+          }
+          if (normalizedTarget.startsWith(`${normalizedRoot}/`)) {
+            try {
+              const directoryTarget = await fetchDaemonDirectoryResolution({
+                ambiguousQuery: getAmbiguousSuggestionQuery(resolution.value.target, cwd),
+                token: source.text,
+                target: resolution.value.target,
+                workspaceRoot: cwd,
+                getDirectorySuggestions: (input) => client.getDirectorySuggestions(input),
+              });
+              return { ...directoryTarget, kind: "directory" };
+            } catch {
+              // The path is a file when no matching directory exists.
+            }
+          }
+        }
+        return { ...resolution.value.target, kind: "file" };
       }
       if (!client) {
         return null;
       }
       try {
-        return await fetchDaemonResolution({
+        const fileTarget = await fetchDaemonResolution({
           ambiguousQuery: resolution.ambiguousQuery,
           token: resolution.token,
           target: resolution.target,
           workspaceRoot: cwd,
           getDirectorySuggestions: (input) => client.getDirectorySuggestions(input),
         });
+        return { ...fileTarget, kind: "file" };
       } catch {
-        return null;
+        try {
+          const directoryTarget = await fetchDaemonDirectoryResolution({
+            ambiguousQuery: resolution.ambiguousQuery,
+            token: resolution.token,
+            target: resolution.target,
+            workspaceRoot: cwd,
+            getDirectorySuggestions: (input) => client.getDirectorySuggestions(input),
+          });
+          return { ...directoryTarget, kind: "directory" };
+        } catch {
+          return null;
+        }
       }
     },
     [client, cwd],
@@ -726,9 +770,14 @@ export function TerminalPane({
       if (!location) {
         return;
       }
+      if (target.kind === "directory") {
+        const resolvedPath = resolveWorkspaceFilePaths({ path: location.path, workspaceRoot: cwd });
+        onNavigateToFolder(resolvedPath?.relativePath ?? ".");
+        return;
+      }
       onOpenWorkspaceFile({ location, disposition });
     },
-    [onOpenWorkspaceFile],
+    [cwd, onNavigateToFolder, onOpenWorkspaceFile],
   );
 
   const toggleModifier = useCallback(
@@ -765,6 +814,10 @@ export function TerminalPane({
     () => [styles.container, keyboardPaddingStyle],
     [keyboardPaddingStyle],
   );
+  const terminalGestureContainerStyle = useMemo(
+    () => [styles.terminalGestureContainer, isMobile && styles.terminalGestureContainerMobile],
+    [isMobile],
+  );
 
   const handleSwipeRight = useCallback(() => {
     if (!swipeGesturesEnabled) return;
@@ -797,7 +850,7 @@ export function TerminalPane({
     <Animated.View style={containerStyle}>
       <View style={styles.outputContainer}>
         {isWorkspaceFocused ? (
-          <View style={styles.terminalGestureContainer}>
+          <View style={terminalGestureContainerStyle}>
             <TerminalEmulator
               ref={emulatorRef}
               dom={TERMINAL_EMULATOR_DOM_PROPS}
@@ -826,7 +879,7 @@ export function TerminalPane({
             />
           </View>
         ) : (
-          <View style={styles.terminalGestureContainer} />
+          <View style={terminalGestureContainerStyle} />
         )}
 
         {showLoadingOverlay ? (
@@ -918,6 +971,9 @@ const styles = StyleSheet.create((theme) => ({
   terminalGestureContainer: {
     flex: 1,
     minHeight: 0,
+  },
+  terminalGestureContainerMobile: {
+    padding: 5,
   },
   attachOverlay: {
     ...StyleSheet.absoluteFillObject,

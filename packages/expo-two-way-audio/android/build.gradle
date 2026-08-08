@@ -9,6 +9,9 @@ applyKotlinExpoModulesCorePlugin()
 useCoreDependencies()
 useExpoPublishing()
 
+import groovy.json.JsonSlurper
+import java.security.MessageDigest
+
 // If you want to use the managed Android SDK versions from expo-modules-core, set this to true.
 // The Android SDK versions will be bumped from time to time in SDK releases and may introduce breaking changes in your module code.
 // Most of the time, you may like to manage the Android SDK versions yourself.
@@ -33,6 +36,13 @@ if (useManagedAndroidSdkVersions) {
 
 android {
   namespace "expo.modules.twowayaudio"
+  sourceSets {
+    main {
+      // Package the shared, checksum-pinned model as assets/wake-word/*.
+      assets.srcDir file("../models")
+      assets.srcDir file("$buildDir/generated/wake-word-assets")
+    }
+  }
   defaultConfig {
     versionCode 1
     versionName "0.1.0"
@@ -40,4 +50,69 @@ android {
   lintOptions {
     abortOnError false
   }
+}
+
+dependencies {
+  implementation files("libs/sherpa-onnx-1.12.28.aar")
+  testImplementation "junit:junit:4.13.2"
+}
+
+def sha256 = { File input ->
+  def digest = MessageDigest.getInstance("SHA-256")
+  input.withInputStream { stream ->
+    byte[] buffer = new byte[8192]
+    int read
+    while ((read = stream.read(buffer)) != -1) {
+      digest.update(buffer, 0, read)
+    }
+  }
+  digest.digest().collect { String.format("%02x", it) }.join()
+}
+
+def verifyWakeWordDistribution = tasks.register("verifyWakeWordDistribution") {
+  group = "verification"
+  description = "Verifies the bundled Hey Otto model and Android Sherpa runtime."
+
+  doLast {
+    def manifestFile = file("../wake-word-model.json")
+    def manifest = new JsonSlurper().parse(manifestFile)
+    manifest.assets.values().each { String assetName ->
+      def asset = file("../models/wake-word/${assetName}")
+      if (!asset.isFile()) {
+        throw new GradleException("Missing wake-word asset: ${asset}")
+      }
+      if (asset.length() != manifest.assetBytes[assetName]) {
+        throw new GradleException("Wake-word asset size mismatch: ${assetName}")
+      }
+      if (sha256(asset) != manifest.assetSha256[assetName]) {
+        throw new GradleException("Wake-word asset checksum mismatch: ${assetName}")
+      }
+    }
+
+    def androidRuntime = file("../${manifest.androidRuntime.file}")
+    if (!androidRuntime.isFile()) {
+      throw new GradleException("Missing Android Sherpa runtime: ${androidRuntime}")
+    }
+    if (androidRuntime.length() != manifest.androidRuntime.bytes) {
+      throw new GradleException("Android Sherpa runtime size mismatch")
+    }
+    if (sha256(androidRuntime) != manifest.androidRuntime.sha256) {
+      throw new GradleException("Android Sherpa runtime checksum mismatch")
+    }
+  }
+}
+
+def prepareWakeWordLegalAssets = tasks.register("prepareWakeWordLegalAssets", Sync) {
+  dependsOn verifyWakeWordDistribution
+  into file("$buildDir/generated/wake-word-assets/wake-word")
+  from("../wake-word-model.json") {
+    rename { "model.json" }
+  }
+  from("../../../vendor/agent-flow/LICENSE") {
+    rename { "LICENSE-APACHE-2.0.txt" }
+  }
+}
+
+tasks.named("preBuild").configure {
+  dependsOn prepareWakeWordLegalAssets
 }

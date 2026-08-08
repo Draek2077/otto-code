@@ -34,7 +34,10 @@ its heap, or what it does with what the daemon sends it. None of those were meas
 
 Surfaces:
 
-- **Metrics screen**, pinned along the bottom (`components/client-resource-bar.tsx`) - live readout.
+- **Metrics screen**, pinned along the bottom (`components/client-resource-bar.tsx`) by default -
+  live readout. **Settings › Diagnostics › Show Metrics footer on all pages** moves the same bar to
+  the app-shell footer, outside every page's scroll region. The bar has exactly one owner, so it is
+  not duplicated on the Metrics screen while the application-wide footer is enabled.
 - **Settings › Diagnostics › Run app diagnostic** - the `Client resources` sections, copyable.
 - **`window.__ottoResourceMonitor`** - the test bridge the soak spec reads.
 

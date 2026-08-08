@@ -45,8 +45,16 @@ const HISTORY_START_THRESHOLD_PX = 96;
 // laying it out after that native preservation window, leaving the visual
 // viewport behind even though the last reported offset was still zero. Once
 // enough uncommanded growth has accumulated, make the next sticky attempt a
-// real native scroll rather than trusting the stale zero offset.
-const NATIVE_BOTTOM_ANCHOR_RECHECK_GROWTH_PX = 96;
+// real native scroll rather than trusting the stale zero offset. Keep this to
+// roughly three transcript lines: Android can animate its preservation more
+// slowly than stream updates arrive, and a wider allowance visibly falls
+// behind before it is corrected.
+// The indicator remains strict: it describes whether the reader is actually
+// at the end. The larger snap zone is only an action threshold while follow
+// mode owns the viewport, never a claim that the view has already reached it.
+const NATIVE_BOTTOM_INDICATOR_THRESHOLD_PX = 8;
+const NATIVE_BOTTOM_SNAP_THRESHOLD_PX = 64;
+const NATIVE_BOTTOM_ANCHOR_RECHECK_GROWTH_PX = NATIVE_BOTTOM_SNAP_THRESHOLD_PX;
 
 function keyExtractor(item: { id: string }): string {
   return item.id;
@@ -282,7 +290,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
       return isNearBottomForStreamRenderStrategy({
         strategy,
         offsetY: metrics.offsetY,
-        threshold: 32,
+        threshold: NATIVE_BOTTOM_SNAP_THRESHOLD_PX,
         contentHeight: metrics.contentHeight,
         viewportHeight: metrics.viewportHeight,
       });
@@ -407,14 +415,21 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
       contentMeasuredForKey: "native-virtualized",
     };
 
-    const nearBottom = isNearBottomForStreamRenderStrategy({
+    const withinBottomSnapZone = isNearBottomForStreamRenderStrategy({
       strategy,
       offsetY: contentOffset.y,
-      threshold: 32,
+      threshold: NATIVE_BOTTOM_SNAP_THRESHOLD_PX,
       contentHeight: streamViewportMetricsRef.current.contentHeight,
       viewportHeight: streamViewportMetricsRef.current.viewportHeight,
     });
-    onNearBottomChange(nearBottom);
+    const atBottomForIndicator = isNearBottomForStreamRenderStrategy({
+      strategy,
+      offsetY: contentOffset.y,
+      threshold: NATIVE_BOTTOM_INDICATOR_THRESHOLD_PX,
+      contentHeight: streamViewportMetricsRef.current.contentHeight,
+      viewportHeight: streamViewportMetricsRef.current.viewportHeight,
+    });
+    onNearBottomChange(atBottomForIndicator);
 
     const distanceFromOldestEdge =
       streamViewportMetricsRef.current.contentHeight -
@@ -433,9 +448,21 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     } else {
       programmaticScrollEventBudgetRef.current = 0;
       bottomAnchorController.handleScrollNearBottomChange({
-        nextIsNearBottom: nearBottom,
+        nextIsNearBottom: withinBottomSnapZone,
         scrollDelta: contentOffset.y - previousOffsetY,
       });
+    }
+
+    // Keep the indicator honest until this command completes, then immediately
+    // close a small gap while follow mode owns the transcript. This avoids a
+    // state where Android's delayed inverted-list preservation leaves the
+    // reader close to the end with a jump button they should not need.
+    if (
+      withinBottomSnapZone &&
+      !atBottomForIndicator &&
+      bottomAnchorControllerRef.current.mode === "sticky-bottom"
+    ) {
+      scrollToBottom(false);
     }
   });
 

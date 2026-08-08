@@ -30,9 +30,10 @@ function resolveGlyphColor(input: { unmuted: boolean; hovered: boolean }) {
 
 // Same slot chrome as the neighboring Visualizer button and "..." menu trigger,
 // held while cues are unmuted so the on-state is visible without a hover.
-function resolveTriggerStyle(unmuted: boolean) {
+function resolveTriggerStyle(unmuted: boolean, isCompact: boolean) {
   return ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
-    headerIconSlotStyle.slot,
+    isCompact && headerIconSlotStyle.compactSlot,
+    !isCompact && headerIconSlotStyle.slot,
     unmuted && headerIconSlotStyle.slotActive,
     (Boolean(hovered) || Boolean(pressed)) && headerIconSlotStyle.slotHovered,
   ];
@@ -81,7 +82,7 @@ export function WorkspaceVoiceCuesButton() {
     void updateSettings({ agentVoiceCuesMuted: unmuted });
   }, [unmuted, updateSettings]);
   const Glyph = unmuted ? ThemedRecordVoiceOver : ThemedVoiceOverOff;
-  const triggerStyle = useMemo(() => resolveTriggerStyle(unmuted), [unmuted]);
+  const triggerStyle = useMemo(() => resolveTriggerStyle(unmuted, isCompact), [isCompact, unmuted]);
 
   return (
     <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>

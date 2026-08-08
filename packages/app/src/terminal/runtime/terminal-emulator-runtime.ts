@@ -110,6 +110,7 @@ const isAppleHandheld =
 
 const DEFAULT_TOUCH_SCROLL_LINE_HEIGHT_PX = 18;
 const DEFAULT_TERMINAL_FONT_SIZE = 13;
+const TERMINAL_SURFACE_INSET_PX = 5;
 const FIT_TIMEOUT_DELAYS_MS = [0, 16, 48, 120, 250, 500, 1_000, 2_000];
 const OUTPUT_OPERATION_TIMEOUT_MS = 5_000;
 const EMPTY_TERMINAL_OUTPUT = new Uint8Array(0);
@@ -166,6 +167,17 @@ function withOverviewRulerBorderHidden(theme: ITheme): ITheme {
     ...theme,
     overviewRulerBorder: theme.background ?? "transparent",
   };
+}
+
+function applyTerminalSurfaceInset(host: HTMLDivElement): void {
+  const scrollableElement = host.querySelector<HTMLElement>(".xterm-scrollable-element");
+  if (!scrollableElement) {
+    return;
+  }
+
+  // The scrollable surface owns the inset. Padding .xterm also insets the
+  // scrollbar from the panel edge.
+  scrollableElement.style.padding = `${TERMINAL_SURFACE_INSET_PX}px`;
 }
 
 export class TerminalEmulatorRuntime {
@@ -276,6 +288,7 @@ export class TerminalEmulatorRuntime {
       // Ligatures require Font Access API or compatible environment
     }
     terminal.open(input.host);
+    applyTerminalSurfaceInset(input.host);
     this.themeBackgroundElements = this.collectThemeBackgroundElements(input);
     this.applyThemeBackground(input.theme);
     try {
