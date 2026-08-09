@@ -31,28 +31,38 @@ const ARTIFACT_CSP =
 /**
  * Inserts a restrictive Content-Security-Policy meta tag into the document
  * head so artifact content cannot reach the network no matter which platform
- * renders it. Idempotent - a document that already has one is left alone.
+ * renders it. Author-provided CSP tags are removed so they cannot weaken or
+ * replace Otto's policy. Idempotent - repeated sanitization leaves exactly one
+ * Otto-owned CSP tag.
  */
 export function injectContentSecurityPolicy(content: string): string {
-  if (/<meta[^>]+http-equiv=["']Content-Security-Policy["']/i.test(content)) {
-    return content;
-  }
+  const withoutExistingCsp = content.replace(/<meta\b[^>]*>/gi, (metaTag) => {
+    return /\bhttp-equiv\s*=\s*(?:["']content-security-policy["']|content-security-policy(?=\s|\/?>))/i.test(
+      metaTag,
+    )
+      ? ""
+      : metaTag;
+  });
 
   const cspTag = `<meta http-equiv="Content-Security-Policy" content="${ARTIFACT_CSP}">`;
 
-  const headOpenMatch = content.match(/<head[^>]*>/i);
+  const headOpenMatch = withoutExistingCsp.match(/<head[^>]*>/i);
   if (headOpenMatch) {
     const insertAt = headOpenMatch.index! + headOpenMatch[0].length;
-    return content.slice(0, insertAt) + cspTag + content.slice(insertAt);
+    return withoutExistingCsp.slice(0, insertAt) + cspTag + withoutExistingCsp.slice(insertAt);
   }
 
-  const htmlOpenMatch = content.match(/<html[^>]*>/i);
+  const htmlOpenMatch = withoutExistingCsp.match(/<html[^>]*>/i);
   if (htmlOpenMatch) {
     const insertAt = htmlOpenMatch.index! + htmlOpenMatch[0].length;
-    return content.slice(0, insertAt) + `<head>${cspTag}</head>` + content.slice(insertAt);
+    return (
+      withoutExistingCsp.slice(0, insertAt) +
+      `<head>${cspTag}</head>` +
+      withoutExistingCsp.slice(insertAt)
+    );
   }
 
-  return cspTag + content;
+  return cspTag + withoutExistingCsp;
 }
 
 /**
