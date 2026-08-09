@@ -1,10 +1,9 @@
 import { execFile, spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
-import { extname } from "node:path";
 import { promisify } from "node:util";
 
 import { createExternalCommandProcessEnv, type ProcessEnvRecord } from "../server/otto-env.js";
 import {
-  isWindowsCommandScript,
+  planWindowsCommandScriptInvocation,
   quoteWindowsArgument,
   quoteWindowsCommand,
 } from "./windows-command.js";
@@ -34,21 +33,34 @@ interface ExecCommandResult {
   stderr: string;
 }
 
-function hasPathSeparator(value: string): boolean {
-  return value.includes("/") || value.includes("\\");
+interface ResolvedCommandLaunch {
+  command: string;
+  args: string[];
+  shell: boolean | string;
+  windowsVerbatimArguments?: true;
 }
 
-function shouldUseWindowsShell(
+function resolveCommandLaunch(
   command: string,
-  requestedShell?: boolean | string,
-): boolean | string {
-  if (isWindowsCommandScript(command)) {
-    return true;
+  args: string[],
+  requestedShell: boolean | string | undefined,
+  env: NodeJS.ProcessEnv,
+): ResolvedCommandLaunch {
+  const commandScript = planWindowsCommandScriptInvocation(command, args, env);
+  if (commandScript) {
+    return { ...commandScript, shell: false };
   }
-  if (requestedShell !== undefined) {
-    return requestedShell;
+
+  const shell = requestedShell ?? false;
+  if (process.platform === "win32" && shell !== false) {
+    return {
+      command: quoteWindowsCommand(command),
+      args: args.map(quoteWindowsArgument),
+      shell,
+    };
   }
-  return process.platform === "win32" && !hasPathSeparator(command) && !extname(command);
+
+  return { command, args, shell };
 }
 
 export function spawnProcess(
@@ -58,12 +70,6 @@ export function spawnProcess(
 ): ChildProcess {
   const { baseEnv, env, envOverlay, ...spawnOptions } = options ?? {};
   const resolvedBaseEnv = env ?? baseEnv ?? process.env;
-  const isWindows = process.platform === "win32";
-  const shell = shouldUseWindowsShell(command, spawnOptions.shell);
-
-  const shouldQuoteForShell = isWindows && shell !== false;
-  const resolvedCommand = shouldQuoteForShell ? quoteWindowsCommand(command) : command;
-  const resolvedArgs = shouldQuoteForShell ? args.map(quoteWindowsArgument) : args;
   const childEnv =
     options?.envMode === "internal"
       ? ({ ...resolvedBaseEnv, ...envOverlay } as NodeJS.ProcessEnv)
@@ -72,11 +78,15 @@ export function spawnProcess(
           resolvedBaseEnv,
           ...(envOverlay ? [envOverlay] : []),
         );
+  const launch = resolveCommandLaunch(command, args, spawnOptions.shell, childEnv);
 
-  return spawn(resolvedCommand, resolvedArgs, {
+  return spawn(launch.command, launch.args, {
     ...spawnOptions,
     env: childEnv,
-    shell,
+    shell: launch.shell,
+    ...(launch.windowsVerbatimArguments
+      ? { windowsVerbatimArguments: launch.windowsVerbatimArguments }
+      : {}),
     windowsHide: true,
   });
 }
@@ -88,11 +98,6 @@ export async function execCommand(
 ): Promise<ExecCommandResult> {
   const { baseEnv, env, envOverlay } = options ?? {};
   const resolvedBaseEnv = env ?? baseEnv ?? process.env;
-  const isWindows = process.platform === "win32";
-  const shell = shouldUseWindowsShell(command, options?.shell);
-  const shouldQuoteForShell = isWindows && shell !== false;
-  const resolvedCommand = shouldQuoteForShell ? quoteWindowsCommand(command) : command;
-  const resolvedArgs = shouldQuoteForShell ? args.map(quoteWindowsArgument) : args;
   const childEnv =
     options?.envMode === "internal"
       ? ({ ...resolvedBaseEnv, ...envOverlay } as NodeJS.ProcessEnv)
@@ -101,15 +106,19 @@ export async function execCommand(
           resolvedBaseEnv,
           ...(envOverlay ? [envOverlay] : []),
         );
+  const launch = resolveCommandLaunch(command, args, options?.shell, childEnv);
 
-  return execFileAsync(resolvedCommand, resolvedArgs, {
+  return execFileAsync(launch.command, launch.args, {
     cwd: options?.cwd,
     env: childEnv,
     encoding: options?.encoding ?? "utf8",
     killSignal: options?.killSignal,
     timeout: options?.timeout,
     maxBuffer: options?.maxBuffer,
-    shell,
+    shell: launch.shell,
+    ...(launch.windowsVerbatimArguments
+      ? { windowsVerbatimArguments: launch.windowsVerbatimArguments }
+      : {}),
     windowsHide: true,
   }) as Promise<ExecCommandResult>;
 }

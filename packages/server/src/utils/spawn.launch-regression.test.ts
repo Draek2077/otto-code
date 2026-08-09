@@ -18,6 +18,7 @@ interface SpawnResult {
 
 const tempDirs: string[] = [];
 const JSON_ARG = '{"key":"value with spaces","nested":{"quote":"\\"yes\\""}}';
+const CMD_METACHARACTER_ARG = "literal & | ^ < > ! with spaces";
 
 const ASSERT_SCRIPT_BODY = `
 if (process.argv.includes("--version")) {
@@ -48,7 +49,7 @@ function makeFixture(): {
   const fakeDaemonNode = path.join(root, "Fake Otto.exe");
   copyFileSync(process.execPath, fakeDaemonNode);
 
-  const expectedArgs = ["--config", JSON_ARG];
+  const expectedArgs = ["--config", JSON_ARG, CMD_METACHARACTER_ARG];
   const assertScript = path.join(root, "assert-argv.js");
   writeFileSync(
     assertScript,
@@ -130,7 +131,7 @@ async function runFixture(params: {
   const child = spawnProcess(params.command, params.args, {
     env: {
       ...process.env,
-      OTTO_EXPECTED_ARGV_JSON: JSON.stringify(["--config", JSON_ARG]),
+      OTTO_EXPECTED_ARGV_JSON: JSON.stringify(["--config", JSON_ARG, CMD_METACHARACTER_ARG]),
     },
     stdio: ["ignore", "pipe", "pipe"],
     ...(params.shell === undefined ? {} : { shell: params.shell }),
@@ -249,9 +250,9 @@ describe.runIf(isPlatform("win32"))("Windows spawn launch regression", () => {
     });
 
     expect(result.error).toBeNull();
+    expect(result.stderr).toBe("");
     expect(result.code).toBe(0);
     expect(result.signal).toBeNull();
-    expect(result.stderr).toBe("");
     expect(result.stdout.trim()).toBe("ARGV_OK");
   });
 
@@ -285,6 +286,34 @@ describe.runIf(isPlatform("win32"))("Windows spawn launch regression", () => {
     expect(result.signal).toBeNull();
     expect(result.stderr).toBe("");
     expect(result.stdout.trim()).toBe("ARGV_OK");
+  });
+
+  test("runs a bare native node command without DEP0190", async () => {
+    const warnings: Error[] = [];
+    const onWarning = (warning: Error) => warnings.push(warning);
+    process.on("warning", onWarning);
+    try {
+      const result = await runFixture({
+        command: "node",
+        args: [
+          "-e",
+          "process.stdout.write(process.argv.slice(1).join('\\n'))",
+          "--",
+          CMD_METACHARACTER_ARG,
+        ],
+      });
+
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(result.error).toBeNull();
+      expect(result.code).toBe(0);
+      expect(result.stderr).toBe("");
+      expect(result.stdout).toBe(CMD_METACHARACTER_ARG);
+      expect(
+        warnings.some((warning) => (warning as NodeJS.ErrnoException).code === "DEP0190"),
+      ).toBe(false);
+    } finally {
+      process.off("warning", onWarning);
+    }
   });
 
   test("finds a .exe on PATH and launches it via spawnProcess", async () => {

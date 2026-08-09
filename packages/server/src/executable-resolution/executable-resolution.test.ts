@@ -278,7 +278,7 @@ describe("quoteWindowsCommand", () => {
   test("quotes commands with spaces after escaping metacharacters", () => {
     setPlatform("win32");
     expect(quoteWindowsCommand("C:\\Program Files\\My Tool&Stuff\\run 100%.cmd")).toBe(
-      '"C:\\Program Files\\My Tool^&Stuff\\run 100%.cmd"',
+      '"C:\\Program Files\\My Tool&Stuff\\run 100%.cmd"',
     );
   });
 

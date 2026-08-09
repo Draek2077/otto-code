@@ -1,5 +1,11 @@
 import { extname } from "node:path";
 
+export interface WindowsCommandScriptInvocation {
+  command: string;
+  args: string[];
+  windowsVerbatimArguments: true;
+}
+
 export function isWindowsCommandScript(executablePath: string): boolean {
   const extension = extname(executablePath).toLowerCase();
   return process.platform === "win32" && (extension === ".cmd" || extension === ".bat");
@@ -14,16 +20,16 @@ function escapeWindowsCmdValue(value: string): string {
   // files; on the command line / `cmd /c "..."` `%%` stays literal, which
   // breaks args like git's `--format=%(refname)` (git treats `%%` as the
   // escape for a literal `%`, so the format atoms become literals).
-  const escaped = unquoted.replace(/([&|^<>()!])/g, "^$1");
-
   if (isQuoted || /[\s"]/u.test(unquoted)) {
-    const quoted = escaped
+    // cmd treats metacharacters inside quotes as literal. Escaping them here
+    // would pass the caret through to a batch script's argv.
+    const quoted = unquoted
       .replace(/(\\*)"/g, (_match, slashes: string) => `${slashes}${slashes}\\"`)
       .replace(/\\+$/u, (slashes) => `${slashes}${slashes}`);
     return `"${quoted}"`;
   }
 
-  return escaped;
+  return unquoted.replace(/([&|^<>()!])/g, "^$1");
 }
 
 /**
@@ -43,4 +49,25 @@ export function quoteWindowsCommand(command: string): string {
  */
 export function quoteWindowsArgument(argument: string): string {
   return escapeWindowsCmdValue(argument);
+}
+
+/**
+ * Node no longer supports invoking `.cmd` and `.bat` files directly. Run a
+ * resolved command script through ComSpec ourselves instead of asking Node for
+ * `shell: true`: that keeps native executables on CreateProcess and keeps the
+ * script's argv explicitly quoted.
+ */
+export function planWindowsCommandScriptInvocation(
+  command: string,
+  args: readonly string[],
+  env: NodeJS.ProcessEnv = process.env,
+): WindowsCommandScriptInvocation | null {
+  if (!isWindowsCommandScript(command)) return null;
+
+  const quotedCommand = [quoteWindowsCommand(command), ...args.map(quoteWindowsArgument)].join(" ");
+  return {
+    command: env.ComSpec ?? env.COMSPEC ?? "C:\\Windows\\System32\\cmd.exe",
+    args: ["/d", "/s", "/c", `"${quotedCommand}"`],
+    windowsVerbatimArguments: true,
+  };
 }

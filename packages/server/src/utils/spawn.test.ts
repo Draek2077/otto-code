@@ -35,7 +35,11 @@ describe("execCommand", () => {
   });
 
   test("returns stdout and stderr for a successful command", async () => {
-    const result = await execCommand("echo", ["hello"]);
+    const command =
+      process.platform === "win32"
+        ? { command: process.execPath, args: ["-e", "console.log('hello')"] }
+        : { command: "echo", args: ["hello"] };
+    const result = await execCommand(command.command, command.args);
 
     expect(result.stdout.trim()).toBe("hello");
     expect(result.stderr).toBe("");
