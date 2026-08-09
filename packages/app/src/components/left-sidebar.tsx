@@ -706,14 +706,6 @@ function MobileSidebar({
             variant="compact"
           />
           <SidebarHeaderRow
-            icon={CalendarClock}
-            label={labels.schedules}
-            onPress={handleViewSchedules}
-            isActive={isSchedulesActive}
-            testID="sidebar-schedules"
-            variant="compact"
-          />
-          <SidebarHeaderRow
             icon={FileText}
             label={labels.artifacts}
             onPress={handleViewArtifacts}
@@ -727,6 +719,14 @@ function MobileSidebar({
             onPress={handleViewRuns}
             isActive={isRunsActive}
             testID="sidebar-runs"
+            variant="compact"
+          />
+          <SidebarHeaderRow
+            icon={CalendarClock}
+            label={labels.schedules}
+            onPress={handleViewSchedules}
+            isActive={isSchedulesActive}
+            testID="sidebar-schedules"
             variant="compact"
           />
         </View>
@@ -932,11 +932,11 @@ function DesktopSidebar({
               variant="compact"
             />
             <SidebarHeaderRow
-              icon={CalendarClock}
-              label={labels.schedules}
-              onPress={handleViewSchedules}
-              isActive={isSchedulesActive}
-              testID="sidebar-schedules"
+              icon={FileText}
+              label={labels.artifacts}
+              onPress={handleViewArtifacts}
+              isActive={isArtifactsActive}
+              testID="sidebar-artifacts"
               variant="compact"
             />
             <SidebarHeaderRow
@@ -948,11 +948,11 @@ function DesktopSidebar({
               variant="compact"
             />
             <SidebarHeaderRow
-              icon={FileText}
-              label={labels.artifacts}
-              onPress={handleViewArtifacts}
-              isActive={isArtifactsActive}
-              testID="sidebar-artifacts"
+              icon={CalendarClock}
+              label={labels.schedules}
+              onPress={handleViewSchedules}
+              isActive={isSchedulesActive}
+              testID="sidebar-schedules"
               variant="compact"
             />
           </View>
