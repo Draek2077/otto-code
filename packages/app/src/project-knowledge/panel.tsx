@@ -738,7 +738,10 @@ export function ProjectKnowledgePanel(): ReactElement {
           </ScrollView>
         </View>
         <GestureDetector gesture={resizeGesture}>
-          <View style={RESIZE_HANDLE_STYLE} testID="project-knowledge-splitter" />
+          <View
+            style={[styles.resizeHandle, isWeb && ({ cursor: "col-resize" } as object)]}
+            testID="project-knowledge-splitter"
+          />
         </GestureDetector>
       </Animated.View>
       <ScrollView style={styles.viewer} contentContainerStyle={styles.viewerContent}>
@@ -972,5 +975,3 @@ const styles = StyleSheet.create((theme) => ({
   progressNumber: { width: 88 },
   progressUnit: { flex: 1 },
 }));
-
-const RESIZE_HANDLE_STYLE = [styles.resizeHandle, isWeb && ({ cursor: "col-resize" } as object)];
