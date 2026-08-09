@@ -1,0 +1,15 @@
+name: Otto CodeQL config
+
+# Keep analysis focused on shipped/runtime code and security-sensitive
+# automation. The project corpus includes intentionally malformed break
+# overlays used by playbooks and editor diagnostics; they are test inputs, not
+# shipped code.
+paths:
+  - packages/**
+  - vendor/**
+  - scripts/**
+  - .github/actions/**
+  - .github/workflows/**
+
+paths-ignore:
+  - test-documents/**
