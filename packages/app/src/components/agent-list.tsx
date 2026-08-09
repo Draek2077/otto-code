@@ -32,6 +32,7 @@ import {
 import { alertDialog, confirmDialog } from "@/utils/confirm-dialog";
 import { useToast } from "@/contexts/toast-context";
 import { toErrorMessage } from "@/utils/error-messages";
+import { formatFileSize } from "@/utils/format-file-size";
 
 interface AgentListProps {
   agents: AggregatedAgent[];
@@ -43,6 +44,28 @@ interface AgentListProps {
   listFooterComponent?: ReactElement | null;
   showAttentionIndicator?: boolean;
   showHostColumn?: boolean;
+}
+
+export function AgentListColumnHeader({ showHostColumn }: { showHostColumn: boolean }) {
+  const isMobile = useIsCompactFormFactor();
+  const { t } = useTranslation();
+
+  if (isMobile) {
+    return null;
+  }
+
+  return (
+    <View style={styles.columnHeader} testID="agent-list-column-header">
+      <Text style={styles.columnHeaderPrimary}>{t("sessions.columns.conversation")}</Text>
+      <Text style={styles.columnHeaderMeta}>{t("sessions.columns.project")}</Text>
+      {showHostColumn ? (
+        <Text style={styles.columnHeaderHost}>{t("sessions.columns.host")}</Text>
+      ) : null}
+      <Text style={styles.columnHeaderMeta}>{t("sessions.columns.branch")}</Text>
+      <Text style={styles.columnHeaderFixed}>{t("sessions.columns.lastActive")}</Text>
+      <Text style={styles.columnHeaderFixed}>{t("sessions.columns.size")}</Text>
+    </View>
+  );
 }
 
 type DateSectionKey = "today" | "yesterday" | "thisWeek" | "thisMonth" | "older";
@@ -355,6 +378,11 @@ function SessionRow({
           </Text>
           <Text style={styles.columnMetaFixed} numberOfLines={1}>
             {timeAgo}
+          </Text>
+          <Text style={styles.columnMetaFixed} numberOfLines={1}>
+            {agent.archivedAt && agent.archiveBytes !== undefined
+              ? formatFileSize({ size: agent.archiveBytes })
+              : ""}
           </Text>
         </View>
       ) : null}
@@ -744,27 +772,66 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     flexShrink: 0,
-    gap: theme.spacing[3],
+    gap: 10,
   },
   columnMeta: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
     flexShrink: 0,
-    width: 132,
+    width: 104,
+    textAlign: "right" as const,
   },
   columnMetaFixed: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
     flexShrink: 0,
-    width: 72,
+    width: 68,
     textAlign: "right" as const,
   },
   columnMetaHost: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
     flexShrink: 0,
-    width: 120,
-    marginLeft: theme.spacing[4],
+    width: 88,
+    textAlign: "right" as const,
+  },
+  columnHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: {
+      xs: theme.spacing[6],
+      md: theme.spacing[8] + theme.spacing[1],
+    },
+    paddingTop: theme.spacing[2],
+    paddingBottom: theme.spacing[2],
+    gap: 10,
+  },
+  columnHeaderPrimary: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+    color: theme.colors.foregroundMuted,
+  },
+  columnHeaderMeta: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+    color: theme.colors.foregroundMuted,
+    width: 104,
+    textAlign: "right" as const,
+  },
+  columnHeaderHost: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+    color: theme.colors.foregroundMuted,
+    width: 88,
+    textAlign: "right" as const,
+  },
+  columnHeaderFixed: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+    color: theme.colors.foregroundMuted,
+    width: 68,
     textAlign: "right" as const,
   },
   badge: {

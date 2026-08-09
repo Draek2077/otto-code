@@ -149,7 +149,7 @@ export function useDropListeners({
           }
 
           const imagePaths = payload.paths.filter(isRasterImagePath);
-          if (imagePaths.length === 0) {
+          if (imagePaths.length === 0 || !sink.onFiles) {
             return;
           }
 
@@ -162,7 +162,7 @@ export function useDropListeners({
               // composer the user dropped on (matches the web path below). No post-persist busy
               // re-check: a mixed drop's own generic upload flips the busy flag, and re-checking
               // would discard the image from the same drop.
-              sink.onFiles(attachments);
+              sink.onFiles?.(attachments);
               return;
             })
             .catch((error) => {
@@ -264,14 +264,14 @@ export function useDropListeners({
 
         const imageFiles = files.filter(isRasterImageFile);
 
-        if (imageFiles.length === 0) return;
+        if (imageFiles.length === 0 || !sink.onFiles) return;
 
         try {
           const attachments = await Promise.all(imageFiles.map(fileToImageAttachment));
           // No post-persist busy re-check: a mixed drop's own generic upload flips the busy flag,
           // and re-checking would discard the image from the same drop. The guard at drop start
           // already rejects drops that begin while busy.
-          sink.onFiles(attachments);
+          sink.onFiles?.(attachments);
         } catch (error) {
           console.error("[useDropListeners] Failed to process dropped files:", error);
         }

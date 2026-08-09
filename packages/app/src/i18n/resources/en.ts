@@ -1,5 +1,8 @@
 export const en = {
   common: {
+    drop: {
+      openInTextEditor: "Open in Text Editor",
+    },
     back: "Back",
     loading: "Loading...",
     actions: {
@@ -469,12 +472,18 @@ export const en = {
     emptyForHost: "No sessions for this host",
     emptyActive: "No active chats",
     emptyArchived: "No archived chats",
-    storageUsage: "Archived chats use {{size}}",
-    storageUsageForHost: "{{host}}: {{size}}",
     filters: {
       all: "All",
       active: "Active",
       archived: "Archived",
+    },
+    columns: {
+      conversation: "Conversation",
+      project: "Project",
+      host: "Host",
+      branch: "Branch",
+      lastActive: "Last active",
+      size: "Size",
     },
     actions: {
       loadMore: "Load more",
@@ -492,22 +501,24 @@ export const en = {
         title: "Delete this chat?",
         subjectFallback: "this chat",
         recordLine:
-          "Otto's record of {{subject}} is deleted permanently - the row, its title, and its metadata.",
+          "The record for {{subject}} will be deleted permanently, along with the row and its metadata.",
         transcriptLine:
-          "{{provider}}'s own transcript on the host is left in place, so the conversation itself stays on disk and can still be read or resumed outside Otto.",
-        undoLine: "Otto's side of this can't be undone.",
+          "{{provider}}'s own transcript on the host is left in place, so the conversation itself stays on disk and can still be read or resumed.",
+        undoLine: "This change cannot be undone.",
         confirm: "Delete",
       },
       clearArchived: {
         titleOne: "Clear 1 archived chat?",
         titleMany: "Clear {{count}} archived chats?",
-        recordLineOne:
-          "Permanently deletes Otto's records for 1 archived chat. Chats you haven't archived are untouched.",
-        recordLineMany:
-          "Permanently deletes Otto's records for {{count}} archived chats. Chats you haven't archived are untouched.",
-        transcriptLine:
-          "The agent providers' own transcripts on the host are left in place - this clears Otto's history, not the conversations on disk.",
-        undoLine: "Otto's side of this can't be undone.",
+        recordLineOneHostOne:
+          "This permanently deletes 1 archived chat on this host. Active chats are not affected. Provider transcripts remain on the host.",
+        recordLineOneHostMany:
+          "This permanently deletes {{count}} archived chats on this host. Active chats are not affected. Provider transcripts remain on the host.",
+        recordLineAllHostsOne:
+          "This permanently deletes 1 archived chat across all hosts. Active chats are not affected. Provider transcripts remain on the hosts.",
+        recordLineAllHostsMany:
+          "This permanently deletes {{count}} archived chats across all hosts. Active chats are not affected. Provider transcripts remain on the hosts.",
+        undoLine: "This action cannot be undone.",
         confirm: "Clear",
       },
       nothingToClear: {

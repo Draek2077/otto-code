@@ -6,17 +6,21 @@ import {
   type LayoutChangeEvent,
   type PressableStateCallbackType,
 } from "react-native";
-import { StyleSheet } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { DiffStat } from "@/components/diff-stat";
 import { FILE_ACTIONS_MENU_WIDTH } from "@/components/file-actions-menu";
+import { Folder } from "@/components/icons/material-icons";
 import {
   TreeChevron,
   TreeIndentGuides,
   treeRowPaddingLeft,
   WORKSPACE_FILE_ROW_VERTICAL_PADDING,
 } from "@/components/tree-primitives";
-import { type Theme } from "@/styles/theme";
+import { useIconSize, type Theme } from "@/styles/theme";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
+
+const mutedIconColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const ThemedFolder = withUnistyles(Folder);
 
 interface DiffFolderRowProps {
   /** full uncompressed directory path - the collapse identity */
@@ -54,6 +58,7 @@ export function DiffFolderRow({
   onHeightChange,
   testID,
 }: DiffFolderRowProps) {
+  const iconSize = useIconSize();
   const handlePress = useCallback(() => {
     onToggle(dirPath);
   }, [dirPath, onToggle]);
@@ -84,9 +89,12 @@ export function DiffFolderRow({
       >
         <View style={leftStyle}>
           <TreeChevron expanded={!collapsed} />
-          <Text style={styles.folderName} numberOfLines={1}>
-            {displayName}
-          </Text>
+          <View style={styles.folderLabel}>
+            <ThemedFolder size={iconSize.md} uniProps={mutedIconColor} />
+            <Text style={styles.folderName} numberOfLines={1}>
+              {displayName}
+            </Text>
+          </View>
         </View>
         <View style={styles.right}>
           <DiffStat
@@ -123,6 +131,16 @@ const styles = StyleSheet.create((theme: Theme) => ({
     flex: 1,
     minWidth: 0,
   },
+  folderLabel: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1.5],
+    // Match the folder glyph to the icon column of a child file. The chevron
+    // already owns the preceding disclosure column.
+    marginLeft: -theme.spacing[1],
+    flex: 1,
+    minWidth: 0,
+  },
   right: {
     flexDirection: "row",
     alignItems: "center",
@@ -137,6 +155,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foreground,
     flexShrink: 1,
+    marginLeft: 2,
     minWidth: 0,
   },
 }));

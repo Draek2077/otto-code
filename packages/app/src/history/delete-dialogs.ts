@@ -79,7 +79,13 @@ export function resolveDeleteAgentDialog(input: DeleteAgentDialogInput): Confirm
  * provider data in aggregate - so the copy repeats the disclosure rather than
  * assuming the user read it on a previous dialog.
  */
-export function resolveClearArchivedDialog(input: { matched: number }): ConfirmDialogInput {
+export function resolveClearArchivedDialog(input: {
+  matched: number;
+  scope: "allHosts" | "oneHost";
+  cleanupScope?: "otto" | "otto_and_provider";
+  ottoBytes?: number;
+  providerBytes?: number;
+}): ConfirmDialogInput {
   const count = input.matched;
   const one = count === 1;
 
@@ -88,10 +94,15 @@ export function resolveClearArchivedDialog(input: { matched: number }): ConfirmD
       ? i18n.t("sessions.dialogs.clearArchived.titleOne")
       : i18n.t("sessions.dialogs.clearArchived.titleMany", { count }),
     message: [
-      one
-        ? i18n.t("sessions.dialogs.clearArchived.recordLineOne")
-        : i18n.t("sessions.dialogs.clearArchived.recordLineMany", { count }),
-      i18n.t("sessions.dialogs.clearArchived.transcriptLine"),
+      i18n.t(
+        `sessions.dialogs.clearArchived.${
+          input.scope === "allHosts" ? "recordLineAllHosts" : "recordLineOneHost"
+        }${one ? "One" : "Many"}`,
+        { count },
+      ),
+      input.cleanupScope === "otto_and_provider"
+        ? `Provider cleanup is included. Otto bytes: ${input.ottoBytes ?? 0}. Provider bytes: ${input.providerBytes ?? 0}. Successful cleanup makes resume and recovery impossible.`
+        : `Only Otto bytes are deleted: ${input.ottoBytes ?? 0}. Provider transcripts remain on the host.`,
       i18n.t("sessions.dialogs.clearArchived.undoLine"),
     ].join("\n\n"),
     confirmLabel: i18n.t("sessions.dialogs.clearArchived.confirm"),

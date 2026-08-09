@@ -151,21 +151,21 @@ Archive is a soft delete. **Delete** is the hard one, and it is the counterpart 
 
 ### What delete removes, and what it deliberately does not
 
-Deleting a chat removes **Otto's record of it** - the JSON at `$OTTO_HOME/agents/{cwd-with-dashes}/{agent-id}.json`, its committed timeline, and the row from every list. That is the whole of it.
+Deleting a chat with the default **Remove from Otto** scope removes **Otto's record of it** - the JSON at `$OTTO_HOME/agents/{cwd-with-dashes}/{agent-id}.json`, its committed timeline, and the row from every list. The explicit **Remove from Otto and provider** scope may also remove provider data, but only through a registered provider-native cleanup adapter.
 
-It does **not** remove the provider's own transcript. Claude's `<configDir>/projects/<encoded-cwd>/<sessionId>.jsonl` and its sibling `<sessionId>/` subagent tree, Codex's threads, OpenCode's sessions - those stay exactly where the provider wrote them. Three reasons, in order of weight:
+Otto-only delete does **not** remove the provider's own transcript. Claude's `<configDir>/projects/<encoded-cwd>/<sessionId>.jsonl` and its sibling `<sessionId>/` subagent tree, Codex's threads, OpenCode's sessions - those stay exactly where the provider wrote them. Provider cleanup is unsupported unless an adapter proves ownership, identity, references, and an unchanged validation token. Remote resources and ACP sessions remain unsupported by default.
 
 1. **They are not Otto's files.** Otto never created them; it holds a `persistence.sessionId` pointing at them.
 2. **Another tool still reads them.** `claude --resume` resolves that path. Silently deleting another tool's state is the kind of thing that costs trust once and permanently.
 3. **Leaving them is the recoverable option.** A user who deletes a chat by mistake still has the conversation.
 
-An **opt-in switch** to also delete provider data was considered and **rejected** - the product owner's call, 2026-07-25 ("that seems dangerous grounds"). There is deliberately no wire field for it, no setting, and no disabled placeholder. If a future version wants it, that is a decision to retake with fresh eyes, not a hook to leave lying around.
+Provider cleanup is a separate explicit scope in the additive history sweep request. It is never a fallback from Otto-only cleanup, and a failed or stale provider deletion retains the Otto record for retry.
 
 ### Which means the UI has to say so
 
 Reason 3 is worthless if nobody knows the data is there, so **the confirm dialog names where the conversation survives** - "Claude Code's own transcript on the host is left in place, so the conversation itself stays on disk and can still be read or resumed outside Otto" - and scopes its irreversibility claim honestly: _Otto's side_ of this can't be undone. Copy lives in `packages/app/src/history/delete-dialogs.ts`, pure and asserted on, because this is the one place where getting the wording wrong is the same as lying.
 
-Bulk clear repeats the same disclosure rather than assuming it was read once. Clearing many at a time must not become a back door that deletes provider data in aggregate.
+Bulk clear repeats the selected-scope disclosure rather than assuming it was read once. Its dry run reports Otto and provider bytes separately, plus unsupported and stale counts. Successful provider cleanup makes resume and recovery impossible.
 
 ### Reaching it
 

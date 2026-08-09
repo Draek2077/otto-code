@@ -27,6 +27,8 @@ class AudioEngine {
     private var hasFirstInputBeenDiscarded = false
     private var discardRecording = false
     private var discardFirstInputMillis = 2000
+    private var inputTapInstalled = false
+    private var shouldResumeRecordingAfterInterruption = false
     
     enum AudioEngineError: Error {
         case audioFormatError
@@ -60,7 +62,7 @@ class AudioEngine {
                 self?.handleMediaServicesWereReset()
             }
         
-        self.setupAudioSession()
+        self.configurePlaybackSession()
         self.setup()
         self.start()
     }
@@ -77,53 +79,50 @@ class AudioEngine {
         }
     }
     
-    func setupAudioSession() {
+    /// Playback is the idle state. Do not enter a microphone-capable session
+    /// until capture is explicitly requested: iOS treats an active
+    /// play-and-record session as microphone use even if its input is muted.
+    private func configurePlaybackSession() {
         let session = AVAudioSession.sharedInstance()
-        
         do {
-            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP])
+            try session.setCategory(.playback, mode: .default)
         } catch {
             print("Could not set the audio category: \(error.localizedDescription)")
         }
-        
         do {
-            try session.setPreferredSampleRate(voiceIOFormat.sampleRate)
+            try session.setActive(false, options: [.notifyOthersOnDeactivation])
         } catch {
-            print("Could not set the preferred sample rate: \(error.localizedDescription)")
-        }
-        
-        do {
-            try session.setActive(true)
-        } catch {
-            print("Could not set the audio session as active")
+            print("Could not deactivate the playback audio session: \(error.localizedDescription)")
         }
     }
-    
-    func setup() {
-        let input = avAudioEngine.inputNode
+
+    private func activatePlaybackSession() {
+        let session = AVAudioSession.sharedInstance()
         do {
-            try input.setVoiceProcessingEnabled(true)
+            try session.setCategory(.playback, mode: .default)
+            try session.setActive(true)
         } catch {
-            print("Could not enable voice processing \(error)")
-            return
+            print("Could not activate the playback audio session: \(error.localizedDescription)")
         }
-        
-        avAudioEngine.inputNode.isVoiceProcessingInputMuted = !isRecording
-        
+    }
+
+    private func activateCaptureSession() {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP])
+            try session.setPreferredSampleRate(voiceIOFormat.sampleRate)
+            try session.setActive(true)
+        } catch {
+            print("Could not activate the capture audio session: \(error.localizedDescription)")
+        }
+    }
+
+    func setup() {
         let output = avAudioEngine.outputNode
         let mainMixer = avAudioEngine.mainMixerNode
         
         avAudioEngine.connect(speechPlayer, to: mainMixer, format: voiceIOFormat)
         avAudioEngine.connect(mainMixer, to: output, format: voiceIOFormat)
-        
-        input.installTap(onBus: 0, bufferSize: 2048, format: voiceIOFormat) { [weak self] buffer, when in
-            // We don't do any input processing (no volume calculation or passing mic data to the callback) if discardRecording == true
-            // See comment in the playPCMData function
-            if self?.isRecording == true && self?.discardRecording == false {
-                self?.processMicrophoneBuffer(buffer)
-                self?.updateInputVolume()
-            }
-        }
         
         mainMixer.installTap(onBus: 0, bufferSize: 2048, format: voiceIOFormat) { [weak self] buffer, when in
             self?.processOutputBuffer(buffer)
@@ -181,8 +180,42 @@ class AudioEngine {
             print("Could not start audio engine: \(error)")
         }
     }
+
+    private func startCapture() {
+        activateCaptureSession()
+        let input = avAudioEngine.inputNode
+        do {
+            try input.setVoiceProcessingEnabled(true)
+        } catch {
+            print("Could not enable voice processing \(error)")
+        }
+        input.isVoiceProcessingInputMuted = false
+        if !inputTapInstalled {
+            input.installTap(onBus: 0, bufferSize: 2048, format: voiceIOFormat) { [weak self] buffer, _ in
+                if self?.isRecording == true && self?.discardRecording == false {
+                    self?.processMicrophoneBuffer(buffer)
+                    self?.updateInputVolume()
+                }
+            }
+            inputTapInstalled = true
+        }
+        checkEngineIsRunning()
+    }
+
+    private func stopCapture() {
+        let input = avAudioEngine.inputNode
+        input.isVoiceProcessingInputMuted = true
+        if inputTapInstalled {
+            input.removeTap(onBus: 0)
+            inputTapInstalled = false
+        }
+        configurePlaybackSession()
+    }
     
     func playPCMData(_ pcmData: Data) {
+        if !isRecording {
+            activatePlaybackSession()
+        }
         // Looks like we don't get a proper AEC for the very first chunks of audio that we play.
         // To work around this, we will discard microphone input for the first few milliseconds.
         // This will give the AEC time to adapt to the playback audio.
@@ -240,14 +273,15 @@ class AudioEngine {
     }
     
     func toggleRecording(_ val: Bool) -> Bool {
+        if val && !isRecording {
+            startCapture()
+        }
         isRecording = val
         if !isRecording {
-            avAudioEngine.inputNode.isVoiceProcessingInputMuted = true
+            stopCapture()
             // Reset input buffer, so that volume levels report 0
             inputBuffer = [Float](repeating: 0, count: 2048)
             updateInputVolume()
-        } else {
-            avAudioEngine.inputNode.isVoiceProcessingInputMuted = false
         }
         print("Recording \(isRecording ? "started" : "stopped")")
         
@@ -255,23 +289,18 @@ class AudioEngine {
     }
     
     func stopRecordingAndPlayer(){
+        isRecording = false
+        stopCapture()
         do {
             try AVAudioSession.sharedInstance().setActive(false)
         } catch {
             print("Could not set the audio session to inactive: \(error)")
         }
-        toggleRecording(false)
         speechPlayer.stop()
         updateOutputVolume()
     }
     
     func resumeRecordingAndPlayer(){
-        do {
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch {
-            print("Could not set the audio session to active: \(error)")
-        }
-        self.checkEngineIsRunning()
         isRecording = toggleRecording(true)
         speechPlayer.play()
     }
@@ -299,6 +328,9 @@ class AudioEngine {
     }
 
     func resumePlayback() {
+        if !isRecording {
+            activatePlaybackSession()
+        }
         if !speechPlayer.isPlaying {
             speechPlayer.play()
             print("Playback resumed")
@@ -318,16 +350,22 @@ class AudioEngine {
 
         switch type {
         case .began:
+            shouldResumeRecordingAfterInterruption = isRecording
             self.stopRecordingAndPlayer()
             onAudioInterruptionCallback?("began")
         case .ended:
             if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {
                 let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
                 if options.contains(.shouldResume) {
-                    // Interruption ended. Resume playback.
-                    self.resumeRecordingAndPlayer()
+                    if shouldResumeRecordingAfterInterruption {
+                        self.resumeRecordingAndPlayer()
+                    } else {
+                        activatePlaybackSession()
+                    }
+                    shouldResumeRecordingAfterInterruption = false
                     onAudioInterruptionCallback?("ended")
                 } else {
+                    shouldResumeRecordingAfterInterruption = false
                     // Interruption ends. Don't resume playback.
                     onAudioInterruptionCallback?("blocked")
                 }
@@ -340,7 +378,11 @@ class AudioEngine {
     private func handleMediaServicesWereReset() {
         self.avAudioEngine.stop()
         self.setup()
-        self.start()
+        if isRecording {
+            startCapture()
+        } else {
+            start()
+        }
     }
     
     private func updateInputVolume() {

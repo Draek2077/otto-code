@@ -2,6 +2,9 @@ import type { TranslationResources } from "./en";
 
 export const ja: TranslationResources = {
   common: {
+    drop: {
+      openInTextEditor: "テキストエディターで開く",
+    },
     back: "戻る",
     loading: "読み込み中...",
     actions: {
@@ -463,12 +466,18 @@ export const ja: TranslationResources = {
     emptyForHost: "このホストのセッションはありません",
     emptyActive: "アクティブなチャットはありません",
     emptyArchived: "アーカイブされたチャットはありません",
-    storageUsage: "アーカイブ済みチャットの使用容量 {{size}}",
-    storageUsageForHost: "{{host}}: {{size}}",
     filters: {
       all: "すべて",
       active: "アクティブ",
       archived: "アーカイブ済み",
+    },
+    columns: {
+      conversation: "Conversation",
+      project: "Project",
+      host: "Host",
+      branch: "Branch",
+      lastActive: "Last active",
+      size: "Size",
     },
     actions: {
       loadMore: "さらに読み込む",
@@ -490,13 +499,15 @@ export const ja: TranslationResources = {
       clearArchived: {
         titleOne: "アーカイブ済みチャット 1 件を消去しますか？",
         titleMany: "アーカイブ済みチャット {{count}} 件を消去しますか？",
-        recordLineOne:
-          "アーカイブ済みチャット 1 件について、Otto の記録を完全に削除します。アーカイブしていないチャットはそのままです。",
-        recordLineMany:
-          "アーカイブ済みチャット {{count}} 件について、Otto の記録を完全に削除します。アーカイブしていないチャットはそのままです。",
-        transcriptLine:
-          "ホスト上にあるエージェントプロバイダー自身のトランスクリプトはそのまま残ります。消去されるのは Otto の履歴であり、ディスク上の会話ではありません。",
-        undoLine: "Otto 側のこの操作は元に戻せません。",
+        recordLineOneHostOne:
+          "このホスト上のアーカイブ済みチャット 1 件を完全に削除します。アクティブなチャットは影響を受けません。プロバイダーのトランスクリプトはホストに残ります。",
+        recordLineOneHostMany:
+          "このホスト上のアーカイブ済みチャット {{count}} 件を完全に削除します。アクティブなチャットは影響を受けません。プロバイダーのトランスクリプトはホストに残ります。",
+        recordLineAllHostsOne:
+          "すべてのホスト上のアーカイブ済みチャット 1 件を完全に削除します。アクティブなチャットは影響を受けません。プロバイダーのトランスクリプトはホストに残ります。",
+        recordLineAllHostsMany:
+          "すべてのホスト上のアーカイブ済みチャット {{count}} 件を完全に削除します。アクティブなチャットは影響を受けません。プロバイダーのトランスクリプトはホストに残ります。",
+        undoLine: "この操作は元に戻せません。",
         confirm: "消去",
       },
       nothingToClear: {

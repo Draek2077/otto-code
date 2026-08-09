@@ -165,6 +165,9 @@ export interface Agent {
   attentionReason?: "finished" | "error" | "permission" | null;
   attentionTimestamp?: Date | null;
   archivedAt?: Date | null;
+  archiveBytes?: number;
+  providerArchiveBytes?: number;
+  cleanupCapability?: "supported" | "unsupported" | "stale";
   parentAgentId: string | null;
   labels: Record<string, string>;
   projectPlacement?: ProjectPlacementPayload | null;
@@ -2269,6 +2272,9 @@ export const useSessionStore = create<SessionStore>()(
             attentionTimestamp: agent.attentionTimestamp ?? null,
             createdAt: agent.createdAt,
             labels: agent.labels,
+            archiveBytes: agent.archiveBytes,
+            providerArchiveBytes: agent.providerArchiveBytes,
+            cleanupCapability: agent.cleanupCapability,
           });
         }
         return entries;

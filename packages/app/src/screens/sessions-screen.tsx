@@ -9,7 +9,7 @@ import { MenuHeader } from "@/components/headers/menu-header";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import { AgentList } from "@/components/agent-list";
+import { AgentList, AgentListColumnHeader } from "@/components/agent-list";
 import { HostFilter } from "@/components/hosts/host-filter";
 import { ALL_HOSTS_OPTION_ID } from "@/components/hosts/host-picker";
 import { useAgentHistory } from "@/hooks/use-agent-history";
@@ -99,6 +99,7 @@ function SessionsScreenContent() {
 
   const [isManualRefresh, setIsManualRefresh] = useState(false);
   const [archiveFilter, setArchiveFilter] = useState<ArchiveFilter>("all");
+  const [cleanupScope, setCleanupScope] = useState<"otto" | "otto_and_provider">("otto");
 
   const handleRefresh = useCallback(() => {
     setIsManualRefresh(true);
@@ -127,10 +128,19 @@ function SessionsScreenContent() {
       (serverId) => state.sessions[serverId]?.serverInfo?.features?.historyDelete === true,
     ),
   );
+  const canProviderCleanup = useSessionStore((state) =>
+    targetServerIds.some(
+      (serverId) => state.sessions[serverId]?.serverInfo?.features?.providerArchiveCleanup === true,
+    ),
+  );
   const { clearArchived, isClearing } = useClearArchivedAgents();
 
   const handleClearArchived = useCallback(() => {
-    void clearArchived({ serverIds: targetServerIds }).then((outcome) => {
+    void clearArchived({
+      serverIds: targetServerIds,
+      scope: historyServerId ? "oneHost" : "allHosts",
+      cleanupScope,
+    }).then((outcome) => {
       if (outcome && outcome.deleted > 0) {
         // The caches were patched per host already; refetch so the paginated
         // pages the client never held come back consistent.
@@ -138,7 +148,7 @@ function SessionsScreenContent() {
       }
       return outcome;
     });
-  }, [clearArchived, refreshAll, targetServerIds]);
+  }, [clearArchived, cleanupScope, historyServerId, refreshAll, targetServerIds]);
 
   const archiveFilterOptions = useMemo(
     () => [
@@ -158,7 +168,20 @@ function SessionsScreenContent() {
     }
     return selectedHost === ALL_HOSTS_OPTION_ID ? t("sessions.empty") : t("sessions.emptyForHost");
   }, [archiveFilter, selectedHost, t]);
+  const hostOptionDescriptions = useMemo(() => {
+    if (!historyStorage.data) return undefined;
+    return {
+      [ALL_HOSTS_OPTION_ID]: formatFileSize({ size: historyStorage.data.totalBytes }),
+      ...Object.fromEntries(
+        historyStorage.data.byHost.map(({ serverId, totalBytes }) => [
+          serverId,
+          formatFileSize({ size: totalBytes }),
+        ]),
+      ),
+    };
+  }, [historyStorage.data]);
   const showHostFilter = hosts.length > 1;
+  const showHostColumn = selectedHost === ALL_HOSTS_OPTION_ID;
   const showLoadError = isError && sortedAgents.length === 0;
 
   const handleBack = useCallback(() => {
@@ -180,56 +203,55 @@ function SessionsScreenContent() {
   return (
     <View style={styles.container}>
       <MenuHeader title={t("sessions.title")} />
-      {showHostFilter ? (
-        <View style={styles.filterContainer}>
-          <HostFilter
-            hosts={hosts}
-            selectedHost={selectedHost}
-            onSelectHost={setSelectedHost}
-            triggerTestID="sessions-host-filter-trigger"
-          />
+      <View style={styles.historyHeader}>
+        <View style={styles.controlsRow}>
+          <View style={styles.controlsFilters}>
+            {showHostFilter ? (
+              <HostFilter
+                hosts={hosts}
+                selectedHost={selectedHost}
+                onSelectHost={setSelectedHost}
+                optionDescriptions={hostOptionDescriptions}
+                triggerTestID="sessions-host-filter-trigger"
+              />
+            ) : null}
+            <SegmentedControl
+              options={archiveFilterOptions}
+              value={archiveFilter}
+              onValueChange={setArchiveFilter}
+              size="sm"
+              testID="sessions-archive-filter"
+            />
+            {canProviderCleanup ? (
+              <SegmentedControl
+                options={[
+                  { label: "Otto only", value: "otto" },
+                  { label: "Otto and provider", value: "otto_and_provider" },
+                ]}
+                value={cleanupScope}
+                onValueChange={setCleanupScope}
+                size="sm"
+                testID="sessions-cleanup-scope"
+              />
+            ) : null}
+          </View>
+          {canClearArchived ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              leftIcon={Trash2}
+              onPress={handleClearArchived}
+              disabled={isClearing}
+              testID="sessions-clear-archived"
+            >
+              {isClearing
+                ? t("sessions.actions.clearingArchived")
+                : t("sessions.actions.clearArchived")}
+            </Button>
+          ) : null}
         </View>
-      ) : null}
-      <View style={styles.controlsRow}>
-        <SegmentedControl
-          options={archiveFilterOptions}
-          value={archiveFilter}
-          onValueChange={setArchiveFilter}
-          size="sm"
-          testID="sessions-archive-filter"
-        />
-        {canClearArchived ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            leftIcon={Trash2}
-            onPress={handleClearArchived}
-            disabled={isClearing}
-            testID="sessions-clear-archived"
-          >
-            {isClearing
-              ? t("sessions.actions.clearingArchived")
-              : t("sessions.actions.clearArchived")}
-          </Button>
-        ) : null}
+        <AgentListColumnHeader showHostColumn={showHostColumn} />
       </View>
-      {historyStorage.data ? (
-        <View style={styles.storageUsage} testID="sessions-storage-usage">
-          <Text style={styles.storageTotal}>
-            {t("sessions.storageUsage", {
-              size: formatFileSize({ size: historyStorage.data.totalBytes }),
-            })}
-          </Text>
-          {historyStorage.data.byHost.map(({ serverId, totalBytes }) => (
-            <Text key={serverId} style={styles.storageHost}>
-              {t("sessions.storageUsageForHost", {
-                host: hosts.find((host) => host.serverId === serverId)?.label ?? serverId,
-                size: formatFileSize({ size: totalBytes }),
-              })}
-            </Text>
-          ))}
-        </View>
-      ) : null}
       {isInitialLoad ? (
         <View style={styles.loadingContainer}>
           <LoadingSpinner size="large" color={theme.colors.foregroundMuted} />
@@ -259,7 +281,7 @@ function SessionsScreenContent() {
           onRefresh={handleRefresh}
           listFooterComponent={listFooterComponent}
           showAttentionIndicator={false}
-          showHostColumn
+          showHostColumn={showHostColumn}
         />
       ) : null}
     </View>
@@ -271,38 +293,26 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     backgroundColor: theme.colors.surface0,
   },
-  filterContainer: {
-    paddingHorizontal: {
-      xs: theme.spacing[3],
-      md: theme.spacing[6],
-    },
-    paddingTop: theme.spacing[4],
-  },
-  // Filter left, destructive action pinned to the far corner at every breakpoint.
+  // Host and archive filters share one row, with the destructive action pinned
+  // to the far corner at every breakpoint.
   controlsRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: theme.spacing[3],
     paddingHorizontal: {
       xs: theme.spacing[3],
       md: theme.spacing[6],
     },
     paddingTop: theme.spacing[4],
   },
-  storageUsage: {
-    paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
-    paddingTop: theme.spacing[2],
+  historyHeader: {
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
   },
-  storageTotal: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-  },
-  storageHost: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    paddingTop: theme.spacing[1],
-    paddingLeft: theme.spacing[3],
+  controlsFilters: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[3],
   },
   emptyContainer: {
     flex: 1,

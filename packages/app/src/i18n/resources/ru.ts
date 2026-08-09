@@ -2,6 +2,9 @@ import type { TranslationResources } from "./en";
 
 export const ru: TranslationResources = {
   common: {
+    drop: {
+      openInTextEditor: "Открыть в текстовом редакторе",
+    },
     back: "Назад",
     loading: "Загрузка...",
     actions: {
@@ -461,12 +464,18 @@ export const ru: TranslationResources = {
     emptyForHost: "Нет сессий для этого хоста",
     emptyActive: "Нет активных чатов",
     emptyArchived: "Нет архивных чатов",
-    storageUsage: "Архивные чаты занимают {{size}}",
-    storageUsageForHost: "{{host}}: {{size}}",
     filters: {
       all: "Все",
       active: "Активные",
       archived: "Архивные",
+    },
+    columns: {
+      conversation: "Conversation",
+      project: "Project",
+      host: "Host",
+      branch: "Branch",
+      lastActive: "Last active",
+      size: "Size",
     },
     actions: {
       loadMore: "Загрузить больше",
@@ -488,13 +497,15 @@ export const ru: TranslationResources = {
       clearArchived: {
         titleOne: "Очистить 1 архивный чат?",
         titleMany: "Очистить {{count}} архивных чатов?",
-        recordLineOne:
-          "Безвозвратно удаляет записи Otto по 1 архивному чату. Чаты, которые вы не архивировали, не затрагиваются.",
-        recordLineMany:
-          "Безвозвратно удаляет записи Otto по {{count}} архивным чатам. Чаты, которые вы не архивировали, не затрагиваются.",
-        transcriptLine:
-          "Собственные стенограммы провайдеров агентов на хосте остаются на месте - это очищает историю Otto, а не переписку на диске.",
-        undoLine: "Со стороны Otto это не отменить.",
+        recordLineOneHostOne:
+          "Это безвозвратно удалит 1 архивный чат на этом хосте. Активные чаты не затрагиваются. Стенограммы провайдера остаются на хосте.",
+        recordLineOneHostMany:
+          "Это безвозвратно удалит {{count}} архивных чатов на этом хосте. Активные чаты не затрагиваются. Стенограммы провайдера остаются на хосте.",
+        recordLineAllHostsOne:
+          "Это безвозвратно удалит 1 архивный чат на всех хостах. Активные чаты не затрагиваются. Стенограммы провайдера остаются на хостах.",
+        recordLineAllHostsMany:
+          "Это безвозвратно удалит {{count}} архивных чатов на всех хостах. Активные чаты не затрагиваются. Стенограммы провайдера остаются на хостах.",
+        undoLine: "Это действие нельзя отменить.",
         confirm: "Очистить",
       },
       nothingToClear: {

@@ -203,12 +203,12 @@ describe("loadAppSettingsFromStorage", () => {
     expect(result.chatWidth).toBe("default");
   });
 
-  it("defaults tab orientation to horizontal when storage is empty", async () => {
+  it("defaults tab orientation to vertical when storage is empty", async () => {
     const deps = makeDeps();
 
     const result = await loadAppSettingsFromStorage(deps);
 
-    expect(result.defaultTabOrientation).toBe("horizontal");
+    expect(result.defaultTabOrientation).toBe("vertical");
   });
 
   it("loads configured default tab orientation from app settings", async () => {
@@ -223,7 +223,7 @@ describe("loadAppSettingsFromStorage", () => {
     expect(result.defaultTabOrientation).toBe("vertical");
   });
 
-  it("drops an unknown default tab orientation back to horizontal", async () => {
+  it("drops an unknown default tab orientation back to vertical", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({
         [APP_SETTINGS_KEY]: JSON.stringify({ defaultTabOrientation: "diagonal" }),
@@ -232,7 +232,7 @@ describe("loadAppSettingsFromStorage", () => {
 
     const result = await loadAppSettingsFromStorage(deps);
 
-    expect(result.defaultTabOrientation).toBe("horizontal");
+    expect(result.defaultTabOrientation).toBe("vertical");
   });
 
   it("defaults the vertical tab rail width to null (content-driven) when storage is empty", async () => {

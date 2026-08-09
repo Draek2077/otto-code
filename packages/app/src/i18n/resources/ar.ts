@@ -2,6 +2,9 @@ import type { TranslationResources } from "./en";
 
 export const ar: TranslationResources = {
   common: {
+    drop: {
+      openInTextEditor: "فتح في محرر النصوص",
+    },
     back: "رجوع",
     loading: "تحميل...",
     actions: {
@@ -455,12 +458,18 @@ export const ar: TranslationResources = {
     emptyForHost: "لا توجد جلسات لهذا المضيف",
     emptyActive: "لا توجد محادثات نشطة",
     emptyArchived: "لا توجد محادثات مؤرشفة",
-    storageUsage: "تستخدم المحادثات المؤرشفة {{size}}",
-    storageUsageForHost: "{{host}}: {{size}}",
     filters: {
       all: "الكل",
       active: "نشطة",
       archived: "مؤرشفة",
+    },
+    columns: {
+      conversation: "Conversation",
+      project: "Project",
+      host: "Host",
+      branch: "Branch",
+      lastActive: "Last active",
+      size: "Size",
     },
     actions: {
       loadMore: "تحميل المزيد",
@@ -481,13 +490,15 @@ export const ar: TranslationResources = {
       clearArchived: {
         titleOne: "مسح محادثة مؤرشفة واحدة؟",
         titleMany: "مسح {{count}} محادثات مؤرشفة؟",
-        recordLineOne:
-          "يحذف نهائيًا سجلات Otto الخاصة بمحادثة مؤرشفة واحدة. المحادثات التي لم تؤرشفها لا تُمس.",
-        recordLineMany:
-          "يحذف نهائيًا سجلات Otto الخاصة بـ {{count}} محادثات مؤرشفة. المحادثات التي لم تؤرشفها لا تُمس.",
-        transcriptLine:
-          "تبقى النصوص الخاصة بمزوّدي الوكلاء على المضيف كما هي - هذا يمسح سجل Otto لا المحادثات الموجودة على القرص.",
-        undoLine: "لا يمكن التراجع عن جانب Otto من هذا.",
+        recordLineOneHostOne:
+          "يحذف هذا نهائيًا محادثة مؤرشفة واحدة على هذا المضيف. لا تتأثر المحادثات النشطة. تبقى نصوص المزوّد على المضيف.",
+        recordLineOneHostMany:
+          "يحذف هذا نهائيًا {{count}} محادثات مؤرشفة على هذا المضيف. لا تتأثر المحادثات النشطة. تبقى نصوص المزوّد على المضيف.",
+        recordLineAllHostsOne:
+          "يحذف هذا نهائيًا محادثة مؤرشفة واحدة على جميع المضيفين. لا تتأثر المحادثات النشطة. تبقى نصوص المزوّد على المضيفين.",
+        recordLineAllHostsMany:
+          "يحذف هذا نهائيًا {{count}} محادثات مؤرشفة على جميع المضيفين. لا تتأثر المحادثات النشطة. تبقى نصوص المزوّد على المضيفين.",
+        undoLine: "لا يمكن التراجع عن هذا الإجراء.",
         confirm: "مسح",
       },
       nothingToClear: {

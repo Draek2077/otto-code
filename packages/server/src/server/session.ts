@@ -166,6 +166,7 @@ import {
   type AgentPermissionResponse,
   type AgentRunOptions,
   type AgentSessionConfig,
+  type ProviderCleanupAdapter,
 } from "./agent/agent-sdk-types.js";
 import {
   resolvePersonality,
@@ -178,6 +179,7 @@ import {
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
 import type { AgentStorage } from "./agent/agent-storage.js";
 import { selectArchivedForDeletion } from "./agent/history-retention.js";
+import { isProviderCleanupManifestSafe } from "./agent/provider-cleanup.js";
 import {
   clearMaterializedProviderImages,
   readMaterializedImageStats,
@@ -661,6 +663,8 @@ export interface SessionOptions {
   brainManager?: BrainManager | null;
   brainOpsManager?: BrainOpsManager | null;
   providerSnapshotManager: ProviderSnapshotManager;
+  /** Explicit provider-owned deletion adapters. Empty means unsupported. */
+  providerCleanupAdapters?: ReadonlyMap<string, ProviderCleanupAdapter>;
   providerUsageService: ProviderUsageService;
   onActivity?: ActivityIncrementFn;
   getActivityRollups?: () => Promise<ActivityRollups>;
@@ -966,6 +970,7 @@ export class Session {
   private readonly brainManager: BrainManager | null;
   private readonly brainOpsManager: BrainOpsManager | null;
   private readonly providerSnapshotManager: ProviderSnapshotManager;
+  private readonly providerCleanupAdapters: ReadonlyMap<string, ProviderCleanupAdapter>;
   private readonly getActivityRollups: (() => Promise<ActivityRollups>) | undefined;
   private readonly getUsageLogPage:
     | ((query: UsageLogPageQuery) => Promise<UsageLogPage>)
@@ -1041,6 +1046,7 @@ export class Session {
       brainManager,
       brainOpsManager,
       providerSnapshotManager,
+      providerCleanupAdapters,
       providerUsageService,
       onActivity,
       getActivityRollups,
@@ -1434,6 +1440,7 @@ export class Session {
       logger: this.sessionLogger,
     });
     this.providerSnapshotManager = providerSnapshotManager;
+    this.providerCleanupAdapters = providerCleanupAdapters ?? new Map();
     this.agentAutoTitle = this.resolveAgentAutoTitle(agentAutoTitle);
     this.getActivityRollups = getActivityRollups;
     this.getUsageLogPage = getUsageLogPage;
@@ -3555,6 +3562,16 @@ export class Session {
     const emitResult = (payload: {
       repositories: HostingRepositorySummary[];
       error: string | null;
+      ottoBytes?: number;
+      providerBytes?: number;
+      reclaimedBytes?: number;
+      unsupported?: number;
+      stale?: number;
+      outcomes?: Array<{
+        agentId: string;
+        outcome: "deleted" | "unsupported" | "stale" | "failed";
+        reclaimedBytes?: number;
+      }>;
     }) => {
       this.emit({
         type: "hosting.list_repositories.response",
@@ -5954,6 +5971,7 @@ export class Session {
    * records only, never a provider's transcript - clearing in bulk is not a back
    * door around that.
    */
+  // eslint-disable-next-line complexity -- server-side dry-run and per-item outcome accounting are one atomic sweep.
   private async handleHistoryAgentsClearArchivedRequest(
     msg: Extract<SessionInboundMessage, { type: "history.agents.clear_archived.request" }>,
   ): Promise<void> {
@@ -5963,6 +5981,16 @@ export class Session {
       failed: number;
       agentIds: string[];
       error: string | null;
+      ottoBytes?: number;
+      providerBytes?: number;
+      reclaimedBytes?: number;
+      unsupported?: number;
+      stale?: number;
+      outcomes?: Array<{
+        agentId: string;
+        outcome: "deleted" | "unsupported" | "stale" | "failed";
+        reclaimedBytes?: number;
+      }>;
     }) => {
       this.emit({
         type: "history.agents.clear_archived.response",
@@ -5971,9 +5999,11 @@ export class Session {
     };
 
     let agentIds: string[];
+    let records: StoredAgentRecord[];
     try {
+      records = await this.agentStorage.list();
       agentIds = selectArchivedForDeletion({
-        records: await this.agentStorage.list(),
+        records,
         olderThanDays: msg.olderThanDays,
         now: Date.now(),
       });
@@ -5984,6 +6014,43 @@ export class Session {
       return;
     }
 
+    const selectedRecords = records.filter((record) => agentIds.includes(record.id));
+    const cleanupScope = msg.cleanupScope ?? "otto";
+    const eligibleRecords =
+      cleanupScope === "otto"
+        ? selectedRecords
+        : selectedRecords.filter(
+            (record) =>
+              record.providerCleanup && isProviderCleanupManifestSafe(record.providerCleanup),
+          );
+    const ottoBytes = await Promise.all(
+      eligibleRecords.map(
+        async (record) => record.archiveBytes ?? this.agentStorage.getRecordBytes(record.id),
+      ),
+    ).then((values) => values.reduce((sum, value) => sum + value, 0));
+    const unsupported =
+      cleanupScope === "otto_and_provider"
+        ? selectedRecords.filter(
+            (record) =>
+              !record.providerCleanup || !isProviderCleanupManifestSafe(record.providerCleanup),
+          ).length
+        : 0;
+    const stale =
+      cleanupScope === "otto_and_provider"
+        ? selectedRecords.filter((record) => record.providerCleanup?.capability === "stale").length
+        : 0;
+    const providerBytes =
+      cleanupScope === "otto_and_provider"
+        ? eligibleRecords.reduce(
+            (sum, record) =>
+              sum +
+              (record.providerCleanup && isProviderCleanupManifestSafe(record.providerCleanup)
+                ? (record.providerCleanup.providerBytes ?? 0)
+                : 0),
+            0,
+          )
+        : 0;
+
     if (msg.dryRun) {
       emitResult({
         matched: agentIds.length,
@@ -5991,6 +6058,11 @@ export class Session {
         failed: 0,
         agentIds: [],
         error: null,
+        ottoBytes,
+        providerBytes,
+        reclaimedBytes: cleanupScope === "otto" ? ottoBytes : ottoBytes + providerBytes,
+        unsupported,
+        stale,
       });
       return;
     }
@@ -6006,15 +6078,49 @@ export class Session {
     const deleted: string[] = [];
     const affectedWorkspaceIds = new Set<string>();
     let failed = 0;
+    let reclaimedBytes = 0;
+    const outcomes: Array<{
+      agentId: string;
+      outcome: "deleted" | "unsupported" | "stale" | "failed";
+      reclaimedBytes?: number;
+    }> = [];
     for (const agentId of agentIds) {
       try {
+        const record = await this.agentStorage.get(agentId);
+        if (!record) throw new Error("Archived chat record disappeared before cleanup");
+        if (cleanupScope === "otto_and_provider") {
+          const manifest = record.providerCleanup;
+          const adapter = this.providerCleanupAdapters.get(record.provider);
+          if (
+            !adapter ||
+            !manifest ||
+            !isProviderCleanupManifestSafe(manifest) ||
+            !record.persistence
+          ) {
+            failed += 1;
+            outcomes.push({
+              agentId,
+              outcome: manifest?.capability === "stale" ? "stale" : "unsupported",
+            });
+            continue;
+          }
+          const providerResult = await adapter.delete({
+            persistence: record.persistence,
+            manifest,
+          });
+          reclaimedBytes += (record.archiveBytes ?? 0) + providerResult.reclaimedBytes;
+        } else {
+          reclaimedBytes += record.archiveBytes ?? 0;
+        }
         const workspaceId = await this.deleteAgentRecord(agentId);
         deleted.push(agentId);
+        outcomes.push({ agentId, outcome: "deleted", reclaimedBytes: record.archiveBytes ?? 0 });
         if (workspaceId) {
           affectedWorkspaceIds.add(workspaceId);
         }
       } catch (error) {
         failed += 1;
+        outcomes.push({ agentId, outcome: "failed" });
         this.sessionLogger.warn(
           { err: error, agentId, requestId: msg.requestId },
           "Failed to delete archived chat during clear",
@@ -6028,6 +6134,12 @@ export class Session {
       failed,
       agentIds: deleted,
       error: null,
+      ottoBytes,
+      providerBytes,
+      reclaimedBytes,
+      unsupported,
+      stale,
+      outcomes,
     });
 
     await this.emitWorkspaceUpdatesForWorkspaceIds(affectedWorkspaceIds);
@@ -6214,8 +6326,65 @@ export class Session {
       agentId,
     );
 
+    // Archive has stopped/flushed the provider before this inspection. The
+    // empty manifest is deliberate for providers without an explicit adapter:
+    // unsupported never means "guess a path".
+    const adapter = this.providerCleanupAdapters.get(archivedRecord.provider);
+    let providerCleanup;
+    if (adapter && archivedRecord.persistence) {
+      try {
+        providerCleanup = await adapter.inspect({
+          persistence: archivedRecord.persistence,
+          agentId,
+          cwd: archivedRecord.cwd,
+          referencedAgentIds: [],
+        });
+      } catch (error) {
+        this.sessionLogger.warn(
+          { err: error, agentId, provider: archivedRecord.provider },
+          "Provider archive cleanup inspection failed; retaining provider data",
+        );
+        providerCleanup = {
+          capability: "stale" as const,
+          provider: archivedRecord.provider,
+          sessionId: archivedRecord.persistence.sessionId,
+          entries: [],
+          providerBytes: 0,
+          validationToken: "inspection-failed",
+        };
+      }
+    } else {
+      providerCleanup = {
+        capability: "unsupported" as const,
+        provider: archivedRecord.provider,
+        sessionId: archivedRecord.persistence?.sessionId ?? "",
+        entries: [],
+        providerBytes: 0,
+        validationToken: "unsupported",
+      };
+    }
+    await this.agentStorage.setProviderCleanup(agentId, providerCleanup);
+    const storedAfterCleanup = await this.agentStorage.get(agentId);
+    if (storedAfterCleanup) {
+      // The byte field is part of the record, so calculate its fixed point
+      // before the final write. This keeps the displayed total equal to the
+      // bytes unlink() will reclaim, including the accounting field itself.
+      let archiveBytes = 0;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const next = Buffer.byteLength(
+          JSON.stringify({ ...storedAfterCleanup, archiveBytes }, null, 2),
+          "utf8",
+        );
+        if (next === archiveBytes) break;
+        archiveBytes = next;
+      }
+      await this.agentStorage.upsert({ ...storedAfterCleanup, archiveBytes });
+    }
+
     if (this.agentUpdates.hasSubscription()) {
-      const payload = await this.agentUpdates.emitStoredRecord(archivedRecord);
+      const payload = await this.agentUpdates.emitStoredRecord(
+        (await this.agentStorage.get(agentId)) ?? archivedRecord,
+      );
       if (payload.workspaceId) {
         await this.emitWorkspaceUpdateForWorkspaceId(payload.workspaceId);
       }

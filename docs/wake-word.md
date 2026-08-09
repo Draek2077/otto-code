@@ -42,7 +42,9 @@ audio frames are ready at once.
 
 The detector is disabled at startup. Enabling it explicitly requests
 microphone permission, starts the native detector, and shows the listening /
-detecting state. Detection stops the detector tap before the existing dictation
+detecting state. The native audio layer keeps its microphone-capable session
+inactive while neither detecting nor dictating, so operating-system microphone
+indicators appear only during active capture. Detection stops the detector tap before the existing dictation
 engine starts. Dictation runs for one utterance and ends through its existing
 silence timeout. The detector resumes after transcript processing unless the
 user disabled it, the app is backgrounded, permission is revoked, or an audio

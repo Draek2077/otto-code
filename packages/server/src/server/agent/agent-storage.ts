@@ -8,6 +8,7 @@ import { AgentFeatureSchema, AgentStatusSchema } from "../messages.js";
 import { toStoredAgentRecord } from "./agent-projections.js";
 import type { ManagedAgent } from "./agent-manager.js";
 import type { AgentSessionConfig } from "./agent-sdk-types.js";
+import type { ProviderCleanupManifest } from "@otto-code/protocol/agent-types";
 import { AgentOwnerSchema, daemonExecutionKey, type DaemonAgentOwner } from "./agent-owner.js";
 
 // Frozen personality snapshot as stored on disk. Roles are kept as a loose
@@ -109,6 +110,25 @@ const STORED_AGENT_SCHEMA = z.object({
   guardrailDenials: z.number().optional(),
   lastGuardrailDenialAt: z.string().optional(),
   archivedAt: z.string().nullable().optional(),
+  archiveBytes: z.number().int().nonnegative().optional(),
+  providerCleanup: z
+    .object({
+      capability: z.enum(["supported", "unsupported", "stale"]),
+      provider: z.string(),
+      sessionId: z.string(),
+      entries: z.array(
+        z.object({
+          resourceId: z.string(),
+          bytes: z.number().int().nonnegative(),
+          owner: z.enum(["otto", "provider"]),
+          referenceCount: z.number().int().nonnegative(),
+          validationToken: z.string(),
+        }),
+      ),
+      providerBytes: z.number().int().nonnegative(),
+      validationToken: z.string(),
+    })
+    .optional(),
   owner: AgentOwnerSchema.optional(),
 });
 
@@ -224,6 +244,28 @@ export class AgentStorage {
   async get(agentId: string): Promise<StoredAgentRecord | null> {
     await this.load();
     return this.cache.get(agentId) ?? null;
+  }
+
+  async getRecordBytes(agentId: string): Promise<number> {
+    await this.load();
+    const filePath = this.pathById.get(agentId);
+    if (!filePath) return 0;
+    try {
+      return (await fs.stat(filePath)).size;
+    } catch {
+      return 0;
+    }
+  }
+
+  async setProviderCleanup(
+    agentId: string,
+    providerCleanup: ProviderCleanupManifest,
+  ): Promise<void> {
+    await this.load();
+    await this.queueRecordWrite(agentId, () => {
+      const record = this.cache.get(agentId);
+      return record ? { ...record, providerCleanup } : null;
+    });
   }
 
   async findByDaemonExecution(owner: DaemonAgentOwner): Promise<StoredAgentRecord | null> {

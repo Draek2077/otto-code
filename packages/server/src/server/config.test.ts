@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -24,6 +24,20 @@ describe("server config", () => {
 
     expect(desktopConfig.desktopManaged).toBe(true);
     expect(standaloneConfig.desktopManaged).toBe(false);
+  });
+
+  test("preserves the dev CORS wildcard for the WebSocket origin gate", async () => {
+    const ottoHome = await mkdtemp(path.join(os.tmpdir(), "otto-config-cors-"));
+    roots.push(ottoHome);
+    await writeFile(
+      path.join(ottoHome, "config.json"),
+      JSON.stringify({ daemon: { cors: { allowedOrigins: ["*"] } } }),
+    );
+
+    expect(loadConfig(ottoHome, { env: {} }).corsAllowedOrigins).toContain("*");
+    expect(loadConfig(ottoHome, { env: { OTTO_CORS_ORIGINS: "*" } }).corsAllowedOrigins).toContain(
+      "*",
+    );
   });
 
   test("resolves bundled web UI path from source-tree modules", () => {

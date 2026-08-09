@@ -15,7 +15,10 @@ import { applyDeletedAgentResults } from "./use-delete-agent";
 export interface ClearArchivedAgentsRequest {
   /** Hosts to sweep. Unconnected hosts and hosts without the capability drop out. */
   serverIds: readonly string[];
+  /** Whether the request comes from the All hosts selection. */
+  scope: "allHosts" | "oneHost";
   olderThanDays?: number;
+  cleanupScope?: "otto" | "otto_and_provider";
 }
 
 /**
@@ -66,7 +69,9 @@ export function useClearArchivedAgents(): {
         return await requestClearArchivedAgents(
           {
             hosts: resolveSweepableHosts(request.serverIds),
+            scope: request.scope,
             olderThanDays: request.olderThanDays,
+            cleanupScope: request.cleanupScope,
           },
           {
             confirm: confirmDialog,

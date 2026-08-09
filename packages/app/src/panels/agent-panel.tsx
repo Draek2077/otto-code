@@ -1,7 +1,7 @@
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { isExternalPreviewServerId } from "@otto-code/protocol/messages";
 import type { TFunction } from "i18next";
-import { SquarePen } from "@/components/icons/material-icons";
+import { ChevronRight, SquarePen } from "@/components/icons/material-icons";
 import React, {
   memo,
   useCallback,
@@ -131,6 +131,7 @@ import {
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
+  contextMenuAnchorFromEvent,
 } from "@/components/ui/context-menu";
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
 import { derivePendingPermissionKey, normalizeAgentSnapshot } from "@/utils/agent-snapshots";
@@ -1409,6 +1410,17 @@ const AgentStreamSection = memo(function AgentStreamSection({
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
 }) {
   const { t } = useTranslation();
+  const [isChatContextMenuOpen, setIsChatContextMenuOpen] = useState(false);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [exportMenuAnchor, setExportMenuAnchor] = useState<{ x: number; y: number } | null>(null);
+  const exportMenuItemRef = useRef<View>(null);
+  const handleChatContextMenuOpenChange = useCallback((open: boolean) => {
+    setIsChatContextMenuOpen(open);
+    if (!open) {
+      setIsExportMenuOpen(false);
+      setExportMenuAnchor(null);
+    }
+  }, []);
   // While this panel slot is hidden, the selector returns the frozen tail
   // reference instead of the live one, so background agents' 48ms stream
   // flushes never re-render this section at all (the store notification sees
@@ -1487,6 +1499,25 @@ const AgentStreamSection = memo(function AgentStreamSection({
   const exportHtml = useCallback(() => exportChat("html"), [exportChat]);
   const exportMarkdown = useCallback(() => exportChat("markdown"), [exportChat]);
   const exportText = useCallback(() => exportChat("text"), [exportChat]);
+  const openExportMenu = useCallback((event: Parameters<typeof contextMenuAnchorFromEvent>[0]) => {
+    const pointerAnchor = contextMenuAnchorFromEvent(event);
+    const exportMenuItem = exportMenuItemRef.current;
+    if (!pointerAnchor || !exportMenuItem) return;
+    exportMenuItem.measureInWindow((x, _y, width) => {
+      setExportMenuAnchor({ x: x + width, y: pointerAnchor.y });
+      setIsExportMenuOpen(true);
+    });
+  }, []);
+  const handleExportMenuOpenChange = useCallback((open: boolean) => {
+    setIsExportMenuOpen(open);
+    if (!open) {
+      setIsChatContextMenuOpen(false);
+    }
+  }, []);
+  const exportMenuChevron = useMemo(
+    () => <ThemedChevronRight size={14} uniProps={foregroundMutedColorMapping} />,
+    [],
+  );
   const expandAll = useCallback(
     () => streamViewRef.current?.setAllExpandableContentExpanded(true),
     [streamViewRef],
@@ -1497,7 +1528,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
   );
 
   return (
-    <ContextMenu>
+    <ContextMenu open={isChatContextMenuOpen} onOpenChange={handleChatContextMenuOpenChange}>
       <ContextMenuTrigger style={styles.chatContextTrigger} testID="agent-chat-background">
         <AgentStreamView
           ref={streamViewRef}
@@ -1513,18 +1544,14 @@ const AgentStreamSection = memo(function AgentStreamSection({
         />
       </ContextMenuTrigger>
       <ContextMenuContent side="bottom" align="start" testID="agent-chat-context-menu">
-        <ContextMenuItem onSelect={exportJson} testID="agent-chat-export-json">
-          Export as JSON
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem onSelect={exportHtml} testID="agent-chat-export-html">
-          Export as HTML
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={exportMarkdown} testID="agent-chat-export-markdown">
-          Export as Markdown
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={exportText} testID="agent-chat-export-text">
-          Export as Text
+        <ContextMenuItem
+          closeOnSelect={false}
+          itemRef={exportMenuItemRef}
+          onSelect={openExportMenu}
+          testID="agent-chat-export-menu"
+          trailing={exportMenuChevron}
+        >
+          Export
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={expandAll} testID="agent-chat-expand-all">
@@ -1534,6 +1561,26 @@ const AgentStreamSection = memo(function AgentStreamSection({
           {t("message.expandCollapse.collapseAll")}
         </ContextMenuItem>
       </ContextMenuContent>
+      <ContextMenu
+        anchor={exportMenuAnchor}
+        open={isExportMenuOpen}
+        onOpenChange={handleExportMenuOpenChange}
+      >
+        <ContextMenuContent side="right" align="start" testID="agent-chat-export-context-menu">
+          <ContextMenuItem onSelect={exportJson} testID="agent-chat-export-json">
+            Export as JSON
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={exportHtml} testID="agent-chat-export-html">
+            Export as HTML
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={exportMarkdown} testID="agent-chat-export-markdown">
+            Export as Markdown
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={exportText} testID="agent-chat-export-text">
+            Export as Text
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
     </ContextMenu>
   );
 });
@@ -1975,6 +2022,7 @@ function AgentSessionUnavailableState({
 }
 
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
+const ThemedChevronRight = withUnistyles(ChevronRight);
 
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,

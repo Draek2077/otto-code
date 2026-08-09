@@ -11,6 +11,8 @@ export interface FileDropContextValue {
   hasSink: SharedValue<boolean>;
   /** Register the active sink. Pass a getter so the zone always reads the latest handlers. */
   registerSink: (getSink: () => FileDropSink | null) => () => void;
+  /** Explains the action that this zone will take for an accepted drop. */
+  feedbackLabel: string | undefined;
 }
 
 export const FileDropContext = createContext<FileDropContextValue | null>(null);

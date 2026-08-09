@@ -708,11 +708,12 @@ export function ContextMenuItem({
   pendingLabel,
   successLabel,
   closeOnSelect = true,
+  itemRef,
   testID,
   tooltip,
 }: PropsWithChildren<{
   description?: string;
-  onSelect?: () => void;
+  onSelect?: (event: GestureResponderEvent) => void;
   disabled?: boolean;
   destructive?: boolean;
   selected?: boolean;
@@ -726,6 +727,7 @@ export function ContextMenuItem({
   pendingLabel?: string;
   successLabel?: string;
   closeOnSelect?: boolean;
+  itemRef?: Ref<View | null>;
   testID?: string;
   tooltip?: string;
 }>): ReactElement {
@@ -753,13 +755,16 @@ export function ContextMenuItem({
       <Check size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
     ) : null);
 
-  const handleItemPress = useCallback(() => {
-    if (isDisabled) return;
-    if (closeOnSelect) {
-      setOpen(false);
-    }
-    onSelect?.();
-  }, [isDisabled, closeOnSelect, setOpen, onSelect]);
+  const handleItemPress = useCallback(
+    (event: GestureResponderEvent) => {
+      if (isDisabled) return;
+      if (closeOnSelect) {
+        setOpen(false);
+      }
+      onSelect?.(event);
+    },
+    [isDisabled, closeOnSelect, setOpen, onSelect],
+  );
 
   const itemPressableStyle = useCallback(
     ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => {
@@ -800,6 +805,7 @@ export function ContextMenuItem({
 
   const content = (
     <Pressable
+      ref={itemRef}
       testID={testID}
       accessibilityRole="button"
       disabled={isDisabled}

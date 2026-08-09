@@ -32,6 +32,7 @@ import {
   Eye,
   EyeOff,
   FilePlus,
+  Folder,
   FolderPlus,
   History,
   MoreVertical,
@@ -123,9 +124,7 @@ interface TreeRowItemProps {
   onShowHistory?: (entry: ExplorerEntry) => void;
   onViewChanges?: (entry: ExplorerEntry) => void;
   onShowContextMenu?: (request: EntryContextMenuRequest) => void;
-  /** All four are undefined on a host without `features.fileMutations`. */
-  onNewFile?: (entry: ExplorerEntry) => void;
-  onNewFolder?: (entry: ExplorerEntry) => void;
+  /** Both are undefined on a host without `features.fileMutations`. */
   onRename?: (entry: ExplorerEntry) => void;
   onDelete?: (entry: ExplorerEntry) => void;
   isInContext: boolean;
@@ -186,8 +185,6 @@ function TreeRowItem({
   onShowHistory,
   onViewChanges,
   onShowContextMenu,
-  onNewFile,
-  onNewFolder,
   onRename,
   onDelete,
   isInContext,
@@ -318,13 +315,28 @@ function TreeRowItem({
                   />
                 );
               }
-              if (loading) return <ActivityIndicator size="small" />;
+              if (loading) {
+                return (
+                  <View style={styles.treeLoadingIcon}>
+                    <ActivityIndicator size={iconSize.md} color={theme.colors.foregroundMuted} />
+                  </View>
+                );
+              }
               return <TreeChevron expanded={isExpanded} />;
             })()}
           </View>
-          <Text style={styles.entryName} numberOfLines={1}>
-            {entry.name}
-          </Text>
+          {isDirectory ? (
+            <View style={styles.directoryName}>
+              <Folder size={iconSize.md} color={theme.colors.foregroundMuted} />
+              <Text style={[styles.entryName, styles.directoryEntryName]} numberOfLines={1}>
+                {entry.name}
+              </Text>
+            </View>
+          ) : (
+            <Text style={styles.entryName} numberOfLines={1}>
+              {entry.name}
+            </Text>
+          )}
         </View>
         {showMenu ? (
           <DropdownMenu onOpenChange={setMenuOpen}>
@@ -336,7 +348,7 @@ function TreeRowItem({
               <MoreVertical size={iconSize.md} color={theme.colors.foregroundMuted} />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" width={220}>
-              <EntryMetaBlock entry={entry} />
+              <EntryMetaBlock entry={entry} showSize={entry.kind === "file"} />
               <DropdownMenuSeparator />
               {onToggleContextEntry ? (
                 <DropdownMenuItem
@@ -351,20 +363,6 @@ function TreeRowItem({
                   {isInContext
                     ? t("workspace.fileExplorer.context.removeFromContext")
                     : t("workspace.fileExplorer.context.addToContext")}
-                </DropdownMenuItem>
-              ) : null}
-              {entry.kind === "file" && onEditEntry ? (
-                <DropdownMenuItem leading={editLeading} onSelect={handleEdit}>
-                  {t("workspace.fileExplorer.context.edit")}
-                </DropdownMenuItem>
-              ) : null}
-              {entry.kind === "file" && onShowHistory ? (
-                <DropdownMenuItem
-                  leading={historyLeading}
-                  onSelect={handleShowHistory}
-                  testID="file-explorer-git-history"
-                >
-                  {t("gitFileHistory.open")}
                 </DropdownMenuItem>
               ) : null}
               {entry.kind === "file" && isChanged && onViewChanges ? (
@@ -387,13 +385,24 @@ function TreeRowItem({
                   {t("workspace.fileExplorer.context.download")}
                 </DropdownMenuItem>
               ) : null}
-              <EntryMutationMenuItems
-                entry={entry}
-                onNewFile={onNewFile}
-                onNewFolder={onNewFolder}
-                onRename={onRename}
-                onDelete={onDelete}
-              />
+              {hasEntryBottomActions(entry, onEditEntry, onShowHistory, onRename, onDelete) ? (
+                <DropdownMenuSeparator />
+              ) : null}
+              {entry.kind === "file" && onEditEntry ? (
+                <DropdownMenuItem leading={editLeading} onSelect={handleEdit}>
+                  {t("workspace.fileExplorer.context.edit")}
+                </DropdownMenuItem>
+              ) : null}
+              {entry.kind === "file" && onShowHistory ? (
+                <DropdownMenuItem
+                  leading={historyLeading}
+                  onSelect={handleShowHistory}
+                  testID="file-explorer-git-history"
+                >
+                  {t("gitFileHistory.open")}
+                </DropdownMenuItem>
+              ) : null}
+              <EntryMutationMenuItems entry={entry} onRename={onRename} onDelete={onDelete} />
             </DropdownMenuContent>
           </DropdownMenu>
         ) : null}
@@ -404,43 +413,35 @@ function TreeRowItem({
 
 interface EntryMutationItemsProps {
   entry: ExplorerEntry;
-  onNewFile?: (entry: ExplorerEntry) => void;
-  onNewFolder?: (entry: ExplorerEntry) => void;
   onRename?: (entry: ExplorerEntry) => void;
   onDelete?: (entry: ExplorerEntry) => void;
 }
 
+function hasEntryBottomActions(
+  entry: ExplorerEntry,
+  onEditEntry?: (entry: ExplorerEntry) => void,
+  onShowHistory?: (entry: ExplorerEntry) => void,
+  onRename?: (entry: ExplorerEntry) => void,
+  onDelete?: (entry: ExplorerEntry) => void,
+) {
+  return (entry.kind === "file" && (onEditEntry || onShowHistory)) || onRename || onDelete;
+}
+
 /**
- * The four things that change what is on disk, shared in spirit by the row's
+ * The two things that change what is on disk, shared in spirit by the row's
  * "..." dropdown and the pane's right-click menu (the two menu primitives have
  * different item components, so each gets a thin wrapper below).
  *
  * They sit below a separator, after everything that only reads, and Delete is
  * last and destructive-styled - the pointer never crosses it on the way to a
- * harmless item. All four are absent, not disabled, when the host cannot serve
+ * harmless item. Both are absent, not disabled, when the host cannot serve
  * them: an item that exists but refuses is a worse answer than no item.
  */
-function useEntryMutationHandlers({
-  entry,
-  onNewFile,
-  onNewFolder,
-  onRename,
-  onDelete,
-}: EntryMutationItemsProps) {
+function useEntryMutationHandlers({ entry, onRename, onDelete }: EntryMutationItemsProps) {
   const { theme } = useUnistyles();
   const iconSize = useIconSize();
-  const handleNewFile = useCallback(() => onNewFile?.(entry), [entry, onNewFile]);
-  const handleNewFolder = useCallback(() => onNewFolder?.(entry), [entry, onNewFolder]);
   const handleRename = useCallback(() => onRename?.(entry), [entry, onRename]);
   const handleDelete = useCallback(() => onDelete?.(entry), [entry, onDelete]);
-  const newFileLeading = useMemo(
-    () => <FilePlus size={iconSize.sm} color={theme.colors.foregroundMuted} />,
-    [iconSize.sm, theme.colors.foregroundMuted],
-  );
-  const newFolderLeading = useMemo(
-    () => <FolderPlus size={iconSize.sm} color={theme.colors.foregroundMuted} />,
-    [iconSize.sm, theme.colors.foregroundMuted],
-  );
   const renameLeading = useMemo(
     () => <Pencil size={iconSize.sm} color={theme.colors.foregroundMuted} />,
     [iconSize.sm, theme.colors.foregroundMuted],
@@ -450,12 +451,8 @@ function useEntryMutationHandlers({
     [iconSize.sm, theme.colors.destructive],
   );
   return {
-    handleNewFile,
-    handleNewFolder,
     handleRename,
     handleDelete,
-    newFileLeading,
-    newFolderLeading,
     renameLeading,
     deleteLeading,
   };
@@ -464,33 +461,14 @@ function useEntryMutationHandlers({
 function EntryMutationMenuItems(props: EntryMutationItemsProps) {
   const { t } = useTranslation();
   const handlers = useEntryMutationHandlers(props);
-  const { onNewFile, onNewFolder, onRename, onDelete } = props;
+  const { onRename, onDelete } = props;
 
-  if (!onNewFile && !onNewFolder && !onRename && !onDelete) {
+  if (!onRename && !onDelete) {
     return null;
   }
 
   return (
     <>
-      <DropdownMenuSeparator />
-      {onNewFile ? (
-        <DropdownMenuItem
-          leading={handlers.newFileLeading}
-          onSelect={handlers.handleNewFile}
-          testID="file-explorer-new-file"
-        >
-          {t("workspace.fileExplorer.context.newFile")}
-        </DropdownMenuItem>
-      ) : null}
-      {onNewFolder ? (
-        <DropdownMenuItem
-          leading={handlers.newFolderLeading}
-          onSelect={handlers.handleNewFolder}
-          testID="file-explorer-new-folder"
-        >
-          {t("workspace.fileExplorer.context.newFolder")}
-        </DropdownMenuItem>
-      ) : null}
       {onRename ? (
         <DropdownMenuItem
           leading={handlers.renameLeading}
@@ -517,33 +495,14 @@ function EntryMutationMenuItems(props: EntryMutationItemsProps) {
 function EntryMutationContextItems(props: EntryMutationItemsProps) {
   const { t } = useTranslation();
   const handlers = useEntryMutationHandlers(props);
-  const { onNewFile, onNewFolder, onRename, onDelete } = props;
+  const { onRename, onDelete } = props;
 
-  if (!onNewFile && !onNewFolder && !onRename && !onDelete) {
+  if (!onRename && !onDelete) {
     return null;
   }
 
   return (
     <>
-      <ContextMenuSeparator />
-      {onNewFile ? (
-        <ContextMenuItem
-          leading={handlers.newFileLeading}
-          onSelect={handlers.handleNewFile}
-          testID="file-explorer-context-menu-new-file"
-        >
-          {t("workspace.fileExplorer.context.newFile")}
-        </ContextMenuItem>
-      ) : null}
-      {onNewFolder ? (
-        <ContextMenuItem
-          leading={handlers.newFolderLeading}
-          onSelect={handlers.handleNewFolder}
-          testID="file-explorer-context-menu-new-folder"
-        >
-          {t("workspace.fileExplorer.context.newFolder")}
-        </ContextMenuItem>
-      ) : null}
       {onRename ? (
         <ContextMenuItem
           leading={handlers.renameLeading}
@@ -567,18 +526,20 @@ function EntryMutationContextItems(props: EntryMutationItemsProps) {
   );
 }
 
-function EntryMetaBlock({ entry }: { entry: ExplorerEntry }) {
+function EntryMetaBlock({ entry, showSize = true }: { entry: ExplorerEntry; showSize?: boolean }) {
   const { t } = useTranslation();
   return (
     <View style={styles.contextMetaBlock}>
-      <View style={styles.contextMetaRow}>
-        <Text style={styles.contextMetaLabel} numberOfLines={1}>
-          {t("workspace.fileExplorer.context.size")}
-        </Text>
-        <Text style={styles.contextMetaValue} numberOfLines={1} ellipsizeMode="tail">
-          {formatFileSize({ size: entry.size })}
-        </Text>
-      </View>
+      {showSize ? (
+        <View style={styles.contextMetaRow}>
+          <Text style={styles.contextMetaLabel} numberOfLines={1}>
+            {t("workspace.fileExplorer.context.size")}
+          </Text>
+          <Text style={styles.contextMetaValue} numberOfLines={1} ellipsizeMode="tail">
+            {formatFileSize({ size: entry.size })}
+          </Text>
+        </View>
+      ) : null}
       <View style={styles.contextMetaRow}>
         <Text style={styles.contextMetaLabel} numberOfLines={1}>
           {t("workspace.fileExplorer.context.modified")}
@@ -605,8 +566,6 @@ function EntryContextMenu({
   onToggleContextEntry,
   onShowHistory,
   onViewChanges,
-  onNewFile,
-  onNewFolder,
   onRename,
   onDelete,
   isInContext,
@@ -621,8 +580,6 @@ function EntryContextMenu({
   onToggleContextEntry?: (entry: ExplorerEntry) => void;
   onShowHistory?: (entry: ExplorerEntry) => void;
   onViewChanges?: (entry: ExplorerEntry) => void;
-  onNewFile?: (entry: ExplorerEntry) => void;
-  onNewFolder?: (entry: ExplorerEntry) => void;
   onRename?: (entry: ExplorerEntry) => void;
   onDelete?: (entry: ExplorerEntry) => void;
   isInContext: boolean;
@@ -684,7 +641,7 @@ function EntryContextMenu({
       <ContextMenuContent width={220} testID="file-explorer-context-menu">
         {entry ? (
           <>
-            <EntryMetaBlock entry={entry} />
+            <EntryMetaBlock entry={entry} showSize={entry.kind === "file"} />
             <ContextMenuSeparator />
             {onToggleContextEntry ? (
               <ContextMenuItem
@@ -699,20 +656,6 @@ function EntryContextMenu({
                 {isInContext
                   ? t("workspace.fileExplorer.context.removeFromContext")
                   : t("workspace.fileExplorer.context.addToContext")}
-              </ContextMenuItem>
-            ) : null}
-            {entry.kind === "file" && onEditEntry ? (
-              <ContextMenuItem leading={editLeading} onSelect={handleEdit}>
-                {t("workspace.fileExplorer.context.edit")}
-              </ContextMenuItem>
-            ) : null}
-            {entry.kind === "file" && onShowHistory ? (
-              <ContextMenuItem
-                leading={historyLeading}
-                onSelect={handleShowHistory}
-                testID="file-explorer-context-menu-git-history"
-              >
-                {t("gitFileHistory.open")}
               </ContextMenuItem>
             ) : null}
             {entry.kind === "file" && isChanged && onViewChanges ? (
@@ -735,13 +678,24 @@ function EntryContextMenu({
                 {t("workspace.fileExplorer.context.download")}
               </ContextMenuItem>
             ) : null}
-            <EntryMutationContextItems
-              entry={entry}
-              onNewFile={onNewFile}
-              onNewFolder={onNewFolder}
-              onRename={onRename}
-              onDelete={onDelete}
-            />
+            {hasEntryBottomActions(entry, onEditEntry, onShowHistory, onRename, onDelete) ? (
+              <ContextMenuSeparator />
+            ) : null}
+            {entry.kind === "file" && onEditEntry ? (
+              <ContextMenuItem leading={editLeading} onSelect={handleEdit}>
+                {t("workspace.fileExplorer.context.edit")}
+              </ContextMenuItem>
+            ) : null}
+            {entry.kind === "file" && onShowHistory ? (
+              <ContextMenuItem
+                leading={historyLeading}
+                onSelect={handleShowHistory}
+                testID="file-explorer-context-menu-git-history"
+              >
+                {t("gitFileHistory.open")}
+              </ContextMenuItem>
+            ) : null}
+            <EntryMutationContextItems entry={entry} onRename={onRename} onDelete={onDelete} />
           </>
         ) : null}
       </ContextMenuContent>
@@ -958,22 +912,6 @@ export function FileExplorerPane({
   const openNameSheet = useCallback((request: NameSheetRequest) => {
     setNameSheet(request);
   }, []);
-
-  const handleNewFileEntry = useMemo(() => {
-    if (!canMutateFiles) {
-      return undefined;
-    }
-    return (entry: ExplorerEntry) =>
-      openNameSheet({ mode: "create-file", parentPath: resolveCreateParentPath(entry) });
-  }, [canMutateFiles, openNameSheet]);
-
-  const handleNewFolderEntry = useMemo(() => {
-    if (!canMutateFiles) {
-      return undefined;
-    }
-    return (entry: ExplorerEntry) =>
-      openNameSheet({ mode: "create-folder", parentPath: resolveCreateParentPath(entry) });
-  }, [canMutateFiles, openNameSheet]);
 
   const handleRenameEntry = useMemo(() => {
     if (!canMutateFiles) {
@@ -1222,8 +1160,6 @@ export function FileExplorerPane({
         onShowHistory={handleShowHistoryEntry}
         onViewChanges={handleViewChangesEntry}
         onShowContextMenu={handleShowContextMenu}
-        onNewFile={handleNewFileEntry}
-        onNewFolder={handleNewFolderEntry}
         onRename={handleRenameEntry}
         onDelete={handleDeleteEntry}
         contextFilePaths={contextFilePaths}
@@ -1243,8 +1179,6 @@ export function FileExplorerPane({
       handleShowHistoryEntry,
       handleViewChangesEntry,
       handleShowContextMenu,
-      handleNewFileEntry,
-      handleNewFolderEntry,
       handleRenameEntry,
       handleDeleteEntry,
       isDirectoryLoading,
@@ -1528,8 +1462,6 @@ export function FileExplorerPane({
         onToggleContextEntry={handleToggleContextEntry}
         onShowHistory={handleShowHistoryEntry}
         onViewChanges={handleViewChangesEntry}
-        onNewFile={handleNewFileEntry}
-        onNewFolder={handleNewFolderEntry}
         onRename={handleRenameEntry}
         onDelete={handleDeleteEntry}
         isInContext={Boolean(
@@ -1549,15 +1481,6 @@ export function FileExplorerPane({
       ) : null}
     </View>
   );
-}
-
-/**
- * Where a "New file/folder" from a given row lands. A directory takes the new
- * entry inside itself; a file takes it alongside - the same rule VS Code uses,
- * and the one users expect when they right-click a file to add its neighbour.
- */
-function resolveCreateParentPath(entry: ExplorerEntry): string {
-  return entry.kind === "directory" ? entry.path : explorerParentPath(entry.path);
 }
 
 interface NameSheetRequest {
@@ -2222,8 +2145,6 @@ function TreeRowDispatcher({
   onShowHistory,
   onViewChanges,
   onShowContextMenu,
-  onNewFile,
-  onNewFolder,
   onRename,
   onDelete,
   contextFilePaths,
@@ -2242,8 +2163,6 @@ function TreeRowDispatcher({
   onShowHistory?: (entry: ExplorerEntry) => void;
   onViewChanges?: (entry: ExplorerEntry) => void;
   onShowContextMenu?: (request: EntryContextMenuRequest) => void;
-  onNewFile?: (entry: ExplorerEntry) => void;
-  onNewFolder?: (entry: ExplorerEntry) => void;
   onRename?: (entry: ExplorerEntry) => void;
   onDelete?: (entry: ExplorerEntry) => void;
   contextFilePaths: ReadonlySet<string>;
@@ -2273,8 +2192,6 @@ function TreeRowDispatcher({
       onShowHistory={onShowHistory}
       onViewChanges={onViewChanges}
       onShowContextMenu={onShowContextMenu}
-      onNewFile={onNewFile}
-      onNewFolder={onNewFolder}
       onRename={onRename}
       onDelete={onDelete}
       isInContext={contextFilePaths.has(entry.path)}
@@ -2562,6 +2479,23 @@ const styles = StyleSheet.create((theme) => ({
   entryIcon: {
     flexShrink: 0,
   },
+  treeLoadingIcon: {
+    width: compactUp(16),
+    height: compactUp(16),
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  directoryName: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1.5],
+    // The disclosure chevron occupies the same 16px column that a child
+    // file's icon gains through indentation. Pull the folder glyph back one
+    // row gap so both glyphs share that column.
+    marginLeft: -theme.spacing[2],
+    minWidth: 0,
+  },
   entryName: {
     flex: 1,
     color: theme.colors.foreground,
@@ -2570,6 +2504,9 @@ const styles = StyleSheet.create((theme) => ({
       xs: theme.fontSize.sm + 2,
       md: theme.fontSize.sm,
     },
+  },
+  directoryEntryName: {
+    marginLeft: 2,
   },
   menuButton: {
     // 1.5x on compact to wrap the kebab icon's compact upscale.

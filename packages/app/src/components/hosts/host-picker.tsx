@@ -55,6 +55,7 @@ function formatActiveConnectionLabel(connection: ActiveConnection): string {
 export interface HostPickerOptionProps {
   serverId: string;
   label: string;
+  description?: string;
   showActiveConnection: boolean;
   selected?: boolean;
   active: boolean;
@@ -66,6 +67,7 @@ export interface HostPickerOptionProps {
 export function HostPickerOption({
   serverId,
   label,
+  description,
   showActiveConnection,
   selected,
   active,
@@ -110,7 +112,7 @@ export function HostPickerOption({
   return (
     <ComboboxItem
       label={label}
-      description={connectionLabel}
+      description={description ?? connectionLabel}
       leadingSlot={leadingSlot}
       trailingSlot={trailingSlot}
       selected={selected}
@@ -129,12 +131,14 @@ const SYSTEM_HOST_PICKER_OPTION_LABELS: Record<"add" | "all" | "enableBuiltInDae
 
 function SystemHostPickerOption({
   active,
+  description,
   selected,
   onPress,
   kind,
   testID,
 }: {
   active: boolean;
+  description?: string;
   selected?: boolean;
   onPress: () => void;
   kind: "add" | "all" | "enableBuiltInDaemon";
@@ -151,6 +155,7 @@ function SystemHostPickerOption({
   return (
     <ComboboxItem
       label={label}
+      description={description}
       leadingSlot={leadingSlot}
       selected={selected}
       active={active}
@@ -180,6 +185,8 @@ export interface HostPickerProps {
   desktopMinWidth?: number;
   addHostTestID?: string;
   hostOptionTestID?: (serverId: string) => string;
+  /** Optional muted inline value shown beside a host or system option. */
+  optionDescriptions?: Record<string, string>;
   children: ReactNode;
 }
 
@@ -203,6 +210,7 @@ export function HostPicker({
   desktopMinWidth,
   addHostTestID,
   hostOptionTestID,
+  optionDescriptions,
   children,
 }: HostPickerProps): ReactElement {
   const localServerId = useLocalDaemonServerId();
@@ -212,16 +220,33 @@ export function HostPicker({
   );
 
   const options = useMemo(() => {
-    const hostOptions = orderedHosts.map((host) => ({ id: host.serverId, label: host.label }));
-    if (includeAllHost) hostOptions.unshift({ id: ALL_HOSTS_OPTION_ID, label: "All hosts" });
-    if (includeAddHost) hostOptions.push({ id: ADD_HOST_OPTION_ID, label: "Add host" });
+    const hostOptions = orderedHosts.map((host) => ({
+      id: host.serverId,
+      label: host.label,
+      description: optionDescriptions?.[host.serverId],
+    }));
+    if (includeAllHost)
+      hostOptions.unshift({
+        id: ALL_HOSTS_OPTION_ID,
+        label: "All hosts",
+        description: optionDescriptions?.[ALL_HOSTS_OPTION_ID],
+      });
+    if (includeAddHost)
+      hostOptions.push({ id: ADD_HOST_OPTION_ID, label: "Add host", description: undefined });
     if (includeEnableBuiltInDaemon)
       hostOptions.push({
         id: ENABLE_BUILT_IN_DAEMON_OPTION_ID,
         label: "Enable built-in daemon",
+        description: undefined,
       });
     return hostOptions;
-  }, [orderedHosts, includeAllHost, includeAddHost, includeEnableBuiltInDaemon]);
+  }, [
+    orderedHosts,
+    includeAllHost,
+    includeAddHost,
+    includeEnableBuiltInDaemon,
+    optionDescriptions,
+  ]);
 
   const isSearchable = searchable === true && orderedHosts.length > SEARCHABLE_THRESHOLD;
 
@@ -264,6 +289,7 @@ export function HostPicker({
           <SystemHostPickerOption
             kind="all"
             active={active}
+            description={option.description}
             selected={selected}
             onPress={onPress}
           />
@@ -278,6 +304,7 @@ export function HostPicker({
         <HostPickerOption
           serverId={option.id}
           label={option.label}
+          description={option.description}
           showActiveConnection={showActiveConnection === true}
           selected={selected}
           active={active}

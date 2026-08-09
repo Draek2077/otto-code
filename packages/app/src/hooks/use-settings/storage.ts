@@ -37,7 +37,7 @@ export type WorkspaceToolsPlacement = "header" | "workspaceList";
 // (default) or the workspace title bar ahead of the other tools.
 export type TeamSwitcherPlacement = "sidebar" | "titlebar";
 // Default rendering mode for a pane's tab strip: the horizontal row at the top
-// (default) or a vertical rail on the left edge. Per-pane `tabOrientation` on
+// or a vertical rail on the left edge (default). Per-pane `tabOrientation` on
 // `SplitPane` overrides this for panes that explicitly set it.
 export type TabOrientation = "horizontal" | "vertical";
 export type ColorSchemeMode = "light" | "dark" | "system";
@@ -600,7 +600,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   compactSidebarTopSpacing: false,
   workspaceToolsPlacement: "header",
   teamSwitcherPlacement: "sidebar",
-  defaultTabOrientation: "horizontal",
+  defaultTabOrientation: "vertical",
   verticalTabRailWidth: null,
   mountedWorkspaceLimit: DEFAULT_MOUNTED_WORKSPACE_LIMIT,
   mountedTabLimit: null,

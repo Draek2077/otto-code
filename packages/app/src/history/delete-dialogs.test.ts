@@ -44,18 +44,18 @@ describe("resolveDeleteAgentDialog", () => {
   it("discloses that the provider keeps its own transcript", () => {
     const dialog = resolveDeleteAgentDialog({ title: "x", provider: "claude" });
     expect(dialog.message).toContain("Claude Code's own transcript on the host is left in place");
-    expect(dialog.message).toMatch(/still be read or resumed outside Otto/);
+    expect(dialog.message).toMatch(/still be read or resumed\./);
   });
 
-  it("scopes the irreversibility claim to Otto's record", () => {
+  it("states that deleting the chat cannot be undone", () => {
     const dialog = resolveDeleteAgentDialog({ title: "x", provider: "claude" });
-    expect(dialog.message).toContain("Otto's side of this can't be undone.");
+    expect(dialog.message).toContain("This change cannot be undone.");
   });
 
   it("falls back to a generic subject for an untitled chat", () => {
     for (const title of [null, undefined, "", "   "]) {
       const dialog = resolveDeleteAgentDialog({ title, provider: "codex" });
-      expect(dialog.message).toContain("Otto's record of this chat is deleted permanently");
+      expect(dialog.message).toContain("The record for this chat will be deleted permanently");
       expect(dialog.message).not.toContain('""');
     }
   });
@@ -69,34 +69,38 @@ describe("resolveDeleteAgentDialog", () => {
 
 describe("resolveClearArchivedDialog", () => {
   it("uses singular copy for one match", () => {
-    const dialog = resolveClearArchivedDialog({ matched: 1 });
+    const dialog = resolveClearArchivedDialog({ matched: 1, scope: "oneHost" });
     expect(dialog.title).toBe("Clear 1 archived chat?");
-    expect(dialog.message).toContain("records for 1 archived chat.");
+    expect(dialog.message).toContain("1 archived chat on this host.");
   });
 
   it("uses plural copy and the real count for many", () => {
-    const dialog = resolveClearArchivedDialog({ matched: 143 });
+    const dialog = resolveClearArchivedDialog({ matched: 143, scope: "oneHost" });
     expect(dialog.title).toBe("Clear 143 archived chats?");
-    expect(dialog.message).toContain("records for 143 archived chats.");
+    expect(dialog.message).toContain("143 archived chats on this host.");
   });
 
   it("promises active chats are untouched", () => {
-    const dialog = resolveClearArchivedDialog({ matched: 5 });
-    expect(dialog.message).toContain("Chats you haven't archived are untouched.");
+    const dialog = resolveClearArchivedDialog({ matched: 5, scope: "oneHost" });
+    expect(dialog.message).toContain("Active chats are not affected.");
   });
 
   it("repeats the provider-transcript disclosure - bulk is not a back door", () => {
-    const dialog = resolveClearArchivedDialog({ matched: 5 });
-    expect(dialog.message).toContain(
-      "The agent providers' own transcripts on the host are left in place",
-    );
+    const dialog = resolveClearArchivedDialog({ matched: 5, scope: "oneHost" });
+    expect(dialog.message).toContain("Provider transcripts remain on the host.");
   });
 
   it("is destructive", () => {
-    const dialog = resolveClearArchivedDialog({ matched: 5 });
+    const dialog = resolveClearArchivedDialog({ matched: 5, scope: "oneHost" });
     expect(dialog.destructive).toBe(true);
     expect(dialog.confirmLabel).toBe("Clear");
     expect(dialog.checkboxLabel).toBeUndefined();
+  });
+
+  it("states when the All hosts selection affects every host", () => {
+    const dialog = resolveClearArchivedDialog({ matched: 5, scope: "allHosts" });
+    expect(dialog.message).toContain("5 archived chats across all hosts.");
+    expect(dialog.message).toContain("Provider transcripts remain on the hosts.");
   });
 });
 
@@ -132,7 +136,7 @@ describe("active language", () => {
 
   it("translates the bulk clear and its counts", async () => {
     await i18n.changeLanguage("zh-CN");
-    const dialog = resolveClearArchivedDialog({ matched: 5 });
+    const dialog = resolveClearArchivedDialog({ matched: 5, scope: "oneHost" });
 
     expect(dialog.title).toBe("清空 5 个已归档对话？");
     expect(dialog.confirmLabel).toBe("清空");

@@ -80,11 +80,11 @@ describe("buildWorkspaceTabMenuEntries", () => {
     expect(entries.filter((entry) => entry.kind === "item").map((entry) => entry.label)).toEqual([
       "Copy resume command",
       "Copy chat id",
-      "Rename",
       "Close to the left",
       "Close to the right",
       "Close other tabs",
       "Reload chat",
+      "Rename",
       "Close",
     ]);
   });
@@ -112,10 +112,10 @@ describe("buildWorkspaceTabMenuEntries", () => {
     // Copy resume command / copy agent id / reload agent are developer surfaces;
     // the tab-management entries (close variants) remain.
     expect(entries.filter((entry) => entry.kind === "item").map((entry) => entry.label)).toEqual([
-      "Rename",
       "Close to the left",
       "Close to the right",
       "Close other tabs",
+      "Rename",
       "Close",
     ]);
   });
@@ -143,11 +143,11 @@ describe("buildWorkspaceTabMenuEntries", () => {
     expect(entries.filter((entry) => entry.kind === "item").map((entry) => entry.label)).toEqual([
       "Copy resume command",
       "Copy chat id",
-      "Rename",
       "Close tabs above",
       "Close tabs below",
       "Close other tabs",
       "Reload chat",
+      "Rename",
       "Close",
     ]);
   });
@@ -247,7 +247,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
     expect(onRenameTab).toHaveBeenCalledWith(tab);
   });
 
-  it("leads with copy terminal id, then rename, for terminal tabs", () => {
+  it("leads with copy terminal id and places rename after the close actions", () => {
     const onRenameTab = vi.fn();
     const terminalTab: WorkspaceTabDescriptor = {
       key: "terminal_abc",
@@ -275,10 +275,10 @@ describe("buildWorkspaceTabMenuEntries", () => {
     });
 
     const labels = entries.filter((entry) => entry.kind === "item").map((entry) => entry.label);
-    // Copying the terminal id leads, then rename - a terminal tab's identity is
-    // the thing you most often want off it.
+    // Copying the terminal id leads; rename belongs with the trailing tab
+    // management actions.
     expect(labels[0]).toBe("Copy terminal id");
-    expect(labels[1]).toBe("Rename");
+    expect(labels.at(-2)).toBe("Rename");
     expect(labels).not.toContain("Copy resume command");
     expect(labels).not.toContain("Copy agent id");
     expect(labels).not.toContain("Copy file path");
@@ -387,14 +387,10 @@ describe("buildWorkspaceTabMenuEntries", () => {
       testID: terminalRename.testID,
     });
 
-    const agentSeparator = agentEntries
-      .slice(agentEntries.indexOf(agentRename) + 1)
-      .find((entry) => entry.kind === "separator");
-    const terminalSeparator = terminalEntries
-      .slice(terminalEntries.indexOf(terminalRename) + 1)
-      .find((entry) => entry.kind === "separator");
-    expect(agentSeparator?.key).toBe("rename-separator");
-    expect(terminalSeparator?.key).toBe("rename-separator");
+    const agentSeparator = agentEntries[agentEntries.indexOf(agentRename) - 1];
+    const terminalSeparator = terminalEntries[terminalEntries.indexOf(terminalRename) - 1];
+    expect(agentSeparator).toEqual({ kind: "separator", key: "reload-rename-separator" });
+    expect(terminalSeparator).toEqual({ kind: "separator", key: "reload-rename-separator" });
   });
 });
 

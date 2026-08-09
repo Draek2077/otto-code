@@ -331,7 +331,7 @@ function resolveCorsAllowedOrigins(
     : [];
   const persistedCorsOrigins = persisted.daemon?.cors?.allowedOrigins ?? [];
   return Array.from(
-    new Set([...persistedCorsOrigins, ...envCorsOrigins].filter((s) => s.length > 0 && s !== "*")),
+    new Set([...persistedCorsOrigins, ...envCorsOrigins].filter((s) => s.length > 0)),
   );
 }
 

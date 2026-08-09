@@ -2,6 +2,9 @@ import type { TranslationResources } from "./en";
 
 export const es: TranslationResources = {
   common: {
+    drop: {
+      openInTextEditor: "Abrir en el editor de texto",
+    },
     back: "Atrás",
     loading: "Cargando...",
     actions: {
@@ -462,12 +465,18 @@ export const es: TranslationResources = {
     emptyForHost: "No hay sesiones para este host",
     emptyActive: "No hay chats activos",
     emptyArchived: "No hay chats archivados",
-    storageUsage: "Los chats archivados usan {{size}}",
-    storageUsageForHost: "{{host}}: {{size}}",
     filters: {
       all: "Todos",
       active: "Activos",
       archived: "Archivados",
+    },
+    columns: {
+      conversation: "Conversation",
+      project: "Project",
+      host: "Host",
+      branch: "Branch",
+      lastActive: "Last active",
+      size: "Size",
     },
     actions: {
       loadMore: "Cargar más",
@@ -489,13 +498,15 @@ export const es: TranslationResources = {
       clearArchived: {
         titleOne: "¿Vaciar 1 chat archivado?",
         titleMany: "¿Vaciar {{count}} chats archivados?",
-        recordLineOne:
-          "Elimina permanentemente los registros de Otto de 1 chat archivado. Los chats que no has archivado no se tocan.",
-        recordLineMany:
-          "Elimina permanentemente los registros de Otto de {{count}} chats archivados. Los chats que no has archivado no se tocan.",
-        transcriptLine:
-          "Las transcripciones propias de los proveedores en el host se dejan intactas: esto vacía el historial de Otto, no las conversaciones del disco.",
-        undoLine: "La parte de Otto no se puede deshacer.",
+        recordLineOneHostOne:
+          "Esto elimina permanentemente 1 chat archivado en este host. Los chats activos no se ven afectados. Las transcripciones del proveedor permanecen en el host.",
+        recordLineOneHostMany:
+          "Esto elimina permanentemente {{count}} chats archivados en este host. Los chats activos no se ven afectados. Las transcripciones del proveedor permanecen en el host.",
+        recordLineAllHostsOne:
+          "Esto elimina permanentemente 1 chat archivado en todos los hosts. Los chats activos no se ven afectados. Las transcripciones del proveedor permanecen en los hosts.",
+        recordLineAllHostsMany:
+          "Esto elimina permanentemente {{count}} chats archivados en todos los hosts. Los chats activos no se ven afectados. Las transcripciones del proveedor permanecen en los hosts.",
+        undoLine: "Esta acción no se puede deshacer.",
         confirm: "Vaciar",
       },
       nothingToClear: {

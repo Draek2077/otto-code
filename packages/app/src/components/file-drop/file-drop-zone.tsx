@@ -18,6 +18,8 @@ interface FileDropZoneProps {
   style?: StyleProp<ViewStyle>;
   /** Measures the drop area, for callers that use it as their outermost container. */
   onLayout?: (event: LayoutChangeEvent) => void;
+  /** Replaces the default attachment feedback for a differently-purposed drop zone. */
+  feedbackLabel?: string;
 }
 
 /**
@@ -25,7 +27,13 @@ interface FileDropZoneProps {
  * descendant calling `useFileDrop` - the drop area, the backdrop, and the consumer are
  * decoupled, so a consumer's layout can never collapse the backdrop.
  */
-export function FileDropZone({ children, disabled = false, style, onLayout }: FileDropZoneProps) {
+export function FileDropZone({
+  children,
+  disabled = false,
+  style,
+  onLayout,
+  feedbackLabel,
+}: FileDropZoneProps) {
   const isDragging = useSharedValue(false);
   const suppressed = useSharedValue(false);
   const hasSink = useSharedValue(false);
@@ -48,8 +56,8 @@ export function FileDropZone({ children, disabled = false, style, onLayout }: Fi
   const getSink = useCallback(() => activeGetSink.current?.() ?? null, []);
 
   const ctx = useMemo<FileDropContextValue>(
-    () => ({ isDragging, suppressed, hasSink, registerSink }),
-    [isDragging, suppressed, hasSink, registerSink],
+    () => ({ isDragging, suppressed, hasSink, registerSink, feedbackLabel }),
+    [isDragging, suppressed, hasSink, registerSink, feedbackLabel],
   );
 
   const containerRef = useDropListeners({ isDragging, suppressed, hasSink, getSink, disabled });

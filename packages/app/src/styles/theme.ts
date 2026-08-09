@@ -458,7 +458,7 @@ function buildLightSemanticColors(tint: LightThemeConfig) {
     surfaceDiffEmpty: tint.surfaceDiffEmpty, // Empty side of split diff rows
     surfaceSidebar: tint.surfaceSidebar, // Sidebar background (darker than main)
     surfaceSidebarHover: tint.surfaceSidebarHover,
-    surfaceWorkspace: tint.surface0, // Workspace main background
+    surfaceWorkspace: tint.surface1, // Workspace main background
     // The recessed well behind a segmented control's thumbs. Derived per mode
     // rather than pinned to one surface step, because the two ramps are not
     // symmetric: light is compressed at the top (#ffffff / #fafafa / #f4f4f5 sit
@@ -594,14 +594,14 @@ function buildLightSemanticColors(tint: LightThemeConfig) {
 // mirroring Twilight, which ships white-on-accent fills at ~2.5:1. Accent
 // fills therefore carry a dark warm ink (accentForeground) instead of white.
 const daylightColors = buildLightSemanticColors({
-  surface0: "#ffffff",
-  surface1: "#fafafa",
-  surface2: "#f4f4f5",
+  surface0: "#fffefc",
+  surface1: "#faf8f4",
+  surface2: "#f4f1ec",
   surface3: "#dcdce1", // was #e4e4e7 - deepened so elevated layers separate from the white base
   surface4: "#c3c3ca", // was #d4d4d8 - the bottom of the light ramp, pushed down for range
-  surfaceDiffEmpty: "#f6f6f6",
-  surfaceSidebar: "#f4f4f5",
-  surfaceSidebarHover: "#e9e9ec",
+  surfaceDiffEmpty: "#f7f5f0",
+  surfaceSidebar: "#f4f1ed",
+  surfaceSidebarHover: "#eae6e1",
   foreground: "#26262b", // was #37373c - charcoal pushed back toward ink for range; still off pure black
   foregroundMuted: "#55555e", // was #62626b - stronger secondary text
   scrollbarHandle: "#2f2f36",
@@ -893,14 +893,17 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
 // dark half of the System (auto) pair. Distinct from Graphite, which deepens
 // the base and goes monochrome (near-white accent).
 const neutralDarkColors = buildDarkSemanticColors({
-  surface0: "#1e1e22", // was #18181b - all dark surfaces lifted +2.5 L pts
-  surface1: "#252529",
-  surface2: "#323238",
+  // Twilight keeps its zinc character, with a barely perceptible blue cast
+  // borrowed from the theme accent so its surface hierarchy does not collapse
+  // into neutral grey.
+  surface0: "#1e1e23", // was #18181b - all dark surfaces lifted +2.5 L pts
+  surface1: "#25262c",
+  surface2: "#32343b",
   surface3: "#52525c", // lifted from #45454d - the dark ramp widens upward, not downward
   surface4: "#6e6e7a", // lifted from #585862
   surfaceDiffEmpty: "#2e2e33",
-  surfaceSidebar: "#19191d",
-  surfaceSidebarHover: "#212125",
+  surfaceSidebar: "#191a1f",
+  surfaceSidebarHover: "#212228",
   foregroundMuted: "#b6b6bf",
   scrollbarHandle: "#8b8b95",
   border: "#33333a",

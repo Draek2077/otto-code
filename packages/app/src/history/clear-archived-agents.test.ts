@@ -67,7 +67,7 @@ describe("requestClearArchivedAgents", () => {
   it("reports 'no host' rather than 'nothing to clear' when no host is eligible", async () => {
     const alert = alertFn();
     const d = deps({ alert });
-    const outcome = await requestClearArchivedAgents({ hosts: [] }, d);
+    const outcome = await requestClearArchivedAgents({ hosts: [], scope: "oneHost" }, d);
     expect(outcome).toBeNull();
     expect(d.confirm).not.toHaveBeenCalled();
     // "There are no archived chats" would be a claim we never verified.
@@ -78,7 +78,7 @@ describe("requestClearArchivedAgents", () => {
     const { host } = fakeHost({ serverId: "a", matched: 0 });
     const alert = alertFn();
 
-    await requestClearArchivedAgents({ hosts: [host] }, deps({ alert }));
+    await requestClearArchivedAgents({ hosts: [host], scope: "oneHost" }, deps({ alert }));
 
     expect(alert.mock.calls[0]![0].title).toBe("Nothing to clear");
   });
@@ -87,7 +87,7 @@ describe("requestClearArchivedAgents", () => {
     const { host, calls } = fakeHost({ serverId: "a", matched: 0 });
     const d = deps();
 
-    const outcome = await requestClearArchivedAgents({ hosts: [host] }, d);
+    const outcome = await requestClearArchivedAgents({ hosts: [host], scope: "oneHost" }, d);
 
     expect(outcome).toBeNull();
     expect(d.confirm).not.toHaveBeenCalled();
@@ -101,18 +101,31 @@ describe("requestClearArchivedAgents", () => {
     const confirm = confirmFn(true);
     const d = deps({ confirm });
 
-    const outcome = await requestClearArchivedAgents({ hosts: [a.host, b.host] }, d);
+    const outcome = await requestClearArchivedAgents(
+      { hosts: [a.host, b.host], scope: "allHosts" },
+      d,
+    );
 
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(confirm.mock.calls[0]![0].title).toBe("Clear 7 archived chats?");
-    expect(outcome).toEqual({ matched: 7, deleted: 7, failed: 0, skippedHosts: [] });
+    expect(outcome).toEqual({
+      matched: 7,
+      deleted: 7,
+      failed: 0,
+      skippedHosts: [],
+      ottoBytes: 0,
+      providerBytes: 0,
+      reclaimedBytes: 0,
+      unsupported: 0,
+      stale: 0,
+    });
   });
 
   it("deletes nothing when the user cancels", async () => {
     const { host, calls } = fakeHost({ serverId: "a", matched: 5 });
     const d = deps({ confirm: confirmFn(false) });
 
-    const outcome = await requestClearArchivedAgents({ hosts: [host] }, d);
+    const outcome = await requestClearArchivedAgents({ hosts: [host], scope: "oneHost" }, d);
 
     expect(outcome).toBeNull();
     expect(calls.filter((call) => !call.dryRun)).toEqual([]);
@@ -124,7 +137,10 @@ describe("requestClearArchivedAgents", () => {
     const b = fakeHost({ serverId: "b", matched: 1, agentIds: ["b1"] });
     const onDeleted = vi.fn();
 
-    await requestClearArchivedAgents({ hosts: [a.host, b.host] }, deps({ onDeleted }));
+    await requestClearArchivedAgents(
+      { hosts: [a.host, b.host], scope: "allHosts" },
+      deps({ onDeleted }),
+    );
 
     expect(onDeleted).toHaveBeenCalledWith({ serverId: "a", agentIds: ["a1", "a2"] });
     expect(onDeleted).toHaveBeenCalledWith({ serverId: "b", agentIds: ["b1"] });
@@ -136,7 +152,7 @@ describe("requestClearArchivedAgents", () => {
     const reportError = vi.fn();
 
     const outcome = await requestClearArchivedAgents(
-      { hosts: [broken.host, healthy.host] },
+      { hosts: [broken.host, healthy.host], scope: "allHosts" },
       deps({ reportError }),
     );
 
@@ -147,6 +163,11 @@ describe("requestClearArchivedAgents", () => {
       deleted: 2,
       failed: 0,
       skippedHosts: ["broken"],
+      ottoBytes: 0,
+      providerBytes: 0,
+      reclaimedBytes: 0,
+      unsupported: 0,
+      stale: 0,
     });
     expect(reportError).toHaveBeenCalledTimes(1);
   });
@@ -155,7 +176,7 @@ describe("requestClearArchivedAgents", () => {
     const empty = fakeHost({ serverId: "empty", matched: 0 });
     const full = fakeHost({ serverId: "full", matched: 1, agentIds: ["f1"] });
 
-    await requestClearArchivedAgents({ hosts: [empty.host, full.host] }, deps());
+    await requestClearArchivedAgents({ hosts: [empty.host, full.host], scope: "allHosts" }, deps());
 
     expect(empty.calls.filter((call) => !call.dryRun)).toEqual([]);
     expect(full.calls.filter((call) => !call.dryRun)).toHaveLength(1);
@@ -167,11 +188,11 @@ describe("requestClearArchivedAgents", () => {
     const reportError = vi.fn();
 
     const outcome = await requestClearArchivedAgents(
-      { hosts: [host] },
+      { hosts: [host], scope: "oneHost" },
       deps({ alert, reportError }),
     );
 
-    expect(outcome).toEqual({ matched: 4, deleted: 0, failed: 4, skippedHosts: [] });
+    expect(outcome).toMatchObject({ matched: 4, deleted: 0, failed: 4, skippedHosts: [] });
     expect(reportError).toHaveBeenCalledTimes(1);
     expect(alert).toHaveBeenCalledTimes(1);
     expect(alert.mock.calls[0]![0].title).toBe("Some chats could not be cleared");
@@ -187,9 +208,12 @@ describe("requestClearArchivedAgents", () => {
     });
     const alert = alertFn();
 
-    const outcome = await requestClearArchivedAgents({ hosts: [host] }, deps({ alert }));
+    const outcome = await requestClearArchivedAgents(
+      { hosts: [host], scope: "oneHost" },
+      deps({ alert }),
+    );
 
-    expect(outcome).toEqual({ matched: 5, deleted: 3, failed: 2, skippedHosts: [] });
+    expect(outcome).toMatchObject({ matched: 5, deleted: 3, failed: 2, skippedHosts: [] });
     expect(alert.mock.calls[0]![0].message).toContain("Deleted 3.");
   });
 
@@ -197,7 +221,7 @@ describe("requestClearArchivedAgents", () => {
     const { host } = fakeHost({ serverId: "a", matched: 2, agentIds: ["a1", "a2"] });
     const alert = alertFn();
 
-    await requestClearArchivedAgents({ hosts: [host] }, deps({ alert }));
+    await requestClearArchivedAgents({ hosts: [host], scope: "oneHost" }, deps({ alert }));
 
     expect(alert).not.toHaveBeenCalled();
   });
@@ -205,7 +229,10 @@ describe("requestClearArchivedAgents", () => {
   it("passes olderThanDays through to both passes", async () => {
     const { host, calls } = fakeHost({ serverId: "a", matched: 1, agentIds: ["a1"] });
 
-    await requestClearArchivedAgents({ hosts: [host], olderThanDays: 30 }, deps());
+    await requestClearArchivedAgents(
+      { hosts: [host], scope: "oneHost", olderThanDays: 30 },
+      deps(),
+    );
 
     expect(calls).toEqual([
       { dryRun: true, olderThanDays: 30 },

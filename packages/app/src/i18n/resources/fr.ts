@@ -2,6 +2,9 @@ import type { TranslationResources } from "./en";
 
 export const fr: TranslationResources = {
   common: {
+    drop: {
+      openInTextEditor: "Ouvrir dans l’éditeur de texte",
+    },
     back: "Retour",
     loading: "Chargement...",
     actions: {
@@ -463,12 +466,18 @@ export const fr: TranslationResources = {
     emptyForHost: "Aucune session pour cet hôte",
     emptyActive: "Aucune conversation active",
     emptyArchived: "Aucune conversation archivée",
-    storageUsage: "Les conversations archivées utilisent {{size}}",
-    storageUsageForHost: "{{host}} : {{size}}",
     filters: {
       all: "Toutes",
       active: "Actives",
       archived: "Archivées",
+    },
+    columns: {
+      conversation: "Conversation",
+      project: "Project",
+      host: "Host",
+      branch: "Branch",
+      lastActive: "Last active",
+      size: "Size",
     },
     actions: {
       loadMore: "Charger plus",
@@ -490,13 +499,15 @@ export const fr: TranslationResources = {
       clearArchived: {
         titleOne: "Vider 1 conversation archivée ?",
         titleMany: "Vider {{count}} conversations archivées ?",
-        recordLineOne:
-          "Supprime définitivement les enregistrements d'Otto pour 1 conversation archivée. Les conversations que vous n'avez pas archivées ne sont pas touchées.",
-        recordLineMany:
-          "Supprime définitivement les enregistrements d'Otto pour {{count}} conversations archivées. Les conversations que vous n'avez pas archivées ne sont pas touchées.",
-        transcriptLine:
-          "Les transcriptions propres aux fournisseurs d'agents sur l'hôte sont laissées en place - ceci vide l'historique d'Otto, pas les conversations sur le disque.",
-        undoLine: "Côté Otto, cela ne peut pas être annulé.",
+        recordLineOneHostOne:
+          "Cette action supprime définitivement 1 conversation archivée sur cet hôte. Les conversations actives ne sont pas affectées. Les transcriptions du fournisseur restent sur l'hôte.",
+        recordLineOneHostMany:
+          "Cette action supprime définitivement {{count}} conversations archivées sur cet hôte. Les conversations actives ne sont pas affectées. Les transcriptions du fournisseur restent sur l'hôte.",
+        recordLineAllHostsOne:
+          "Cette action supprime définitivement 1 conversation archivée sur tous les hôtes. Les conversations actives ne sont pas affectées. Les transcriptions du fournisseur restent sur les hôtes.",
+        recordLineAllHostsMany:
+          "Cette action supprime définitivement {{count}} conversations archivées sur tous les hôtes. Les conversations actives ne sont pas affectées. Les transcriptions du fournisseur restent sur les hôtes.",
+        undoLine: "Cette action ne peut pas être annulée.",
         confirm: "Vider",
       },
       nothingToClear: {

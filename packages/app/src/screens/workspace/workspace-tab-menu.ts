@@ -314,19 +314,6 @@ export function buildWorkspaceTabMenuEntries(
     });
   }
 
-  if (tab.target.kind === "agent" || tab.target.kind === "terminal") {
-    entries.push({
-      kind: "item",
-      key: "rename",
-      label: labels.rename,
-      icon: "pencil",
-      testID: `${menuTestIDBase}-rename`,
-      onSelect: () => {
-        onRenameTab(tab);
-      },
-    });
-  }
-
   // Chats only. A terminal is bound to its workspace's directory, so "move" would
   // mean something quite different there; a chat is just a conversation that some
   // workspace happens to show.
@@ -404,6 +391,22 @@ export function buildWorkspaceTabMenuEntries(
         testID: `${menuTestIDBase}-reload-agent`,
         onSelect: () => {
           void onReloadAgent(agentId);
+        },
+      });
+    }
+    if (tab.target.kind === "agent" || tab.target.kind === "terminal") {
+      entries.push({
+        kind: "separator",
+        key: "reload-rename-separator",
+      });
+      entries.push({
+        kind: "item",
+        key: "rename",
+        label: labels.rename,
+        icon: "pencil",
+        testID: `${menuTestIDBase}-rename`,
+        onSelect: () => {
+          onRenameTab(tab);
         },
       });
     }

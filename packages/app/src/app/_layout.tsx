@@ -24,6 +24,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { View } from "react-native";
+import { useTranslation } from "react-i18next";
 import { GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -122,6 +123,10 @@ import {
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { createWorkspaceFileTabTarget } from "@/workspace/file-open";
+import { FileDropZone } from "@/components/file-drop/file-drop-zone";
+import { useFileDrop } from "@/components/file-drop/use-file-drop";
+import { getDroppedFilePath } from "@/components/file-drop/file-path";
+import type { DroppedItem } from "@/components/file-drop/types";
 import type { Href } from "expo-router";
 import { useSessionStore } from "@/stores/session-store";
 import {
@@ -969,7 +974,29 @@ function splitOpenTargetFilePath(value: string): { directory: string; file: stri
   };
 }
 
-function OpenTargetListener() {
+function OpenTargetFileDropSink({
+  onOpenTarget,
+}: {
+  onOpenTarget: (payload: OpenTargetEventPayload) => void;
+}) {
+  const handleGenericFiles = useCallback(
+    (items: DroppedItem[]) => {
+      const desktopHost = getDesktopHost();
+      for (const item of items) {
+        const path =
+          item.kind === "desktop-path" ? item.path : getDroppedFilePath(item.file, desktopHost);
+        if (path) onOpenTarget({ kind: "file", path });
+      }
+    },
+    [onOpenTarget],
+  );
+
+  useFileDrop({ onGenericFiles: handleGenericFiles });
+  return null;
+}
+
+function OpenTargetListener({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const chooseHost = useHostChooser();
   const hostRegistryLoaded = useHostRegistryLoaded();
@@ -1116,7 +1143,18 @@ function OpenTargetListener() {
     };
   }, [client, lastWorkspace, request, router]);
 
-  return null;
+  // Nested chat zones stop DOM propagation and retain their attachment behavior. This parent
+  // zone covers every other desktop surface and reuses the OS shell file-opening route above.
+  return (
+    <FileDropZone
+      style={layoutStyles.appDropZone}
+      disabled={getDesktopHost() === null}
+      feedbackLabel={t("common.drop.openInTextEditor")}
+    >
+      <OpenTargetFileDropSink onOpenTarget={queueTarget} />
+      {children}
+    </FileDropZone>
+  );
 }
 
 function AppWithSidebar({ children }: { children: ReactNode }) {
@@ -1199,11 +1237,12 @@ function AppShell() {
     <MobilePanelsProvider>
       <HorizontalScrollProvider>
         <OpenProjectListener />
-        <OpenTargetListener />
-        <AppWithSidebar>
-          <WorkspaceRouteNavigationBridge />
-          <RootStack />
-        </AppWithSidebar>
+        <OpenTargetListener>
+          <AppWithSidebar>
+            <WorkspaceRouteNavigationBridge />
+            <RootStack />
+          </AppWithSidebar>
+        </OpenTargetListener>
       </HorizontalScrollProvider>
     </MobilePanelsProvider>
   );
@@ -1302,6 +1341,9 @@ export default function RootLayout() {
 }
 
 const layoutStyles = StyleSheet.create((theme) => ({
+  appDropZone: {
+    flex: 1,
+  },
   appShell: {
     flex: 1,
   },

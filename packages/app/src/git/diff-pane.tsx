@@ -1136,11 +1136,9 @@ const DiffFileHeader = memo(function DiffFileHeader({
                   ) : null}
                 </Pressable>
               ) : null}
-              {showDir ? null : (
-                <View style={styles.fileIcon}>
-                  <SvgXml xml={getFileIconSvg(fileName)} width={16} height={16} />
-                </View>
-              )}
+              <View style={styles.fileIcon}>
+                <SvgXml xml={getFileIconSvg(fileName)} width={16} height={16} />
+              </View>
               <Text style={styles.fileName} numberOfLines={1}>
                 {fileName}
               </Text>

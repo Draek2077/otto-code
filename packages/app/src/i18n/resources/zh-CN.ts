@@ -2,6 +2,9 @@ import type { TranslationResources } from "./en";
 
 export const zhCN: TranslationResources = {
   common: {
+    drop: {
+      openInTextEditor: "在文本编辑器中打开",
+    },
     back: "返回",
     loading: "加载中...",
     actions: {
@@ -453,12 +456,18 @@ export const zhCN: TranslationResources = {
     emptyForHost: "此主机没有会话",
     emptyActive: "没有进行中的对话",
     emptyArchived: "没有已归档的对话",
-    storageUsage: "已归档聊天占用 {{size}}",
-    storageUsageForHost: "{{host}}：{{size}}",
     filters: {
       all: "全部",
       active: "进行中",
       archived: "已归档",
+    },
+    columns: {
+      conversation: "Conversation",
+      project: "Project",
+      host: "Host",
+      branch: "Branch",
+      lastActive: "Last active",
+      size: "Size",
     },
     actions: {
       loadMore: "加载更多",
@@ -479,11 +488,15 @@ export const zhCN: TranslationResources = {
       clearArchived: {
         titleOne: "清空 1 个已归档对话？",
         titleMany: "清空 {{count}} 个已归档对话？",
-        recordLineOne: "将永久删除 Otto 中 1 个已归档对话的记录。你未归档的对话不受影响。",
-        recordLineMany: "将永久删除 Otto 中 {{count}} 个已归档对话的记录。你未归档的对话不受影响。",
-        transcriptLine:
-          "各 Agent 提供方在主机上自己的记录会原样保留-这清空的是 Otto 的历史，而不是磁盘上的对话。",
-        undoLine: "Otto 这一侧的操作无法撤销。",
+        recordLineOneHostOne:
+          "此操作将永久删除此 Host 上的 1 个已归档对话。活动对话不受影响。提供方的记录会保留在该 Host 上。",
+        recordLineOneHostMany:
+          "此操作将永久删除此 Host 上的 {{count}} 个已归档对话。活动对话不受影响。提供方的记录会保留在该 Host 上。",
+        recordLineAllHostsOne:
+          "此操作将永久删除所有 Host 上的 1 个已归档对话。活动对话不受影响。提供方的记录会保留在各 Host 上。",
+        recordLineAllHostsMany:
+          "此操作将永久删除所有 Host 上的 {{count}} 个已归档对话。活动对话不受影响。提供方的记录会保留在各 Host 上。",
+        undoLine: "此操作无法撤销。",
         confirm: "清空",
       },
       nothingToClear: {

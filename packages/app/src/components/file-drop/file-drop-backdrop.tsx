@@ -38,7 +38,9 @@ export function FileDropBackdrop() {
       <View style={styles.backdrop} />
       <View style={styles.content}>
         <ThemedUpload size={32} uniProps={primaryIconColorMapping} />
-        <Text style={styles.text}>{t("composer.attachments.dropFilesHere")}</Text>
+        <Text style={styles.text}>
+          {ctx.feedbackLabel ?? t("composer.attachments.dropFilesHere")}
+        </Text>
       </View>
     </Animated.View>
   );

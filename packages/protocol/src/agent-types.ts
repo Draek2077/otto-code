@@ -180,6 +180,29 @@ export interface AgentPersistenceHandle {
   metadata?: AgentMetadata;
 }
 
+/** The two explicit archive cleanup scopes. */
+export type ArchiveCleanupScope = "otto" | "otto_and_provider";
+
+export type ProviderCleanupCapability = "supported" | "unsupported" | "stale";
+
+/** A provider-owned resource captured after the provider has flushed. */
+export interface ProviderCleanupManifestEntry {
+  resourceId: string;
+  bytes: number;
+  owner: "otto" | "provider";
+  referenceCount: number;
+  validationToken: string;
+}
+
+export interface ProviderCleanupManifest {
+  capability: ProviderCleanupCapability;
+  provider: AgentProvider;
+  sessionId: string;
+  entries: ProviderCleanupManifestEntry[];
+  providerBytes: number;
+  validationToken: string;
+}
+
 export type AgentPromptContentBlock =
   | { type: "text"; text: string }
   | { type: "image"; data: string; mimeType: string }
