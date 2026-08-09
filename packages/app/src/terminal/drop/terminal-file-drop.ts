@@ -1,7 +1,5 @@
 import type { DesktopHostBridge } from "@/desktop/host";
 
-const DANGEROUS_NON_WINDOWS_PATH_CHARS = /[`$|&>~#!^*;<]/g;
-
 function getLegacyFilePath(file: File): string | null {
   const path = Reflect.get(file, "path");
   return typeof path === "string" && path.length > 0 ? path : null;
@@ -67,20 +65,7 @@ export function extractTerminalDropPaths(
 }
 
 function escapeNonWindowsPath(path: string): string {
-  let nextPath = path;
-  if (nextPath.includes("\\")) {
-    nextPath = nextPath.replace(/\\/g, "\\\\");
-  }
-
-  nextPath = nextPath.replace(DANGEROUS_NON_WINDOWS_PATH_CHARS, "");
-
-  if (nextPath.includes("'") && nextPath.includes('"')) {
-    return `$'${nextPath.replace(/'/g, "\\'")}'`;
-  }
-  if (nextPath.includes("'")) {
-    return `'${nextPath.replace(/'/g, "\\'")}'`;
-  }
-  return `'${nextPath}'`;
+  return `'${path.replace(/'/g, "'\"'\"'")}'`;
 }
 
 function escapeWindowsPath(path: string): string {

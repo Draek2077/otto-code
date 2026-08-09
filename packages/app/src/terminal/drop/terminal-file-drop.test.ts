@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import type { DesktopHostBridge } from "@/desktop/host";
 import {
@@ -87,14 +89,25 @@ describe("terminal file drop", () => {
     ).toEqual([]);
   });
 
-  it("prepares POSIX paths with conservative escaping", () => {
+  it("preserves every POSIX path character while quoting", () => {
     const bridge: DesktopHostBridge = { platform: "darwin" };
 
     expect(prepareDroppedPathForTerminal("/tmp/my image.png", bridge)).toBe("'/tmp/my image.png'");
-    expect(prepareDroppedPathForTerminal("/tmp/a$(touch bad).png", bridge)).toBe(
-      "'/tmp/a(touch bad).png'",
+    expect(prepareDroppedPathForTerminal('/tmp/$& #~\\`|>!^*;<it\'s "quoted".png', bridge)).toBe(
+      "'/tmp/$& #~\\`|>!^*;<it'\"'\"'s \"quoted\".png'",
     );
-    expect(prepareDroppedPathForTerminal("/tmp/it's.png", bridge)).toBe("'/tmp/it\\'s.png'");
+  });
+
+  it.runIf(existsSync("/bin/sh"))("passes the original path as one POSIX shell argument", () => {
+    const bridge: DesktopHostBridge = { platform: "darwin" };
+    const path = '/tmp/$& #~\\`|>!^*;<it\'s "quoted".png';
+    const quotedPath = prepareDroppedPathForTerminal(path, bridge);
+
+    const result = execFileSync("/bin/sh", ["-c", `set -- ${quotedPath}; printf '%s' "$1"`], {
+      encoding: "utf8",
+    });
+
+    expect(result).toBe(path);
   });
 
   it("prepares Windows paths with space quoting", () => {
