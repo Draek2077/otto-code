@@ -462,6 +462,8 @@ export const es: TranslationResources = {
     emptyForHost: "No hay sesiones para este host",
     emptyActive: "No hay chats activos",
     emptyArchived: "No hay chats archivados",
+    storageUsage: "Los chats archivados usan {{size}}",
+    storageUsageForHost: "{{host}}: {{size}}",
     filters: {
       all: "Todos",
       active: "Activos",
@@ -961,6 +963,7 @@ export const es: TranslationResources = {
         close: "Cerca",
         cancel: "Cancelar",
         archive: "Archivo",
+        delete: "Eliminar",
         closeTerminalTitle: "¿Cerrar terminal?",
         closeTerminalMessage:
           "Cualquier proceso en ejecución en esta terminal se detendrá inmediatamente.",

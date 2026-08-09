@@ -469,6 +469,8 @@ export const en = {
     emptyForHost: "No sessions for this host",
     emptyActive: "No active chats",
     emptyArchived: "No archived chats",
+    storageUsage: "Archived chats use {{size}}",
+    storageUsageForHost: "{{host}}: {{size}}",
     filters: {
       all: "All",
       active: "Active",
@@ -973,14 +975,16 @@ export const en = {
         close: "Close",
         cancel: "Cancel",
         archive: "Archive",
+        delete: "Delete",
         closeTerminalTitle: "Close terminal?",
         closeTerminalMessage: "Any running process in this terminal will be stopped immediately.",
         archiveRunningAgentTitle: "Archive running chat?",
         archiveRunningAgentMessage:
           "This chat is still running. Archiving it will stop the chat and close the tab.",
-        archiveHistoryTitle: "Archive chat?",
-        archiveHistoryMessage: "Archiving a chat puts it in History.",
-        archiveHistorySuppress: "Suppress this warning next time",
+        archiveHistoryTitle: "Archive or Delete the chat?",
+        archiveHistoryMessage:
+          "Archiving a chat puts it in History, while Delete will remove it forever.",
+        archiveHistorySuppress: "Suppress this warning and Archive next time",
         closeTabsLeftTitle: "Close tabs to the left?",
         closeTabsRightTitle: "Close tabs to the right?",
         closeOtherTabsTitle: "Close other tabs?",

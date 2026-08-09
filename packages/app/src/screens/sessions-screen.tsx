@@ -14,7 +14,9 @@ import { HostFilter } from "@/components/hosts/host-filter";
 import { ALL_HOSTS_OPTION_ID } from "@/components/hosts/host-picker";
 import { useAgentHistory } from "@/hooks/use-agent-history";
 import { useClearArchivedAgents } from "@/history/use-clear-archived-agents";
-import { useHosts } from "@/runtime/host-runtime";
+import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
+import { useFetchQuery } from "@/data/query";
+import { formatFileSize } from "@/utils/format-file-size";
 import { useSessionStore } from "@/stores/session-store";
 import { buildOpenProjectRoute } from "@/utils/host-routes";
 
@@ -45,6 +47,46 @@ function SessionsScreenContent() {
     useAgentHistory({
       serverId: historyServerId,
     });
+  const historyStorage = useFetchQuery<{
+    totalBytes: number;
+    byHost: Array<{ serverId: string; totalBytes: number }>;
+  } | null>({
+    queryKey: [
+      "historyStorageUsage",
+      historyServerId,
+      hosts.map((host) => host.serverId).join(","),
+    ],
+    enabled: hosts.length > 0,
+    dataShape: "value",
+    staleTimeMs: 10_000,
+    queryFn: async () => {
+      const serverIds = historyServerId ? [historyServerId] : hosts.map((host) => host.serverId);
+      const payloads = await Promise.all(
+        serverIds.map(async (serverId) => {
+          const client = getHostRuntimeStore().getSnapshot(serverId)?.client;
+          if (
+            !client ||
+            useSessionStore.getState().sessions[serverId]?.serverInfo?.features?.historyStorage !==
+              true
+          ) {
+            return null;
+          }
+          return client.getHistoryStorageStats();
+        }),
+      );
+      const valid = payloads.flatMap((payload, index) =>
+        payload !== null && !payload.error
+          ? [{ serverId: serverIds[index], totalBytes: payload.totalBytes }]
+          : [],
+      );
+      return valid.length === 0
+        ? null
+        : {
+            totalBytes: valid.reduce((total, payload) => total + payload.totalBytes, 0),
+            byHost: valid,
+          };
+    },
+  });
 
   useEffect(() => {
     if (
@@ -171,6 +213,23 @@ function SessionsScreenContent() {
           </Button>
         ) : null}
       </View>
+      {historyStorage.data ? (
+        <View style={styles.storageUsage} testID="sessions-storage-usage">
+          <Text style={styles.storageTotal}>
+            {t("sessions.storageUsage", {
+              size: formatFileSize({ size: historyStorage.data.totalBytes }),
+            })}
+          </Text>
+          {historyStorage.data.byHost.map(({ serverId, totalBytes }) => (
+            <Text key={serverId} style={styles.storageHost}>
+              {t("sessions.storageUsageForHost", {
+                host: hosts.find((host) => host.serverId === serverId)?.label ?? serverId,
+                size: formatFileSize({ size: totalBytes }),
+              })}
+            </Text>
+          ))}
+        </View>
+      ) : null}
       {isInitialLoad ? (
         <View style={styles.loadingContainer}>
           <LoadingSpinner size="large" color={theme.colors.foregroundMuted} />
@@ -230,6 +289,20 @@ const styles = StyleSheet.create((theme) => ({
       md: theme.spacing[6],
     },
     paddingTop: theme.spacing[4],
+  },
+  storageUsage: {
+    paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
+    paddingTop: theme.spacing[2],
+  },
+  storageTotal: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+  },
+  storageHost: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    paddingTop: theme.spacing[1],
+    paddingLeft: theme.spacing[3],
   },
   emptyContainer: {
     flex: 1,

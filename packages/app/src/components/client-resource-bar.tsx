@@ -1,11 +1,19 @@
 import { useCallback, useMemo, useState, type ReactElement } from "react";
-import { ScrollView, Text, View, type LayoutChangeEvent } from "react-native";
+import { Pressable, ScrollView, Text, View, type LayoutChangeEvent } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
 import { useResourceSnapshot } from "@/diagnostics/resource-report/use-resource-snapshot";
+import {
+  canPersistPerformanceCaptures,
+  startPerformanceCapture,
+  stopPerformanceCapture,
+  usePerformanceCapture,
+} from "@/diagnostics/resource-report/performance-capture";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import { resolveResourceBarLayout } from "@/components/client-resource-bar.layout";
 import { compactUp, SPACING } from "@/styles/theme";
+import { metricSeverity, type MetricSeverity } from "@/diagnostics/resource-report/metric-severity";
 
 // A dense readout of everything the resource monitor currently knows, pinned to
 // the bottom of the Metrics screen or the whole app according to Settings.
@@ -23,7 +31,9 @@ import { compactUp, SPACING } from "@/styles/theme";
 
 export function ClientResourceBar(): ReactElement | null {
   const { latest, elapsedMs, samples, topGrowth, running } = useResourceSnapshot();
+  const capture = usePerformanceCapture();
   const isCompact = useIsCompactFormFactor();
+  const isDeveloperMode = useIsDeveloperMode();
   // Measured on the bar itself, so the strip reacts to the window rather than to
   // a breakpoint: a half-width desktop window gets the same treatment a small one
   // does. Padding is subtracted here because the layout estimate is content-only.
@@ -41,6 +51,26 @@ export function ClientResourceBar(): ReactElement | null {
       }),
     [barWidth, horizontalPadding, isCompact],
   );
+  const handleCapturePress = useCallback(() => {
+    if (capture.active) {
+      void stopPerformanceCapture();
+      return;
+    }
+    startPerformanceCapture();
+  }, [capture.active]);
+  const captureButtonStyle = useCallback(
+    ({ pressed }: { pressed: boolean }) => [
+      styles.captureButton,
+      pressed && styles.captureButtonPressed,
+    ],
+    [],
+  );
+  let captureLabel = "Start";
+  if (capture.saving) {
+    captureLabel = "Saving…";
+  } else if (capture.active) {
+    captureLabel = "Stop";
+  }
 
   if (!running && samples === 0) {
     return (
@@ -76,13 +106,14 @@ export function ClientResourceBar(): ReactElement | null {
     observers: formatCount(latest.metrics["query.observers"]),
     intervals: formatCount(latest.metrics["runtime.liveIntervals"]),
     timeouts: formatCount(latest.metrics["runtime.pendingTimeouts"]),
-    messages: formatCount(latest.metrics["traffic.messages"]),
-    bytes: formatBytes(latest.metrics["traffic.bytes"]),
-    handler: formatSeconds(latest.metrics["traffic.handlerMs"]),
+    messages: formatRate(latest.metrics["traffic.messagesPerSecond"], false),
+    bytes: formatRate(latest.metrics["traffic.bytesPerSecond"], true),
+    handler: formatRate(latest.metrics["traffic.handlerMsPerSecond"], false),
     ofSession: formatShare(latest.metrics["traffic.handlerMs"], latest.uptimeMs),
-    streamItems: formatCount(latest.metrics["store.session.sessions.*.agentStreamTail.*.length"]),
-    agents: formatCount(latest.metrics["store.session.sessions.*.agents.size"]),
-    workspaces: formatCount(latest.metrics["store.session.sessions.*.workspaces.size"]),
+    streams: formatCount(latest.metrics["chat.streams"]),
+    agents: formatCount(latest.metrics["chat.agents"]),
+    chats: formatCount(latest.metrics["chat.chats"]),
+    workspaces: formatCount(latest.metrics["chat.workspaces"]),
     observed: formatDuration(elapsedMs),
     samples: String(samples),
     growth: topGrowth
@@ -107,11 +138,16 @@ export function ClientResourceBar(): ReactElement | null {
               <View style={styles.fields}>
                 {group.fields.map((field) => {
                   const value = values[field.id] ?? MISSING_VALUE;
+                  const severity = severityForField(field.id, latest.metrics);
                   return (
                     <View key={field.id} style={styles.field}>
                       <Text style={styles.fieldLabel}>{isShort ? field.short : field.label}</Text>
                       <Text
-                        style={value === MISSING_VALUE ? styles.fieldValueMuted : styles.fieldValue}
+                        style={[
+                          value === MISSING_VALUE ? styles.fieldValueMuted : styles.fieldValue,
+                          severity === "warning" && styles.warningValue,
+                          severity === "danger" && styles.dangerValue,
+                        ]}
                       >
                         {value}
                       </Text>
@@ -122,9 +158,55 @@ export function ClientResourceBar(): ReactElement | null {
             </View>
           </View>
         ))}
+        {isDeveloperMode && canPersistPerformanceCaptures() && (
+          <View style={styles.captureGroup}>
+            <Text style={styles.groupTitle}>Capture</Text>
+            <Pressable
+              disabled={capture.saving}
+              onPress={handleCapturePress}
+              style={captureButtonStyle}
+              accessibilityRole="button"
+              accessibilityLabel={
+                capture.active ? "Stop performance capture" : "Start performance capture"
+              }
+            >
+              <Text style={styles.captureButtonText}>{captureLabel}</Text>
+            </Pressable>
+            {capture.lastSavedPath && <Text style={styles.captureStatus}>Saved</Text>}
+            {capture.error && <Text style={styles.captureError}>Save failed</Text>}
+          </View>
+        )}
       </ScrollView>
     </View>
   );
+}
+
+function severityForField(
+  fieldId: string,
+  metrics: Readonly<Record<string, number>>,
+): MetricSeverity {
+  const keyByField: Record<string, string> = {
+    fps: "frames.fps",
+    p95: "frames.p95FrameMs",
+    worst: "frames.worstFrameMs",
+    longFrames: "frames.longFrames",
+    heap: "heap.usedBytes",
+    domNodes: "dom.nodes",
+    queries: "query.queries",
+    unobserved: "query.unobserved",
+    observers: "query.observers",
+    intervals: "runtime.liveIntervals",
+    timeouts: "runtime.pendingTimeouts",
+    messages: "traffic.messagesPerSecond",
+    bytes: "traffic.bytesPerSecond",
+    handler: "traffic.handlerMsPerSecond",
+    streams: "chat.streams",
+    agents: "chat.agents",
+    chats: "chat.chats",
+    workspaces: "chat.workspaces",
+  };
+  const key = keyByField[fieldId];
+  return key ? metricSeverity(key, metrics[key], metrics["heap.limitBytes"]) : "normal";
 }
 
 // What a reading that this platform cannot supply renders as. Compared against
@@ -144,19 +226,20 @@ function formatCount(value: number | undefined): string {
   return String(Math.round(value));
 }
 
-function formatMs(value: number | undefined): string {
+function formatRate(value: number | undefined, bytes: boolean): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return MISSING_VALUE;
-  return `${value.toFixed(1)}ms`;
-}
-
-function formatSeconds(value: number | undefined): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return MISSING_VALUE;
-  return `${(value / 1000).toFixed(1)}s`;
+  if (bytes) return `${formatBytes(value)}/s`;
+  return `${formatCount(value)}/s`;
 }
 
 function formatShare(part: number | undefined, whole: number): string {
   if (typeof part !== "number" || !Number.isFinite(part) || whole <= 0) return MISSING_VALUE;
   return `${((part / whole) * 100).toFixed(2)}%`;
+}
+
+function formatMs(value: number | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return MISSING_VALUE;
+  return `${value.toFixed(1)}ms`;
 }
 
 function formatBytes(value: number | undefined): string {
@@ -277,6 +360,45 @@ const styles = StyleSheet.create((theme) => ({
     lineHeight: theme.fontSize.code + 3,
     fontFamily: theme.fontFamily.mono,
     color: theme.colors.foregroundMuted,
+  },
+  warningValue: {
+    color: theme.colors.statusWarningStrong,
+  },
+  dangerValue: {
+    color: theme.colors.statusDanger,
+  },
+  captureGroup: {
+    marginLeft: theme.spacing[4],
+    paddingLeft: theme.spacing[4],
+    borderLeftWidth: 1,
+    borderLeftColor: theme.colors.border,
+    gap: 2,
+    justifyContent: "center",
+  },
+  captureButton: {
+    alignSelf: "flex-start",
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: 1,
+    borderRadius: theme.borderRadius.sm,
+    backgroundColor: theme.colors.surfaceHover,
+  },
+  captureButtonPressed: {
+    opacity: 0.7,
+  },
+  captureButtonText: {
+    fontSize: theme.fontSize.xs,
+    lineHeight: theme.fontSize.xs + 2,
+    color: theme.colors.foreground,
+  },
+  captureStatus: {
+    fontSize: theme.fontSize.xs,
+    lineHeight: theme.fontSize.xs + 2,
+    color: theme.colors.success,
+  },
+  captureError: {
+    fontSize: theme.fontSize.xs,
+    lineHeight: theme.fontSize.xs + 2,
+    color: theme.colors.destructive,
   },
   offText: {
     fontSize: theme.fontSize.sm,

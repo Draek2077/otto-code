@@ -453,6 +453,8 @@ export const zhCN: TranslationResources = {
     emptyForHost: "此主机没有会话",
     emptyActive: "没有进行中的对话",
     emptyArchived: "没有已归档的对话",
+    storageUsage: "已归档聊天占用 {{size}}",
+    storageUsageForHost: "{{host}}：{{size}}",
     filters: {
       all: "全部",
       active: "进行中",
@@ -944,6 +946,7 @@ export const zhCN: TranslationResources = {
         close: "关闭",
         cancel: "取消",
         archive: "归档",
+        delete: "删除",
         closeTerminalTitle: "关闭 Terminal？",
         closeTerminalMessage: "此 Terminal 中任何正在运行的进程都会立即停止。",
         archiveRunningAgentTitle: "归档正在运行的 Agent？",

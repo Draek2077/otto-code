@@ -157,9 +157,15 @@ import { useWorkspace } from "@/stores/session-store-hooks";
 import { useWorkspaceTerminalSessionRetention } from "@/terminal/hooks/use-workspace-terminal-session-retention";
 import type { CheckoutStatusPayload } from "@/git/use-status-query";
 import { getPanelRegistration } from "@/panels/panel-registry";
-import { confirmDialog } from "@/utils/confirm-dialog";
-import { confirmArchiveChat } from "@/components/archive-chat-warning";
+import { alertDialog, confirmDialog } from "@/utils/confirm-dialog";
+import { confirmCloseChat } from "@/components/archive-chat-warning";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
+import { useDeleteAgent } from "@/history/use-delete-agent";
+import { isHistoryDeleteSupported } from "@/history/use-history-delete-feature";
+import {
+  resolveDeleteAgentDialog,
+  resolveHistoryDeleteUnsupportedDialog,
+} from "@/history/delete-dialogs";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { removeResidentBrowserWebview } from "@/components/browser-webview-resident";
 import { createWorkspaceBrowser, useBrowserStore } from "@/stores/browser-store";
@@ -564,6 +570,8 @@ interface MobileWorkspaceTabSwitcherProps {
   onCloseTabsAbove: (tabId: string) => Promise<void> | void;
   onCloseTabsBelow: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
+  onArchiveAgent: (agentId: string) => Promise<void> | void;
+  onDeleteAgent: (agentId: string) => Promise<void> | void;
 }
 
 function MobileActiveTabTrigger({
@@ -755,6 +763,8 @@ function MobileWorkspaceTabOption({
   onCloseTabsAbove,
   onCloseTabsBelow,
   onCloseOtherTabs,
+  onArchiveAgent,
+  onDeleteAgent,
 }: {
   tab: WorkspaceTabDescriptor;
   tabIndex: number;
@@ -774,6 +784,8 @@ function MobileWorkspaceTabOption({
   onCloseTabsAbove: (tabId: string) => Promise<void> | void;
   onCloseTabsBelow: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
+  onArchiveAgent: (agentId: string) => Promise<void> | void;
+  onDeleteAgent: (agentId: string) => Promise<void> | void;
 }) {
   const { t } = useTranslation();
   const isDeveloperMode = useIsDeveloperMode();
@@ -815,6 +827,8 @@ function MobileWorkspaceTabOption({
     onCloseTabsBefore: onCloseTabsAbove,
     onCloseTabsAfter: onCloseTabsBelow,
     onCloseOtherTabs,
+    onArchiveAgent,
+    onDeleteAgent,
     onMoveToWorkspace,
     canMoveToWorkspace: canMove,
     labels: tabMenuLabels,
@@ -887,6 +901,8 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
   onCloseTabsAbove,
   onCloseTabsBelow,
   onCloseOtherTabs,
+  onArchiveAgent,
+  onDeleteAgent,
 }: MobileWorkspaceTabSwitcherProps) {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
@@ -944,6 +960,8 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
           onCloseTabsAbove={onCloseTabsAbove}
           onCloseTabsBelow={onCloseTabsBelow}
           onCloseOtherTabs={onCloseOtherTabs}
+          onArchiveAgent={onArchiveAgent}
+          onDeleteAgent={onDeleteAgent}
         />
       );
     },
@@ -963,6 +981,8 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
       onCloseTabsAbove,
       onCloseTabsBelow,
       onCloseOtherTabs,
+      onArchiveAgent,
+      onDeleteAgent,
     ],
   );
 
@@ -2588,6 +2608,7 @@ function WorkspaceScreenContent({
     onTerminalCreateFailed: handleTerminalCreateFailed,
   });
   const { archiveAgent } = useArchiveAgent();
+  const { deleteAgent } = useDeleteAgent();
   const { settings } = useSettings();
 
   const { checkoutQuery, isCheckoutStatusLoading } = useWorkspaceCheckoutStatus({
@@ -3682,6 +3703,45 @@ function WorkspaceScreenContent({
     ],
   );
 
+  const handleArchiveAgentFromMenu = useCallback(
+    async (agentId: string) => {
+      if (!normalizedServerId) return;
+      const session = useSessionStore.getState().sessions[normalizedServerId];
+      const agent = session?.agents?.get(agentId) ?? session?.agentDetails?.get(agentId) ?? null;
+      if (agent?.status === "running") {
+        const confirmed = await confirmDialog({
+          title: t("workspace.tabs.confirmations.archiveRunningAgentTitle"),
+          message: t("workspace.tabs.confirmations.archiveRunningAgentMessage"),
+          confirmLabel: t("workspace.tabs.confirmations.archive"),
+          cancelLabel: t("workspace.tabs.confirmations.cancel"),
+          destructive: true,
+        });
+        if (!confirmed) return;
+      }
+      void archiveAgent({ serverId: normalizedServerId, agentId }).catch(() => {});
+    },
+    [archiveAgent, normalizedServerId, t],
+  );
+
+  const handleDeleteAgentFromMenu = useCallback(
+    async (agentId: string) => {
+      if (!normalizedServerId) return;
+      if (!isHistoryDeleteSupported(normalizedServerId)) {
+        await alertDialog(resolveHistoryDeleteUnsupportedDialog());
+        return;
+      }
+      const session = useSessionStore.getState().sessions[normalizedServerId];
+      const agent = session?.agents?.get(agentId) ?? session?.agentDetails?.get(agentId) ?? null;
+      const confirmed = await confirmDialog(
+        resolveDeleteAgentDialog({ title: agent?.title, provider: agent?.provider }),
+      );
+      if (confirmed) {
+        void deleteAgent({ serverId: normalizedServerId, agentId }).catch(() => {});
+      }
+    },
+    [deleteAgent, normalizedServerId],
+  );
+
   const handleCloseAgentTab = useCallback(
     async (input: { tabId: string; agentId: string }) => {
       const { tabId, agentId } = input;
@@ -3701,24 +3761,30 @@ function WorkspaceScreenContent({
         const isRunning = agent?.status === "running";
 
         if (closePolicy.kind === "archive-on-close") {
-          if (isRunning) {
-            const confirmed = await confirmDialog({
-              title: t("workspace.tabs.confirmations.archiveRunningAgentTitle"),
-              message: t("workspace.tabs.confirmations.archiveRunningAgentMessage"),
-              confirmLabel: t("workspace.tabs.confirmations.archive"),
-              cancelLabel: t("workspace.tabs.confirmations.cancel"),
-              destructive: true,
-            });
-            if (!confirmed) {
+          const choice = await confirmCloseChat({ forcePrompt: isRunning });
+          if (choice === "cancel") {
+            return;
+          }
+          if (choice === "delete") {
+            if (!isHistoryDeleteSupported(normalizedServerId)) {
+              await alertDialog(resolveHistoryDeleteUnsupportedDialog());
               return;
             }
-          } else {
-            // Archiving a stopped chat moves it to History; warn unless the
-            // user has suppressed this (checkbox in the confirmation).
-            const confirmed = await confirmArchiveChat();
-            if (!confirmed) {
+            const deleteConfirmed = await confirmDialog(
+              resolveDeleteAgentDialog({ title: agent?.title, provider: agent?.provider }),
+            );
+            if (!deleteConfirmed) {
               return;
             }
+            void deleteAgent({ serverId: normalizedServerId, agentId }).catch(() => {});
+            setHoveredCloseTabKey((current) => (current === tabId ? null : current));
+            if (persistenceKey) {
+              closeWorkspaceTabWithCleanup({
+                tabId,
+                target: { kind: "agent", agentId },
+              });
+            }
+            return;
           }
         }
 
@@ -3738,7 +3804,14 @@ function WorkspaceScreenContent({
         void archiveAgent({ serverId: normalizedServerId, agentId }).catch(() => {});
       });
     },
-    [archiveAgent, closeTab, closeWorkspaceTabWithCleanup, normalizedServerId, persistenceKey, t],
+    [
+      archiveAgent,
+      closeTab,
+      closeWorkspaceTabWithCleanup,
+      deleteAgent,
+      normalizedServerId,
+      persistenceKey,
+    ],
   );
 
   const handleCloseDraftOrFileTab = useCallback(
@@ -4907,6 +4980,8 @@ function WorkspaceScreenContent({
           onCloseTabsAbove={handleCloseTabsToLeftMobile}
           onCloseTabsBelow={handleCloseTabsToRightMobile}
           onCloseOtherTabs={handleCloseOtherTabsMobile}
+          onArchiveAgent={handleArchiveAgentFromMenu}
+          onDeleteAgent={handleDeleteAgentFromMenu}
         />
       ) : null}
 
@@ -4929,6 +5004,8 @@ function WorkspaceScreenContent({
           onCloseTabsToLeft={handleCloseTabsToLeft}
           onCloseTabsToRight={handleCloseTabsToRight}
           onCloseOtherTabs={handleCloseOtherTabs}
+          onArchiveAgent={handleArchiveAgentFromMenu}
+          onDeleteAgent={handleDeleteAgentFromMenu}
           onCreateDraftTab={handleCreateDraftTab}
           onCreateTerminalTab={handleCreateTerminal}
           onCreateBrowserTab={handleCreateBrowserTab}

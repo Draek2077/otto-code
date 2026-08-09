@@ -455,6 +455,8 @@ export const ar: TranslationResources = {
     emptyForHost: "لا توجد جلسات لهذا المضيف",
     emptyActive: "لا توجد محادثات نشطة",
     emptyArchived: "لا توجد محادثات مؤرشفة",
+    storageUsage: "تستخدم المحادثات المؤرشفة {{size}}",
+    storageUsageForHost: "{{host}}: {{size}}",
     filters: {
       all: "الكل",
       active: "نشطة",
@@ -949,6 +951,7 @@ export const ar: TranslationResources = {
         close: "يغلق",
         cancel: "يلغي",
         archive: "أرشيف",
+        delete: "حذف",
         closeTerminalTitle: "إغلاق المحطة؟",
         closeTerminalMessage: "سيتم إيقاف أي عملية جارية في هذه المحطة على الفور.",
         archiveRunningAgentTitle: "وكيل تشغيل الأرشيف؟",

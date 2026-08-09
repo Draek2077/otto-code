@@ -178,6 +178,7 @@ import type {
   AttachmentsImagesClearResponse,
   AttachmentsImagesStatsResponse,
   HistoryAgentsClearArchivedResponse,
+  HistoryAgentsStorageStatsResponse,
   KillTerminalResponse,
   CaptureTerminalResponse,
   TerminalInput,
@@ -2501,6 +2502,17 @@ export class DaemonClient {
         return msg.payload;
       },
     });
+  }
+
+  async getHistoryStorageStats(
+    requestId?: string,
+  ): Promise<HistoryAgentsStorageStatsResponse["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest<"history.agents.get_storage_stats.response">(
+      {
+        requestId,
+        message: { type: "history.agents.get_storage_stats.request" },
+      },
+    );
   }
 
   async fetchRecentProviderSessions(

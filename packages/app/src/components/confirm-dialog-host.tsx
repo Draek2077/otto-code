@@ -11,6 +11,10 @@ import { useConfirmDialogStore } from "@/utils/confirm-dialog";
 const checkColorMapping = (theme: Theme) => ({ color: theme.colors.accentForeground });
 const ThemedCheck = withUnistyles(Check);
 
+function getAlternateButtonVariant(destructive: boolean | undefined): "secondary" | "destructive" {
+  return destructive === true ? "destructive" : "secondary";
+}
+
 /**
  * Renders queued confirmation requests from {@link useConfirmDialogStore} as a
  * themed, cross-platform dialog. Mounted once, globally, so `confirmDialog`
@@ -81,7 +85,7 @@ export function ConfirmDialogHost() {
         )}
         {alternateLabel ? (
           <Button
-            variant="secondary"
+            variant={getAlternateButtonVariant(active?.alternateDestructive)}
             size="sm"
             style={styles.footerButton}
             onPress={handleAlternate}
@@ -103,6 +107,7 @@ export function ConfirmDialogHost() {
     ),
     [
       alternateLabel,
+      active?.alternateDestructive,
       cancelLabel,
       confirmLabel,
       handleAlternate,

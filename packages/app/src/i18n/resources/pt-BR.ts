@@ -463,6 +463,8 @@ export const ptBR: TranslationResources = {
     emptyForHost: "Nenhuma sessão para este host",
     emptyActive: "Nenhum chat ativo",
     emptyArchived: "Nenhum chat arquivado",
+    storageUsage: "Chats arquivados usam {{size}}",
+    storageUsageForHost: "{{host}}: {{size}}",
     filters: {
       all: "Todos",
       active: "Ativos",
@@ -961,6 +963,7 @@ export const ptBR: TranslationResources = {
         close: "Fechar",
         cancel: "Cancelar",
         archive: "Arquivar",
+        delete: "Excluir",
         closeTerminalTitle: "Fechar terminal?",
         closeTerminalMessage:
           "Qualquer processo em execução neste terminal será interrompido imediatamente.",

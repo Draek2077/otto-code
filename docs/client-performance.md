@@ -44,6 +44,25 @@ Surfaces:
 Turn it off with **Settings › Diagnostics › Performance monitoring** (`resourceMonitorEnabled`,
 default on). Off stops the frame loop and the census interval.
 
+### Reading the live-state group
+
+The footer's **Chat state** group is a current-state readout, not a history counter:
+
+- **Streams** counts distinct agent ids with a retained stream buffer (head or tail).
+- **Agents** counts non-archived agent sessions whose lifecycle is not `closed`.
+- **Chats** counts agent and draft chat tabs currently present in workspace layouts.
+- **Workspaces** counts non-archiving workspace descriptors held by connected sessions.
+
+The detailed report still includes the generic retention census, which is intentionally broader and
+may include archived records or per-agent stream item lengths for leak investigation.
+
+Footer values use warning and danger severities. Heap pressure is scaled from the runtime's JS heap
+limit when available; other instantaneous readings use conservative defaults because there is no
+portable system-wide capacity signal. Traffic values in the footer are rates over the latest
+sampling interval (`msg/s`, `B/s`, and handler milliseconds per second); cumulative totals remain
+available in the detailed diagnostic report. Session duration, sample count, and growth trend are
+intentionally displayed in the footer as time-series context rather than resource-pressure gauges.
+
 ## Invariants (the easy-to-break ones)
 
 - **The monitor must not become the leak it hunts.** The sample ring is capped

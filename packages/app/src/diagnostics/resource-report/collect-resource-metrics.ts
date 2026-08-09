@@ -17,6 +17,7 @@ import { useLspDiagnosticsStore } from "@/stores/lsp-diagnostics-store";
 import { usePanelStore } from "@/stores/panel-store";
 import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { collectAllTabs, normalizeLayout } from "@/stores/workspace-layout-actions";
 import { useWorkspaceTabsStore } from "@/stores/workspace-tabs-store";
 import { censusContainers } from "./container-census";
 import { readRuntimeCounters } from "./runtime-counters";
@@ -42,6 +43,13 @@ const COLLAPSE_KEYS_AT = [
 interface StoreLike<T> {
   getState: () => T;
 }
+
+let previousTrafficSample: {
+  at: number;
+  messages: number;
+  bytes: number;
+  handlerMs: number;
+} | null = null;
 
 /** Every store the census walks. Listed once so adding a store is a one-liner. */
 const CENSUS_STORES: Array<{ prefix: string; store: StoreLike<unknown> }> = [
@@ -77,9 +85,45 @@ export function collectResourceMetrics(
     heap: readHeap(),
     runtime: readRuntimeCounters(),
     traffic: readTraffic(),
+    chat: readChatState(),
     frames,
   };
   return buildResourceMetrics(input);
+}
+
+/** Read live chat state separately from the generic retention census. */
+function readChatState(): ResourceMetricsInput["chat"] {
+  try {
+    let streams = 0;
+    let agents = 0;
+    let workspaces = 0;
+
+    for (const session of Object.values(useSessionStore.getState().sessions)) {
+      const streamIds = new Set([
+        ...session.agentStreamTail.keys(),
+        ...session.agentStreamHead.keys(),
+      ]);
+      streams += streamIds.size;
+      agents += [...session.agents.values()].filter(
+        (agent) => !agent.archivedAt && agent.status !== "closed",
+      ).length;
+      workspaces += [...session.workspaces.values()].filter(
+        (workspace) => !workspace.archivingAt,
+      ).length;
+    }
+
+    const layouts = useWorkspaceLayoutStore.getState().layoutByWorkspace;
+    let chats = 0;
+    for (const layout of Object.values(layouts)) {
+      chats += collectAllTabs(normalizeLayout(layout).root).filter(
+        (tab) => tab.target.kind === "agent" || tab.target.kind === "draft",
+      ).length;
+    }
+
+    return { streams, agents, chats, workspaces };
+  } catch {
+    return { streams: 0, agents: 0, chats: 0, workspaces: 0 };
+  }
 }
 
 /**
@@ -107,9 +151,30 @@ function readTraffic(): ResourceMetricsInput["traffic"] {
       handlerMs += totals.handlerMs;
       binaryFrames += totals.binaryFrames;
     }
-    return connectedHosts === 0
-      ? null
-      : { messages, bytes, handlerMs, binaryFrames, connectedHosts };
+    if (connectedHosts === 0) {
+      previousTrafficSample = null;
+      return null;
+    }
+    const now = Date.now();
+    const elapsedSeconds = previousTrafficSample
+      ? Math.max((now - previousTrafficSample.at) / 1000, 0.001)
+      : 0;
+    const rate = (current: number, previous: number | undefined): number => {
+      if (!elapsedSeconds || previous === undefined) return 0;
+      return Math.max(0, current - previous) / elapsedSeconds;
+    };
+    const reading = {
+      messages,
+      bytes,
+      handlerMs,
+      binaryFrames,
+      connectedHosts,
+      messagesPerSecond: rate(messages, previousTrafficSample?.messages),
+      bytesPerSecond: rate(bytes, previousTrafficSample?.bytes),
+      handlerMsPerSecond: rate(handlerMs, previousTrafficSample?.handlerMs),
+    };
+    previousTrafficSample = { at: now, messages, bytes, handlerMs };
+    return reading;
   } catch {
     return null;
   }

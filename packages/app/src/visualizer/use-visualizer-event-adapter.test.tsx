@@ -295,6 +295,45 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     ).toEqual(["Explore", "Explore"]);
   });
 
+  it("registers and renders a chat before its timeline backfill resolves", async () => {
+    setAgents([makeAgent({ id: "root-fast", title: "Fast paint" })]);
+    let resolveTimeline: (() => void) | undefined;
+    client.fetchAgentTimeline.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveTimeline = () =>
+            resolve({
+              entries: [],
+              epoch: "epoch-1",
+              endCursor: { seq: 0 },
+              window: { maxSeq: 0 },
+            });
+        }),
+    );
+
+    renderAdapter();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // A slow timeline RPC must not leave a newly focused PIP on the renderer's
+    // empty "Waiting for chat activity" state. The session and root node are
+    // enough for an immediate, correctly-scoped first paint; history follows.
+    expect(messages.some((m) => m.type === "session-started" && m.session.id === "root-fast")).toBe(
+      true,
+    );
+    expect(
+      collectEvents(messages).some(
+        (event) => event.type === "agent_spawn" && event.payload.name === "Fast paint",
+      ),
+    ).toBe(true);
+
+    await act(async () => {
+      resolveTimeline?.();
+      await Promise.resolve();
+    });
+  });
+
   it("prunes a node whose agent has left the authoritative set", async () => {
     // A child fades and a vanished root closes only AFTER hydration settles -
     // during the attach window the set is a partial pre-refresh view.

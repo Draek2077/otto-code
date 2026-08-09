@@ -1,4 +1,5 @@
 import { type ChildProcess } from "node:child_process";
+import { mkdir, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { app, ipcMain, powerMonitor } from "electron";
@@ -55,6 +56,8 @@ import { getDesktopAppLogs } from "../diagnostics/app-logs.js";
 import { tailFile } from "../diagnostics/tail-file.js";
 
 const DAEMON_LOG_FILENAME = "daemon.log";
+const PERFORMANCE_CAPTURES_DIRECTORY = "performance-captures";
+const MAX_PERFORMANCE_CAPTURE_BYTES = 20 * 1024 * 1024;
 const STARTUP_POLL_INTERVAL_MS = 200;
 const STARTUP_POLL_MAX_ATTEMPTS = 150;
 const DETACHED_STARTUP_GRACE_MS = 1200;
@@ -135,6 +138,27 @@ function getOttoHome(): string {
 
 function logFilePath(): string {
   return path.join(getOttoHome(), DAEMON_LOG_FILENAME);
+}
+
+async function writePerformanceCapture(args: Record<string, unknown> | undefined): Promise<{
+  path: string;
+}> {
+  const contents = args?.contents;
+  if (typeof contents !== "string" || contents.length === 0) {
+    throw new Error("Performance capture contents are required.");
+  }
+  if (Buffer.byteLength(contents, "utf8") > MAX_PERFORMANCE_CAPTURE_BYTES) {
+    throw new Error("Performance capture exceeds the 20 MiB limit.");
+  }
+
+  const directory = path.join(getOttoHome(), PERFORMANCE_CAPTURES_DIRECTORY);
+  await mkdir(directory, { recursive: true });
+  // ISO timestamps are sortable, and the random suffix preserves every capture
+  // even when a user stops several attempts in the same millisecond.
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const filePath = path.join(directory, `capture-${stamp}-${crypto.randomUUID()}.json`);
+  await writeFile(filePath, contents, "utf8");
+  return { path: filePath };
 }
 
 export function isDesktopManagedDaemonRunningSync(): boolean {
@@ -605,6 +629,7 @@ export function createDaemonCommandHandlers(options?: {
     restart_desktop_daemon: () => restartDaemon(),
     desktop_daemon_logs: () => getDaemonLogs(),
     desktop_app_logs: () => getDesktopAppLogs(),
+    write_performance_capture: (args) => writePerformanceCapture(args),
     desktop_daemon_pairing: () => getDaemonPairing(),
     desktop_get_system_idle_time: () => powerMonitor.getSystemIdleTime() * 1000,
     cli_daemon_status: () => getCliDaemonStatus(),

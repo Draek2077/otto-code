@@ -68,6 +68,22 @@ describe("confirmDialog", () => {
     });
   });
 
+  it("retains a destructive alternate action for three-way choices", () => {
+    void confirmDialogWithCheckbox({
+      title: "Archive or Delete the chat?",
+      message: "Choose how to manage this chat.",
+      confirmLabel: "Archive",
+      alternateLabel: "Delete",
+      alternateDestructive: true,
+    });
+
+    expect(useConfirmDialogStore.getState().queue[0]).toMatchObject({
+      confirmLabel: "Archive",
+      alternateLabel: "Delete",
+      alternateDestructive: true,
+    });
+  });
+
   it("enqueues an acknowledge-only request for alertDialog", async () => {
     const promise = alertDialog({
       title: "Unable to save",

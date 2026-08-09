@@ -19,6 +19,10 @@ export interface ConfirmDialogInput {
   // refuse something and offer a way forward instead of a dead end - the caller
   // reads `choice === "alternate"`. Ignored for `kind: "alert"`.
   alternateLabel?: string;
+  // Makes the alternate action destructive without changing the meaning of the
+  // primary confirm action. This keeps three-way choices honest: Delete can be
+  // red while Archive remains the default action.
+  alternateDestructive?: boolean;
 }
 
 export type ConfirmDialogChoice = "confirm" | "alternate" | "cancel";

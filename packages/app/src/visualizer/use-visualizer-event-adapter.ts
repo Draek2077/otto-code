@@ -1096,8 +1096,14 @@ export function useVisualizerEventAdapter(input: UseVisualizerEventAdapterInput)
         .catch(() => undefined);
       // Fast first paint from whatever the store already holds - reconcile and
       // hydrate it immediately so the graph appears settled without waiting on
-      // the network.
+      // the network. `ensureNode` already queued the root spawn and
+      // `session-started`; flush those BEFORE awaiting a timeline RPC. Besides
+      // making the graph feel immediate, this is what lets PIP's focused-chat
+      // selection land on a registered session rather than briefly selecting an
+      // unknown id (which cold-starts the renderer into its empty state).
+      // Historical events still arrive in the following hydrated batch.
       reconcileAgents(state, selectWorkspaceAgents(serverId, workspaceId, agentIdFilter));
+      flush(state, postMessageRef.current);
       await flushAfterBackfill();
       // The refresh MUST complete before we leave the hydrate window: an agent
       // that first appears via it would otherwise backfill after `hydrating`

@@ -463,6 +463,8 @@ export const ja: TranslationResources = {
     emptyForHost: "このホストのセッションはありません",
     emptyActive: "アクティブなチャットはありません",
     emptyArchived: "アーカイブされたチャットはありません",
+    storageUsage: "アーカイブ済みチャットの使用容量 {{size}}",
+    storageUsageForHost: "{{host}}: {{size}}",
     filters: {
       all: "すべて",
       active: "アクティブ",
@@ -962,6 +964,7 @@ export const ja: TranslationResources = {
         close: "閉じる",
         cancel: "キャンセル",
         archive: "アーカイブ",
+        delete: "削除",
         closeTerminalTitle: "ターミナルを閉じますか？",
         closeTerminalMessage: "このターミナルで実行中のプロセスはすぐに停止されます。",
         archiveRunningAgentTitle: "実行中のエージェントをアーカイブしますか？",

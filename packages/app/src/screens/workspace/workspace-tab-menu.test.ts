@@ -12,6 +12,41 @@ function createAgentTab(): WorkspaceTabDescriptor {
 }
 
 describe("buildWorkspaceTabMenuEntries", () => {
+  it("replaces Close with Archive and Delete for chats", () => {
+    const archive = vi.fn();
+    const deleteAgent = vi.fn();
+    const entries = buildWorkspaceTabMenuEntries({
+      surface: "desktop",
+      tab: createAgentTab(),
+      index: 0,
+      tabCount: 1,
+      menuTestIDBase: "workspace-tab-context-agent_123",
+      isDeveloperMode: false,
+      onCopyResumeCommand: vi.fn(),
+      onCopyTerminalId: vi.fn(),
+      onCopyAgentId: vi.fn(),
+      onCopyFilePath: vi.fn(),
+      onReloadAgent: vi.fn(),
+      onRenameTab: vi.fn(),
+      onCloseTab: vi.fn(),
+      onCloseTabsBefore: vi.fn(),
+      onCloseTabsAfter: vi.fn(),
+      onCloseOtherTabs: vi.fn(),
+      onArchiveAgent: archive,
+      onDeleteAgent: deleteAgent,
+    });
+
+    const archiveEntry = entries.find((entry) => entry.kind === "item" && entry.key === "archive");
+    const deleteEntry = entries.find((entry) => entry.kind === "item" && entry.key === "delete");
+    expect(entries.some((entry) => entry.kind === "item" && entry.key === "close")).toBe(false);
+    expect(archiveEntry).toMatchObject({ label: "Archive" });
+    expect(deleteEntry).toMatchObject({ label: "Delete", destructive: true });
+    if (archiveEntry?.kind === "item") archiveEntry.onSelect();
+    if (deleteEntry?.kind === "item") deleteEntry.onSelect();
+    expect(archive).toHaveBeenCalledWith("agent-123");
+    expect(deleteAgent).toHaveBeenCalledWith("agent-123");
+  });
+
   it("uses desktop tab ordering labels for desktop menus", () => {
     const onCopyResumeCommand = vi.fn();
     const onCopyAgentId = vi.fn();

@@ -1745,6 +1745,21 @@ export const HistoryAgentsClearArchivedResponseSchema = z.object({
   }),
 });
 
+export const HistoryAgentsStorageStatsRequestSchema = z.object({
+  type: z.literal("history.agents.get_storage_stats.request"),
+  requestId: z.string(),
+});
+
+export const HistoryAgentsStorageStatsResponseSchema = z.object({
+  type: z.literal("history.agents.get_storage_stats.response"),
+  payload: z.object({
+    archivedCount: z.number().int().nonnegative(),
+    totalBytes: z.number().nonnegative(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
 export const UpdateAgentRequestMessageSchema = z.object({
   type: z.literal("update_agent_request"),
   agentId: z.string(),
@@ -6964,6 +6979,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ArchiveAgentRequestMessageSchema,
   CloseItemsRequestMessageSchema,
   HistoryAgentsClearArchivedRequestSchema,
+  HistoryAgentsStorageStatsRequestSchema,
   AttachmentsImagesStatsRequestSchema,
   AttachmentsImagesClearRequestSchema,
   BrainHostStatusRequestSchema,
@@ -7815,6 +7831,8 @@ export const ServerInfoStatusPayloadSchema = z
         // the daemon half of the Storage section; the app-side preview cache row
         // is local and always shown.
         attachmentStorage: z.boolean().optional(),
+        // COMPAT(historyStorage): added in v0.7.2, drop the gate when daemon floor >= v0.7.2.
+        historyStorage: z.boolean().optional(),
         // COMPAT(agentWorkspaceTransfer): added in v0.7.4, drop the gate when
         // daemon floor >= v0.7.4. Set when the daemon serves
         // `agent.workspace.transfer` - moving a chat to another workspace over
@@ -11998,6 +12016,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   AgentPermissionResolvedMessageSchema,
   AgentDeletedMessageSchema,
   HistoryAgentsClearArchivedResponseSchema,
+  HistoryAgentsStorageStatsResponseSchema,
   AttachmentsImagesStatsResponseSchema,
   AttachmentsImagesClearResponseSchema,
   BrainHostStatusResponseSchema,
@@ -12975,6 +12994,12 @@ export type HistoryAgentsClearArchivedRequest = z.infer<
 >;
 export type HistoryAgentsClearArchivedResponse = z.infer<
   typeof HistoryAgentsClearArchivedResponseSchema
+>;
+export type HistoryAgentsStorageStatsRequest = z.infer<
+  typeof HistoryAgentsStorageStatsRequestSchema
+>;
+export type HistoryAgentsStorageStatsResponse = z.infer<
+  typeof HistoryAgentsStorageStatsResponseSchema
 >;
 export type AttachmentsImagesStatsRequest = z.infer<typeof AttachmentsImagesStatsRequestSchema>;
 export type AttachmentsImagesStatsResponse = z.infer<typeof AttachmentsImagesStatsResponseSchema>;

@@ -34,6 +34,20 @@ export interface TrafficReading {
   handlerMs: number;
   binaryFrames: number;
   connectedHosts: number;
+  messagesPerSecond: number;
+  bytesPerSecond: number;
+  handlerMsPerSecond: number;
+}
+
+export interface ChatStateReading {
+  /** Agent stream buffers currently retained by the client, one per agent. */
+  streams: number;
+  /** Non-archived agent sessions whose lifecycle has not closed. */
+  agents: number;
+  /** Chat tabs currently present in the workspace layouts. */
+  chats: number;
+  /** Workspace descriptors currently retained by connected sessions. */
+  workspaces: number;
 }
 
 export interface ResourceMetricsInput {
@@ -44,6 +58,7 @@ export interface ResourceMetricsInput {
   heap: HeapReading | null;
   runtime: RuntimeCounters;
   traffic: TrafficReading | null;
+  chat: ChatStateReading;
   frames: FrameWindowStats | null;
 }
 
@@ -89,9 +104,17 @@ export function buildResourceMetrics(
     metrics["traffic.messages"] = input.traffic.messages;
     metrics["traffic.bytes"] = input.traffic.bytes;
     metrics["traffic.handlerMs"] = round(input.traffic.handlerMs, 1);
+    metrics["traffic.messagesPerSecond"] = round(input.traffic.messagesPerSecond, 2);
+    metrics["traffic.bytesPerSecond"] = round(input.traffic.bytesPerSecond, 2);
+    metrics["traffic.handlerMsPerSecond"] = round(input.traffic.handlerMsPerSecond, 2);
     metrics["traffic.binaryFrames"] = input.traffic.binaryFrames;
     metrics["traffic.connectedHosts"] = input.traffic.connectedHosts;
   }
+
+  metrics["chat.streams"] = input.chat.streams;
+  metrics["chat.agents"] = input.chat.agents;
+  metrics["chat.chats"] = input.chat.chats;
+  metrics["chat.workspaces"] = input.chat.workspaces;
 
   if (input.frames) {
     metrics["frames.fps"] = round(input.frames.fps, 2);

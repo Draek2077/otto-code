@@ -1,7 +1,7 @@
 import equal from "fast-deep-equal";
 import { v4 as uuidv4 } from "uuid";
-import { lstat, mkdir, mkdtemp, rename, rm, stat } from "node:fs/promises";
-import { basename, normalize, resolve, sep } from "path";
+import { lstat, mkdir, mkdtemp, readdir, readFile, rename, rm, stat } from "node:fs/promises";
+import { basename, join, normalize, resolve, sep } from "path";
 import { homedir } from "node:os";
 import { CLIENT_CAPS, type ClientCapability } from "@otto-code/protocol/client-capabilities";
 import {
@@ -5673,6 +5673,9 @@ export class Session {
       case "attachments.images.get_stats.request":
         this.handleAttachmentsImagesStatsRequest(msg);
         return;
+      case "history.agents.get_storage_stats.request":
+        await this.handleHistoryAgentsStorageStatsRequest(msg);
+        return;
       case "attachments.images.clear.request":
         this.handleAttachmentsImagesClearRequest(msg);
         return;
@@ -6081,6 +6084,59 @@ export class Session {
           maxAgeDays: config.attachmentImageMaxAgeDays,
           maxTotalMb: config.attachmentImageMaxTotalMb,
           error: message,
+          requestId: msg.requestId,
+        },
+      });
+    }
+  }
+
+  private async handleHistoryAgentsStorageStatsRequest(
+    msg: Extract<SessionInboundMessage, { type: "history.agents.get_storage_stats.request" }>,
+  ): Promise<void> {
+    try {
+      const baseDir = join(this.ottoHome, "agents");
+      const entries = await readdir(baseDir, { withFileTypes: true });
+      const files: string[] = [];
+      for (const entry of entries) {
+        if (entry.isFile() && entry.name.endsWith(".json")) {
+          files.push(join(baseDir, entry.name));
+        } else if (entry.isDirectory()) {
+          const children = await readdir(join(baseDir, entry.name), { withFileTypes: true });
+          files.push(
+            ...children
+              .filter((child) => child.isFile() && child.name.endsWith(".json"))
+              .map((child) => join(baseDir, entry.name, child.name)),
+          );
+        }
+      }
+      let archivedCount = 0;
+      let totalBytes = 0;
+      await Promise.all(
+        files.map(async (filePath) => {
+          try {
+            const record = JSON.parse(await readFile(filePath, "utf8")) as {
+              archivedAt?: string | null;
+            };
+            if (record.archivedAt) {
+              archivedCount += 1;
+              totalBytes += (await stat(filePath)).size;
+            }
+          } catch {
+            // Match AgentStorage's best-effort handling of invalid records.
+          }
+        }),
+      );
+      this.emit({
+        type: "history.agents.get_storage_stats.response",
+        payload: { archivedCount, totalBytes, error: null, requestId: msg.requestId },
+      });
+    } catch (error) {
+      this.emit({
+        type: "history.agents.get_storage_stats.response",
+        payload: {
+          archivedCount: 0,
+          totalBytes: 0,
+          error: getErrorMessageOr(error, "Failed to read history storage"),
           requestId: msg.requestId,
         },
       });

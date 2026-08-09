@@ -7,8 +7,8 @@ import { confirmDialogWithCheckbox } from "@/utils/confirm-dialog";
 const ARCHIVE_CHAT_WARNING_STORAGE_KEY = "archive-chat-warning";
 
 interface ArchiveChatWarningPrefState {
-  // When true, the "Archiving a chat puts it in History" confirmation is
-  // suppressed and closing an agent chat archives it without prompting.
+  // When true, closing an agent chat archives it without prompting. Delete is
+  // never suppressed.
   suppressed: boolean;
   setSuppressed: (suppressed: boolean) => void;
 }
@@ -28,14 +28,15 @@ export const useArchiveChatWarningPrefStore = create<ArchiveChatWarningPrefState
 );
 
 /**
- * Confirms archiving an agent chat on close. Resolves `true` when the user
- * accepts (or has previously suppressed the warning) and `false` when they
- * cancel. Uses the shared themed confirm dialog with a "suppress next time"
- * checkbox; checking it persists the suppression.
+ * Resolves the explicit chat-management choice made while closing a tab. A
+ * suppressed warning always means Archive, never Delete.
  */
-export async function confirmArchiveChat(): Promise<boolean> {
-  if (useArchiveChatWarningPrefStore.getState().suppressed) {
-    return true;
+export async function confirmCloseChat(input?: {
+  /** A running chat always needs an explicit archive decision. */
+  forcePrompt?: boolean;
+}): Promise<"archive" | "delete" | "cancel"> {
+  if (!input?.forcePrompt && useArchiveChatWarningPrefStore.getState().suppressed) {
+    return "archive";
   }
 
   const result = await confirmDialogWithCheckbox({
@@ -43,12 +44,16 @@ export async function confirmArchiveChat(): Promise<boolean> {
     message: i18n.t("workspace.tabs.confirmations.archiveHistoryMessage"),
     confirmLabel: i18n.t("workspace.tabs.confirmations.archive"),
     cancelLabel: i18n.t("workspace.tabs.confirmations.cancel"),
+    alternateLabel: i18n.t("workspace.tabs.confirmations.delete"),
+    alternateDestructive: true,
     checkboxLabel: i18n.t("workspace.tabs.confirmations.archiveHistorySuppress"),
   });
 
-  if (result.confirmed && result.checkboxChecked) {
+  if (result.choice === "confirm" && result.checkboxChecked) {
     useArchiveChatWarningPrefStore.getState().setSuppressed(true);
   }
 
-  return result.confirmed;
+  if (result.choice === "confirm") return "archive";
+  if (result.choice === "alternate") return "delete";
+  return "cancel";
 }

@@ -1673,6 +1673,8 @@ interface WorkspaceDesktopTabsRowProps {
   onCloseTabsToLeft: (tabId: string) => Promise<void> | void;
   onCloseTabsToRight: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
+  onArchiveAgent?: (agentId: string) => Promise<void> | void;
+  onDeleteAgent?: (agentId: string) => Promise<void> | void;
   onCreateDraftTab: (input: { paneId?: string }) => void;
   onCreateTerminalTab: (input: { paneId?: string; profile?: TerminalProfileInput }) => void;
   onCreateBrowserTab: (input: { paneId?: string }) => void;
@@ -2278,6 +2280,8 @@ export function WorkspaceDesktopTabsRow({
   onCloseTabsToLeft,
   onCloseTabsToRight,
   onCloseOtherTabs,
+  onArchiveAgent,
+  onDeleteAgent,
   onCreateDraftTab,
   onCreateTerminalTab,
   onCreateBrowserTab,
@@ -2510,6 +2514,8 @@ export function WorkspaceDesktopTabsRow({
           onCloseTabsToLeft={onCloseTabsToLeft}
           onCloseTabsToRight={onCloseTabsToRight}
           onCloseOtherTabs={onCloseOtherTabs}
+          onArchiveAgent={onArchiveAgent}
+          onDeleteAgent={onDeleteAgent}
           resolvedTabWidth={resolvedTabWidth}
           showLabel={showLabel}
           showCloseButton={shouldShowCloseButton}
@@ -2532,6 +2538,8 @@ export function WorkspaceDesktopTabsRow({
       normalizedServerId,
       normalizedWorkspaceId,
       onCloseOtherTabs,
+      onArchiveAgent,
+      onDeleteAgent,
       onCloseTab,
       onCloseTabsToLeft,
       onCloseTabsToRight,
@@ -2648,6 +2656,8 @@ export interface ResolvedDesktopTabChipProps {
   onCloseTabsToLeft: (tabId: string) => Promise<void> | void;
   onCloseTabsToRight: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
+  onArchiveAgent?: (agentId: string) => Promise<void> | void;
+  onDeleteAgent?: (agentId: string) => Promise<void> | void;
   resolvedTabWidth: ResolvedTabWidth;
   showLabel: boolean;
   showCloseButton: boolean;
@@ -2679,6 +2689,8 @@ export function ResolvedDesktopTabChip({
   onCloseTabsToLeft,
   onCloseTabsToRight,
   onCloseOtherTabs,
+  onArchiveAgent,
+  onDeleteAgent,
   resolvedTabWidth,
   showLabel,
   showCloseButton,
@@ -2711,6 +2723,8 @@ export function ResolvedDesktopTabChip({
         onCloseTabsToLeft,
         onCloseTabsToRight,
         onCloseOtherTabs,
+        onArchiveAgent,
+        onDeleteAgent,
         onMoveToWorkspace,
         canMoveToWorkspace: canMove,
         labels,
@@ -2722,6 +2736,8 @@ export function ResolvedDesktopTabChip({
       isDeveloperMode,
       onMoveToWorkspace,
       onCloseOtherTabs,
+      onArchiveAgent,
+      onDeleteAgent,
       onCloseTab,
       onCloseTabsToLeft,
       onCloseTabsToRight,

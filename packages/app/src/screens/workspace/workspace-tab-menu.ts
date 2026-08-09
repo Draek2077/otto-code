@@ -20,6 +20,8 @@ export interface WorkspaceTabMenuLabels {
   reloadAgent: string;
   reloadAgentTooltip: string;
   close: string;
+  archive?: string;
+  delete?: string;
 }
 
 export const DEFAULT_WORKSPACE_TAB_MENU_LABELS: WorkspaceTabMenuLabels = {
@@ -37,6 +39,8 @@ export const DEFAULT_WORKSPACE_TAB_MENU_LABELS: WorkspaceTabMenuLabels = {
   reloadAgent: i18n.t("workspace.tabs.menu.reloadAgent"),
   reloadAgentTooltip: i18n.t("workspace.tabs.menu.reloadAgentTooltip"),
   close: i18n.t("workspace.tabs.menu.close"),
+  archive: i18n.t("workspace.tabs.confirmations.archive"),
+  delete: i18n.t("workspace.tabs.confirmations.delete"),
 };
 
 export type WorkspaceTabMenuEntry =
@@ -84,6 +88,8 @@ interface BuildWorkspaceTabMenuEntriesInput {
   onCloseTabsBefore: (tabId: string) => Promise<void> | void;
   onCloseTabsAfter: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
+  onArchiveAgent?: (agentId: string) => Promise<void> | void;
+  onDeleteAgent?: (agentId: string) => Promise<void> | void;
   // Absent on hosts whose daemon predates agent.workspace.transfer, and false
   // when there is nowhere to move to. Either way the entry is omitted rather
   // than shown disabled: a dead menu row teaches the user nothing.
@@ -107,6 +113,8 @@ interface BuildWorkspaceDesktopTabActionsInput {
   onCloseTabsToLeft: (tabId: string) => Promise<void> | void;
   onCloseTabsToRight: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
+  onArchiveAgent?: (agentId: string) => Promise<void> | void;
+  onDeleteAgent?: (agentId: string) => Promise<void> | void;
   onMoveToWorkspace?: (agentId: string) => void;
   canMoveToWorkspace?: boolean;
   labels?: WorkspaceTabMenuLabels;
@@ -187,6 +195,40 @@ function getCloseButtonTestId(tab: WorkspaceTabDescriptor): string {
   return `workspace-file-close-${encodeFilePathForPathSegment(tab.target.path)}`;
 }
 
+function appendChatManagementMenuEntries(input: {
+  tab: WorkspaceTabDescriptor;
+  entries: WorkspaceTabMenuEntry[];
+  labels: WorkspaceTabMenuLabels;
+  menuTestIDBase: string;
+  onArchiveAgent?: (agentId: string) => Promise<void> | void;
+  onDeleteAgent?: (agentId: string) => Promise<void> | void;
+}): boolean {
+  const { tab, entries, labels, menuTestIDBase, onArchiveAgent, onDeleteAgent } = input;
+  if (tab.target.kind !== "agent" || !onArchiveAgent || !onDeleteAgent) return false;
+
+  const { agentId } = tab.target;
+  entries.push({
+    kind: "item",
+    key: "archive",
+    label: labels.archive ?? i18n.t("workspace.tabs.confirmations.archive"),
+    testID: `${menuTestIDBase}-archive`,
+    onSelect: () => {
+      void onArchiveAgent(agentId);
+    },
+  });
+  entries.push({
+    kind: "item",
+    key: "delete",
+    label: labels.delete ?? i18n.t("workspace.tabs.confirmations.delete"),
+    destructive: true,
+    testID: `${menuTestIDBase}-delete`,
+    onSelect: () => {
+      void onDeleteAgent(agentId);
+    },
+  });
+  return true;
+}
+
 export function buildWorkspaceTabMenuEntries(
   input: BuildWorkspaceTabMenuEntriesInput,
 ): WorkspaceTabMenuEntry[] {
@@ -207,6 +249,8 @@ export function buildWorkspaceTabMenuEntries(
     onCloseTabsBefore,
     onCloseTabsAfter,
     onCloseOtherTabs,
+    onArchiveAgent,
+    onDeleteAgent,
     onMoveToWorkspace,
     canMoveToWorkspace,
   } = input;
@@ -307,63 +351,73 @@ export function buildWorkspaceTabMenuEntries(
     });
   }
 
-  entries.push({
-    kind: "item",
-    key: "close-before",
-    label: buildCloseBeforeLabel(surface, labels),
-    icon: "arrow-left-to-line",
-    disabled: isFirstTab,
-    testID: `${menuTestIDBase}-${buildCloseBeforeTestIDSuffix(surface)}`,
-    onSelect: () => {
-      void onCloseTabsBefore(tab.tabId);
-    },
+  const managesChat = appendChatManagementMenuEntries({
+    tab,
+    entries,
+    labels,
+    menuTestIDBase,
+    onArchiveAgent,
+    onDeleteAgent,
   });
-  entries.push({
-    kind: "item",
-    key: "close-after",
-    label: buildCloseAfterLabel(surface, labels),
-    icon: "arrow-right-to-line",
-    disabled: isLastTab,
-    testID: `${menuTestIDBase}-${buildCloseAfterTestIDSuffix(surface)}`,
-    onSelect: () => {
-      void onCloseTabsAfter(tab.tabId);
-    },
-  });
-  entries.push({
-    kind: "item",
-    key: "close-others",
-    label: labels.closeOthers,
-    icon: "copy-x",
-    disabled: isOnlyTab,
-    testID: `${menuTestIDBase}-close-others`,
-    onSelect: () => {
-      void onCloseOtherTabs(tab.tabId);
-    },
-  });
-  if (isDeveloperMode && tab.target.kind === "agent") {
-    const { agentId } = tab.target;
+  if (!managesChat) {
     entries.push({
       kind: "item",
-      key: "reload-agent",
-      label: labels.reloadAgent,
-      icon: "rotate-cw",
-      tooltip: labels.reloadAgentTooltip,
-      testID: `${menuTestIDBase}-reload-agent`,
+      key: "close-before",
+      label: buildCloseBeforeLabel(surface, labels),
+      icon: "arrow-left-to-line",
+      disabled: isFirstTab,
+      testID: `${menuTestIDBase}-${buildCloseBeforeTestIDSuffix(surface)}`,
       onSelect: () => {
-        void onReloadAgent(agentId);
+        void onCloseTabsBefore(tab.tabId);
+      },
+    });
+    entries.push({
+      kind: "item",
+      key: "close-after",
+      label: buildCloseAfterLabel(surface, labels),
+      icon: "arrow-right-to-line",
+      disabled: isLastTab,
+      testID: `${menuTestIDBase}-${buildCloseAfterTestIDSuffix(surface)}`,
+      onSelect: () => {
+        void onCloseTabsAfter(tab.tabId);
+      },
+    });
+    entries.push({
+      kind: "item",
+      key: "close-others",
+      label: labels.closeOthers,
+      icon: "copy-x",
+      disabled: isOnlyTab,
+      testID: `${menuTestIDBase}-close-others`,
+      onSelect: () => {
+        void onCloseOtherTabs(tab.tabId);
+      },
+    });
+    if (isDeveloperMode && tab.target.kind === "agent") {
+      const { agentId } = tab.target;
+      entries.push({
+        kind: "item",
+        key: "reload-agent",
+        label: labels.reloadAgent,
+        icon: "rotate-cw",
+        tooltip: labels.reloadAgentTooltip,
+        testID: `${menuTestIDBase}-reload-agent`,
+        onSelect: () => {
+          void onReloadAgent(agentId);
+        },
+      });
+    }
+    entries.push({
+      kind: "item",
+      key: "close",
+      label: labels.close,
+      icon: "x",
+      testID: `${menuTestIDBase}-close`,
+      onSelect: () => {
+        void onCloseTab(tab.tabId);
       },
     });
   }
-  entries.push({
-    kind: "item",
-    key: "close",
-    label: labels.close,
-    icon: "x",
-    testID: `${menuTestIDBase}-close`,
-    onSelect: () => {
-      void onCloseTab(tab.tabId);
-    },
-  });
 
   return entries;
 }
@@ -391,6 +445,8 @@ export function buildWorkspaceDesktopTabActions(
       onCloseTabsBefore: input.onCloseTabsToLeft,
       onCloseTabsAfter: input.onCloseTabsToRight,
       onCloseOtherTabs: input.onCloseOtherTabs,
+      onArchiveAgent: input.onArchiveAgent,
+      onDeleteAgent: input.onDeleteAgent,
       onMoveToWorkspace: input.onMoveToWorkspace,
       canMoveToWorkspace: input.canMoveToWorkspace,
       labels: input.labels,

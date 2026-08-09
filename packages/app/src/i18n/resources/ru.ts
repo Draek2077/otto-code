@@ -461,6 +461,8 @@ export const ru: TranslationResources = {
     emptyForHost: "Нет сессий для этого хоста",
     emptyActive: "Нет активных чатов",
     emptyArchived: "Нет архивных чатов",
+    storageUsage: "Архивные чаты занимают {{size}}",
+    storageUsageForHost: "{{host}}: {{size}}",
     filters: {
       all: "Все",
       active: "Активные",
@@ -960,6 +962,7 @@ export const ru: TranslationResources = {
         close: "Закрывать",
         cancel: "Отмена",
         archive: "Архив",
+        delete: "Удалить",
         closeTerminalTitle: "Закрыть терминал?",
         closeTerminalMessage:
           "Любой запущенный процесс в этом терминале будет немедленно остановлен.",

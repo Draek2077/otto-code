@@ -2055,6 +2055,8 @@ export class VoiceAssistantWebSocketServer {
         // Unconditionally true: both read the $OTTO_HOME attachment store
         // directly, which every daemon has.
         attachmentStorage: true,
+        // COMPAT(historyStorage): added in v0.7.2, drop the gate when daemon floor >= v0.7.2.
+        historyStorage: true,
         // COMPAT(agentWorkspaceTransfer): added in v0.7.4, drop the gate when
         // daemon floor >= v0.7.4. `agent.workspace.transfer`. Unconditionally
         // true: the handler needs only the agent manager and the workspace

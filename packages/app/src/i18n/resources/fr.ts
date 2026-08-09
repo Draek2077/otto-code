@@ -463,6 +463,8 @@ export const fr: TranslationResources = {
     emptyForHost: "Aucune session pour cet hôte",
     emptyActive: "Aucune conversation active",
     emptyArchived: "Aucune conversation archivée",
+    storageUsage: "Les conversations archivées utilisent {{size}}",
+    storageUsageForHost: "{{host}} : {{size}}",
     filters: {
       all: "Toutes",
       active: "Actives",
@@ -962,6 +964,7 @@ export const fr: TranslationResources = {
         close: "Fermer",
         cancel: "Annuler",
         archive: "Archiver",
+        delete: "Supprimer",
         closeTerminalTitle: "Fermer le terminal?",
         closeTerminalMessage:
           "Tout processus en cours d’exécution dans ce terminal sera immédiatement arrêté.",
