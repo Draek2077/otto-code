@@ -17,6 +17,7 @@ const APP_SETTINGS_UPDATE_KEYS = [
   "monoFontFamily",
   "uiFontSize",
   "codeFontSize",
+  "terminalFontSize",
   "fontContrast",
   "syntaxTheme",
   "rulerEnabled",

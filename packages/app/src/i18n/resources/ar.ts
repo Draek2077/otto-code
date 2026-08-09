@@ -3306,6 +3306,8 @@ export const ar: TranslationResources = {
         codeFontAccessibility: "عائلة خطوط الكود",
         codeSize: "حجم الكود",
         codeSizeAccessibility: "حجم خط الكود",
+        terminalSize: "حجم الطرفية",
+        terminalSizeAccessibility: "حجم خط الطرفية",
       },
       syntax: {
         title: "بناء الجملة",

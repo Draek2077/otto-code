@@ -5,6 +5,7 @@ import {
   DEFAULT_APP_SETTINGS,
   DEFAULT_CLIENT_SETTINGS,
   DEFAULT_CODE_FONT_SIZE,
+  DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_UI_FONT_SIZE,
   loadAppSettingsFromStorage,
   loadSettingsFromStorage,
@@ -678,6 +679,7 @@ describe("appearance settings", () => {
     expect(result.monoFontFamily).toBe("");
     expect(result.uiFontSize).toBe(DEFAULT_UI_FONT_SIZE);
     expect(result.codeFontSize).toBe(DEFAULT_CODE_FONT_SIZE);
+    expect(result.terminalFontSize).toBe(DEFAULT_TERMINAL_FONT_SIZE);
     expect(result.syntaxTheme).toBe("default");
   });
 

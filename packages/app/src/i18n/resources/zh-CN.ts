@@ -3265,10 +3265,12 @@ export const zhCN: TranslationResources = {
         interfaceSize: "界面字号",
         interfaceSizeAccessibility: "界面字号",
         codeFont: "代码字体",
-        codeFontHint: "用于代码、diff 和终端输出。留空则使用系统默认",
+        codeFontHint: "用于文件编辑器和 diff。留空则使用系统默认",
         codeFontAccessibility: "代码字体族",
         codeSize: "代码字号",
         codeSizeAccessibility: "代码字号",
+        terminalSize: "终端字号",
+        terminalSizeAccessibility: "终端字体大小",
       },
       syntax: {
         title: "语法",

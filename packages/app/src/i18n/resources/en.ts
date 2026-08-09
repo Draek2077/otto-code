@@ -3352,11 +3352,12 @@ export const en = {
         interfaceSize: "Interface size",
         interfaceSizeAccessibility: "Interface font size",
         codeFont: "Code font",
-        codeFontHint:
-          "Used in code, diffs, and the terminal output. Leave empty for the system default",
+        codeFontHint: "Used in the file editor and diffs. Leave empty for the system default",
         codeFontAccessibility: "Code font family",
         codeSize: "Code size",
         codeSizeAccessibility: "Code font size",
+        terminalSize: "Terminal size",
+        terminalSizeAccessibility: "Terminal font size",
       },
       syntax: {
         title: "Syntax",

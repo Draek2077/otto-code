@@ -21,9 +21,11 @@ import {
 import { SettingsSection } from "@/screens/settings/settings-section";
 import {
   MAX_CODE_FONT_SIZE,
+  MAX_TERMINAL_FONT_SIZE,
   MAX_RULER_COLUMN,
   MAX_UI_FONT_SIZE,
   MIN_CODE_FONT_SIZE,
+  MIN_TERMINAL_FONT_SIZE,
   MIN_RULER_COLUMN,
   MIN_UI_FONT_SIZE,
   parseClampedFontSize,
@@ -854,6 +856,7 @@ export function AppearanceSection() {
   const [monoFontDraft, setMonoFontDraft] = useState(settings.monoFontFamily);
   const [uiSizeDraft, setUiSizeDraft] = useState(settings.uiFontSize);
   const [codeSizeDraft, setCodeSizeDraft] = useState(settings.codeFontSize);
+  const [terminalSizeDraft, setTerminalSizeDraft] = useState(settings.terminalFontSize);
   const [contrastDraft, setContrastDraft] = useState(() =>
     toContrastPercent(settings.fontContrast),
   );
@@ -865,6 +868,9 @@ export function AppearanceSection() {
   useEffect(() => {
     setCodeSizeDraft(settings.codeFontSize);
   }, [settings.codeFontSize]);
+  useEffect(() => {
+    setTerminalSizeDraft(settings.terminalFontSize);
+  }, [settings.terminalFontSize]);
   useEffect(() => {
     setContrastDraft(toContrastPercent(settings.fontContrast));
   }, [settings.fontContrast]);
@@ -1100,6 +1106,19 @@ export function AppearanceSection() {
       }
     },
     [settings.codeFontSize, updateSettings],
+  );
+
+  const commitTerminalSize = useCallback(
+    (value: number) => {
+      const next = parseClampedFontSize(value, {
+        min: MIN_TERMINAL_FONT_SIZE,
+        max: MAX_TERMINAL_FONT_SIZE,
+      });
+      if (next !== null && next !== settings.terminalFontSize) {
+        void updateSettings({ terminalFontSize: next });
+      }
+    },
+    [settings.terminalFontSize, updateSettings],
   );
 
   const commitContrast = useCallback(
@@ -1345,6 +1364,15 @@ export function AppearanceSection() {
             draft={codeSizeDraft}
             onChangeDraft={setCodeSizeDraft}
             onCommit={commitCodeSize}
+          />
+          <FontSizeRow
+            title={t("settings.appearance.fonts.terminalSize")}
+            accessibilityLabel={t("settings.appearance.fonts.terminalSizeAccessibility")}
+            min={MIN_TERMINAL_FONT_SIZE}
+            max={MAX_TERMINAL_FONT_SIZE}
+            draft={terminalSizeDraft}
+            onChangeDraft={setTerminalSizeDraft}
+            onCommit={commitTerminalSize}
           />
           <FontContrastRow
             draftPercent={contrastDraft}

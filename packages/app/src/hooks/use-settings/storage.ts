@@ -101,21 +101,27 @@ export const MAX_TERMINAL_SCROLLBACK_LINES = 1_000_000;
 // load this file's whole import graph - see limits.ts for why that matters outside Metro.
 import {
   DEFAULT_CODE_FONT_SIZE,
+  DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_UI_FONT_SIZE,
   MAX_CODE_FONT_SIZE,
+  MAX_TERMINAL_FONT_SIZE,
   MAX_FONT_FAMILY_LENGTH,
   MAX_UI_FONT_SIZE,
   MIN_CODE_FONT_SIZE,
+  MIN_TERMINAL_FONT_SIZE,
   MIN_UI_FONT_SIZE,
 } from "./limits";
 
 export {
   DEFAULT_CODE_FONT_SIZE,
+  DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_UI_FONT_SIZE,
   MAX_CODE_FONT_SIZE,
+  MAX_TERMINAL_FONT_SIZE,
   MAX_FONT_FAMILY_LENGTH,
   MAX_UI_FONT_SIZE,
   MIN_CODE_FONT_SIZE,
+  MIN_TERMINAL_FONT_SIZE,
   MIN_UI_FONT_SIZE,
 } from "./limits";
 export const DEFAULT_RULER_COLUMN = 120; // modern editor default width
@@ -180,6 +186,7 @@ export interface AppSettings {
   monoFontFamily: string; // "" = platform default mono stack
   uiFontSize: number; // clamped px, default 16
   codeFontSize: number; // clamped px, default 12
+  terminalFontSize: number; // clamped px, default 12
   // How hard the reading ink sits against the background, 0..1. 0.5 is the
   // palette as authored; up brightens dark text toward white / darkens light
   // text toward black, down softens both toward the background. Device-local
@@ -569,6 +576,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   monoFontFamily: "",
   uiFontSize: DEFAULT_UI_FONT_SIZE,
   codeFontSize: DEFAULT_CODE_FONT_SIZE,
+  terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
   fontContrast: DEFAULT_FONT_CONTRAST,
   syntaxTheme: "default",
   rulerEnabled: true,
@@ -882,6 +890,13 @@ function pickFontSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   });
   if (codeFontSize !== null) {
     result.codeFontSize = codeFontSize;
+  }
+  const terminalFontSize = parseClampedFontSize(stored.terminalFontSize, {
+    min: MIN_TERMINAL_FONT_SIZE,
+    max: MAX_TERMINAL_FONT_SIZE,
+  });
+  if (terminalFontSize !== null) {
+    result.terminalFontSize = terminalFontSize;
   }
   // Fractional, so it can't share the integer font-size clamp: a stored 0.35
   // must survive as 0.35, not round to 0.

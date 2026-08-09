@@ -3362,6 +3362,8 @@ export const ru: TranslationResources = {
         codeFontAccessibility: "Семейство шрифтов кода",
         codeSize: "Размер кода",
         codeSizeAccessibility: "Размер шрифта кода",
+        terminalSize: "Размер терминала",
+        terminalSizeAccessibility: "Размер шрифта терминала",
       },
       syntax: {
         title: "Синтаксис",

@@ -3349,6 +3349,8 @@ export const ja: TranslationResources = {
         codeFontAccessibility: "コードフォントファミリー",
         codeSize: "コードサイズ",
         codeSizeAccessibility: "コードフォントサイズ",
+        terminalSize: "ターミナルサイズ",
+        terminalSizeAccessibility: "ターミナルのフォントサイズ",
       },
       syntax: {
         title: "構文ハイライト",

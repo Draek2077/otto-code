@@ -183,7 +183,10 @@ export function TerminalPane({
   const isAppActivelyVisible = useAppActivelyVisible();
   const { theme } = useUnistyles();
   const { settings } = useAppSettings();
-  const xtermTheme = useMemo(() => toXtermTheme(theme.colors.terminal), [theme]);
+  const xtermTheme = useMemo(
+    () => toXtermTheme(theme.colors.terminal, theme.colors.surfaceCode),
+    [theme],
+  );
   const terminalFontFamily = useMemo(() => {
     const trimmed = settings.monoFontFamily.trim();
     return trimmed.length > 0 ? trimmed : undefined;
@@ -859,7 +862,7 @@ export function TerminalPane({
               xtermTheme={xtermTheme}
               scrollbackLines={settings.terminalScrollbackLines}
               fontFamily={terminalFontFamily}
-              fontSize={settings.codeFontSize}
+              fontSize={settings.terminalFontSize}
               swipeGesturesEnabled={swipeGesturesEnabled}
               initialSnapshot={initialSnapshot}
               onRendererReadyChange={handleRendererReadyChange}

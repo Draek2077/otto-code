@@ -3368,6 +3368,8 @@ export const ptBR: TranslationResources = {
         codeFontAccessibility: "Família da fonte de código",
         codeSize: "Tamanho do código",
         codeSizeAccessibility: "Tamanho da fonte de código",
+        terminalSize: "Tamanho do terminal",
+        terminalSizeAccessibility: "Tamanho da fonte do terminal",
       },
       syntax: {
         title: "Sintaxe",

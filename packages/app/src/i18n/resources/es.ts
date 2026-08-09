@@ -3388,6 +3388,8 @@ export const es: TranslationResources = {
         codeFontAccessibility: "Familia de fuentes de código",
         codeSize: "Tamaño del código",
         codeSizeAccessibility: "Tamaño de fuente del código",
+        terminalSize: "Tamaño del terminal",
+        terminalSizeAccessibility: "Tamaño de fuente del terminal",
       },
       syntax: {
         title: "Sintaxis",

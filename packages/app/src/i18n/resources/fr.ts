@@ -3401,6 +3401,8 @@ export const fr: TranslationResources = {
         codeFontAccessibility: "Famille de polices de code",
         codeSize: "Taille du code",
         codeSizeAccessibility: "Taille de la police du code",
+        terminalSize: "Taille du terminal",
+        terminalSizeAccessibility: "Taille de la police du terminal",
       },
       syntax: {
         title: "Syntaxe",
