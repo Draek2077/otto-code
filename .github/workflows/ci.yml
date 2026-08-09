@@ -286,11 +286,14 @@ jobs:
       # exit event fails the process). Retry test:unit alone so a teardown
       # blip doesn't fail a green run; test:integration runs once either way,
       # same as the plain `npm run test` path other platforms take.
+      # 2026-08-09: bumped 2 -> 3 attempts after a run failed both retries
+      # back to back (kill-diag showed the crash correlated with taskkill
+      # /T /F tree-kills during Codex/pty test teardown, not a real bug).
       - name: Run server tests (Windows)
         if: env.RUN_TESTS == 'true' && matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          $attempts = 2
+          $attempts = 3
           for ($i = 1; $i -le $attempts; $i++) {
             npm run test:unit --workspace=@otto-code/server
             if ($LASTEXITCODE -eq 0) { break }
@@ -462,6 +465,15 @@ jobs:
 
       - name: Install dependencies with retry
         run: node scripts/npm-retry.mjs ci
+
+      - name: Build client dependencies
+        run: npm run build:client
+
+      - name: Generate the native Android project
+        working-directory: packages/app
+        env:
+          APP_VARIANT: development
+        run: npx expo prebuild --platform android --non-interactive
 
       - name: Compile and test the Android wake-word module
         working-directory: packages/app/android
