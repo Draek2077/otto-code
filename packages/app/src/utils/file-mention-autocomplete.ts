@@ -41,7 +41,7 @@ export function findActiveFileMention(input: FindActiveFileMentionInput): FileMe
 }
 
 export function formatQuotedFileMentionPath(relativePath: string): string {
-  const safePath = relativePath.replace(/"/g, '\\"');
+  const safePath = relativePath.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   return `"${safePath}"`;
 }
 

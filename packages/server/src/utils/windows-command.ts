@@ -24,8 +24,16 @@ function escapeWindowsCmdValue(value: string): string {
     // cmd treats metacharacters inside quotes as literal. Escaping them here
     // would pass the caret through to a batch script's argv.
     const quoted = unquoted
-      .replace(/(\\*)"/g, (_match, slashes: string) => `${slashes}${slashes}\\"`)
-      .replace(/\\+$/u, (slashes) => `${slashes}${slashes}`);
+      .split('"')
+      .map((segment) => {
+        let trailingStart = segment.length;
+        while (trailingStart > 0 && segment.charCodeAt(trailingStart - 1) === 92) {
+          trailingStart -= 1;
+        }
+        const trailing = segment.slice(trailingStart);
+        return `${segment.slice(0, trailingStart)}${trailing}${trailing}`;
+      })
+      .join('\\"');
     return `"${quoted}"`;
   }
 

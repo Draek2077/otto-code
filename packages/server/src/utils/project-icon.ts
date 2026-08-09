@@ -186,8 +186,12 @@ function getMimeType(filename: string): string {
 
 function matchesPattern(filename: string, pattern: string): boolean {
   if (pattern.includes("*")) {
-    // Convert glob pattern to regex
-    const regexPattern = pattern.replace(/\./g, "\\.").replace(/\*/g, ".*");
+    // Convert the supported glob syntax to a regex without letting any other
+    // regexp metacharacter in the configured pattern change its meaning.
+    const regexPattern = pattern
+      .split("*")
+      .map((part) => part.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&"))
+      .join(".*");
     return new RegExp(`^${regexPattern}$`).test(filename);
   }
   return filename === pattern;

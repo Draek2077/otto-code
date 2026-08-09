@@ -122,20 +122,37 @@ export function putCalibration(
   measurement: Calibration,
 ): ProfilesStore {
   if (!store.calibrations) store.calibrations = {};
-  if (!store.calibrations[model.id]) store.calibrations[model.id] = {};
-  store.calibrations[model.id][calibrationKey(profile)] = measurement;
+  const calibrations = store.calibrations;
+  if (!Object.hasOwn(calibrations, model.id)) {
+    Object.defineProperty(calibrations, model.id, {
+      configurable: true,
+      enumerable: true,
+      value: {},
+    });
+  }
+  Object.defineProperty(calibrations[model.id], calibrationKey(profile), {
+    configurable: true,
+    enumerable: true,
+    value: measurement,
+    writable: true,
+  });
 
   const key = geometryKey(model, profile);
   const layers = model?.metadata?.blockCount;
   if (key && layers) {
     if (!store.geometryCalibrations) store.geometryCalibrations = {};
-    store.geometryCalibrations[key] = {
-      kvBytesPerTokenPerLayer: measurement.kvBytesPerToken / layers,
-      baseOverheadBytes: measurement.baseOverheadBytes,
-      measuredAt: measurement.measuredAt,
-      measuredOn: model.displayName,
-      measuredLayers: layers,
-    };
+    Object.defineProperty(store.geometryCalibrations, key, {
+      configurable: true,
+      enumerable: true,
+      value: {
+        kvBytesPerTokenPerLayer: measurement.kvBytesPerToken / layers,
+        baseOverheadBytes: measurement.baseOverheadBytes,
+        measuredAt: measurement.measuredAt,
+        measuredOn: model.displayName,
+        measuredLayers: layers,
+      },
+      writable: true,
+    });
   }
   return store;
 }

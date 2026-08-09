@@ -47,7 +47,11 @@ function createService(): TurndownService {
         Array.from(row.cells).map((cell) =>
           // A newline inside a cell would break the row; markdown tables are
           // single-line by construction.
-          (cell.textContent ?? "").replace(/\s+/g, " ").replace(/\|/g, "\\|").trim(),
+          (cell.textContent ?? "")
+            .replace(/\s+/g, " ")
+            .replace(/\\/g, "\\\\")
+            .replace(/\|/g, "\\|")
+            .trim(),
         );
       const header = cellsOf(rows[0]);
       const divider = header.map(() => "---");

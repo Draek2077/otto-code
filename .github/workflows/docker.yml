@@ -52,6 +52,9 @@ concurrency:
   group: docker-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+permissions:
+  contents: read
+
 env:
   REGISTRY: ghcr.io
   PLATFORMS: linux/amd64,linux/arm64

@@ -10,7 +10,9 @@ interface DataElementBounds {
 }
 
 function findDataElement(html: string): DataElementBounds | null {
-  const script = /<script\b[^>]*>[\s\S]*?<\/script\s*>/gi;
+  // This reads one known script element from generated artifact HTML. Allow the
+  // permissive end-tag syntax that HTML parsers accept, including attributes.
+  const script = /<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi;
   let match: RegExpExecArray | null;
   while ((match = script.exec(html))) {
     const openingTagEnd = match[0].indexOf(">");

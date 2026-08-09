@@ -52,6 +52,9 @@ concurrency:
   group: ios-release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   # Job-level `if` cannot read the secrets context, so this tiny job exposes
   # whether ASC signing is configured as an output for submit-ios to gate on.

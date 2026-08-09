@@ -356,7 +356,7 @@ function buildSqlSnippet(
   n: number,
   targetLines: number,
 ): string {
-  const tables = [id1.replace(/_/g, "_"), id2.replace(/_/g, "_")];
+  const tables = [id1, id2];
   const lines: string[] = [];
   lines.push(`-- Query: aggregate ${tables[0]} metrics grouped by status`);
   lines.push(`SELECT`);

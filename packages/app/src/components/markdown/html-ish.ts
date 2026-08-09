@@ -528,7 +528,7 @@ function renderTableToken(children: HtmlToken[], options: HtmlishOptions): strin
         continue;
       }
       const inner = renderInlineTokens(children.slice(cursor + 1, cellEnd), options, true);
-      cells.push(collapseToSingleLine(inner).trim().replace(/\|/g, "\\|"));
+      cells.push(collapseToSingleLine(inner).trim().replace(/\\/g, "\\\\").replace(/\|/g, "\\|"));
       cursor = cellEnd;
     }
     if (cells.length > 0) {
@@ -646,7 +646,7 @@ function getSingleImageChild(tokens: HtmlToken[]): HtmlTagToken | null {
 }
 
 function escapeMarkdownImageAlt(value: string): string {
-  return value.replace(/]/g, "\\]");
+  return value.replace(/\\/g, "\\\\").replace(/]/g, "\\]");
 }
 
 function findNextOpenTag(tokens: HtmlToken[], start: number, name: string): number | null {

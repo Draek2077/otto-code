@@ -22,7 +22,12 @@ import type { Model } from "../types.js";
 
 /** Normalize a repo/id path: forward slashes, lowercased, trailing slashes trimmed. */
 function normalizePath(value: string): string {
-  return value.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  const normalized = value.replaceAll("\\", "/");
+  let end = normalized.length;
+  while (end > 0 && normalized.charCodeAt(end - 1) === 47) {
+    end -= 1;
+  }
+  return normalized.slice(0, end).toLowerCase();
 }
 
 /** The final path segment (file name) of a scanned model's id. */

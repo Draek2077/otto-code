@@ -615,7 +615,9 @@ function renderTable(
     blockAttributes.named.get("options")?.includes("header") === true ||
     blockAttributes.positional.some((value) => value.includes("header"));
 
-  const rendered = cells.map((cell) => convertInline(cell, attributes).replace(/\|/g, "\\|"));
+  const rendered = cells.map((cell) =>
+    convertInline(cell, attributes).replace(/\\/g, "\\\\").replace(/\|/g, "\\|"),
+  );
   const rows: string[][] = [];
   for (let index = 0; index < rendered.length; index += columnCount) {
     const row = rendered.slice(index, index + columnCount);
