@@ -337,6 +337,7 @@ async function upsertWorkspaceForWorktree(options: {
       createdAt: sourceProject.createdAt ?? now,
       updatedAt: now,
       archivedAt: null,
+      projectKey: sourceProject.projectKey,
     }),
   );
 
@@ -517,6 +518,7 @@ interface SourceProjectForWorktree {
   displayName: string;
   customName: string | null;
   createdAt: string | null;
+  projectKey: string | null;
 }
 
 function sourceProjectFromRecord(record: {
@@ -525,6 +527,7 @@ function sourceProjectFromRecord(record: {
   displayName: string;
   customName?: string | null;
   createdAt?: string | null;
+  projectKey?: string | null;
 }): SourceProjectForWorktree {
   return {
     projectId: record.projectId,
@@ -533,6 +536,7 @@ function sourceProjectFromRecord(record: {
     displayName: record.displayName,
     customName: record.customName ?? null,
     createdAt: record.createdAt ?? null,
+    projectKey: record.projectKey ?? null,
   };
 }
 
@@ -560,6 +564,7 @@ async function resolveWorkspaceProjectForWorktree(options: {
       sourceProject?.displayName ?? deriveProjectGroupingName(options.sourceWorkspace.projectId),
     customName: sourceProject?.customName ?? null,
     createdAt: sourceProject?.createdAt ?? null,
+    projectKey: sourceProject?.projectKey ?? null,
   });
 }
 
@@ -575,6 +580,7 @@ async function resolveFallbackProjectForWorktree(options: {
       existingFallbackProject?.displayName ?? deriveProjectGroupingName(options.repoRoot),
     customName: existingFallbackProject?.customName ?? null,
     createdAt: existingFallbackProject?.createdAt ?? null,
+    projectKey: existingFallbackProject?.projectKey ?? null,
   });
 }
 

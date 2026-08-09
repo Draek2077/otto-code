@@ -76,6 +76,41 @@ test("creates a worktree and registers it in the source workspace project withou
   ]);
 });
 
+test("carries the source project's projectKey through worktree creation instead of clobbering it to null", async () => {
+  const { repoDir, tempDir } = createGitRepo();
+  cleanupPaths.push(tempDir);
+  const deps = createDeps({});
+  const sourceProject = createPersistedProjectRecordForTest({
+    projectId: "remote:github.com/acme/repo",
+    rootPath: repoDir,
+    displayName: "acme/repo",
+    projectKey: "remote:github.com/acme/repo",
+  });
+  const sourceWorkspace = createPersistedWorkspaceRecordForTest({
+    workspaceId: "ws-main-checkout",
+    projectId: sourceProject.projectId,
+    cwd: repoDir,
+    kind: "local_checkout",
+    displayName: "main",
+  });
+  deps.projects.set(sourceProject.projectId, sourceProject);
+  deps.workspaces.set(sourceWorkspace.workspaceId, sourceWorkspace);
+
+  await createOttoWorktree(
+    {
+      cwd: repoDir,
+      worktreeSlug: "feature-two",
+      runSetup: false,
+      ottoHome: path.join(tempDir, ".otto"),
+    },
+    deps,
+  );
+
+  expect(deps.projects.get(sourceProject.projectId)?.projectKey).toBe(
+    "remote:github.com/acme/repo",
+  );
+});
+
 test("registers a new worktree in the existing root project after the main checkout workspace is removed", async () => {
   const { repoDir, tempDir } = createGitRepo();
   cleanupPaths.push(tempDir);
@@ -813,6 +848,7 @@ function createPersistedProjectRecordForTest(input: {
   projectId: string;
   rootPath: string;
   displayName: string;
+  projectKey?: string | null;
 }): PersistedProjectRecord {
   return {
     projectId: input.projectId,
@@ -822,6 +858,7 @@ function createPersistedProjectRecordForTest(input: {
     createdAt: "2026-04-22T00:00:00.000Z",
     updatedAt: "2026-04-22T00:00:00.000Z",
     archivedAt: null,
+    projectKey: input.projectKey ?? null,
   };
 }
 
