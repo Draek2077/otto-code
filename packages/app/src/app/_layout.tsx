@@ -1163,7 +1163,7 @@ function RootStack() {
         <Stack.Screen name="settings/index" />
         <Stack.Screen name="settings/[section]" />
         <Stack.Screen name="settings/projects/index" />
-        <Stack.Screen name="settings/projects/[projectKey]" />
+        <Stack.Screen name="settings/projects/[serverId]/[projectId]" />
         <Stack.Screen name="new" />
         <Stack.Screen name="new-project" />
         <Stack.Screen name="open-project" />

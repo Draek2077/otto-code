@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { readFile, rename, rm } from "node:fs/promises";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Logger } from "pino";
 import type { AgentManager } from "../agent/agent-manager.js";
@@ -14,6 +14,7 @@ import type {
 import { ArtifactStore, assertValidArtifactId } from "./artifact-store.js";
 import { ArtifactWatcher } from "./artifact-watcher.js";
 import { ARTIFACT_SYSTEM_PROMPT } from "./artifact-prompt.js";
+import { readArtifactData, replaceArtifactData } from "./artifact-data.js";
 import type { CreateArtifactInput } from "@otto-code/protocol/artifacts/types";
 
 export type { CreateArtifactInput };
@@ -201,6 +202,34 @@ export class ArtifactService {
       }
       throw error;
     }
+  }
+
+  /** Read the explicitly mutable data contract without exposing presentation. */
+  async getData(artifactId: string): Promise<unknown | null> {
+    return readArtifactData(await this.getContent(artifactId));
+  }
+
+  /**
+   * Replace only the artifact's JSON data block. This deliberately does not
+   * run an agent or touch the rest of the HTML, so the UI/style cannot drift.
+   */
+  async updateData(artifactId: string, data: unknown): Promise<ArtifactMetadata> {
+    const metadata = await this.store.get(artifactId);
+    if (!metadata) {
+      throw new ArtifactNotFoundError(artifactId);
+    }
+    const path = this.resolveHtmlPath(artifactId);
+    const updatedHtml = replaceArtifactData(await this.getContent(artifactId), data);
+    const temporaryPath = `${path}.data-update-${randomBytes(4).toString("hex")}`;
+    await writeFile(temporaryPath, updatedHtml, "utf-8");
+    await rename(temporaryPath, path);
+    await this.store.update(artifactId, {});
+    const updated = await this.store.get(artifactId);
+    if (!updated) {
+      throw new ArtifactNotFoundError(artifactId);
+    }
+    this.broadcastArtifactUpdate(updated);
+    return updated;
   }
 
   async create(input: CreateArtifactInput): Promise<ArtifactMetadata> {

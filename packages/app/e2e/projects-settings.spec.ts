@@ -32,6 +32,7 @@ import {
   unblockOttoConfigWrites,
 } from "./helpers/project-settings";
 import { gotoAppShell } from "./helpers/app";
+import { moneyShot } from "./helpers/evidence";
 import { createTempGitRepo } from "./helpers/workspace";
 
 const updatedSetup = ["npm install", "npm run build"];
@@ -164,6 +165,29 @@ async function openProjectSettingsFromSidebar(page: Page, projectId: string): Pr
 }
 
 test.describe("Projects settings", () => {
+  /**
+   * R02-01: the root stack registered the obsolete one-segment project detail
+   * route, so Expo Router warned that the named layout child did not exist.
+   * The registration must match the real serverId/projectId filesystem route.
+   */
+  test("registers the project-settings detail route without a named-layout-child warning", async ({
+    page,
+    editableProject,
+  }) => {
+    const layoutWarnings: string[] = [];
+    page.on("console", (message) => {
+      if (message.text().includes("[Layout children]")) {
+        layoutWarnings.push(message.text());
+      }
+    });
+
+    await openProjects(page);
+    await openProjectSettings(page, editableProject.name);
+
+    await expect(layoutWarnings).toEqual([]);
+    await moneyShot(page, "Project settings detail opens with no named-layout-child warning.");
+  });
+
   test("freshly-added project with no workspace is editable from the sidebar without a reload", async ({
     page,
   }) => {

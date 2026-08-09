@@ -114,6 +114,7 @@ export const OTTO_NONE_DENIED_TOOL_NAMES = [
   "archive_worktree",
   "create_artifact",
   "update_artifact",
+  "update_artifact_data",
   "generate_artifact",
   "preview_start",
   "preview_stop",

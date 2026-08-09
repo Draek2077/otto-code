@@ -491,6 +491,8 @@ Generation is agent-based, not a bespoke completion call: `ArtifactService` (`ar
 
 Agents can create artifacts too, via the `create_artifact` Otto tool (`packages/server/src/server/agent/tools/otto-tools.ts`): it defaults provider/model/thinking/project from the calling agent, returns immediately with `status: "generating"` (the description must be self-contained - the generation agent cannot see the calling conversation), and broadcasts `artifact.created.notification` so every connected client sees it live. The tool runs against a daemon-global `ArtifactService` instance wired in `bootstrap.ts`; client-initiated artifact RPCs go through each session's own service, both sharing the same file-backed store.
 
+Newly generated artifacts also carry one `<script type="application/json" id="otto-artifact-data">` block. It is the artifact's mutable data contract: `inspect_artifact` exposes its parsed JSON, and `update_artifact_data` atomically replaces only that block. The daemon does not rewrite any bytes outside the block, so data updates cannot change the artifact's HTML structure, CSS, or JavaScript. Older artifacts without the block must be regenerated before they support data-only updates.
+
 Metadata (`ArtifactMetadataSchema`, `packages/protocol/src/artifacts/types.ts`):
 
 | Field                                                        | Type                                 | Description                                                                                                                                 |

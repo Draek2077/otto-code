@@ -38,6 +38,7 @@ describe("otto tool catalog workspace-access gate", () => {
       "send_terminal_keys",
       "create_worktree",
       "create_artifact",
+      "update_artifact_data",
     ]) {
       expect(names.has(tool)).toBe(true);
     }
@@ -70,6 +71,7 @@ describe("otto tool catalog workspace-access gate", () => {
       "rename_workspace",
       "create_artifact",
       "update_artifact",
+      "update_artifact_data",
       "generate_artifact",
     ]) {
       expect(names.has(tool)).toBe(false);

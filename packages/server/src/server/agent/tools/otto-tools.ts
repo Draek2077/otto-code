@@ -4202,7 +4202,10 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           .min(1)
           .describe("Artifact to inspect; call list_artifacts for ids."),
       },
-      outputSchema: StoredArtifactSchema.shape,
+      outputSchema: {
+        ...StoredArtifactSchema.shape,
+        data: z.json().nullable(),
+      },
     },
     async ({ artifactId }) => {
       const artifactService = options.artifactService;
@@ -4210,9 +4213,40 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         throw new Error("Artifact service is not available on this daemon");
       }
       const record = await artifactService.inspect(artifactId);
+      const data = await artifactService.getData(artifactId);
       return {
         content: [],
-        structuredContent: ensureValidJson(record),
+        structuredContent: ensureValidJson({ ...record, data }),
+      };
+    },
+  );
+
+  registerTool(
+    "update_artifact_data",
+    {
+      title: "Update artifact data",
+      description:
+        "Replace only an artifact's dedicated JSON data block. Use inspect_artifact first to learn its current data, then send the complete replacement data. This never changes the artifact's HTML, UI, CSS, or JavaScript. Artifacts made before the data contract may need regeneration first.",
+      inputSchema: {
+        artifactId: z
+          .string()
+          .trim()
+          .min(1)
+          .describe("Artifact to update; call inspect_artifact first for its data contract."),
+        data: z.json().describe("Complete JSON data replacement for the artifact."),
+      },
+      outputSchema: ArtifactToolSummarySchema.shape,
+    },
+    async ({ artifactId, data }: { artifactId: string; data: unknown }) => {
+      const artifactService = options.artifactService;
+      if (!artifactService) {
+        throw new Error("Artifact service is not available on this daemon");
+      }
+      const updated = await artifactService.updateData(artifactId, data);
+      options.emitArtifactUpdated?.(updated);
+      return {
+        content: [],
+        structuredContent: ensureValidJson(toArtifactToolSummary(updated)),
       };
     },
   );

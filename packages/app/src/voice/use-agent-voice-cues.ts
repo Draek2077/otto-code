@@ -20,9 +20,11 @@
 //
 // The lines are PRE-STORED on the personality (`voiceCues`, authored/edited in
 // the personality editor) - this hook just reads them, no runtime generation.
-// A personality with no stored cues stays silent. Audio is synthesized with the
-// personality's TTS voice via the same `previewTtsVoice` + shared voice audio
-// engine the voice-preview button uses, scaled to the cue channel's own volume.
+// A missing or incomplete set falls back to the four stock lines, so every
+// personality-backed agent can speak at every lifecycle moment. Audio is
+// synthesized with the personality's TTS voice via the same `previewTtsVoice`
+// + shared voice audio engine the voice-preview button uses, scaled to the cue
+// channel's own volume.
 //
 // Attach behavior: agents that already exist when the hook starts watching -
 // including ones a directory refresh backfills into the store moments later
@@ -46,6 +48,13 @@ import { formatToMimeType } from "@/voice/audio-format";
 import type { AudioEngine } from "@/voice/audio-engine-types";
 
 type HostClient = NonNullable<ReturnType<typeof useHostRuntimeClient>>;
+
+export const DEFAULT_AGENT_VOICE_CUES: Required<AgentPersonalityVoiceCues> = {
+  join: ["Starting!"],
+  thinking: ["Thinking..."],
+  waiting: ["Waiting..."],
+  done: ["Complete!"],
+};
 
 interface AgentCueState {
   joined: boolean;
@@ -146,8 +155,14 @@ function resolveVoice(
     : undefined;
 }
 
-function pickLine(cues: AgentPersonalityVoiceCues, kind: CueMoment, bagKey: string): string | null {
-  const lines = cues[kind];
+export function pickAgentVoiceCue(
+  cues: AgentPersonalityVoiceCues | undefined,
+  kind: CueMoment,
+  bagKey: string,
+): string | null {
+  const authoredLines = cues?.[kind]?.filter((line) => line.trim().length > 0);
+  const lines =
+    authoredLines && authoredLines.length > 0 ? authoredLines : DEFAULT_AGENT_VOICE_CUES[kind];
   if (!lines || lines.length === 0) {
     return null;
   }
@@ -345,10 +360,6 @@ export function useAgentVoiceCues(input: UseAgentVoiceCuesInput): void {
         return;
       }
       const personality = personalityFor(rosterRef.current, personalityId);
-      const cues = personality?.voiceCues;
-      if (!cues) {
-        return;
-      }
       const key = `${serverId}:${agent.id}:${kind}`;
       const now = Date.now();
       const last = recentCue.get(key);
@@ -357,7 +368,7 @@ export function useAgentVoiceCues(input: UseAgentVoiceCuesInput): void {
       }
       // Pick AFTER the dedupe gate so a swallowed duplicate fire doesn't consume
       // a line from the shuffle bag.
-      const line = pickLine(cues, kind, key);
+      const line = pickAgentVoiceCue(personality?.voiceCues, kind, key);
       if (!line) {
         return;
       }

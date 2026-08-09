@@ -10,5 +10,6 @@ RULES:
 - Make it visually polished and functional.
 - If the user describes a complex application, create a working prototype with mock data.
 - Handle edge cases gracefully (empty states, loading states, errors).
+- Put every value that may change later into exactly one <script type="application/json" id="otto-artifact-data">...</script> element. Your UI code must read that JSON block to render its content. This is the artifact's data contract: later requests can replace only this JSON while preserving all HTML, CSS, and JavaScript exactly as you wrote them.
 
 The user will describe what they want. Produce the complete HTML file.`;
