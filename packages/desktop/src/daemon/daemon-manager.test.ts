@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_DESKTOP_SETTINGS } from "../settings/desktop-settings";
 import { getBundledCliShimPath } from "../integrations/cli-install";
-import { createDaemonCommandHandlers } from "./daemon-manager";
+import { createDaemonCommandHandlers, registerDaemonManager } from "./daemon-manager";
 
 const mocks = vi.hoisted(() => ({
   ottoHome: "/tmp/otto-desktop-daemon-manager-test-home",
@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   logError: vi.fn(),
   appLogPath: "/tmp/otto-desktop-daemon-manager-test-main.log",
   getElectronLogFile: vi.fn(),
+  ipcHandle: vi.fn(),
 }));
 
 vi.mock("electron", () => ({
@@ -35,7 +36,7 @@ vi.mock("electron", () => ({
     getVersion: vi.fn(() => "1.2.3"),
     isPackaged: true,
   },
-  ipcMain: { handle: vi.fn() },
+  ipcMain: { handle: mocks.ipcHandle },
   powerMonitor: { getSystemIdleTime: vi.fn(() => 0) },
 }));
 
@@ -120,6 +121,7 @@ describe("daemon-manager commands", () => {
     mocks.logInfo.mockReset();
     mocks.logError.mockReset();
     mocks.getElectronLogFile.mockReset();
+    mocks.ipcHandle.mockReset();
     mocks.getElectronLogFile.mockReturnValue({ path: mocks.appLogPath });
     rmSync(mocks.ottoHome, { recursive: true, force: true });
     rmSync(mocks.appLogPath, { force: true });
@@ -514,5 +516,28 @@ describe("daemon-manager commands", () => {
         "\n",
       ),
     });
+  });
+});
+
+describe("daemon-manager IPC trust boundary", () => {
+  it("does not dispatch a command from an untrusted renderer", async () => {
+    const trustedSender = {} as Electron.WebContents;
+    const untrustedSender = {} as Electron.WebContents;
+    registerDaemonManager({ isTrustedSender: (sender) => sender === trustedSender });
+
+    const invokeHandler = mocks.ipcHandle.mock.calls.find(
+      ([channel]) => channel === "otto:invoke",
+    )?.[1] as
+      | ((
+          event: { sender: Electron.WebContents },
+          command: string,
+          args?: Record<string, unknown>,
+        ) => Promise<unknown>)
+      | undefined;
+
+    expect(invokeHandler).toBeTypeOf("function");
+    await expect(
+      invokeHandler!({ sender: untrustedSender }, "desktop_get_runtime_info"),
+    ).rejects.toThrow("Rejected IPC from an untrusted renderer.");
   });
 });

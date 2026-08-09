@@ -147,6 +147,7 @@ import { registerCrashDialog, showStartupErrorDialog } from "./crash-dialog.js";
 import { autoUpdateInstalledSkills } from "./integrations/skills/index.js";
 import { registerBrowserAutomationIpc } from "./features/browser-automation/ipc.js";
 import { BrowserKeyboard } from "./features/browser-keyboard/index.js";
+import { createTrustedOttoOriginPolicy, isTrustedMainWindowSender } from "./trusted-main-window.js";
 import { registerWakeWordHandlers } from "./features/wake-word.js";
 import {
   getCachedMinimizeOnCloseSetting,
@@ -158,6 +159,16 @@ import {
 
 const DEV_SERVER_URL = process.env.EXPO_DEV_URL ?? "http://localhost:8081";
 const APP_SCHEME = "otto";
+const trustedOttoOriginPolicy = createTrustedOttoOriginPolicy({
+  packaged: app.isPackaged,
+  developmentUrls: [DEV_SERVER_URL],
+});
+
+function requireTrustedMainRenderer(event: Electron.IpcMainInvokeEvent): void {
+  if (!isTrustedMainWindowSender(event.sender, trustedOttoOriginPolicy)) {
+    throw new Error("Rejected IPC from an untrusted renderer.");
+  }
+}
 const OTTO_DEBUG = process.env.OTTO_DEBUG === "1";
 const DISABLE_SINGLE_INSTANCE_LOCK = process.env.OTTO_DISABLE_SINGLE_INSTANCE_LOCK === "1";
 // A guest can ask to open a new tab before it has registered its browserId.
@@ -512,6 +523,7 @@ if (OTTO_DEBUG) {
 // The renderer pulls the pending path on mount via IPC - this avoids
 // a race where the push event arrives before React registers its listener.
 ipcMain.handle("otto:get-pending-open-project", (event) => {
+  requireTrustedMainRenderer(event);
   const webContentsId = event.sender.id;
   const result = pendingOpenProjectStore.take(webContentsId);
   log.info("[open-project] renderer requested pending path:", {
@@ -521,6 +533,7 @@ ipcMain.handle("otto:get-pending-open-project", (event) => {
   return result;
 });
 ipcMain.handle("otto:get-pending-open-target", (event) => {
+  requireTrustedMainRenderer(event);
   const webContentsId = event.sender.id;
   const result = pendingOpenProjectStore.takeTarget(webContentsId);
   log.info("[open-target] renderer requested pending target:", { webContentsId, target: result });
@@ -530,6 +543,7 @@ ipcMain.handle("otto:get-pending-open-target", (event) => {
 // The renderer announces it can route, and collects any link that arrived while
 // it was still mounting. preload.ts exposes this as the agent-navigation bridge.
 ipcMain.handle("otto:agent-navigation:ready", (event) => {
+  requireTrustedMainRenderer(event);
   return agentNavigationInbox.windowReady(event.sender.id);
 });
 
@@ -567,6 +581,7 @@ function normalizeBrowserCaptureRect(
 }
 
 ipcMain.handle("otto:browser:register-attached", (event, rawInput: unknown) => {
+  requireTrustedMainRenderer(event);
   const input = readAttachedBrowserInput(rawInput);
   if (!input) {
     throw new Error("Invalid attached browser registration");
@@ -599,6 +614,7 @@ ipcMain.handle("otto:browser:register-attached", (event, rawInput: unknown) => {
 });
 
 ipcMain.handle("otto:browser:unregister-workspace-browser", async (event, browserId: unknown) => {
+  requireTrustedMainRenderer(event);
   if (typeof browserId !== "string" || browserId.trim().length === 0) {
     return;
   }
@@ -634,6 +650,7 @@ ipcMain.handle("otto:browser:unregister-workspace-browser", async (event, browse
 });
 
 ipcMain.handle("otto:browser:set-workspace-active-browser", (event, rawInput: unknown) => {
+  requireTrustedMainRenderer(event);
   const input = readActiveBrowserInput(rawInput);
   if (input) {
     setWorkspaceActiveOttoBrowserId({ ...input, hostWebContentsId: event.sender.id });
@@ -641,6 +658,7 @@ ipcMain.handle("otto:browser:set-workspace-active-browser", (event, rawInput: un
 });
 
 ipcMain.handle("otto:browser:open-devtools", (event, browserId: unknown) => {
+  requireTrustedMainRenderer(event);
   if (typeof browserId !== "string" || browserId.trim().length === 0) {
     const result = {
       ok: false,
@@ -684,7 +702,8 @@ ipcMain.handle("otto:browser:open-devtools", (event, browserId: unknown) => {
 // Settings -> Browser Data -> Clear. Wipes the shared browser partition plus
 // every legacy per-browser partition the renderer still knows about, then
 // reloads the live guests so they do not keep serving cleared state.
-ipcMain.handle("otto:browser:clear-profile", async (_event, rawLegacyBrowserIds: unknown) => {
+ipcMain.handle("otto:browser:clear-profile", async (event, rawLegacyBrowserIds: unknown) => {
+  requireTrustedMainRenderer(event);
   const profileSessions = getOttoBrowserProfileSessions(
     session,
     readLegacyOttoBrowserIds(rawLegacyBrowserIds),
@@ -704,6 +723,7 @@ ipcMain.handle("otto:browser:clear-profile", async (_event, rawLegacyBrowserIds:
 });
 
 ipcMain.handle("otto:browser:capture-element", async (event, browserId: unknown, rect: unknown) => {
+  requireTrustedMainRenderer(event);
   if (typeof browserId !== "string" || browserId.trim().length === 0) {
     return null;
   }
@@ -732,7 +752,8 @@ ipcMain.handle("otto:browser:capture-element", async (event, browserId: unknown,
   }
 });
 
-ipcMain.handle("otto:browser:copy-element", (_event, payload: unknown): boolean => {
+ipcMain.handle("otto:browser:copy-element", (event, payload: unknown): boolean => {
+  requireTrustedMainRenderer(event);
   if (!payload || typeof payload !== "object") {
     return false;
   }
@@ -1005,7 +1026,7 @@ async function createWindow(
     setupWindowStatePersistence(mainWindow, windowStateStore);
   }
   setupDefaultContextMenu(mainWindow);
-  setupDragDropPrevention(mainWindow);
+  setupDragDropPrevention(mainWindow, trustedOttoOriginPolicy);
   setupCursorHoverForwarding(mainWindow);
   mainWindow.webContents.on("will-attach-webview", (event, webPreferences, params) => {
     if (isArtifactWebviewAttach(params)) {
@@ -1481,8 +1502,11 @@ async function bootstrap(): Promise<void> {
   registerDaemonManager({
     onDesktopSettingsChanged: (settings) =>
       setCachedMinimizeOnCloseSetting(settings.tray.minimizeOnClose),
+    isTrustedSender: (sender) => isTrustedMainWindowSender(sender, trustedOttoOriginPolicy),
   });
-  registerWindowManager();
+  registerWindowManager({
+    isTrustedSender: (sender) => isTrustedMainWindowSender(sender, trustedOttoOriginPolicy),
+  });
   // Surface a native dialog when a window's renderer dies, instead of leaving a
   // blank frame. Suppressed while the GPU fallback is relaunching into software
   // rendering, so we don't talk over our own recovery.
@@ -1506,7 +1530,8 @@ async function bootstrap(): Promise<void> {
 
   // In-app "Open in new window": opens a window that lands on the given project
   // via the same open-project flow as a CLI launch (no move, no ownership).
-  ipcMain.handle("otto:window:openNew", async (_event, options?: unknown) => {
+  ipcMain.handle("otto:window:openNew", async (event, options?: unknown) => {
+    requireTrustedMainRenderer(event);
     const pendingPath =
       options && typeof options === "object" && "pendingOpenProjectPath" in options
         ? (options as { pendingOpenProjectPath?: unknown }).pendingOpenProjectPath

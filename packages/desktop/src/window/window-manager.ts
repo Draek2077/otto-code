@@ -11,6 +11,11 @@ import {
   shell,
 } from "electron";
 
+import {
+  setupTrustedMainWindowNavigation,
+  type TrustedOttoOriginPolicy,
+} from "../trusted-main-window.js";
+
 import type {
   WindowControlsOverlayColors,
   WindowState,
@@ -257,12 +262,21 @@ export function getWindowControlsOverlayColors(
   return colors;
 }
 
-export function registerWindowManager(): void {
+export function registerWindowManager(options?: {
+  isTrustedSender?: (sender: Electron.WebContents) => boolean;
+}): void {
+  const requireTrustedSender = (sender: Electron.WebContents): void => {
+    if (!options?.isTrustedSender?.(sender)) {
+      throw new Error("Rejected IPC from an untrusted renderer.");
+    }
+  };
   ipcMain.handle("otto:window:signalReady", (event) => {
+    requireTrustedSender(event.sender);
     pendingWindowReveals.get(event.sender.id)?.();
   });
 
   ipcMain.handle("otto:window:toggleMaximize", (event) => {
+    requireTrustedSender(event.sender);
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) return;
     if (win.isMaximized()) {
@@ -273,11 +287,13 @@ export function registerWindowManager(): void {
   });
 
   ipcMain.handle("otto:window:isFullscreen", (event) => {
+    requireTrustedSender(event.sender);
     const win = BrowserWindow.fromWebContents(event.sender);
     return win?.isFullScreen() ?? false;
   });
 
-  ipcMain.handle("otto:window:setBadgeCount", (_event, count?: unknown) => {
+  ipcMain.handle("otto:window:setBadgeCount", (event, count?: unknown) => {
+    requireTrustedSender(event.sender);
     if (process.platform === "darwin" || process.platform === "linux") {
       const badgeCount = readBadgeCount(count);
       try {
@@ -292,11 +308,13 @@ export function registerWindowManager(): void {
     }
   });
 
-  ipcMain.handle("otto:window:setTrayAttention", (_event, active?: unknown) => {
+  ipcMain.handle("otto:window:setTrayAttention", (event, active?: unknown) => {
+    requireTrustedSender(event.sender);
     setTrayAttention(active === true);
   });
 
   ipcMain.handle("otto:window:updateWindowControls", (event, update?: unknown) => {
+    requireTrustedSender(event.sender);
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) {
       return;
@@ -639,12 +657,6 @@ export function setupDefaultContextMenu(win: BrowserWindow): void {
  * Prevent Electron from navigating to files dragged onto the window.
  * The renderer handles drag-drop via standard HTML5 APIs instead.
  */
-export function setupDragDropPrevention(win: BrowserWindow): void {
-  win.webContents.on("will-navigate", (event, url) => {
-    // Allow normal navigation (e.g. dev server hot-reload) but block file:// URLs
-    // that result from dropping files onto the window.
-    if (url.startsWith("file://")) {
-      event.preventDefault();
-    }
-  });
+export function setupDragDropPrevention(win: BrowserWindow, policy: TrustedOttoOriginPolicy): void {
+  setupTrustedMainWindowNavigation(win, policy);
 }

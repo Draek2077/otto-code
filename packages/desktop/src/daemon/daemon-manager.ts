@@ -668,10 +668,14 @@ export function createDaemonCommandHandlers(options?: {
 
 export function registerDaemonManager(options?: {
   onDesktopSettingsChanged?: (settings: DesktopSettings) => void;
+  isTrustedSender?: (sender: Electron.WebContents) => boolean;
 }): void {
   const handlers = createDaemonCommandHandlers(options);
 
-  ipcMain.handle("otto:invoke", async (_event, command: string, args?: Record<string, unknown>) => {
+  ipcMain.handle("otto:invoke", async (event, command: string, args?: Record<string, unknown>) => {
+    if (!options?.isTrustedSender?.(event.sender)) {
+      throw new Error("Rejected IPC from an untrusted renderer.");
+    }
     const handler = handlers[command];
     if (!handler) {
       throw new Error(`Unknown desktop command: ${command}`);
