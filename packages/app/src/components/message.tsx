@@ -2761,11 +2761,18 @@ interface ExpandableBadgeProps {
 function renderExpandCollapseControls(
   onExpandAll: (() => void) | undefined,
   onCollapseAll: (() => void) | undefined,
+  visible: boolean,
 ): ReactNode {
   if (!onExpandAll || !onCollapseAll) {
     return null;
   }
-  return <ExpandCollapseControls onExpand={onExpandAll} onCollapse={onCollapseAll} />;
+  return (
+    <ExpandCollapseControls onExpand={onExpandAll} onCollapse={onCollapseAll} visible={visible} />
+  );
+}
+
+function shouldShowExpandCollapseControls(isHovered: boolean, isCompact: boolean): boolean {
+  return isHovered || isNative || isCompact;
 }
 
 interface ExpandableBadgeSecondaryLabelProps {
@@ -3204,6 +3211,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
   testID,
 }: ExpandableBadgeProps) {
   const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
+  const isCompact = useIsCompactFormFactor();
   const [isHovered, setIsHovered] = useState(false);
   const [isOpenFileHovered, setIsOpenFileHovered] = useState(false);
   const [isPressed, setIsPressed] = useState(false);
@@ -3519,7 +3527,11 @@ export const ExpandableBadge = memo(function ExpandableBadge({
             onOpenFileHoverIn={handleOpenFileHoverIn}
             onOpenFileHoverOut={handleOpenFileHoverOut}
           />
-          {renderExpandCollapseControls(onExpandAll, onCollapseAll)}
+          {renderExpandCollapseControls(
+            onExpandAll,
+            onCollapseAll,
+            shouldShowExpandCollapseControls(isHovered, isCompact),
+          )}
         </View>
       </Pressable>
       {detailContent ? (
@@ -3768,5 +3780,6 @@ function areToolCallPropsEqual(previous: ToolCallProps, next: ToolCallProps) {
   if (previous.onOpenFilePath !== next.onOpenFilePath) return false;
   if (previous.defaultExpanded !== next.defaultExpanded) return false;
   if (previous.forceInline !== next.forceInline) return false;
+  if (previous.expandAllCommand !== next.expandAllCommand) return false;
   return true;
 }

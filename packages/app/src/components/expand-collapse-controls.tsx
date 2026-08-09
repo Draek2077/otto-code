@@ -14,9 +14,11 @@ const mutedColor = (theme: { colors: { foregroundMuted: string } }) => ({
 export function ExpandCollapseControls({
   onExpand,
   onCollapse,
+  visible,
 }: {
   onExpand: () => void;
   onCollapse: () => void;
+  visible: boolean;
 }) {
   const { t } = useTranslation();
   const handleExpand = useCallback(
@@ -34,7 +36,10 @@ export function ExpandCollapseControls({
     [onCollapse],
   );
   return (
-    <View style={styles.container}>
+    <View
+      pointerEvents={visible ? "auto" : "none"}
+      style={[styles.container, !visible && styles.containerHidden]}
+    >
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={t("message.expandCollapse.expandAll")}
@@ -65,6 +70,9 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[1],
     marginLeft: "auto",
+  },
+  containerHidden: {
+    opacity: 0,
   },
   button: {
     padding: theme.spacing[1],

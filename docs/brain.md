@@ -46,6 +46,7 @@ The brain serves its own management surface at `/__host/*`. Its header comment s
 | `GET /__host/jobs`                          | Active and recent host-owned benchmark jobs                                 |
 | `POST /__host/jobs/bench`                   | Start a benchmark on this brain's machine                                   |
 | `POST /__host/jobs/cancel`                  | Cancel a host-owned benchmark job                                           |
+| `POST /__host/restart`                      | Restart the managed brain after acknowledging the caller                    |
 | `GET /__host/models`                        | The joined model inventory plus disk usage                                  |
 | `GET /__host/model?id=`                     | One inventory row                                                           |
 | `GET /__host/model/fields?id=`              | The editable field descriptors                                              |
@@ -127,6 +128,11 @@ the tracked job through `/__host/jobs`. The daemon only proxies start, list and 
 remote benchmark therefore uses the remote model store, GPU and results directory, and can never
 fall back to the connecting machine. The `jobs` capability keeps older brains read-only.
 
+**Remote restart.** A brain that advertises `capabilities.restart` accepts `POST /__host/restart`
+only when remote configuration is enabled. It acknowledges the request before gracefully exiting;
+the owning daemon restarts its managed child. A proxy exposes this as the ordinary restart control,
+while start and stop remain hidden because they belong to the owning daemon.
+
 **Do not add new capabilities to the shell-out path.** A capability built there needs a second
 implementation before remote can have it, which is how the two drift.
 
@@ -138,7 +144,8 @@ the route?). A current daemon can be pointed at an older brain.
 1. The brain reports `capabilities` **inline on `/__host/status`**. Not from a separate
    `/__host/capabilities` fetch, even though that route exists for direct callers: the daemon polls
    status constantly, and a separately cached copy would go stale the moment the owner toggles
-   `allowRemoteConfig`, which is what `capabilities.writable` reflects.
+   `allowRemoteConfig`, which is what `capabilities.writable` reflects. `restart` is additive, so
+   older brains simply do not offer the restart control through a proxy.
 2. The daemon passes that through on `brain.host.status` and advertises
    `server_info.features.brainConsole` when it knows how to proxy the routes.
 3. `capabilities` carries additive `events` and `liveInference` flags, and status carries an additive
@@ -282,16 +289,20 @@ Five tabs, on the `stats-screen.tsx` layout: a pinned header, a pinned toolbar h
 exactly one scroll region. A host picker appears only when more than one connected host has a brain.
 State is per-host and never merged: two brains are two machines with their own GPUs and model stores.
 
-| Tab            | Holds                                                                                                                  |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| **Overview**   | Status, lifecycle, VRAM, CPU/memory/GPU/slots, traffic counters including the reasoning-only warning                   |
-| **Models**     | The model table, and a detail panel with metadata, the profile editor, the live budget, load, calibrate, sweep, delete |
-| **Library**    | Runtimes, the download catalog, Hugging Face search, and job progress                                                  |
-| **Benchmarks** | The leaderboard over the run list, and a detail pane that compares two runs; plus a way to run the suite               |
-| **Logs**       | The llama-server tail                                                                                                  |
+| Tab            | Holds                                                                                                                   |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| **Overview**   | Status, lifecycle, installed runtime, VRAM, CPU/memory/GPU/slots, traffic counters including the reasoning-only warning |
+| **Models**     | The model table, and a detail panel with metadata, the profile editor, the live budget, load, calibrate, sweep, delete  |
+| **Library**    | The download catalog, Hugging Face search, and job progress                                                             |
+| **Benchmarks** | The leaderboard over the run list, and a detail pane that compares two runs; plus a way to run the suite                |
+| **Logs**       | The llama-server tail                                                                                                   |
 
 The model table and the leaderboard are **tables, not cards**: their whole job is comparison between
 rows.
+
+The Models tab reports model bytes against the brain host's total and free filesystem space. The
+inventory comes from the brain itself, so these figures describe the same model store whether the
+client reaches the owning daemon directly or through a remote-brain proxy.
 
 The Benchmarks tab puts **two stacked tables on the left and one detail pane on the right**. The
 leaderboard picks a model; the run list under it picks which of that model's runs to put beside the

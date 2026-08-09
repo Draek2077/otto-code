@@ -1,8 +1,8 @@
 /**
  * Responsive fitting for the compact workspace header's action strip.
  *
- * The strip is `[menu toggle] [title / subtitle] [...] [Voice cues] [Visualizer]
- * [Play] [Microphone] [Brain]` in the header's `left` container plus
+ * The strip is `[menu toggle] [title / subtitle] [...] [Microphone] [Voice cues]
+ * [Visualizer] [Play] [Brain]` in the header's `left` container plus
  * `[Explorer]` in `right`.
  * The "..." menu is the one non-negotiable control, and the project name /
  * workspace subtitle must always keep at least `MIN_TITLE_WIDTH` - so when the

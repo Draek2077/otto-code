@@ -443,6 +443,9 @@ export async function startService({
   // never disagree about whether this brain publishes.
   const statusEvents = new BrainStatusPublisher();
   const jobs = new ServiceJobRunner();
+  // Assigned once `stop` exists below. This indirection lets the management API
+  // answer a remote restart request before closing its own socket.
+  let requestRestart = (): void => {};
 
   const hostApi = createHostApi({
     supervisor,
@@ -472,6 +475,7 @@ export async function startService({
       sampleSystem(cpuSampler, { host: supervisor.host, port: supervisor.internalPort }),
     statusEvents,
     jobs,
+    restart: () => requestRestart(),
   });
 
   const handler = withAuth(
@@ -557,6 +561,10 @@ export async function startService({
     server.closeIdleConnections?.();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     removePidFile(env);
+  };
+
+  requestRestart = () => {
+    void stop().finally(() => process.exit(75));
   };
 
   return {

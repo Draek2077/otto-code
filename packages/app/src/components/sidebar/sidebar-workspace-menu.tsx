@@ -5,6 +5,7 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
   Archive,
   BookOpen,
+  ContextualToken,
   CircleCheck,
   Copy,
   FolderOpen,
@@ -33,6 +34,7 @@ const ThemedMoreVertical = withUnistyles(MoreVertical);
 const ThemedCopy = withUnistyles(Copy);
 const ThemedArchive = withUnistyles(Archive);
 const ThemedBookOpen = withUnistyles(BookOpen);
+const ThemedContextualToken = withUnistyles(ContextualToken);
 const ThemedFolderOpen = withUnistyles(FolderOpen);
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedCircleCheck = withUnistyles(CircleCheck);
@@ -43,7 +45,10 @@ const markAsReadLeadingIcon = (
   <ThemedCircleCheck size={14} uniProps={foregroundMutedColorMapping} />
 );
 const archiveLeadingIcon = <ThemedArchive size={14} uniProps={foregroundMutedColorMapping} />;
-const contextLeadingIcon = <ThemedBookOpen size={14} uniProps={foregroundMutedColorMapping} />;
+const contextLeadingIcon = (
+  <ThemedContextualToken size={14} uniProps={foregroundMutedColorMapping} />
+);
+const knowledgeLeadingIcon = <ThemedBookOpen size={14} uniProps={foregroundMutedColorMapping} />;
 const openBaseCheckoutLeadingIcon = (
   <ThemedFolderOpen size={14} uniProps={foregroundMutedColorMapping} />
 );
@@ -184,7 +189,7 @@ export function WorkspaceMenuItems({
         </Item>
       ) : null}
       {serverId && workspaceId ? (
-        <Item leading={contextLeadingIcon} onSelect={handleManageKnowledge}>
+        <Item leading={knowledgeLeadingIcon} onSelect={handleManageKnowledge}>
           Manage knowledge
         </Item>
       ) : null}

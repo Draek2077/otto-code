@@ -60,6 +60,7 @@
   "CodeBlocks": "code_blocks",
   "Columns2": "splitscreen_right",
   "Compress": "compress",
+  "ContextualToken": "contextual_token",
   "Copy": "content_copy",
   "CopyX": "content_copy",
   "CornerDownLeft": "subdirectory_arrow_left",

@@ -11,6 +11,7 @@ describe("Hey Otto feature and listening controls", () => {
       shouldShowWakeWordToolbarButton({
         featureEnabled: true,
         supported: true,
+        hasDictationTab: true,
       }),
     ).toBe(true);
     expect(
@@ -27,12 +28,22 @@ describe("Hey Otto feature and listening controls", () => {
       shouldShowWakeWordToolbarButton({
         featureEnabled: false,
         supported: true,
+        hasDictationTab: true,
       }),
     ).toBe(false);
     expect(
       shouldShowWakeWordToolbarButton({
         featureEnabled: true,
         supported: false,
+        hasDictationTab: true,
+      }),
+    ).toBe(false);
+
+    expect(
+      shouldShowWakeWordToolbarButton({
+        featureEnabled: true,
+        supported: true,
+        hasDictationTab: false,
       }),
     ).toBe(false);
   });

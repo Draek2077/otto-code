@@ -54,7 +54,15 @@ function CapabilityGap({ what }: { what: string }) {
   );
 }
 
-function BrainHostPanel({ serverId }: { serverId: string }) {
+function BrainHostPanel({
+  serverId,
+  hostOptions,
+  onSelectHost,
+}: {
+  serverId: string;
+  hostOptions?: { value: string; label: string }[];
+  onSelectHost?: (value: string) => void;
+}) {
   const isCompact = useIsCompactFormFactor();
   const [tab, setTab] = useState<BrainTab>("overview");
   const isConnected = useHostRuntimeIsConnected(serverId);
@@ -67,6 +75,10 @@ function BrainHostPanel({ serverId }: { serverId: string }) {
   // its own status query. This cheap one exists only to read `capabilities`.
   const statusQuery = useBrainStatus(serverId, { enabled: isConnected && consoleSupported });
   const capabilities = useBrainCapabilities(statusQuery.data ?? null);
+  const canRestartRemotely = capabilities?.restart === true && capabilities.writable === true;
+  const canWriteRemotely = capabilities?.writable === true;
+  const canRunRemoteModelJobs = capabilities?.jobs === true && canWriteRemotely;
+  const canRunRemoteBench = capabilities?.jobs === true;
   // A remote host that has not explicitly granted configuration access must not
   // advertise a Library it cannot act on. More importantly, this is derived
   // from the selected brain's live capability, never from the local daemon.
@@ -100,11 +112,14 @@ function BrainHostPanel({ serverId }: { serverId: string }) {
           <BrainOverviewTab
             serverId={serverId}
             isConnected={isConnected}
-            canControlLifecycle={!isRemote}
-            // Runtime install shells out to the CLI against this machine's
-            // own llama.cpp install, so it is local-only, same gate as the
-            // Models tab's calibrate/sweep.
-            canManageRuntime={manageSupported && !isRemote}
+            // A remote brain may expose its host-owned restart. Start and stop
+            // remain daemon ownership, so a proxy renders only Restart.
+            canControlLifecycle={!isRemote || canRestartRemotely}
+            showStartStop={!isRemote}
+            // Runtime reads and installs now reach the brain through host-owned
+            // management routes, so remote and owning daemons report the same runtime.
+            canManageRuntime={manageSupported}
+            canInstallRuntime={!isRemote || canWriteRemotely}
           />
         );
       case "models":
@@ -115,10 +130,7 @@ function BrainHostPanel({ serverId }: { serverId: string }) {
             // `writable` is the brain's own allowRemoteConfig. A brain you may
             // use is not thereby a brain whose models you may delete.
             canWrite={capabilities.writable}
-            canRunJobs={
-              manageSupported &&
-              (!isRemote || (capabilities?.jobs === true && capabilities.writable === true))
-            }
+            canRunJobs={manageSupported && (!isRemote || canRunRemoteModelJobs)}
           />
         ) : (
           <CapabilityGap what="the model inventory" />
@@ -129,7 +141,7 @@ function BrainHostPanel({ serverId }: { serverId: string }) {
             serverId={serverId}
             isConnected={isConnected}
             isRemote={isRemote}
-            canWrite={capabilities?.writable === true}
+            canWrite={canWriteRemotely}
           />
         );
       case "benchmarks":
@@ -139,7 +151,7 @@ function BrainHostPanel({ serverId }: { serverId: string }) {
             isConnected={isConnected}
             // A remote benchmark is executable only when the selected brain,
             // not this local daemon, advertises its host-owned job API.
-            canRunJobs={manageSupported && (!isRemote || capabilities?.jobs === true)}
+            canRunJobs={manageSupported && (!isRemote || canRunRemoteBench)}
           />
         );
       case "logs":
@@ -149,21 +161,47 @@ function BrainHostPanel({ serverId }: { serverId: string }) {
           <CapabilityGap what="a log tail" />
         );
     }
-  }, [capabilities, consoleSupported, isConnected, isRemote, manageSupported, serverId, tab]);
+  }, [
+    capabilities,
+    canRestartRemotely,
+    canRunRemoteBench,
+    canRunRemoteModelJobs,
+    canWriteRemotely,
+    consoleSupported,
+    isConnected,
+    isRemote,
+    manageSupported,
+    serverId,
+    tab,
+  ]);
 
   return (
     <View style={styles.panel}>
       {/* Toolbar band: pinned above the scroll region so the tabs stay reachable
           however far the content below scrolls. */}
       <View style={styles.toolbar}>
-        <SegmentedControl
-          size="sm"
-          wrap={isCompact}
-          options={tabOptions}
-          value={tab}
-          onValueChange={setTab}
-          testID="brain-tab"
-        />
+        {hostOptions && onSelectHost && hostOptions.length > 1 ? (
+          <View style={styles.toolbarControl}>
+            <SegmentedControl
+              size="sm"
+              wrap
+              options={hostOptions}
+              value={serverId}
+              onValueChange={onSelectHost}
+              testID="brain-host"
+            />
+          </View>
+        ) : null}
+        <View style={styles.toolbarControl}>
+          <SegmentedControl
+            size="sm"
+            wrap={isCompact}
+            options={tabOptions}
+            value={tab}
+            onValueChange={setTab}
+            testID="brain-tab"
+          />
+        </View>
       </View>
       <ScrollView
         style={styles.scroll}
@@ -222,19 +260,13 @@ export function BrainScreen() {
       ) : (
         <View style={styles.body}>
           {/* Only worth showing with a choice to make. One host needs no picker. */}
-          {hosts.length > 1 ? (
-            <View style={styles.hostBar}>
-              <SegmentedControl
-                size="sm"
-                wrap
-                options={hostOptions}
-                value={activeServerId}
-                onValueChange={handleSelectHost}
-                testID="brain-host"
-              />
-            </View>
-          ) : null}
-          <BrainHostPanel key={activeServerId} serverId={activeServerId} />
+          {/* Keep the panel mounted while changing hosts so the selected content
+              tab survives; the panel's capability guard handles unsupported tabs. */}
+          <BrainHostPanel
+            serverId={activeServerId}
+            hostOptions={hostOptions}
+            onSelectHost={handleSelectHost}
+          />
         </View>
       )}
     </View>
@@ -258,20 +290,25 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.base,
     color: theme.colors.foregroundMuted,
   },
-  hostBar: {
-    paddingHorizontal: theme.spacing[4],
-    paddingTop: theme.spacing[3],
-    alignItems: "center",
-  },
   panel: {
     flex: 1,
   },
   toolbar: {
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[3],
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
     alignItems: "center",
+    gap: theme.spacing[3],
+    rowGap: theme.spacing[2],
+    columnGap: theme.spacing[3],
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
+  },
+  toolbarControl: {
+    flexShrink: 0,
+    alignItems: "center",
   },
   scroll: {
     flex: 1,

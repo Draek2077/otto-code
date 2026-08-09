@@ -170,6 +170,7 @@ export function RuntimeRow({
   answered,
   loading,
   busy,
+  canInstall = true,
   jobs,
   onStarted,
 }: {
@@ -179,6 +180,8 @@ export function RuntimeRow({
   answered: boolean;
   loading: boolean;
   busy: boolean;
+  /** A remote brain may report its runtime without granting install access. */
+  canInstall?: boolean;
   jobs: BrainJob[];
   onStarted: (job: BrainJob) => void;
 }) {
@@ -214,7 +217,7 @@ export function RuntimeRow({
           <Text style={styles.installedTagText}>Installed</Text>
         </View>
       ) : null}
-      {missing ? (
+      {missing && canInstall ? (
         <View style={styles.rowTrailing}>
           <Button
             variant="default"

@@ -1051,7 +1051,6 @@ interface ComposerRightControlsSlotProps extends ComposerVoiceModeButtonProps {
   isAgentRunning: boolean;
   hasSendableContent: boolean;
   isProcessing: boolean;
-  isCompact: boolean;
   cancelButton: ReactElement;
 }
 
@@ -1061,13 +1060,13 @@ function ComposerRightControlsSlot({
   isAgentRunning,
   hasSendableContent,
   isProcessing,
-  isCompact,
   cancelButton,
   ...voiceProps
 }: ComposerRightControlsSlotProps) {
-  const hideVoiceForCompactInput = isCompact && hasSendableContent;
+  // Live mode does not consume a typed draft, so keep the control out of the
+  // way until the composer is clear on every form factor.
   const showVoiceModeButton =
-    !isVoiceModeForAgent && hasAgent && !isAgentRunning && !hideVoiceForCompactInput;
+    !isVoiceModeForAgent && hasAgent && !isAgentRunning && !hasSendableContent;
   const shouldShowCancelButton = isAgentRunning && !hasSendableContent && !isProcessing;
   if (!showVoiceModeButton && !shouldShowCancelButton) return null;
   return (
@@ -2103,7 +2102,6 @@ export function Composer({
         isAgentRunning={isAgentRunning}
         hasSendableContent={hasSendableContent}
         isProcessing={isProcessing}
-        isCompact={isCompactLayout}
         buttonIconSize={buttonIconSize}
         handleToggleRealtimeVoice={handleToggleRealtimeVoice}
         isConnected={isConnected}
@@ -2123,7 +2121,6 @@ export function Composer({
       hasSendableContent,
       isAgentRunning,
       isConnected,
-      isCompactLayout,
       isPersonalitySwitching,
       isProcessing,
       isVoiceModeForAgent,

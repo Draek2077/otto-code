@@ -3241,11 +3241,6 @@ export const ja: TranslationResources = {
           hint: "3 つ以上続く操作を折りたたんで展開可能なグループにまとめます。最新の操作は常にその下に表示されます",
           accessibilityLabel: "連続する操作をまとめる",
         },
-        chatExpandCollapseControls: {
-          title: "Show expand/collapse controls",
-          hint: "Show small controls on chat action groups for expanding or collapsing their details",
-          accessibilityLabel: "Show expand/collapse controls",
-        },
         chatMetricsBar: {
           title: "チャットのメトリクスを表示",
           hint: "文字起こしの上に表示される細い行で、このチャットの合計トークン数、コスト、サブエージェントの稼働状況（起動したすべてを含む）を示します。コストはプロバイダーが報告する場合にのみ表示されます",

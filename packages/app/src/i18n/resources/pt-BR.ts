@@ -3261,11 +3261,6 @@ export const ptBR: TranslationResources = {
           hint: "Recolhe sequências de três ou mais ações consecutivas em um grupo expansível; a ação mais recente permanece sempre visível abaixo",
           accessibilityLabel: "Agrupar ações consecutivas",
         },
-        chatExpandCollapseControls: {
-          title: "Show expand/collapse controls",
-          hint: "Show small controls on chat action groups for expanding or collapsing their details",
-          accessibilityLabel: "Show expand/collapse controls",
-        },
         chatMetricsBar: {
           title: "Mostrar métricas do chat",
           hint: "Uma linha fina acima da transcrição com o total de tokens, o custo e a atividade de subagentes deste chat - incluindo tudo que ele iniciou. O custo aparece só quando o provedor informa um",

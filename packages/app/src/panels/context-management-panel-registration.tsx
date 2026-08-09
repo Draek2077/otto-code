@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { BookOpen } from "@/components/icons/material-icons";
+import { ContextualToken } from "@/components/icons/material-icons";
 import { ContextManagementPanel } from "@/context-management/panel";
 import type { PanelDescriptor, PanelRegistration } from "./panel-registry";
 
@@ -10,8 +10,7 @@ function useContextManagementPanelDescriptor(): PanelDescriptor {
     tooltip: t("workspace.contextManagement.tabLabel"),
     subtitle: t("workspace.contextManagement.subtitle"),
     titleState: "ready",
-    // Not Gauge - that reads as Metrics, which owns it in the stats nav and settings.
-    icon: BookOpen,
+    icon: ContextualToken,
     statusBucket: null,
   };
 }

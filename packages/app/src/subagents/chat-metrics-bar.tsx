@@ -112,6 +112,7 @@ function ChatMetricsBarContent({ serverId, agentId }: ChatMetricsBarProps): Reac
             value={cost.text}
             tooltip={t(cost.tooltipKey)}
             testID="chat-metrics-cost"
+            tight
           />
         ) : null}
         {rows.length > 0 ? (
@@ -175,6 +176,7 @@ function Metric({
   tooltip,
   testID,
   emphasis,
+  tight,
 }: {
   Icon?: MetricIcon;
   value: string | null;
@@ -182,6 +184,7 @@ function Metric({
   tooltip: string;
   testID: string;
   emphasis?: boolean;
+  tight?: boolean;
 }): ReactElement | null {
   if (!value) {
     return null;
@@ -189,7 +192,7 @@ function Metric({
   return (
     <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
       <TooltipTrigger asChild>
-        <View style={styles.metric} testID={testID}>
+        <View style={[styles.metric, tight ? styles.metricTight : null]} testID={testID}>
           {Icon ? <Icon size={12} style={styles.icon} /> : null}
           <Text style={emphasis ? styles.valueEmphasis : styles.value} numberOfLines={1}>
             {value}
@@ -235,6 +238,9 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     gap: theme.spacing[1],
+  },
+  metricTight: {
+    gap: theme.spacing[0],
   },
   icon: {
     flexShrink: 0,

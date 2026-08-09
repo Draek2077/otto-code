@@ -14,11 +14,7 @@ import {
 import { Layers } from "@/components/icons/material-icons";
 import { ExpandableBadge, ToolCall, type ExpandableBadgeErrorLevel } from "@/components/message";
 import type { ActionGroupMemberItem } from "@/types/stream";
-import { useAppSettingValue } from "@/hooks/use-settings";
 import type { ExpandAllCommand } from "@/agent-stream/view";
-
-const selectChatExpandCollapseControls = (settings: { chatExpandCollapseControls: boolean }) =>
-  settings.chatExpandCollapseControls;
 
 const SUMMARY_KEYS: Record<ActionGroupCategory, { one: string; many: string }> = {
   read: {
@@ -199,17 +195,30 @@ export const ActionGroup = memo(function ActionGroup({
 }: ActionGroupProps) {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
-  const controlsEnabled = useAppSettingValue(selectChatExpandCollapseControls);
+  const [childExpandAllCommand, setChildExpandAllCommand] = useState<ExpandAllCommand | null>(null);
 
   const handleToggle = useCallback(() => {
     setIsExpanded((previous) => !previous);
   }, []);
-  const expandAll = useCallback(() => setIsExpanded(true), []);
-  const collapseAll = useCallback(() => setIsExpanded(false), []);
+  const setChildrenExpanded = useCallback((expanded: boolean) => {
+    setChildExpandAllCommand((current) => ({
+      expanded,
+      revision: (current?.revision ?? 0) + 1,
+    }));
+  }, []);
+  const expandAll = useCallback(() => {
+    setChildrenExpanded(true);
+    setIsExpanded(true);
+  }, [setChildrenExpanded]);
+  const collapseAll = useCallback(() => {
+    setChildrenExpanded(false);
+    setIsExpanded(false);
+  }, [setChildrenExpanded]);
 
   useEffect(() => {
     if (expandAllCommand) {
       setIsExpanded(expandAllCommand.expanded);
+      setChildExpandAllCommand(expandAllCommand);
     }
   }, [expandAllCommand]);
 
@@ -244,12 +253,12 @@ export const ActionGroup = memo(function ActionGroup({
             member={member}
             cwd={cwd}
             onOpenFilePath={onOpenFilePath}
-            expandAllCommand={expandAllCommand}
+            expandAllCommand={childExpandAllCommand}
           />
         ))}
       </View>
     ),
-    [items, cwd, onOpenFilePath, expandAllCommand],
+    [items, cwd, onOpenFilePath, childExpandAllCommand],
   );
 
   return (
@@ -264,8 +273,8 @@ export const ActionGroup = memo(function ActionGroup({
       errorLevel={errorLevel}
       isLastInSequence={isLastInSequence}
       effectActivity={effectActivity}
-      onExpandAll={controlsEnabled ? expandAll : undefined}
-      onCollapseAll={controlsEnabled ? collapseAll : undefined}
+      onExpandAll={expandAll}
+      onCollapseAll={collapseAll}
     />
   );
 });

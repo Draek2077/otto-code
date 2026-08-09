@@ -41,7 +41,7 @@ import { useAgentAttentionClear } from "@/hooks/use-agent-attention-clear";
 import { useAgentInitialization } from "@/hooks/use-agent-initialization";
 import { shouldSyncAgentTimelineOnFocus } from "@/timeline/timeline-sync-plan";
 import { useAgentStreamRetention } from "@/timeline/use-agent-stream-retention";
-import { useAppSettingValue, useAppSettings } from "@/hooks/use-settings";
+import { useAppSettings } from "@/hooks/use-settings";
 import { useAgentInputDraft, type AgentInputDraft } from "@/composer/draft/input-draft";
 import {
   type AgentScreenAgent,
@@ -140,9 +140,6 @@ import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { openProviderSubagentTab } from "@/subagents/open-provider-subagent-tab";
 import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { buildDraftAgentSetup, type ClientSlashCommand } from "@/client-slash-commands";
-
-const selectChatExpandCollapseControls = (settings: { chatExpandCollapseControls: boolean }) =>
-  settings.chatExpandCollapseControls;
 
 interface ChatAgentStateShape {
   serverId: string | null;
@@ -1350,11 +1347,6 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   return (
     <View style={styles.root} onLayout={onPaneLayout}>
       <FileDropZone style={styles.container} disabled={isArchivingCurrentAgent}>
-        {/* Above the transcript, at toolbar weight: this chat's total spend
-              and everything spawned under it. Off unless switched on in
-              Settings. See subagents/chat-metrics-bar.tsx. */}
-        <ChatMetricsBar serverId={serverId} agentId={agentId} />
-
         {contentContainer}
 
         {showHistorySyncError ? (
@@ -1366,6 +1358,12 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
         ) : null}
 
         {composerSection}
+
+        {/* Below the composer, at toolbar weight: this chat's total spend and
+            everything spawned under it. Its top border separates it from the
+            message box. Off unless switched on in Settings. See
+            subagents/chat-metrics-bar.tsx. */}
+        <ChatMetricsBar serverId={serverId} agentId={agentId} />
 
         {showHistorySyncOverlay ? (
           <View style={styles.historySyncOverlay} testID="agent-history-overlay">
@@ -1411,7 +1409,6 @@ const AgentStreamSection = memo(function AgentStreamSection({
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
 }) {
   const { t } = useTranslation();
-  const chatExpandCollapseControls = useAppSettingValue(selectChatExpandCollapseControls);
   // While this panel slot is hidden, the selector returns the frozen tail
   // reference instead of the live one, so background agents' 48ms stream
   // flushes never re-render this section at all (the store notification sees
@@ -1529,17 +1526,13 @@ const AgentStreamSection = memo(function AgentStreamSection({
         <ContextMenuItem onSelect={exportText} testID="agent-chat-export-text">
           Export as Text
         </ContextMenuItem>
-        {chatExpandCollapseControls ? (
-          <>
-            <ContextMenuSeparator />
-            <ContextMenuItem onSelect={expandAll} testID="agent-chat-expand-all">
-              {t("message.expandCollapse.expandAll")}
-            </ContextMenuItem>
-            <ContextMenuItem onSelect={collapseAll} testID="agent-chat-collapse-all">
-              {t("message.expandCollapse.collapseAll")}
-            </ContextMenuItem>
-          </>
-        ) : null}
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={expandAll} testID="agent-chat-expand-all">
+          {t("message.expandCollapse.expandAll")}
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={collapseAll} testID="agent-chat-collapse-all">
+          {t("message.expandCollapse.collapseAll")}
+        </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
   );

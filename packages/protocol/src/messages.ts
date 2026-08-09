@@ -1851,6 +1851,8 @@ export const BrainCapabilitiesSchema = z
     writable: z.boolean().default(false),
     /** The remote brain owns benchmark jobs and can list/cancel them. */
     jobs: z.boolean().default(false),
+    /** The brain can ask its owning daemon to restart it. */
+    restart: z.boolean().default(false),
   })
   .passthrough();
 export type BrainCapabilities = z.infer<typeof BrainCapabilitiesSchema>;

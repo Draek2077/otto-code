@@ -1,22 +1,18 @@
-import { memo, useCallback, useMemo, useRef, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ScrollView } from "react-native";
 import { useTranslation } from "react-i18next";
 import { Wrench } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { ExpandableBadge } from "@/components/message";
 import { type OverviewSummary, type OverviewToolCallGroup } from "./model";
-import { useAppSettingValue } from "@/hooks/use-settings";
 import type { ExpandAllCommand } from "@/agent-stream/view";
-
-const selectChatExpandCollapseControls = (settings: { chatExpandCollapseControls: boolean }) =>
-  settings.chatExpandCollapseControls;
 
 interface OverviewGroupProps {
   group: OverviewToolCallGroup;
   expanded: boolean;
   isLastInSequence: boolean;
   onExpandedChange: (groupId: string, expanded: boolean) => void;
-  children: ReactNode;
+  children: (expandAllCommand: ExpandAllCommand | null) => ReactNode;
   expandAllCommand?: ExpandAllCommand | null;
 }
 
@@ -67,7 +63,7 @@ export const OverviewToolCallGroupView = memo(function OverviewToolCallGroupView
 }: OverviewGroupProps) {
   const scrollRef = useRef<ScrollView>(null);
   const aggregateSummary = useOverviewSummary(group.summary);
-  const controlsEnabled = useAppSettingValue(selectChatExpandCollapseControls);
+  const [childExpandAllCommand, setChildExpandAllCommand] = useState<ExpandAllCommand | null>(null);
   const effectiveExpanded = expandAllCommand?.expanded ?? expanded;
   const scrollToLatest = useCallback(() => {
     scrollRef.current?.scrollToEnd({ animated: false });
@@ -75,14 +71,25 @@ export const OverviewToolCallGroupView = memo(function OverviewToolCallGroupView
   const toggle = useCallback(() => {
     onExpandedChange(group.run.id, !effectiveExpanded);
   }, [effectiveExpanded, group.run.id, onExpandedChange]);
-  const expandAll = useCallback(
-    () => onExpandedChange(group.run.id, true),
-    [group.run.id, onExpandedChange],
-  );
-  const collapseAll = useCallback(
-    () => onExpandedChange(group.run.id, false),
-    [group.run.id, onExpandedChange],
-  );
+  const expandAll = useCallback(() => {
+    setChildExpandAllCommand((current) => ({
+      expanded: true,
+      revision: (current?.revision ?? 0) + 1,
+    }));
+    onExpandedChange(group.run.id, true);
+  }, [group.run.id, onExpandedChange]);
+  const collapseAll = useCallback(() => {
+    setChildExpandAllCommand((current) => ({
+      expanded: false,
+      revision: (current?.revision ?? 0) + 1,
+    }));
+    onExpandedChange(group.run.id, false);
+  }, [group.run.id, onExpandedChange]);
+  useEffect(() => {
+    if (expandAllCommand) {
+      setChildExpandAllCommand(expandAllCommand);
+    }
+  }, [expandAllCommand]);
   const renderDetails = useCallback(
     () => (
       <ScrollView
@@ -93,10 +100,10 @@ export const OverviewToolCallGroupView = memo(function OverviewToolCallGroupView
         showsVerticalScrollIndicator
         onContentSizeChange={scrollToLatest}
       >
-        {children}
+        {children(childExpandAllCommand)}
       </ScrollView>
     ),
-    [children, scrollToLatest],
+    [children, childExpandAllCommand, scrollToLatest],
   );
 
   return (
@@ -110,8 +117,8 @@ export const OverviewToolCallGroupView = memo(function OverviewToolCallGroupView
       onToggle={toggle}
       renderDetails={renderDetails}
       borderlessWhenExpanded
-      onExpandAll={controlsEnabled ? expandAll : undefined}
-      onCollapseAll={controlsEnabled ? collapseAll : undefined}
+      onExpandAll={expandAll}
+      onCollapseAll={collapseAll}
     />
   );
 });

@@ -895,7 +895,7 @@ export function BrainModelsTab({
         />
         {disk ? (
           <Text style={styles.disk}>
-            {`${formatGiB(disk.modelBytes)} of models · ${formatGiB(disk.freeBytes)} free`}
+            {`${formatGiB(disk.modelBytes)} models of ${formatGiB(disk.totalBytes)} server storage · ${formatGiB(disk.freeBytes)} free`}
           </Text>
         ) : null}
       </View>
@@ -913,7 +913,7 @@ export function BrainModelsTab({
         />
         {disk ? (
           <Text style={styles.disk}>
-            {`${formatGiB(disk.modelBytes)} of models · ${formatGiB(disk.freeBytes)} free`}
+            {`${formatGiB(disk.modelBytes)} models of ${formatGiB(disk.totalBytes)} server storage · ${formatGiB(disk.freeBytes)} free`}
           </Text>
         ) : null}
       </View>

@@ -3163,11 +3163,6 @@ export const zhCN: TranslationResources = {
           hint: "将三个或以上的连续操作折叠为一个可展开的分组；最近一次操作始终显示在其下方",
           accessibilityLabel: "将连续操作分组",
         },
-        chatExpandCollapseControls: {
-          title: "Show expand/collapse controls",
-          hint: "Show small controls on chat action groups for expanding or collapsing their details",
-          accessibilityLabel: "Show expand/collapse controls",
-        },
         chatMetricsBar: {
           title: "显示对话指标",
           hint: "位于对话记录上方的一行窄条，显示此对话的总 token 数、费用和子智能体活动-包含它派生的一切。仅当提供方报告费用时才会显示费用",

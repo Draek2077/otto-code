@@ -33,7 +33,7 @@ import { DiffStat } from "@/components/diff-stat";
 import {
   ArrowLeftToLine,
   ArrowRightToLine,
-  BookOpen,
+  ContextualToken,
   ChevronDown,
   Copy,
   CopyX,
@@ -335,7 +335,7 @@ const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 const ThemedGlobe = withUnistyles(Globe);
 const ThemedImport = withUnistyles(ImportIcon);
 const ThemedSettings = withUnistyles(Settings);
-const ThemedBookOpen = withUnistyles(BookOpen);
+const ThemedContextualToken = withUnistyles(ContextualToken);
 const ThemedExplore = withUnistyles(Explore);
 const ThemedPlay = withUnistyles(Play);
 
@@ -385,7 +385,7 @@ const MENU_COPY_ICON = <ThemedCopy uniProps={mutedMdMapping} />;
 const MENU_SETTINGS_ICON = <ThemedSettings uniProps={mutedMdMapping} />;
 // Matches the Context Management tab's own icon and the sidebar row's item -
 // one thing, one glyph, wherever you meet it.
-const MENU_CONTEXT_ICON = <ThemedBookOpen uniProps={mutedMdMapping} />;
+const MENU_CONTEXT_ICON = <ThemedContextualToken uniProps={mutedMdMapping} />;
 // Leading icons for the compact-fit fallback items (see
 // resolveCompactHeaderActions): same glyphs as the header buttons they replace.
 const MENU_EXPLORER_ICON = <ThemedExplore uniProps={mutedMdMapping} />;
@@ -1103,11 +1103,23 @@ function useEnabledAfterInteractions(enabled: boolean): boolean {
   return enabled && interactionsSettled;
 }
 
-function isWorkspaceMicrophoneAvailable(enabled: boolean): boolean {
+function isDictationTab(target: WorkspaceTabTarget | undefined): boolean {
+  return ["agent", "draft"].includes(target?.kind ?? "");
+}
+
+function isWorkspaceMicrophoneAvailable(enabled: boolean, hasDictationTab: boolean): boolean {
   return shouldShowWakeWordToolbarButton({
     featureEnabled: enabled,
     supported: getWakeWordCapability().available,
+    hasDictationTab,
   });
+}
+
+function getWorkspaceMicrophoneAvailability(
+  enabled: boolean,
+  activeTab: { descriptor: { target: WorkspaceTabTarget } } | null | undefined,
+): boolean {
+  return isWorkspaceMicrophoneAvailable(enabled, isDictationTab(activeTab?.descriptor.target));
 }
 
 function useCloseTabs(): UseCloseTabsResult {
@@ -1863,6 +1875,7 @@ function WorkspaceHeaderTitleBar({
           onOpenSetupTab={onOpenSetupTab}
           onOpenContextManagement={onOpenContextManagement}
         />
+        {microphoneAvailable ? <WorkspaceWakeWordButton /> : null}
         {showVoiceCuesAction ? <WorkspaceVoiceCuesButton /> : null}
         {showVisualizerAction ? (
           <WorkspaceVisualizerButton
@@ -1889,7 +1902,6 @@ function WorkspaceHeaderTitleBar({
             ghostIconSize={headerActionIconSize.lg}
           />
         ) : null}
-        {microphoneAvailable ? <WorkspaceWakeWordButton /> : null}
         {/* The Brain status light, standing in for the sidebar's own whenever
             the sidebar is collapsed or overlaid. It is immediately before
             Explorer and never fitted away - see workspace-brain-button.tsx. */}
@@ -2749,6 +2761,14 @@ function WorkspaceScreenContent({
     () => hideDeveloperTabs(uiTabs, isDeveloperMode),
     [uiTabs, isDeveloperMode],
   );
+  const focusedPaneTabState = useMemo(
+    () =>
+      deriveWorkspacePaneState({
+        layout: workspaceLayout,
+        tabs: visibleUiTabs,
+      }),
+    [visibleUiTabs, workspaceLayout],
+  );
   useSyncWorkspaceActiveBrowser({
     workspaceLayout,
     isRouteFocused,
@@ -2793,7 +2813,10 @@ function WorkspaceScreenContent({
   // budget.
   const visualizerEnabled = useFeatureEnabled("visualizer");
   const voiceCuesAvailable = useVoiceCuesAvailable(normalizedServerId);
-  const microphoneAvailable = isWorkspaceMicrophoneAvailable(settings.wakeWordEnabled);
+  const microphoneAvailable = getWorkspaceMicrophoneAvailability(
+    settings.wakeWordEnabled,
+    focusedPaneTabState.activeTab,
+  );
   // The Brain status light moves into the header whenever the sidebar is not
   // showing its own, so the local AI host's state is visible at all times rather
   // than only while the sidebar happens to be open.
@@ -2888,14 +2911,6 @@ function WorkspaceScreenContent({
     ],
   );
 
-  const focusedPaneTabState = useMemo(
-    () =>
-      deriveWorkspacePaneState({
-        layout: workspaceLayout,
-        tabs: visibleUiTabs,
-      }),
-    [visibleUiTabs, workspaceLayout],
-  );
   // Selective timeline delivery: the daemon only forwards agent_stream events for
   // agents this client has declared it is viewing. Without this declaration the
   // subscription set stays empty and no live message ever reaches the transcript;

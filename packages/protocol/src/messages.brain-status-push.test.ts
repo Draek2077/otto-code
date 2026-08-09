@@ -69,6 +69,7 @@ describe("brain_status_changed", () => {
 describe("the brain event capability", () => {
   test("defaults to false, so a brain that predates the stream is not assumed to serve it", () => {
     expect(BrainCapabilitiesSchema.parse({}).events).toBe(false);
+    expect(BrainCapabilitiesSchema.parse({}).restart).toBe(false);
     expect(BrainHostStatusSchema.parse({ running: true }).apiVersion).toBeUndefined();
   });
 
@@ -80,6 +81,14 @@ describe("the brain event capability", () => {
     });
     expect(status.capabilities?.events).toBe(true);
     expect(status.apiVersion).toBe(1);
+  });
+
+  test("carries the additive remote restart capability", () => {
+    const status = BrainHostStatusSchema.parse({
+      running: true,
+      capabilities: { restart: true },
+    });
+    expect(status.capabilities?.restart).toBe(true);
   });
 
   test("parses additive host API v2 inference stages and per-slot metrics", () => {

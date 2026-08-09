@@ -1,8 +1,9 @@
 export function shouldShowWakeWordToolbarButton(input: {
   featureEnabled: boolean;
   supported: boolean;
+  hasDictationTab: boolean;
 }): boolean {
-  return input.featureEnabled && input.supported;
+  return input.featureEnabled && input.supported && input.hasDictationTab;
 }
 
 export function shouldStartWakeWordListening(input: {

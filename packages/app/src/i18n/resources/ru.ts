@@ -3254,11 +3254,6 @@ export const ru: TranslationResources = {
           hint: "Сворачивает серии из трёх и более последовательных действий в раскрывающуюся группу; последнее действие всегда остаётся видимым под ней",
           accessibilityLabel: "Группировать последовательные действия",
         },
-        chatExpandCollapseControls: {
-          title: "Show expand/collapse controls",
-          hint: "Show small controls on chat action groups for expanding or collapsing their details",
-          accessibilityLabel: "Show expand/collapse controls",
-        },
         chatMetricsBar: {
           title: "Показывать метрики чата",
           hint: "Тонкая строка над стенограммой с суммарными токенами, стоимостью и активностью субагентов этого чата - включая всё, что он породил. Стоимость отображается, только если провайдер её сообщает",

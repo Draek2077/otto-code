@@ -182,8 +182,16 @@ function Meter({ fraction, tone }: { fraction: number; tone: "normal" | "danger"
   );
 }
 
-/** Start, stop and restart. Absent for a remote brain, which the daemon cannot spawn. */
-function LifecycleControls({ serverId, phase }: { serverId: string; phase: Phase }) {
+/** Local brains expose full lifecycle; remote brains expose only host-owned restart. */
+function LifecycleControls({
+  serverId,
+  phase,
+  showStartStop,
+}: {
+  serverId: string;
+  phase: Phase;
+  showStartStop: boolean;
+}) {
   const isCompact = useIsCompactFormFactor();
   const client = useHostRuntimeClient(serverId);
   const queryClient = useQueryClient();
@@ -222,42 +230,46 @@ function LifecycleControls({ serverId, phase }: { serverId: string; phase: Phase
   return (
     <View style={styles.lifecycle}>
       <View style={isCompact ? styles.actionsStacked : styles.actions}>
-        <Tooltip delayDuration={250} enabledOnDesktop enabledOnMobile={false}>
-          <TooltipTrigger asChild disabled={pending !== null || phase === "running"}>
-            <Button
-              variant="secondary"
-              size="sm"
-              leftIcon={startIcon}
-              style={styles.iconButton}
-              accessibilityLabel="Start brain"
-              onPress={handleStart}
-              loading={pending === "start"}
-              disabled={pending !== null || phase === "running"}
-              testID="brain-overview-start"
-            />
-          </TooltipTrigger>
-          <TooltipContent side="top" align="center" offset={8}>
-            <Text style={styles.tooltipText}>Start</Text>
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip delayDuration={250} enabledOnDesktop enabledOnMobile={false}>
-          <TooltipTrigger asChild disabled={pending !== null || phase === "stopped"}>
-            <Button
-              variant="secondary"
-              size="sm"
-              leftIcon={stopIcon}
-              style={styles.iconButton}
-              accessibilityLabel="Stop brain"
-              onPress={handleStop}
-              loading={pending === "stop"}
-              disabled={pending !== null || phase === "stopped"}
-              testID="brain-overview-stop"
-            />
-          </TooltipTrigger>
-          <TooltipContent side="top" align="center" offset={8}>
-            <Text style={styles.tooltipText}>Stop</Text>
-          </TooltipContent>
-        </Tooltip>
+        {showStartStop ? (
+          <Tooltip delayDuration={250} enabledOnDesktop enabledOnMobile={false}>
+            <TooltipTrigger asChild disabled={pending !== null || phase === "running"}>
+              <Button
+                variant="secondary"
+                size="sm"
+                leftIcon={startIcon}
+                style={styles.iconButton}
+                accessibilityLabel="Start brain"
+                onPress={handleStart}
+                loading={pending === "start"}
+                disabled={pending !== null || phase === "running"}
+                testID="brain-overview-start"
+              />
+            </TooltipTrigger>
+            <TooltipContent side="top" align="center" offset={8}>
+              <Text style={styles.tooltipText}>Start</Text>
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
+        {showStartStop ? (
+          <Tooltip delayDuration={250} enabledOnDesktop enabledOnMobile={false}>
+            <TooltipTrigger asChild disabled={pending !== null || phase === "stopped"}>
+              <Button
+                variant="secondary"
+                size="sm"
+                leftIcon={stopIcon}
+                style={styles.iconButton}
+                accessibilityLabel="Stop brain"
+                onPress={handleStop}
+                loading={pending === "stop"}
+                disabled={pending !== null || phase === "stopped"}
+                testID="brain-overview-stop"
+              />
+            </TooltipTrigger>
+            <TooltipContent side="top" align="center" offset={8}>
+              <Text style={styles.tooltipText}>Stop</Text>
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
         <Tooltip delayDuration={250} enabledOnDesktop enabledOnMobile={false}>
           <TooltipTrigger asChild disabled={pending !== null}>
             <Button
@@ -287,12 +299,14 @@ function StatusHero({
   phase,
   serverId,
   canControlLifecycle,
+  showStartStop,
   fillHeight,
 }: {
   status: BrainHostStatus | null;
   phase: Phase;
   serverId: string;
   canControlLifecycle: boolean;
+  showStartStop: boolean;
   fillHeight?: boolean;
 }) {
   const presentation = PHASE_PRESENTATION[phase];
@@ -317,9 +331,9 @@ function StatusHero({
         ) : null}
       </View>
       {canControlLifecycle ? (
-        <LifecycleControls serverId={serverId} phase={phase} />
+        <LifecycleControls serverId={serverId} phase={phase} showStartStop={showStartStop} />
       ) : (
-        <Text style={styles.remoteNote}>Start this brain on the machine that hosts it.</Text>
+        <Text style={styles.remoteNote}>This brain does not permit remote restart.</Text>
       )}
     </View>
   );
@@ -546,10 +560,12 @@ function HostPanel({ status }: { status: BrainHostStatus | null }) {
 function RuntimePanel({
   serverId,
   isConnected,
+  canInstall,
   fillHeight,
 }: {
   serverId: string;
   isConnected: boolean;
+  canInstall: boolean;
   fillHeight?: boolean;
 }) {
   const queryClient = useQueryClient();
@@ -580,6 +596,7 @@ function RuntimePanel({
         answered={runtimesQuery.data !== undefined}
         loading={runtimesQuery.isLoading}
         busy={busy}
+        canInstall={canInstall}
         jobs={jobs}
         onStarted={handleJobStarted}
       />
@@ -592,13 +609,16 @@ export function BrainOverviewTab({
   isConnected,
   canControlLifecycle,
   canManageRuntime,
+  canInstallRuntime,
+  showStartStop,
 }: {
   serverId: string;
   isConnected: boolean;
   /** False for a remote brain: it is started on the machine that hosts it. */
   canControlLifecycle: boolean;
-  /** False for a remote brain: its runtime belongs to the machine that hosts it. */
   canManageRuntime: boolean;
+  canInstallRuntime: boolean;
+  showStartStop: boolean;
 }) {
   const query = useBrainStatus(serverId, { enabled: isConnected, resources: true });
   const connection = useHostRuntimeConnectionStatus(serverId);
@@ -656,6 +676,7 @@ export function BrainOverviewTab({
             phase={phase}
             serverId={serverId}
             canControlLifecycle={canControlLifecycle}
+            showStartStop={showStartStop}
             fillHeight={!stackTopSections}
           />
         </View>
@@ -664,6 +685,7 @@ export function BrainOverviewTab({
             <RuntimePanel
               serverId={serverId}
               isConnected={isConnected}
+              canInstall={canInstallRuntime}
               fillHeight={!stackTopSections}
             />
           </View>

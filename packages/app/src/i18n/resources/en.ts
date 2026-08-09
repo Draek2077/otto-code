@@ -3250,11 +3250,6 @@ export const en = {
           hint: "Collapse runs of three or more consecutive actions into one expandable group; the most recent action always stays visible below it",
           accessibilityLabel: "Group consecutive actions together",
         },
-        chatExpandCollapseControls: {
-          title: "Show expand/collapse controls",
-          hint: "Show small controls on chat action groups for expanding or collapsing their details",
-          accessibilityLabel: "Show expand/collapse controls",
-        },
         chatMetricsBar: {
           title: "Show chat metrics",
           hint: "A slim row above the transcript with this chat's total tokens, cost and sub-agent activity - including everything it spawned. Cost appears only where the provider reports one",

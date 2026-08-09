@@ -3199,11 +3199,6 @@ export const ar: TranslationResources = {
           hint: "يطوي سلاسل من ثلاثة إجراءات متتالية أو أكثر في مجموعة قابلة للتوسيع؛ ويظل أحدث إجراء ظاهرًا أسفلها دائمًا",
           accessibilityLabel: "تجميع الإجراءات المتتالية معًا",
         },
-        chatExpandCollapseControls: {
-          title: "Show expand/collapse controls",
-          hint: "Show small controls on chat action groups for expanding or collapsing their details",
-          accessibilityLabel: "Show expand/collapse controls",
-        },
         chatMetricsBar: {
           title: "إظهار مقاييس المحادثة",
           hint: "صف رفيع أعلى النص يعرض إجمالي الرموز والتكلفة ونشاط الوكلاء الفرعيين لهذه المحادثة - بما في ذلك كل ما تفرّع عنها. لا تظهر التكلفة إلا عندما يبلّغ عنها المزوّد",

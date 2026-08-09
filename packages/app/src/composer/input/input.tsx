@@ -79,6 +79,7 @@ import { useComposerHeightMirror } from "./height-mirror";
 import { MIN_INPUT_HEIGHT, resolveMaxInputHeight } from "./max-height";
 import {
   resolveSendTooltipLabel,
+  resolveSendButtonIcon,
   resolveSubmitAccessibilityLabel,
   resolveVoiceAccessibilityLabel,
   resolveVoiceTooltipText,
@@ -1186,24 +1187,6 @@ interface SendButtonStateOutput {
   defaultActionQueues: boolean;
 }
 
-function resolveActionSubmitIcon(input: {
-  canPressLoadingButton: boolean;
-  defaultActionQueues: boolean;
-  isAgentRunning: boolean;
-  submitIcon: "arrow" | "return";
-}): "arrow" | "return" {
-  if (input.canPressLoadingButton) {
-    return "arrow";
-  }
-  if (input.defaultActionQueues) {
-    return "return";
-  }
-  if (input.isAgentRunning) {
-    return "arrow";
-  }
-  return input.submitIcon;
-}
-
 function computeSendButtonState(input: SendButtonStateInput): SendButtonStateOutput {
   const canPressLoadingButton =
     input.isSubmitLoading && typeof input.onSubmitLoadingPress === "function";
@@ -1912,7 +1895,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       defaultActionQueues,
       t,
     });
-    const actionSubmitIcon = resolveActionSubmitIcon({
+    const actionSubmitIcon = resolveSendButtonIcon({
       canPressLoadingButton,
       defaultActionQueues,
       isAgentRunning,

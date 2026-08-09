@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  resolveSendButtonIcon,
   resolveSendTooltipLabel,
   resolveSubmitAccessibilityLabel,
   resolveVoiceAccessibilityLabel,
@@ -133,5 +134,24 @@ describe("composer input labels", () => {
         t,
       }),
     ).toBe("Send");
+  });
+
+  it("uses the Enter glyph for Queue and the arrow for Interrupt", () => {
+    expect(
+      resolveSendButtonIcon({
+        canPressLoadingButton: false,
+        defaultActionQueues: true,
+        isAgentRunning: true,
+        submitIcon: "arrow",
+      }),
+    ).toBe("return");
+    expect(
+      resolveSendButtonIcon({
+        canPressLoadingButton: false,
+        defaultActionQueues: false,
+        isAgentRunning: true,
+        submitIcon: "return",
+      }),
+    ).toBe("arrow");
   });
 });

@@ -98,6 +98,7 @@ export const ClipboardPaste = createMaterialSymbolIcon("ClipboardPaste");
 export const CodeBlocks = createMaterialSymbolIcon("CodeBlocks");
 export const Columns2 = createMaterialSymbolIcon("Columns2");
 export const Compress = createMaterialSymbolIcon("Compress");
+export const ContextualToken = createMaterialSymbolIcon("ContextualToken");
 export const Copy = createMaterialSymbolIcon("Copy");
 export const CopyX = createMaterialSymbolIcon("CopyX");
 export const CornerDownLeft = createMaterialSymbolIcon("CornerDownLeft");

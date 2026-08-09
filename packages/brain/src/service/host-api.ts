@@ -101,6 +101,8 @@ export interface HostCapabilities {
   writable: boolean;
   /** POST/GET /__host/jobs and POST /__host/jobs/cancel. */
   jobs: boolean;
+  /** POST /__host/restart delegates a restart to the service owner. */
+  restart: boolean;
 }
 
 /** A long-running operation owned by this brain host, not its caller. */
@@ -149,6 +151,8 @@ export interface HostApiDeps {
   statusEvents?: BrainStatusPublisher | null;
   /** Long operations that must execute on this brain's machine. */
   jobs?: HostJobRunner;
+  /** Gracefully restart the serving process after its HTTP acknowledgement. */
+  restart?: () => void;
 }
 
 /** One row of the model inventory: the scan, metadata, profile and score joined. */
@@ -304,6 +308,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
     liveInference: Boolean(deps.statusEvents?.ready),
     writable: deps.getAllowWrite(),
     jobs: Boolean(deps.jobs),
+    restart: Boolean(deps.restart),
   });
 
   /** Refuse a write unless the owner opted into remote configuration. */
@@ -636,6 +641,20 @@ export function createHostApi(deps: HostApiDeps): HostApi {
         return true;
       }
       handleEvents(req, res, publisher);
+      return true;
+    }
+
+    // A remote caller can restart a managed brain without gaining start/stop
+    // control over the host daemon. Acknowledge first so it does not race the
+    // connection it is about to close.
+    if (route === "/__host/restart" && method === "POST") {
+      if (!deps.restart) {
+        sendError(res, 404, "this brain cannot restart itself");
+        return true;
+      }
+      if (!guardWrite(res)) return true;
+      sendJson(res, { accepted: true });
+      queueMicrotask(() => deps.restart?.());
       return true;
     }
 

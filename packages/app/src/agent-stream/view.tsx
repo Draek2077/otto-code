@@ -982,7 +982,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     }, []);
 
     const renderSingleToolCallItem = useCallback(
-      (item: Extract<StreamItem, { kind: "tool_call" }>, isLastInSequence: boolean) => {
+      (
+        item: Extract<StreamItem, { kind: "tool_call" }>,
+        isLastInSequence: boolean,
+        itemExpandAllCommand = expandAllCommand,
+      ) => {
         const { payload } = item;
 
         if (payload.source === "agent") {
@@ -1011,7 +1015,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               metadata={data.metadata}
               isLastInSequence={isLastInSequence}
               onOpenFilePath={handleToolCallOpenFile}
-              expandAllCommand={expandAllCommand}
+              expandAllCommand={itemExpandAllCommand}
             />
           );
         }
@@ -1027,7 +1031,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             status={data.status}
             isLastInSequence={isLastInSequence}
             onOpenFilePath={handleToolCallOpenFile}
-            expandAllCommand={expandAllCommand}
+            expandAllCommand={itemExpandAllCommand}
           />
         );
       },
@@ -1053,12 +1057,17 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             onExpandedChange={setToolCallGroupExpanded}
           >
             {effectiveExpanded
-              ? group.run.calls.map((call, index) => (
-                  <React.Fragment key={call.id}>
-                    {renderSingleToolCallItem(call, index === group.run.calls.length - 1)}
-                  </React.Fragment>
-                ))
-              : null}
+              ? (childExpandAllCommand) =>
+                  group.run.calls.map((call, index) => (
+                    <React.Fragment key={call.id}>
+                      {renderSingleToolCallItem(
+                        call,
+                        index === group.run.calls.length - 1,
+                        childExpandAllCommand,
+                      )}
+                    </React.Fragment>
+                  ))
+              : () => null}
           </OverviewToolCallGroupView>
         );
       },

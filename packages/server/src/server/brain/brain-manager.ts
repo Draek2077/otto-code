@@ -932,6 +932,13 @@ export class BrainManager {
     return this.requestHostJson("POST", "/__host/jobs/bench", { model });
   }
 
+  /** Ask a remote managed brain to exit cleanly so its owning daemon restarts it. */
+  async remoteRestart(): Promise<Record<string, unknown> | null> {
+    if (this.mode !== "remote") throw new Error("The brain is not configured in remote mode.");
+    this.requireReachable();
+    return this.requestHostJson("POST", "/__host/restart");
+  }
+
   async remoteJob(
     route: string,
     body: Record<string, unknown>,

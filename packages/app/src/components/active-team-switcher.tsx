@@ -560,13 +560,14 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.md,
     borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface2,
+    borderColor: theme.colors.borderAccent,
+    // Match the Scripts trigger's 21px content, 4px vertical padding, and
+    // 1px outline so adjacent titlebar controls share one height.
+    minHeight: theme.fontSize.sm * 1.5 + theme.spacing[1] * 2 + theme.borderWidth[1] * 2,
     maxWidth: 220,
   },
   headerTriggerActive: {
-    borderColor: theme.colors.borderAccent,
-    backgroundColor: theme.colors.surfaceHover,
+    backgroundColor: theme.colors.surfaceToggleHover,
   },
   headerLabel: {
     flexShrink: 1,

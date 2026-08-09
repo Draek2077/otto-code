@@ -31,7 +31,6 @@ interface WakeWordSession {
   spotter: NativeKeywordSpotter;
   stream: NativeKeywordStream;
   modelDir: string;
-  audioChunks: number;
   detected: boolean;
   sender: Electron.WebContents;
 }
@@ -99,14 +98,10 @@ function createSession(
     keywordsThreshold: tuning.keywordsThreshold,
     keywordsScore: tuning.keywordsScore,
   });
-  log.info(
-    `[wake-word] detector tuning: sensitivity=${sensitivity.toFixed(2)} score=${tuning.keywordsScore.toFixed(2)} threshold=${tuning.keywordsThreshold.toFixed(3)}`,
-  );
   return {
     spotter,
     stream: spotter.createStream(),
     modelDir,
-    audioChunks: 0,
     detected: false,
     sender,
   };
@@ -129,12 +124,10 @@ export function registerWakeWordHandlers(): void {
     if (existing) {
       sessions.delete(event.sender.id);
     }
-    log.info(`[wake-word] starting local detector for renderer ${event.sender.id}`);
     try {
       const session = createSession(phrase, sensitivity, event.sender);
       event.sender.setBackgroundThrottling(false);
       sessions.set(event.sender.id, session);
-      log.info(`[wake-word] started local detector for renderer ${event.sender.id}`);
     } catch (error) {
       log.error(`[wake-word] failed to start detector for renderer ${event.sender.id}`, error);
       throw error;
@@ -147,27 +140,13 @@ export function registerWakeWordHandlers(): void {
       if (!session || session.detected || !rawArgs || typeof rawArgs !== "object") return;
       const encoded = (rawArgs as { pcm?: unknown }).pcm;
       if (typeof encoded !== "string") return;
-      session.audioChunks += 1;
-      if (session.audioChunks === 1) {
-        log.info(`[wake-word] received first local PCM chunk for renderer ${event.sender.id}`);
-      }
       const bytes = Buffer.from(encoded, "base64");
       const samples = new Float32Array(Math.floor(bytes.byteLength / 2));
-      let sumSquares = 0;
-      let peak = 0;
       for (let i = 0; i < samples.length; i += 1) {
         let value = bytes[i * 2] | (bytes[i * 2 + 1] << 8);
         if (value & 0x8000) value -= 0x10000;
         const sample = value / 0x8000;
         samples[i] = sample;
-        sumSquares += sample * sample;
-        peak = Math.max(peak, Math.abs(sample));
-      }
-      if (session.audioChunks === 1 || session.audioChunks % 20 === 0) {
-        const rms = Math.sqrt(sumSquares / Math.max(1, samples.length));
-        log.info(
-          `[wake-word] local PCM level for renderer ${event.sender.id}: chunks=${session.audioChunks} rms=${rms.toFixed(4)} peak=${peak.toFixed(4)}`,
-        );
       }
       session.stream.acceptWaveform({ samples, sampleRate: SAMPLE_RATE });
       let detectedKeyword = "";

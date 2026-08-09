@@ -62,7 +62,11 @@ export function WorkspaceWakeWordButton() {
     listeningPaused,
     isPaneFocused: true,
   });
-  const visible = shouldShowWakeWordToolbarButton({ featureEnabled, supported });
+  const visible = shouldShowWakeWordToolbarButton({
+    featureEnabled,
+    supported,
+    hasDictationTab: true,
+  });
   const displayedState = listeningPaused ? "disabled" : detectorState;
   const label = getWakeWordLabel(displayedState);
   const onPress = useCallback(() => {

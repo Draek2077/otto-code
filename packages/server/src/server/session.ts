@@ -3782,7 +3782,11 @@ export class Session {
       error = "The local AI host is not available on this daemon.";
     } else {
       try {
-        await this.brainManager.restart(model);
+        if (this.brainManager.isRemote()) {
+          await this.brainManager.remoteRestart();
+        } else {
+          await this.brainManager.restart(model);
+        }
       } catch (err) {
         error = getErrorMessage(err);
       }
