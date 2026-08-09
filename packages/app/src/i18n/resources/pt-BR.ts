@@ -559,6 +559,7 @@ export const ptBR: TranslationResources = {
       openFile: "Abrir arquivo",
       copied: "Copiado",
     },
+    expandCollapse: { expandAll: "Expand all", collapseAll: "Collapse all" },
     attachments: {
       dismissImage: "Dispensar imagem",
       closeImage: "Fechar imagem",
@@ -3259,6 +3260,11 @@ export const ptBR: TranslationResources = {
           title: "Agrupar ações consecutivas",
           hint: "Recolhe sequências de três ou mais ações consecutivas em um grupo expansível; a ação mais recente permanece sempre visível abaixo",
           accessibilityLabel: "Agrupar ações consecutivas",
+        },
+        chatExpandCollapseControls: {
+          title: "Show expand/collapse controls",
+          hint: "Show small controls on chat action groups for expanding or collapsing their details",
+          accessibilityLabel: "Show expand/collapse controls",
         },
         chatMetricsBar: {
           title: "Mostrar métricas do chat",

@@ -323,6 +323,8 @@ export interface AppSettings {
   // Fold runs of 3+ consecutive actions in agent chat into one collapsed,
   // expandable group; the most recent action of a run stays outside it.
   groupConsecutiveActions: boolean;
+  // Show per-group expand/collapse-all controls in chat action headers.
+  chatExpandCollapseControls: boolean;
   // Slim metrics row at the top of the chat pane: this chat's total spend and
   // everything spawned under it (see subagents/chat-totals.ts). Off by default -
   // it earns its height only for people who watch cost. Device-local.
@@ -607,6 +609,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   chatWidth: "default",
   blackTabBackground: false,
   groupConsecutiveActions: true,
+  chatExpandCollapseControls: true,
   chatMetricsBar: false,
   clientResourceBarAllPages: false,
   hidePinnedToolbarOptions: false,

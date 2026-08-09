@@ -570,6 +570,7 @@ export const en = {
       openFile: "Open file",
       copied: "Copied",
     },
+    expandCollapse: { expandAll: "Expand all", collapseAll: "Collapse all" },
     attachments: {
       dismissImage: "Dismiss image",
       closeImage: "Close image",
@@ -3248,6 +3249,11 @@ export const en = {
           title: "Group consecutive actions together",
           hint: "Collapse runs of three or more consecutive actions into one expandable group; the most recent action always stays visible below it",
           accessibilityLabel: "Group consecutive actions together",
+        },
+        chatExpandCollapseControls: {
+          title: "Show expand/collapse controls",
+          hint: "Show small controls on chat action groups for expanding or collapsing their details",
+          accessibilityLabel: "Show expand/collapse controls",
         },
         chatMetricsBar: {
           title: "Show chat metrics",

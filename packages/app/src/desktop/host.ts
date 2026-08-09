@@ -199,6 +199,10 @@ export interface DesktopHostBridge {
   platform?: string;
   invoke?: DesktopInvokeBridge["invoke"];
   getPendingOpenProject?: () => Promise<string | null>;
+  getPendingOpenTarget?: () => Promise<{
+    kind: "directory-shell" | "file";
+    path: string;
+  } | null>;
   agentNavigation?: DesktopAgentNavigationBridge;
   events?: DesktopEventsBridge;
   window?: DesktopWindowModuleBridge;

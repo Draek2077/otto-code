@@ -1849,6 +1849,8 @@ export const BrainCapabilitiesSchema = z
     liveInference: z.boolean().default(false),
     /** Whether writes are permitted right now (the brain's allowRemoteConfig). */
     writable: z.boolean().default(false),
+    /** The remote brain owns benchmark jobs and can list/cancel them. */
+    jobs: z.boolean().default(false),
   })
   .passthrough();
 export type BrainCapabilities = z.infer<typeof BrainCapabilitiesSchema>;
@@ -3116,6 +3118,12 @@ export const FetchWorkspacesRequestMessageSchema = z.object({
 export const ProjectListRequestMessageSchema = z.object({
   type: z.literal("project.list.request"),
   requestId: z.string(),
+});
+
+export const ProjectResolveWorkspaceForPathRequestSchema = z.object({
+  type: z.literal("project.resolveWorkspaceForPath.request"),
+  requestId: z.string(),
+  path: z.string(),
 });
 
 export const FetchAgentHistoryRequestMessageSchema = z.object({
@@ -6948,6 +6956,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   FetchRecentProviderSessionsRequestMessageSchema,
   FetchWorkspacesRequestMessageSchema,
   ProjectListRequestMessageSchema,
+  ProjectResolveWorkspaceForPathRequestSchema,
   FetchAgentRequestMessageSchema,
   DeleteAgentRequestMessageSchema,
   ArchiveAgentRequestMessageSchema,
@@ -8464,6 +8473,14 @@ export const ProjectListResponseMessageSchema = z.object({
   payload: z.object({
     requestId: z.string(),
     projects: z.array(WorkspaceProjectDescriptorPayloadSchema),
+  }),
+});
+
+export const ProjectResolveWorkspaceForPathResponseSchema = z.object({
+  type: z.literal("project.resolveWorkspaceForPath.response"),
+  payload: z.object({
+    requestId: z.string(),
+    workspaceId: z.string().nullable(),
   }),
 });
 
@@ -11880,6 +11897,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   WorkspaceUpdateMessageSchema,
   ProjectUpdateMessageSchema,
   ProjectListResponseMessageSchema,
+  ProjectResolveWorkspaceForPathResponseSchema,
   ScriptStatusUpdateMessageSchema,
   WorkspaceSetupProgressMessageSchema,
   WorkspaceSetupStatusResponseMessageSchema,
@@ -12530,6 +12548,9 @@ export type FetchRecentProviderSessionsRequestMessage = z.infer<
 >;
 export type FetchWorkspacesRequestMessage = z.infer<typeof FetchWorkspacesRequestMessageSchema>;
 export type ProjectListRequestMessage = z.infer<typeof ProjectListRequestMessageSchema>;
+export type ProjectResolveWorkspaceForPathRequest = z.infer<
+  typeof ProjectResolveWorkspaceForPathRequestSchema
+>;
 export type FetchAgentRequestMessage = z.infer<typeof FetchAgentRequestMessageSchema>;
 export type AgentForkContextRequestMessage = z.infer<typeof AgentForkContextRequestMessageSchema>;
 export type SendAgentMessageRequest = z.infer<typeof SendAgentMessageRequestSchema>;
@@ -12782,6 +12803,9 @@ export type LegacyListAvailableEditorsRequest = z.infer<
 export type LegacyOpenInEditorRequest = z.infer<typeof LegacyOpenInEditorRequestSchema>;
 export type OpenProjectRequest = z.infer<typeof OpenProjectRequestSchema>;
 export type ProjectAddRequest = z.infer<typeof ProjectAddRequestSchema>;
+export type ProjectResolveWorkspaceForPathResponse = z.infer<
+  typeof ProjectResolveWorkspaceForPathResponseSchema
+>;
 export type ProjectScaffoldRequest = z.infer<typeof ProjectScaffoldRequestSchema>;
 export type ProjectScaffoldGit = z.infer<typeof ProjectScaffoldGitSchema>;
 export type HostingListRepositoriesRequest = z.infer<typeof HostingListRepositoriesRequestSchema>;

@@ -29,4 +29,15 @@ describe("PendingOpenProjectStore", () => {
 
     expect(store.take(101)).toBeNull();
   });
+
+  it("stores and consumes OS open targets independently from project paths", () => {
+    const store = new PendingOpenProjectStore();
+
+    store.set(101, "/tmp/project-a");
+    store.setTarget(101, { kind: "file", path: "/tmp/project-a/file.ts" });
+
+    expect(store.take(101)).toBe("/tmp/project-a");
+    expect(store.takeTarget(101)).toEqual({ kind: "file", path: "/tmp/project-a/file.ts" });
+    expect(store.takeTarget(101)).toBeNull();
+  });
 });

@@ -139,6 +139,7 @@ import type {
   ProjectKnowledgeRootApplyResponseMessage,
   ProjectKnowledgeDeleteResponseMessage,
   ProjectAddResponse,
+  ProjectResolveWorkspaceForPathResponse,
   ProjectScaffoldGit,
   ProjectScaffoldProgress,
   ProjectScaffoldResponse,
@@ -2575,6 +2576,20 @@ export class DaemonClient {
         cwd,
       },
       responseType: "project.add.response",
+    });
+  }
+
+  async resolveWorkspaceForPath(
+    path: string,
+    requestId?: string,
+  ): Promise<ProjectResolveWorkspaceForPathResponse["payload"]> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "project.resolveWorkspaceForPath.request",
+        path,
+      },
+      responseType: "project.resolveWorkspaceForPath.response",
     });
   }
 

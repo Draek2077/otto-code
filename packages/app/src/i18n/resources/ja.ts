@@ -559,6 +559,7 @@ export const ja: TranslationResources = {
       openFile: "ファイルを開く",
       copied: "コピーしました",
     },
+    expandCollapse: { expandAll: "Expand all", collapseAll: "Collapse all" },
     attachments: {
       dismissImage: "画像を閉じる",
       closeImage: "画像を閉じる",
@@ -3239,6 +3240,11 @@ export const ja: TranslationResources = {
           title: "連続する操作をまとめる",
           hint: "3 つ以上続く操作を折りたたんで展開可能なグループにまとめます。最新の操作は常にその下に表示されます",
           accessibilityLabel: "連続する操作をまとめる",
+        },
+        chatExpandCollapseControls: {
+          title: "Show expand/collapse controls",
+          hint: "Show small controls on chat action groups for expanding or collapsing their details",
+          accessibilityLabel: "Show expand/collapse controls",
         },
         chatMetricsBar: {
           title: "チャットのメトリクスを表示",

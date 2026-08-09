@@ -43,6 +43,9 @@ The brain serves its own management surface at `/__host/*`. Its header comment s
 | `GET /__host/capabilities`                  | What this brain can serve, as flat booleans                                 |
 | `GET /__host/config`, `POST /__host/config` | The brain's own effective config; the write is gated on `allowRemoteConfig` |
 | `GET /__host/evals`                         | Benchmark rankings, latest results and variance                             |
+| `GET /__host/jobs`                          | Active and recent host-owned benchmark jobs                                 |
+| `POST /__host/jobs/bench`                   | Start a benchmark on this brain's machine                                   |
+| `POST /__host/jobs/cancel`                  | Cancel a host-owned benchmark job                                           |
 | `GET /__host/models`                        | The joined model inventory plus disk usage                                  |
 | `GET /__host/model?id=`                     | One inventory row                                                           |
 | `GET /__host/model/fields?id=`              | The editable field descriptors                                              |
@@ -108,10 +111,8 @@ reads, and reconnect repair invalidates that entry once.
 The daemon reaches the brain two different ways, and which one a capability uses decides whether a
 **remote** brain can have it.
 
-**Shell-out (`BrainOpsManager`).** Runs `otto-brain <verb> --json` as a child process. This is how
-downloads, runtime installs, calibrate, sweep and benchmark work. It is correct for those: they are
-long jobs against this machine's model store and its GPU. It is also **local-only by construction**,
-because there is no child process to spawn for a brain on another machine.
+**Shell-out (`BrainOpsManager`).** Runs `otto-brain <verb> --json` as a child process. Downloads,
+runtime installs, calibrate and sweep still use it and are therefore local-only.
 
 **HTTP proxy (`BrainManager`).** Forwards to the brain's `/__host/*`. `BrainManager` already resolves
 its endpoint by mode, so the same call reaches a local child or a remote host with no branch on
@@ -120,6 +121,11 @@ either side.
 Everything added for the Brain page uses the proxy. That is the whole reason a remote brain gets the
 model inventory, the profile editor, the VRAM budget, load, unload, delete and logs at all, rather
 than being permanently limited to status and evals.
+
+**Host-owned benchmark jobs.** The service starts `otto-brain bench` on its own machine and exposes
+the tracked job through `/__host/jobs`. The daemon only proxies start, list and cancel calls. A
+remote benchmark therefore uses the remote model store, GPU and results directory, and can never
+fall back to the connecting machine. The `jobs` capability keeps older brains read-only.
 
 **Do not add new capabilities to the shell-out path.** A capability built there needs a second
 implementation before remote can have it, which is how the two drift.

@@ -10,7 +10,7 @@
  * host has a brain: two brains are two machines with their own GPUs, models and
  * logs, and a combined view would be meaningless.
  */
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { MenuHeader } from "@/components/headers/menu-header";
@@ -67,6 +67,22 @@ function BrainHostPanel({ serverId }: { serverId: string }) {
   // its own status query. This cheap one exists only to read `capabilities`.
   const statusQuery = useBrainStatus(serverId, { enabled: isConnected && consoleSupported });
   const capabilities = useBrainCapabilities(statusQuery.data ?? null);
+  // A remote host that has not explicitly granted configuration access must not
+  // advertise a Library it cannot act on. More importantly, this is derived
+  // from the selected brain's live capability, never from the local daemon.
+  const tabOptions = useMemo(
+    () =>
+      isRemote && capabilities?.writable !== true
+        ? TAB_OPTIONS.filter((option) => option.value !== "library")
+        : TAB_OPTIONS,
+    [capabilities?.writable, isRemote],
+  );
+
+  useEffect(() => {
+    if (!tabOptions.some((option) => option.value === tab)) {
+      setTab("overview");
+    }
+  }, [tab, tabOptions]);
 
   const body = useMemo(() => {
     if (!consoleSupported) {
@@ -99,19 +115,33 @@ function BrainHostPanel({ serverId }: { serverId: string }) {
             // `writable` is the brain's own allowRemoteConfig. A brain you may
             // use is not thereby a brain whose models you may delete.
             canWrite={capabilities.writable}
-            // Calibrate and sweep go through the job RPCs, which shell out to
-            // the CLI against this machine's model store.
-            canRunJobs={manageSupported && !isRemote}
+            canRunJobs={
+              manageSupported &&
+              (!isRemote || (capabilities?.jobs === true && capabilities.writable === true))
+            }
           />
         ) : (
           <CapabilityGap what="the model inventory" />
         );
       case "library":
         return (
-          <BrainLibraryTab serverId={serverId} isConnected={isConnected} isRemote={isRemote} />
+          <BrainLibraryTab
+            serverId={serverId}
+            isConnected={isConnected}
+            isRemote={isRemote}
+            canWrite={capabilities?.writable === true}
+          />
         );
       case "benchmarks":
-        return <BrainBenchmarksTab serverId={serverId} isConnected={isConnected} />;
+        return (
+          <BrainBenchmarksTab
+            serverId={serverId}
+            isConnected={isConnected}
+            // A remote benchmark is executable only when the selected brain,
+            // not this local daemon, advertises its host-owned job API.
+            canRunJobs={manageSupported && (!isRemote || capabilities?.jobs === true)}
+          />
+        );
       case "logs":
         return capabilities?.logs ? (
           <BrainLogsTab serverId={serverId} isConnected={isConnected} />
@@ -129,7 +159,7 @@ function BrainHostPanel({ serverId }: { serverId: string }) {
         <SegmentedControl
           size="sm"
           wrap={isCompact}
-          options={TAB_OPTIONS}
+          options={tabOptions}
           value={tab}
           onValueChange={setTab}
           testID="brain-tab"

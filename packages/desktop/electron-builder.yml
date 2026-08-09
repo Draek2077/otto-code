@@ -12,6 +12,66 @@ protocols:
   - name: Otto agent link
     schemes:
       - otto
+# Keep this list aligned with highlight/src/parsers.ts and the rendered document
+# extensions in app/src/components/file-pane-render-mode.ts. These are an
+# additional Open With choice; Otto is not installed as the OS default editor.
+fileAssociations:
+  - { ext: js, name: Otto, role: Editor }
+  - { ext: jsx, name: Otto, role: Editor }
+  - { ext: ts, name: Otto, role: Editor }
+  - { ext: tsx, name: Otto, role: Editor }
+  - { ext: mjs, name: Otto, role: Editor }
+  - { ext: cjs, name: Otto, role: Editor }
+  - { ext: c, name: Otto, role: Editor }
+  - { ext: h, name: Otto, role: Editor }
+  - { ext: cc, name: Otto, role: Editor }
+  - { ext: cpp, name: Otto, role: Editor }
+  - { ext: cxx, name: Otto, role: Editor }
+  - { ext: hpp, name: Otto, role: Editor }
+  - { ext: hxx, name: Otto, role: Editor }
+  - { ext: m, name: Otto, role: Editor }
+  - { ext: mm, name: Otto, role: Editor }
+  - { ext: json, name: Otto, role: Editor }
+  - { ext: css, name: Otto, role: Editor }
+  - { ext: scss, name: Otto, role: Editor }
+  - { ext: html, name: Otto, role: Editor }
+  - { ext: htm, name: Otto, role: Editor }
+  - { ext: xml, name: Otto, role: Editor }
+  - { ext: java, name: Otto, role: Editor }
+  - { ext: py, name: Otto, role: Editor }
+  - { ext: go, name: Otto, role: Editor }
+  - { ext: php, name: Otto, role: Editor }
+  - { ext: yaml, name: Otto, role: Editor }
+  - { ext: yml, name: Otto, role: Editor }
+  - { ext: rs, name: Otto, role: Editor }
+  - { ext: swift, name: Otto, role: Editor }
+  - { ext: dart, name: Otto, role: Editor }
+  - { ext: cs, name: Otto, role: Editor }
+  - { ext: ex, name: Otto, role: Editor }
+  - { ext: exs, name: Otto, role: Editor }
+  - { ext: md, name: Otto, role: Editor }
+  - { ext: mdx, name: Otto, role: Editor }
+  - { ext: markdown, name: Otto, role: Editor }
+  - { ext: mmd, name: Otto, role: Editor }
+  - { ext: mermaid, name: Otto, role: Editor }
+  - { ext: adoc, name: Otto, role: Editor }
+  - { ext: asciidoc, name: Otto, role: Editor }
+  - { ext: sh, name: Otto, role: Editor }
+  - { ext: bash, name: Otto, role: Editor }
+  - { ext: zsh, name: Otto, role: Editor }
+  - { ext: shell, name: Otto, role: Editor }
+  - { ext: sql, name: Otto, role: Editor }
+  - { ext: png, name: Otto, role: Editor }
+  - { ext: jpg, name: Otto, role: Editor }
+  - { ext: jpeg, name: Otto, role: Editor }
+  - { ext: gif, name: Otto, role: Editor }
+  - { ext: webp, name: Otto, role: Editor }
+  - { ext: bmp, name: Otto, role: Editor }
+  - { ext: ico, name: Otto, role: Editor }
+  - { ext: svg, name: Otto, role: Editor }
+  - { ext: avif, name: Otto, role: Editor }
+  - { ext: heic, name: Otto, role: Editor }
+  - { ext: heif, name: Otto, role: Editor }
 afterPack: ./scripts/after-pack.js
 afterSign: ./scripts/after-sign.js
 directories:
@@ -61,6 +121,12 @@ mac:
   notarize: true
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.inherit.plist
+  extendInfo:
+    CFBundleDocumentTypes:
+      - CFBundleTypeRole: Editor
+        CFBundleTypeName: Folder
+        LSItemContentTypes:
+          - public.folder
   extraResources:
     - from: bin/otto
       to: bin/otto
@@ -84,6 +150,9 @@ linux:
   desktop:
     entry:
       StartupWMClass: otto-code-desktop
+      # Best-effort folder association. Nautilus and some other Linux file
+      # managers do not consistently show non-default directory handlers.
+      MimeType: inode/directory;
   extraResources:
     - from: bin/otto
       to: bin/otto
@@ -128,3 +197,4 @@ nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
+  include: build/installer.nsh

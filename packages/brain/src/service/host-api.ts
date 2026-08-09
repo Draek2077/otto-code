@@ -49,7 +49,7 @@ const DEFAULT_LOG_LINES = 200;
  * the API is this" for the rare change that no single flag describes. A daemon
  * reads both and never requires an exact package-version match.
  */
-export const HOST_API_VERSION = 2;
+export const HOST_API_VERSION = 3;
 
 /**
  * How often the SSE stream writes a comment line when nothing has changed.
@@ -99,6 +99,29 @@ export interface HostCapabilities {
   liveInference: boolean;
   /** Whether writes are currently permitted (allowRemoteConfig). */
   writable: boolean;
+  /** POST/GET /__host/jobs and POST /__host/jobs/cancel. */
+  jobs: boolean;
+}
+
+/** A long-running operation owned by this brain host, not its caller. */
+export interface HostJob {
+  id: string;
+  kind: "pull" | "runtime-install" | "calibrate" | "sweep" | "bench";
+  label: string;
+  target: string | null;
+  status: "running" | "succeeded" | "failed" | "canceled";
+  percent: null;
+  message: string | null;
+  error: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+export interface HostJobRunner {
+  start: (kind: HostJob["kind"], target: string | null, args: string[]) => HostJob;
+  list: () => HostJob[];
+  cancel: (jobId: string) => Promise<HostJob[]>;
+  query: (args: string[]) => Promise<unknown>;
 }
 
 export interface HostApiDeps {
@@ -124,6 +147,8 @@ export interface HostApiDeps {
    * its daemon keeps polling status.
    */
   statusEvents?: BrainStatusPublisher | null;
+  /** Long operations that must execute on this brain's machine. */
+  jobs?: HostJobRunner;
 }
 
 /** One row of the model inventory: the scan, metadata, profile and score joined. */
@@ -278,6 +303,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
     events: Boolean(deps.statusEvents?.ready),
     liveInference: Boolean(deps.statusEvents?.ready),
     writable: deps.getAllowWrite(),
+    jobs: Boolean(deps.jobs),
   });
 
   /** Refuse a write unless the owner opted into remote configuration. */
@@ -615,6 +641,176 @@ export function createHostApi(deps: HostApiDeps): HostApi {
 
     if (route === "/__host/logs" && method === "GET") {
       handleLogs(res, params);
+      return true;
+    }
+
+    // Benchmark jobs are deliberately host-owned. A remote daemon only proxies
+    // these calls, so selecting a remote brain can never wake the local GPU.
+    if (route === "/__host/jobs" && method === "GET") {
+      if (!deps.jobs) {
+        sendError(res, 404, "this brain does not serve remote jobs");
+      } else {
+        sendJson(res, { jobs: deps.jobs.list() });
+      }
+      return true;
+    }
+    if (route === "/__host/jobs/bench" && method === "POST") {
+      if (!deps.jobs) {
+        sendError(res, 404, "this brain does not serve remote jobs");
+        return true;
+      }
+      readJsonBody(req, 4096, (result) => {
+        if (!result.ok) {
+          sendError(res, 400, result.error);
+          return;
+        }
+        const model = (result.body as { model?: unknown }).model;
+        if (model !== undefined && model !== null && typeof model !== "string") {
+          sendError(res, 400, "model must be a string or null");
+          return;
+        }
+        try {
+          sendJson(res, {
+            job:
+              deps.jobs?.start("bench", model ?? null, [
+                "bench",
+                ...(model ? ["--model", model] : []),
+              ]) ?? null,
+          });
+        } catch (error) {
+          sendError(res, 409, errorMessage(error));
+        }
+      });
+      return true;
+    }
+    const jobStarts: Record<
+      string,
+      {
+        kind: Exclude<HostJob["kind"], "bench">;
+        makeArgs: (body: Record<string, unknown>) => { target: string | null; args: string[] };
+      }
+    > = {
+      "/__host/jobs/pull": {
+        kind: "pull",
+        makeArgs: (body) => {
+          const model = body.model;
+          if (typeof model !== "string" || !model) throw new Error("model is required");
+          return { target: model, args: ["pull", "--json", "--", model] };
+        },
+      },
+      "/__host/jobs/add": {
+        kind: "pull",
+        makeArgs: (body) => {
+          const repo = body.repo;
+          const quant = body.quant;
+          if (typeof repo !== "string" || !repo || typeof quant !== "string" || !quant)
+            throw new Error("repo and quant are required");
+          return {
+            target: `${repo}#${quant}`,
+            args: ["add", "--quant", quant, "--json", "--", repo],
+          };
+        },
+      },
+      "/__host/jobs/runtime-install": {
+        kind: "runtime-install",
+        makeArgs: (body) => {
+          const build = body.build;
+          if (build !== undefined && build !== null && typeof build !== "string")
+            throw new Error("build must be a string or null");
+          return {
+            target: typeof build === "string" ? build : null,
+            args: [
+              "runtime",
+              "install",
+              "--json",
+              ...(typeof build === "string" ? ["--build", build] : []),
+            ],
+          };
+        },
+      },
+      "/__host/jobs/calibrate": {
+        kind: "calibrate",
+        makeArgs: (body) => {
+          const model = body.model;
+          if (typeof model !== "string" || !model) throw new Error("model is required");
+          return { target: model, args: ["calibrate", "--model", model, "--json"] };
+        },
+      },
+      "/__host/jobs/sweep": {
+        kind: "sweep",
+        makeArgs: (body) => {
+          const model = body.model;
+          if (typeof model !== "string" || !model) throw new Error("model is required");
+          return { target: model, args: ["sweep", "--model", model, "--json"] };
+        },
+      },
+    };
+    const start = jobStarts[route];
+    if (start && method === "POST") {
+      if (!deps.jobs) {
+        sendError(res, 404, "this brain does not serve remote jobs");
+        return true;
+      }
+      if (!guardWrite(res)) return true;
+      readJsonBody(req, 4096, (result) => {
+        if (!result.ok) {
+          sendError(res, 400, result.error);
+          return;
+        }
+        try {
+          const spec = start.makeArgs(result.body as Record<string, unknown>);
+          sendJson(res, { job: deps.jobs?.start(start.kind, spec.target, spec.args) ?? null });
+        } catch (error) {
+          sendError(res, 400, errorMessage(error));
+        }
+      });
+      return true;
+    }
+    if (route === "/__host/catalog" && method === "GET") {
+      void deps.jobs?.query(["catalog", "--json"]).then((models) => sendJson(res, { models }));
+      return true;
+    }
+    if (route === "/__host/runtimes" && method === "GET") {
+      void deps.jobs
+        ?.query(["runtime", "list", "--json"])
+        .then((runtimes) => sendJson(res, { runtimes }));
+      return true;
+    }
+    if (route === "/__host/hf/search" && method === "GET") {
+      const query = params.get("query") ?? "";
+      const limit = Math.max(1, Math.min(100, Number(params.get("limit")) || 25));
+      void deps.jobs
+        ?.query(["search", "--json", "--limit", String(limit), "--", query])
+        .then((results) => sendJson(res, { results }));
+      return true;
+    }
+    if (route === "/__host/hf/quants" && method === "GET") {
+      const repo = params.get("repo") ?? "";
+      void deps.jobs
+        ?.query(["add", "--list-quants", "--json", "--", repo])
+        .then((quants) => sendJson(res, { quants }));
+      return true;
+    }
+    if (route === "/__host/jobs/cancel" && method === "POST") {
+      if (!deps.jobs) {
+        sendError(res, 404, "this brain does not serve remote jobs");
+        return true;
+      }
+      readJsonBody(req, 4096, (result) => {
+        if (!result.ok) {
+          sendError(res, 400, result.error);
+          return;
+        }
+        const jobId = (result.body as { jobId?: unknown }).jobId;
+        if (typeof jobId !== "string" || !jobId) {
+          sendError(res, 400, "jobId is required");
+          return;
+        }
+        void deps.jobs
+          ?.cancel(jobId)
+          .then((jobs) => sendJson(res, { jobs }))
+          .catch((error) => sendError(res, 500, errorMessage(error)));
+      });
       return true;
     }
 

@@ -545,6 +545,7 @@ export const zhCN: TranslationResources = {
       openFile: "打开文件",
       copied: "已复制",
     },
+    expandCollapse: { expandAll: "Expand all", collapseAll: "Collapse all" },
     attachments: {
       dismissImage: "关闭图片",
       closeImage: "关闭图片",
@@ -3161,6 +3162,11 @@ export const zhCN: TranslationResources = {
           title: "将连续操作分组",
           hint: "将三个或以上的连续操作折叠为一个可展开的分组；最近一次操作始终显示在其下方",
           accessibilityLabel: "将连续操作分组",
+        },
+        chatExpandCollapseControls: {
+          title: "Show expand/collapse controls",
+          hint: "Show small controls on chat action groups for expanding or collapsing their details",
+          accessibilityLabel: "Show expand/collapse controls",
         },
         chatMetricsBar: {
           title: "显示对话指标",

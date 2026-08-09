@@ -268,6 +268,12 @@ function renderLiveHeadStreamItem(input: {
 export interface AgentStreamViewHandle {
   scrollToBottom(reason?: BottomAnchorLocalRequest["reason"]): void;
   prepareForViewportChange(): void;
+  setAllExpandableContentExpanded(expanded: boolean): void;
+}
+
+export interface ExpandAllCommand {
+  expanded: boolean;
+  revision: number;
 }
 
 export interface AgentStreamViewProps {
@@ -484,6 +490,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const [expandedToolCallGroupIds, setExpandedToolCallGroupIds] = useState<Set<string>>(
       new Set(),
     );
+    const [expandAllCommand, setExpandAllCommand] = useState<ExpandAllCommand | null>(null);
     // While the app is not following the output, because the reader took the
     // scroll position however few pixels they moved it, freeze the boundary between
     // mounted and virtualized history. Left free, it advances on its own
@@ -552,6 +559,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       setIsNearBottom(true);
       setExpandedInlineToolCallIds(new Set());
       setExpandedToolCallGroupIds(new Set());
+      setExpandAllCommand(null);
       setPinnedMountedWindowStartId(null);
     }, [agentId]);
 
@@ -799,6 +807,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         prepareForViewportChange() {
           viewportRef.current?.prepareForViewportChange();
         },
+        setAllExpandableContentExpanded(expanded: boolean) {
+          setExpandAllCommand((current) => ({
+            expanded,
+            revision: (current?.revision ?? 0) + 1,
+          }));
+          setExpandedToolCallGroupIds(new Set());
+        },
       }),
       [],
     );
@@ -954,6 +969,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     );
 
     const setToolCallGroupExpanded = useCallback((groupId: string, expanded: boolean) => {
+      setExpandAllCommand(null);
       setExpandedToolCallGroupIds((previous) => {
         const next = new Set(previous);
         if (expanded) {
@@ -995,6 +1011,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               metadata={data.metadata}
               isLastInSequence={isLastInSequence}
               onOpenFilePath={handleToolCallOpenFile}
+              expandAllCommand={expandAllCommand}
             />
           );
         }
@@ -1010,10 +1027,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             status={data.status}
             isLastInSequence={isLastInSequence}
             onOpenFilePath={handleToolCallOpenFile}
+            expandAllCommand={expandAllCommand}
           />
         );
       },
-      [agent.cwd, setInlineDetailsExpanded, handleToolCallOpenFile],
+      [agent.cwd, setInlineDetailsExpanded, handleToolCallOpenFile, expandAllCommand],
     );
 
     // In "detailed" the lookup is a permanently empty map, so every tool call
@@ -1025,14 +1043,16 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           return renderSingleToolCallItem(item, layoutItem.isLastInToolSequence);
         }
         const expanded = expandedToolCallGroupIds.has(group.run.id);
+        const effectiveExpanded = expandAllCommand?.expanded ?? expanded;
         return (
           <OverviewToolCallGroupView
             group={group}
             expanded={expanded}
+            expandAllCommand={expandAllCommand}
             isLastInSequence={layoutItem.isLastInToolSequence}
             onExpandedChange={setToolCallGroupExpanded}
           >
-            {expanded
+            {effectiveExpanded
               ? group.run.calls.map((call, index) => (
                   <React.Fragment key={call.id}>
                     {renderSingleToolCallItem(call, index === group.run.calls.length - 1)}
@@ -1047,6 +1067,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         expandedToolCallGroupIds,
         renderSingleToolCallItem,
         setToolCallGroupExpanded,
+        expandAllCommand,
       ],
     );
 
@@ -1060,10 +1081,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             cwd={agent.cwd}
             isLastInSequence={layoutItem.isLastInToolSequence}
             onOpenFilePath={handleToolCallOpenFile}
+            expandAllCommand={expandAllCommand}
           />
         );
       },
-      [agent.cwd, setInlineDetailsExpanded, handleToolCallOpenFile],
+      [agent.cwd, setInlineDetailsExpanded, handleToolCallOpenFile, expandAllCommand],
     );
 
     const renderStreamItemContent = useCallback(

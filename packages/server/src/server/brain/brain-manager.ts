@@ -921,6 +921,50 @@ export class BrainManager {
     return parsed.success ? parsed.data : null;
   }
 
+  /** True only when this manager is configured to proxy another brain host. */
+  isRemote(): boolean {
+    return this.mode === "remote";
+  }
+
+  async remoteBench(model: string | null): Promise<Record<string, unknown> | null> {
+    if (this.mode !== "remote") throw new Error("The brain is not configured in remote mode.");
+    this.requireReachable();
+    return this.requestHostJson("POST", "/__host/jobs/bench", { model });
+  }
+
+  async remoteJob(
+    route: string,
+    body: Record<string, unknown>,
+  ): Promise<Record<string, unknown> | null> {
+    if (this.mode !== "remote") throw new Error("The brain is not configured in remote mode.");
+    this.requireReachable();
+    return this.requestHostJson("POST", `/__host/jobs/${route}`, body);
+  }
+
+  async remoteCatalog(): Promise<Record<string, unknown> | null> {
+    if (this.mode !== "remote") throw new Error("The brain is not configured in remote mode.");
+    this.requireReachable();
+    return this.requestHostJson("GET", "/__host/catalog");
+  }
+
+  async remoteRead(pathname: string): Promise<Record<string, unknown> | null> {
+    if (this.mode !== "remote") throw new Error("The brain is not configured in remote mode.");
+    this.requireReachable();
+    return this.requestHostJson("GET", pathname);
+  }
+
+  async remoteJobs(): Promise<Record<string, unknown> | null> {
+    if (this.mode !== "remote") throw new Error("The brain is not configured in remote mode.");
+    this.requireReachable();
+    return this.requestHostJson("GET", "/__host/jobs");
+  }
+
+  async cancelRemoteJob(jobId: string): Promise<Record<string, unknown> | null> {
+    if (this.mode !== "remote") throw new Error("The brain is not configured in remote mode.");
+    this.requireReachable();
+    return this.requestHostJson("POST", "/__host/jobs/cancel", { jobId });
+  }
+
   // --- Brain Console: the management API, proxied ---------------------------
   // Every method below is a straight proxy of the brain's own `/__host/*`, which
   // is the whole point: `this.endpoint` already resolves by mode, so a local

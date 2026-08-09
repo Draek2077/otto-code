@@ -14,6 +14,11 @@ import {
 import { Layers } from "@/components/icons/material-icons";
 import { ExpandableBadge, ToolCall, type ExpandableBadgeErrorLevel } from "@/components/message";
 import type { ActionGroupMemberItem } from "@/types/stream";
+import { useAppSettingValue } from "@/hooks/use-settings";
+import type { ExpandAllCommand } from "@/agent-stream/view";
+
+const selectChatExpandCollapseControls = (settings: { chatExpandCollapseControls: boolean }) =>
+  settings.chatExpandCollapseControls;
 
 const SUMMARY_KEYS: Record<ActionGroupCategory, { one: string; many: string }> = {
   read: {
@@ -120,11 +125,17 @@ interface ActionGroupMemberRowProps {
   member: ActionGroupMemberItem;
   cwd?: string;
   onOpenFilePath?: (filePath: string) => void;
+  expandAllCommand?: ExpandAllCommand | null;
 }
 
 // Mirrors how agent-stream/view.tsx maps stream items onto ToolCall rows.
 // Speak bubbles and plan cards never reach here - grouping excludes them.
-function ActionGroupMemberRow({ member, cwd, onOpenFilePath }: ActionGroupMemberRowProps) {
+function ActionGroupMemberRow({
+  member,
+  cwd,
+  onOpenFilePath,
+  expandAllCommand,
+}: ActionGroupMemberRowProps) {
   if (member.kind === "thought") {
     return (
       <ToolCall
@@ -132,6 +143,7 @@ function ActionGroupMemberRow({ member, cwd, onOpenFilePath }: ActionGroupMember
         args={member.text}
         status={member.status === "ready" ? "completed" : "executing"}
         disableExpandedSpacing
+        expandAllCommand={expandAllCommand}
       />
     );
   }
@@ -149,6 +161,7 @@ function ActionGroupMemberRow({ member, cwd, onOpenFilePath }: ActionGroupMember
         metadata={data.metadata}
         onOpenFilePath={onOpenFilePath}
         disableExpandedSpacing
+        expandAllCommand={expandAllCommand}
       />
     );
   }
@@ -162,6 +175,7 @@ function ActionGroupMemberRow({ member, cwd, onOpenFilePath }: ActionGroupMember
       status={data.status}
       onOpenFilePath={onOpenFilePath}
       disableExpandedSpacing
+      expandAllCommand={expandAllCommand}
     />
   );
 }
@@ -172,6 +186,7 @@ interface ActionGroupProps {
   isLastInSequence?: boolean;
   onInlineDetailsExpandedChange?: (expanded: boolean) => void;
   onOpenFilePath?: (filePath: string) => void;
+  expandAllCommand?: ExpandAllCommand | null;
 }
 
 export const ActionGroup = memo(function ActionGroup({
@@ -180,13 +195,23 @@ export const ActionGroup = memo(function ActionGroup({
   isLastInSequence = false,
   onInlineDetailsExpandedChange,
   onOpenFilePath,
+  expandAllCommand,
 }: ActionGroupProps) {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
+  const controlsEnabled = useAppSettingValue(selectChatExpandCollapseControls);
 
   const handleToggle = useCallback(() => {
     setIsExpanded((previous) => !previous);
   }, []);
+  const expandAll = useCallback(() => setIsExpanded(true), []);
+  const collapseAll = useCallback(() => setIsExpanded(false), []);
+
+  useEffect(() => {
+    if (expandAllCommand) {
+      setIsExpanded(expandAllCommand.expanded);
+    }
+  }, [expandAllCommand]);
 
   useEffect(() => {
     onInlineDetailsExpandedChange?.(isExpanded);
@@ -219,11 +244,12 @@ export const ActionGroup = memo(function ActionGroup({
             member={member}
             cwd={cwd}
             onOpenFilePath={onOpenFilePath}
+            expandAllCommand={expandAllCommand}
           />
         ))}
       </View>
     ),
-    [items, cwd, onOpenFilePath],
+    [items, cwd, onOpenFilePath, expandAllCommand],
   );
 
   return (
@@ -238,6 +264,8 @@ export const ActionGroup = memo(function ActionGroup({
       errorLevel={errorLevel}
       isLastInSequence={isLastInSequence}
       effectActivity={effectActivity}
+      onExpandAll={controlsEnabled ? expandAll : undefined}
+      onCollapseAll={controlsEnabled ? collapseAll : undefined}
     />
   );
 });

@@ -103,7 +103,11 @@ import {
   registerVisualizerWebviewDiagnostics,
   registerVisualizerWebviewSessionGuards,
 } from "./features/visualizer-webview.js";
-import { parseOpenProjectPathFromArgv } from "./open-project-routing.js";
+import {
+  parseOpenProjectPathFromArgv,
+  parseOpenTargetFromArgv,
+  type OpenTarget,
+} from "./open-project-routing.js";
 import {
   buildAgentDeepLinkRoute,
   parseAgentDeepLink,
@@ -481,6 +485,10 @@ let pendingOpenProjectPath = parseOpenProjectPathFromArgv({
   argv: process.argv,
   isDefaultApp: process.defaultApp,
 });
+let pendingOpenTarget = parseOpenTargetFromArgv({
+  argv: process.argv,
+  isDefaultApp: process.defaultApp,
+});
 
 // Agent deep links (`otto://agent/...`). The OS hands them over either in argv
 // (cold start, and Windows/Linux second-instance) or through 'open-url' (macOS).
@@ -510,6 +518,12 @@ ipcMain.handle("otto:get-pending-open-project", (event) => {
     webContentsId,
     pendingPath: result,
   });
+  return result;
+});
+ipcMain.handle("otto:get-pending-open-target", (event) => {
+  const webContentsId = event.sender.id;
+  const result = pendingOpenProjectStore.takeTarget(webContentsId);
+  log.info("[open-target] renderer requested pending target:", { webContentsId, target: result });
   return result;
 });
 
@@ -861,6 +875,7 @@ function getWorkAreasPrimaryFirst(): Electron.Rectangle[] {
 async function createWindow(
   options: {
     pendingOpenProjectPath?: string | null;
+    pendingOpenTarget?: OpenTarget | null;
     restoreWindowState?: boolean;
     /** Route to land on instead of "/" - an agent deep link that had no window to focus. */
     initialRoute?: string | null;
@@ -915,6 +930,7 @@ async function createWindow(
 
   const webContentsId = mainWindow.webContents.id;
   pendingOpenProjectStore.set(webContentsId, options.pendingOpenProjectPath);
+  pendingOpenProjectStore.setTarget(webContentsId, options.pendingOpenTarget);
   // A full-document navigation tears down the renderer's listeners, so the
   // window stops being deliverable until it reports ready again.
   mainWindow.webContents.on("did-start-navigation", (_event, _url, isSameDocument, isMainFrame) => {
@@ -1261,6 +1277,35 @@ app.on("open-url", (event, url) => {
   receiveAgentDeepLink(url);
 });
 
+function deliverOpenTarget(target: OpenTarget): void {
+  const windows = BrowserWindow.getAllWindows();
+  const mainWindow =
+    BrowserWindow.getFocusedWindow() ?? windows.find((window) => window.isVisible()) ?? windows[0];
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    pendingOpenTarget = target;
+    return;
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+  mainWindow.show();
+  mainWindow.focus();
+  pendingOpenProjectStore.setTarget(mainWindow.webContents.id, target);
+  mainWindow.webContents.send("otto:event:open-target", target);
+}
+
+// macOS delivers document associations here rather than in argv.
+app.on("open-file", (event, filePath) => {
+  event.preventDefault();
+  const target: OpenTarget = { kind: "file", path: filePath };
+  if (bootstrapIsComplete) {
+    deliverOpenTarget(target);
+  } else {
+    pendingOpenTarget = target;
+  }
+});
+
 function setupSingleInstanceLock(): boolean {
   if (DISABLE_SINGLE_INSTANCE_LOCK) {
     log.info("[single-instance] disabled by OTTO_DISABLE_SINGLE_INSTANCE_LOCK");
@@ -1280,6 +1325,15 @@ function setupSingleInstanceLock(): boolean {
     const agentTarget = parseAgentDeepLinkFromArgv(commandLine);
     if (agentTarget) {
       void bootstrapComplete.then(() => focusExistingWindowOnAgent(agentTarget));
+      return;
+    }
+
+    const openTarget = parseOpenTargetFromArgv({
+      argv: commandLine,
+      isDefaultApp: false,
+    });
+    if (openTarget) {
+      void bootstrapComplete.then(() => deliverOpenTarget(openTarget));
       return;
     }
 
@@ -1477,9 +1531,11 @@ async function bootstrap(): Promise<void> {
   await createWindow({
     initialRoute: initialAgentNavigation ? buildAgentDeepLinkRoute(initialAgentNavigation) : null,
     pendingOpenProjectPath,
+    pendingOpenTarget,
     restoreWindowState: true,
   });
   pendingOpenProjectPath = null;
+  pendingOpenTarget = null;
 
   // Protocol + IPC handlers and the first window now exist: release any
   // second-instance launches that arrived during cold start.
@@ -1502,7 +1558,7 @@ async function bootstrap(): Promise<void> {
 }
 
 void runDesktopStartup({
-  hasPendingGuiLaunchRequest: Boolean(pendingOpenProjectPath),
+  hasPendingGuiLaunchRequest: Boolean(pendingOpenProjectPath || pendingOpenTarget),
   runCliPassthroughIfRequested,
   inheritLoginShellEnv,
   bootstrapGui: bootstrap,

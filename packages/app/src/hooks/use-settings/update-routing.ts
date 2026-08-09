@@ -25,6 +25,7 @@ const APP_SETTINGS_UPDATE_KEYS = [
   "workspaceTitleSource",
   "autoExpandReasoning",
   "chatMetricsBar",
+  "chatExpandCollapseControls",
   "wrapCodeLines",
   "interfaceMode",
   "suggestedTasksEnabled",

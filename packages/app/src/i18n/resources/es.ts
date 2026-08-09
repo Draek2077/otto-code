@@ -558,6 +558,7 @@ export const es: TranslationResources = {
       openFile: "Abrir archivo",
       copied: "Copiado",
     },
+    expandCollapse: { expandAll: "Expand all", collapseAll: "Collapse all" },
     attachments: {
       dismissImage: "Descartar imagen",
       closeImage: "Cerrar imagen",
@@ -3278,6 +3279,11 @@ export const es: TranslationResources = {
           title: "Agrupar acciones consecutivas",
           hint: "Colapsa series de tres o más acciones consecutivas en un grupo expandible; la acción más reciente siempre queda visible debajo",
           accessibilityLabel: "Agrupar acciones consecutivas",
+        },
+        chatExpandCollapseControls: {
+          title: "Show expand/collapse controls",
+          hint: "Show small controls on chat action groups for expanding or collapsing their details",
+          accessibilityLabel: "Show expand/collapse controls",
         },
         chatMetricsBar: {
           title: "Mostrar métricas del chat",

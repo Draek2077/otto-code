@@ -549,6 +549,7 @@ export const ar: TranslationResources = {
       openFile: "افتح الملف",
       copied: "منقول",
     },
+    expandCollapse: { expandAll: "Expand all", collapseAll: "Collapse all" },
     attachments: {
       dismissImage: "تجاهل الصورة",
       closeImage: "إغلاق الصورة",
@@ -3197,6 +3198,11 @@ export const ar: TranslationResources = {
           title: "تجميع الإجراءات المتتالية معًا",
           hint: "يطوي سلاسل من ثلاثة إجراءات متتالية أو أكثر في مجموعة قابلة للتوسيع؛ ويظل أحدث إجراء ظاهرًا أسفلها دائمًا",
           accessibilityLabel: "تجميع الإجراءات المتتالية معًا",
+        },
+        chatExpandCollapseControls: {
+          title: "Show expand/collapse controls",
+          hint: "Show small controls on chat action groups for expanding or collapsing their details",
+          accessibilityLabel: "Show expand/collapse controls",
         },
         chatMetricsBar: {
           title: "إظهار مقاييس المحادثة",

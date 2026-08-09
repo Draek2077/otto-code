@@ -9,6 +9,8 @@
  * tailscale certificate, hot-swapped on renewal. This is what lets the brain be
  * exposed securely over a network with no relay in front of it.
  */
+import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import http from "node:http";
 import https from "node:https";
 
@@ -31,7 +33,7 @@ import * as vram from "../vram.js";
 import { resolveVersion } from "../version.js";
 import * as results from "../ops/results.js";
 import { createCpuSampler, sample as sampleSystem } from "../sysmon.js";
-import { createHostApi } from "./host-api.js";
+import { createHostApi, type HostJob, type HostJobRunner } from "./host-api.js";
 import { createRouter, Telemetry } from "./router.js";
 import { BrainStatusPublisher } from "./status-events.js";
 import { Supervisor } from "./supervisor.js";
@@ -63,6 +65,136 @@ function collectEvals(): unknown {
     };
   } catch {
     return { rankings: [], latest: [], variance: [], runCount: 0 };
+  }
+}
+
+const REMOTE_JOB_RETENTION_MS = 5 * 60_000;
+
+/**
+ * Runs a benchmark as a child of the brain service. This is intentionally here
+ * rather than in the connecting daemon: its process, model store, results
+ * directory and GPU all belong to the host that is being benchmarked.
+ */
+class ServiceJobRunner implements HostJobRunner {
+  private readonly jobs = new Map<string, HostJob & { child: ChildProcess | null }>();
+
+  start(kind: HostJob["kind"], target: string | null, args: string[]): HostJob {
+    const running = [...this.jobs.values()].find((job) => job.status === "running");
+    if (running) throw new Error(`Another operation is already running (${running.label}).`);
+    const job: HostJob & { child: ChildProcess | null } = {
+      id: `brainjob_${randomUUID()}`,
+      kind,
+      label:
+        kind === "bench"
+          ? target
+            ? `Benchmark ${target}`
+            : "Benchmark models"
+          : `${kind} ${target ?? ""}`.trim(),
+      target,
+      status: "running",
+      percent: null,
+      message: null,
+      error: null,
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+      child: null,
+    };
+    // The service is launched by the same CLI entry point as `otto-brain bench`.
+    // Reusing that entry point keeps its config/path resolution on this host.
+    const entry = process.argv[1];
+    if (!entry) throw new Error("The brain service has no CLI entry point.");
+    const child = spawn(process.execPath, [entry, ...args], {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: ["ignore", "ignore", "pipe"],
+      windowsHide: true,
+    });
+    job.child = child;
+    this.jobs.set(job.id, job);
+    child.stderr?.setEncoding("utf8");
+    child.stderr?.on("data", (chunk: string) => {
+      const last = chunk.trim().split(/\r?\n/).at(-1)?.trim();
+      if (last) job.message = last.slice(-1000);
+    });
+    child.once("error", (error) => this.finish(job, "failed", error.message));
+    child.once("close", (code) => {
+      if (job.status !== "running") return;
+      this.finish(
+        job,
+        code === 0 ? "succeeded" : "failed",
+        code === 0 ? null : `Exited with code ${code}.`,
+      );
+    });
+    return this.publicJob(job);
+  }
+
+  async query(args: string[]): Promise<unknown> {
+    const entry = process.argv[1];
+    if (!entry) throw new Error("The brain service has no CLI entry point.");
+    return new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, [entry, ...args], {
+        cwd: process.cwd(),
+        env: process.env,
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+      });
+      let out = "";
+      let err = "";
+      child.stdout?.setEncoding("utf8");
+      child.stderr?.setEncoding("utf8");
+      child.stdout?.on("data", (chunk: string) => (out += chunk));
+      child.stderr?.on("data", (chunk: string) => (err += chunk));
+      child.once("error", reject);
+      child.once("close", (code) => {
+        if (code !== 0) return reject(new Error(err.trim() || `Exited with code ${code}.`));
+        try {
+          resolve(JSON.parse(out));
+        } catch {
+          reject(new Error("The brain command returned invalid JSON."));
+        }
+      });
+    });
+  }
+
+  list(): HostJob[] {
+    const cutoff = Date.now() - REMOTE_JOB_RETENTION_MS;
+    for (const [id, job] of this.jobs) {
+      if (job.finishedAt && Date.parse(job.finishedAt) < cutoff) this.jobs.delete(id);
+    }
+    return [...this.jobs.values()]
+      .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+      .map((job) => this.publicJob(job));
+  }
+
+  async cancel(jobId: string): Promise<HostJob[]> {
+    const job = this.jobs.get(jobId);
+    if (!job || job.status !== "running" || !job.child) return this.list();
+    const child = job.child;
+    if (process.platform === "win32" && child.pid) {
+      await new Promise<void>((resolve) =>
+        execFile("taskkill", ["/pid", String(child.pid), "/t", "/f"], () => resolve()),
+      );
+    } else {
+      child.kill("SIGTERM");
+    }
+    this.finish(job, "canceled", "Canceled.");
+    return this.list();
+  }
+
+  private finish(
+    job: HostJob & { child: ChildProcess | null },
+    status: HostJob["status"],
+    error: string | null,
+  ): void {
+    if (job.status !== "running") return;
+    job.child = null;
+    job.status = status;
+    job.error = error;
+    job.finishedAt = new Date().toISOString();
+  }
+
+  private publicJob({ child: _child, ...job }: HostJob & { child: ChildProcess | null }): HostJob {
+    return job;
   }
 }
 
@@ -310,6 +442,7 @@ export async function startService({
   // /__host/events. One instance, so `capabilities.events` and the stream can
   // never disagree about whether this brain publishes.
   const statusEvents = new BrainStatusPublisher();
+  const jobs = new ServiceJobRunner();
 
   const hostApi = createHostApi({
     supervisor,
@@ -338,6 +471,7 @@ export async function startService({
     sampleResources: () =>
       sampleSystem(cpuSampler, { host: supervisor.host, port: supervisor.internalPort }),
     statusEvents,
+    jobs,
   });
 
   const handler = withAuth(

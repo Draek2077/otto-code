@@ -214,8 +214,8 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     // A toolbar, not a banner: one hairline rule and no fill, so it reads at the
     // same weight as the browser/editor toolbars rather than as a notification.
-    borderBottomWidth: theme.borderWidth[1],
-    borderBottomColor: theme.colors.border,
+    borderTopWidth: theme.borderWidth[1],
+    borderTopColor: theme.colors.border,
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[1],
   },

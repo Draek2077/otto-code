@@ -1506,9 +1506,12 @@ function ModelDetail({
 export function BrainBenchmarksTab({
   serverId,
   isConnected,
+  canRunJobs,
 }: {
   serverId: string;
   isConnected: boolean;
+  /** False for a remote brain until it serves remote job operations. */
+  canRunJobs: boolean;
 }) {
   const client = useHostRuntimeClient(serverId);
   const manageSupported = useHostFeature(serverId, "brainManage");
@@ -1535,7 +1538,7 @@ export function BrainBenchmarksTab({
   // than from the evals read, which only changes once the run has finished.
   const jobsQuery = useFetchQuery({
     queryKey: ["brain-console-bench-jobs", serverId] as const,
-    enabled: isConnected && manageSupported && Boolean(client),
+    enabled: isConnected && manageSupported && canRunJobs && Boolean(client),
     dataShape: "value",
     staleTimeMs: JOBS_POLL_MS,
     refetchInterval: JOBS_POLL_MS,
@@ -1688,7 +1691,7 @@ export function BrainBenchmarksTab({
             ? `${evals.runCount} ${evals.runCount === 1 ? "run" : "runs"} recorded`
             : "No runs recorded"}
         </Text>
-        {manageSupported ? (
+        {manageSupported && canRunJobs ? (
           <Button
             variant="secondary"
             size="sm"

@@ -96,6 +96,7 @@ import { formatTokenCount } from "@/components/context-window-meter.utils";
 import { useChatTimestampLabel } from "@/hooks/use-chat-timestamp";
 import { useAppSettingValue, type AppSettings } from "@/hooks/use-settings";
 import { sliceAtSafeBoundary } from "@/agent-stream/turn-reveal";
+import { ExpandCollapseControls } from "@/components/expand-collapse-controls";
 
 // Module-level selectors for useAppSettingValue so memoized message components
 // subscribe narrowly: they re-render when these specific values change, not on
@@ -2736,6 +2737,8 @@ interface ExpandableBadgeProps {
   onOpenFile?: () => void;
   onDetailHoverChange?: (hovered: boolean) => void;
   renderDetails?: () => ReactNode;
+  onExpandAll?: () => void;
+  onCollapseAll?: () => void;
   isLoading?: boolean;
   // How loudly the badge reports failure. "error" is a red triangle: the action
   // itself failed, or every action in a group did. "warning" is amber: some but
@@ -2753,6 +2756,16 @@ interface ExpandableBadgeProps {
   // activity (see styles/text-effects.ts). Defaults to "other".
   effectActivity?: TextEffectActivity;
   testID?: string;
+}
+
+function renderExpandCollapseControls(
+  onExpandAll: (() => void) | undefined,
+  onCollapseAll: (() => void) | undefined,
+): ReactNode {
+  if (!onExpandAll || !onCollapseAll) {
+    return null;
+  }
+  return <ExpandCollapseControls onExpand={onExpandAll} onCollapse={onCollapseAll} />;
 }
 
 interface ExpandableBadgeSecondaryLabelProps {
@@ -3179,6 +3192,8 @@ export const ExpandableBadge = memo(function ExpandableBadge({
   onOpenFile,
   onDetailHoverChange,
   renderDetails,
+  onExpandAll,
+  onCollapseAll,
   isLoading = false,
   errorLevel,
   isLastInSequence = false,
@@ -3504,6 +3519,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
             onOpenFileHoverIn={handleOpenFileHoverIn}
             onOpenFileHoverOut={handleOpenFileHoverOut}
           />
+          {renderExpandCollapseControls(onExpandAll, onCollapseAll)}
         </View>
       </Pressable>
       {detailContent ? (
@@ -3537,6 +3553,8 @@ function areExpandableBadgePropsEqual(previous: ExpandableBadgeProps, next: Expa
   if (previous.onOpenFile !== next.onOpenFile) return false;
   if (previous.onDetailHoverChange !== next.onDetailHoverChange) return false;
   if (previous.renderDetails !== next.renderDetails) return false;
+  if (previous.onExpandAll !== next.onExpandAll) return false;
+  if (previous.onCollapseAll !== next.onCollapseAll) return false;
   return true;
 }
 
@@ -3557,6 +3575,7 @@ interface ToolCallProps {
   onOpenFilePath?: (filePath: string) => void;
   defaultExpanded?: boolean;
   forceInline?: boolean;
+  expandAllCommand?: { expanded: boolean; revision: number } | null;
 }
 
 export const ToolCall = memo(function ToolCall({
@@ -3576,9 +3595,16 @@ export const ToolCall = memo(function ToolCall({
   onOpenFilePath,
   defaultExpanded,
   forceInline = false,
+  expandAllCommand,
 }: ToolCallProps) {
   const { openToolCall } = useToolCallSheet();
   const [isExpanded, setIsExpanded] = useState(defaultExpanded ?? false);
+
+  useEffect(() => {
+    if (expandAllCommand) {
+      setIsExpanded(expandAllCommand.expanded);
+    }
+  }, [expandAllCommand]);
 
   const isMobile = useIsCompactFormFactor();
   const shouldRenderInline = !isMobile || forceInline;

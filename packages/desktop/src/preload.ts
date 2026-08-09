@@ -23,6 +23,11 @@ contextBridge.exposeInMainWorld("ottoDesktop", {
     ipcRenderer.invoke("otto:invoke", command, args),
   getPendingOpenProject: () =>
     ipcRenderer.invoke("otto:get-pending-open-project") as Promise<string | null>,
+  getPendingOpenTarget: () =>
+    ipcRenderer.invoke("otto:get-pending-open-target") as Promise<{
+      kind: "directory-shell" | "file";
+      path: string;
+    } | null>,
   agentNavigation: {
     ready: () =>
       ipcRenderer.invoke("otto:agent-navigation:ready") as Promise<{

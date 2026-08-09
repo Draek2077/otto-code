@@ -78,6 +78,11 @@ import {
 import type { BrainHostStatus, BrainJob } from "@otto-code/protocol/messages";
 import {
   BrainBudgetSchema,
+  BrainCatalogModelSchema,
+  BrainHfSearchResultSchema,
+  BrainJobSchema,
+  BrainRepoQuantSchema,
+  BrainRuntimeSchema,
   BrainCalibrationInfoSchema,
   BrainDiskUsageSchema,
   BrainInventoryModelSchema,
@@ -3942,6 +3947,25 @@ export class Session {
   }
 
   private async handleBrainCatalogListRequest(requestId: string): Promise<void> {
+    if (this.brainManager?.isRemote()) {
+      try {
+        const data = await this.brainManager.remoteCatalog();
+        this.emit({
+          type: "brain.catalog.list.response",
+          payload: {
+            models: parseBrainArray(data?.models, BrainCatalogModelSchema),
+            error: null,
+            requestId,
+          },
+        });
+      } catch (err) {
+        this.emit({
+          type: "brain.catalog.list.response",
+          payload: { models: [], error: getErrorMessage(err), requestId },
+        });
+      }
+      return;
+    }
     if (!this.brainOpsManager) {
       this.emit({
         type: "brain.catalog.list.response",
@@ -3964,6 +3988,25 @@ export class Session {
   }
 
   private async handleBrainRuntimeListRequest(requestId: string): Promise<void> {
+    if (this.brainManager?.isRemote()) {
+      try {
+        const data = await this.brainManager.remoteRead("/__host/runtimes");
+        this.emit({
+          type: "brain.runtime.list.response",
+          payload: {
+            runtimes: parseBrainArray(data?.runtimes, BrainRuntimeSchema),
+            error: null,
+            requestId,
+          },
+        });
+      } catch (err) {
+        this.emit({
+          type: "brain.runtime.list.response",
+          payload: { runtimes: [], error: getErrorMessage(err), requestId },
+        });
+      }
+      return;
+    }
     if (!this.brainOpsManager) {
       this.emit({
         type: "brain.runtime.list.response",
@@ -3990,6 +4033,31 @@ export class Session {
     limit: number | null,
     requestId: string,
   ): Promise<void> {
+    if (this.brainManager?.isRemote()) {
+      try {
+        const params = new URLSearchParams({ query, limit: String(limit ?? 25) });
+        const data = await this.brainManager.remoteRead(`/__host/hf/search?${params}`);
+        const raw = Array.isArray(data?.results) ? data.results : [];
+        const results = parseBrainArray(
+          raw.map((row) =>
+            typeof row === "object" && row !== null
+              ? Object.assign(row, { gated: (row as { gated?: unknown }).gated === "yes" })
+              : row,
+          ),
+          BrainHfSearchResultSchema,
+        );
+        this.emit({
+          type: "brain.hf.search.response",
+          payload: { results, error: null, requestId },
+        });
+      } catch (err) {
+        this.emit({
+          type: "brain.hf.search.response",
+          payload: { results: [], error: getErrorMessage(err), requestId },
+        });
+      }
+      return;
+    }
     if (!this.brainOpsManager) {
       this.emit({
         type: "brain.hf.search.response",
@@ -4009,6 +4077,27 @@ export class Session {
   }
 
   private async handleBrainHfQuantsRequest(repo: string, requestId: string): Promise<void> {
+    if (this.brainManager?.isRemote()) {
+      try {
+        const data = await this.brainManager.remoteRead(
+          `/__host/hf/quants?repo=${encodeURIComponent(repo)}`,
+        );
+        this.emit({
+          type: "brain.hf.quants.response",
+          payload: {
+            quants: parseBrainArray(data?.quants, BrainRepoQuantSchema),
+            error: null,
+            requestId,
+          },
+        });
+      } catch (err) {
+        this.emit({
+          type: "brain.hf.quants.response",
+          payload: { quants: [], error: getErrorMessage(err), requestId },
+        });
+      }
+      return;
+    }
     if (!this.brainOpsManager) {
       this.emit({
         type: "brain.hf.quants.response",
@@ -4028,29 +4117,103 @@ export class Session {
   }
 
   private handleBrainModelsPullRequest(model: string, requestId: string): void {
+    if (this.startRemoteBrainJob("pull", { model }, requestId, "brain.models.pull.response"))
+      return;
     this.startBrainJob(requestId, "brain.models.pull.response", (ops) => ops.pullModel(model));
   }
 
   private handleBrainModelsAddRequest(repo: string, quant: string, requestId: string): void {
+    if (this.startRemoteBrainJob("add", { repo, quant }, requestId, "brain.models.add.response"))
+      return;
     this.startBrainJob(requestId, "brain.models.add.response", (ops) => ops.addModel(repo, quant));
   }
 
   private handleBrainRuntimeInstallRequest(build: string | null, requestId: string): void {
+    if (
+      this.startRemoteBrainJob(
+        "runtime-install",
+        { build },
+        requestId,
+        "brain.runtime.install.response",
+      )
+    )
+      return;
     this.startBrainJob(requestId, "brain.runtime.install.response", (ops) =>
       ops.installRuntime(build),
     );
   }
 
   private handleBrainCalibrateRequest(model: string, requestId: string): void {
+    if (this.startRemoteBrainJob("calibrate", { model }, requestId, "brain.calibrate.response"))
+      return;
     this.startBrainJob(requestId, "brain.calibrate.response", (ops) => ops.calibrate(model));
   }
 
   private handleBrainSweepRequest(model: string, requestId: string): void {
+    if (this.startRemoteBrainJob("sweep", { model }, requestId, "brain.sweep.response")) return;
     this.startBrainJob(requestId, "brain.sweep.response", (ops) => ops.sweep(model));
   }
 
   private handleBrainBenchRequest(model: string | null, requestId: string): void {
+    if (this.brainManager?.isRemote()) {
+      void this.brainManager
+        .remoteBench(model)
+        .then((data) => {
+          const job = BrainJobSchema.safeParse(data?.job);
+          this.emit({
+            type: "brain.bench.response",
+            payload: {
+              job: job.success ? job.data : null,
+              error: job.success ? null : "Invalid remote job response.",
+              requestId,
+            },
+          });
+          return null;
+        })
+        .catch((error) =>
+          this.emit({
+            type: "brain.bench.response",
+            payload: { job: null, error: getErrorMessage(error), requestId },
+          }),
+        );
+      return;
+    }
     this.startBrainJob(requestId, "brain.bench.response", (ops) => ops.bench(model));
+  }
+
+  private startRemoteBrainJob(
+    route: string,
+    body: Record<string, unknown>,
+    requestId: string,
+    responseType:
+      | "brain.models.pull.response"
+      | "brain.models.add.response"
+      | "brain.runtime.install.response"
+      | "brain.calibrate.response"
+      | "brain.sweep.response",
+  ): boolean {
+    if (!this.brainManager?.isRemote()) return false;
+    void this.brainManager
+      .remoteJob(route, body)
+      .then((data) => {
+        const job = BrainJobSchema.safeParse(data?.job);
+        this.emit({
+          type: responseType,
+          payload: {
+            job: job.success ? job.data : null,
+            error: job.success ? null : "Invalid remote job response.",
+            requestId,
+          },
+        });
+        return null;
+      })
+      .catch((error) =>
+        this.emit({
+          type: responseType,
+          payload: { job: null, error: getErrorMessage(error), requestId },
+        }),
+      );
+    return true;
   }
 
   // Shared shape for the five job-starting RPCs: start the job (synchronously)
@@ -4085,6 +4248,23 @@ export class Session {
   }
 
   private handleBrainJobsListRequest(requestId: string): void {
+    if (this.brainManager?.isRemote()) {
+      void this.brainManager
+        .remoteJobs()
+        .then((data) =>
+          this.emit({
+            type: "brain.jobs.list.response",
+            payload: { jobs: parseBrainArray(data?.jobs, BrainJobSchema), error: null, requestId },
+          }),
+        )
+        .catch((error) =>
+          this.emit({
+            type: "brain.jobs.list.response",
+            payload: { jobs: [], error: getErrorMessage(error), requestId },
+          }),
+        );
+      return;
+    }
     if (!this.brainOpsManager) {
       this.emit({
         type: "brain.jobs.list.response",
@@ -4099,6 +4279,21 @@ export class Session {
   }
 
   private async handleBrainJobsCancelRequest(jobId: string, requestId: string): Promise<void> {
+    if (this.brainManager?.isRemote()) {
+      try {
+        const data = await this.brainManager.cancelRemoteJob(jobId);
+        this.emit({
+          type: "brain.jobs.cancel.response",
+          payload: { jobs: parseBrainArray(data?.jobs, BrainJobSchema), error: null, requestId },
+        });
+      } catch (error) {
+        this.emit({
+          type: "brain.jobs.cancel.response",
+          payload: { jobs: [], error: getErrorMessage(error), requestId },
+        });
+      }
+      return;
+    }
     if (!this.brainOpsManager) {
       this.emit({
         type: "brain.jobs.cancel.response",
@@ -4375,6 +4570,8 @@ export class Session {
     switch (msg.type) {
       case "project.add.request":
         return this.handleProjectAddRequest(msg);
+      case "project.resolveWorkspaceForPath.request":
+        return this.handleProjectResolveWorkspaceForPathRequest(msg);
       case "project.create_directory.request":
         return this.handleProjectCreateDirectoryRequest(msg);
       case "project.remove.request":
@@ -9721,6 +9918,22 @@ export class Session {
         },
       });
     }
+  }
+
+  private async handleProjectResolveWorkspaceForPathRequest(
+    request: Extract<SessionInboundMessage, { type: "project.resolveWorkspaceForPath.request" }>,
+  ): Promise<void> {
+    const workspaceId = resolveWorkspaceIdForPath(
+      request.path,
+      await this.workspaceRegistry.list(),
+    );
+    this.emit({
+      type: "project.resolveWorkspaceForPath.response",
+      payload: {
+        requestId: request.requestId,
+        workspaceId,
+      },
+    });
   }
 
   private async handleProjectCreateDirectoryRequest(

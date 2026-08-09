@@ -5,6 +5,11 @@ import { Wrench } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { ExpandableBadge } from "@/components/message";
 import { type OverviewSummary, type OverviewToolCallGroup } from "./model";
+import { useAppSettingValue } from "@/hooks/use-settings";
+import type { ExpandAllCommand } from "@/agent-stream/view";
+
+const selectChatExpandCollapseControls = (settings: { chatExpandCollapseControls: boolean }) =>
+  settings.chatExpandCollapseControls;
 
 interface OverviewGroupProps {
   group: OverviewToolCallGroup;
@@ -12,6 +17,7 @@ interface OverviewGroupProps {
   isLastInSequence: boolean;
   onExpandedChange: (groupId: string, expanded: boolean) => void;
   children: ReactNode;
+  expandAllCommand?: ExpandAllCommand | null;
 }
 
 const TOOL_CALL_GROUP_MAX_HEIGHT = 400;
@@ -57,15 +63,26 @@ export const OverviewToolCallGroupView = memo(function OverviewToolCallGroupView
   isLastInSequence,
   onExpandedChange,
   children,
+  expandAllCommand,
 }: OverviewGroupProps) {
   const scrollRef = useRef<ScrollView>(null);
   const aggregateSummary = useOverviewSummary(group.summary);
+  const controlsEnabled = useAppSettingValue(selectChatExpandCollapseControls);
+  const effectiveExpanded = expandAllCommand?.expanded ?? expanded;
   const scrollToLatest = useCallback(() => {
     scrollRef.current?.scrollToEnd({ animated: false });
   }, []);
   const toggle = useCallback(() => {
-    onExpandedChange(group.run.id, !expanded);
-  }, [expanded, group.run.id, onExpandedChange]);
+    onExpandedChange(group.run.id, !effectiveExpanded);
+  }, [effectiveExpanded, group.run.id, onExpandedChange]);
+  const expandAll = useCallback(
+    () => onExpandedChange(group.run.id, true),
+    [group.run.id, onExpandedChange],
+  );
+  const collapseAll = useCallback(
+    () => onExpandedChange(group.run.id, false),
+    [group.run.id, onExpandedChange],
+  );
   const renderDetails = useCallback(
     () => (
       <ScrollView
@@ -88,11 +105,13 @@ export const OverviewToolCallGroupView = memo(function OverviewToolCallGroupView
       label={aggregateSummary}
       icon={Wrench}
       isLoading={group.isLoading}
-      isExpanded={expanded}
+      isExpanded={effectiveExpanded}
       isLastInSequence={isLastInSequence}
       onToggle={toggle}
       renderDetails={renderDetails}
       borderlessWhenExpanded
+      onExpandAll={controlsEnabled ? expandAll : undefined}
+      onCollapseAll={controlsEnabled ? collapseAll : undefined}
     />
   );
 });

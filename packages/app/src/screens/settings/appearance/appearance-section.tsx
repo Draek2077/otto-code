@@ -936,6 +936,13 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
+  const handleChatExpandCollapseControlsChange = useCallback(
+    (chatExpandCollapseControls: boolean) => {
+      void updateSettings({ chatExpandCollapseControls });
+    },
+    [updateSettings],
+  );
+
   const handleToolCallDetailLevelChange = useCallback(
     (toolCallDetailLevel: AppSettings["toolCallDetailLevel"]) => {
       void updateSettings({ toolCallDetailLevel });
@@ -1248,6 +1255,17 @@ export function AppearanceSection() {
             withBorder
             onValueChange={handleGroupConsecutiveActionsChange}
             testID="settings-group-consecutive-actions-switch"
+          />
+          <LayoutToggleRow
+            title={t("settings.appearance.agents.chatExpandCollapseControls.title")}
+            hint={t("settings.appearance.agents.chatExpandCollapseControls.hint")}
+            accessibilityLabel={t(
+              "settings.appearance.agents.chatExpandCollapseControls.accessibilityLabel",
+            )}
+            value={settings.chatExpandCollapseControls}
+            withBorder
+            onValueChange={handleChatExpandCollapseControlsChange}
+            testID="settings-chat-expand-collapse-controls-switch"
           />
           {/* Sits next to action grouping because the two overlap: in "overview"
               the projection collapses each run before the render model runs, so

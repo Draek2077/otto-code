@@ -41,7 +41,7 @@ import { useAgentAttentionClear } from "@/hooks/use-agent-attention-clear";
 import { useAgentInitialization } from "@/hooks/use-agent-initialization";
 import { shouldSyncAgentTimelineOnFocus } from "@/timeline/timeline-sync-plan";
 import { useAgentStreamRetention } from "@/timeline/use-agent-stream-retention";
-import { useAppSettings } from "@/hooks/use-settings";
+import { useAppSettingValue, useAppSettings } from "@/hooks/use-settings";
 import { useAgentInputDraft, type AgentInputDraft } from "@/composer/draft/input-draft";
 import {
   type AgentScreenAgent,
@@ -123,6 +123,15 @@ import { PinnedTaskListOverlay, usePinnedTaskList } from "@/pinned-task-list";
 import { ChatTopOverlayStack } from "@/panels/chat-top-overlay-stack";
 import type { PendingPermission } from "@/types/shared";
 import type { StreamItem } from "@/types/stream";
+import { type ChatExportFormat } from "@/chat/chat-export";
+import { saveChatExport } from "@/chat/save-chat-export";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
 import { derivePendingPermissionKey, normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { applyLegacyDaemonWorkspaceOwnership } from "@/workspace/legacy-daemon-workspaces";
@@ -131,6 +140,9 @@ import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { openProviderSubagentTab } from "@/subagents/open-provider-subagent-tab";
 import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { buildDraftAgentSetup, type ClientSlashCommand } from "@/client-slash-commands";
+
+const selectChatExpandCollapseControls = (settings: { chatExpandCollapseControls: boolean }) =>
+  settings.chatExpandCollapseControls;
 
 interface ChatAgentStateShape {
   serverId: string | null;
@@ -1398,6 +1410,8 @@ const AgentStreamSection = memo(function AgentStreamSection({
   toast: ReturnType<typeof useToastHost>["api"];
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
 }) {
+  const { t } = useTranslation();
+  const chatExpandCollapseControls = useAppSettingValue(selectChatExpandCollapseControls);
   // While this panel slot is hidden, the selector returns the frozen tail
   // reference instead of the live one, so background agents' 48ms stream
   // flushes never re-render this section at all (the store notification sees
@@ -1420,6 +1434,9 @@ const AgentStreamSection = memo(function AgentStreamSection({
     frozenStreamItemsRef.current = streamItemsRaw;
   }
   const rawStreamItems = streamItemsRaw ?? EMPTY_STREAM_ITEMS;
+  const streamHead = useSessionStore((state) =>
+    agentId ? state.sessions[serverId]?.agentStreamHead?.get(agentId) : undefined,
+  );
   // Drop the inline copy of the checklist currently shown in the pinned overlay,
   // so it isn't rendered in two places at once. When nothing is pinned this is a
   // no-op and the original array reference flows through untouched.
@@ -1459,19 +1476,72 @@ const AgentStreamSection = memo(function AgentStreamSection({
     return new Map(pendingPermissionList.map((permission) => [permission.key, permission]));
   }, [pendingPermissionList]);
 
+  const exportItems = useMemo(
+    () => [...rawStreamItems, ...(streamHead ?? [])],
+    [rawStreamItems, streamHead],
+  );
+  const exportChat = useCallback(
+    (format: ChatExportFormat) => {
+      void saveChatExport({ title: agent.id, items: exportItems, format }).catch(() => undefined);
+    },
+    [agent.id, exportItems],
+  );
+  const exportJson = useCallback(() => exportChat("json"), [exportChat]);
+  const exportHtml = useCallback(() => exportChat("html"), [exportChat]);
+  const exportMarkdown = useCallback(() => exportChat("markdown"), [exportChat]);
+  const exportText = useCallback(() => exportChat("text"), [exportChat]);
+  const expandAll = useCallback(
+    () => streamViewRef.current?.setAllExpandableContentExpanded(true),
+    [streamViewRef],
+  );
+  const collapseAll = useCallback(
+    () => streamViewRef.current?.setAllExpandableContentExpanded(false),
+    [streamViewRef],
+  );
+
   return (
-    <AgentStreamView
-      ref={streamViewRef}
-      agentId={agent.id}
-      serverId={serverId}
-      context={agent}
-      streamItems={streamItems}
-      pendingPermissions={pendingPermissions}
-      routeBottomAnchorRequest={routeBottomAnchorRequest}
-      isAuthoritativeHistoryReady={hasAppliedAuthoritativeHistory}
-      toast={toast}
-      onOpenWorkspaceFile={onOpenWorkspaceFile}
-    />
+    <ContextMenu>
+      <ContextMenuTrigger style={styles.chatContextTrigger} testID="agent-chat-background">
+        <AgentStreamView
+          ref={streamViewRef}
+          agentId={agent.id}
+          serverId={serverId}
+          context={agent}
+          streamItems={streamItems}
+          pendingPermissions={pendingPermissions}
+          routeBottomAnchorRequest={routeBottomAnchorRequest}
+          isAuthoritativeHistoryReady={hasAppliedAuthoritativeHistory}
+          toast={toast}
+          onOpenWorkspaceFile={onOpenWorkspaceFile}
+        />
+      </ContextMenuTrigger>
+      <ContextMenuContent side="bottom" align="start" testID="agent-chat-context-menu">
+        <ContextMenuItem onSelect={exportJson} testID="agent-chat-export-json">
+          Export as JSON
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={exportHtml} testID="agent-chat-export-html">
+          Export as HTML
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={exportMarkdown} testID="agent-chat-export-markdown">
+          Export as Markdown
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={exportText} testID="agent-chat-export-text">
+          Export as Text
+        </ContextMenuItem>
+        {chatExpandCollapseControls ? (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem onSelect={expandAll} testID="agent-chat-expand-all">
+              {t("message.expandCollapse.expandAll")}
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={collapseAll} testID="agent-chat-collapse-all">
+              {t("message.expandCollapse.collapseAll")}
+            </ContextMenuItem>
+          </>
+        ) : null}
+      </ContextMenuContent>
+    </ContextMenu>
   );
 });
 
@@ -1935,6 +2005,9 @@ const styles = StyleSheet.create((theme) => ({
     ...(isWeb ? { userSelect: "none" as const } : {}),
   },
   content: {
+    flex: 1,
+  },
+  chatContextTrigger: {
     flex: 1,
   },
   inputAreaWrapper: {

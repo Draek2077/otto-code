@@ -43,16 +43,19 @@ export function BrainLibraryTab({
   serverId,
   isConnected,
   isRemote,
+  canWrite,
 }: {
   serverId: string;
   isConnected: boolean;
   /** A remote brain's model store belongs to the machine that hosts it. */
   isRemote: boolean;
+  /** The remote brain's live allowRemoteConfig capability. */
+  canWrite: boolean;
 }) {
   const manageSupported = useHostFeature(serverId, "brainManage");
   const hfSupported = useHostFeature(serverId, "brainHfSearch");
   const queryClient = useQueryClient();
-  const enabled = manageSupported && isConnected && !isRemote;
+  const enabled = manageSupported && isConnected && (!isRemote || canWrite);
 
   const catalogQuery = useBrainCatalog(serverId, enabled);
   const jobsQuery = useBrainJobs(serverId, enabled);
@@ -92,12 +95,14 @@ export function BrainLibraryTab({
     [client, queryClient, serverId],
   );
 
-  if (isRemote) {
+  if (isRemote && !canWrite) {
+    // The screen normally removes this tab before it can render. Keep this
+    // boundary for a capability change between the toolbar render and this tab.
     return (
       <Alert
         variant="info"
-        title="This brain runs on another machine"
-        description="Download models on the host that runs it. Its model store is its own."
+        title="Remote configuration is disabled"
+        description="This host has not allowed remote model changes."
       />
     );
   }

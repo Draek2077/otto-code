@@ -50,9 +50,13 @@ function getContentStyle(input: { isCompact: boolean; insetBottom: number }) {
 
 interface NewProjectScreenProps {
   serverId?: string;
+  directory?: string;
 }
 
-export function NewProjectScreen({ serverId: serverIdProp }: NewProjectScreenProps) {
+export function NewProjectScreen({
+  serverId: serverIdProp,
+  directory: directoryProp,
+}: NewProjectScreenProps) {
   const { t } = useTranslation();
   const router = useRouter();
   const hosts = useHosts();
@@ -62,7 +66,11 @@ export function NewProjectScreen({ serverId: serverIdProp }: NewProjectScreenPro
   const [selectedServerId, setSelectedServerId] = useState(
     () => serverIdProp?.trim() || hosts[0]?.serverId || "",
   );
-  const [form, setForm] = useState<NewProjectFormState>(createNewProjectFormState);
+  const [form, setForm] = useState<NewProjectFormState>(() => ({
+    ...createNewProjectFormState(),
+    mode: directoryProp?.trim() ? "open" : "open",
+    directory: directoryProp?.trim() ?? "",
+  }));
   // Only the step currently running, for the status line. The full step list is
   // build detail - it belongs in a failure message, not on screen during a
   // successful run.

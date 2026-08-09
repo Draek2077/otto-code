@@ -116,6 +116,15 @@ import { startDesktopResizeReflow } from "@/utils/desktop-window";
 import { buildNotificationRoute, resolveNotificationTarget } from "@/utils/notification-routing";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import {
+  navigateToWorkspace,
+  useLastWorkspaceSelection,
+} from "@/stores/navigation-active-workspace-store";
+import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
+import { createWorkspaceFileTabTarget } from "@/workspace/file-open";
+import type { Href } from "expo-router";
+import { useSessionStore } from "@/stores/session-store";
+import {
   ensureOsNotificationPermission,
   WEB_NOTIFICATION_CLICK_EVENT,
   type WebNotificationClickDetail,
@@ -879,6 +888,12 @@ function OpenProjectListener() {
       }
 
       setRequest((current) => (current?.id === request.id ? null : current));
+      const workspace = Array.from(
+        useSessionStore.getState().sessions[request.serverId]?.workspaces.values() ?? [],
+      ).find((candidate) => candidate.projectId === result.project.projectId);
+      if (workspace) {
+        navigateToWorkspace({ serverId: request.serverId, workspaceId: workspace.id });
+      }
       return null;
     });
     return () => {
@@ -922,6 +937,184 @@ function OpenProjectListener() {
       unlisten?.();
     };
   }, [openPathOnChosenHost]);
+
+  return null;
+}
+
+interface OpenTargetEventPayload {
+  kind?: unknown;
+  path?: unknown;
+}
+
+interface PendingOpenTargetRequest {
+  id: number;
+  serverId: string;
+  target: { kind: "directory-shell" | "file"; path: string };
+}
+
+function normalizeOpenTargetPath(value: string): string {
+  return value.trim().replace(/\\/g, "/").replace(/\/$/, "");
+}
+
+function splitOpenTargetFilePath(value: string): { directory: string; file: string } | null {
+  const path = normalizeOpenTargetPath(value);
+  const slash = path.lastIndexOf("/");
+  if (slash < 0 || !path.slice(slash + 1)) {
+    return null;
+  }
+  const directory = path.slice(0, slash) || "/";
+  return {
+    directory: /^[A-Za-z]:$/.test(directory) ? `${directory}/` : directory,
+    file: path.slice(slash + 1),
+  };
+}
+
+function OpenTargetListener() {
+  const router = useRouter();
+  const chooseHost = useHostChooser();
+  const hostRegistryLoaded = useHostRegistryLoaded();
+  const lastWorkspace = useLastWorkspaceSelection();
+  const [pendingTarget, setPendingTarget] = useState<OpenTargetEventPayload | null>(null);
+  const [request, setRequest] = useState<PendingOpenTargetRequest | null>(null);
+  const client = useHostRuntimeClient(request?.serverId ?? "");
+
+  const queueTarget = useCallback(
+    (payload: OpenTargetEventPayload) => {
+      const path = typeof payload.path === "string" ? payload.path.trim() : "";
+      const kind =
+        payload.kind === "file" || payload.kind === "directory-shell" ? payload.kind : null;
+      if (!path || !kind) return;
+      if (!hostRegistryLoaded) {
+        setPendingTarget({ kind, path });
+        return;
+      }
+      chooseHost({
+        title: "Choose host",
+        onChooseHost: (serverId) => {
+          setRequest({ id: nextOpenProjectRequestId++, serverId, target: { kind, path } });
+        },
+      });
+    },
+    [chooseHost, hostRegistryLoaded],
+  );
+
+  useEffect(() => {
+    if (!hostRegistryLoaded || !pendingTarget) return;
+    const target = pendingTarget;
+    setPendingTarget(null);
+    queueTarget(target);
+  }, [hostRegistryLoaded, pendingTarget, queueTarget]);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    void getDesktopHost()
+      ?.getPendingOpenTarget?.()
+      ?.then((pending) => {
+        if (!disposed && pending) queueTarget(pending);
+        return undefined;
+      })
+      .catch(() => undefined);
+    void listenToDesktopEvent<OpenTargetEventPayload>("open-target", (payload) => {
+      if (!disposed) queueTarget(payload);
+    })
+      .then((dispose) => {
+        if (disposed) dispose();
+        else unlisten = dispose;
+        return undefined;
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [queueTarget]);
+
+  useEffect(() => {
+    if (!request || !client) return;
+    let cancelled = false;
+    const session = useSessionStore.getState().sessions[request.serverId];
+    const targetPath = normalizeOpenTargetPath(request.target.path);
+    const navigate = (
+      workspaceId: string,
+      target?: Parameters<typeof navigateToWorkspace>[0]["target"],
+    ) => {
+      if (cancelled) return;
+      if (target) {
+        const workspaceKey =
+          buildWorkspaceTabPersistenceKey({ serverId: request.serverId, workspaceId }) ?? "";
+        useWorkspaceLayoutStore
+          .getState()
+          .openTabFocused(workspaceKey, target, { insertAfterFocusedTab: true });
+      }
+      navigateToWorkspace({ serverId: request.serverId, workspaceId });
+      setRequest(null);
+    };
+
+    if (request.target.kind === "directory-shell") {
+      const project = Array.from(session?.projects.values() ?? []).find(
+        (candidate) => normalizeOpenTargetPath(candidate.projectRootPath) === targetPath,
+      );
+      const workspace = project
+        ? (Array.from(session?.workspaces.values() ?? []).find(
+            (candidate) =>
+              candidate.projectId === project.projectId &&
+              normalizeOpenTargetPath(candidate.workspaceDirectory) === targetPath,
+          ) ??
+          Array.from(session?.workspaces.values() ?? []).find(
+            (candidate) => candidate.projectId === project.projectId,
+          ))
+        : null;
+      if (workspace) {
+        navigate(workspace.id);
+      } else {
+        router.push(
+          `/new-project?serverId=${encodeURIComponent(request.serverId)}&directory=${encodeURIComponent(request.target.path)}` as Href,
+        );
+        setRequest(null);
+      }
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void client.resolveWorkspaceForPath(request.target.path).then((result) => {
+      if (cancelled) return;
+      const owner = result.workspaceId
+        ? (session?.workspaces.get(result.workspaceId) ?? null)
+        : null;
+      const fallback =
+        (lastWorkspace?.serverId === request.serverId
+          ? session?.workspaces.get(lastWorkspace.workspaceId)
+          : null) ?? Array.from(session?.workspaces.values() ?? [])[0];
+      const workspace = owner ?? fallback;
+      if (!workspace) {
+        setRequest(null);
+        return;
+      }
+      const target = owner
+        ? createWorkspaceFileTabTarget({ path: request.target.path })
+        : (() => {
+            const split = splitOpenTargetFilePath(request.target.path);
+            return split
+              ? createWorkspaceFileTabTarget(
+                  { path: split.file },
+                  {
+                    workspaceId: `outside:${split.directory}`,
+                    cwd: split.directory,
+                    projectId: `outside:${split.directory}`,
+                    outsideAnyProject: true,
+                  },
+                )
+              : null;
+          })();
+      navigate(workspace.id, target ?? undefined);
+      return undefined;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, lastWorkspace, request, router]);
 
   return null;
 }
@@ -1006,6 +1199,7 @@ function AppShell() {
     <MobilePanelsProvider>
       <HorizontalScrollProvider>
         <OpenProjectListener />
+        <OpenTargetListener />
         <AppWithSidebar>
           <WorkspaceRouteNavigationBridge />
           <RootStack />
