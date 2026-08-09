@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.8.6 - 2026-08-08
+
+### Added
+
+- Export chats as Markdown transcripts on web, desktop, and native platforms
+- Open projects from routed desktop links and restore pending project-open requests
+- Manage repository-owned project knowledge, including project plans, requirements, decisions,
+  references, and architecture
+- Use bundled offline Hey Otto wake-word detection on desktop and Android
+- Configure wake-word sensitivity, microphone permissions, audio handoff, and lifecycle recovery
+- Set terminal font size independently from editor and diff font size
+- Group active-team controls across multiple connected hosts
+
+### Changed
+
+- Brain model management and live status updates are clearer and more responsive
+- Chat expand and collapse controls are revealed on hover and cascade through nested groups
+- Composer controls now better reflect drafts, queued messages, and interrupt actions
+- Chat metrics appear below the composer
+- Hey Otto listens only in the focused chat or pane
+- Wake-word controls distinguish feature availability from temporarily paused listening
+- Native chat scrolling remains anchored during touch interaction, momentum scrolling, and streaming
+- Settings now describes the bundled Otto skills and their project-knowledge capabilities
+- Keep workspace navigation consistent across desktop and mobile
+
+### Fixed
+
+- Preserve project keys when creating worktrees
+- Prevent worktree creation from breaking project routing
+- Prevent background chats and unfocused panes from responding to Hey Otto
+- Improve wake-word behavior when switching chats, changing focus, or recovering from interruptions
+- Fix theme-dependent styling being read before the persisted theme is available
+- Improve composer draft ownership, dictation delivery, terminal layout, file links, and mobile spacing
+- Improve desktop packaging, Android verification, demos, and end-to-end test stability
+
 ## 0.8.5 - 2026-08-07
 
 ### Added
