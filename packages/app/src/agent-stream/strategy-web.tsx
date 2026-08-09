@@ -707,6 +707,19 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     historyStartPrependAnchorActiveRef.current = false;
     const frame = window.requestAnimationFrame(() => {
       historyStartReadyRef.current = true;
+      const scrollContainer = scrollContainerRef.current;
+      // A transcript shorter than its viewport has no scroll gesture that can expose its
+      // history start. Arm exactly that case so older history remains reachable, while
+      // ordinary scrollable transcripts still wait for explicit user intent.
+      if (
+        scrollContainer &&
+        isScrollContainerMeasurable(scrollContainer) &&
+        scrollContainer.scrollHeight <= scrollContainer.clientHeight
+      ) {
+        const rearmed = rearmHistoryStartPagination(historyStartPaginationStateRef.current);
+        historyStartPaginationStateRef.current = rearmed;
+        setHistoryStartPaginationState(rearmed);
+      }
       evaluateHistoryStart();
     });
     return () => {
