@@ -9,12 +9,23 @@
 // client agrees instantly. No client-side selection state. Switching is
 // deliberately unceremonious - snapshot semantics protect running agents.
 //
+// Multi-host: one switcher per host stops scaling at two - see
+// active-team-group-switcher.tsx, which takes over the whole surface once two
+// or more hosts qualify. Each switcher here reports its summary upward so the
+// parent can decide, and renders nothing while the grouped control is up.
+//
 // i18n: English-only pending a translation pass (build-first, translate-last).
-import { useCallback, useMemo, useRef, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { Alert, Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { router } from "expo-router";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { getActiveAgentTeam } from "@otto-code/protocol/agent-teams";
+import type { AgentTeam } from "@otto-code/protocol/messages";
+import {
+  ActiveTeamGroupSwitcher,
+  isSameHostActiveTeamEntry,
+  type HostActiveTeamEntry,
+} from "@/components/active-team-group-switcher";
 import { ChevronDown, Layers } from "@/components/icons/material-icons";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -88,6 +99,11 @@ export function HeaderActiveTeamSwitchers(): ReactElement | null {
  * gating happens inside each row (absent feature / empty team list ⇒ null), so
  * a host without teams renders nothing and the whole surface disappears,
  * matching the zero-setup invariant.
+ *
+ * Which hosts qualify is only knowable from inside each row (it takes that
+ * host's daemon config), and hooks cannot be called in a loop - so the rows
+ * report their summary upward and this component counts. Two or more qualifying
+ * hosts collapse into the single grouped control and every row renders null.
  */
 export function ActiveTeamSwitchers({
   variant,
@@ -97,8 +113,40 @@ export function ActiveTeamSwitchers({
   onBeforeNavigate?: () => void;
 }): ReactElement {
   const hosts = useHosts();
+  const [reports, setReports] = useState<HostTeamReports>(EMPTY_REPORTS);
+
+  const reportEntry = useCallback((serverId: string, report: HostTeamReport | null) => {
+    setReports((current) => applyHostTeamReport(current, serverId, report));
+  }, []);
+
+  // Host order drives swatch order; a host that dropped off the list keeps no
+  // entry even if its row has not unmounted yet.
+  const groupedEntries = useMemo(
+    () =>
+      hosts
+        .map((host) => reports[host.serverId])
+        .filter((report): report is HostActiveTeamEntry => isReadyReport(report)),
+    [hosts, reports],
+  );
+  const pendingCount = useMemo(
+    () => hosts.filter((host) => reports[host.serverId] === PENDING_REPORT).length,
+    [hosts, reports],
+  );
+  const isGrouped = groupedEntries.length > 1;
+  // Hold the per-host rows back while hosts are still reporting in: showing one
+  // row now and collapsing it into the grouped control a beat later is a visible
+  // layout flip, and the title bar is exactly where that reads worst.
+  const isSettling = pendingCount > 0 && groupedEntries.length + pendingCount > 1;
+
   return (
     <>
+      {isGrouped ? (
+        <ActiveTeamGroupSwitcher
+          entries={groupedEntries}
+          variant={variant}
+          onBeforeNavigate={onBeforeNavigate}
+        />
+      ) : null}
       {hosts.map((host) => (
         <ActiveTeamSwitcher
           key={host.serverId}
@@ -106,6 +154,8 @@ export function ActiveTeamSwitchers({
           hostCount={hosts.length}
           hostLabel={host.label}
           variant={variant}
+          grouped={isGrouped || isSettling}
+          onReport={reportEntry}
           onBeforeNavigate={onBeforeNavigate}
         />
       ))}
@@ -113,22 +163,111 @@ export function ActiveTeamSwitchers({
   );
 }
 
+/** A host that qualifies, or one whose daemon config has not arrived yet. */
+export type HostTeamReport = HostActiveTeamEntry | typeof PENDING_REPORT;
+type HostTeamReports = Record<string, HostTeamReport>;
+
+export const PENDING_REPORT = "pending";
+const EMPTY_REPORTS: HostTeamReports = {};
+
+function isReadyReport(report: HostTeamReport | undefined): report is HostActiveTeamEntry {
+  return report !== undefined && report !== PENDING_REPORT;
+}
+
+/**
+ * Folds one host's report into the map. Exported for its own test: it is the
+ * piece that has to be indifferent to daemon-config echoes, which arrive
+ * constantly and mostly say nothing new.
+ */
+export function applyHostTeamReport(
+  current: HostTeamReports,
+  serverId: string,
+  report: HostTeamReport | null,
+): HostTeamReports {
+  const existing = current[serverId];
+  if (report === null) {
+    if (existing === undefined) {
+      return current;
+    }
+    const next = { ...current };
+    delete next[serverId];
+    return next;
+  }
+  if (report === PENDING_REPORT) {
+    return existing === PENDING_REPORT ? current : { ...current, [serverId]: report };
+  }
+  // Value equality, not identity: every config echo re-runs the report, and a
+  // fresh object each time would re-render the whole surface for nothing.
+  if (isReadyReport(existing) && isSameHostActiveTeamEntry(existing, report)) {
+    return current;
+  }
+  return { ...current, [serverId]: report };
+}
+
+/**
+ * Publishes what the grouped control needs from this host - primitives only, so
+ * the parent can compare by value and ignore config echoes that changed nothing.
+ */
+function useHostActiveTeamReport({
+  serverId,
+  hostLabel,
+  isEligible,
+  isPending,
+  activeTeam,
+  onReport,
+}: {
+  serverId: string;
+  hostLabel: string;
+  isEligible: boolean;
+  isPending: boolean;
+  activeTeam: AgentTeam | null;
+  onReport: (serverId: string, report: HostTeamReport | null) => void;
+}): void {
+  const activeTeamId = activeTeam?.id ?? null;
+  const activeTeamName = activeTeam?.name ?? null;
+  const activeTeamColor = activeTeam?.avatar?.color ?? null;
+  useEffect(() => {
+    if (isEligible) {
+      onReport(serverId, { serverId, hostLabel, activeTeamId, activeTeamName, activeTeamColor });
+      return;
+    }
+    onReport(serverId, isPending ? PENDING_REPORT : null);
+  }, [
+    onReport,
+    serverId,
+    hostLabel,
+    isEligible,
+    isPending,
+    activeTeamId,
+    activeTeamName,
+    activeTeamColor,
+  ]);
+  // Retract on unmount only. A cleanup on the effect above would drop the entry
+  // on every config echo, momentarily taking the qualifying count below two and
+  // flickering the grouped control back into per-host rows.
+  useEffect(() => () => onReport(serverId, null), [onReport, serverId]);
+}
+
 function ActiveTeamSwitcher({
   serverId,
   hostCount,
   hostLabel,
   variant,
+  grouped,
+  onReport,
   onBeforeNavigate,
 }: {
   serverId: string;
   hostCount: number;
   hostLabel: string;
   variant: ActiveTeamSwitcherVariant;
+  grouped: boolean;
+  onReport: (serverId: string, report: HostTeamReport | null) => void;
   onBeforeNavigate?: () => void;
 }): ReactElement | null {
   const isConnected = useHostRuntimeIsConnected(serverId);
   const hasFeature = useAgentTeamsFeature(serverId);
-  const { config, patchConfig } = useDaemonConfig(serverId);
+  const { config, isLoading, patchConfig } = useDaemonConfig(serverId);
   const anchorRef = useRef<View>(null);
   const [open, setOpen] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
@@ -136,6 +275,11 @@ function ActiveTeamSwitcher({
   const teams = useMemo(() => config?.agentTeams?.teams ?? [], [config]);
   const activeTeam = useMemo(() => getActiveAgentTeam(config?.agentTeams), [config]);
   const personalities = config?.agentPersonalities?.personalities;
+
+  const isEligible = isConnected && hasFeature && teams.length > 0;
+  // "Might still qualify" - a teams-capable host whose config is in flight.
+  const isPending = isConnected && hasFeature && isLoading;
+  useHostActiveTeamReport({ serverId, hostLabel, isEligible, isPending, activeTeam, onReport });
 
   const options = useMemo<ComboboxOption[]>(() => {
     const known = new Set((personalities ?? []).map((entry) => entry.id));
@@ -191,8 +335,9 @@ function ActiveTeamSwitcher({
   const handleToggle = useCallback(() => setOpen((current) => !current), []);
 
   // Renders only when the host advertises the capability AND has ≥ 1 team -
-  // no teams configured means no switcher anywhere (zero-setup invariant).
-  if (!isConnected || !hasFeature || teams.length === 0) {
+  // no teams configured means no switcher anywhere (zero-setup invariant) - and
+  // only while the grouped control is not standing in for every host.
+  if (!isEligible || grouped) {
     return null;
   }
 
