@@ -590,11 +590,14 @@ export function VisualizerSurface({
   // owns is the shared sound volume + the speaker button's mute.
 
   // Follow the focused chat: whenever follow is on, drive the page's selection
-  // to the workspace's focused chat. Guards keep it inert unless there's real
-  // work to do - the target must be a session the page actually knows about
-  // (run-scoped tabs filter the set) and must differ from the current
-  // selection. The page echoes the new selection back via `session-state`,
-  // which satisfies the `=== selectedId` guard and stops any feedback loop.
+  // to the workspace's focused chat. PIP must be willing to select before its
+  // asynchronous guest -> host session mirror has caught up: unlike the tab it
+  // has no chats dropdown to recover a missed selection, and every workspace
+  // chat is valid for its unfiltered adapter. A run-scoped tab keeps the
+  // membership guard because its focused workspace chat may deliberately sit
+  // outside the run. The page echoes the new selection back via
+  // `session-state`, which satisfies the `=== selectedId` guard and stops any
+  // feedback loop.
   useEffect(() => {
     if (!ready || !followActive || followTargetSessionId === null) {
       return;
@@ -603,11 +606,18 @@ export function VisualizerSurface({
     if (sessionId === sessionState.selectedId) {
       return;
     }
-    if (!sessionState.sessions.some((session) => session.id === sessionId)) {
+    if (!isPip && !sessionState.sessions.some((session) => session.id === sessionId)) {
       return;
     }
     viewRef.current?.postMessage({ type: "select-session", sessionId });
-  }, [ready, followActive, followTargetSessionId, sessionState.selectedId, sessionState.sessions]);
+  }, [
+    ready,
+    followActive,
+    followTargetSessionId,
+    isPip,
+    sessionState.selectedId,
+    sessionState.sessions,
+  ]);
 
   const loadCoverStyle = useMemo(
     () => [

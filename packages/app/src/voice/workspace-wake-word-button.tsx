@@ -16,6 +16,7 @@ import { getWakeWordCapability } from "@/wake-word/wake-word-capability";
 import { getWakeWordIconKind } from "./wake-word-icon";
 import { getWakeWordLabel } from "./wake-word-label";
 import {
+  getWakeWordToolbarDisplayState,
   shouldShowWakeWordToolbarButton,
   shouldStartWakeWordListening,
 } from "./wake-word-control-state";
@@ -67,7 +68,7 @@ export function WorkspaceWakeWordButton() {
     supported,
     hasDictationTab: true,
   });
-  const displayedState = listeningPaused ? "disabled" : detectorState;
+  const displayedState = getWakeWordToolbarDisplayState({ listeningPaused, detectorState });
   const label = getWakeWordLabel(displayedState);
   const onPress = useCallback(() => {
     void updateSettings({ wakeWordListeningPaused: !listeningPaused });

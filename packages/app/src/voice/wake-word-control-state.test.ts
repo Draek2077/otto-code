@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  getWakeWordToolbarDisplayState,
   shouldShowWakeWordToolbarButton,
   shouldStartWakeWordListening,
 } from "./wake-word-control-state";
@@ -73,5 +74,20 @@ describe("Hey Otto feature and listening controls", () => {
         isPaneFocused: false,
       }),
     ).toBe(false);
+  });
+
+  it("keeps the global toolbar green during a focused-tab listener handoff", () => {
+    expect(
+      getWakeWordToolbarDisplayState({ listeningPaused: false, detectorState: "disabled" }),
+    ).toBe("listening");
+    expect(
+      getWakeWordToolbarDisplayState({ listeningPaused: false, detectorState: "recording" }),
+    ).toBe("recording");
+    expect(getWakeWordToolbarDisplayState({ listeningPaused: false, detectorState: "error" })).toBe(
+      "error",
+    );
+    expect(
+      getWakeWordToolbarDisplayState({ listeningPaused: true, detectorState: "listening" }),
+    ).toBe("disabled");
   });
 });
