@@ -17,6 +17,7 @@ describe("Hey Otto feature and listening controls", () => {
       shouldStartWakeWordListening({
         featureEnabled: true,
         listeningPaused: true,
+        isPaneFocused: true,
       }),
     ).toBe(false);
   });
@@ -36,17 +37,29 @@ describe("Hey Otto feature and listening controls", () => {
     ).toBe(false);
   });
 
-  it("starts listening only when the feature is enabled and not paused", () => {
+  it("starts listening only when the feature is enabled, not paused, and the pane is focused", () => {
     expect(
       shouldStartWakeWordListening({
         featureEnabled: true,
         listeningPaused: false,
+        isPaneFocused: true,
       }),
     ).toBe(true);
     expect(
       shouldStartWakeWordListening({
         featureEnabled: false,
         listeningPaused: false,
+        isPaneFocused: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("stops listening when the pane loses focus even if the feature is enabled", () => {
+    expect(
+      shouldStartWakeWordListening({
+        featureEnabled: true,
+        listeningPaused: false,
+        isPaneFocused: false,
       }),
     ).toBe(false);
   });

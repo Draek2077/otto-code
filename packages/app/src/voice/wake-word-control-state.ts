@@ -8,6 +8,7 @@ export function shouldShowWakeWordToolbarButton(input: {
 export function shouldStartWakeWordListening(input: {
   featureEnabled: boolean;
   listeningPaused: boolean;
+  isPaneFocused: boolean;
 }): boolean {
-  return input.featureEnabled && !input.listeningPaused;
+  return input.featureEnabled && !input.listeningPaused && input.isPaneFocused;
 }

@@ -889,6 +889,15 @@ interface ComposerProps {
   agentId: string;
   serverId: string;
   isPaneFocused: boolean;
+  /** When set, this composer starts dictation itself once ready - see
+   * MessageInputProps.autoStartDictation. Consumed once via
+   * onAutoStartDictationConsumed. */
+  autoStartDictation?: {
+    autoSend: boolean;
+    preRollPcm?: string;
+    speechAlreadyDetected?: boolean;
+  } | null;
+  onAutoStartDictationConsumed?: () => void;
   onSubmitMessage?: (payload: MessagePayload) => Promise<void>;
   onClientSlashCommand?: (command: ClientSlashCommand) => Promise<void>;
   /** When true, the submit button is enabled even without text or images (e.g. external attachment selected). */
@@ -1116,6 +1125,8 @@ export function Composer({
   agentId,
   serverId,
   isPaneFocused,
+  autoStartDictation,
+  onAutoStartDictationConsumed,
   onSubmitMessage,
   onClientSlashCommand,
   hasExternalContent = false,
@@ -2472,6 +2483,8 @@ export function Composer({
                 autoFocusKey={`${serverId}:${agentId}`}
                 disabled={isSubmitLoading}
                 isPaneFocused={isPaneFocused}
+                autoStartDictation={autoStartDictation}
+                onAutoStartDictationConsumed={onAutoStartDictationConsumed}
                 leadingContent={contextWindowMeter}
                 leftContent={leftContent}
                 rightContent={rightContent}

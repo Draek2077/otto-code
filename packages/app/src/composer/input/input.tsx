@@ -137,6 +137,16 @@ export interface MessageInputProps {
   disabled?: boolean;
   /** True when this composer's pane is focused. Used to gate global hotkeys and stop dictation when hidden. */
   isPaneFocused?: boolean;
+  /** When set, this composer starts dictation itself once ready - used when a
+   * chat was just opened by "Hey Otto" triggering with no chat previously
+   * focused (see WakeWordEmptyStateListener). Consumed once via
+   * onAutoStartDictationConsumed so it never refires on re-render. */
+  autoStartDictation?: {
+    autoSend: boolean;
+    preRollPcm?: string;
+    speechAlreadyDetected?: boolean;
+  } | null;
+  onAutoStartDictationConsumed?: () => void;
   /** Content rendered immediately after the attach button, before leftContent (e.g., usage ring). */
   leadingContent?: React.ReactNode;
   /** Content to render on the left side of the composer toolbar (e.g., AgentControls) */
@@ -1227,6 +1237,11 @@ interface ResolvedMessageInputProps {
   autoFocusKey: string | undefined;
   disabled: boolean;
   isPaneFocused: boolean;
+  autoStartDictation:
+    | { autoSend: boolean; preRollPcm?: string; speechAlreadyDetected?: boolean }
+    | null
+    | undefined;
+  onAutoStartDictationConsumed: (() => void) | undefined;
   leadingContent: React.ReactNode;
   leftContent: React.ReactNode;
   rightContent: React.ReactNode;
@@ -1270,6 +1285,8 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
     autoFocusKey: props.autoFocusKey,
     disabled: props.disabled ?? false,
     isPaneFocused: props.isPaneFocused ?? true,
+    autoStartDictation: props.autoStartDictation,
+    onAutoStartDictationConsumed: props.onAutoStartDictationConsumed,
     leadingContent: props.leadingContent,
     leftContent: props.leftContent,
     rightContent: props.rightContent,
@@ -1321,6 +1338,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       autoFocusKey,
       disabled,
       isPaneFocused,
+      autoStartDictation,
+      onAutoStartDictationConsumed,
       leadingContent,
       leftContent,
       rightContent,
@@ -1536,6 +1555,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         enabled: shouldStartWakeWordListening({
           featureEnabled: appSettings.wakeWordEnabled,
           listeningPaused: appSettings.wakeWordListeningPaused,
+          isPaneFocused,
         }),
         phrase: appSettings.wakeWordPhrase,
         sensitivity: appSettings.wakeWordSensitivity,
@@ -1548,6 +1568,24 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       isProcessing: isDictationProcessing,
       onError: (error) => toast.error(error.message),
     });
+
+    const autoStartDictationConsumedRef = useRef(false);
+    useEffect(() => {
+      if (!autoStartDictation || autoStartDictationConsumedRef.current) return;
+      if (!isDictationStartEnabled) return;
+      autoStartDictationConsumedRef.current = true;
+      void startWakeWordDictation(
+        autoStartDictation.autoSend,
+        autoStartDictation.preRollPcm,
+        autoStartDictation.speechAlreadyDetected,
+      );
+      onAutoStartDictationConsumed?.();
+    }, [
+      autoStartDictation,
+      isDictationStartEnabled,
+      onAutoStartDictationConsumed,
+      startWakeWordDictation,
+    ]);
 
     const isDictatingRef = useRef(isDictating);
     useEffect(() => {

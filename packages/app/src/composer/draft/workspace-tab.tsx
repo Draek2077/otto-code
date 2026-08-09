@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Keyboard, ScrollView, StyleSheet as RNStyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import ReanimatedAnimated from "react-native-reanimated";
@@ -26,6 +26,7 @@ import { useCreateFlowStore } from "@/stores/create-flow-store";
 import type { Agent } from "@/stores/session-store";
 import { useWorkspaceFields } from "@/stores/session-store-hooks";
 import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
+import { useWakeWordAutoStartStore } from "@/stores/wake-word-auto-start-store";
 import { useCommandCenterActions } from "@/command-center/provider";
 import { buildModelChoiceContributions } from "@/command-center/model-contributions";
 import { getCommandCenterProviderIcon } from "@/command-center/provider-icon";
@@ -340,6 +341,12 @@ export function WorkspaceDraftAgentTab({
 }: WorkspaceDraftAgentTabProps) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const [pendingWakeWordAutoStart, setPendingWakeWordAutoStart] = useState(() =>
+    useWakeWordAutoStartStore.getState().consumePending({ serverId, workspaceId, draftId }),
+  );
+  const handleAutoStartDictationConsumed = useCallback(() => {
+    setPendingWakeWordAutoStart(null);
+  }, []);
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
   const workspaceFields = useWorkspaceFields(serverId, workspaceId, (w) => ({
@@ -686,6 +693,8 @@ export function WorkspaceDraftAgentTab({
           workspaceId={workspaceId}
           externalKeyboardShift
           isPaneFocused={isPaneFocused}
+          autoStartDictation={pendingWakeWordAutoStart}
+          onAutoStartDictationConsumed={handleAutoStartDictationConsumed}
           onSubmitMessage={handleCreateFromInput}
           isSubmitLoading={isSubmitting}
           blurOnSubmit={true}

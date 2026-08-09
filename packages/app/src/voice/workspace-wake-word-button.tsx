@@ -55,7 +55,13 @@ export function WorkspaceWakeWordButton() {
   const featureEnabled = settings.wakeWordEnabled;
   const listeningPaused = settings.wakeWordListeningPaused;
   const supported = getWakeWordCapability().available;
-  const listeningEnabled = shouldStartWakeWordListening({ featureEnabled, listeningPaused });
+  // This header toggle reflects the globally-armed state, not any one pane's
+  // listener, so it always evaluates as if the pane were focused.
+  const listeningEnabled = shouldStartWakeWordListening({
+    featureEnabled,
+    listeningPaused,
+    isPaneFocused: true,
+  });
   const visible = shouldShowWakeWordToolbarButton({ featureEnabled, supported });
   const displayedState = listeningPaused ? "disabled" : detectorState;
   const label = getWakeWordLabel(displayedState);

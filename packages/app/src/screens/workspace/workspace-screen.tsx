@@ -167,6 +167,9 @@ import { getDesktopHost } from "@/desktop/host";
 import { buildProviderCommand } from "@/utils/provider-command-templates";
 import { generateDraftId } from "@/stores/draft-keys";
 import { resolveWorkspaceRouteId } from "@/utils/workspace-identity";
+import { useWakeWordListening } from "@/hooks/use-wake-word-listening";
+import { shouldStartWakeWordListening } from "@/voice/wake-word-control-state";
+import { useWakeWordAutoStartStore } from "@/stores/wake-word-auto-start-store";
 import {
   WorkspaceTabPresentationResolver,
   WorkspaceTabIcon,
@@ -1906,6 +1909,79 @@ function parsePaneDirection(actionId: string): PaneDirection | null {
   return null;
 }
 
+interface WakeWordEmptyStateListenerProps {
+  normalizedServerId: string;
+  normalizedWorkspaceId: string;
+  isRouteFocused: boolean;
+  hasActiveTab: boolean;
+  hasHydratedAgents: boolean;
+  wakeWordEnabled: boolean;
+  wakeWordListeningPaused: boolean;
+  wakeWordPhrase: string;
+  wakeWordSensitivity: number;
+  wakeWordSilenceTimeoutMs: number;
+  wakeWordAutoSend: boolean;
+  openWorkspaceDraftTab: (input?: { draftId?: string; focus?: boolean }) => void;
+  onError: (error: Error) => void;
+}
+
+/** Catches "Hey Otto" when a workspace is focused but no chat tab is open -
+ * MessageInput (and its own wake-word listener) doesn't mount in that state,
+ * so nothing would otherwise be listening. On trigger, opens a fresh draft
+ * chat tab and queues an auto-start-dictation request for it (consumed once
+ * that tab's composer mounts and is ready, see workspace-tab.tsx). */
+function WakeWordEmptyStateListener(props: WakeWordEmptyStateListenerProps): null {
+  const {
+    normalizedServerId,
+    normalizedWorkspaceId,
+    isRouteFocused,
+    hasActiveTab,
+    hasHydratedAgents,
+    wakeWordEnabled,
+    wakeWordListeningPaused,
+    wakeWordPhrase,
+    wakeWordSensitivity,
+    wakeWordSilenceTimeoutMs,
+    wakeWordAutoSend,
+    openWorkspaceDraftTab,
+    onError,
+  } = props;
+
+  const startDictation = useCallback(
+    (autoSend?: boolean, preRollPcm?: string, speechAlreadyDetected?: boolean) => {
+      const draftId = generateDraftId();
+      openWorkspaceDraftTab({ draftId });
+      useWakeWordAutoStartStore.getState().setPending({
+        serverId: normalizedServerId,
+        workspaceId: normalizedWorkspaceId,
+        draftId,
+        autoSend: autoSend ?? wakeWordAutoSend,
+        preRollPcm,
+        speechAlreadyDetected,
+      });
+    },
+    [normalizedServerId, normalizedWorkspaceId, openWorkspaceDraftTab, wakeWordAutoSend],
+  );
+
+  useWakeWordListening({
+    settings: {
+      enabled: shouldStartWakeWordListening({
+        featureEnabled: wakeWordEnabled,
+        listeningPaused: wakeWordListeningPaused,
+        isPaneFocused: isRouteFocused && !hasActiveTab && hasHydratedAgents,
+      }),
+      phrase: wakeWordPhrase,
+      sensitivity: wakeWordSensitivity,
+      silenceTimeoutMs: wakeWordSilenceTimeoutMs,
+      autoSend: wakeWordAutoSend,
+    },
+    startDictation,
+    onError,
+  });
+
+  return null;
+}
+
 interface RenderWorkspaceContentInput {
   isMissingWorkspaceDirectory: boolean;
   activeTabDescriptor: WorkspaceTabDescriptor | null;
@@ -2920,6 +2996,11 @@ function WorkspaceScreenContent({
       return openWorkspaceTabFocused(persistenceKey, target);
     },
     [openWorkspaceTabFocused, openWorkspaceTabInBackground, persistenceKey],
+  );
+
+  const handleWakeWordEmptyStateError = useCallback(
+    (error: Error) => toast.error(error.message),
+    [toast],
   );
 
   useEffect(() => {
@@ -4847,6 +4928,22 @@ function WorkspaceScreenContent({
           onToggleTabOrientation={handleToggleFallbackTabOrientation}
         />
       ) : null}
+
+      <WakeWordEmptyStateListener
+        normalizedServerId={normalizedServerId}
+        normalizedWorkspaceId={normalizedWorkspaceId}
+        isRouteFocused={isRouteFocused}
+        hasActiveTab={Boolean(activeTabDescriptor)}
+        hasHydratedAgents={hasHydratedAgents}
+        wakeWordEnabled={settings.wakeWordEnabled}
+        wakeWordListeningPaused={settings.wakeWordListeningPaused}
+        wakeWordPhrase={settings.wakeWordPhrase}
+        wakeWordSensitivity={settings.wakeWordSensitivity}
+        wakeWordSilenceTimeoutMs={settings.wakeWordSilenceTimeoutMs}
+        wakeWordAutoSend={settings.wakeWordAutoSend}
+        openWorkspaceDraftTab={openWorkspaceDraftTab}
+        onError={handleWakeWordEmptyStateError}
+      />
 
       <WorkspaceCenterContent
         serverId={normalizedServerId}
