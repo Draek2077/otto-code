@@ -32,14 +32,14 @@
     "decoder-epoch-12-avg-2-chunk-16-left-64.onnx": 1063189,
     "joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx": 163380,
     "tokens.txt": 5006,
-    "keywords.txt": 20
+    "keywords.txt": 19
   },
   "assetSha256": {
     "encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx": "1e721676515bcd42a186979733981213c66c80db680e1cc582dfedf3be76e678",
     "decoder-epoch-12-avg-2-chunk-16-left-64.onnx": "f61ebd3eed3773a44d088d53dfae92dbb6aec4839f4dcaee2d402414741663a3",
     "joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx": "eae9da0c7e1e6c6a3f4cc42d167899c388f6c6701b94cb96320e4f55df79624c",
     "tokens.txt": "fd2ded4050a55d2b1578870ba8697d02371980217806b7558bd0a5cc60f3ba53",
-    "keywords.txt": "4ff3ca36dc4893f5c93e17744cb3f3c4bc4d81a40660f3038ad6eb0b426845ca"
+    "keywords.txt": "8ad165b7d3a0ce2cbe5a89138280aa35bfa88525588c9202c698627a0fa6679c"
   },
   "source": "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2",
   "sourceSha256": "f170013b4716e41b62b9bfd809687c207cef798ef9bc6534d524e17af9b6561a"
