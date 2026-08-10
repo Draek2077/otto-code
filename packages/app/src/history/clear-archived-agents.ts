@@ -9,20 +9,12 @@ import {
 /** One host the sweep can run against. */
 export interface ClearArchivedHost {
   serverId: string;
-  clearArchivedAgents: (options: {
-    dryRun: boolean;
-    olderThanDays?: number;
-    cleanupScope?: "otto" | "otto_and_provider";
-  }) => Promise<{
+  clearArchivedAgents: (options: { dryRun: boolean; olderThanDays?: number }) => Promise<{
     matched: number;
     deleted: number;
     failed: number;
     agentIds: string[];
     ottoBytes?: number;
-    providerBytes?: number;
-    reclaimedBytes?: number;
-    unsupported?: number;
-    stale?: number;
   }>;
 }
 
@@ -32,7 +24,6 @@ export interface ClearArchivedInput {
   scope: "allHosts" | "oneHost";
   /** 0 (default) clears every archived chat. */
   olderThanDays?: number;
-  cleanupScope?: "otto" | "otto_and_provider";
 }
 
 export interface ClearArchivedDeps {
@@ -50,10 +41,7 @@ export interface ClearArchivedOutcome {
   /** Hosts whose dry run failed, so they were never swept. */
   skippedHosts: string[];
   ottoBytes: number;
-  providerBytes: number;
   reclaimedBytes: number;
-  unsupported: number;
-  stale: number;
 }
 
 /**
@@ -86,7 +74,6 @@ export async function requestClearArchivedAgents(
         const payload = await host.clearArchivedAgents({
           dryRun: true,
           olderThanDays: input.olderThanDays,
-          cleanupScope: input.cleanupScope,
         });
         return { host, payload, matched: payload.matched, ok: true as const };
       } catch (error) {
@@ -106,46 +93,28 @@ export async function requestClearArchivedAgents(
     return null;
   }
 
-  const previewTotals = sweepable.reduce(
-    (totals, preview) => ({
-      ottoBytes: totals.ottoBytes + (preview.payload?.ottoBytes ?? 0),
-      providerBytes: totals.providerBytes + (preview.payload?.providerBytes ?? 0),
-    }),
-    { ottoBytes: 0, providerBytes: 0 },
-  );
-  const confirmed = await deps.confirm(
-    resolveClearArchivedDialog({
-      matched,
-      scope: input.scope,
-      cleanupScope: input.cleanupScope,
-      ...previewTotals,
-    }),
-  );
-  if (!confirmed) {
+  const dialog = resolveClearArchivedDialog({
+    matched,
+    scope: input.scope,
+  });
+  if (!(await deps.confirm(dialog))) {
     return null;
   }
 
   let deleted = 0;
   let failed = 0;
   let ottoBytes = 0;
-  let providerBytes = 0;
   let reclaimedBytes = 0;
-  let unsupported = 0;
-  let stale = 0;
   for (const preview of sweepable) {
     try {
       const payload = await preview.host.clearArchivedAgents({
         dryRun: false,
         olderThanDays: input.olderThanDays,
-        cleanupScope: input.cleanupScope,
       });
       deleted += payload.deleted;
       failed += payload.failed;
       ottoBytes += payload.ottoBytes ?? 0;
-      providerBytes += payload.providerBytes ?? 0;
-      reclaimedBytes += payload.reclaimedBytes ?? 0;
-      unsupported += payload.unsupported ?? 0;
-      stale += payload.stale ?? 0;
+      reclaimedBytes += payload.ottoBytes ?? 0;
       if (payload.agentIds.length > 0) {
         deps.onDeleted({ serverId: preview.host.serverId, agentIds: payload.agentIds });
       }
@@ -167,9 +136,6 @@ export async function requestClearArchivedAgents(
     failed,
     skippedHosts,
     ottoBytes,
-    providerBytes,
     reclaimedBytes,
-    unsupported,
-    stale,
   };
 }

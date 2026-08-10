@@ -81,6 +81,7 @@ function historyEntry(input: {
   updatedAt: string;
   title?: string | null;
   archivedAt?: string | null;
+  archiveBytes?: number;
 }): FetchAgentHistoryEntry {
   return {
     agent: {
@@ -115,6 +116,7 @@ function historyEntry(input: {
       attentionReason: null,
       attentionTimestamp: null,
       archivedAt: input.archivedAt ?? null,
+      archiveBytes: input.archiveBytes,
       labels: {},
     },
     project: {
@@ -240,6 +242,26 @@ describe("fetchAgentHistoryPage", () => {
     const page = await fetchAgentHistoryPage({ client, serverId: "server-1", cursor: null });
 
     expect(page.agents[0]?.archivedAt).toEqual(new Date("2026-04-01T10:05:00.000Z"));
+  });
+
+  it("carries archived entry sizes through to the history row", async () => {
+    const client = createClient([
+      historyPayload({
+        entries: [
+          historyEntry({
+            id: "history-sized",
+            cwd: "/repo",
+            updatedAt: "2026-04-01T10:00:00.000Z",
+            archivedAt: "2026-04-01T10:05:00.000Z",
+            archiveBytes: 123456,
+          }),
+        ],
+      }),
+    ]);
+
+    const page = await fetchAgentHistoryPage({ client, serverId: "server-1", cursor: null });
+
+    expect(page.agents[0]?.archiveBytes).toBe(123456);
   });
 
   it("fetches and sorts history across hosts with host labels", async () => {

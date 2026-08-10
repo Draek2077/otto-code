@@ -58,10 +58,11 @@ function useBrowserPanelDescriptor(target: {
     subtitle: url,
     titleState: "ready",
     icon,
-    statusBucket: browser?.isLoading ? "running" : null,
-    // A page load is not model work, so the tab shows the theme's circular
-    // spinner instead of the AI blob loader.
-    busyLoader: "spinner",
+    // Keep the browser identity visible while a page is loading. The shared
+    // tab presentation swaps the icon for a busy loader when statusBucket is
+    // "running", which makes browser tabs appear blank (especially when a
+    // navigation fails and the loading state lingers).
+    statusBucket: null,
   };
 }
 

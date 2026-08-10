@@ -80,7 +80,7 @@ export function ScreenHeader({
 
 const styles = StyleSheet.create((theme) => ({
   header: {
-    backgroundColor: theme.colors.surface0,
+    backgroundColor: theme.colors.surfaceChrome,
   },
   inner: {},
   row: {

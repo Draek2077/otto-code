@@ -8,6 +8,7 @@ import {
   buildSelectedTriggerLabel,
   filterAndRankModelRows,
   matchesModelSearch,
+  presentProviderModelSelectionError,
   resolveSelectedModelLabel,
   resolveSubmissionReadiness,
 } from "./provider-selection";
@@ -34,6 +35,22 @@ describe("combined model selector data", () => {
       models: overrides.models ?? [codexModel],
     };
   }
+
+  it("keeps Brain connection errors actionable without showing its endpoint", () => {
+    expect(
+      presentProviderModelSelectionError({
+        providerLabel: "Otto Brain",
+        message:
+          "Cannot reach Otto Brain at https://greyskull.tail279562.ts.net:1234/v1 (fetch failed). Make sure the server is running and the URL is correct.",
+      }),
+    ).toBe("Cannot reach Otto Brain. Make sure the server is running and the URL is correct.");
+  });
+
+  it("preserves provider errors that do not expose a connection endpoint", () => {
+    expect(
+      presentProviderModelSelectionError({ providerLabel: "Otto Brain", message: "Token expired" }),
+    ).toBe("Token expired");
+  });
 
   it("builds selector providers from ready enabled snapshot entries", () => {
     expect(

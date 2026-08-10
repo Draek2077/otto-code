@@ -1582,11 +1582,9 @@ export const AgentSnapshotPayloadSchema = z.object({
   attentionReason: z.enum(["finished", "error", "permission"]).nullable().optional(),
   attentionTimestamp: z.string().nullable().optional(),
   archivedAt: z.string().nullable().optional(),
-  // Bytes in Otto's record and provider-owned resources captured at archive
-  // time. These are projections, never transcript rescans during rendering.
+  // Bytes in Otto's record captured at archive time. This is a projection,
+  // never a transcript rescan during rendering.
   archiveBytes: z.number().int().nonnegative().optional(),
-  providerArchiveBytes: z.number().int().nonnegative().optional(),
-  cleanupCapability: z.enum(["supported", "unsupported", "stale"]).optional(),
   providerUnavailable: z.boolean().optional(),
   // Attendability. "observed" marks a provider-managed subagent (Claude Task /
   // ultracode fan-out) that the user can watch but not prompt or reconfigure -
@@ -1715,12 +1713,8 @@ export const CloseItemsRequestMessageSchema = z.object({
 // to be server-side because the history list is cursor-paginated across hosts,
 // so the client never holds the whole archived set.
 //
-// Deleting a chat removes OTTO's record only. The provider's own on-disk
-// transcript (Claude's `~/.claude/projects/**/<sessionId>.jsonl`, Codex threads,
-// OpenCode sessions) is deliberately left in place: Otto never created it,
-// another tool still reads it, and silently deleting another tool's state is not
-// ours to do. There is intentionally **no** opt-in flag for provider data on the
-// wire - the UI discloses what stays behind instead. See docs/chat-lifecycle.md.
+// Deleting a chat removes Otto's record only. Provider-owned session data is
+// deliberately left in place. See docs/chat-lifecycle.md.
 // Gated by server_info.features.historyDelete.
 export const HistoryAgentsClearArchivedRequestSchema = z.object({
   type: z.literal("history.agents.clear_archived.request"),
@@ -1729,7 +1723,6 @@ export const HistoryAgentsClearArchivedRequestSchema = z.object({
   // Safe by default: a request that omits the flag previews instead of deleting.
   // The client always sends it explicitly.
   dryRun: z.boolean().default(true),
-  cleanupScope: z.enum(["otto", "otto_and_provider"]).optional(),
   requestId: z.string(),
 });
 
@@ -1748,21 +1741,8 @@ export const HistoryAgentsClearArchivedResponseSchema = z.object({
     dryRun: z.boolean(),
     error: z.string().nullable(),
     requestId: z.string(),
-    // Additive provider-aware accounting. Old clients ignore these fields.
     ottoBytes: z.number().int().nonnegative().optional(),
-    providerBytes: z.number().int().nonnegative().optional(),
     reclaimedBytes: z.number().int().nonnegative().optional(),
-    unsupported: z.number().int().nonnegative().optional(),
-    stale: z.number().int().nonnegative().optional(),
-    outcomes: z
-      .array(
-        z.object({
-          agentId: z.string(),
-          outcome: z.enum(["deleted", "unsupported", "stale", "failed"]),
-          reclaimedBytes: z.number().int().nonnegative().optional(),
-        }),
-      )
-      .optional(),
   }),
 });
 
@@ -7854,8 +7834,6 @@ export const ServerInfoStatusPayloadSchema = z
         attachmentStorage: z.boolean().optional(),
         // COMPAT(historyStorage): added in v0.7.2, drop the gate when daemon floor >= v0.7.2.
         historyStorage: z.boolean().optional(),
-        // COMPAT(providerArchiveCleanup): added in v0.7.9, drop the gate when daemon floor >= v0.7.9.
-        providerArchiveCleanup: z.boolean().optional(),
         // COMPAT(agentWorkspaceTransfer): added in v0.7.4, drop the gate when
         // daemon floor >= v0.7.4. Set when the daemon serves
         // `agent.workspace.transfer` - moving a chat to another workspace over

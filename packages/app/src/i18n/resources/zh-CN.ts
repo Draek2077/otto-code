@@ -475,27 +475,22 @@ export const zhCN: TranslationResources = {
       clearingArchived: "正在清空…",
     },
     dialogs: {
-      genericProvider: "该 Agent 提供方",
       deleteAgent: {
         title: "删除此对话？",
         subjectFallback: "此对话",
         recordLine: "Otto 中关于{{subject}}的记录将被永久删除-包括该条目、标题和元数据。",
-        transcriptLine:
-          "{{provider}} 在主机上自己的记录会原样保留，因此对话本身仍在磁盘上，在 Otto 之外依然可以阅读或继续。",
         undoLine: "Otto 这一侧的操作无法撤销。",
         confirm: "删除",
       },
       clearArchived: {
         titleOne: "清空 1 个已归档对话？",
         titleMany: "清空 {{count}} 个已归档对话？",
-        recordLineOneHostOne:
-          "此操作将永久删除此 Host 上的 1 个已归档对话。活动对话不受影响。提供方的记录会保留在该 Host 上。",
+        recordLineOneHostOne: "此操作将永久删除此 Host 上的 1 个已归档对话。活动对话不受影响。",
         recordLineOneHostMany:
-          "此操作将永久删除此 Host 上的 {{count}} 个已归档对话。活动对话不受影响。提供方的记录会保留在该 Host 上。",
-        recordLineAllHostsOne:
-          "此操作将永久删除所有 Host 上的 1 个已归档对话。活动对话不受影响。提供方的记录会保留在各 Host 上。",
+          "此操作将永久删除此 Host 上的 {{count}} 个已归档对话。活动对话不受影响。",
+        recordLineAllHostsOne: "此操作将永久删除所有 Host 上的 1 个已归档对话。活动对话不受影响。",
         recordLineAllHostsMany:
-          "此操作将永久删除所有 Host 上的 {{count}} 个已归档对话。活动对话不受影响。提供方的记录会保留在各 Host 上。",
+          "此操作将永久删除所有 Host 上的 {{count}} 个已归档对话。活动对话不受影响。",
         undoLine: "此操作无法撤销。",
         confirm: "清空",
       },
@@ -824,6 +819,11 @@ export const zhCN: TranslationResources = {
       },
       errors: {
         failedToLoad: "页面加载失败",
+        pageUnavailable: "此页面不可用",
+        siteNotFound: "请检查地址后重试。",
+        connectionRefused: "该网站拒绝了连接。请确认它正在运行后重试。",
+        connectionFailed: "连接已中断。请重试。",
+        certificateError: "无法验证该网站的证书。",
         invalidUrl: "无效的浏览器 URL",
         unsupportedProtocol: "已拦截不受支持的浏览器 URL：{{protocol}}",
       },

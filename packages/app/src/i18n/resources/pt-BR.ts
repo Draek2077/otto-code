@@ -485,14 +485,11 @@ export const ptBR: TranslationResources = {
       clearingArchived: "Limpando…",
     },
     dialogs: {
-      genericProvider: "O provedor do agente",
       deleteAgent: {
         title: "Excluir este chat?",
         subjectFallback: "este chat",
         recordLine:
           "O registro que o Otto tem de {{subject}} é excluído permanentemente - a linha, o título e os metadados.",
-        transcriptLine:
-          "A transcrição do próprio {{provider}} no host é mantida, então a conversa continua em disco e ainda pode ser lida ou retomada fora do Otto.",
         undoLine: "O lado do Otto não pode ser desfeito.",
         confirm: "Excluir",
       },
@@ -500,13 +497,13 @@ export const ptBR: TranslationResources = {
         titleOne: "Limpar 1 chat arquivado?",
         titleMany: "Limpar {{count}} chats arquivados?",
         recordLineOneHostOne:
-          "Isto exclui permanentemente 1 chat arquivado neste host. Os chats ativos não são afetados. As transcrições do provedor permanecem no host.",
+          "Isto exclui permanentemente 1 chat arquivado neste host. Os chats ativos não são afetados.",
         recordLineOneHostMany:
-          "Isto exclui permanentemente {{count}} chats arquivados neste host. Os chats ativos não são afetados. As transcrições do provedor permanecem no host.",
+          "Isto exclui permanentemente {{count}} chats arquivados neste host. Os chats ativos não são afetados.",
         recordLineAllHostsOne:
-          "Isto exclui permanentemente 1 chat arquivado em todos os hosts. Os chats ativos não são afetados. As transcrições do provedor permanecem nos hosts.",
+          "Isto exclui permanentemente 1 chat arquivado em todos os hosts. Os chats ativos não são afetados.",
         recordLineAllHostsMany:
-          "Isto exclui permanentemente {{count}} chats arquivados em todos os hosts. Os chats ativos não são afetados. As transcrições do provedor permanecem nos hosts.",
+          "Isto exclui permanentemente {{count}} chats arquivados em todos os hosts. Os chats ativos não são afetados.",
         undoLine: "Esta ação não pode ser desfeita.",
         confirm: "Limpar",
       },
@@ -839,6 +836,12 @@ export const ptBR: TranslationResources = {
       },
       errors: {
         failedToLoad: "Falha ao carregar página",
+        pageUnavailable: "Esta página não está disponível",
+        siteNotFound: "Verifique o endereço e tente novamente.",
+        connectionRefused:
+          "O site recusou a conexão. Verifique se ele está em execução e tente novamente.",
+        connectionFailed: "A conexão foi interrompida. Tente novamente.",
+        certificateError: "Não foi possível verificar o certificado do site.",
         invalidUrl: "URL de navegador inválida",
         unsupportedProtocol: "URL de navegador não suportada bloqueada: {{protocol}}",
       },

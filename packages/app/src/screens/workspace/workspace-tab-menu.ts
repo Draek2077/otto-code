@@ -229,6 +229,45 @@ function appendChatManagementMenuEntries(input: {
   return true;
 }
 
+function appendTabFunctionMenuEntries(input: {
+  tab: WorkspaceTabDescriptor;
+  entries: WorkspaceTabMenuEntry[];
+  labels: WorkspaceTabMenuLabels;
+  menuTestIDBase: string;
+  isDeveloperMode: boolean;
+  onReloadAgent: (agentId: string) => Promise<void> | void;
+  onRenameTab: (tab: WorkspaceTabDescriptor) => void;
+}): void {
+  const { tab, entries, labels, menuTestIDBase, isDeveloperMode, onReloadAgent, onRenameTab } =
+    input;
+  if (isDeveloperMode && tab.target.kind === "agent") {
+    const { agentId } = tab.target;
+    entries.push({
+      kind: "item",
+      key: "reload-agent",
+      label: labels.reloadAgent,
+      icon: "rotate-cw",
+      tooltip: labels.reloadAgentTooltip,
+      testID: `${menuTestIDBase}-reload-agent`,
+      onSelect: () => {
+        void onReloadAgent(agentId);
+      },
+    });
+  }
+  if (tab.target.kind === "agent" || tab.target.kind === "terminal") {
+    entries.push({
+      kind: "item",
+      key: "rename",
+      label: labels.rename,
+      icon: "pencil",
+      testID: `${menuTestIDBase}-rename`,
+      onSelect: () => {
+        onRenameTab(tab);
+      },
+    });
+  }
+}
+
 export function buildWorkspaceTabMenuEntries(
   input: BuildWorkspaceTabMenuEntriesInput,
 ): WorkspaceTabMenuEntry[] {
@@ -331,13 +370,6 @@ export function buildWorkspaceTabMenuEntries(
     });
   }
 
-  if (tab.target.kind === "agent" || tab.target.kind === "terminal") {
-    entries.push({
-      kind: "separator",
-      key: "rename-separator",
-    });
-  }
-
   const managesChat = appendChatManagementMenuEntries({
     tab,
     entries,
@@ -347,6 +379,36 @@ export function buildWorkspaceTabMenuEntries(
     onDeleteAgent,
   });
   if (!managesChat) {
+    const hasWorkspaceEntries = entries.length > 0;
+    const hasTabEntries =
+      (isDeveloperMode && tab.target.kind === "agent") ||
+      tab.target.kind === "agent" ||
+      tab.target.kind === "terminal";
+
+    if (hasWorkspaceEntries && hasTabEntries) {
+      entries.push({
+        kind: "separator",
+        key: "workspace-tab-separator",
+      });
+    }
+
+    appendTabFunctionMenuEntries({
+      tab,
+      entries,
+      labels,
+      menuTestIDBase,
+      isDeveloperMode,
+      onReloadAgent,
+      onRenameTab,
+    });
+
+    if (entries.length > 0) {
+      entries.push({
+        kind: "separator",
+        key: "tab-close-actions-separator",
+      });
+    }
+
     entries.push({
       kind: "item",
       key: "close-before",
@@ -380,36 +442,10 @@ export function buildWorkspaceTabMenuEntries(
         void onCloseOtherTabs(tab.tabId);
       },
     });
-    if (isDeveloperMode && tab.target.kind === "agent") {
-      const { agentId } = tab.target;
-      entries.push({
-        kind: "item",
-        key: "reload-agent",
-        label: labels.reloadAgent,
-        icon: "rotate-cw",
-        tooltip: labels.reloadAgentTooltip,
-        testID: `${menuTestIDBase}-reload-agent`,
-        onSelect: () => {
-          void onReloadAgent(agentId);
-        },
-      });
-    }
-    if (tab.target.kind === "agent" || tab.target.kind === "terminal") {
-      entries.push({
-        kind: "separator",
-        key: "reload-rename-separator",
-      });
-      entries.push({
-        kind: "item",
-        key: "rename",
-        label: labels.rename,
-        icon: "pencil",
-        testID: `${menuTestIDBase}-rename`,
-        onSelect: () => {
-          onRenameTab(tab);
-        },
-      });
-    }
+    entries.push({
+      kind: "separator",
+      key: "close-separator",
+    });
     entries.push({
       kind: "item",
       key: "close",

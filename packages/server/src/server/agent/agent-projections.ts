@@ -333,8 +333,6 @@ export function buildStoredAgentPayload(
     attentionTimestamp: record.attentionTimestamp ?? null,
     archivedAt: record.archivedAt ?? null,
     archiveBytes: record.archiveBytes,
-    providerArchiveBytes: record.providerCleanup?.providerBytes,
-    cleanupCapability: record.providerCleanup?.capability,
     labels: normalizeLabels(record.labels),
     attend: "attended",
     ...buildStoredAgentPayloadTail(record, providerAvailable),

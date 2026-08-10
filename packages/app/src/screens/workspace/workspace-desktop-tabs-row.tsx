@@ -1803,6 +1803,10 @@ function TabHandleContent({
  */
 export type ResolvedTabWidth = number | "stretch";
 
+function isActiveTerminalTab(tab: WorkspaceTabDescriptor, isActive: boolean) {
+  return isActive && tab.target.kind === "terminal";
+}
+
 function TabChip({
   tab,
   isActive,
@@ -1852,6 +1856,9 @@ function TabChip({
   // fixed on-black colors so they stay readable in any theme.
   const isChatTab = tab.target.kind === "agent" || tab.target.kind === "draft";
   const onBlack = settings.blackTabBackground && isChatTab && isActive;
+  // Terminal panes paint their emulator against `surfaceCode`, so the active
+  // terminal tab uses that same fill instead of the normal workspace surface.
+  const onTerminalSurface = isActiveTerminalTab(tab, isActive);
   const closeButtonDragBlockers = isWeb
     ? ({
         onPointerDown: (event: { stopPropagation?: () => void }) => {
@@ -1869,6 +1876,7 @@ function TabChip({
       styles.tab,
       vertical && styles.tabVertical,
       isActive && (vertical ? styles.tabActiveVertical : styles.tabActive),
+      onTerminalSurface && (vertical ? styles.tabActiveTerminalVertical : styles.tabActiveTerminal),
       onBlack && (vertical ? styles.tabActiveBlackVertical : styles.tabActiveBlack),
       isWeb && isDragging && ({ cursor: "grabbing" } as object),
       // "stretch" lets the chip take its width from the container instead of a
@@ -1882,7 +1890,7 @@ function TabChip({
             maxWidth: resolvedTabWidth,
           },
     ],
-    [isActive, isDragging, onBlack, resolvedTabWidth, vertical],
+    [isActive, isDragging, onBlack, onTerminalSurface, resolvedTabWidth, vertical],
   );
 
   const handleTabHoverIn = useCallback(() => {
@@ -2933,7 +2941,7 @@ const styles = StyleSheet.create((theme) => ({
     bottom: 1,
     borderTopLeftRadius: theme.borderRadius.lg,
     borderTopRightRadius: theme.borderRadius.lg,
-    backgroundColor: theme.colors.surface1,
+    backgroundColor: theme.colors.surfaceToggleHover,
   },
   // Vertical counterpart: the 1px inset moves from the bottom edge (pane seam
   // below) to the right edge (pane seam to the right).
@@ -2945,7 +2953,7 @@ const styles = StyleSheet.create((theme) => ({
     bottom: 0,
     borderTopLeftRadius: theme.borderRadius.lg,
     borderBottomLeftRadius: theme.borderRadius.lg,
-    backgroundColor: theme.colors.surface1,
+    backgroundColor: theme.colors.surfaceToggleHover,
   },
   // Active outline is an accent-to-border vertical gradient (accent at the tab
   // top, fading into the plain pane border where the chip meets the content).
@@ -2991,6 +2999,29 @@ const styles = StyleSheet.create((theme) => ({
         borderLeftColor: theme.colors.borderTabActive,
         borderBottomColor: theme.colors.borderTabActive,
       },
+  // Terminal tabs fuse with the terminal emulator, whose xterm background is
+  // `surfaceCode` (components/terminal-pane.tsx). Keep the same active-border
+  // gradient and replace only the fill layer.
+  tabActiveTerminal: {
+    backgroundColor: theme.colors.surfaceCode,
+    ...(isWeb
+      ? ({
+          backgroundImage:
+            `linear-gradient(${theme.colors.surfaceCode}, ${theme.colors.surfaceCode}), ` +
+            `linear-gradient(to bottom, ${theme.colors.borderTabActive}, ${theme.colors.border})`,
+        } as object)
+      : {}),
+  },
+  tabActiveTerminalVertical: {
+    backgroundColor: theme.colors.surfaceCode,
+    ...(isWeb
+      ? ({
+          backgroundImage:
+            `linear-gradient(${theme.colors.surfaceCode}, ${theme.colors.surfaceCode}), ` +
+            `linear-gradient(to right, ${theme.colors.borderTabActive}, ${theme.colors.border})`,
+        } as object)
+      : {}),
+  },
   // Inner highlight sheen on the active tab: an echo of the outline in the
   // outline's own accent, lightened and at 25% alpha (`borderTabActiveInner`),
   // fading to transparent toward the bottom. Its cap is a hair thicker (1.5px)

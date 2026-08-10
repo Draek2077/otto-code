@@ -2057,10 +2057,6 @@ export class VoiceAssistantWebSocketServer {
         attachmentStorage: true,
         // COMPAT(historyStorage): added in v0.7.2, drop the gate when daemon floor >= v0.7.2.
         historyStorage: true,
-        // COMPAT(providerArchiveCleanup): added in v0.7.9, drop the gate when daemon floor >= v0.7.9.
-        // Provider cleanup is opt-in per adapter; this flag only means the
-        // daemon understands the provider-aware scope and manifest contract.
-        providerArchiveCleanup: true,
         // COMPAT(agentWorkspaceTransfer): added in v0.7.4, drop the gate when
         // daemon floor >= v0.7.4. `agent.workspace.transfer`. Unconditionally
         // true: the handler needs only the agent manager and the workspace

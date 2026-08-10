@@ -37,6 +37,25 @@ export interface ProviderSelectionReadiness {
   reason?: string;
 }
 
+/**
+ * Provider snapshots can contain a transport error with an endpoint embedded
+ * in it. That is useful in logs, but it is noisy and fragile as the picker’s
+ * primary status. Keep the actionable part of the daemon’s message while
+ * leaving connection details to the provider settings and host logs.
+ */
+export function presentProviderModelSelectionError(input: {
+  providerLabel: string;
+  message: string;
+}): string {
+  const message = input.message.trim();
+  const escapedLabel = input.providerLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const endpointError = new RegExp(`^Cannot reach ${escapedLabel} at \\S+ \\([^)]*\\)\\.\\s*`, "i");
+  if (endpointError.test(message)) {
+    return `Cannot reach ${input.providerLabel}. ${message.replace(endpointError, "")}`;
+  }
+  return message;
+}
+
 function buildModelRows(
   provider: string,
   providerLabel: string,

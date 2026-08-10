@@ -29,6 +29,7 @@ import {
   filterAndRankModelRows,
   getAllProviderModelRows,
   getProviderModelRows,
+  presentProviderModelSelectionError,
   resolveSelectedModelLabel,
   type ProviderSelectionModelRow,
   type ProviderSelectorProvider,
@@ -876,23 +877,29 @@ function ProviderModelRows({
 
 function ProviderErrorEmptyState({
   providerId,
+  providerLabel,
   message,
   onRetryProvider,
   isRetryingProvider,
 }: {
   providerId: string;
+  providerLabel: string;
   message: string;
   onRetryProvider?: (provider: AgentProvider) => void;
   isRetryingProvider: boolean;
 }) {
   const { t } = useTranslation();
+  const presentedMessage = useMemo(
+    () => presentProviderModelSelectionError({ providerLabel, message }),
+    [message, providerLabel],
+  );
   const handleRetry = useCallback(() => {
     onRetryProvider?.(providerId);
   }, [onRetryProvider, providerId]);
   return (
     <View style={styles.emptyState}>
       <ThemedAlertTriangle size={ICON_SIZE.md} uniProps={foregroundMutedMapping} />
-      <Text style={styles.emptyStateText}>{message}</Text>
+      <Text style={styles.emptyStateText}>{presentedMessage}</Text>
       {onRetryProvider ? (
         <Button variant="default" size="sm" onPress={handleRetry} disabled={isRetryingProvider}>
           {isRetryingProvider ? t("modelSelector.retrying") : t("modelSelector.retry")}
@@ -961,6 +968,7 @@ function ModelBrowserContent({
       return (
         <ProviderErrorEmptyState
           providerId={view.providerId}
+          providerLabel={view.providerLabel}
           message={selection.message}
           onRetryProvider={onRetryProvider}
           isRetryingProvider={isRetryingProvider}

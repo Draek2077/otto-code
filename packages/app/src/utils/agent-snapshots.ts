@@ -61,8 +61,6 @@ export function normalizeAgentSnapshot(snapshot: AgentSnapshotPayload, serverId:
     attentionTimestamp,
     archivedAt,
     archiveBytes: snapshot.archiveBytes,
-    providerArchiveBytes: snapshot.providerArchiveBytes,
-    cleanupCapability: snapshot.cleanupCapability,
     parentAgentId,
     labels: snapshot.labels,
     attend: snapshot.attend ?? "attended",

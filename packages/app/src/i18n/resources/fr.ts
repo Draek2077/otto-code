@@ -485,14 +485,11 @@ export const fr: TranslationResources = {
       clearingArchived: "Suppression…",
     },
     dialogs: {
-      genericProvider: "Le fournisseur d'agent",
       deleteAgent: {
         title: "Supprimer cette conversation ?",
         subjectFallback: "cette conversation",
         recordLine:
           "L'enregistrement d'Otto pour {{subject}} est supprimé définitivement - la ligne, son titre et ses métadonnées.",
-        transcriptLine:
-          "La transcription propre à {{provider}} sur l'hôte est laissée en place : la conversation reste sur le disque et peut encore être lue ou reprise en dehors d'Otto.",
         undoLine: "Côté Otto, cela ne peut pas être annulé.",
         confirm: "Supprimer",
       },
@@ -500,13 +497,13 @@ export const fr: TranslationResources = {
         titleOne: "Vider 1 conversation archivée ?",
         titleMany: "Vider {{count}} conversations archivées ?",
         recordLineOneHostOne:
-          "Cette action supprime définitivement 1 conversation archivée sur cet hôte. Les conversations actives ne sont pas affectées. Les transcriptions du fournisseur restent sur l'hôte.",
+          "Cette action supprime définitivement 1 conversation archivée sur cet hôte. Les conversations actives ne sont pas affectées.",
         recordLineOneHostMany:
-          "Cette action supprime définitivement {{count}} conversations archivées sur cet hôte. Les conversations actives ne sont pas affectées. Les transcriptions du fournisseur restent sur l'hôte.",
+          "Cette action supprime définitivement {{count}} conversations archivées sur cet hôte. Les conversations actives ne sont pas affectées.",
         recordLineAllHostsOne:
-          "Cette action supprime définitivement 1 conversation archivée sur tous les hôtes. Les conversations actives ne sont pas affectées. Les transcriptions du fournisseur restent sur les hôtes.",
+          "Cette action supprime définitivement 1 conversation archivée sur tous les hôtes. Les conversations actives ne sont pas affectées.",
         recordLineAllHostsMany:
-          "Cette action supprime définitivement {{count}} conversations archivées sur tous les hôtes. Les conversations actives ne sont pas affectées. Les transcriptions du fournisseur restent sur les hôtes.",
+          "Cette action supprime définitivement {{count}} conversations archivées sur tous les hôtes. Les conversations actives ne sont pas affectées.",
         undoLine: "Cette action ne peut pas être annulée.",
         confirm: "Vider",
       },
@@ -839,6 +836,12 @@ export const fr: TranslationResources = {
       },
       errors: {
         failedToLoad: "Échec du chargement de la page",
+        pageUnavailable: "Cette page n’est pas disponible",
+        siteNotFound: "Vérifiez l’adresse et réessayez.",
+        connectionRefused:
+          "Le site a refusé la connexion. Vérifiez qu’il est en cours d’exécution et réessayez.",
+        connectionFailed: "La connexion a été interrompue. Réessayez.",
+        certificateError: "Le certificat du site n’a pas pu être vérifié.",
         invalidUrl: "URL de navigateur invalide",
         unsupportedProtocol: "URL de navigateur non prise en charge bloquée : {{protocol}}",
       },

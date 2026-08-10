@@ -1157,6 +1157,7 @@ function DiagnosticsSection({
           <Switch
             value={settings.clientResourceBarAllPages}
             onValueChange={handleClientResourceBarAllPagesChange}
+            disabled={!settings.resourceMonitorEnabled}
             accessibilityLabel="Show Metrics footer on all pages"
             testID="settings-client-resource-bar-all-pages-switch"
           />

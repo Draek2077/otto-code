@@ -478,14 +478,15 @@ export function AgentList({
         await alertDialog(resolveHistoryDeleteUnsupportedDialog());
         return;
       }
-      const confirmed = await confirmDialog(
-        resolveDeleteAgentDialog({ title: agent.title, provider: agent.provider }),
-      );
+      const confirmed = await confirmDialog(resolveDeleteAgentDialog({ title: agent.title }));
       if (!confirmed) {
         return;
       }
       try {
-        await deleteAgent({ serverId: agent.serverId, agentId: agent.id });
+        await deleteAgent({
+          serverId: agent.serverId,
+          agentId: agent.id,
+        });
       } catch (error) {
         toast.error(toErrorMessage(error));
       }

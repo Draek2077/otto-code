@@ -18,6 +18,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   Camera,
@@ -153,11 +154,54 @@ function formatDevicePresetLabel(preset: DeviceSizePreset, responsiveLabel: stri
 const ERR_ABORTED = -3;
 const ALLOWED_BROWSER_PROTOCOLS = new Set(["http:", "https:"]);
 
+interface BrowserErrorLabels {
+  failedToLoad: string;
+  pageUnavailable: string;
+  siteNotFound: string;
+  connectionRefused: string;
+  connectionFailed: string;
+  certificateError: string;
+  invalidUrl: string;
+  unsupportedProtocol: (protocol: string) => string;
+}
+
+function isExpectedNavigationInterruption(value: string): boolean {
+  return value.includes("ERR_ABORTED") || value.includes("ERR_BLOCKED_BY_CLIENT");
+}
+
+function getBrowserNavigationErrorMessage(value: string, labels: BrowserErrorLabels): string {
+  // Electron exposes failures through both `did-fail-load` and a rejected
+  // webview.loadURL() promise. The latter can contain internal IPC errors
+  // (`GUEST_VIEW_MANAGER_CALL`), so translate every known network failure and
+  // keep the fallback generic rather than exposing Chromium internals.
+  if (value.includes("ERR_NAME_NOT_RESOLVED")) {
+    return labels.siteNotFound;
+  }
+  if (value.includes("ERR_CONNECTION_REFUSED")) {
+    return labels.connectionRefused;
+  }
+  if (
+    [
+      "ERR_CONNECTION_CLOSED",
+      "ERR_CONNECTION_RESET",
+      "ERR_CONNECTION_TIMED_OUT",
+      "ERR_ADDRESS_UNREACHABLE",
+      "ERR_INTERNET_DISCONNECTED",
+    ].some((code) => value.includes(code))
+  ) {
+    return labels.connectionFailed;
+  }
+  if (value.includes("ERR_CERT_") || value.includes("ERR_SSL_")) {
+    return labels.certificateError;
+  }
+  return labels.failedToLoad;
+}
+
 function truncateText(value: string, maxLength: number): string {
   return value.length > maxLength ? `${value.slice(0, maxLength).trim()}...` : value;
 }
 
-function getWebviewLoadErrorMessage(event: Event, failedToLoadLabel: string): string | null {
+function getWebviewLoadErrorMessage(event: Event, labels: BrowserErrorLabels): string | null {
   const details = event as Event & {
     errorCode?: unknown;
     errorDescription?: unknown;
@@ -168,37 +212,34 @@ function getWebviewLoadErrorMessage(event: Event, failedToLoadLabel: string): st
     return null;
   }
 
-  const description =
+  const reportedDescription =
     typeof details.errorDescription === "string" && details.errorDescription.trim()
       ? details.errorDescription.trim()
-      : failedToLoadLabel;
-  const url =
-    typeof details.validatedURL === "string" && details.validatedURL.trim()
-      ? details.validatedURL.trim()
-      : null;
-
-  return url ? `${description}: ${url}` : description;
+      : "";
+  return reportedDescription
+    ? getBrowserNavigationErrorMessage(reportedDescription, labels)
+    : labels.failedToLoad;
 }
 
-function getLoadUrlRejectionMessage(error: unknown, failedToLoadLabel: string): string | null {
-  if (error instanceof Error && error.message.trim()) {
-    if (error.message.includes("ERR_ABORTED") || error.message.includes("ERR_BLOCKED_BY_CLIENT")) {
+function getLoadUrlRejectionMessage(error: unknown, labels: BrowserErrorLabels): string | null {
+  let message = "";
+  if (error instanceof Error) {
+    message = error.message.trim();
+  } else if (typeof error === "string") {
+    message = error.trim();
+  }
+  if (message) {
+    if (isExpectedNavigationInterruption(message)) {
       return null;
     }
-    return error.message.trim();
+    return getBrowserNavigationErrorMessage(message, labels);
   }
-  if (typeof error === "string" && error.trim()) {
-    if (error.includes("ERR_ABORTED") || error.includes("ERR_BLOCKED_BY_CLIENT")) {
-      return null;
-    }
-    return error.trim();
-  }
-  return failedToLoadLabel;
+  return labels.failedToLoad;
 }
 
 function getUnsafeNavigationMessage(
   url: string,
-  labels: { invalidUrl: string; unsupportedProtocol: (protocol: string) => string },
+  labels: Pick<BrowserErrorLabels, "invalidUrl" | "unsupportedProtocol">,
 ): string | null {
   try {
     const parsed = new URL(url);
@@ -686,10 +727,6 @@ export function BrowserPane({
     ],
     [theme.colors.foreground],
   );
-  const errorTextStyle = useMemo(
-    () => [styles.metaError, { color: theme.colors.palette.red[500] }],
-    [theme.colors.palette.red],
-  );
   const previewOverlayTitleStyle = useMemo(
     () => [styles.previewOverlayTitle, { color: theme.colors.foreground }],
     [theme.colors.foreground],
@@ -705,6 +742,11 @@ export function BrowserPane({
   const browserErrorLabels = useMemo(
     () => ({
       failedToLoad: t("workspace.browser.errors.failedToLoad"),
+      pageUnavailable: t("workspace.browser.errors.pageUnavailable"),
+      siteNotFound: t("workspace.browser.errors.siteNotFound"),
+      connectionRefused: t("workspace.browser.errors.connectionRefused"),
+      connectionFailed: t("workspace.browser.errors.connectionFailed"),
+      certificateError: t("workspace.browser.errors.certificateError"),
       invalidUrl: t("workspace.browser.errors.invalidUrl"),
       unsupportedProtocol: (protocol: string) =>
         t("workspace.browser.errors.unsupportedProtocol", { protocol }),
@@ -937,7 +979,7 @@ export function BrowserPane({
       updateBrowserRef.current(browserIdRef.current, { faviconUrl: favicons[0] ?? null });
     };
     const handleLoadFailed = (event: Event) => {
-      const message = getWebviewLoadErrorMessage(event, browserErrorLabelsRef.current.failedToLoad);
+      const message = getWebviewLoadErrorMessage(event, browserErrorLabelsRef.current);
       if (!message) {
         return;
       }
@@ -954,10 +996,7 @@ export function BrowserPane({
       if (pendingLoadUrl && webview.loadURL) {
         pendingLoadUrlRef.current = null;
         void webview.loadURL(pendingLoadUrl).catch((error: unknown) => {
-          const message = getLoadUrlRejectionMessage(
-            error,
-            browserErrorLabelsRef.current.failedToLoad,
-          );
+          const message = getLoadUrlRejectionMessage(error, browserErrorLabelsRef.current);
           if (message) {
             updateBrowserRef.current(browserIdRef.current, {
               isLoading: false,
@@ -1056,7 +1095,7 @@ export function BrowserPane({
           return;
         }
         void webview.loadURL(normalizedUrl).catch((error: unknown) => {
-          const message = getLoadUrlRejectionMessage(error, browserErrorLabels.failedToLoad);
+          const message = getLoadUrlRejectionMessage(error, browserErrorLabels);
           if (!message) {
             return;
           }
@@ -1661,6 +1700,14 @@ export function BrowserPane({
     ],
     [],
   );
+  const deviceSizeButtonStyle = useCallback(
+    ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
+      styles.iconButton,
+      styles.deviceSizeButton,
+      (hovered || pressed) && styles.iconButtonHovered,
+    ],
+    [],
+  );
   const backIconButtonStyle = useCallback(
     ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
       styles.iconButton,
@@ -1795,7 +1842,7 @@ export function BrowserPane({
           <DeviceSizeMenu
             selectedId={deviceSizeId}
             onSelect={setDeviceSizeId}
-            triggerStyle={baseIconButtonStyle}
+            triggerStyle={deviceSizeButtonStyle}
           />
           <ToolbarButton
             label={t("workspace.browser.controls.openDevTools")}
@@ -1840,13 +1887,6 @@ export function BrowserPane({
           </ToolbarButton>
         </View>
       </View>
-      {browser?.lastError && !(browser.isPreview && browser.previewStatus === "error") ? (
-        <View style={styles.errorRow}>
-          <Text numberOfLines={1} style={errorTextStyle}>
-            {browser.lastError}
-          </Text>
-        </View>
-      ) : null}
       <View style={webviewWrapStyle}>
         {createElement("div", {
           ref: setWebviewHostNode,
@@ -1891,6 +1931,18 @@ export function BrowserPane({
                   </Button>
                 </>
               ) : null}
+            </View>
+          </View>
+        ) : null}
+        {browser?.lastError && !(browser.isPreview && browser.previewStatus === "error") ? (
+          <View style={styles.browserErrorOverlay}>
+            <View style={styles.browserErrorCard}>
+              <AlertTriangle size={28} color={theme.colors.palette.red[500]} />
+              <Text style={previewOverlayTitleStyle}>{browserErrorLabels.pageUnavailable}</Text>
+              <Text style={previewOverlayHintStyle}>{browser.lastError}</Text>
+              <Button variant="default" size="sm" onPress={handleRefresh}>
+                {t("workspace.browser.controls.refresh")}
+              </Button>
             </View>
           </View>
         ) : null}
@@ -2033,6 +2085,9 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
   },
+  deviceSizeButton: {
+    width: 40,
+  },
   selectorActiveButton: {
     backgroundColor: `${String(theme.colors.accent)}20`,
   },
@@ -2060,16 +2115,6 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     paddingVertical: 0,
     paddingHorizontal: 0,
-  },
-  errorRow: {
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-    backgroundColor: theme.colors.surface0,
-  },
-  metaError: {
-    fontSize: theme.fontSize.xs,
   },
   webviewWrap: {
     flex: 1,
@@ -2105,6 +2150,22 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface0,
   },
   previewOverlayCard: {
+    maxWidth: 420,
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  browserErrorOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: theme.spacing[4],
+    backgroundColor: theme.colors.surface0,
+  },
+  browserErrorCard: {
     maxWidth: 420,
     alignItems: "center",
     gap: theme.spacing[2],

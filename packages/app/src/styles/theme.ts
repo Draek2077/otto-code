@@ -305,6 +305,20 @@ function deepenHex(hex: string): string {
   return `#${((clamp(r) << 16) | (clamp(g) << 8) | clamp(b)).toString(16).padStart(6, "0")}`;
 }
 
+// Blend two authored surfaces for chrome that sits between the workspace and
+// the tab/sidebar rail. Keeping this derived in the builder preserves each
+// theme's hue without making chrome another independently tuned elevation step.
+function blendHex(first: string, second: string, amount: number): string {
+  const firstValue = Number.parseInt(first.slice(1, 7), 16);
+  const secondValue = Number.parseInt(second.slice(1, 7), 16);
+  const mix = (shift: number) => {
+    const a = (firstValue >> shift) & 0xff;
+    const b = (secondValue >> shift) & 0xff;
+    return Math.round(a + (b - a) * amount);
+  };
+  return `#${((mix(16) << 16) | (mix(8) << 8) | mix(0)).toString(16).padStart(6, "0")}`;
+}
+
 // ---------------------------------------------------------------------------
 // Font contrast - the reading-ink strength control (Appearance → Fonts)
 // ---------------------------------------------------------------------------
@@ -459,6 +473,7 @@ function buildLightSemanticColors(tint: LightThemeConfig) {
     surfaceSidebar: tint.surfaceSidebar, // Sidebar background (darker than main)
     surfaceSidebarHover: tint.surfaceSidebarHover,
     surfaceWorkspace: tint.surface1, // Workspace main background
+    surfaceChrome: blendHex(tint.surface1, tint.surfaceSidebar, 0.5),
     // The recessed well behind a segmented control's thumbs. Derived per mode
     // rather than pinned to one surface step, because the two ramps are not
     // symmetric: light is compressed at the top (#ffffff / #fafafa / #f4f4f5 sit
@@ -472,7 +487,7 @@ function buildLightSemanticColors(tint: LightThemeConfig) {
     // it, in whichever direction the mode moves - down toward ink on light, up
     // toward light on dark. Both rungs come from the tint's own ramp rather than
     // computed alpha, so every theme's author picked them.
-    surfaceToggleSelected: tint.surfaceSidebarHover,
+    surfaceToggleSelected: blendHex(tint.surfaceSidebarHover, tint.surface3, 0.5),
     surfaceToggleHover: tint.surface3,
     // Hover/press chrome for icon buttons and compact triggers. Translucent
     // so the same token reads identically on any surface, base or elevated.
@@ -797,6 +812,7 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     surfaceSidebar: tint.surfaceSidebar,
     surfaceSidebarHover: tint.surfaceSidebarHover,
     surfaceWorkspace: tint.surface1,
+    surfaceChrome: blendHex(tint.surface1, tint.surfaceSidebar, 0.5),
     // Segmented-control well - see the light builder's note for why this is
     // derived per mode. Dark has room in its ramp, so the elevated step is the
     // recess: `surfaceSidebarHover` here would sit within a hair of the page.
@@ -805,7 +821,7 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     // the same token in both modes; only the step off it flips, and on dark that
     // is `surface2` rather than `surface3`, which is a lifted mid-grey and would
     // read as a hard highlight rather than a nudge.
-    surfaceToggleSelected: tint.surfaceSidebarHover,
+    surfaceToggleSelected: blendHex(tint.surfaceSidebarHover, tint.surface2, 0.5),
     surfaceToggleHover: tint.surface2,
     // Hover/press chrome for icon buttons and compact triggers. Translucent
     // so the same token reads identically on any surface, base or elevated.
@@ -1396,6 +1412,7 @@ function buildBlackVariantColors(tint: BlackVariantTint) {
     // re-derived - it tracks `surfaceSidebarHover`, which this variant also
     // leaves to the base theme, so the two stay in step.
     surfaceControlTrack: tint.surface2,
+    surfaceToggleSelected: blendHex(tint.surface1, tint.surface2, 0.5),
     surfaceToggleHover: tint.surface2,
     // Re-derive the bubble fills from this variant's lifted surfaces so the
     // black scope doesn't inherit the dark variant's tint through the merge.

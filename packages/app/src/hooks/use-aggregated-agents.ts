@@ -86,8 +86,6 @@ export function useAggregatedAgents(options?: {
           attentionTimestamp: agent.attentionTimestamp,
           archivedAt: agent.archivedAt,
           archiveBytes: agent.archiveBytes,
-          providerArchiveBytes: agent.providerArchiveBytes,
-          cleanupCapability: agent.cleanupCapability,
           createdAt: agent.createdAt,
           labels: agent.labels,
           projectPlacement: agent.projectPlacement,

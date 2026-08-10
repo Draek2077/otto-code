@@ -99,7 +99,6 @@ function SessionsScreenContent() {
 
   const [isManualRefresh, setIsManualRefresh] = useState(false);
   const [archiveFilter, setArchiveFilter] = useState<ArchiveFilter>("all");
-  const [cleanupScope, setCleanupScope] = useState<"otto" | "otto_and_provider">("otto");
 
   const handleRefresh = useCallback(() => {
     setIsManualRefresh(true);
@@ -128,18 +127,12 @@ function SessionsScreenContent() {
       (serverId) => state.sessions[serverId]?.serverInfo?.features?.historyDelete === true,
     ),
   );
-  const canProviderCleanup = useSessionStore((state) =>
-    targetServerIds.some(
-      (serverId) => state.sessions[serverId]?.serverInfo?.features?.providerArchiveCleanup === true,
-    ),
-  );
   const { clearArchived, isClearing } = useClearArchivedAgents();
 
   const handleClearArchived = useCallback(() => {
     void clearArchived({
       serverIds: targetServerIds,
       scope: historyServerId ? "oneHost" : "allHosts",
-      cleanupScope,
     }).then((outcome) => {
       if (outcome && outcome.deleted > 0) {
         // The caches were patched per host already; refetch so the paginated
@@ -148,7 +141,7 @@ function SessionsScreenContent() {
       }
       return outcome;
     });
-  }, [clearArchived, cleanupScope, historyServerId, refreshAll, targetServerIds]);
+  }, [clearArchived, historyServerId, refreshAll, targetServerIds]);
 
   const archiveFilterOptions = useMemo(
     () => [
@@ -222,18 +215,6 @@ function SessionsScreenContent() {
               size="sm"
               testID="sessions-archive-filter"
             />
-            {canProviderCleanup ? (
-              <SegmentedControl
-                options={[
-                  { label: "Otto only", value: "otto" },
-                  { label: "Otto and provider", value: "otto_and_provider" },
-                ]}
-                value={cleanupScope}
-                onValueChange={setCleanupScope}
-                size="sm"
-                testID="sessions-cleanup-scope"
-              />
-            ) : null}
           </View>
           {canClearArchived ? (
             <Button

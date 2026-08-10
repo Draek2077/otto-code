@@ -484,14 +484,11 @@ export const es: TranslationResources = {
       clearingArchived: "Vaciando…",
     },
     dialogs: {
-      genericProvider: "El proveedor del agente",
       deleteAgent: {
         title: "¿Eliminar este chat?",
         subjectFallback: "este chat",
         recordLine:
           "El registro que Otto tiene de {{subject}} se elimina permanentemente: la fila, su título y sus metadatos.",
-        transcriptLine:
-          "La transcripción propia de {{provider}} en el host se deja intacta, así que la conversación sigue en el disco y aún puede leerse o reanudarse fuera de Otto.",
         undoLine: "La parte de Otto no se puede deshacer.",
         confirm: "Eliminar",
       },
@@ -499,13 +496,13 @@ export const es: TranslationResources = {
         titleOne: "¿Vaciar 1 chat archivado?",
         titleMany: "¿Vaciar {{count}} chats archivados?",
         recordLineOneHostOne:
-          "Esto elimina permanentemente 1 chat archivado en este host. Los chats activos no se ven afectados. Las transcripciones del proveedor permanecen en el host.",
+          "Esto elimina permanentemente 1 chat archivado en este host. Los chats activos no se ven afectados.",
         recordLineOneHostMany:
-          "Esto elimina permanentemente {{count}} chats archivados en este host. Los chats activos no se ven afectados. Las transcripciones del proveedor permanecen en el host.",
+          "Esto elimina permanentemente {{count}} chats archivados en este host. Los chats activos no se ven afectados.",
         recordLineAllHostsOne:
-          "Esto elimina permanentemente 1 chat archivado en todos los hosts. Los chats activos no se ven afectados. Las transcripciones del proveedor permanecen en los hosts.",
+          "Esto elimina permanentemente 1 chat archivado en todos los hosts. Los chats activos no se ven afectados.",
         recordLineAllHostsMany:
-          "Esto elimina permanentemente {{count}} chats archivados en todos los hosts. Los chats activos no se ven afectados. Las transcripciones del proveedor permanecen en los hosts.",
+          "Esto elimina permanentemente {{count}} chats archivados en todos los hosts. Los chats activos no se ven afectados.",
         undoLine: "Esta acción no se puede deshacer.",
         confirm: "Vaciar",
       },
@@ -838,6 +835,12 @@ export const es: TranslationResources = {
       },
       errors: {
         failedToLoad: "No se pudo cargar la página",
+        pageUnavailable: "Esta página no está disponible",
+        siteNotFound: "Comprueba la dirección e inténtalo de nuevo.",
+        connectionRefused:
+          "El sitio rechazó la conexión. Comprueba que se esté ejecutando e inténtalo de nuevo.",
+        connectionFailed: "La conexión se interrumpió. Inténtalo de nuevo.",
+        certificateError: "No se pudo verificar el certificado del sitio.",
         invalidUrl: "URL de navegador no válida",
         unsupportedProtocol: "URL de navegador no compatible bloqueada: {{protocol}}",
       },

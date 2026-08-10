@@ -485,14 +485,11 @@ export const ja: TranslationResources = {
       clearingArchived: "消去中…",
     },
     dialogs: {
-      genericProvider: "エージェントプロバイダー",
       deleteAgent: {
         title: "このチャットを削除しますか？",
         subjectFallback: "このチャット",
         recordLine:
           "{{subject}} に対する Otto の記録（行、タイトル、メタデータ）を完全に削除します。",
-        transcriptLine:
-          "ホスト上にある {{provider}} 自身のトランスクリプトはそのまま残ります。会話自体はディスクに残り、Otto の外でも読んだり再開したりできます。",
         undoLine: "Otto 側のこの操作は元に戻せません。",
         confirm: "削除",
       },
@@ -500,13 +497,13 @@ export const ja: TranslationResources = {
         titleOne: "アーカイブ済みチャット 1 件を消去しますか？",
         titleMany: "アーカイブ済みチャット {{count}} 件を消去しますか？",
         recordLineOneHostOne:
-          "このホスト上のアーカイブ済みチャット 1 件を完全に削除します。アクティブなチャットは影響を受けません。プロバイダーのトランスクリプトはホストに残ります。",
+          "このホスト上のアーカイブ済みチャット 1 件を完全に削除します。アクティブなチャットは影響を受けません。",
         recordLineOneHostMany:
-          "このホスト上のアーカイブ済みチャット {{count}} 件を完全に削除します。アクティブなチャットは影響を受けません。プロバイダーのトランスクリプトはホストに残ります。",
+          "このホスト上のアーカイブ済みチャット {{count}} 件を完全に削除します。アクティブなチャットは影響を受けません。",
         recordLineAllHostsOne:
-          "すべてのホスト上のアーカイブ済みチャット 1 件を完全に削除します。アクティブなチャットは影響を受けません。プロバイダーのトランスクリプトはホストに残ります。",
+          "すべてのホスト上のアーカイブ済みチャット 1 件を完全に削除します。アクティブなチャットは影響を受けません。",
         recordLineAllHostsMany:
-          "すべてのホスト上のアーカイブ済みチャット {{count}} 件を完全に削除します。アクティブなチャットは影響を受けません。プロバイダーのトランスクリプトはホストに残ります。",
+          "すべてのホスト上のアーカイブ済みチャット {{count}} 件を完全に削除します。アクティブなチャットは影響を受けません。",
         undoLine: "この操作は元に戻せません。",
         confirm: "消去",
       },
@@ -839,6 +836,12 @@ export const ja: TranslationResources = {
       },
       errors: {
         failedToLoad: "ページの読み込みに失敗しました",
+        pageUnavailable: "このページは利用できません",
+        siteNotFound: "アドレスを確認して、もう一度お試しください。",
+        connectionRefused:
+          "サイトが接続を拒否しました。サイトが起動していることを確認して、もう一度お試しください。",
+        connectionFailed: "接続が中断されました。もう一度お試しください。",
+        certificateError: "サイトの証明書を確認できませんでした。",
         invalidUrl: "ブラウザーの URL が無効です",
         unsupportedProtocol: "サポートされていないブラウザー URL をブロックしました: {{protocol}}",
       },

@@ -18,7 +18,6 @@ export interface ClearArchivedAgentsRequest {
   /** Whether the request comes from the All hosts selection. */
   scope: "allHosts" | "oneHost";
   olderThanDays?: number;
-  cleanupScope?: "otto" | "otto_and_provider";
 }
 
 /**
@@ -71,7 +70,6 @@ export function useClearArchivedAgents(): {
             hosts: resolveSweepableHosts(request.serverIds),
             scope: request.scope,
             olderThanDays: request.olderThanDays,
-            cleanupScope: request.cleanupScope,
           },
           {
             confirm: confirmDialog,

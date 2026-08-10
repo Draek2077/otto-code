@@ -6,12 +6,8 @@ import type { ConfirmDialogInput } from "@/utils/confirm-dialog";
  * clearing the archive in bulk.
  *
  * Both say the same two things, and both have to. Deleting a chat in Otto removes
- * **Otto's record** - the row, the title, the metadata. It does **not** remove the
- * agent provider's own transcript, which stays on disk exactly where the provider
- * wrote it. Leaving that data is the point (Otto never created it, and another
- * tool still reads it), but leaving it silently would be worse than deleting it:
- * data the user cannot find is not recoverable data. So the dialog says where the
- * conversation still lives, and it says the Otto side cannot be undone.
+ * **Otto's record** - the row, the title, and the metadata. The Otto side cannot
+ * be undone.
  *
  * Still pure - it just reads its sentences from `sessions.dialogs.*` rather than
  * holding them. These are confirmations, which docs/i18n.md puts squarely inside
@@ -21,32 +17,9 @@ import type { ConfirmDialogInput } from "@/utils/confirm-dialog";
  * because `en` is the default language.
  */
 
-// Display names for the providers Otto ships with, so the dialog can name the
-// place the transcript survives rather than gesturing at "the provider". Product
-// names, so they are the same in every locale. An unknown id falls back to
-// neutral wording; a stale entry here costs a generic sentence, never a wrong
-// claim.
-const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
-  claude: "Claude Code",
-  codex: "Codex",
-  copilot: "GitHub Copilot",
-  opencode: "OpenCode",
-  pi: "Pi",
-};
-
-export function resolveProviderDisplayName(provider: string | null | undefined): string {
-  const id = provider?.trim().toLowerCase();
-  if (!id) {
-    return i18n.t("sessions.dialogs.genericProvider");
-  }
-  return PROVIDER_DISPLAY_NAMES[id] ?? i18n.t("sessions.dialogs.genericProvider");
-}
-
 export interface DeleteAgentDialogInput {
   /** The chat's title, or null/empty when it never got one. */
   title: string | null | undefined;
-  /** Provider id off the row (`claude`, `codex`, ...). */
-  provider: string | null | undefined;
 }
 
 /**
@@ -58,13 +31,10 @@ export interface DeleteAgentDialogInput {
 export function resolveDeleteAgentDialog(input: DeleteAgentDialogInput): ConfirmDialogInput {
   const title = input.title?.trim();
   const subject = title ? `"${title}"` : i18n.t("sessions.dialogs.deleteAgent.subjectFallback");
-  const providerName = resolveProviderDisplayName(input.provider);
-
   return {
     title: i18n.t("sessions.dialogs.deleteAgent.title"),
     message: [
       i18n.t("sessions.dialogs.deleteAgent.recordLine", { subject }),
-      i18n.t("sessions.dialogs.deleteAgent.transcriptLine", { provider: providerName }),
       i18n.t("sessions.dialogs.deleteAgent.undoLine"),
     ].join("\n\n"),
     confirmLabel: i18n.t("sessions.dialogs.deleteAgent.confirm"),
@@ -76,15 +46,11 @@ export function resolveDeleteAgentDialog(input: DeleteAgentDialogInput): Confirm
 /**
  * Bulk clear, after the server-side dry run has reported a real count. Same rule
  * as the single delete - clearing many at once is not a back door to deleting
- * provider data in aggregate - so the copy repeats the disclosure rather than
- * assuming the user read it on a previous dialog.
+ * The bulk copy uses the same Otto-only wording as the single-delete dialog.
  */
 export function resolveClearArchivedDialog(input: {
   matched: number;
   scope: "allHosts" | "oneHost";
-  cleanupScope?: "otto" | "otto_and_provider";
-  ottoBytes?: number;
-  providerBytes?: number;
 }): ConfirmDialogInput {
   const count = input.matched;
   const one = count === 1;
@@ -100,9 +66,6 @@ export function resolveClearArchivedDialog(input: {
         }${one ? "One" : "Many"}`,
         { count },
       ),
-      input.cleanupScope === "otto_and_provider"
-        ? `Provider cleanup is included. Otto bytes: ${input.ottoBytes ?? 0}. Provider bytes: ${input.providerBytes ?? 0}. Successful cleanup makes resume and recovery impossible.`
-        : `Only Otto bytes are deleted: ${input.ottoBytes ?? 0}. Provider transcripts remain on the host.`,
       i18n.t("sessions.dialogs.clearArchived.undoLine"),
     ].join("\n\n"),
     confirmLabel: i18n.t("sessions.dialogs.clearArchived.confirm"),

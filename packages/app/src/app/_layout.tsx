@@ -614,7 +614,10 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
     <CommandCenterProvider>
       <View style={layoutStyles.appShell}>
         {content}
-        {resolveClientResourceBarPlacement(settings.clientResourceBarAllPages) === "app-shell" ? (
+        {resolveClientResourceBarPlacement(
+          settings.clientResourceBarAllPages,
+          settings.resourceMonitorEnabled,
+        ) === "app-shell" ? (
           <ClientResourceBar />
         ) : null}
       </View>

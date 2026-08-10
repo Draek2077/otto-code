@@ -33,6 +33,7 @@ import { DiffStat } from "@/components/diff-stat";
 import {
   ArrowLeftToLine,
   ArrowRightToLine,
+  BookOpen,
   ContextualToken,
   ChevronDown,
   Copy,
@@ -102,6 +103,7 @@ import { WorkspaceWakeWordButton } from "@/voice/workspace-wake-word-button";
 import { shouldShowWakeWordToolbarButton } from "@/voice/wake-word-control-state";
 import { getWakeWordCapability } from "@/wake-word/wake-word-capability";
 import { openContextManagementTab } from "@/context-management/open-context-management-tab";
+import { openProjectKnowledgeTab } from "@/project-knowledge/open-project-knowledge-tab";
 import { useCloseDisabledFeatureTabs } from "@/features/use-close-disabled-feature-tabs";
 import { useFeatureEnabled } from "@/features/use-feature-enabled";
 import {
@@ -342,6 +344,7 @@ const ThemedGlobe = withUnistyles(Globe);
 const ThemedImport = withUnistyles(ImportIcon);
 const ThemedSettings = withUnistyles(Settings);
 const ThemedContextualToken = withUnistyles(ContextualToken);
+const ThemedBookOpen = withUnistyles(BookOpen);
 const ThemedExplore = withUnistyles(Explore);
 const ThemedPlay = withUnistyles(Play);
 
@@ -392,6 +395,7 @@ const MENU_SETTINGS_ICON = <ThemedSettings uniProps={mutedMdMapping} />;
 // Matches the Context Management tab's own icon and the sidebar row's item -
 // one thing, one glyph, wherever you meet it.
 const MENU_CONTEXT_ICON = <ThemedContextualToken uniProps={mutedMdMapping} />;
+const MENU_KNOWLEDGE_ICON = <ThemedBookOpen uniProps={mutedMdMapping} />;
 // Leading icons for the compact-fit fallback items (see
 // resolveCompactHeaderActions): same glyphs as the header buttons they replace.
 const MENU_EXPLORER_ICON = <ThemedExplore uniProps={mutedMdMapping} />;
@@ -1202,6 +1206,7 @@ interface WorkspaceHeaderMenuProps {
   onCopyBranchName: () => void;
   onOpenSetupTab: () => void;
   onOpenContextManagement: () => void;
+  onOpenProjectKnowledge: () => void;
 }
 interface HeaderMenuProfileItemProps {
   profile: { id: string; name: string; command: string; args?: string[]; icon?: string };
@@ -1481,6 +1486,7 @@ function WorkspaceHeaderMenu({
   onCopyBranchName,
   onOpenSetupTab,
   onOpenContextManagement,
+  onOpenProjectKnowledge,
 }: WorkspaceHeaderMenuProps) {
   const { t } = useTranslation();
   const router = useRouter();
@@ -1578,6 +1584,7 @@ function WorkspaceHeaderMenu({
           >
             {t("workspace.header.actions.importSession")}
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
           {isDeveloperMode ? (
             <DropdownMenuItem
               testID="workspace-header-copy-path"
@@ -1647,6 +1654,13 @@ function WorkspaceHeaderMenu({
             onSelect={onOpenContextManagement}
           >
             {t("workspace.contextManagement.openAction")}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            testID="workspace-header-project-knowledge"
+            leading={MENU_KNOWLEDGE_ICON}
+            onSelect={onOpenProjectKnowledge}
+          >
+            Manage knowledge
           </DropdownMenuItem>
           {isDeveloperMode ? (
             <>
@@ -1773,6 +1787,7 @@ interface WorkspaceHeaderTitleBarProps {
   onCopyBranchName: () => void;
   onOpenSetupTab: () => void;
   onOpenContextManagement: () => void;
+  onOpenProjectKnowledge: () => void;
   onScriptTerminalStarted: (terminalId: string) => void;
   onViewScriptTerminal: (terminalId: string) => void;
   onOpenUrlInBrowserTab: (url: string) => void;
@@ -1830,6 +1845,7 @@ function WorkspaceHeaderTitleBar({
   onCopyBranchName,
   onOpenSetupTab,
   onOpenContextManagement,
+  onOpenProjectKnowledge,
   onScriptTerminalStarted,
   onViewScriptTerminal,
   onOpenUrlInBrowserTab,
@@ -1894,6 +1910,7 @@ function WorkspaceHeaderTitleBar({
           onCopyBranchName={onCopyBranchName}
           onOpenSetupTab={onOpenSetupTab}
           onOpenContextManagement={onOpenContextManagement}
+          onOpenProjectKnowledge={onOpenProjectKnowledge}
         />
         {microphoneAvailable ? <WorkspaceWakeWordButton /> : null}
         {showVoiceCuesAction ? <WorkspaceVoiceCuesButton /> : null}
@@ -3732,9 +3749,7 @@ function WorkspaceScreenContent({
       }
       const session = useSessionStore.getState().sessions[normalizedServerId];
       const agent = session?.agents?.get(agentId) ?? session?.agentDetails?.get(agentId) ?? null;
-      const confirmed = await confirmDialog(
-        resolveDeleteAgentDialog({ title: agent?.title, provider: agent?.provider }),
-      );
+      const confirmed = await confirmDialog(resolveDeleteAgentDialog({ title: agent?.title }));
       if (confirmed) {
         void deleteAgent({ serverId: normalizedServerId, agentId }).catch(() => {});
       }
@@ -3771,7 +3786,7 @@ function WorkspaceScreenContent({
               return;
             }
             const deleteConfirmed = await confirmDialog(
-              resolveDeleteAgentDialog({ title: agent?.title, provider: agent?.provider }),
+              resolveDeleteAgentDialog({ title: agent?.title }),
             );
             if (!deleteConfirmed) {
               return;
@@ -4014,6 +4029,13 @@ function WorkspaceScreenContent({
 
   const handleOpenContextManagement = useCallback(() => {
     openContextManagementTab({
+      serverId: normalizedServerId,
+      workspaceId: normalizedWorkspaceId,
+    });
+  }, [normalizedServerId, normalizedWorkspaceId]);
+
+  const handleOpenProjectKnowledge = useCallback(() => {
+    openProjectKnowledgeTab({
       serverId: normalizedServerId,
       workspaceId: normalizedWorkspaceId,
     });
@@ -4950,6 +4972,7 @@ function WorkspaceScreenContent({
                 onCopyBranchName={handleCopyBranchName}
                 onOpenSetupTab={handleOpenSetupTab}
                 onOpenContextManagement={handleOpenContextManagement}
+                onOpenProjectKnowledge={handleOpenProjectKnowledge}
                 onScriptTerminalStarted={handleScriptTerminalStarted}
                 onViewScriptTerminal={handleViewScriptTerminal}
                 onOpenUrlInBrowserTab={handleOpenUrlInBrowserTab}

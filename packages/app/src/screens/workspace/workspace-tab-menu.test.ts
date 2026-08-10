@@ -80,13 +80,16 @@ describe("buildWorkspaceTabMenuEntries", () => {
     expect(entries.filter((entry) => entry.kind === "item").map((entry) => entry.label)).toEqual([
       "Copy resume command",
       "Copy chat id",
+      "Reload chat",
+      "Rename",
       "Close to the left",
       "Close to the right",
       "Close other tabs",
-      "Reload chat",
-      "Rename",
       "Close",
     ]);
+    expect(entries.filter((entry) => entry.kind === "separator").map((entry) => entry.key)).toEqual(
+      ["workspace-tab-separator", "tab-close-actions-separator", "close-separator"],
+    );
   });
 
   it("omits the developer-only entries in User interface mode", () => {
@@ -110,14 +113,17 @@ describe("buildWorkspaceTabMenuEntries", () => {
     });
 
     // Copy resume command / copy agent id / reload agent are developer surfaces;
-    // the tab-management entries (close variants) remain.
+    // the tab-management entries (rename and close variants) remain.
     expect(entries.filter((entry) => entry.kind === "item").map((entry) => entry.label)).toEqual([
+      "Rename",
       "Close to the left",
       "Close to the right",
       "Close other tabs",
-      "Rename",
       "Close",
     ]);
+    expect(entries.filter((entry) => entry.kind === "separator").map((entry) => entry.key)).toEqual(
+      ["tab-close-actions-separator", "close-separator"],
+    );
   });
 
   it("uses stacked ordering labels for mobile menus", () => {
@@ -143,11 +149,11 @@ describe("buildWorkspaceTabMenuEntries", () => {
     expect(entries.filter((entry) => entry.kind === "item").map((entry) => entry.label)).toEqual([
       "Copy resume command",
       "Copy chat id",
+      "Reload chat",
+      "Rename",
       "Close tabs above",
       "Close tabs below",
       "Close other tabs",
-      "Reload chat",
-      "Rename",
       "Close",
     ]);
   });
@@ -184,7 +190,34 @@ describe("buildWorkspaceTabMenuEntries", () => {
       false,
     );
     expect(entries.some((entry) => entry.kind === "item" && entry.label === "Rename")).toBe(false);
-    expect(entries.some((entry) => entry.kind === "separator")).toBe(false);
+    expect(entries).toContainEqual({ kind: "separator", key: "close-separator" });
+  });
+
+  it.each([
+    ["project knowledge", { kind: "projectKnowledge" as const }],
+    ["context management", { kind: "contextManagement" as const }],
+  ])("separates Close for %s tabs", (_label, target) => {
+    const entries = buildWorkspaceTabMenuEntries({
+      surface: "desktop",
+      tab: { key: "special", tabId: "special", kind: target.kind, target },
+      index: 0,
+      tabCount: 1,
+      menuTestIDBase: "workspace-tab-menu-special",
+      isDeveloperMode: false,
+      onCopyResumeCommand: vi.fn(),
+      onCopyTerminalId: vi.fn(),
+      onCopyAgentId: vi.fn(),
+      onCopyFilePath: vi.fn(),
+      onReloadAgent: vi.fn(),
+      onRenameTab: vi.fn(),
+      onCloseTab: vi.fn(),
+      onCloseTabsBefore: vi.fn(),
+      onCloseTabsAfter: vi.fn(),
+      onCloseOtherTabs: vi.fn(),
+    });
+
+    const closeIndex = entries.findIndex((entry) => entry.kind === "item" && entry.key === "close");
+    expect(entries[closeIndex - 1]).toEqual({ kind: "separator", key: "close-separator" });
   });
 
   it("adds reload tooltip copy for agent tabs", () => {
@@ -247,7 +280,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
     expect(onRenameTab).toHaveBeenCalledWith(tab);
   });
 
-  it("leads with copy terminal id and places rename after the close actions", () => {
+  it("leads with copy terminal id and keeps rename with tab actions", () => {
     const onRenameTab = vi.fn();
     const terminalTab: WorkspaceTabDescriptor = {
       key: "terminal_abc",
@@ -278,7 +311,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
     // Copying the terminal id leads; rename belongs with the trailing tab
     // management actions.
     expect(labels[0]).toBe("Copy terminal id");
-    expect(labels.at(-2)).toBe("Rename");
+    expect(labels[1]).toBe("Rename");
     expect(labels).not.toContain("Copy resume command");
     expect(labels).not.toContain("Copy agent id");
     expect(labels).not.toContain("Copy file path");
@@ -387,10 +420,10 @@ describe("buildWorkspaceTabMenuEntries", () => {
       testID: terminalRename.testID,
     });
 
-    const agentSeparator = agentEntries[agentEntries.indexOf(agentRename) - 1];
+    const agentSeparator = agentEntries[agentEntries.indexOf(agentRename) - 2];
     const terminalSeparator = terminalEntries[terminalEntries.indexOf(terminalRename) - 1];
-    expect(agentSeparator).toEqual({ kind: "separator", key: "reload-rename-separator" });
-    expect(terminalSeparator).toEqual({ kind: "separator", key: "reload-rename-separator" });
+    expect(agentSeparator).toEqual({ kind: "separator", key: "workspace-tab-separator" });
+    expect(terminalSeparator).toEqual({ kind: "separator", key: "workspace-tab-separator" });
   });
 });
 

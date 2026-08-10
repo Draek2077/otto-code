@@ -496,14 +496,11 @@ export const en = {
     // wrong shape of is not consent, so this is translated like any other
     // confirmation text - see history/delete-dialogs.ts.
     dialogs: {
-      genericProvider: "The agent provider",
       deleteAgent: {
         title: "Delete this chat?",
         subjectFallback: "this chat",
         recordLine:
           "The record for {{subject}} will be deleted permanently, along with the row and its metadata.",
-        transcriptLine:
-          "{{provider}}'s own transcript on the host is left in place, so the conversation itself stays on disk and can still be read or resumed.",
         undoLine: "This change cannot be undone.",
         confirm: "Delete",
       },
@@ -511,13 +508,13 @@ export const en = {
         titleOne: "Clear 1 archived chat?",
         titleMany: "Clear {{count}} archived chats?",
         recordLineOneHostOne:
-          "This permanently deletes 1 archived chat on this host. Active chats are not affected. Provider transcripts remain on the host.",
+          "This permanently deletes 1 archived chat on this host. Active chats are not affected.",
         recordLineOneHostMany:
-          "This permanently deletes {{count}} archived chats on this host. Active chats are not affected. Provider transcripts remain on the host.",
+          "This permanently deletes {{count}} archived chats on this host. Active chats are not affected.",
         recordLineAllHostsOne:
-          "This permanently deletes 1 archived chat across all hosts. Active chats are not affected. Provider transcripts remain on the hosts.",
+          "This permanently deletes 1 archived chat across all hosts. Active chats are not affected.",
         recordLineAllHostsMany:
-          "This permanently deletes {{count}} archived chats across all hosts. Active chats are not affected. Provider transcripts remain on the hosts.",
+          "This permanently deletes {{count}} archived chats across all hosts. Active chats are not affected.",
         undoLine: "This action cannot be undone.",
         confirm: "Clear",
       },
@@ -851,6 +848,12 @@ export const en = {
       },
       errors: {
         failedToLoad: "Failed to load page",
+        pageUnavailable: "This page isn't available",
+        siteNotFound: "Check the address and try again.",
+        connectionRefused:
+          "The site refused the connection. Check that it is running and try again.",
+        connectionFailed: "The connection was interrupted. Try again.",
+        certificateError: "The site's certificate could not be verified.",
         invalidUrl: "Invalid browser URL",
         unsupportedProtocol: "Blocked unsupported browser URL: {{protocol}}",
       },

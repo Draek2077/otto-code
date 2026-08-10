@@ -2978,7 +2978,6 @@ export class DaemonClient {
   async clearArchivedAgents(options: {
     dryRun: boolean;
     olderThanDays?: number;
-    cleanupScope?: "otto" | "otto_and_provider";
     requestId?: string;
   }): Promise<HistoryAgentsClearArchivedResponse["payload"]> {
     return this.sendNamespacedCorrelatedSessionRequest<"history.agents.clear_archived.response">({
@@ -2987,7 +2986,6 @@ export class DaemonClient {
         type: "history.agents.clear_archived.request",
         dryRun: options.dryRun,
         olderThanDays: options.olderThanDays ?? 0,
-        cleanupScope: options.cleanupScope,
       },
     });
   }

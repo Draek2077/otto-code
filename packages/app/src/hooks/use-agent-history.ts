@@ -82,6 +82,7 @@ export async function fetchAgentHistoryPage(input: {
       attentionReason: agent.attentionReason,
       attentionTimestamp: agent.attentionTimestamp ?? null,
       archivedAt: agent.archivedAt ?? null,
+      archiveBytes: agent.archiveBytes,
       createdAt: agent.createdAt,
       labels: agent.labels,
       projectPlacement: agent.projectPlacement,

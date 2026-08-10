@@ -7,10 +7,6 @@ import type {
 } from "@otto-code/protocol/messages";
 import type { ProviderCompactionConfig } from "@otto-code/protocol/provider-config";
 import type { OttoToolCatalog } from "./tools/types.js";
-import type {
-  ProviderCleanupManifest,
-  ProviderCleanupManifestEntry,
-} from "@otto-code/protocol/agent-types";
 // Type-only import - erased at compile time, so the resolver ⇄ config-types
 // cycle never exists at runtime.
 import type { ResolvedPersonalitySnapshot } from "./agent-personalities.js";
@@ -246,20 +242,6 @@ export interface AgentPersistenceHandle {
   /** Provider specific handle (Codex thread id, Claude resume token, etc). */
   nativeHandle?: string;
   metadata?: AgentMetadata;
-}
-
-/** Provider-owned archive cleanup is opt-in and must be native or tightly scoped. */
-export interface ProviderCleanupAdapter {
-  inspect(input: {
-    persistence: AgentPersistenceHandle;
-    agentId: string;
-    cwd: string;
-    referencedAgentIds: readonly string[];
-  }): Promise<ProviderCleanupManifest>;
-  delete(input: {
-    persistence: AgentPersistenceHandle;
-    manifest: ProviderCleanupManifest;
-  }): Promise<{ reclaimedBytes: number; entries: ProviderCleanupManifestEntry[] }>;
 }
 
 export type AgentPromptContentBlock =

@@ -42,7 +42,8 @@ Surfaces:
 - **`window.__ottoResourceMonitor`** - the test bridge the soak spec reads.
 
 Turn it off with **Settings › Diagnostics › Performance monitoring** (`resourceMonitorEnabled`,
-default on). Off stops the frame loop and the census interval.
+default on). Off stops the frame loop and the census interval, hides the Metrics footer, and disables
+its display setting until monitoring is enabled again.
 
 ### Reading the live-state group
 

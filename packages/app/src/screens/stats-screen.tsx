@@ -64,6 +64,7 @@ import {
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const selectClientResourceBarAllPages = (settings: AppSettings) =>
   settings.clientResourceBarAllPages;
+const selectResourceMonitorEnabled = (settings: AppSettings) => settings.resourceMonitorEnabled;
 
 const ThemedSend = withUnistyles(Send);
 const ThemedMailReceived = withUnistyles(MailReceived);
@@ -263,6 +264,7 @@ export function StatsScreen(): ReactElement {
 function StatsScreenContent(): ReactElement {
   const hosts = useHosts();
   const clientResourceBarAllPages = useAppSettingValue(selectClientResourceBarAllPages);
+  const resourceMonitorEnabled = useAppSettingValue(selectResourceMonitorEnabled);
   // Log-tab range totals, reported up by each host's UsageLogList so they can be
   // pinned below the scroll region instead of scrolling away at the list's end.
   // Keyed by serverId; a host drops out when it leaves the Log tab (reports null).
@@ -344,7 +346,8 @@ function StatsScreenContent(): ReactElement {
               unless Settings moves that same band to the application shell.
               The daemon counters above say what Otto did; this says what it is
               currently costing the machine it is running on. */}
-          {resolveClientResourceBarPlacement(clientResourceBarAllPages) === "metrics-page" ? (
+          {resolveClientResourceBarPlacement(clientResourceBarAllPages, resourceMonitorEnabled) ===
+          "metrics-page" ? (
             <ClientResourceBar />
           ) : null}
         </View>
