@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.8.7 - 2026-08-09
+
+### Added
+
+- Choose whether to archive or permanently delete chats, with provider-aware archive cleanup
+- See live client resource metrics with adaptive severity and capture repeatable performance reports
+- Artifacts can now receive data-only updates
+- Search Settings and jump directly to the matching setting
+- Added clearer History archive controls, storage reporting, host filters, and metadata layout
+- Added file-type icons and context-menu actions in the Files sidebar
+
+### Changed
+
+- Refined workspace tabs, chat menus, file dropping, theme surfaces, and light-theme contrast
+- Opening a dropped file now opens it in the text editor instead of adding it to the composer
+- Improved wake-word lifecycle handling and immediate Visualizer picture-in-picture session hydration
+- Knowledge-entry tags now offer contextual suggestions while remaining free-form
+
+### Fixed
+
+- Fixed terminal path quoting on POSIX and Windows command-script invocation
+- Hardened the desktop renderer trust boundary and artifact content-security-policy validation
+- Fixed short-viewport timeline pagination, Visualizer and wake-word state synchronization
+- Remediated MCP SDK and code-scanning security findings
+
 ## 0.8.6 - 2026-08-08
 
 ### Added
