@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { PersonalityMemoryEntryPayload } from "@otto-code/protocol/messages";
-import { Brain, Check, Pencil, Plus, Trash2, X } from "@/components/icons/material-icons";
+import { Check, Cognition, Pencil, Plus, Trash2, X } from "@/components/icons/material-icons";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative, isWeb } from "@/constants/platform";
@@ -13,7 +13,7 @@ import { formatTokens } from "./format";
 import type { PersonalityMemoryView } from "./use-personality-memory";
 
 // Theme-reactive icon colors without useUnistyles (docs/unistyles.md).
-const ThemedBrain = withUnistyles(Brain);
+const ThemedCognition = withUnistyles(Cognition);
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedTrash = withUnistyles(Trash2);
 const ThemedPlus = withUnistyles(Plus);
@@ -185,7 +185,7 @@ function InjectedBrief({ view }: { view: PersonalityMemoryView }): ReactElement 
   return (
     <View style={styles.briefCard} testID="context-memory-brief">
       <View style={styles.briefHeader}>
-        <ThemedBrain size={ROW_ICON_SIZE} style={styles.briefIcon} />
+        <ThemedCognition size={ROW_ICON_SIZE} style={styles.briefIcon} />
         <Text style={styles.briefTitle}>
           {t("contextManagement.memory.brief.title", { name: view.personalityName })}
         </Text>
