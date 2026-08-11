@@ -107,6 +107,8 @@ valknut-report.html/
 valknut-report.json/
 **/.playwright-mcp/
 **/.otto-provider-history/
+# Atomic-write temp files from the project knowledge store
+**/.otto/knowledge/**/*.tmp
 .claude/settings.local.json
 **/.claude/settings.local.json
 .claude/scheduled_tasks.lock

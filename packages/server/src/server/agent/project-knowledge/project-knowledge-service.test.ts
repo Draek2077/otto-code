@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { createHash } from "node:crypto";
@@ -10,6 +10,14 @@ function service(root: string): ProjectKnowledgeService {
     resolveProjectRoot: async () => root,
     logger: { warn: () => undefined } as never,
   });
+}
+
+async function temporaryWriteFiles(root: string): Promise<string[]> {
+  const directory = path.join(root, ".otto", "knowledge");
+  const found: string[] = [];
+  for (const entry of await readdir(directory, { withFileTypes: true, recursive: true }))
+    if (entry.isFile() && entry.name.endsWith(".tmp")) found.push(entry.name);
+  return found;
 }
 
 describe("ProjectKnowledgeService", () => {
@@ -621,6 +629,133 @@ describe("ProjectKnowledgeService", () => {
       );
       expect((await knowledge.getRoot(root, "architecture"))?.body).not.toContain(record.id);
       expect(await knowledge.lintLinks(root)).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("completes a delete when a root page is missing instead of half-scrubbing the store", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "otto-project-knowledge-"));
+    try {
+      const knowledge = service(root);
+      const record = await knowledge.record({
+        cwd: root,
+        kind: "decision",
+        title: "Junk",
+        statement: "Junk.",
+      });
+      const source = await knowledge.record({
+        cwd: root,
+        kind: "requirement",
+        title: "Source",
+        statement: `See [[${record.id}]] for details.`,
+      });
+      await knowledge.updateRoot({
+        cwd: root,
+        slug: "architecture",
+        body: `The map links [[${record.id}]].`,
+      });
+      const missingRootPage = path.join(root, ".otto", "knowledge", "flow.md");
+      await rm(missingRootPage);
+
+      expect(
+        await knowledge.delete({ cwd: root, id: record.id, reason: "The user called this junk." }),
+      ).toEqual({ deleted: true });
+
+      // The scrub reached every page that exists, and the absent root page was
+      // skipped rather than resurrected by a delete that never bootstraps.
+      const sourcePage = await readFile(
+        path.join(root, ".otto", "knowledge", "requirements", `${source.id}.md`),
+        "utf8",
+      );
+      expect(sourcePage).not.toContain(record.id);
+      expect(sourcePage).toContain("See for details.");
+      expect(
+        await readFile(path.join(root, ".otto", "knowledge", "architecture.md"), "utf8"),
+      ).not.toContain(record.id);
+      expect(
+        await readFile(path.join(root, ".otto", "knowledge", "index.md"), "utf8"),
+      ).not.toContain(record.id);
+      await expect(readFile(missingRootPage, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves no dangling bullet or separator when a deleted page was in a project map", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "otto-project-knowledge-"));
+    try {
+      const knowledge = service(root);
+      const record = await knowledge.record({
+        cwd: root,
+        kind: "decision",
+        title: "Retired",
+        statement: "Retired.",
+      });
+      await knowledge.updateRoot({
+        cwd: root,
+        slug: "mindmap",
+        body: `## Project map\n\n- [[${record.id}]] - the hook\n- [[${record.id}]]\n- A kept row\n`,
+      });
+
+      expect(
+        await knowledge.delete({ cwd: root, id: record.id, reason: "This page was retired." }),
+      ).toEqual({ deleted: true });
+
+      const body = (await knowledge.getRoot(root, "mindmap"))?.body ?? "";
+      expect(body).not.toContain(record.id);
+      expect(body).toContain("- the hook");
+      expect(body).toContain("- A kept row");
+      expect(body.split("\n").filter((line) => /^\s*[-*+]\s*$/.test(line))).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("removes its temp file when an atomic write cannot rename onto the target", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "otto-project-knowledge-"));
+    try {
+      // A directory in place of the generated index makes the rename fail the
+      // way a held-open destination does on Windows.
+      await mkdir(path.join(root, ".otto", "knowledge", "index.md"), { recursive: true });
+
+      await expect(service(root).bootstrap(root)).rejects.toThrow();
+
+      expect(await temporaryWriteFiles(root)).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("sweeps stale atomic-write temp files and never reads one as a page", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "otto-project-knowledge-"));
+    try {
+      const knowledge = service(root);
+      await knowledge.record({ cwd: root, kind: "decision", title: "Kept", statement: "Kept." });
+      const stale = path.join(
+        root,
+        ".otto",
+        "knowledge",
+        "decisions",
+        "kept.md.36b739ba-7e72-460a-bbc0-2bce85ed202c.tmp",
+      );
+      const inFlight = path.join(
+        root,
+        ".otto",
+        "knowledge",
+        "index.md.7c1f0a52-4c58-4a4f-9a2c-0a3a2b1c4d5e.tmp",
+      );
+      const orphan = "---\nid: kept\nkind: decision\ntitle: Kept\n---\n# Kept\n";
+      await writeFile(stale, orphan, "utf8");
+      await writeFile(inFlight, orphan, "utf8");
+      const longAgo = new Date(Date.now() - 4 * 60 * 60 * 1000);
+      await utimes(stale, longAgo, longAgo);
+
+      const records = await service(root).list(root);
+
+      expect(records.map((item) => item.id)).toEqual(["kept"]);
+      await expect(readFile(stale, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await temporaryWriteFiles(root)).toEqual([path.basename(inFlight)]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

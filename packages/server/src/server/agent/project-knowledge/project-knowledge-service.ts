@@ -1,6 +1,6 @@
 /** Markdown-backed, repo-owned project knowledge. */
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Logger } from "pino";
 import type {
@@ -22,6 +22,18 @@ const ENTRY_POINT = "KNOWLEDGE.md";
 const LEGACY_FILE = "project-knowledge.json";
 const LEGACY_MIGRATION_MARKER = ".project-knowledge-json-migrated";
 const STALE_AFTER_MS = 180 * 24 * 60 * 60 * 1000;
+/**
+ * An atomic write that never reached its rename leaves this file behind. Only
+ * sweep ones old enough that no in-flight write, including another daemon's,
+ * could still own them.
+ */
+const TEMP_SUFFIX = ".tmp";
+const STALE_TEMP_AFTER_MS = 60 * 60 * 1000;
+/**
+ * A project-map row reads "- [[id]] <separator> hook". Once the link is gone
+ * the leading separator, dash or dot or colon, is orphaned punctuation.
+ */
+const ORPHANED_SEPARATOR = /^[-:|,;·–—]+[ \t]*/;
 const KINDS: readonly ProjectKnowledgeKind[] = [
   "decision",
   "constraint",
@@ -204,6 +216,7 @@ export class ProjectKnowledgeService {
     const root = await this.projectRoot(cwd);
     await this.queued(root, async () => {
       await this.bootstrapFiles(root);
+      await this.sweepStaleTempFiles(root);
       await this.upgradeStoredPages(root);
       await this.upgradeRootPages(root);
       await this.reindex(root);
@@ -483,10 +496,11 @@ export class ProjectKnowledgeService {
         error = "The project knowledge page path is not safe to delete.";
         return;
       }
-      // The removed record must not leave live current-truth or project-map
-      // links behind. Timeline history remains immutable evidence.
-      await this.removeCurrentLinksTo(root, record.id);
+      // The page goes first so an interrupted scrub leaves repairable dangling
+      // links, which lintLinks reports, rather than a surviving record whose
+      // incoming links were already stripped.
       await unlink(target);
+      await this.removeCurrentLinksTo(root, record.id);
       await this.reindex(root);
       deleted = true;
     });
@@ -691,18 +705,29 @@ export class ProjectKnowledgeService {
     await mkdir(path.dirname(pagePath), { recursive: true });
     await writeAtomic(pagePath, renderPage(record));
   }
+  /**
+   * The removed record must not leave live current-truth or project-map links
+   * behind. Timeline history remains immutable evidence. Every rewrite is
+   * staged before the first write, so a root page an older or partially
+   * bootstrapped store never created cannot abandon the scrub half applied; a
+   * missing root page is simply skipped.
+   */
   private async removeCurrentLinksTo(root: string, id: string): Promise<void> {
+    const staged: Array<() => Promise<void>> = [];
     for (const record of await this.readPages(root)) {
       if (record.id === id) continue;
       const statement = removeWikiLinksTo(record.statement, id);
-      if (statement !== record.statement) await this.writePage(root, { ...record, statement });
+      if (statement !== record.statement)
+        staged.push(() => this.writePage(root, { ...record, statement }));
     }
     for (const slug of ROOT_PAGES) {
       const target = path.join(this.knowledgeDirectory(root), `${slug}.md`);
-      const body = await readFile(target, "utf8");
+      const body = await readOptionalFile(target);
+      if (body === null) continue;
       const rewritten = removeWikiLinksTo(body, id);
-      if (rewritten !== body) await writeAtomic(target, rewritten);
+      if (rewritten !== body) staged.push(() => writeAtomic(target, rewritten));
     }
+    for (const write of staged) await write();
   }
   private async pagePaths(directory: string): Promise<string[]> {
     const paths: string[] = [];
@@ -710,9 +735,34 @@ export class ProjectKnowledgeService {
     for (const entry of entries) {
       const target = path.join(directory, entry.name);
       if (entry.isDirectory()) paths.push(...(await this.pagePaths(target)));
+      // An atomic-write temp file is named "<page>.md.<uuid>.tmp", so the
+      // extension test already excludes it from the catalog.
       else if (entry.name.endsWith(".md") && entry.name !== "index.md") paths.push(target);
     }
     return paths;
+  }
+  private async tempPaths(directory: string): Promise<string[]> {
+    const paths: string[] = [];
+    const entries = await readdir(directory, { withFileTypes: true });
+    for (const entry of entries) {
+      const target = path.join(directory, entry.name);
+      if (entry.isDirectory()) paths.push(...(await this.tempPaths(target)));
+      else if (isAtomicTempName(entry.name)) paths.push(target);
+    }
+    return paths;
+  }
+  /** Clear temp files a killed process or a failed rename left in the store. */
+  private async sweepStaleTempFiles(root: string): Promise<void> {
+    try {
+      const cutoff = Date.now() - STALE_TEMP_AFTER_MS;
+      for (const target of await this.tempPaths(this.knowledgeDirectory(root))) {
+        if ((await stat(target)).mtimeMs > cutoff) continue;
+        await rm(target, { force: true });
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+        this.deps.logger.warn({ err: error, root }, "Failed to sweep knowledge temp files");
+    }
   }
   private async legacyFindingPaths(directory: string): Promise<string[]> {
     try {
@@ -792,6 +842,7 @@ export class ProjectKnowledgeService {
     if (this.upgradedRoots.has(root)) return;
     await this.queued(root, async () => {
       await this.bootstrapFiles(root);
+      await this.sweepStaleTempFiles(root);
       await this.upgradeStoredPages(root);
       await this.upgradeRootPages(root);
       await this.reindex(root);
@@ -1318,10 +1369,58 @@ function rewriteWikiLinks(markdown: string, idMap: ReadonlyMap<string, string>):
     return replacement ? `[[${replacement}${suffix}]]` : full;
   });
 }
+/**
+ * Drop every live link to a removed page and repair what the hole leaves
+ * behind: the doubled space in "See [[foo]] for details", the orphaned
+ * separator in a project-map row, and the bare marker of a bullet whose only
+ * content was the link. Only lines that actually lost a link are touched.
+ */
 function removeWikiLinksTo(markdown: string, id: string): string {
-  return markdown.replace(/\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/g, (full, rawTarget) =>
-    String(rawTarget).trim() === id ? "" : full,
-  );
+  const kept: string[] = [];
+  let changed = false;
+  for (const line of markdown.split("\n")) {
+    let removed = false;
+    const stripped = line.replace(/\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/g, (full, rawTarget) => {
+      if (String(rawTarget).trim() !== id) return full;
+      removed = true;
+      return "";
+    });
+    if (!removed) {
+      kept.push(line);
+      continue;
+    }
+    changed = true;
+    const tidied = tidyAfterLinkRemoval(stripped);
+    if (tidied !== null) kept.push(tidied);
+  }
+  return changed ? kept.join("\n").replace(/\n{3,}/g, "\n\n") : markdown;
+}
+/** Returns null when nothing but structure survived, so the caller drops the line. */
+function tidyAfterLinkRemoval(line: string): string | null {
+  const marker = line.match(/^([ \t]*)([-*+]|\d+[.)])[ \t]+/);
+  if (marker) {
+    const content = collapseGaps(line.slice(marker[0].length))
+      .replace(ORPHANED_SEPARATOR, "")
+      .trim();
+    return content ? `${marker[1]}${marker[2]} ${content}` : null;
+  }
+  const indent = line.match(/^[ \t]*/)?.[0] ?? "";
+  const content = collapseGaps(line.slice(indent.length)).trimEnd();
+  return content ? `${indent}${content}` : null;
+}
+function collapseGaps(value: string): string {
+  return value.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+([,.;:!?)\]])/g, "$1");
+}
+function isAtomicTempName(name: string): boolean {
+  return /\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/i.test(name);
+}
+async function readOptionalFile(target: string): Promise<string | null> {
+  try {
+    return await readFile(target, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
 }
 function isCanonicalPage(raw: string): boolean {
   return raw.replace(/\r\n/g, "\n").includes("\n<!-- compiled_truth -->\n");
@@ -1344,9 +1443,18 @@ function titleCase(value: string): string {
   return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
 }
 async function writeAtomic(target: string, contents: string): Promise<void> {
-  const temp = `${target}.${randomUUID()}.tmp`;
-  await writeFile(temp, contents, "utf8");
-  await rename(temp, target);
+  const temp = `${target}.${randomUUID()}${TEMP_SUFFIX}`;
+  let committed = false;
+  try {
+    await writeFile(temp, contents, "utf8");
+    await rename(temp, target);
+    committed = true;
+  } finally {
+    // Windows raises EPERM when a watcher holds the destination open. The
+    // failure belongs to the caller, but the temp file must not survive it and
+    // land in the repository as an untracked page.
+    if (!committed) await rm(temp, { force: true }).catch(() => undefined);
+  }
 }
 function knowledgeProtocol(): string {
   return "# Otto project knowledge\n\nKnowledge lives in this directory as rich Markdown. Every chat receives the active-page catalog, then reads relevant pages through Otto's project-knowledge tools. When a chat establishes durable knowledge that is not already recorded, capture it immediately through the matching tool and leave confirmation to the user. This includes decisions, constraints, requirements, architecture, measured findings, project charters and delivery updates, and evaluated references. Project delivery status is separate from knowledge review status. Atomic pages use human slugs and [[wiki links]] to other atomic pages; the six writable root pages are background, architecture, flow, mindmap, stack, and roadmap. Do not hand-edit generated indexes. Every compiled-truth, project delivery, or reference evaluation update must include a reason, which Otto appends to the uncapped timeline.\n";
