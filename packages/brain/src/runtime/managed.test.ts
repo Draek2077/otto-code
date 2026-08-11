@@ -1,4 +1,4 @@
-import { afterEach, test } from "vitest";
+import { afterEach, test, vi } from "vitest";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -8,9 +8,13 @@ import {
   DEFAULT_LLAMA_BUILD,
   defaultRuntimeSpec,
   describeLoaderFailure,
+  installManagedRuntime,
+  latestRuntimeBuild,
   listManagedRuntimes,
+  MissingAssetError,
   missingLibraryFrom,
   parseDeviceList,
+  resolveLatestBuildOrPin,
   resolveRuntimeVariant,
   serverExeName,
   supportedVariants,
@@ -243,6 +247,88 @@ test("a managed runtime is found through the tarball's nested build/bin layout",
   assert.equal(runtime.version, "b10265");
   // The extensionless binary must not be picked up by a Windows-shaped scan.
   assert.deepEqual(listManagedRuntimes(root, "win32"), []);
+});
+
+/**
+ * A `fetch` stand-in. These paths touch exactly two things - the releases API
+ * and the asset CDN - and neither may be reached from a test: the real releases
+ * API is rate limited to 60 requests/hour/IP, which is the failure being pinned
+ * down here in the first place.
+ */
+function stubFetch(handler: (url: string) => Response): void {
+  vi.stubGlobal("fetch", (input: unknown) => Promise.resolve(handler(String(input))));
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+test("a rate-limited releases API falls back to the pin instead of failing the install", async () => {
+  // 60 requests/hour/IP, unauthenticated. Behind NAT, on a corporate egress or on
+  // a CI runner, the budget can be spent by something else entirely.
+  stubFetch(() => new Response("API rate limit exceeded", { status: 403 }));
+
+  await assert.rejects(latestRuntimeBuild(), /403/);
+
+  const resolved = await resolveLatestBuildOrPin();
+  assert.equal(resolved.build, DEFAULT_LLAMA_BUILD, "the pin is the safety net, not a failure");
+  assert.match(String(resolved.warning), new RegExp(`pinned build ${DEFAULT_LLAMA_BUILD}`));
+  // The daemon keeps the last stderr line as the job message, so a wrapped
+  // warning would reach the GUI as a dangling fragment.
+  assert.ok(!String(resolved.warning).includes("\n"), "the warning must stay one line");
+});
+
+test("a non-build release at the top of the list does not empty the result", async () => {
+  const urls: string[] = [];
+  stubFetch((url) => {
+    urls.push(url);
+    return new Response(
+      JSON.stringify([
+        { tag_name: "master-abc1234", published_at: "2026-08-10T00:00:00Z" },
+        { tag_name: "b10400", published_at: "2026-08-09T00:00:00Z" },
+      ]),
+    );
+  });
+
+  assert.equal(await latestRuntimeBuild(), "b10400");
+  const perPage = Number(new URL(urls[0]).searchParams.get("per_page"));
+  assert.ok(perPage > 1, "one release per page makes a single non-build entry look like none");
+});
+
+test("a page carrying no numbered build at all still installs the pin", async () => {
+  stubFetch(() => new Response(JSON.stringify([{ tag_name: "not-a-build" }])));
+  const resolved = await resolveLatestBuildOrPin();
+  assert.equal(resolved.build, DEFAULT_LLAMA_BUILD);
+  assert.match(String(resolved.warning), /no release builds/);
+});
+
+test("a healthy releases API resolves latest with nothing to warn about", async () => {
+  stubFetch(() => new Response(JSON.stringify([{ tag_name: "b10400", published_at: null }])));
+  assert.deepEqual(await resolveLatestBuildOrPin(), { build: "b10400", warning: null });
+});
+
+test("an asset upstream does not serve fails as a missing asset, leaving no partial runtime", async () => {
+  // The reason "latest" needs a fallback at all: asset names are not derivable
+  // from the tag, so a run-time-resolved tag can name assets nobody pinned.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "otto-brain-managed-"));
+  temps.push(root);
+  stubFetch(() => new Response("Not Found", { status: 404 }));
+
+  const spec = defaultRuntimeSpec("b99999", {
+    platform: "linux",
+    arch: "x64",
+    hasNvidiaGpu: false,
+  });
+  await assert.rejects(installManagedRuntime(spec, root), (error: unknown) => {
+    assert.ok(
+      error instanceof MissingAssetError,
+      "a 404 is the one download failure the caller can answer with the pin",
+    );
+    return true;
+  });
+  // listManagedRuntimes ranks by build number, so a half-installed newer build
+  // would outrank the working runtime it was meant to replace.
+  assert.deepEqual(fs.readdirSync(root), []);
 });
 
 test("managed runtime inventory preserves its human display name", () => {

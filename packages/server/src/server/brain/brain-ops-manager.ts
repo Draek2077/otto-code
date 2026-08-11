@@ -175,8 +175,8 @@ export class BrainOpsManager {
       label: `Download ${model}`,
       args: [
         "pull",
-        ...(quant ? ["--quant", quant] : []),
-        ...components.flatMap((component) => ["--component", component]),
+        ...(quant ? ["--quant", optionValue("quant", quant)] : []),
+        ...components.flatMap((component) => ["--component", optionValue("component", component)]),
         "--json",
         "--",
         model,
@@ -198,9 +198,12 @@ export class BrainOpsManager {
       args: [
         "add",
         "--quant",
-        quant,
+        optionValue("quant", quant),
         ...(components === undefined ? [] : ["--primary-only"]),
-        ...(components ?? []).flatMap((component) => ["--component", component]),
+        ...(components ?? []).flatMap((component) => [
+          "--component",
+          optionValue("component", component),
+        ]),
         "--json",
         "--",
         repo,
@@ -212,14 +215,15 @@ export class BrainOpsManager {
   installRuntime(build: string | null): BrainJob {
     // A managed install from the UI is an update request, not a request to
     // reproduce the package's fallback pin. The brain CLI resolves "latest"
-    // against upstream at install time, while the completed job still selects
-    // the runtime through the automatic policy in bootstrap.
+    // against upstream at install time - and falls back to its pinned build when
+    // that lookup or that build's assets fail - while the completed job still
+    // selects the runtime through the automatic policy in bootstrap.
     const requestedBuild = build ?? "latest";
     return this.startJob({
       kind: "runtime-install",
       target: requestedBuild,
       label: build ? `Install runtime (${build})` : "Install latest llama.cpp runtime",
-      args: ["runtime", "install", "--json", "--build", requestedBuild],
+      args: ["runtime", "install", "--json", "--build", optionValue("build", requestedBuild)],
     });
   }
 
@@ -229,7 +233,9 @@ export class BrainOpsManager {
       kind: "runtime-remove",
       target: name,
       label: `Remove runtime (${name})`,
-      args: ["runtime", "remove", "--json", name],
+      // `--` so a name starting with `-` is the positional argument it is meant
+      // to be, rather than an unknown option the CLI rejects.
+      args: ["runtime", "remove", "--json", "--", name],
     });
   }
 
@@ -239,7 +245,7 @@ export class BrainOpsManager {
       kind: "calibrate",
       target: model,
       label: `Calibrate ${model}`,
-      args: ["calibrate", "--model", model, "--json"],
+      args: ["calibrate", "--model", optionValue("model", model), "--json"],
     });
   }
 
@@ -249,7 +255,7 @@ export class BrainOpsManager {
       kind: "sweep",
       target: model,
       label: `Sweep ${model}`,
-      args: ["sweep", "--model", model, "--json"],
+      args: ["sweep", "--model", optionValue("model", model), "--json"],
     });
   }
 
@@ -261,7 +267,7 @@ export class BrainOpsManager {
       label: model ? `Benchmark ${model}` : "Benchmark models",
       // bench is a plain streaming action (no --json); its output is captured
       // as the job's progress message. Results land in the evals dashboard.
-      args: ["bench", ...(model ? ["--model", model] : [])],
+      args: ["bench", ...(model ? ["--model", optionValue("model", model)] : [])],
     });
   }
 
@@ -582,6 +588,22 @@ export class BrainOpsManager {
     }
     return out;
   }
+}
+
+/**
+ * Reject a client value that would be read as a flag rather than as a value.
+ *
+ * An option value has to sit before the `--` separator by construction - the
+ * separator only ends *positional* parsing - so unlike `model` and `repo` these
+ * cannot be moved out of harm's way, and the argv is unambiguous only if the
+ * value itself is. Commander already refuses a leading-dash value with an
+ * unhelpful "argument missing"; this names the real problem instead.
+ */
+function optionValue(label: string, value: string): string {
+  if (value.startsWith("-")) {
+    throw new Error(`A ${label} must not start with "-".`);
+  }
+  return value;
 }
 
 function toWire(job: JobState): BrainJob {

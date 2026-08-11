@@ -4176,6 +4176,18 @@ export class Session {
   }
 
   private handleBrainRuntimeRemoveRequest(name: string, requestId: string): void {
+    // A remote brain lists its own runtimes, so the remove has to land on that
+    // host too. Falling through to the local ops manager would delete a
+    // same-named runtime out of this machine's OTTO_HOME instead.
+    if (
+      this.startRemoteBrainJob(
+        "runtime-remove",
+        { name },
+        requestId,
+        "brain.runtime.remove.response",
+      )
+    )
+      return;
     this.startBrainJob(requestId, "brain.runtime.remove.response", (ops) =>
       ops.removeRuntime(name),
     );

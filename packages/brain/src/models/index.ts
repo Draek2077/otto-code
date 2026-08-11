@@ -25,6 +25,7 @@ export {
   resolveHfToken,
   listRepoQuants,
   searchModels,
+  clearCardSummaryCache,
   repoOfModel,
   quantRank,
   type QuantOption,

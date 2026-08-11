@@ -119,6 +119,14 @@ are in the `managed.ts` header; the ones that bite hardest:
   `DEFAULT_LLAMA_BUILD` means re-reading that tag's asset list
   (`gh api repos/ggml-org/llama.cpp/releases/tags/<tag> --jq '.assets[].name'`)
   and re-running `managed.test.ts`, which pins every generated URL.
+  - **That is why `--build latest` always keeps `DEFAULT_LLAMA_BUILD` as its
+    safety net.** The lookup hits api.github.com unauthenticated (60
+    requests/hour/IP, so a 403 behind NAT, corporate egress or CI), and a tag
+    resolved at run time names assets no test pins, so an upstream rename 404s.
+    Both failures fall back to the pin with a one-line stderr warning, and a
+    failed install removes the directory it created so a half-extracted newer
+    build cannot outrank the working runtime. An explicit `--build` still fails
+    loudly: the user named that tag on purpose.
 - **Linux has no upstream CUDA _release asset_, and Vulkan is the measured-equal
   default, not a consolation prize.** The Linux GPU assets are Vulkan, ROCm and
   SYCL only, so the Linux GPU default is Vulkan - one asset covering NVIDIA, AMD

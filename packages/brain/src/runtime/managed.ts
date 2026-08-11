@@ -98,6 +98,16 @@ export const DEFAULT_LLAMA_BUILD = "b10265";
 const LLAMA_RELEASE_BASE = "https://github.com/ggml-org/llama.cpp/releases/download";
 const LLAMA_RELEASE_API = "https://api.github.com/repos/ggml-org/llama.cpp/releases";
 
+/**
+ * How many releases to read when resolving "latest".
+ *
+ * Not 1: the newest release is not necessarily a numbered build (upstream also
+ * publishes differently tagged and pre-release entries), and a single
+ * non-matching entry would otherwise read as "llama.cpp published no release
+ * builds" while the very next one qualified.
+ */
+const LATEST_BUILD_SCAN_PAGE = 30;
+
 export interface RuntimeRelease {
   build: string;
   publishedAt: string | null;
@@ -126,9 +136,46 @@ export async function listRuntimeReleases(limit = 100): Promise<RuntimeRelease[]
 
 /** Resolve the latest official build at the last responsible moment. */
 export async function latestRuntimeBuild(): Promise<string> {
-  const [latest] = await listRuntimeReleases(1);
+  const [latest] = await listRuntimeReleases(LATEST_BUILD_SCAN_PAGE);
   if (!latest) throw new Error("llama.cpp published no release builds");
   return latest.build;
+}
+
+export interface ResolvedBuild {
+  build: string;
+  /** A single line explaining a fallback, or null when "latest" resolved. */
+  warning: string | null;
+}
+
+/**
+ * The build to install for a "latest" request, with the pin as the safety net.
+ *
+ * Asking upstream is a best effort, never a precondition. `listRuntimeReleases`
+ * hits api.github.com unauthenticated, which is rate limited to 60 requests per
+ * hour per IP: behind NAT, on a corporate egress or on a CI runner that is a 403
+ * on an address that has spent its budget on something else entirely. An install
+ * the pinned build can serve must not fail because a version lookup did.
+ *
+ * The warning is deliberately one line. The daemon's BrainOpsManager keeps the
+ * *last* stderr line as the job's message, so a wrapped warning would surface in
+ * the GUI as a dangling fragment.
+ */
+export async function resolveLatestBuildOrPin(): Promise<ResolvedBuild> {
+  try {
+    return { build: await latestRuntimeBuild(), warning: null };
+  } catch (error) {
+    return {
+      build: DEFAULT_LLAMA_BUILD,
+      warning:
+        `could not look up the latest llama.cpp build (${oneLine(error)}), so Otto installed` +
+        ` the pinned build ${DEFAULT_LLAMA_BUILD} instead.`,
+    };
+  }
+}
+
+/** Flatten a message to one line, so a warning survives the last-line rule. */
+function oneLine(error: unknown): string {
+  return (error instanceof Error ? error.message : String(error)).replace(/\s+/gu, " ").trim();
 }
 
 /** The CUDA toolkit version whose Windows assets we pin. */
@@ -366,12 +413,27 @@ export function listManagedRuntimes(
   );
 }
 
+/**
+ * An asset upstream does not serve at all, which is what a renamed asset or a
+ * tag without the expected build looks like from here. Distinguished from every
+ * other download failure because it is the one a caller can answer by retrying
+ * a build whose asset names are pinned and tested, rather than by retrying the
+ * same URL later.
+ */
+export class MissingAssetError extends Error {
+  constructor(readonly url: string) {
+    super(`download failed (404) for ${url}`);
+    this.name = "MissingAssetError";
+  }
+}
+
 async function downloadFile(
   url: string,
   dest: string,
   onProgress?: (progress: InstallProgress) => void,
 ): Promise<void> {
   const response = await fetch(url);
+  if (response.status === 404) throw new MissingAssetError(url);
   if (!response.ok || !response.body) {
     throw new Error(`download failed (${response.status}) for ${url}`);
   }
@@ -645,14 +707,25 @@ export async function installManagedRuntime(
 ): Promise<Runtime> {
   const platform = spec.platform ?? process.platform;
   const targetDir = path.join(runtimesDir, slug(spec));
+  const preexisting = fs.existsSync(targetDir);
   fs.mkdirSync(targetDir, { recursive: true });
 
-  for (const url of spec.assets) {
-    const archivePath = path.join(targetDir, path.basename(new URL(url).pathname));
-    await downloadFile(url, archivePath, onProgress);
-    onProgress?.({ phase: "extracting", asset: url });
-    await extractArchive(archivePath, targetDir, platform);
-    fs.rmSync(archivePath, { force: true });
+  try {
+    for (const url of spec.assets) {
+      const archivePath = path.join(targetDir, path.basename(new URL(url).pathname));
+      await downloadFile(url, archivePath, onProgress);
+      onProgress?.({ phase: "extracting", asset: url });
+      await extractArchive(archivePath, targetDir, platform);
+      fs.rmSync(archivePath, { force: true });
+    }
+  } catch (error) {
+    // A half-installed directory is worse than no directory: Windows CUDA needs
+    // two archives, so a 404 on the companion leaves a llama-server with no CUDA
+    // runtime beside it, and `listManagedRuntimes` ranks by build number - that
+    // newer, broken build would then outrank the working runtime it replaced.
+    // Only a directory this call created is removed; an existing install stands.
+    if (!preexisting) fs.rmSync(targetDir, { recursive: true, force: true });
+    throw error;
   }
 
   const exeName = serverExeName(platform);

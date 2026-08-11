@@ -171,6 +171,14 @@ async function streamRepoFile(
       clearPartial(tmp);
       partial = null;
     } else if (!isMatchingRangeResponse(response, partial)) {
+      // Discard the partial before failing. A persistent non-200/non-206 answer
+      // to the ranged request (an expired signed CDN redirect returning 403, an
+      // upstream 5xx, a proxy that strips Range) would otherwise wedge this file
+      // forever: the partial stays valid, so every later attempt replays the
+      // same ranged request and gets the same answer, and only a 200 ever clears
+      // it. Dropping it here costs the resume but lets the next attempt restart
+      // cleanly from byte zero.
+      clearPartial(tmp);
       throw new Error(`download resume failed (${response.status}) for ${url}`);
     }
   } else {
@@ -205,6 +213,21 @@ async function streamRepoFile(
 
   try {
     await pipeline(body, createWriteStream(tmp, { flags: append ? "a" : "w" }));
+    // Undici rejects the body stream on a premature close (measured: a short
+    // Content-Length body, with either a destroyed socket or a clean FIN, and a
+    // truncated chunked body all reject), so a cut transfer never reaches this
+    // line. A short but *valid* 206 does: a server may answer an open-ended
+    // `bytes=N-` with any narrower range, and isMatchingRangeResponse accepts
+    // that because it requires end >= start, not end === totalBytes - 1.
+    // Renaming then would publish a truncated model as a complete one. The
+    // partial survives the throw below, so the next attempt resumes from the
+    // bytes this one did add.
+    const writtenBytes = statSync(tmp).size;
+    if (totalBytes !== null && totalBytes > 0 && writtenBytes !== totalBytes) {
+      throw new Error(
+        `download incomplete for ${url}: wrote ${writtenBytes} of ${totalBytes} bytes`,
+      );
+    }
     renameSync(tmp, destPath);
     rmSync(partialMetadataPath(tmp), { force: true });
   } catch (error) {

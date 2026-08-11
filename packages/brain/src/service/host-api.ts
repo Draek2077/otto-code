@@ -114,7 +114,7 @@ export interface HostCapabilities {
 /** A long-running operation owned by this brain host, not its caller. */
 export interface HostJob {
   id: string;
-  kind: "pull" | "runtime-install" | "calibrate" | "sweep" | "bench";
+  kind: "pull" | "runtime-install" | "runtime-remove" | "calibrate" | "sweep" | "bench";
   label: string;
   target: string | null;
   status: "running" | "succeeded" | "failed" | "canceled";
@@ -256,6 +256,21 @@ export function buildInventoryRow(params: {
     warnings: profileWarnings(profile, model, store),
     components: model.components ?? null,
   };
+}
+
+/**
+ * Reject a request value that the CLI would read as a flag rather than as a
+ * value.
+ *
+ * An option value has to sit before the `--` separator by construction - the
+ * separator only ends *positional* parsing - so unlike `model` and `repo` these
+ * cannot be moved out of harm's way, and the argv is unambiguous only if the
+ * value itself is. The throw surfaces as the route's 400, next to the type
+ * checks in each `makeArgs`.
+ */
+function optionValue(label: string, value: string): string {
+  if (value.startsWith("-")) throw new Error(`${label} must not start with "-"`);
+  return value;
 }
 
 /** Resolve a model by id or display name, the same way the completion path does. */
@@ -728,7 +743,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
             job:
               deps.jobs?.start("bench", model ?? null, [
                 "bench",
-                ...(model ? ["--model", model] : []),
+                ...(model ? ["--model", optionValue("model", model)] : []),
               ]) ?? null,
           });
         } catch (error) {
@@ -763,8 +778,8 @@ export function createHostApi(deps: HostApiDeps): HostApi {
             target: model,
             args: [
               "pull",
-              ...(typeof quant === "string" ? ["--quant", quant] : []),
-              ...(components ?? []).flatMap((id) => ["--component", id]),
+              ...(typeof quant === "string" ? ["--quant", optionValue("quant", quant)] : []),
+              ...(components ?? []).flatMap((id) => ["--component", optionValue("component", id)]),
               "--json",
               "--",
               model,
@@ -790,9 +805,9 @@ export function createHostApi(deps: HostApiDeps): HostApi {
             args: [
               "add",
               "--quant",
-              quant,
+              optionValue("quant", quant),
               ...(components === undefined ? [] : ["--primary-only"]),
-              ...(components ?? []).flatMap((id) => ["--component", id]),
+              ...(components ?? []).flatMap((id) => ["--component", optionValue("component", id)]),
               "--json",
               "--",
               repo,
@@ -812,9 +827,23 @@ export function createHostApi(deps: HostApiDeps): HostApi {
               "runtime",
               "install",
               "--json",
-              ...(typeof build === "string" ? ["--build", build] : []),
+              ...(typeof build === "string" ? ["--build", optionValue("build", build)] : []),
             ],
           };
+        },
+      },
+      // Removal is host-owned for the same reason installation is: the runtimes
+      // directory belongs to this machine. A daemon in brain.mode=remote that ran
+      // this locally would delete a same-named runtime out of its own OTTO_HOME.
+      "/__host/jobs/runtime-remove": {
+        kind: "runtime-remove",
+        makeArgs: (body) => {
+          const name = body.name;
+          if (typeof name !== "string" || !name) throw new Error("name is required");
+          // Pass the name as an operand, not as a flag candidate. The CLI still
+          // owns the real safety check (the name regex plus the parent-dir
+          // assertion in removeManagedRuntime).
+          return { target: name, args: ["runtime", "remove", "--json", "--", name] };
         },
       },
       "/__host/jobs/calibrate": {
@@ -822,7 +851,10 @@ export function createHostApi(deps: HostApiDeps): HostApi {
         makeArgs: (body) => {
           const model = body.model;
           if (typeof model !== "string" || !model) throw new Error("model is required");
-          return { target: model, args: ["calibrate", "--model", model, "--json"] };
+          return {
+            target: model,
+            args: ["calibrate", "--model", optionValue("model", model), "--json"],
+          };
         },
       },
       "/__host/jobs/sweep": {
@@ -830,7 +862,10 @@ export function createHostApi(deps: HostApiDeps): HostApi {
         makeArgs: (body) => {
           const model = body.model;
           if (typeof model !== "string" || !model) throw new Error("model is required");
-          return { target: model, args: ["sweep", "--model", model, "--json"] };
+          return {
+            target: model,
+            args: ["sweep", "--model", optionValue("model", model), "--json"],
+          };
         },
       },
     };
