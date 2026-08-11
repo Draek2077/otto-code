@@ -1282,4 +1282,50 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     expect(messages.some((m) => m.type === "reset")).toBe(true);
     expect(startedSession("draft:d1")).toBeDefined();
   });
+
+  // Selective timeline delivery: the daemon forwards `agent_stream` only for
+  // agents the client declares as viewed. The workspace screen declares just the
+  // agent tab active in each visible pane, so without a declaration of its own
+  // the visualizer got NO live timeline - nodes spawned and then sat inert until
+  // a reattach replayed the persisted rows.
+  it("declares every tracked agent as viewed so live timeline reaches the graph", async () => {
+    const replaceVisibleAgentIds = vi.fn();
+    useSessionStore.getState().setViewedTimelineSync(SERVER_ID, {
+      replaceVisibleAgentIds,
+      subscribe: () => () => {},
+      getAgentTimelineStatus: () => "ready" as const,
+    });
+    setAgents([makeAgent({ id: "root-1", title: "My chat" })]);
+    const view = renderAdapterWithProps({ active: true });
+    await settle();
+
+    expect(replaceVisibleAgentIds.mock.calls.at(-1)).toEqual([
+      expect.stringMatching(/^visualizer:/),
+      ["root-1"],
+    ]);
+
+    // An observed subagent streams under its OWN agent id, so it must join the
+    // declared set too.
+    upsertAgent(
+      makeAgent({
+        id: "root-1::sub::toolu_1",
+        title: "Explore",
+        attend: "observed",
+        status: "running",
+        parentAgentId: "root-1",
+        createdAt: new Date(BASE_TIME.getTime() + 5_000),
+        lastActivityAt: new Date(BASE_TIME.getTime() + 5_000),
+      }),
+    );
+    await settle();
+    expect(replaceVisibleAgentIds.mock.calls.at(-1)?.[1]).toEqual([
+      "root-1",
+      "root-1::sub::toolu_1",
+    ]);
+
+    // Closing the surface drops its claim - the workspace screen's own source
+    // is untouched because each surface publishes under its own source id.
+    view.unmount();
+    expect(replaceVisibleAgentIds.mock.calls.at(-1)?.[1]).toEqual([]);
+  });
 });

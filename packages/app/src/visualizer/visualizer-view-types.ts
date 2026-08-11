@@ -151,7 +151,12 @@ export type VisualizerHostToPageMessage =
   // One-shot viewport actions from the Otto toolbar's "Zoom to Fit" / "Restart"
   // buttons (OTTO PATCH). Stateless - the page just runs the action. The
   // stateful counterparts (grid/stats toggles) flow through config.panels.
-  | { type: "viewport-command"; action: "zoom-to-fit" | "restart" };
+  //
+  // `restart` is the page's own restart, which KEEPS still-running agents.
+  // `cold-restart` is the unconditional one (empty state, simulation clock back
+  // to 0, every node dropped) - what the demo scenario's enter/exit needs, since
+  // entering must rewind the clock and leaving must clear the mock nodes.
+  | { type: "viewport-command"; action: "zoom-to-fit" | "restart" | "cold-restart" };
 
 export interface VisualizerViewProps {
   /** Fires for every page -> host message, including the initial handshake `ready`. */

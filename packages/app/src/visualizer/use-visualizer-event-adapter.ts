@@ -40,6 +40,10 @@ import type {
 /** Matches the page's internal UI-update throttle - no point batching faster
  * than the page itself redraws. */
 const LIVE_FLUSH_INTERVAL_MS = 200;
+/** Distinguishes each mounted adapter's viewed-timeline subscription source
+ * (the tab surface and the PIP surface can be mounted at once, and both must
+ * contribute their own set rather than overwrite each other's). */
+let nextSubscriptionSourceId = 0;
 /** Backstop against a parent-id cycle in corrupt/unexpected data; real chains
  * are one level deep today (root -> observed subagent). */
 const MAX_PARENT_WALK_DEPTH = 8;
@@ -1016,6 +1020,20 @@ export function useVisualizerEventAdapter(input: UseVisualizerEventAdapterInput)
   const client = useHostRuntimeClient(serverId);
   const postMessageRef = useRef(postMessage);
   postMessageRef.current = postMessage;
+  // Selective timeline delivery: the daemon only forwards `agent_stream` for
+  // agents THIS client has declared it is viewing (CLIENT_CAPS
+  // .selectiveAgentTimeline). The workspace screen declares only the agent tab
+  // active in each visible pane - so a visualizer showing every chat in the
+  // workspace received no live timeline at all, and the graph sat on its
+  // spawned-but-inert nodes until a reattach replayed the persisted rows from
+  // `fetchAgentTimeline`. The visualizer is its own viewing surface and must
+  // declare its own set. See docs/visualizer.md and viewed-timeline-sync.ts.
+  const viewedTimelineSync = useSessionStore(
+    (state) => state.sessions[serverId]?.viewedTimelineSync ?? null,
+  );
+  const subscriptionSourceRef = useRef<string | null>(null);
+  subscriptionSourceRef.current ??= `visualizer:${(nextSubscriptionSourceId += 1)}`;
+  const subscriptionSource = subscriptionSourceRef.current;
   // Draft sessions live OUTSIDE the per-activation adapter `state` (they carry
   // no events/backfill - just a session-started/close-session pair) so the
   // lightweight draft-sync effect below can diff them without the agent
@@ -1040,6 +1058,28 @@ export function useVisualizerEventAdapter(input: UseVisualizerEventAdapterInput)
     // registered so the draft-sync effect (which runs after this one on any
     // reset-dep change) re-emits them all against the fresh page.
     registeredDraftsRef.current.clear();
+
+    // Declare every tracked agent (roots AND their observed/attended children -
+    // each streams under its OWN agent id) as viewed, so the daemon forwards
+    // their live timeline here. Published right after each reconcile and BEFORE
+    // the node's backfill fetch: live envelopes that arrive while `cursor` is
+    // still null are buffered, not dropped, and the backfill's cursor then
+    // dedups the overlap (see `applyLiveEnvelope`). The sync unions this source
+    // with the workspace screen's, so declaring a chat the user also has open
+    // costs nothing.
+    let publishedAgentIds = "";
+    const publishViewedAgents = (): void => {
+      if (!viewedTimelineSync) {
+        return;
+      }
+      const agentIds = [...state.nodes.keys()].sort();
+      const key = agentIds.join("\n");
+      if (key === publishedAgentIds) {
+        return;
+      }
+      publishedAgentIds = key;
+      viewedTimelineSync.replaceVisibleAgentIds(subscriptionSource, agentIds);
+    };
 
     const drainBackfillQueue = async (): Promise<void> => {
       // Sequential on purpose - a busy workspace shouldn't burst a pile of
@@ -1103,6 +1143,7 @@ export function useVisualizerEventAdapter(input: UseVisualizerEventAdapterInput)
       // unknown id (which cold-starts the renderer into its empty state).
       // Historical events still arrive in the following hydrated batch.
       reconcileAgents(state, selectWorkspaceAgents(serverId, workspaceId, agentIdFilter));
+      publishViewedAgents();
       flush(state, postMessageRef.current);
       await flushAfterBackfill();
       // The refresh MUST complete before we leave the hydrate window: an agent
@@ -1114,6 +1155,7 @@ export function useVisualizerEventAdapter(input: UseVisualizerEventAdapterInput)
         return;
       }
       reconcileAgents(state, selectWorkspaceAgents(serverId, workspaceId, agentIdFilter));
+      publishViewedAgents();
       await flushAfterBackfill();
       // Keep hydrating until the queue is genuinely quiescent - a reconcile
       // triggered during the flush above (or a still-running subscribe drain)
@@ -1138,6 +1180,7 @@ export function useVisualizerEventAdapter(input: UseVisualizerEventAdapterInput)
         return;
       }
       reconcileAgents(state, selectWorkspaceAgents(serverId, workspaceId, agentIdFilter));
+      publishViewedAgents();
       if (state.pendingBackfill.length > 0) {
         void flushAfterBackfill();
       }
@@ -1178,11 +1221,23 @@ export function useVisualizerEventAdapter(input: UseVisualizerEventAdapterInput)
       clearInterval(flushTimer);
       unsubscribeStore();
       unsubscribeStream();
+      // Drop this surface's viewed-timeline claim. The sync keeps a removal
+      // lingering for a grace period, so closing and reopening the visualizer
+      // doesn't churn the daemon subscription.
+      viewedTimelineSync?.replaceVisibleAgentIds(subscriptionSource, []);
     };
     // agentIdFilter is compared by reference (Set identity) - callers must
     // memoize it (see visualizer-panel.tsx) so an unrelated re-render doesn't
     // spuriously reset + replay the whole session.
-  }, [active, client, serverId, workspaceId, agentIdFilter]);
+  }, [
+    active,
+    client,
+    serverId,
+    workspaceId,
+    agentIdFilter,
+    subscriptionSource,
+    viewedTimelineSync,
+  ]);
 
   // ── Draft sessions ─────────────────────────────────────────────────────────
   // Surface each draft chat tab as an empty session so it shows in the dropdown

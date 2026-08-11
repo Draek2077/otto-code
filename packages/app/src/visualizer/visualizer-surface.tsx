@@ -36,14 +36,19 @@ import {
   type WorkspaceFileOpenRequest,
 } from "@/workspace/file-open";
 
-// The demo scenario (the vendored bundle's built-in mock run - see
-// docs/visualizer.md "Risks / gotchas") is retained in the bundle and reachable
-// through the config protocol; it just no longer has a floating on-canvas
-// button. To re-surface it later, post `config: { mode: "replay", autoPlay:
-// true, showMockData: true }` to load it and `config: { mode: "live", autoPlay:
-// false, showMockData: false }` to exit, and gate the event adapter's `active`
-// off while it runs (the live stream + its reset would otherwise clobber the
-// mock scenario). A `{ type: "reset" }` on each transition clears stale state.
+// The demo scenario - the vendored bundle's built-in mock run (see
+// docs/visualizer.md "The demo scenario"). Driven from the toolbar's Demo
+// button, which only exists while the page has no chats at all: the demo owns
+// the whole canvas, so it is offered exactly where there is nothing of yours to
+// clobber. Three moving parts, all of which the enter/exit effect below owns:
+//   1. `config: { showMockData: true|false }` flips the page's event source
+//      between MOCK_SCENARIO and the host's live batches.
+//   2. `viewport-command: "cold-restart"` rewinds the simulation clock to 0 and
+//      empties the canvas. Mandatory in BOTH directions - entering without it
+//      dumps the whole mock scenario in one frame against an already-advanced
+//      clock, and leaving without it strands the mock nodes on screen.
+//   3. The event adapter is gated off (`active`) for the duration, so the live
+//      stream and its reset+replay can't fight the mock run.
 
 // The shell caps the devicePixelRatio the page sees (emit-bundle.mjs
 // placeholder) - the canvas backing store and bloom buffers scale with it.
@@ -138,6 +143,13 @@ export function VisualizerSurface({
   const viewRef = useRef<VisualizerViewHandle>(null);
   const connectedRef = useRef(false);
   const [ready, setReady] = useState(false);
+  // Demo scenario (see the comment at the top of this module). Tab-only - PIP
+  // renders no controls at all, so it can never be entered from there.
+  // `demoAppliedRef` is what the page was last TOLD, kept separate from
+  // `demoActive` so a mount (or a guest reload, which clears it below alongside
+  // `ready`) never fires a spurious cold restart over a hydrated graph.
+  const [demoActive, setDemoActive] = useState(false);
+  const demoAppliedRef = useRef(false);
   // Set when the guest reported a load failure (`load-failed`, Electron) or
   // the ready handshake timed out. `reason` is only ever shown as a small
   // diagnostic line; null reason = timeout.
@@ -206,6 +218,16 @@ export function VisualizerSurface({
     return drafts;
   }, [workspaceTabs]);
 
+  // The demo scenario is offered only where it can't trample anything: no chats
+  // on the page AND no chat tab in the workspace. The tab half matters for the
+  // few hundred ms after the guest loads, when the page's session mirror is
+  // legitimately still empty because the adapter's first flush hasn't landed -
+  // without it the Demo button would flash into the toolbar on every tab open.
+  const hasChatTab = useMemo(
+    () => workspaceTabs.some((tab) => chatSessionIdForTab(tab) !== null),
+    [workspaceTabs],
+  );
+
   // The session the focused tab maps to, when it's a chat (agent or draft).
   const focusedChatSessionId = useMemo(
     () => chatSessionIdForTab(workspaceTabs.find((tab) => tab.tabId === focusedTabId)),
@@ -253,6 +275,9 @@ export function VisualizerSurface({
     connectedRef.current = false;
     setReady(false);
     setLoadFailure(null);
+    // The fresh page knows nothing of the demo, so forget what the old one was
+    // told - a demo still toggled on gets re-entered when `ready` returns.
+    demoAppliedRef.current = false;
     loadCoverOpacity.stopAnimation();
     loadCoverOpacity.setValue(1);
   }, [renderScale, visualizerTheme.json, loadCoverOpacity]);
@@ -366,8 +391,20 @@ export function VisualizerSurface({
   const handleZoomToFit = useCallback(() => {
     viewRef.current?.postMessage({ type: "viewport-command", action: "zoom-to-fit" });
   }, []);
+  // Restart means "replay the demo from the top" while the demo is running: the
+  // page's own `restart` deliberately keeps still-running agents, which for a
+  // mock run would leave the previous pass's nodes standing next to the new one.
   const handleRestart = useCallback(() => {
-    viewRef.current?.postMessage({ type: "viewport-command", action: "restart" });
+    viewRef.current?.postMessage({
+      type: "viewport-command",
+      action: demoActive ? "cold-restart" : "restart",
+    });
+  }, [demoActive]);
+  // Demo scenario: a plain toggle. The page transition itself is driven by the
+  // effect below, not from here, so entering/leaving stays ordered against the
+  // event adapter's own mount/unmount.
+  const handleToggleDemo = useCallback(() => {
+    setDemoActive((previous) => !previous);
   }, []);
 
   const handleMessage = useCallback(
@@ -570,13 +607,30 @@ export function VisualizerSurface({
     });
   }, [ready, settings.uiFontFamily, settings.monoFontFamily, settings.uiFontSize, isCompact]);
 
+  // Demo scenario enter/exit (see the comment at the top of this module).
+  // Declared BEFORE the event adapter on purpose: React flushes every pending
+  // cleanup first, then runs effect bodies in declaration order, so this lands
+  // `showMockData: false` + the cold restart BEFORE the reactivating adapter
+  // posts its `reset` and replays the real chats. The other order would make the
+  // page swallow that replay - it ignores host events while mock data is on.
+  useEffect(() => {
+    if (!ready || demoAppliedRef.current === demoActive) {
+      return;
+    }
+    demoAppliedRef.current = demoActive;
+    viewRef.current?.postMessage({ type: "config", config: { showMockData: demoActive } });
+    viewRef.current?.postMessage({ type: "viewport-command", action: "cold-restart" });
+  }, [ready, demoActive]);
+
   // Every transition to active (ready + this pane actually visible) does a
   // full reset + replay - including recovery from a hidden-webview rAF stall
-  // (visualizer.md Risks: "Hidden panes stop the world").
+  // (visualizer.md Risks: "Hidden panes stop the world"). Held off entirely
+  // while the demo scenario runs: the live stream and its reset+replay would
+  // otherwise fight the mock run for the same canvas.
   useVisualizerEventAdapter({
     serverId,
     workspaceId,
-    active: ready && isVisible,
+    active: ready && isVisible && !demoActive,
     agentIdFilter,
     draftSessions,
     postMessage: handlePostMessage,
@@ -598,8 +652,10 @@ export function VisualizerSurface({
   // outside the run. The page echoes the new selection back via
   // `session-state`, which satisfies the `=== selectedId` guard and stops any
   // feedback loop.
+  // Never while the demo scenario owns the canvas: a select-session would
+  // restore that chat's cached simulation state right over the mock run.
   useEffect(() => {
-    if (!ready || !followActive || followTargetSessionId === null) {
+    if (!ready || demoActive || !followActive || followTargetSessionId === null) {
       return;
     }
     const sessionId = followTargetSessionId;
@@ -612,12 +668,18 @@ export function VisualizerSurface({
     viewRef.current?.postMessage({ type: "select-session", sessionId });
   }, [
     ready,
+    demoActive,
     followActive,
     followTargetSessionId,
     isPip,
     sessionState.selectedId,
     sessionState.sessions,
   ]);
+
+  // Null hides the toolbar's Demo control entirely (see `hasChatTab`). Stays
+  // offered while the demo runs, or there would be no way out of it.
+  const handleToggleDemoIfOffered =
+    demoActive || (sessionState.sessions.length === 0 && !hasChatTab) ? handleToggleDemo : null;
 
   const loadCoverStyle = useMemo(
     () => [
@@ -656,6 +718,8 @@ export function VisualizerSurface({
           onToggleAudio={handleToggleAudio}
           onToggleHud={handleToggleHud}
           onCollapseToPip={handleCollapseToPip}
+          demoActive={demoActive}
+          onToggleDemo={handleToggleDemoIfOffered}
         />
       )}
       <View style={styles.canvasWrap}>

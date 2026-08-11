@@ -1599,3 +1599,32 @@ Host-side counterpart: `deriveToolCallDiscovery` in
 and "Tests failed" as `error`; "Tests pass", web results, and fetches stay
 `finding` (green keeps meaning "an insight that isn't bad news"). Needs
 `npm run build:visualizer`.
+
+## 2026-08-11 — `viewport-command: "cold-restart"` (the demo scenario needs an unconditional restart)
+
+The Otto toolbar can now start and stop the bundle's built-in demo scenario
+(`MOCK_SCENARIO`), which needs a restart the page did not expose. The existing
+`viewport-command: "restart"` runs `handleRestart` → `restart(true)`: it keeps
+every still-running agent, which is right for a toolbar button on a live chat and
+wrong for both halves of a demo transition.
+
+- Entering must rewind the simulation clock to 0. The page auto-plays on mount,
+  so by the time the host flips `showMockData` the clock has been advancing for
+  as long as the tab has been open, and every `MOCK_SCENARIO` event whose `time`
+  is already behind it fires in one frame.
+- Leaving must clear the mock nodes, which `restart(true)` deliberately keeps -
+  otherwise the scripted agents stay on the canvas after the host has switched
+  the event source back to the live stream.
+
+- `web/lib/vscode-bridge.ts` — `ViewportCommand` gains `'cold-restart'`.
+- `web/hooks/use-vscode-bridge.ts` — `subscribeViewportCommand` takes the
+  exported `ViewportCommand` instead of a re-spelled inline union.
+- `web/components/agent-visualizer/index.tsx` — new `handleColdRestart`
+  (`setIsReviewing(false)` + `restart(false)`), dispatched from the
+  `subscribeViewportCommand` handler.
+
+Otto-side counterpart: `visualizer-view-types.ts` widens the `viewport-command`
+action union; `visualizer-surface.tsx` owns the enter/exit sequence
+(`config.showMockData` + `cold-restart`, with the event adapter gated off while
+it runs) and `visualizer-toolbar.tsx` renders the Demo button. Needs
+`npm run build:visualizer`.

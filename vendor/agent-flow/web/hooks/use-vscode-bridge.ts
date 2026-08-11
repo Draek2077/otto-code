@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { vscodeBridge, type ConnectionStatus, type AgentEvent, type SessionInfo, type PanelsConfig, type RenderConfig, type CameraConfig, type SessionStateReport, type TogglablePanel } from '@/lib/vscode-bridge'
+import { vscodeBridge, type ConnectionStatus, type AgentEvent, type SessionInfo, type PanelsConfig, type RenderConfig, type CameraConfig, type SessionStateReport, type TogglablePanel, type ViewportCommand } from '@/lib/vscode-bridge'
 import { SimulationEvent } from '@/lib/agent-types'
 
 interface BridgeHookResult {
@@ -59,9 +59,10 @@ interface BridgeHookResult {
     callback: (command: 'select' | 'close', sessionId: string) => void,
   ) => () => void
   /** OTTO PATCH: subscribe to host -> page viewport commands (zoom to fit /
-   *  restart) issued by the Otto toolbar. Returns an unsubscribe fn. */
+   *  restart / cold-restart) issued by the Otto toolbar. Returns an
+   *  unsubscribe fn. */
   subscribeViewportCommand: (
-    callback: (command: 'zoom-to-fit' | 'restart') => void,
+    callback: (command: ViewportCommand) => void,
   ) => () => void
   /** Known sessions from the extension */
   sessions: SessionInfo[]
@@ -392,7 +393,7 @@ export function useVSCodeBridge(): BridgeHookResult {
 
   // OTTO PATCH: subscribe to host -> page viewport commands (see BridgeHookResult).
   const subscribeViewportCommand = useCallback(
-    (callback: (command: 'zoom-to-fit' | 'restart') => void) =>
+    (callback: (command: ViewportCommand) => void) =>
       vscodeBridge?.onViewportCommand(callback) ?? (() => {}),
     [],
   )

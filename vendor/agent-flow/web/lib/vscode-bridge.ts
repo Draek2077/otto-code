@@ -27,8 +27,15 @@ export type PanelsConfig = Partial<{
 /** OTTO PATCH (OTTO-PATCHES.md): host -> page one-shot viewport actions, driven
  * by the Otto toolbar's "Zoom to Fit" / "Restart" buttons — the imperative
  * counterparts of the panel toggles (which flow through `config.panels`). These
- * carry no state; the page just runs the action. */
-export type ViewportCommand = 'zoom-to-fit' | 'restart'
+ * carry no state; the page just runs the action.
+ *
+ * `restart` is the HUD's own restart (`restart(true)` — keeps still-running
+ * agents). `cold-restart` is the unconditional `restart(false)`: empty state,
+ * simulation clock back to 0, every node dropped. The host needs that to enter
+ * and leave the built-in demo scenario — entering must rewind the clock (else
+ * the whole mock scenario fires at once against an already-advanced clock), and
+ * leaving must clear the mock nodes, which `restart(true)` deliberately keeps. */
+export type ViewportCommand = 'zoom-to-fit' | 'restart' | 'cold-restart'
 /** OTTO PATCH (OTTO-PATCHES.md): the panels a page keyboard shortcut can ask
  * the host to toggle (page -> host `panel-toggle` — see `togglePanel`). */
 export type TogglablePanel = 'timeline' | 'files' | 'cost' | 'stats'

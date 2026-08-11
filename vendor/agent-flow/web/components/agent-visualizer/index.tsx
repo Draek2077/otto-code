@@ -276,6 +276,17 @@ export function AgentVisualizer() {
     restart(true)
   }, [restart])
 
+  // OTTO PATCH (OTTO-PATCHES.md): the unconditional restart — empty state, clock
+  // back to 0, every node dropped. `handleRestart` keeps still-running agents
+  // (`restart(true)`), which is right for the HUD/toolbar button but is exactly
+  // what a demo-scenario transition must NOT do: entering needs the clock at 0
+  // so MOCK_SCENARIO plays out instead of firing all at once against an
+  // already-advanced clock, and leaving needs the mock nodes gone.
+  const handleColdRestart = useCallback(() => {
+    setIsReviewing(false)
+    restart(false)
+  }, [restart])
+
   // Keyboard shortcuts
   // OTTO PATCH (OTTO-PATCHES.md): when a bridge host is attached, panel
   // visibility is host-owned — the host's settings seed `config.panels`, and
@@ -405,9 +416,10 @@ export function AgentVisualizer() {
   useEffect(() => {
     return subscribeViewportCommand((command) => {
       if (command === 'zoom-to-fit') setZoomToFitTrigger(n => n + 1)
+      else if (command === 'cold-restart') handleColdRestart()
       else handleRestart()
     })
-  }, [subscribeViewportCommand, handleRestart])
+  }, [subscribeViewportCommand, handleRestart, handleColdRestart])
 
   const openFile = useCallback((filePath: string, line?: number) => {
     bridge.bridgeOpenFile(filePath, line)

@@ -11,7 +11,9 @@ import {
   PictureInPicture,
   Pin,
   PinFilled,
+  Play,
   Restart,
+  Stop,
   Timeline,
   Volume2,
   VolumeX,
@@ -38,6 +40,8 @@ const ThemedEyeOff = withUnistyles(EyeOff);
 const ThemedFitScreen = withUnistyles(FitScreen);
 const ThemedBarChart = withUnistyles(BarChart);
 const ThemedRestart = withUnistyles(Restart);
+const ThemedPlay = withUnistyles(Play);
+const ThemedStop = withUnistyles(Stop);
 const ThemedPin = withUnistyles(Pin);
 const ThemedPinFilled = withUnistyles(PinFilled);
 const ThemedPictureInPicture = withUnistyles(PictureInPicture);
@@ -65,11 +69,13 @@ const ALWAYS_VISIBLE_SEPARATOR_COUNT = 3; // 2 in the left group + 1 before HUD
  * paint, before layout) shows everything. The PIP control is never collapsed -
  * it is a surface switch, not an informational toggle, and a mode control that
  * vanishes as you narrow the pane is how you lose the surface you're in - so it
- * only widens the reserved budget. */
+ * only widens the reserved budget. The Demo control is the same: it is the only
+ * way back out of the demo scenario, so it reserves room rather than collapsing. */
 function computeHiddenControls(
   barWidth: number | null,
   isCompact: boolean,
   hasPipControl: boolean,
+  hasDemoControl: boolean,
 ): ReadonlySet<CollapsibleControl> {
   if (barWidth === null) {
     return EMPTY_HIDDEN;
@@ -78,7 +84,7 @@ function computeHiddenControls(
   const reserved =
     BAR_HORIZONTAL_PADDING +
     CHAT_MIN_WIDTH +
-    (ALWAYS_VISIBLE_ICON_COUNT + (hasPipControl ? 1 : 0)) * iconSlot +
+    (ALWAYS_VISIBLE_ICON_COUNT + (hasPipControl ? 1 : 0) + (hasDemoControl ? 1 : 0)) * iconSlot +
     ALWAYS_VISIBLE_SEPARATOR_COUNT * SEPARATOR_SLOT;
   const room = barWidth - reserved;
   const fit = Math.max(0, Math.min(COLLAPSE_ORDER.length, Math.floor(room / iconSlot)));
@@ -110,6 +116,34 @@ export interface VisualizerToolbarProps {
   /** Collapse the tab into the picture-in-picture viewport. Null where the PIP
    * doesn't exist (compact layouts) - see visualizer-pip-host.tsx. */
   onCollapseToPip: (() => void) | null;
+  /** The vendored bundle's built-in demo scenario is playing - the canvas is
+   * showing a scripted mock run, not this workspace (see visualizer-surface.tsx). */
+  demoActive: boolean;
+  /** Start / stop the demo scenario. Null hides the control: the demo owns the
+   * whole canvas, so it is only offered where there is nothing of yours to
+   * clobber (no chats at all), plus for as long as it runs so it can be left. */
+  onToggleDemo: (() => void) | null;
+}
+
+function DemoToolbarButton({
+  demoActive,
+  onToggleDemo,
+}: Pick<VisualizerToolbarProps, "demoActive" | "onToggleDemo">) {
+  // The built-in demo scenario is only rendered where it cannot trample a live
+  // chat. It sits beside Restart because it drives the simulation, not chrome.
+  if (onToggleDemo === null) {
+    return null;
+  }
+
+  return (
+    <ToolbarIconButton
+      label={demoActive ? "Stop the demo" : "Play the demo scenario"}
+      Icon={demoActive ? ThemedStop : ThemedPlay}
+      selected={demoActive}
+      onPress={onToggleDemo}
+      testID="visualizer-toolbar-demo"
+    />
+  );
 }
 
 export function VisualizerToolbar({
@@ -133,11 +167,14 @@ export function VisualizerToolbar({
   onToggleAudio,
   onToggleHud,
   onCollapseToPip,
+  demoActive,
+  onToggleDemo,
 }: VisualizerToolbarProps) {
   // Zoom to Fit and Restart act on the live simulation - disable them when no
   // chat is selected (the "Waiting for chat activity" empty state) since there's
-  // nothing to fit or restart.
-  const viewportDisabled = selectedSessionId === null;
+  // nothing to fit or restart. The demo scenario is a running simulation with no
+  // session selected, so it re-enables them.
+  const viewportDisabled = selectedSessionId === null && !demoActive;
   // Hiding the HUD force-hides every informational panel (Timeline / Files /
   // Cost / Stats) - visualizer-panel forces config.panels off while hidden - so
   // their toggles are disabled and shown unselected until the HUD is re-enabled.
@@ -151,8 +188,9 @@ export function VisualizerToolbar({
     setBarWidth((prev) => (prev !== null && Math.abs(prev - width) < 1 ? prev : width));
   }, []);
   const hidden = useMemo(
-    () => computeHiddenControls(barWidth, isCompact, onCollapseToPip !== null),
-    [barWidth, isCompact, onCollapseToPip],
+    () =>
+      computeHiddenControls(barWidth, isCompact, onCollapseToPip !== null, onToggleDemo !== null),
+    [barWidth, isCompact, onCollapseToPip, onToggleDemo],
   );
   const options = useMemo<SelectFieldOption<string>[]>(
     () => sessions.map((session) => ({ id: session.id, value: session.id, label: session.label })),
@@ -302,12 +340,13 @@ export function VisualizerToolbar({
         )}
         <ToolbarSeparator />
         <ToolbarIconButton
-          label="Restart"
+          label={demoActive ? "Replay the demo" : "Restart"}
           Icon={ThemedRestart}
           onPress={onRestart}
           disabled={viewportDisabled}
           testID="visualizer-toolbar-restart"
         />
+        <DemoToolbarButton demoActive={demoActive} onToggleDemo={onToggleDemo} />
       </View>
       <View style={styles.toggles}>
         {toggleClusters.map((cluster, index) => (
