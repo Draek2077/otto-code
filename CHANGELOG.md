@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.8.8 - 2026-08-11
+
+### Added
+
+- Manage Brain model runtimes, with bundled model downloads that resume after an interruption
+- Model bundles can now include a vision projector for image understanding or a speculative draft model for faster generation
+- Upgrading Brain runtimes unlocks support for newly bundled models, including Muse Glimmer 30B
+- Findings are now a first-class knowledge record type, including import of legacy findings
+- Permanently delete a knowledge record with a destructive confirmation step
+- Explore the Visualizer's built-in demo scenario when a workspace has no chats
+
+### Changed
+
+- Cleaned up and refined the Knowledge, Context, and Brain UIs across many small details
+- Improved Hugging Face model search results and how catalog and downloaded models are displayed
+- Improved the run comparison view in Brain's Benchmark tab
+- Brain model management and live status updates are clearer and more responsive
+- Bundled ACP agents move to their latest published versions
+
+### Fixed
+
+- Tightened knowledge article title layout so titles sit closer to their icon
+- Hardened the Brain model card cache against concurrent lookups that could deadlock
+- Rejected unsafe CLI argument values and fixed removing a remote Brain runtime
+- A queued chat turn no longer restarts immediately behind a message you just stopped
+- Swept leftover temp files from interrupted knowledge writes and repaired dangling links left by a purge
+- Visualizer live graphs now keep activity up to date for every visible agent
+
 ## 0.8.7 - 2026-08-09
 
 ### Added
