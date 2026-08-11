@@ -10,6 +10,7 @@ import type {
 import { projectDisplayNameFromProjectId } from "@/utils/project-display-name";
 import type { WorkspaceAgentActivity } from "@/utils/workspace-agent-activity";
 import { resolveWorkspaceMapKeyByIdentity } from "@/utils/workspace-identity";
+export { selectWorkspaceChangeStat } from "@/stores/session-store-hooks/selectors";
 
 const EMPTY_PROJECTS: SidebarProjectEntry[] = [];
 
@@ -40,7 +41,10 @@ export interface SidebarWorkspaceEntry extends SidebarStatusWorkspacePlacement {
   pinnedAt?: string | null;
   // Checkout branch (null when not a git checkout or detached HEAD).
   currentBranch: string | null;
+  branchBaseRef?: string | null;
+  branchAheadCount?: number | null;
   archivingAt: string | null;
+  workingTreeDiffStat?: { additions: number; deletions: number } | null;
   diffStat: { additions: number; deletions: number } | null;
   prHint: PrHint | null;
   archiveHasUncommittedChanges: boolean | null;
@@ -170,9 +174,12 @@ export function createSidebarWorkspaceEntry(input: {
     title: input.workspace.title ?? null,
     pinnedAt: input.workspace.pinnedAt,
     currentBranch: normalizeCurrentBranch(input.workspace.gitRuntime?.currentBranch),
+    branchBaseRef: input.workspace.gitRuntime?.baseRef ?? null,
+    branchAheadCount: input.workspace.gitRuntime?.aheadBehind?.ahead ?? null,
     statusBucket: effectiveStatus.status,
     statusEnteredAt: effectiveStatus.enteredAt,
     archivingAt: input.workspace.archivingAt,
+    workingTreeDiffStat: input.workspace.workingTreeDiffStat ?? null,
     diffStat: input.workspace.diffStat,
     prHint: selectPrHintFromStatus(
       input.workspace.githubRuntime?.pullRequest,

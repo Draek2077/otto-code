@@ -68,6 +68,7 @@ export interface ModelSearchResult {
   likes: number;
   updatedAt: string | null;
   gated: boolean;
+  summary: string | null;
 }
 
 interface HfSearchEntry {
@@ -77,6 +78,79 @@ interface HfSearchEntry {
   likes?: number;
   lastModified?: string;
   gated?: boolean | string;
+}
+
+const cardSummaryCache = new Map<string, Promise<string | null>>();
+
+function cleanCardSummary(markdown: string): string | null {
+  const body = markdown.replace(/^---\s*[\s\S]*?---\s*/u, "");
+  const paragraphs = body
+    .split(/\r?\n\s*\r?\n/u)
+    .map((paragraph) =>
+      paragraph
+        .replace(/<[^>]+>/gu, " ")
+        .replace(/!?(\[[^\]]*\]\([^)]*\))/gu, "$1")
+        .replace(/[>*#`_]/gu, " ")
+        .replace(/\s+/gu, " ")
+        .trim(),
+    )
+    .filter((paragraph) => paragraph.length >= 80);
+  const useful = paragraphs.find(
+    (paragraph) =>
+      !/^(community model|special thanks|disclaimers|model creator|gguf quantization)/iu.test(
+        paragraph,
+      ) &&
+      !/lm studio community models highlights program|lm studio is not the creator/iu.test(
+        paragraph,
+      ),
+  );
+  if (!useful) return null;
+  const sentences = useful.match(/[^.!?]+[.!?]+(?:\s|$)/gu) ?? [useful];
+  const summary = sentences.slice(0, 2).join(" ").trim();
+  return summary.length >= 80 ? summary.slice(0, 360).trim() : null;
+}
+
+async function modelCardSummary(repo: string, token: string | null): Promise<string | null> {
+  const cacheKey = repo.toLowerCase();
+  const cached = cardSummaryCache.get(cacheKey);
+  if (cached) return cached;
+  const pending = (async () => {
+    const readme = await fetch(`${HF_BASE}/${repo}/raw/main/README.md`, {
+      headers: authHeaders(token),
+    });
+    if (!readme.ok) return null;
+    const ownSummary = cleanCardSummary(await readme.text());
+    if (ownSummary) return ownSummary;
+    const detail = await fetch(`${HF_BASE}/api/models/${repo}`, { headers: authHeaders(token) });
+    if (!detail.ok) return null;
+    const cardData = (await detail.json()) as { cardData?: { base_model?: string | string[] } };
+    const baseModel = Array.isArray(cardData.cardData?.base_model)
+      ? cardData.cardData.base_model[0]
+      : cardData.cardData?.base_model;
+    return baseModel && baseModel.toLowerCase() !== cacheKey
+      ? modelCardSummary(baseModel, token)
+      : null;
+  })().catch(() => null);
+  cardSummaryCache.set(cacheKey, pending);
+  return pending;
+}
+
+async function mapWithConcurrency<T, R>(
+  values: T[],
+  limit: number,
+  mapper: (value: T) => Promise<R>,
+): Promise<R[]> {
+  const output = Array.from({ length: values.length }) as R[];
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, values.length) }, async () => {
+      while (cursor < values.length) {
+        const index = cursor++;
+        output[index] = await mapper(values[index]!);
+      }
+    }),
+  );
+  return output;
 }
 
 /**
@@ -102,13 +176,17 @@ export async function searchModels(
     throw new Error(`Hugging Face search failed (${res.status}) for "${query}"`);
   }
   const entries = (await res.json()) as HfSearchEntry[];
-  return entries.map((entry) => ({
+  const rows = entries.map((entry) => ({
     repo: entry.id,
     author: entry.author ?? entry.id.split("/")[0] ?? "",
     downloads: entry.downloads ?? 0,
     likes: entry.likes ?? 0,
     updatedAt: entry.lastModified ?? null,
     gated: Boolean(entry.gated),
+  }));
+  return mapWithConcurrency(rows, 4, async (row) => ({
+    ...row,
+    summary: await modelCardSummary(row.repo, token),
   }));
 }
 

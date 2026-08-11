@@ -56,7 +56,7 @@ function MobileMenuIcon() {
 
 export function SidebarMenuToggle({
   style,
-  tooltipSide = "right",
+  tooltipSide = "bottom",
   testID = "menu-button",
   nativeID = "menu-button",
 }: SidebarMenuToggleProps = {}) {

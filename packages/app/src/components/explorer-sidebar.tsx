@@ -330,7 +330,8 @@ function ExplorerTabButton({
   const tabStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType) => [
       styles.tab,
-      (active || hovered || pressed) && styles.tabActive,
+      active && styles.tabActive,
+      (hovered || pressed) && styles.tabHovered,
     ],
     [active],
   );
@@ -736,7 +737,10 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
   },
   tabActive: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
+    backgroundColor: theme.colors.surfaceToggleSelected,
+  },
+  tabHovered: {
+    backgroundColor: theme.colors.surfaceToggleHover,
   },
   tabText: {
     fontSize: {

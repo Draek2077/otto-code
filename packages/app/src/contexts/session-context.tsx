@@ -817,6 +817,9 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       setAgentTimelineCursor,
       setAgents,
       recoverTimelineGap,
+      onAgentBecameIdle: (agentId) => {
+        getHostRuntimeStore().drainQueuedAgentMessage(serverId, agentId);
+      },
     });
 
     const unsubAgentStream = client.on("agent_stream", (message) => {

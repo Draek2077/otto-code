@@ -96,9 +96,48 @@ export interface InstallProgress {
  */
 export const DEFAULT_LLAMA_BUILD = "b10265";
 const LLAMA_RELEASE_BASE = "https://github.com/ggml-org/llama.cpp/releases/download";
+const LLAMA_RELEASE_API = "https://api.github.com/repos/ggml-org/llama.cpp/releases";
+
+export interface RuntimeRelease {
+  build: string;
+  publishedAt: string | null;
+}
+
+/** Official llama.cpp builds, newest first. Only numbered build releases are actionable. */
+export async function listRuntimeReleases(limit = 100): Promise<RuntimeRelease[]> {
+  const response = await fetch(
+    `${LLAMA_RELEASE_API}?per_page=${Math.min(Math.max(limit, 1), 100)}`,
+    {
+      headers: { Accept: "application/vnd.github+json" },
+    },
+  );
+  if (!response.ok) throw new Error(`could not fetch llama.cpp releases (${response.status})`);
+  const releases: unknown = await response.json();
+  if (!Array.isArray(releases)) throw new Error("llama.cpp releases response was invalid");
+  return releases.flatMap((release) => {
+    if (!release || typeof release !== "object") return [];
+    const value = release as Record<string, unknown>;
+    const build = typeof value.tag_name === "string" ? value.tag_name : "";
+    return /^b\d+$/.test(build)
+      ? [{ build, publishedAt: typeof value.published_at === "string" ? value.published_at : null }]
+      : [];
+  });
+}
+
+/** Resolve the latest official build at the last responsible moment. */
+export async function latestRuntimeBuild(): Promise<string> {
+  const [latest] = await listRuntimeReleases(1);
+  if (!latest) throw new Error("llama.cpp published no release builds");
+  return latest.build;
+}
 
 /** The CUDA toolkit version whose Windows assets we pin. */
 const WINDOWS_CUDA = "12.4";
+const MANAGED_RUNTIME_METADATA_FILE = ".otto-runtime.json";
+
+interface ManagedRuntimeMetadata {
+  displayName: string;
+}
 
 /** The binary name llama.cpp ships for a platform. */
 export function serverExeName(platform: NodeJS.Platform = process.platform): string {
@@ -231,6 +270,34 @@ function slug(spec: RuntimeSpec): string {
     .replace(/(^-|-$)/g, "");
 }
 
+function displayNameForManagedRuntime(label: string, version: string): string {
+  return `${label.replace(/\s*\(managed\)$/iu, "")} · ${version} (Otto managed)`;
+}
+
+function legacyManagedDisplayName(dirName: string, version: string): string {
+  const cuda = /^cuda-(\d+)-(\d+)-managed(?:-|$)/iu.exec(dirName);
+  if (cuda) return `CUDA ${cuda[1]}.${cuda[2]} · ${version} (Otto managed)`;
+  if (/^vulkan-managed(?:-|$)/iu.test(dirName)) return `Vulkan · ${version} (Otto managed)`;
+  if (/^metal-managed(?:-|$)/iu.test(dirName)) return `Metal · ${version} (Otto managed)`;
+  if (/^cpu-managed(?:-|$)/iu.test(dirName)) return `CPU · ${version} (Otto managed)`;
+  return `${version} (Otto managed)`;
+}
+
+function readManagedRuntimeDisplayName(root: string, dirName: string, version: string): string {
+  try {
+    const parsed = JSON.parse(
+      fs.readFileSync(path.join(root, MANAGED_RUNTIME_METADATA_FILE), "utf8"),
+    ) as Partial<ManagedRuntimeMetadata>;
+    if (typeof parsed.displayName === "string" && parsed.displayName.trim()) {
+      return parsed.displayName;
+    }
+  } catch {
+    // Existing installations predate metadata; their directory name remains a
+    // backend-only migration source, never a UI presentation contract.
+  }
+  return legacyManagedDisplayName(dirName, version);
+}
+
 /** Recursively find the first file named `name` under `dir`. */
 function findFile(dir: string, name: string): string | null {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -281,9 +348,11 @@ export function listManagedRuntimes(
     const root = path.join(runtimesDir, entry.name);
     const exe = findFile(root, exeName);
     if (!exe) continue;
+    const version = entry.name.replace(/^.*-/, "");
     found.push({
       label: entry.name,
-      version: entry.name.replace(/^.*-/, ""),
+      displayName: readManagedRuntimeDisplayName(root, entry.name, version),
+      version,
       dir: path.dirname(exe),
       exe,
       vendorDir: null,
@@ -597,6 +666,7 @@ export async function installManagedRuntime(
 
   const runtime: Runtime = {
     label: spec.label,
+    displayName: displayNameForManagedRuntime(spec.label, spec.version),
     version: spec.version,
     dir: path.dirname(exe),
     exe,
@@ -608,6 +678,22 @@ export async function installManagedRuntime(
   // the loader error names the cause far better than the later spawn failure does.
   await verifyRuntimeExecutable(runtime, platform);
 
+  fs.writeFileSync(
+    path.join(targetDir, MANAGED_RUNTIME_METADATA_FILE),
+    `${JSON.stringify({ displayName: runtime.displayName })}\n`,
+  );
+
   onProgress?.({ phase: "done" });
   return runtime;
+}
+
+/** Remove one Otto-managed runtime. LM Studio files are outside this root. */
+export function removeManagedRuntime(runtimesDir: string, name: string): void {
+  if (!/^[a-z0-9][a-z0-9-]*$/i.test(name)) throw new Error("invalid runtime name");
+  const root = path.resolve(runtimesDir);
+  const target = path.resolve(root, name);
+  if (path.dirname(target) !== root || !fs.existsSync(target)) {
+    throw new Error(`managed runtime not found: ${name}`);
+  }
+  fs.rmSync(target, { recursive: true, force: false });
 }

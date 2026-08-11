@@ -249,16 +249,19 @@ const styles = StyleSheet.create((theme) => ({
   },
   value: {
     fontSize: theme.fontSize.xs,
+    lineHeight: theme.fontSize.xs * 1.4,
     color: theme.colors.foregroundMuted,
     fontVariant: ["tabular-nums"],
   },
   valueEmphasis: {
     fontSize: theme.fontSize.xs,
+    lineHeight: theme.fontSize.xs * 1.4,
     color: theme.colors.foreground,
     fontVariant: ["tabular-nums"],
   },
   label: {
     fontSize: theme.fontSize.xs,
+    lineHeight: theme.fontSize.xs * 1.4,
     color: theme.colors.foregroundMuted,
   },
   tooltipText: {

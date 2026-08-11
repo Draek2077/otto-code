@@ -64,6 +64,7 @@ import {
 } from "@/components/adaptive-modal-sheet";
 import { FloatingSurface } from "@/components/ui/floating";
 import { useDismissKeyboardOnOpen } from "@/components/ui/keyboard-dismiss";
+import { SearchClearButton } from "@/components/ui/search-clear-button";
 import {
   getOverlayRoot,
   OverlayLayerProvider,
@@ -175,6 +176,7 @@ function ComboboxSheetBackground({ style }: BottomSheetBackgroundProps) {
 }
 
 export interface SearchInputProps {
+  value: string;
   placeholder: string;
   onChangeText: (text: string) => void;
   onSubmitEditing?: () => void;
@@ -184,6 +186,7 @@ export interface SearchInputProps {
 }
 
 export function SearchInput({
+  value,
   placeholder,
   onChangeText,
   onSubmitEditing,
@@ -193,6 +196,10 @@ export function SearchInput({
 }: SearchInputProps): ReactElement {
   const { theme } = useUnistyles();
   const inputRef = useRef<TextInput>(null);
+  const clearSearch = useCallback(() => {
+    inputRef.current?.clear();
+    onChangeText("");
+  }, [onChangeText]);
 
   useEffect(() => {
     if (autoFocus && IS_WEB && inputRef.current) {
@@ -209,6 +216,7 @@ export function SearchInput({
       {useBottomSheetInput ? (
         <AdaptiveTextInput
           ref={inputRef}
+          value={value}
           // @ts-expect-error - outlineStyle is web-only
           style={[styles.searchInput, IS_WEB && { outlineStyle: "none" }]}
           placeholder={placeholder}
@@ -222,6 +230,7 @@ export function SearchInput({
         <TextInput
           key={resetKey}
           ref={inputRef}
+          value={value}
           // @ts-expect-error - outlineStyle is web-only
           style={[styles.searchInput, IS_WEB && { outlineStyle: "none" }]}
           placeholder={placeholder}
@@ -232,6 +241,7 @@ export function SearchInput({
           onSubmitEditing={onSubmitEditing}
         />
       )}
+      {value ? <SearchClearButton onPress={clearSearch} /> : null}
     </View>
   );
 }
@@ -1041,6 +1051,7 @@ function MobileComboboxBody(props: MobileBodyProps): ReactElement {
             {props.stickyHeader}
             {!props.hasChildren && props.searchable ? (
               <SearchInput
+                value={props.searchQuery}
                 placeholder={props.searchPlaceholder}
                 onChangeText={props.setSearchQueryWithCallback}
                 onSubmitEditing={props.handleSubmitSearch}
@@ -1158,6 +1169,7 @@ function DesktopComboboxOptionsBody(props: {
       {props.header ? <InlineHeaderView header={props.header} /> : props.stickyHeader}
       {props.header || !props.searchable ? null : (
         <SearchInput
+          value={props.searchQuery}
           placeholder={props.searchPlaceholder}
           onChangeText={props.setSearchQueryWithCallback}
           onSubmitEditing={props.handleSubmitSearch}

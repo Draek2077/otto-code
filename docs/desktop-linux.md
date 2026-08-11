@@ -271,6 +271,22 @@ while the GPU fallback is already relaunching, so the two don't collide.
 `runDesktopStartup` catch, so a GUI launch that dies before any window exists surfaces
 an error instead of exiting silently.
 
+## Updates and elevation
+
+`.deb` and `.rpm` updates invoke the system package manager through polkit
+(`pkexec`, where available) or `sudo`. Its authorization step is synchronous,
+before Electron receives the updater quit handoff. Keep the managed daemon alive
+until that handoff: cancelling a password prompt must leave Otto usable. AppImage
+keeps its explicit replacement path and Windows keeps its NSIS pre-installer
+daemon shutdown.
+
+Manual Electron/Linux verification:
+
+1. Install an older Otto `.deb` or `.rpm`, launch it, and confirm the managed daemon is running.
+2. Select **Update now**. Confirm the polkit/password prompt appears while the existing daemon remains reachable.
+3. Cancel once: Otto and its daemon must remain usable. Approve on the second attempt: Otto relaunches and the daemon reports the new version.
+4. Smoke the same update on Windows: the NSIS installer must still shut down and relaunch Otto normally.
+
 ## Diagnostics
 
 - **Logs**: `~/.config/Otto/logs/main.log` (electron-log). This is where the GPU

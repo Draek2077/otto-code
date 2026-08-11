@@ -27,6 +27,7 @@ export { BACKENDS_DIR, LMSTUDIO_ROOT, listRuntimes as listLmStudioRuntimes } fro
 export { buildArgs, buildEnv, formatCommand, type ServeTarget } from "./args.js";
 export {
   installManagedRuntime,
+  removeManagedRuntime,
   listManagedRuntimes,
   listRuntimeDevices,
   verifyRuntimeExecutable,
@@ -36,6 +37,9 @@ export {
   serverExeName,
   supportedVariants,
   DEFAULT_LLAMA_BUILD,
+  listRuntimeReleases,
+  latestRuntimeBuild,
+  type RuntimeRelease,
   type RuntimeSpec,
   type RuntimeTarget,
   type RuntimeVariant,

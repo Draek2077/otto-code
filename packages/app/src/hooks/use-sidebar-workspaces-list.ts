@@ -5,7 +5,7 @@ import { useStoreWithEqualityFn } from "zustand/traditional";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
 import {
-  selectProjectDiffStat,
+  selectProjectChangeStat,
   selectWorkspace,
   workspaceEqualityFns,
 } from "@/stores/session-store-hooks/selectors";
@@ -80,12 +80,13 @@ export function useSidebarWorkspaceEntry(
 
 // Aggregates diff counts across every workspace in a project, so the project row can
 // show a single total instead of duplicating the count on each workspace row.
-export function useSidebarProjectDiffStat(
+export function useSidebarProjectChangeStat(
   workspaces: ReadonlyArray<{ serverId: string; workspaceId: string }>,
+  indicator: "uncommitted" | "branch" | "hidden",
 ): { additions: number; deletions: number } | null {
   return useStoreWithEqualityFn(
     useSessionStore,
-    (state) => selectProjectDiffStat(state, workspaces),
+    (state) => selectProjectChangeStat(state, workspaces, indicator),
     equal,
   );
 }

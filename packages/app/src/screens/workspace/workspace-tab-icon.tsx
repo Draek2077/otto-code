@@ -1,7 +1,8 @@
 import { useMemo, type ReactElement } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { BlobLoader, ThemedBlobLoader } from "@/components/blob-loader";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { PersonalityProviderIcon } from "@/components/personality-provider-icon";
 import { StatusBucketIcon, isAttentionStatusBucket } from "@/components/status-bucket-icon";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
@@ -62,7 +63,7 @@ export function WorkspaceTabIcon({
     if (presentation.busyLoader === "spinner") {
       return (
         <View style={agentIconWrapperStyle}>
-          <ActivityIndicator size={resolvedSize} color={iconColor} />
+          <LoadingSpinner size={resolvedSize} />
         </View>
       );
     }

@@ -251,7 +251,7 @@ describe("diff mode override", () => {
     expect(resolveDiffMode({ override: undefined, hasUncommittedChanges: false })).toBe("base");
   });
 
-  it("honors the override while isDirty matches the value at selection, across remounts", () => {
+  it("honors the override across remounts", () => {
     const state = setDiffModeOverrideInState(emptyState(), {
       scopeKey: "review:scope",
       override: makeOverride({ mode: "base", isDirtyAtSelection: true }),
@@ -262,17 +262,17 @@ describe("diff mode override", () => {
     expect(resolveDiffMode({ override, hasUncommittedChanges: true })).toBe("base");
   });
 
-  it("masks a stale override before its expiry lands", () => {
+  it("keeps an Uncommitted selection after a commit", () => {
     const state = setDiffModeOverrideInState(emptyState(), {
       scopeKey: "review:scope",
       override: makeOverride({ mode: "uncommitted", isDirtyAtSelection: true }),
     });
 
     const override = state.diffModeOverrides["review:scope"];
-    expect(resolveDiffMode({ override, hasUncommittedChanges: false })).toBe("base");
+    expect(resolveDiffMode({ override, hasUncommittedChanges: false })).toBe("uncommitted");
   });
 
-  it("expires overrides for the checkout whose dirty state flipped, keeping the rest", () => {
+  it("keeps overrides when checkout dirty state changes", () => {
     let state = setDiffModeOverrideInState(emptyState(), {
       scopeKey: "review:scope-a",
       override: makeOverride({ mode: "base", isDirtyAtSelection: true }),
@@ -297,40 +297,39 @@ describe("diff mode override", () => {
       isDirty: false,
     });
 
-    expect(next.diffModeOverrides["review:scope-a"]).toBeUndefined();
+    expect(next.diffModeOverrides["review:scope-a"]).toBeDefined();
     expect(next.diffModeOverrides["review:scope-b"]).toBeDefined();
     expect(next.diffModeOverrides["review:scope-other"]).toBeDefined();
   });
 
-  it("does not resurrect an expired override when the dirty state flips back", () => {
+  it("keeps a committed selection when new uncommitted changes arrive", () => {
     let state = setDiffModeOverrideInState(emptyState(), {
       scopeKey: "review:scope",
       override: makeOverride({ mode: "base", isDirtyAtSelection: true }),
     });
 
-    // The checkout goes clean (e.g. agent commits): the override expires at the boundary.
+    // The checkout goes clean (e.g. agent commits), then dirty again.
     state = expireStaleDiffModeOverridesInState(state, {
       serverId: "server-1",
       cwd: "/repo",
       isDirty: false,
     });
-    // The checkout goes dirty again: nothing to expire, and nothing comes back.
     state = expireStaleDiffModeOverridesInState(state, {
       serverId: "server-1",
       cwd: "/repo",
       isDirty: true,
     });
 
-    expect(state.diffModeOverrides["review:scope"]).toBeUndefined();
+    expect(state.diffModeOverrides["review:scope"]).toBeDefined();
     expect(
       resolveDiffMode({
         override: state.diffModeOverrides["review:scope"],
         hasUncommittedChanges: true,
       }),
-    ).toBe("uncommitted");
+    ).toBe("base");
   });
 
-  it("keeps state identity when no override is stale", () => {
+  it("keeps state identity across status updates", () => {
     const state = setDiffModeOverrideInState(emptyState(), {
       scopeKey: "review:scope",
       override: makeOverride({ mode: "base", isDirtyAtSelection: true }),

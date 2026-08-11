@@ -21,6 +21,7 @@ import {
   createUnavailableSearchResult,
   normalizeForgeSearchKinds,
   parseOptionalTime,
+  sortPullRequestsLatestFirst,
 } from "./forge-service.js";
 import type {
   CheckDetails,
@@ -1800,7 +1801,7 @@ export function createGiteaService(options: CreateGiteaServiceOptions = {}): For
         state: "open",
         query: input.query,
         limit: input.limit,
-      }).then((items) => items.map(toPullRequestSummary));
+      }).then((items) => sortPullRequestsLatestFirst(items.map(toPullRequestSummary)));
     },
 
     listIssues(input: ListIssuesOptions): Promise<IssueSummary[]> {

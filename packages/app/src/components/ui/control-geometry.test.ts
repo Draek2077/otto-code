@@ -29,6 +29,7 @@ const theme = {
   },
   spacing: {
     0: 0,
+    2: 8,
     3: 12,
     4: 16,
     6: 24,
@@ -155,15 +156,10 @@ describe("control geometry", () => {
     expect(geometry.segmentedLabelSm.fontSize).toBe(geometry.buttonText.fontSize);
     expect(geometry.segmentedLabelMd.fontSize).toBe(16);
 
-    // A segment carries more horizontal padding than the button of the same
-    // name: it is a thumb in a track, not a standalone control, so its label
-    // needs room to sit off the track's inner edge.
-    expect(geometry.segmentedSegmentXs.paddingHorizontal).toBe(geometry.buttonXs.paddingHorizontal);
-    expect(geometry.segmentedSegmentSm.paddingHorizontal).toBeGreaterThan(
-      geometry.buttonSm.paddingHorizontal,
-    );
-    expect(geometry.segmentedSegmentMd.paddingHorizontal).toBeGreaterThan(
-      geometry.buttonMd.paddingHorizontal,
-    );
+    // Segmented tabs stay compact at every height so labels keep their room in
+    // narrow panes. The 8px inset is deliberately independent of button size.
+    expect(geometry.segmentedSegmentXs.paddingHorizontal).toBe(8);
+    expect(geometry.segmentedSegmentSm.paddingHorizontal).toBe(8);
+    expect(geometry.segmentedSegmentMd.paddingHorizontal).toBe(8);
   });
 });

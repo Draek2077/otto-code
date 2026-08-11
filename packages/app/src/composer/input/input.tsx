@@ -4,7 +4,6 @@ import {
   TextInput,
   Pressable,
   Platform,
-  ActivityIndicator,
   useWindowDimensions,
   type LayoutChangeEvent,
   NativeSyntheticEvent,
@@ -23,6 +22,7 @@ import {
   forwardRef,
 } from "react";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useTranslation } from "react-i18next";
 import { compactUp, type Theme, useIconSize } from "@/styles/theme";
 import {
@@ -2328,7 +2328,7 @@ const ThemedMic = withUnistyles(Mic);
 const ThemedMicOff = withUnistyles(MicOff);
 const ThemedArrowUp = withUnistyles(ArrowUp);
 const ThemedCornerDownLeft = withUnistyles(CornerDownLeft);
-const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
+const ThemedActivityIndicator = withUnistyles(LoadingSpinner);
 const ThemedTextInput = withUnistyles(TextInput);
 
 const iconForegroundMapping = (theme: Theme) => ({ color: theme.colors.foreground });

@@ -5,6 +5,7 @@ import {
   type WorkspaceStructureProject,
 } from "@/projects/workspace-structure";
 import type { DesktopBadgeWorkspaceStatus } from "@/utils/desktop-badge-state";
+import type { WorkspaceChangeIndicator } from "@/hooks/use-settings/storage";
 import { resolveWorkspaceMapKeyByIdentity } from "@/utils/workspace-identity";
 import type { ProjectDescriptor, WorkspaceDescriptor } from "../session-store";
 
@@ -102,11 +103,47 @@ export function selectProjectDiffStat(
   state: SessionsSnapshot,
   workspaces: ReadonlyArray<{ serverId: string; workspaceId: string }>,
 ): { additions: number; deletions: number } | null {
+  return selectProjectChangeStat(state, workspaces, "branch");
+}
+
+/**
+ * Select the +/- stat displayed for one workspace. `uncommitted` is relative
+ * to HEAD (and includes untracked files); `branch` is relative to its resolved
+ * base; `hidden` suppresses the indicator entirely.
+ */
+export function selectWorkspaceChangeStat(
+  workspace: Pick<WorkspaceDescriptor, "workingTreeDiffStat" | "diffStat">,
+  indicator: WorkspaceChangeIndicator,
+): { additions: number; deletions: number } | null {
+  switch (indicator) {
+    case "uncommitted":
+      return workspace.workingTreeDiffStat ?? null;
+    case "branch":
+      return workspace.diffStat;
+    case "hidden":
+      return null;
+  }
+}
+
+/**
+ * Aggregate the same mode-specific +/- stat used by workspace rows. This keeps
+ * a project header from silently falling back to branch-versus-base totals.
+ */
+export function selectProjectChangeStat(
+  state: SessionsSnapshot,
+  workspaces: ReadonlyArray<{ serverId: string; workspaceId: string }>,
+  indicator: WorkspaceChangeIndicator,
+): { additions: number; deletions: number } | null {
+  if (indicator === "hidden") {
+    return null;
+  }
+
   let additions = 0;
   let deletions = 0;
   let hasDiffStat = false;
   for (const { serverId, workspaceId } of workspaces) {
-    const diffStat = selectWorkspace(state, serverId, workspaceId)?.diffStat;
+    const workspace = selectWorkspace(state, serverId, workspaceId);
+    const diffStat = workspace ? selectWorkspaceChangeStat(workspace, indicator) : null;
     if (!diffStat) continue;
     hasDiffStat = true;
     additions += diffStat.additions;

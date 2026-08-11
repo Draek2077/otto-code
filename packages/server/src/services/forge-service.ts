@@ -29,6 +29,19 @@ export interface PullRequestSummary {
   updatedAt: string;
 }
 
+/** Keeps every forge's change-request picker deterministic and recency-first. */
+export function sortPullRequestsLatestFirst(
+  pullRequests: readonly PullRequestSummary[],
+): PullRequestSummary[] {
+  return [...pullRequests].sort((left, right) => {
+    const rightTime = Date.parse(right.updatedAt);
+    const leftTime = Date.parse(left.updatedAt);
+    const safeRightTime = Number.isFinite(rightTime) ? rightTime : Number.NEGATIVE_INFINITY;
+    const safeLeftTime = Number.isFinite(leftTime) ? leftTime : Number.NEGATIVE_INFINITY;
+    return safeRightTime - safeLeftTime || right.number - left.number;
+  });
+}
+
 export interface PullRequestCheckoutTarget {
   number: number;
   baseRefName: string;

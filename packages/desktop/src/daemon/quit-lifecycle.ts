@@ -98,6 +98,7 @@ export function createQuitLifecycle({
   stopDesktopManagedDaemonIfNeeded,
   installAppUpdateOnQuit,
   createUpdateDeadlineSignal,
+  deferDaemonStopUntilUpdateHandoff = false,
   onStopError,
   onUpdateError,
 }: {
@@ -112,6 +113,7 @@ export function createQuitLifecycle({
   // the installer, which re-fires the quit itself.
   installAppUpdateOnQuit: (signal: AbortSignal) => Promise<boolean>;
   createUpdateDeadlineSignal: () => AbortSignal;
+  deferDaemonStopUntilUpdateHandoff?: boolean;
   onStopError: (error: unknown) => void;
   onUpdateError: (error: unknown) => void;
 }): QuitLifecycle {
@@ -151,13 +153,14 @@ export function createQuitLifecycle({
         return;
       }
 
-      try {
-        await stopDesktopManagedDaemonIfNeeded();
-      } catch (error) {
-        onStopError(error);
-      }
-
       const signal = createUpdateDeadlineSignal();
+      if (!deferDaemonStopUntilUpdateHandoff) {
+        try {
+          await stopDesktopManagedDaemonIfNeeded();
+        } catch (error) {
+          onStopError(error);
+        }
+      }
       const updateInstallation = installAppUpdateOnQuit(signal).catch((error) => {
         onUpdateError(error);
         return false;
@@ -173,6 +176,14 @@ export function createQuitLifecycle({
         ]);
         if (handoffStarted) {
           return;
+        }
+      }
+
+      if (deferDaemonStopUntilUpdateHandoff) {
+        try {
+          await stopDesktopManagedDaemonIfNeeded();
+        } catch (error) {
+          onStopError(error);
         }
       }
 

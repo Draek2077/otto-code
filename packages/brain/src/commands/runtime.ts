@@ -13,6 +13,8 @@ import { CommandError } from "../output/types.js";
 import {
   defaultRuntimeSpec,
   installManagedRuntime,
+  latestRuntimeBuild,
+  removeManagedRuntime,
   listAllRuntimes,
   listRuntimeDevices,
   probeNvidiaGpu,
@@ -22,6 +24,7 @@ import {
 
 export interface RuntimeRow {
   label: string;
+  displayName: string;
   version: string;
   source: string;
   dir: string;
@@ -45,6 +48,7 @@ const runtimeSchema: OutputSchema<RuntimeRow> = {
 function toRows(): RuntimeRow[] {
   return listAllRuntimes().map((r) => ({
     label: r.label,
+    displayName: r.displayName ?? `${r.label} · ${r.version}`,
     version: r.version,
     source: r.source,
     dir: r.dir,
@@ -65,11 +69,25 @@ export async function runRuntimeListCommand(
 export function addRuntimeInstallOptions(cmd: Command): Command {
   return cmd
     .description("Download a self-contained llama.cpp runtime")
-    .option("--build <tag>", "llama.cpp release build tag")
+    .option("--build <tag>", "llama.cpp release build tag (for example b10355)")
     .option(
       "--variant <name>",
       `accelerator to install (${supportedVariants().join("|")}); defaults to the best one this machine can use`,
     );
+}
+
+export function addRuntimeRemoveOptions(cmd: Command): Command {
+  return cmd.description("Remove one Otto-managed runtime").argument("<name>");
+}
+
+export async function runRuntimeRemoveCommand(
+  name: string,
+  _options: unknown,
+  _command: Command,
+): Promise<AnyCommandResult<RuntimeRow>> {
+  loadBrainConfig();
+  removeManagedRuntime(resolveBrainPaths().runtimesDir, name);
+  return { type: "list", data: toRows(), schema: runtimeSchema };
 }
 
 export async function runRuntimeInstallCommand(
@@ -91,7 +109,8 @@ export async function runRuntimeInstallCommand(
 
   // Only "auto" needs the GPU probe, and only to choose between CUDA and Vulkan
   // on the platforms that have both.
-  const spec = defaultRuntimeSpec(options.build, {
+  const requestedBuild = options.build === "latest" ? await latestRuntimeBuild() : options.build;
+  const spec = defaultRuntimeSpec(requestedBuild, {
     variant: (options.variant as RuntimeVariant | undefined) ?? "auto",
     hasNvidiaGpu: options.variant ? undefined : await probeNvidiaGpu(),
   });
@@ -127,6 +146,7 @@ export async function runRuntimeInstallCommand(
     type: "single",
     data: {
       label: runtime.label,
+      displayName: runtime.displayName ?? `${runtime.label} · ${runtime.version}`,
       version: runtime.version,
       source: runtime.source,
       dir: runtime.dir,

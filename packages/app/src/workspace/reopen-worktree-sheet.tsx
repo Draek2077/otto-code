@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState, type ReactElement } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import type { PressableStateCallbackType } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
@@ -8,6 +8,7 @@ import type { UseQueryResult } from "@tanstack/react-query";
 
 import { useFetchQuery } from "@/data/query";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { GitBranch } from "@/components/icons/material-icons";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { useHostFeature } from "@/runtime/host-features";
@@ -186,7 +187,7 @@ function ReopenWorktreeBody({
   if (query.isLoading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator />
+        <LoadingSpinner />
       </View>
     );
   }

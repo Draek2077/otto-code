@@ -8,7 +8,6 @@ import React, {
   type SetStateAction,
 } from "react";
 import {
-  ActivityIndicator,
   Pressable,
   ScrollView,
   Text,
@@ -37,6 +36,7 @@ import {
   X,
 } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useTranslation } from "react-i18next";
 import { useRouter, type Href } from "expo-router";
 import { SortableInlineList } from "@/components/sortable-inline-list";
@@ -163,7 +163,7 @@ const TAB_OVERFLOW_CONTROL_WIDTH = 40;
 // requiring the user to open the picker first.
 const PREVIEW_SERVER_POLL_INTERVAL_MS = 10_000;
 
-const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
+const ThemedActivityIndicator = withUnistyles(LoadingSpinner);
 const ThemedX = withUnistyles(X);
 const ThemedCopy = withUnistyles(Copy);
 const ThemedRotateCw = withUnistyles(RotateCw);
@@ -2015,7 +2015,7 @@ function TabChip({
                     if (onBlack) {
                       const onBlackColor = isCloseEmphasized ? ON_BLACK_FOREGROUND : ON_BLACK_MUTED;
                       return isClosingTab ? (
-                        <ActivityIndicator size={12} color={onBlackColor} />
+                        <LoadingSpinner size={12} />
                       ) : (
                         <X size={12} color={onBlackColor} />
                       );

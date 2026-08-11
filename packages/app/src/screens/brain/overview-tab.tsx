@@ -35,9 +35,12 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor, useIsExtraCompactFormFactor } from "@/constants/layout";
 import { useHostRuntimeClient, useHostRuntimeConnectionStatus } from "@/runtime/host-runtime";
+import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import {
   prependJob,
-  RuntimeRow,
+  formatBrainRuntime,
+  resolveSelectedBrainRuntime,
+  RuntimeManagerSheet,
   useBrainJobs,
   useBrainRuntimes,
   useRefreshOnJobCompletion,
@@ -496,7 +499,6 @@ function DetailSections({
   return (
     <View style={isCompact ? styles.detailColumnsStacked : styles.detailColumns}>
       <TrafficPanel telemetry={telemetry} />
-      <View style={isCompact ? styles.dividerHorizontal : styles.dividerVertical} />
       <HostPanel status={status} />
     </View>
   );
@@ -561,18 +563,18 @@ function RuntimePanel({
   serverId,
   isConnected,
   canInstall,
-  fillHeight,
 }: {
   serverId: string;
   isConnected: boolean;
   canInstall: boolean;
-  fillHeight?: boolean;
 }) {
   const queryClient = useQueryClient();
   const runtimesQuery = useBrainRuntimes(serverId, isConnected);
   const jobsQuery = useBrainJobs(serverId, isConnected);
   const runtimes = useMemo(() => runtimesQuery.data ?? [], [runtimesQuery.data]);
   const jobs = useMemo(() => jobsQuery.data ?? [], [jobsQuery.data]);
+  const { config } = useDaemonConfig(serverId);
+  const [managerVisible, setManagerVisible] = useState(false);
   useRefreshOnJobCompletion(serverId, jobs);
   const busy = jobs.some((job) => job.status === "running");
 
@@ -585,14 +587,57 @@ function RuntimePanel({
     [queryClient, serverId],
   );
 
+  const selectedPath = config?.brain?.runtime?.path ?? null;
+  const selectedRuntime = useMemo(
+    () => resolveSelectedBrainRuntime(runtimes, selectedPath),
+    [runtimes, selectedPath],
+  );
+  let runtimeName = "Runtime unavailable";
+  let runtimeDetail = "No managed runtime installed";
+  let runtimeHealthLabel = "Action needed";
+  let runtimeHealthVariant: "success" | "warning" | "muted" = "warning";
+  if (runtimesQuery.data === undefined) {
+    runtimeName = "Runtime status unknown";
+    runtimeDetail = "Checking runtime";
+    runtimeHealthLabel = "Status unknown";
+    runtimeHealthVariant = "muted";
+  } else if (selectedRuntime) {
+    runtimeName = "llama.cpp";
+    runtimeDetail = formatBrainRuntime(selectedRuntime);
+    runtimeHealthLabel = "Installed";
+    runtimeHealthVariant = "success";
+  }
+  const handleOpenManager = useCallback(() => setManagerVisible(true), []);
+  const handleCloseManager = useCallback(() => setManagerVisible(false), []);
+
   return (
-    <View style={[styles.panelFlush, fillHeight && styles.fillHeight]}>
-      <RuntimeRow
+    <>
+      <View style={styles.hero}>
+        <View style={styles.heroText}>
+          <View style={styles.heroTitleRow}>
+            <Text style={styles.heroTitle} numberOfLines={1}>
+              {runtimeName}
+            </Text>
+            <StatusBadge label={runtimeHealthLabel} variant={runtimeHealthVariant} />
+          </View>
+          <Text style={styles.heroSubtitle} numberOfLines={1}>
+            {runtimeDetail}
+          </Text>
+        </View>
+        <Button
+          variant="outline"
+          size="sm"
+          onPress={handleOpenManager}
+          testID="brain-manage-runtime-button"
+        >
+          Manage runtime
+        </Button>
+      </View>
+      <RuntimeManagerSheet
+        visible={managerVisible}
+        onClose={handleCloseManager}
         serverId={serverId}
         runtimes={runtimes}
-        // An empty list only means "not installed" once this host has actually
-        // answered. Disconnected, the query never runs and `data` stays
-        // undefined - see the note on RuntimeRow.
         answered={runtimesQuery.data !== undefined}
         loading={runtimesQuery.isLoading}
         busy={busy}
@@ -600,7 +645,7 @@ function RuntimePanel({
         jobs={jobs}
         onStarted={handleJobStarted}
       />
-    </View>
+    </>
   );
 }
 
@@ -686,7 +731,6 @@ export function BrainOverviewTab({
               serverId={serverId}
               isConnected={isConnected}
               canInstall={canInstallRuntime}
-              fillHeight={!stackTopSections}
             />
           </View>
         ) : null}
@@ -718,7 +762,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   topSections: {
     flexDirection: "row",
-    alignItems: "stretch",
+    alignItems: "flex-start",
     gap: theme.spacing[4],
   },
   topSectionsStacked: {
@@ -923,14 +967,5 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minWidth: 0,
     gap: theme.spacing[2],
-  },
-  dividerVertical: {
-    width: 1,
-    alignSelf: "stretch",
-    backgroundColor: theme.colors.border,
-  },
-  dividerHorizontal: {
-    height: 1,
-    backgroundColor: theme.colors.border,
   },
 }));

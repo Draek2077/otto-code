@@ -626,6 +626,12 @@ export const MutableBrainConfigSchema = z
       .passthrough()
       .default({ host: "127.0.0.1", port: 1234 }),
     defaultModel: z.string().nullable().default(null),
+    runtime: z
+      .object({
+        source: z.enum(["auto", "managed", "lmstudio"]).default("auto"),
+        path: z.string().nullable().default(null),
+      })
+      .default({ source: "auto", path: null }),
     // Pin the host to one model: serve only the default/resident model and
     // refuse completion requests that ask for a different one.
     lockModel: z.boolean().default(false),
@@ -703,6 +709,9 @@ export const MutableBrainConfigPatchSchema = z
     remote: MutableBrainRemotePatchSchema,
     listen: MutableBrainListenPatchSchema,
     defaultModel: z.string().nullable(),
+    runtime: z
+      .object({ source: z.enum(["auto", "managed", "lmstudio"]), path: z.string().nullable() })
+      .partial(),
     lockModel: z.boolean(),
     allowRemoteConfig: z.boolean(),
     allowInsecureBind: z.boolean(),
@@ -720,6 +729,7 @@ export const DEFAULT_MUTABLE_BRAIN_CONFIG = {
   remote: { host: "", port: 1234, secure: false, authToken: null, certFingerprint: null },
   listen: { host: "127.0.0.1", port: 1234 },
   defaultModel: null,
+  runtime: { source: "auto" as const, path: null },
   lockModel: false,
   allowRemoteConfig: false,
   allowInsecureBind: false,
@@ -2216,6 +2226,23 @@ export const BrainCatalogModelSchema = z
     tier: z.string().default(""),
     useCases: z.array(z.string()).default([]),
     why: z.string().default(""),
+    components: z
+      .array(
+        z.object({
+          id: z.string(),
+          label: z.string().default(""),
+          description: z.string().default(""),
+          role: z.string().default(""),
+          hfRepo: z.string().optional(),
+          file: z.string().default(""),
+          bytes: z.number().nullable().optional(),
+          required: z.boolean().default(false),
+          defaultDownload: z.boolean().default(false),
+          defaultLoad: z.boolean().default(false),
+          minRuntimeBuild: z.number().optional(),
+        }),
+      )
+      .optional(),
   })
   .passthrough();
 export type BrainCatalogModel = z.infer<typeof BrainCatalogModelSchema>;
@@ -2224,6 +2251,9 @@ export type BrainCatalogModel = z.infer<typeof BrainCatalogModelSchema>;
 export const BrainRuntimeSchema = z
   .object({
     label: z.string().default(""),
+    // A human-readable runtime identity. The filesystem-safe `label` remains
+    // for older hosts and destructive operations, not for UI presentation.
+    displayName: z.string().default(""),
     version: z.string().default(""),
     source: z.string().default(""),
     dir: z.string().default(""),
@@ -2238,6 +2268,7 @@ export type BrainRuntime = z.infer<typeof BrainRuntimeSchema>;
 export const BrainJobKindSchema = z.enum([
   "pull",
   "runtime-install",
+  "runtime-remove",
   "calibrate",
   "sweep",
   "bench",
@@ -2327,6 +2358,9 @@ export const BrainModelsPullRequestSchema = z.object({
   type: z.literal("brain.models.pull.request"),
   // Catalog id or name fragment.
   model: z.string(),
+  quant: z.string().optional(),
+  // COMPAT(brainModelBundles): added in v0.8.7, drop the gate when floor >= v0.8.7.
+  components: z.array(z.string()).optional(),
   requestId: z.string(),
 });
 export const BrainModelsPullResponseSchema = z.object({
@@ -2343,6 +2377,16 @@ export const BrainRuntimeInstallRequestSchema = z.object({
 });
 export const BrainRuntimeInstallResponseSchema = z.object({
   type: z.literal("brain.runtime.install.response"),
+  payload: BrainJobResultSchema,
+});
+
+export const BrainRuntimeRemoveRequestSchema = z.object({
+  type: z.literal("brain.runtime.remove.request"),
+  name: z.string(),
+  requestId: z.string(),
+});
+export const BrainRuntimeRemoveResponseSchema = z.object({
+  type: z.literal("brain.runtime.remove.response"),
   payload: BrainJobResultSchema,
 });
 
@@ -2416,6 +2460,8 @@ export const BrainHfSearchResultSchema = z
     downloads: z.number().default(0),
     likes: z.number().default(0),
     gated: z.boolean().default(false),
+    // A short, source-authored excerpt extracted from the repository's model card.
+    summary: z.string().nullable().optional(),
     // True when any quant of this repo is already on disk.
     installed: z.boolean().default(false),
   })
@@ -2429,8 +2475,23 @@ export const BrainRepoQuantSchema = z
     size: z.string().default(""),
     sizeBytes: z.number().default(0),
     files: z.number().default(0),
+    fileNames: z.array(z.string()).optional(),
     // True when this specific quant is already on disk.
     installed: z.boolean().default(false),
+    // The installed model's stable id, when this quant is already on disk.
+    // Optional so daemons predating quant deletion remain compatible.
+    modelId: z.string().nullable().optional(),
+    // The shared projector detected in this repository. It is repeated on
+    // each quant row because the quant picker is the unit that discovers and
+    // presents a downloadable Hugging Face bundle.
+    projector: z
+      .object({
+        file: z.string(),
+        sizeBytes: z.number(),
+        // COMPAT(brainDiscoveredProjectorState): added in v0.8.7, remove after 2027-02-11.
+        installed: z.boolean().optional(),
+      })
+      .optional(),
   })
   .passthrough();
 export type BrainRepoQuant = z.infer<typeof BrainRepoQuantSchema>;
@@ -2471,6 +2532,8 @@ export const BrainModelsAddRequestSchema = z.object({
   type: z.literal("brain.models.add.request"),
   repo: z.string(),
   quant: z.string(),
+  // COMPAT(brainDiscoveredBundleComponents): added in v0.8.7, remove after 2027-02-11.
+  components: z.array(z.string()).optional(),
   requestId: z.string(),
 });
 export const BrainModelsAddResponseSchema = z.object({
@@ -2503,6 +2566,7 @@ export const BrainProfileSchema = z
     flashAttention: z.boolean().default(true),
     gpuLayers: z.number().default(0),
     vision: z.boolean().default(false),
+    enabledComponents: z.array(z.string()).optional(),
     reasoningBudget: z.number().default(0),
     parallelSlots: z.number().default(1),
   })
@@ -2557,6 +2621,9 @@ export const BrainBudgetSchema = z
   .object({
     weightsBytes: z.number().default(0),
     mmprojBytes: z.number().default(0),
+    componentBytes: z.number().optional(),
+    drafterKvBytes: z.number().optional(),
+    imageProcessingBytes: z.number().optional(),
     kvBytes: z.number().default(0),
     overheadBytes: z.number().default(0),
     totalBytes: z.number().default(0),
@@ -2606,6 +2673,24 @@ export const BrainInventoryModelSchema = z
     blockCount: z.number().nullable().default(null),
     headCountKv: z.number().nullable().default(null),
     hasProjector: z.boolean().default(false),
+    components: z
+      .array(
+        z.object({
+          id: z.string(),
+          label: z.string().default(""),
+          description: z.string().default(""),
+          role: z.string().default(""),
+          bytes: z.number().default(0),
+          available: z.boolean().default(false),
+          unavailableReason: z.string().optional(),
+          required: z.boolean().default(false),
+          defaultDownload: z.boolean().default(false),
+          defaultLoad: z.boolean().default(false),
+          minRuntimeBuild: z.number().optional(),
+        }),
+      )
+      .nullable()
+      .optional(),
     reasoning: z.boolean().default(false),
     mtp: z.boolean().default(false),
     distilled: z.boolean().default(false),
@@ -2757,6 +2842,22 @@ export const BrainModelDeleteResponseSchema = z.object({
     includesProjector: z.boolean().default(false),
     /** How many models remain after the re-scan. */
     remaining: z.number().default(0),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const BrainModelComponentDeleteRequestSchema = z.object({
+  type: z.literal("brain.model.component.delete.request"),
+  modelId: z.string(),
+  componentId: z.string(),
+  requestId: z.string(),
+});
+export const BrainModelComponentDeleteResponseSchema = z.object({
+  type: z.literal("brain.model.component.delete.response"),
+  payload: z.object({
+    deleted: z.array(z.string()).default([]),
+    freedBytes: z.number().default(0),
     error: z.string().nullable(),
     requestId: z.string(),
   }),
@@ -6997,6 +7098,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   BrainRuntimeListRequestSchema,
   BrainModelsPullRequestSchema,
   BrainRuntimeInstallRequestSchema,
+  BrainRuntimeRemoveRequestSchema,
   BrainCalibrateRequestSchema,
   BrainSweepRequestSchema,
   BrainBenchRequestSchema,
@@ -7012,6 +7114,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   BrainModelLoadRequestSchema,
   BrainModelUnloadRequestSchema,
   BrainModelDeleteRequestSchema,
+  BrainModelComponentDeleteRequestSchema,
   BrainModelRenameRequestSchema,
   BrainModelRenameResetRequestSchema,
   BrainLogsTailRequestSchema,
@@ -8204,6 +8307,9 @@ const WorkspaceGitRuntimePayloadSchema = z
     remoteUrl: z.string().nullable().optional(),
     isOttoOwnedWorktree: z.boolean().optional(),
     isDirty: z.boolean().nullable().optional(),
+    // COMPAT(workspaceGitBaseRef): added in v0.8.7, remove after 2027-02-10.
+    // The branch-history label is useful only when its comparison base is explicit.
+    baseRef: z.string().nullable().optional(),
     aheadBehind: z
       .object({
         ahead: z.number(),
@@ -8299,6 +8405,16 @@ export const WorkspaceDescriptorPayloadSchema = z
       .transform((value) => value ?? null),
     activityAt: z.string().nullable(),
     diffStat: z
+      .object({
+        additions: z.number(),
+        deletions: z.number(),
+      })
+      .nullable()
+      .optional(),
+    // COMPAT(workspaceWorkingTreeDiffStat): added in v0.8.7, remove after 2027-02-10.
+    // `diffStat` is retained for older clients and means branch-versus-base.
+    // This field is only the working tree relative to HEAD, so it clears on commit.
+    workingTreeDiffStat: z
       .object({
         additions: z.number(),
         deletions: z.number(),
@@ -12034,6 +12150,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   BrainRuntimeListResponseSchema,
   BrainModelsPullResponseSchema,
   BrainRuntimeInstallResponseSchema,
+  BrainRuntimeRemoveResponseSchema,
   BrainCalibrateResponseSchema,
   BrainSweepResponseSchema,
   BrainBenchResponseSchema,
@@ -12049,6 +12166,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   BrainModelLoadResponseSchema,
   BrainModelUnloadResponseSchema,
   BrainModelDeleteResponseSchema,
+  BrainModelComponentDeleteResponseSchema,
   BrainModelRenameResponseSchema,
   BrainModelRenameResetResponseSchema,
   BrainLogsTailResponseSchema,
@@ -13034,6 +13152,8 @@ export type BrainModelsPullRequest = z.infer<typeof BrainModelsPullRequestSchema
 export type BrainModelsPullResponse = z.infer<typeof BrainModelsPullResponseSchema>;
 export type BrainRuntimeInstallRequest = z.infer<typeof BrainRuntimeInstallRequestSchema>;
 export type BrainRuntimeInstallResponse = z.infer<typeof BrainRuntimeInstallResponseSchema>;
+export type BrainRuntimeRemoveRequest = z.infer<typeof BrainRuntimeRemoveRequestSchema>;
+export type BrainRuntimeRemoveResponse = z.infer<typeof BrainRuntimeRemoveResponseSchema>;
 export type BrainCalibrateRequest = z.infer<typeof BrainCalibrateRequestSchema>;
 export type BrainCalibrateResponse = z.infer<typeof BrainCalibrateResponseSchema>;
 export type BrainSweepRequest = z.infer<typeof BrainSweepRequestSchema>;
@@ -13064,6 +13184,12 @@ export type BrainModelUnloadRequest = z.infer<typeof BrainModelUnloadRequestSche
 export type BrainModelUnloadResponse = z.infer<typeof BrainModelUnloadResponseSchema>;
 export type BrainModelDeleteRequest = z.infer<typeof BrainModelDeleteRequestSchema>;
 export type BrainModelDeleteResponse = z.infer<typeof BrainModelDeleteResponseSchema>;
+export type BrainModelComponentDeleteRequest = z.infer<
+  typeof BrainModelComponentDeleteRequestSchema
+>;
+export type BrainModelComponentDeleteResponse = z.infer<
+  typeof BrainModelComponentDeleteResponseSchema
+>;
 export type BrainModelRenameRequest = z.infer<typeof BrainModelRenameRequestSchema>;
 export type BrainModelRenameResponse = z.infer<typeof BrainModelRenameResponseSchema>;
 export type BrainModelRenameResetRequest = z.infer<typeof BrainModelRenameResetRequestSchema>;

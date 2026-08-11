@@ -7,6 +7,7 @@ import {
   segmentedIconSize,
   type SegmentedControlSize,
 } from "@/components/ui/control-geometry";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import type { Theme } from "@/styles/theme";
 
 type SegmentedControlIconRenderer = (props: { color: string; size: number }) => ReactNode;
@@ -63,11 +64,13 @@ export function SegmentedControl<T extends string>({
   onValueChange,
   size = "md",
   hideLabels = false,
-  wrap = false,
+  wrap,
   stretch = false,
   style,
   testID,
 }: SegmentedControlProps<T>) {
+  const isCompact = useIsCompactFormFactor();
+  const shouldWrap = wrap ?? isCompact;
   // Keyed off the size union, and read during render because Unistyles styles
   // must not be dereferenced at module scope. The ternary this replaces had no
   // branch for "xs" and silently rendered it at md, which is what left the file
@@ -87,11 +90,11 @@ export function SegmentedControl<T extends string>({
     () => [
       styles.container,
       containerSizeStyle,
-      wrap && styles.containerWrap,
+      shouldWrap && styles.containerWrap,
       stretch && styles.containerStretch,
       style,
     ],
-    [containerSizeStyle, wrap, stretch, style],
+    [containerSizeStyle, shouldWrap, stretch, style],
   );
   const segmentSizeStyle = useMemo(
     () => [baseSegmentSizeStyle, stretch && styles.segmentStretch],

@@ -14,7 +14,6 @@ import {
 } from "react";
 import {
   FlatList,
-  ActivityIndicator,
   Keyboard,
   View,
   type LayoutChangeEvent,
@@ -24,14 +23,12 @@ import {
 } from "react-native";
 import type { StreamItem } from "@/types/stream";
 import { useRetainedPanelActive } from "@/components/retained-panel";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { useBottomAnchorController } from "./bottom-anchor-controller";
 import type { StreamRenderInput, StreamStrategy, StreamViewportHandle } from "./strategy";
-import {
-  createStreamStrategy,
-  isNearBottomForStreamRenderStrategy,
-  resolveBottomAnchorTransportBehavior,
-} from "./strategy";
+import { createStreamStrategy, resolveBottomAnchorTransportBehavior } from "./strategy";
+import { isNativePassiveRestickEligible, isNativeReaderAtNewestEdge } from "./native-bottom-bands";
 import { deriveVisibilityScrollRestoration } from "./visibility-scroll-restoration";
 
 const DEFAULT_MAINTAIN_VISIBLE_CONTENT_POSITION = Object.freeze({
@@ -39,11 +36,6 @@ const DEFAULT_MAINTAIN_VISIBLE_CONTENT_POSITION = Object.freeze({
   autoscrollToTopThreshold: 0,
 });
 const HISTORY_START_THRESHOLD_PX = 96;
-const NATIVE_BOTTOM_INDICATOR_THRESHOLD_PX = 8;
-// A reader should have to move about a dozen transcript lines before taking
-// ownership from follow mode. Short flicks are treated as an accidental gap
-// and return to the newest edge when the native scroll sequence finishes.
-const NATIVE_BOTTOM_SNAP_THRESHOLD_PX = 288;
 
 function keyExtractor(item: { id: string }): string {
   return item.id;
@@ -277,13 +269,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     getMeasurementState: () => streamViewportMetricsRef.current,
     isNearBottom: () => {
       const metrics = streamViewportMetricsRef.current;
-      return isNearBottomForStreamRenderStrategy({
-        strategy,
-        offsetY: metrics.offsetY,
-        threshold: NATIVE_BOTTOM_SNAP_THRESHOLD_PX,
-        contentHeight: metrics.contentHeight,
-        viewportHeight: metrics.viewportHeight,
-      });
+      return isNativeReaderAtNewestEdge(metrics.offsetY);
     },
     scrollToBottom,
   });
@@ -301,15 +287,9 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     isNativeUserScrollActiveRef.current = false;
     isNativeMomentumScrollActiveRef.current = false;
     const metrics = streamViewportMetricsRef.current;
-    const isNearBottom = isNearBottomForStreamRenderStrategy({
-      strategy,
-      offsetY: metrics.offsetY,
-      threshold: NATIVE_BOTTOM_SNAP_THRESHOLD_PX,
-      contentHeight: metrics.contentHeight,
-      viewportHeight: metrics.viewportHeight,
-    });
+    const isNearBottom = isNativeReaderAtNewestEdge(metrics.offsetY);
     bottomAnchorControllerRef.current.endUserScroll({ isNearBottom });
-    if (isNearBottom && metrics.offsetY > NATIVE_BOTTOM_INDICATOR_THRESHOLD_PX) {
+    if (isNearBottom && metrics.offsetY > 0) {
       scrollToBottom(false);
     }
   });
@@ -485,20 +465,8 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
       contentMeasuredForKey: "native-virtualized",
     };
 
-    const withinBottomSnapZone = isNearBottomForStreamRenderStrategy({
-      strategy,
-      offsetY: contentOffset.y,
-      threshold: NATIVE_BOTTOM_SNAP_THRESHOLD_PX,
-      contentHeight: streamViewportMetricsRef.current.contentHeight,
-      viewportHeight: streamViewportMetricsRef.current.viewportHeight,
-    });
-    const atBottomForIndicator = isNearBottomForStreamRenderStrategy({
-      strategy,
-      offsetY: contentOffset.y,
-      threshold: NATIVE_BOTTOM_INDICATOR_THRESHOLD_PX,
-      contentHeight: streamViewportMetricsRef.current.contentHeight,
-      viewportHeight: streamViewportMetricsRef.current.viewportHeight,
-    });
+    const withinBottomRestickZone = isNativePassiveRestickEligible(contentOffset.y);
+    const atBottomForIndicator = isNativeReaderAtNewestEdge(contentOffset.y);
     const isAnimatedProgrammaticScroll = isAnimatedProgrammaticScrollActiveRef.current;
     if (isAnimatedProgrammaticScroll && atBottomForIndicator) {
       isAnimatedProgrammaticScrollActiveRef.current = false;
@@ -530,7 +498,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     } else {
       programmaticScrollEventBudgetRef.current = 0;
       bottomAnchorController.handleScrollNearBottomChange({
-        nextIsNearBottom: withinBottomSnapZone,
+        nextIsNearBottom: atBottomForIndicator,
         scrollDelta: contentOffset.y - previousOffsetY,
       });
     }
@@ -540,7 +508,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     // state where Android's delayed inverted-list preservation leaves the
     // reader close to the end with a jump button they should not need.
     if (
-      withinBottomSnapZone &&
+      withinBottomRestickZone &&
       !atBottomForIndicator &&
       !isAnimatedProgrammaticScroll &&
       !isNativeUserScrollActiveRef.current &&
@@ -631,7 +599,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     }
     return (
       <View testID="load-older-history-spinner">
-        <ActivityIndicator size="small" />
+        <LoadingSpinner size="small" />
       </View>
     );
   }, [isLoadingOlderHistory]);
@@ -697,6 +665,10 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
         // proof.
         removeClippedSubviews={false}
         scrollEnabled={scrollEnabled}
+        // The retained workspace deck owns native ScrollView ancestors. Tell
+        // Android to negotiate a vertical drag with them instead of leaving
+        // the inverted transcript stranded under the parent responder.
+        nestedScrollEnabled
         showsVerticalScrollIndicator
         inverted
       />

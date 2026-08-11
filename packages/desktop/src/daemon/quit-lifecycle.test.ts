@@ -224,6 +224,29 @@ describe("quit-lifecycle", () => {
     expect(app.exit).not.toHaveBeenCalled();
   });
 
+  it("does not stop the daemon before a Linux package updater takes over", async () => {
+    const app = { exit: vi.fn() };
+    const stopDesktopManagedDaemonIfNeeded = vi.fn(async () => true);
+    const lifecycle = createQuitLifecycle({
+      app,
+      closeTransportSessions: vi.fn(),
+      confirmQuitIfNeeded: vi.fn(async () => true),
+      stopDesktopManagedDaemonIfNeeded,
+      installAppUpdateOnQuit: vi.fn(async () => true),
+      createUpdateDeadlineSignal: () => AbortSignal.timeout(20),
+      deferDaemonStopUntilUpdateHandoff: true,
+      onStopError: vi.fn(),
+      onUpdateError: vi.fn(),
+    });
+
+    lifecycle.handleBeforeQuit({ preventDefault: vi.fn() });
+    lifecycle.handleBeforeQuitForUpdate();
+
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(stopDesktopManagedDaemonIfNeeded).not.toHaveBeenCalled();
+    expect(app.exit).not.toHaveBeenCalled();
+  });
+
   it("exits hard when the installer never takes over before the deadline", async () => {
     const app = { exit: vi.fn() };
     const { handleBeforeQuit } = createQuitLifecycle({

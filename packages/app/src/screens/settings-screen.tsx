@@ -91,6 +91,7 @@ import { AddHostModal } from "@/components/add-host-modal";
 import { PairLinkModal } from "@/components/pair-link-modal";
 import { KeyboardShortcutsSection } from "@/screens/settings/keyboard-shortcuts-section";
 import { Button } from "@/components/ui/button";
+import { SearchClearButton } from "@/components/ui/search-clear-button";
 import { CommunityLinks } from "@/components/community-links";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Switch } from "@/components/ui/switch";
@@ -403,19 +404,18 @@ const searchInputProps = (theme: { colors: { foregroundMuted: string } }) => ({
 function SettingsSearchOverview({
   onSelectSection,
   onSelectHostSection,
-  onBrowse,
   activeHostServerId,
   hasHosts,
   isDeveloperMode,
 }: {
   onSelectSection: (section: SettingsSectionSlug) => void;
   onSelectHostSection: (section: HostSectionSlug) => void;
-  onBrowse: () => void;
   activeHostServerId: string | null;
   hasHosts: boolean;
   isDeveloperMode: boolean;
 }) {
   const [query, setQuery] = useState("");
+  const clearQuery = useCallback(() => setQuery(""), []);
   const normalizedQuery = query.trim().toLowerCase();
   const results = useMemo(
     () =>
@@ -436,21 +436,13 @@ function SettingsSearchOverview({
     }
     return [...groups.entries()];
   }, [results]);
-  const handleBrowse = useCallback(() => onBrowse(), [onBrowse]);
   let resultBody: ReactNode;
 
   if (!normalizedQuery) {
-    resultBody = (
-      <View style={searchOverviewStyles.emptyState}>
-        <Text style={searchOverviewStyles.emptyTitle}>Start with a setting name</Text>
-        <Text style={searchOverviewStyles.emptyText}>
-          Try “theme”, “API key”, “terminal”, or “code intelligence”.
-        </Text>
-        <Pressable onPress={handleBrowse} style={searchOverviewStyles.browseButton}>
-          <Text style={searchOverviewStyles.browseButtonText}>Browse all settings</Text>
-        </Pressable>
-      </View>
-    );
+    // The section menu directly follows this overview on compact layouts, so
+    // it is already the browse affordance. Keeping a second empty-state CTA
+    // here created a large, redundant gap before the menu.
+    resultBody = null;
   } else if (groupedResults.length === 0) {
     resultBody = (
       <View style={searchOverviewStyles.emptyState}>
@@ -484,12 +476,6 @@ function SettingsSearchOverview({
 
   return (
     <View style={searchOverviewStyles.container} testID="settings-search-overview">
-      <View style={searchOverviewStyles.heading}>
-        <Text style={searchOverviewStyles.title}>Find a setting</Text>
-        <Text style={searchOverviewStyles.subtitle}>
-          Search App, Desktop, and Host settings, then jump directly to the control.
-        </Text>
-      </View>
       <View style={searchOverviewStyles.searchBox}>
         <ThemedSearch uniProps={searchIconProps} />
         <ThemedTextInput
@@ -497,11 +483,13 @@ function SettingsSearchOverview({
           value={query}
           onChangeText={setQuery}
           placeholder="Search settings..."
-          style={searchOverviewStyles.input}
+          // @ts-expect-error - outlineStyle is web-only
+          style={[searchOverviewStyles.input, isWeb && { outlineStyle: "none" }]}
           accessibilityLabel="Search settings"
           testID="settings-search-input"
           uniProps={searchInputProps}
         />
+        {query ? <SearchClearButton onPress={clearQuery} /> : null}
       </View>
       {resultBody}
     </View>
@@ -2696,10 +2684,6 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     },
     [guardProjectSettingsExit, isCompactLayout, router],
   );
-  const handleBrowseSettings = useCallback(() => {
-    handleSelectSection("general");
-  }, [handleSelectSection]);
-
   // Picker: choose the host for host-section rows. If the user is already on a
   // host detail route, keep that detail section and swap only the host segment.
   const handleSelectHost = useCallback(
@@ -2833,7 +2817,6 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
         <SettingsSearchOverview
           onSelectSection={handleSelectSection}
           onSelectHostSection={handleSelectHostSection}
-          onBrowse={handleBrowseSettings}
           activeHostServerId={activeHostServerId}
           hasHosts={hosts.length > 0}
           isDeveloperMode={isDeveloperMode}
@@ -3135,7 +3118,7 @@ const styles = StyleSheet.create((theme) => ({
     alignSelf: "center",
   },
   rootBrowseSidebar: {
-    marginTop: theme.spacing[8],
+    marginTop: theme.spacing[4],
   },
   aboutValue: {
     color: theme.colors.foregroundMuted,
@@ -3217,26 +3200,12 @@ const styles = StyleSheet.create((theme) => ({
 const searchOverviewStyles = StyleSheet.create((theme) => ({
   container: {
     gap: theme.spacing[6],
-    paddingBottom: theme.spacing[8],
-  },
-  heading: {
-    gap: theme.spacing[1],
-  },
-  title: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.xl,
-    fontWeight: theme.fontWeight.semibold,
-  },
-  subtitle: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    lineHeight: theme.fontSize.sm * 1.5,
   },
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
-    minHeight: 48,
+    minHeight: 40,
     paddingHorizontal: theme.spacing[3],
     borderWidth: 1,
     borderColor: theme.colors.border,
@@ -3246,8 +3215,8 @@ const searchOverviewStyles = StyleSheet.create((theme) => ({
   input: {
     flex: 1,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.lg,
-    paddingVertical: theme.spacing[2],
+    fontSize: theme.fontSize.base,
+    paddingVertical: theme.spacing[1],
   },
   results: {
     gap: theme.spacing[4],
@@ -3322,18 +3291,6 @@ const searchOverviewStyles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     textAlign: "center",
-  },
-  browseButton: {
-    marginTop: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[2],
-    borderRadius: theme.borderRadius.md,
-    backgroundColor: theme.colors.surface2,
-  },
-  browseButtonText: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.medium,
   },
 }));
 

@@ -62,6 +62,9 @@ export type BudgetSource = "measured" | "theoretical" | "unknown";
 export interface Budget {
   weightsBytes: number;
   mmprojBytes: number;
+  componentBytes: number;
+  drafterKvBytes: number;
+  imageProcessingBytes: number;
   kvBytes: number;
   overheadBytes: number;
   totalBytes: number;
@@ -93,7 +96,24 @@ export function budget({
   reserveBytes = 1.5 * GIB,
 }: BudgetOptions): Budget {
   const weights = model.sizeBytes;
-  const mmproj = profile.vision && model.mmprojPath ? model.mmprojBytes : 0;
+  const enabled = new Set(profile.enabledComponents ?? []);
+  const components = model.components ?? [];
+  const projector = components.filter(
+    (component) =>
+      component.role === "vision_projector" && enabled.has(component.id) && component.available,
+  );
+  const drafters = components.filter(
+    (component) =>
+      component.role === "speculative_drafter" && enabled.has(component.id) && component.available,
+  );
+  const componentBytes = components.length
+    ? [...projector, ...drafters].reduce((total, component) => total + component.bytes, 0)
+    : profile.vision && model.mmprojPath
+      ? model.mmprojBytes
+      : 0;
+  const mmproj =
+    projector.reduce((total, component) => total + component.bytes, 0) ||
+    (components.length ? 0 : componentBytes);
 
   const theoretical = theoreticalKvBytesPerToken(
     model.metadata,
@@ -115,17 +135,25 @@ export function budget({
   }
 
   const kv = kvBytesPerToken * profile.contextSize;
+  // The speculative decoder keeps its own KV cache. Until component-specific
+  // calibration exists, reserve the same conservative per-token cost.
+  const drafterKv = drafters.length * kv;
+  // Vision preprocessing needs transient GPU buffers in addition to weights.
+  const imageProcessing = projector.length * 256 * 1024 * 1024;
   // Compute buffers and the CUDA context; measured at ~0.6 GB for a 27B and
   // superseded by the calibrated value when available.
   const overhead =
     calibration && calibration.baseOverheadBytes > 0 ? calibration.baseOverheadBytes : 0.6 * GIB;
 
-  const total = weights + mmproj + kv + overhead;
+  const total = weights + componentBytes + kv + drafterKv + imageProcessing + overhead;
   const usable = totalVramBytes - reserveBytes;
 
   return {
     weightsBytes: weights,
     mmprojBytes: mmproj,
+    componentBytes,
+    drafterKvBytes: drafterKv,
+    imageProcessingBytes: imageProcessing,
     kvBytes: kv,
     overheadBytes: overhead,
     totalBytes: total,
@@ -163,7 +191,8 @@ export function maxContextThatFits({
   });
   if (probe.kvBytesPerToken <= 0) return null;
 
-  const fixed = probe.weightsBytes + probe.mmprojBytes + probe.overheadBytes;
+  const fixed =
+    probe.weightsBytes + probe.componentBytes + probe.imageProcessingBytes + probe.overheadBytes;
   const room = probe.usableBytes - fixed;
   if (room <= 0) return null;
 

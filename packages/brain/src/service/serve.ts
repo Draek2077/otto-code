@@ -34,6 +34,7 @@ import { resolveVersion } from "../version.js";
 import * as results from "../ops/results.js";
 import { createCpuSampler, sample as sampleSystem } from "../sysmon.js";
 import { createHostApi, type HostJob, type HostJobRunner } from "./host-api.js";
+import { errorMessage } from "./http-util.js";
 import { createRouter, Telemetry } from "./router.js";
 import { BrainStatusPublisher } from "./status-events.js";
 import { Supervisor } from "./supervisor.js";
@@ -78,6 +79,8 @@ const REMOTE_JOB_RETENTION_MS = 5 * 60_000;
 class ServiceJobRunner implements HostJobRunner {
   private readonly jobs = new Map<string, HostJob & { child: ChildProcess | null }>();
 
+  constructor(private readonly onPullCompleted: () => void) {}
+
   start(kind: HostJob["kind"], target: string | null, args: string[]): HostJob {
     const running = [...this.jobs.values()].find((job) => job.status === "running");
     if (running) throw new Error(`Another operation is already running (${running.label}).`);
@@ -112,17 +115,29 @@ class ServiceJobRunner implements HostJobRunner {
     job.child = child;
     this.jobs.set(job.id, job);
     child.stderr?.setEncoding("utf8");
-    child.stderr?.on("data", (chunk: string) => {
-      const last = chunk.trim().split(/\r?\n/).at(-1)?.trim();
-      if (last) job.message = last.slice(-1000);
-    });
+    child.stderr?.on("data", (chunk: string) => this.ingestOutput(job, chunk));
     child.once("error", (error) => this.finish(job, "failed", error.message));
     child.once("close", (code) => {
       if (job.status !== "running") return;
+      if (code === 0 && kind === "pull") {
+        try {
+          // Downloads happen in a child process, but inventory is served from
+          // this process's in-memory scan. Reconcile before reporting success
+          // so a newly downloaded bundle component is immediately available.
+          this.onPullCompleted();
+        } catch (error) {
+          this.finish(
+            job,
+            "failed",
+            `Downloaded files, but could not refresh inventory: ${errorMessage(error)}`,
+          );
+          return;
+        }
+      }
       this.finish(
         job,
         code === 0 ? "succeeded" : "failed",
-        code === 0 ? null : `Exited with code ${code}.`,
+        code === 0 ? null : (job.message ?? `Exited with code ${code}.`),
       );
     });
     return this.publicJob(job);
@@ -181,6 +196,19 @@ class ServiceJobRunner implements HostJobRunner {
     return this.list();
   }
 
+  private ingestOutput(job: HostJob & { child: ChildProcess | null }, chunk: string): void {
+    for (const line of chunk
+      .split(/[\r\n]+/u)
+      .map((value) => value.trim())
+      .filter(Boolean)) {
+      const progress = /(\d{1,3})\s*%/u.exec(line);
+      if (progress) job.percent = Math.max(0, Math.min(100, Number(progress[1])));
+      // The final JSON result is not a useful status label. Keep progress and
+      // actionable text instead, so a failed bundle pull tells the user why.
+      if (line !== "[" && !/^[\]{}",]+$/u.test(line)) job.message = line.slice(-1000);
+    }
+  }
+
   private finish(
     job: HostJob & { child: ChildProcess | null },
     status: HostJob["status"],
@@ -191,6 +219,7 @@ class ServiceJobRunner implements HostJobRunner {
     job.status = status;
     job.error = error;
     job.finishedAt = new Date().toISOString();
+    if (status === "succeeded") job.percent = 100;
   }
 
   private publicJob({ child: _child, ...job }: HostJob & { child: ChildProcess | null }): HostJob {
@@ -320,6 +349,10 @@ export async function startService({
   // Not const: deleting a model through the management API re-scans and replaces
   // this, and every reader goes through a getter so nobody holds a stale array.
   let catalog = scanModels(config, env);
+  const rescanCatalog = (): Model[] => {
+    catalog = scanModels(config, env);
+    return catalog;
+  };
   const needle = modelNeedle ?? config.defaultModel ?? store.lastModelId ?? undefined;
   let model: Model | null = null;
   if (catalog.length > 0) {
@@ -442,7 +475,7 @@ export async function startService({
   // /__host/events. One instance, so `capabilities.events` and the stream can
   // never disagree about whether this brain publishes.
   const statusEvents = new BrainStatusPublisher();
-  const jobs = new ServiceJobRunner();
+  const jobs = new ServiceJobRunner(rescanCatalog);
   // Assigned once `stop` exists below. This indirection lets the management API
   // answer a remote restart request before closing its own socket.
   let requestRestart = (): void => {};
@@ -450,10 +483,7 @@ export async function startService({
   const hostApi = createHostApi({
     supervisor,
     getCatalog: () => catalog,
-    rescan: () => {
-      catalog = scanModels(config, env);
-      return catalog;
-    },
+    rescan: rescanCatalog,
     getProfilesStore: () => store,
     saveProfiles: (next) => saveProfilesStore(next, paths),
     getProfileDefaults: () => config.defaults,

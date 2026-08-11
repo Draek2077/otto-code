@@ -1,17 +1,12 @@
 import { useCallback, useMemo, useRef } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  Text,
-  View,
-  type PressableStateCallbackType,
-} from "react-native";
+import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, GitBranch } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { useIconSize, type Theme } from "@/styles/theme";
 import { Combobox, ComboboxItem, type ComboboxProps } from "@/components/ui/combobox";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useToast } from "@/contexts/toast-context";
 import { useBranchSwitcher } from "@/hooks/use-branch-switcher";
@@ -31,7 +26,7 @@ const foregroundMutedIconColorMapping = (theme: Theme) => ({
 
 const ThemedGitBranch = withUnistyles(GitBranch);
 const ThemedChevronDown = withUnistyles(ChevronDown);
-const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
+const ThemedActivityIndicator = withUnistyles(LoadingSpinner);
 
 export function BranchSwitcher({
   currentBranchName,

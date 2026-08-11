@@ -2085,7 +2085,18 @@ export class HostRuntimeStore {
     const session = store.sessions[serverId];
     const queue = session?.queuedMessages.get(agentId);
     const client = session?.client;
-    if (!client || !queue?.length || session.initializingAgents.get(agentId) === true) {
+    const agent = session?.agents.get(agentId) ?? session?.agentDetails.get(agentId);
+    // The queue is the user's next instruction. Once this turn has stopped,
+    // regardless of whether it completed, failed, or was cancelled, deliver
+    // it as the next turn. A live replacement still reports `running`, so it
+    // remains the one state that must not drain.
+    if (
+      !client ||
+      !queue?.length ||
+      !agent ||
+      agent.status !== "idle" ||
+      session.initializingAgents.get(agentId) === true
+    ) {
       return;
     }
     this.queuedAgentDrainInFlight.add(drainKey);

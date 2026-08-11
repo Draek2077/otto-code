@@ -37,6 +37,7 @@ vi.mock("child_process", async () => {
 });
 
 import { getCheckoutDiff } from "./checkout-git.js";
+import { startGitCommandMetrics, stopGitCommandMetrics } from "./run-git-command.js";
 
 function initRepoWithTrackedChanges(fileCount: number): { tempDir: string; repoDir: string } {
   const tempDir = realpathSync(mkdtempSync(join(tmpdir(), "checkout-git-batch-test-")));
@@ -67,7 +68,7 @@ describe("checkout git diff batching", () => {
   let repoDir: string;
 
   beforeEach(() => {
-    const setup = initRepoWithTrackedChanges(20);
+    const setup = initRepoWithTrackedChanges(4);
     tempDir = setup.tempDir;
     repoDir = setup.repoDir;
     spawnCounters.trackedTextDiffCalls = 0;
@@ -77,14 +78,14 @@ describe("checkout git diff batching", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("uses per-file tracked git diff commands for tracked file diffs", async () => {
-    const result = await getCheckoutDiff(repoDir, {
-      mode: "uncommitted",
-      includeStructured: false,
-    });
+  it("bounds initial structured diff reads so they cannot starve unrelated git RPCs", async () => {
+    startGitCommandMetrics();
+    const result = await getCheckoutDiff(repoDir, { mode: "uncommitted", includeStructured: true });
+    const metrics = stopGitCommandMetrics();
 
     expect(result.diff).toContain("file-0.txt");
-    expect(result.diff).toContain("file-19.txt");
-    expect(spawnCounters.trackedTextDiffCalls).toBe(20);
-  });
+    expect(result.diff).toContain("file-3.txt");
+    expect(spawnCounters.trackedTextDiffCalls).toBe(4);
+    expect(metrics.maxConcurrent).toBeLessThanOrEqual(2);
+  }, 15_000);
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProjectKnowledgeListResponseMessage } from "@otto-code/protocol/messages";
 import { useSessionStore } from "@/stores/session-store";
 
@@ -23,6 +23,22 @@ export function useProjectKnowledgeEnabled(serverId: string): boolean {
     (state) => state.sessions[serverId]?.serverInfo?.features?.projectKnowledge === true,
   );
 }
+
+const RETRY_DELAYS_MS = [1_000, 2_000, 5_000, 10_000] as const;
+
+function isRetryableHostWait(cause: unknown): boolean {
+  return cause instanceof Error && /timeout|timed out/i.test(cause.message);
+}
+
+function retryAfterHostWait(
+  attemptRef: { current: number },
+  retry: () => void,
+): ReturnType<typeof setTimeout> {
+  const delay = RETRY_DELAYS_MS[Math.min(attemptRef.current, RETRY_DELAYS_MS.length - 1)];
+  attemptRef.current += 1;
+  return setTimeout(retry, delay);
+}
+
 export function useProjectKnowledge(
   serverId: string,
   workspaceId: string,
@@ -76,6 +92,7 @@ export function useProjectKnowledge(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
+  const retryAttemptRef = useRef(0);
   const reload = useCallback(() => setNonce((value) => value + 1), []);
   const readRecord = useCallback(
     async (id: string) => {
@@ -91,24 +108,36 @@ export function useProjectKnowledge(
       return;
     }
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
     setLoading(true);
     setError(null);
     void client
       .listProjectKnowledge(workspaceId)
       .then((result) => {
-        if (!cancelled) setView(result);
+        if (!cancelled) {
+          retryAttemptRef.current = 0;
+          setView(result);
+        }
         return undefined;
       })
       .catch((cause: unknown) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
+        if (cancelled) return;
+        if (isRetryableHostWait(cause)) {
+          retryTimer = retryAfterHostWait(retryAttemptRef, () => {
+            if (!cancelled) reload();
+          });
+          return;
+        }
+        setError(cause instanceof Error ? cause.message : String(cause));
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && !retryTimer) setLoading(false);
       });
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [client, enabled, nonce, workspaceId]);
+  }, [client, enabled, nonce, reload, workspaceId]);
   const setStatus = useCallback(
     async (id: string, status: "proposed" | "confirmed" | "superseded") => {
       if (!client) return "Not connected.";

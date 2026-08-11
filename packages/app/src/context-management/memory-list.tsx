@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useRef, useState, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { PersonalityMemoryEntryPayload } from "@otto-code/protocol/messages";
 import { Check, Cognition, Pencil, Plus, Trash2, X } from "@/components/icons/material-icons";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
@@ -89,7 +90,7 @@ export function ContextMemoryList({
     return (
       <View style={styles.empty}>
         <View style={styles.loadingRow} testID="context-memory-loading">
-          <ActivityIndicator size="small" />
+          <LoadingSpinner size="small" />
           <Text style={styles.emptyText}>{t("contextManagement.memory.loading")}</Text>
         </View>
       </View>

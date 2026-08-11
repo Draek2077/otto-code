@@ -309,6 +309,26 @@ describe("BrainManager remote TLS trust", () => {
     expect(status.running).toBe(true);
     expect(brainServer.requests[0]?.token).toBe("secret-token");
   });
+
+  test("posts an inventory rescan through the host API", async () => {
+    brainServer = await startPlainBrainServer();
+    await manager.applySettings(
+      remoteConfig({
+        host: "127.0.0.1",
+        port: brainServer.port,
+        secure: false,
+        authToken: "secret-token",
+      }),
+    );
+
+    await manager.rescanInventory();
+
+    expect(brainServer.requests.at(-1)).toMatchObject({
+      method: "POST",
+      path: "/__host/models/rescan",
+      token: "secret-token",
+    });
+  });
 });
 
 // The otto-brain agent provider has no URL or API-key setting of its own: it

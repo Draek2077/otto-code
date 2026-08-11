@@ -14,8 +14,9 @@
 // spoken content is the message itself, and only the tooltip/a11y label is
 // literal here.
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
-import { ActivityIndicator, Text, View, type PressableStateCallbackType } from "react-native";
+import { Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import {
   clearMessagePlaybackActive,
   setMessagePlaybackActive,
@@ -90,7 +91,7 @@ interface MessagePlaybackButtonProps {
 
 const ThemedVolume2 = withUnistyles(Volume2);
 const ThemedStop = withUnistyles(Stop);
-const ThemedSpinner = withUnistyles(ActivityIndicator);
+const ThemedSpinner = withUnistyles(LoadingSpinner);
 
 // Match the neighboring copy/fork glyphs: muted at rest, foreground on hover,
 // accent while it is actively speaking so the state reads at a glance.

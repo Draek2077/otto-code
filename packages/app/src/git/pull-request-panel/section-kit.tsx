@@ -8,7 +8,8 @@ import {
   CircleDot,
   CircleSlash,
   CircleX,
-} from "lucide-react-native";
+} from "@/components/icons/material-icons";
+import { ICON_SIZE } from "@/styles/theme";
 import type { Theme } from "@/styles/theme";
 import type { CheckStatus } from "./check-status";
 
@@ -26,9 +27,15 @@ export const successColorMapping = (theme: Theme) => ({ color: theme.colors.stat
 export const dangerColorMapping = (theme: Theme) => ({ color: theme.colors.statusDanger });
 export const warningColorMapping = (theme: Theme) => ({ color: theme.colors.statusWarning });
 
-export const SUMMARY_SUCCESS_ICON = <ThemedCircleCheck size={12} uniProps={successColorMapping} />;
-export const SUMMARY_DANGER_ICON = <ThemedCircleX size={12} uniProps={dangerColorMapping} />;
-export const SUMMARY_WARNING_ICON = <ThemedCircleDot size={12} uniProps={warningColorMapping} />;
+export const SUMMARY_SUCCESS_ICON = (
+  <ThemedCircleCheck size={ICON_SIZE.xs} uniProps={successColorMapping} />
+);
+export const SUMMARY_DANGER_ICON = (
+  <ThemedCircleX size={ICON_SIZE.xs} uniProps={dangerColorMapping} />
+);
+export const SUMMARY_WARNING_ICON = (
+  <ThemedCircleDot size={ICON_SIZE.xs} uniProps={warningColorMapping} />
+);
 
 interface SectionProps {
   title: string;
@@ -43,9 +50,9 @@ export function Section({ title, open, onToggle, summary, children }: SectionPro
     <View>
       <Pressable style={sectionKitStyles.sectionHeader} onPress={onToggle}>
         {open ? (
-          <ThemedChevronDown size={14} uniProps={foregroundMutedColorMapping} />
+          <ThemedChevronDown size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
         ) : (
-          <ThemedChevronRight size={14} uniProps={foregroundMutedColorMapping} />
+          <ThemedChevronRight size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
         )}
         <Text style={sectionKitStyles.sectionTitle}>{title}</Text>
         <View style={sectionKitStyles.summaryWrap}>{summary}</View>
@@ -85,10 +92,14 @@ function summaryPillTextStyle(variant: SummaryPillVariant) {
 }
 
 export function CheckStatusIcon({ status }: { status: CheckStatus }) {
-  if (status === "success") return <ThemedCircleCheck size={14} uniProps={successColorMapping} />;
-  if (status === "failure") return <ThemedCircleX size={14} uniProps={dangerColorMapping} />;
-  if (status === "pending") return <ThemedCircleDot size={14} uniProps={warningColorMapping} />;
-  return <ThemedCircleSlash size={14} uniProps={foregroundMutedColorMapping} />;
+  if (status === "success") {
+    return <ThemedCircleCheck size={ICON_SIZE.sm} uniProps={successColorMapping} />;
+  }
+  if (status === "failure")
+    return <ThemedCircleX size={ICON_SIZE.sm} uniProps={dangerColorMapping} />;
+  if (status === "pending")
+    return <ThemedCircleDot size={ICON_SIZE.sm} uniProps={warningColorMapping} />;
+  return <ThemedCircleSlash size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />;
 }
 
 export const sectionKitStyles = StyleSheet.create((theme) => ({

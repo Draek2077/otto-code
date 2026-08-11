@@ -24,7 +24,7 @@
  * out to the CLI, because a benchmark is a long local job over the local model
  * store. Only the reads moved to the proxied management API.
  */
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { Pressable, ScrollView, Text, View, type StyleProp, type TextStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { BrainEvals, BrainJob } from "@otto-code/protocol/messages";
@@ -33,11 +33,15 @@ import { Medal, X } from "@/components/icons/material-icons";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative, isWeb } from "@/constants/platform";
 import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import type { Theme } from "@/styles/theme";
+import { useBrainLayoutStore } from "./brain-layout-store";
+import { BrainSplitter } from "./brain-splitter";
+import { timeSeverity } from "./benchmark-time-severity";
 
 const ThemedSpinner = withUnistyles(LoadingSpinner, (theme) => ({
   color: theme.colors.foregroundMuted,
@@ -69,7 +73,7 @@ const COLUMN = {
   // between the rank and the name it numbers, and slack inside a left-aligned
   // box reads as a wider gap than the gap itself.
   rank: { width: 10, flexShrink: 0 as const },
-  name: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 100 },
+  name: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 },
   // Every fixed column is the wider of its value and its HEADER, plus a hair. A
   // column wider than both spends the surplus as a gap the eye reads as one; a
   // column narrower than its header wraps it ("Run/s"), which is worse than any
@@ -146,8 +150,8 @@ const GRADE_HIDE_BELOW = 312;
 // nothing optional left in it. A fixed column has to be sized for its widest
 // value or the ellipsis stops being a fallback and becomes the rendering.
 const RUN_COLUMN = {
-  model: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 80 },
-  config: { flexGrow: 2, flexShrink: 1, flexBasis: 0, minWidth: 120 },
+  model: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 },
+  config: { flexGrow: 2, flexShrink: 1, flexBasis: 0, minWidth: 0 },
   ran: { width: 108, flexShrink: 0 as const, textAlign: "right" as const },
   score: { width: 56, flexShrink: 0 as const, textAlign: "right" as const },
   count: { width: 40, flexShrink: 0 as const, textAlign: "right" as const },
@@ -366,6 +370,10 @@ interface RunTask {
   score: number | null;
   seconds: number | null;
   error: string | null;
+}
+
+function taskSecondsByKey(run: LatestRun): ReadonlyMap<string, number | null> {
+  return new Map(run.tasks.map((task) => [task.key, task.seconds]));
 }
 
 /** The settings a run was measured under - a score means nothing without them. */
@@ -949,11 +957,16 @@ function LeaderboardTable({
   rows,
   selectedId,
   onSelect,
+  fill = false,
 }: {
   rows: RankedRow[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /** Desktop's split sidebar gives both tables equal remaining height. */
+  fill?: boolean;
 }) {
+  const tableScrollRef = useRef<ScrollView>(null);
+  const scrollbar = useWebScrollViewScrollbar(tableScrollRef);
   const [tableWidth, setTableWidth] = useState(0);
   const handleLayout = useCallback(
     (event: { nativeEvent: { layout: { width: number } } }) =>
@@ -976,7 +989,11 @@ function LeaderboardTable({
   const cellRankStyle = useMemo(() => [styles.cellRank, { width }], [width]);
 
   return (
-    <View style={styles.table} testID="brain-leaderboard" onLayout={handleLayout}>
+    <View
+      style={[styles.table, fill && styles.tableFill]}
+      testID="brain-leaderboard"
+      onLayout={handleLayout}
+    >
       {/* Pinned header, outside the scroll region below it. */}
       <View style={styles.headerRow}>
         <Text style={headerRankStyle} numberOfLines={ONE_LINE}>
@@ -999,18 +1016,34 @@ function LeaderboardTable({
           </Text>
         ) : null}
       </View>
-      <ScrollView style={styles.tableScroll} showsVerticalScrollIndicator={isNative}>
-        {rows.map((row) => (
-          <LeaderboardRow
-            key={row.id}
-            row={row}
-            selected={row.id === selectedId}
-            onSelect={onSelect}
-            columns={columns}
-            rankStyle={cellRankStyle}
-          />
-        ))}
-      </ScrollView>
+      <View
+        style={[
+          styles.tableScrollRegion,
+          fill ? styles.tableScrollRegionFill : styles.tableScrollRegionCapped,
+        ]}
+      >
+        <ScrollView
+          ref={tableScrollRef}
+          style={styles.tableScroll}
+          onLayout={scrollbar.onLayout}
+          onScroll={scrollbar.onScroll}
+          onContentSizeChange={scrollbar.onContentSizeChange}
+          scrollEventThrottle={16}
+          showsVerticalScrollIndicator={isNative}
+        >
+          {rows.map((row) => (
+            <LeaderboardRow
+              key={row.id}
+              row={row}
+              selected={row.id === selectedId}
+              onSelect={onSelect}
+              columns={columns}
+              rankStyle={cellRankStyle}
+            />
+          ))}
+        </ScrollView>
+        {scrollbar.overlay}
+      </View>
     </View>
   );
 }
@@ -1112,6 +1145,7 @@ function RunsTable({
   selectedKey,
   latestKey,
   onSelect,
+  fill = false,
 }: {
   entries: RunListEntry[];
   showModel: boolean;
@@ -1119,7 +1153,11 @@ function RunsTable({
   /** The run the detail pane pins, so the list can mark it. */
   latestKey: string | null;
   onSelect: (run: LatestRun) => void;
+  /** Desktop's split sidebar gives both tables equal remaining height. */
+  fill?: boolean;
 }) {
+  const tableScrollRef = useRef<ScrollView>(null);
+  const scrollbar = useWebScrollViewScrollbar(tableScrollRef);
   const [tableWidth, setTableWidth] = useState(0);
   const handleLayout = useCallback(
     (event: { nativeEvent: { layout: { width: number } } }) =>
@@ -1137,7 +1175,11 @@ function RunsTable({
   );
 
   return (
-    <View style={styles.table} testID="brain-runs" onLayout={handleLayout}>
+    <View
+      style={[styles.table, fill && styles.tableFill]}
+      testID="brain-runs"
+      onLayout={handleLayout}
+    >
       <View style={styles.headerRow}>
         {columns.model ? (
           <Text style={styles.runHeaderModel} numberOfLines={ONE_LINE}>
@@ -1166,18 +1208,34 @@ function RunsTable({
           </Text>
         ) : null}
       </View>
-      <ScrollView style={styles.tableScroll} showsVerticalScrollIndicator={isNative}>
-        {entries.map((entry) => (
-          <RunListRow
-            key={entry.run.key}
-            entry={entry}
-            selected={entry.run.key === selectedKey}
-            isLatest={entry.run.key === latestKey}
-            onSelect={onSelect}
-            columns={columns}
-          />
-        ))}
-      </ScrollView>
+      <View
+        style={[
+          styles.tableScrollRegion,
+          fill ? styles.tableScrollRegionFill : styles.tableScrollRegionCapped,
+        ]}
+      >
+        <ScrollView
+          ref={tableScrollRef}
+          style={styles.tableScroll}
+          onLayout={scrollbar.onLayout}
+          onScroll={scrollbar.onScroll}
+          onContentSizeChange={scrollbar.onContentSizeChange}
+          scrollEventThrottle={16}
+          showsVerticalScrollIndicator={isNative}
+        >
+          {entries.map((entry) => (
+            <RunListRow
+              key={entry.run.key}
+              entry={entry}
+              selected={entry.run.key === selectedKey}
+              isLatest={entry.run.key === latestKey}
+              onSelect={onSelect}
+              columns={columns}
+            />
+          ))}
+        </ScrollView>
+        {scrollbar.overlay}
+      </View>
     </View>
   );
 }
@@ -1185,17 +1243,35 @@ function RunsTable({
 /**
  * One graded task's row inside a run: what it scored, and what it cost.
  *
- * `narrow` drops Weight and Time. Two cards share the detail pane while
- * comparing, so each has roughly half the width - and when the question is "what
- * changed between these two runs", the score is the column that answers it.
+ * `narrow` drops Weight only. Time stays visible in comparisons because paired
+ * task durations reveal performance outliers that a score alone cannot.
  */
-function TaskRow({ task, narrow }: { task: RunTask; narrow: boolean }) {
+function TaskRow({
+  task,
+  narrow,
+  comparedSeconds,
+}: {
+  task: RunTask;
+  narrow: boolean;
+  comparedSeconds: number | null;
+}) {
   // A task that errored still carries whatever summary the grader wrote, but the
   // error is the thing that explains the score, so it takes the line.
   const note = task.error ?? task.summary;
   const noteStyle = task.error ? styles.taskError : styles.taskSummary;
+  // The colour scale calls attention to weak scores and exceptional scores,
+  // leaving the broad 50–95% middle band neutral.
+  let scoreTone;
+  if (task.score !== null && task.score < 0.25) {
+    scoreTone = styles.taskScoreCritical;
+  } else if (task.score !== null && task.score < 0.5) {
+    scoreTone = styles.taskScoreWarning;
+  } else if (task.score !== null && task.score > 0.95) {
+    scoreTone = styles.taskScoreExcellent;
+  }
+  const durationTone = timeSeverity(task.seconds, comparedSeconds);
   return (
-    <View style={styles.taskRow}>
+    <View style={[styles.taskRow, narrow && styles.taskRowCompared]}>
       <View style={styles.taskName}>
         <Text style={styles.taskCategory} numberOfLines={1}>
           {task.category}
@@ -1209,8 +1285,17 @@ function TaskRow({ task, narrow }: { task: RunTask; narrow: boolean }) {
       {narrow ? null : (
         <Text style={styles.taskWeight}>{task.weight === null ? "-" : `×${task.weight}`}</Text>
       )}
-      <Text style={styles.taskScore}>{formatPercent(task.score)}</Text>
-      {narrow ? null : <Text style={styles.taskSeconds}>{formatSeconds(task.seconds) ?? "-"}</Text>}
+      <Text style={[styles.taskScore, scoreTone]}>{formatPercent(task.score)}</Text>
+      <Text
+        style={[
+          styles.taskSeconds,
+          durationTone === "success" && styles.taskSecondsExcellent,
+          durationTone === "warning" && styles.taskSecondsWarning,
+          durationTone === "critical" && styles.taskSecondsCritical,
+        ]}
+      >
+        {formatSeconds(task.seconds) ?? "-"}
+      </Text>
     </View>
   );
 }
@@ -1238,11 +1323,13 @@ function RunCard({
   spread,
   label,
   comparing,
+  comparisonTaskSeconds,
 }: {
   run: LatestRun;
   spread: VarianceRow | null;
   label: string;
   comparing: boolean;
+  comparisonTaskSeconds: ReadonlyMap<string, number | null> | null;
 }) {
   const meta = formatRunMeta(run);
   const suite = formatSuite(run.suite);
@@ -1296,10 +1383,15 @@ function RunCard({
             <Text style={styles.taskHeaderName}>Task</Text>
             {comparing ? null : <Text style={styles.taskHeaderWeight}>Weight</Text>}
             <Text style={styles.taskHeaderScore}>Score</Text>
-            {comparing ? null : <Text style={styles.taskHeaderSeconds}>Time</Text>}
+            <Text style={styles.taskHeaderSeconds}>Time</Text>
           </View>
           {run.tasks.map((task) => (
-            <TaskRow key={task.key} task={task} narrow={comparing} />
+            <TaskRow
+              key={task.key}
+              task={task}
+              narrow={comparing}
+              comparedSeconds={comparisonTaskSeconds?.get(task.key) ?? null}
+            />
           ))}
         </View>
       ) : (
@@ -1324,6 +1416,11 @@ function RunCard({
  * next, so it stays visible above the cards rather than being another level down.
  */
 function LeaderboardPanes({
+  runCount,
+  canRun,
+  starting,
+  running,
+  onRun,
   rows,
   runEntries,
   selected,
@@ -1335,6 +1432,11 @@ function LeaderboardPanes({
   onSelectRun,
   onBack,
 }: {
+  runCount: number;
+  canRun: boolean;
+  starting: boolean;
+  running: boolean;
+  onRun: () => void;
   rows: RankedRow[];
   runEntries: RunListEntry[];
   selected: RankedRow | null;
@@ -1347,8 +1449,19 @@ function LeaderboardPanes({
   onBack: () => void;
 }) {
   const isCompact = useIsCompactFormFactor();
+  const benchmarksSplitRatio = useBrainLayoutStore((state) => state.benchmarksSplitRatio);
+  const setBenchmarksSplitRatio = useBrainLayoutStore((state) => state.setBenchmarksSplitRatio);
+  const benchmarkTablesSplitRatio = useBrainLayoutStore((state) => state.benchmarkTablesSplitRatio);
+  const setBenchmarkTablesSplitRatio = useBrainLayoutStore(
+    (state) => state.setBenchmarkTablesSplitRatio,
+  );
   const leaderboard = (
-    <LeaderboardTable rows={rows} selectedId={selected?.id ?? null} onSelect={onSelectModel} />
+    <LeaderboardTable
+      rows={rows}
+      selectedId={selected?.id ?? null}
+      onSelect={onSelectModel}
+      fill={!isCompact}
+    />
   );
   const runs = (
     <RunsTable
@@ -1360,6 +1473,7 @@ function LeaderboardPanes({
       // newest row is just the newest benchmark anybody ran, not a reference.
       latestKey={selected ? (latest?.run.key ?? null) : null}
       onSelect={onSelectRun}
+      fill={!isCompact}
     />
   );
   const detail = selected ? (
@@ -1394,13 +1508,35 @@ function LeaderboardPanes({
   }
 
   return (
-    <View style={styles.split}>
+    <BrainSplitter
+      direction="horizontal"
+      ratio={benchmarksSplitRatio}
+      onRatioChange={setBenchmarksSplitRatio}
+      testID="brain-benchmarks-splitter"
+    >
       <View style={styles.listPane}>
-        {leaderboard}
-        <Text style={styles.sectionLabel}>Runs</Text>
-        {runs}
+        <BenchmarkToolbar
+          runCount={runCount}
+          canRun={canRun}
+          starting={starting}
+          running={running}
+          onRun={onRun}
+        />
+        <BrainSplitter
+          direction="vertical"
+          ratio={benchmarkTablesSplitRatio}
+          onRatioChange={setBenchmarkTablesSplitRatio}
+          testID="brain-benchmark-tables-splitter"
+          showRule={false}
+        >
+          {leaderboard}
+          <View style={styles.runsPane}>
+            <Text style={styles.sectionLabel}>Runs</Text>
+            {runs}
+          </View>
+        </BrainSplitter>
       </View>
-      <View style={styles.detailPane}>
+      <BenchmarkDetailPane>
         {detail ?? (
           <View style={styles.centered}>
             <Text style={styles.empty}>Select a model</Text>
@@ -1409,7 +1545,66 @@ function LeaderboardPanes({
             </Text>
           </View>
         )}
-      </View>
+      </BenchmarkDetailPane>
+    </BrainSplitter>
+  );
+}
+
+function BenchmarkToolbar({
+  runCount,
+  canRun,
+  starting,
+  running,
+  onRun,
+}: {
+  runCount: number;
+  canRun: boolean;
+  starting: boolean;
+  running: boolean;
+  onRun: () => void;
+}) {
+  return (
+    <View style={styles.toolbar}>
+      <Text style={styles.meta}>
+        {runCount > 0
+          ? `${runCount} ${runCount === 1 ? "run" : "runs"} recorded`
+          : "No runs recorded"}
+      </Text>
+      {canRun ? (
+        <Button
+          variant="secondary"
+          size="sm"
+          onPress={onRun}
+          loading={starting}
+          disabled={starting || running}
+          testID="brain-bench-run"
+        >
+          Run the suite
+        </Button>
+      ) : null}
+    </View>
+  );
+}
+
+/** The desktop result pane owns its scroll region, matching the model detail pane. */
+function BenchmarkDetailPane({ children }: { children: ReactNode }) {
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollbar = useWebScrollViewScrollbar(scrollRef);
+
+  return (
+    <View style={styles.detailPane}>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.detailScroll}
+        onLayout={scrollbar.onLayout}
+        onScroll={scrollbar.onScroll}
+        onContentSizeChange={scrollbar.onContentSizeChange}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={isNative}
+      >
+        <View style={styles.detailContent}>{children}</View>
+      </ScrollView>
+      {scrollbar.overlay}
     </View>
   );
 }
@@ -1441,6 +1636,8 @@ function ModelDetail({
     compared && compared.run.overall !== null && latest?.run.overall !== null
       ? compared.run.overall - (latest?.run.overall ?? 0)
       : null;
+  const latestComparisonTaskSeconds = compared ? taskSecondsByKey(compared.run) : null;
+  const selectedComparisonTaskSeconds = latest ? taskSecondsByKey(latest.run) : null;
 
   return (
     <View style={styles.detail} testID="brain-leaderboard-detail">
@@ -1487,6 +1684,7 @@ function ModelDetail({
               spread={spreadFor(latest.run)}
               label="Latest run"
               comparing={comparing && !stacked}
+              comparisonTaskSeconds={latestComparisonTaskSeconds}
             />
             {compared ? (
               <RunCard
@@ -1494,6 +1692,7 @@ function ModelDetail({
                 spread={spreadFor(compared.run)}
                 label="Selected run"
                 comparing={!stacked}
+                comparisonTaskSeconds={selectedComparisonTaskSeconds}
               />
             ) : null}
           </View>
@@ -1685,35 +1884,29 @@ export function BrainBenchmarksTab({
         </View>
       ) : null}
 
-      <View style={styles.toolbar}>
-        <Text style={styles.meta}>
-          {evals && evals.runCount > 0
-            ? `${evals.runCount} ${evals.runCount === 1 ? "run" : "runs"} recorded`
-            : "No runs recorded"}
-        </Text>
-        {manageSupported && canRunJobs ? (
-          <Button
-            variant="secondary"
-            size="sm"
-            onPress={handleRun}
-            loading={starting}
-            disabled={starting || runningBench !== null}
-            testID="brain-bench-run"
-          >
-            Run the suite
-          </Button>
-        ) : null}
-      </View>
-
       {rankings.length === 0 ? (
-        <View style={styles.centered}>
-          <Text style={styles.empty}>No benchmark runs yet</Text>
-          <Text style={styles.emptyHint}>
-            Run the suite to rank the models installed on this host.
-          </Text>
+        <View style={styles.emptyState}>
+          <BenchmarkToolbar
+            runCount={evals?.runCount ?? 0}
+            canRun={manageSupported && canRunJobs}
+            starting={starting}
+            running={runningBench !== null}
+            onRun={handleRun}
+          />
+          <View style={styles.centered}>
+            <Text style={styles.empty}>No benchmark runs yet</Text>
+            <Text style={styles.emptyHint}>
+              Run the suite to rank the models installed on this host.
+            </Text>
+          </View>
         </View>
       ) : (
         <LeaderboardPanes
+          runCount={evals?.runCount ?? 0}
+          canRun={manageSupported && canRunJobs}
+          starting={starting}
+          running={runningBench !== null}
+          onRun={handleRun}
           rows={rankings}
           runEntries={runEntries}
           selected={selected}
@@ -1732,7 +1925,9 @@ export function BrainBenchmarksTab({
 
 const styles = StyleSheet.create((theme) => ({
   container: {
+    flex: 1,
     gap: theme.spacing[3],
+    minHeight: 0,
   },
   // Matches the Calibrate/Sweep job status row in models-tab.tsx: a spinner
   // and plain text, not a colored status alert.
@@ -1783,27 +1978,33 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
   },
-  split: {
-    flexDirection: "row",
-    gap: theme.spacing[4],
-    alignItems: "flex-start",
-  },
   listPane: {
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: 0,
     gap: theme.spacing[2],
+    minHeight: 0,
+    padding: theme.spacing[4],
+  },
+  runsPane: {
+    flex: 1,
+    minHeight: 0,
+    gap: theme.spacing[2],
+    paddingTop: theme.spacing[2],
   },
   detailPane: {
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: 0,
-    borderLeftWidth: 1,
-    borderLeftColor: theme.colors.border,
-    paddingLeft: theme.spacing[4],
+    minHeight: 0,
+    position: "relative",
   },
   compactStack: {
     gap: theme.spacing[2],
+  },
+  emptyState: {
+    flex: 1,
+    minHeight: 0,
   },
   sectionLabel: {
     fontSize: theme.fontSize.sm,
@@ -1814,7 +2015,10 @@ const styles = StyleSheet.create((theme) => ({
   // and a difference between them is a horizontal glance.
   compareRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    // Stretch the cards as a pair. A shorter result must not end early just
+    // because its counterpart has a wrapped task summary: the empty tail is a
+    // useful visual signal that this run had less detail, not a broken grid.
+    alignItems: "stretch",
     gap: theme.spacing[3],
   },
   compareStack: {
@@ -1828,12 +2032,28 @@ const styles = StyleSheet.create((theme) => ({
     // surface2 and the border token are nearly identical on this theme.
     backgroundColor: theme.colors.surface1,
     overflow: "hidden",
+    position: "relative",
+  },
+  tableFill: {
+    flex: 1,
+    minHeight: 0,
   },
   // Two tables share the left pane now, so each gets a lower ceiling than the
   // Models table's 420: at 420 apiece the run list starts below the fold on a
   // laptop, and the run list is half the point of the layout.
   tableScroll: {
+    flex: 1,
+    minHeight: 0,
+  },
+  tableScrollRegion: {
+    minHeight: 0,
+    position: "relative",
+  },
+  tableScrollRegionCapped: {
     maxHeight: 280,
+  },
+  tableScrollRegionFill: {
+    flex: 1,
   },
   headerRow: {
     flexDirection: "row",
@@ -2044,6 +2264,15 @@ const styles = StyleSheet.create((theme) => ({
   detail: {
     gap: theme.spacing[3],
   },
+  detailScroll: {
+    flex: 1,
+    minHeight: 0,
+  },
+  detailContent: {
+    gap: theme.spacing[3],
+    padding: theme.spacing[4],
+    paddingBottom: theme.spacing[6],
+  },
   detailHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -2188,6 +2417,12 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     paddingVertical: theme.spacing[1.5],
   },
+  // Compared rows reserve room for the task name and two summary lines. The
+  // summaries themselves still wrap naturally, but no longer move every task
+  // that follows out of horizontal alignment with the other run.
+  taskRowCompared: {
+    minHeight: theme.spacing[16],
+  },
   taskHeaderName: {
     flexGrow: 1,
     flexShrink: 1,
@@ -2250,6 +2485,15 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.code,
     color: theme.colors.foreground,
   },
+  taskScoreExcellent: {
+    color: theme.colors.statusSuccess,
+  },
+  taskScoreWarning: {
+    color: theme.colors.statusWarning,
+  },
+  taskScoreCritical: {
+    color: theme.colors.statusDanger,
+  },
   taskSeconds: {
     width: 56,
     flexShrink: 0,
@@ -2257,5 +2501,14 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: theme.fontFamily.mono,
     fontSize: theme.fontSize.code,
     color: theme.colors.foregroundMuted,
+  },
+  taskSecondsWarning: {
+    color: theme.colors.statusWarning,
+  },
+  taskSecondsExcellent: {
+    color: theme.colors.statusSuccess,
+  },
+  taskSecondsCritical: {
+    color: theme.colors.statusDanger,
   },
 }));

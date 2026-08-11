@@ -6,6 +6,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { useMutation } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
+import { selectWorkspaceChangeStat } from "@/hooks/sidebar-workspaces-view-model";
 import type { DraggableListDragHandleProps } from "@/components/draggable-list.types";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { DiffStat } from "@/components/diff-stat";
@@ -266,6 +267,7 @@ function WorkspaceRowBody({
   const { t } = useTranslation();
   const { settings } = useAppSettings();
   const showDiffStat = settings.workspaceToolsPlacement !== "workspaceList";
+  const diffStat = selectWorkspaceChangeStat(workspace, settings.workspaceChangeIndicator);
   const floatActions = useFloatingRowActions();
   const isLspBusy = useIsLspBusy(workspace.serverId, workspace.workspaceDirectory ?? null);
   const isTouchPlatform = platformIsNative;
@@ -307,6 +309,7 @@ function WorkspaceRowBody({
         const trailing = buildWorkspaceRowTrailing({
           t,
           showDiffStat,
+          diffStat,
           floatActions,
           workspace,
           isHovered,
@@ -424,6 +427,7 @@ function WorkspaceRowBody({
 function buildWorkspaceRowTrailing({
   t,
   showDiffStat,
+  diffStat,
   floatActions,
   workspace,
   isHovered,
@@ -443,6 +447,7 @@ function buildWorkspaceRowTrailing({
 }: {
   t: ReturnType<typeof useTranslation>["t"];
   showDiffStat: boolean;
+  diffStat: { additions: number; deletions: number } | null | undefined;
   floatActions: boolean;
   workspace: SidebarWorkspaceEntry;
   isHovered: boolean;
@@ -464,13 +469,13 @@ function buildWorkspaceRowTrailing({
   const showKebab = Boolean(onArchive && (isHovered || isTouchPlatform));
   // The shortcut badge owns this corner when it is on, so the kebab yields.
   const showKebabInSlot = showKebab && !showShortcut;
-  const hasDiffStat = Boolean(showDiffStat && workspace.diffStat);
+  const hasDiffStat = Boolean(showDiffStat && diffStat);
   const creating = isCreating ? (
     <Text style={styles.workspaceCreatingText}>{t("sidebar.workspace.status.creating")}</Text>
   ) : null;
-  const diffStat =
-    showDiffStat && workspace.diffStat ? (
-      <DiffStat additions={workspace.diffStat.additions} deletions={workspace.diffStat.deletions} />
+  const diffStatNode =
+    showDiffStat && diffStat ? (
+      <DiffStat additions={diffStat.additions} deletions={diffStat.deletions} />
     ) : null;
   const kebab = onArchive ? (
     <SidebarWorkspaceMenu
@@ -498,7 +503,7 @@ function buildWorkspaceRowTrailing({
           {creating}
           <SidebarWorkspaceTrailingActionSlot>
             <SidebarWorkspaceTrailingActionBase visible={!showShortcut}>
-              {diffStat}
+              {diffStatNode}
             </SidebarWorkspaceTrailingActionBase>
           </SidebarWorkspaceTrailingActionSlot>
         </>
@@ -518,7 +523,7 @@ function buildWorkspaceRowTrailing({
             <SidebarWorkspaceTrailingActionBase
               visible={hasDiffStat && !showKebabInSlot && !showShortcut}
             >
-              {diffStat}
+              {diffStatNode}
             </SidebarWorkspaceTrailingActionBase>
             <SidebarWorkspaceTrailingActionOverlay visible={showKebabInSlot}>
               {kebab}
@@ -560,8 +565,7 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 32,
     marginBottom: 2,
     paddingVertical: theme.spacing[1.5],
-    paddingLeft: theme.spacing[2],
-    paddingRight: theme.spacing[3],
+    paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.lg,
     flexDirection: "column",
     alignItems: "stretch",

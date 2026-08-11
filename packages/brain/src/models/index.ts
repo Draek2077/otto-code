@@ -14,6 +14,7 @@ export { pickModel, pickAutoModel } from "./pick.js";
 export { resolveModelsDirs, managedModelsDir, type ModelsDir } from "./dirs.js";
 export {
   pullModel,
+  bundleDownloadPlan,
   downloadRepoFiles,
   type PullOptions,
   type PullProgress,
@@ -50,7 +51,10 @@ export function scanModels(
   options: ScanModelsOptions = {},
 ): Model[] {
   const dirs = resolveModelsDirs(config, env);
-  const seen = new Set<string>();
+  // `Model.id` is the stable repo-relative artifact identity. The same file
+  // can exist in the managed store and LM Studio's store at different absolute
+  // paths; managed is scanned first and deliberately owns that collision.
+  const seenIds = new Set<string>();
   const all: Model[] = [];
   for (const { dir, origin } of dirs) {
     for (const model of scan({
@@ -58,8 +62,8 @@ export function scanModels(
       withMetadata: options.withMetadata ?? true,
       origin,
     })) {
-      if (seen.has(model.modelPath)) continue;
-      seen.add(model.modelPath);
+      if (seenIds.has(model.id)) continue;
+      seenIds.add(model.id);
       all.push(model);
     }
   }

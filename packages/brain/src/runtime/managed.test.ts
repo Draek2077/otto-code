@@ -244,3 +244,19 @@ test("a managed runtime is found through the tarball's nested build/bin layout",
   // The extensionless binary must not be picked up by a Windows-shaped scan.
   assert.deepEqual(listManagedRuntimes(root, "win32"), []);
 });
+
+test("managed runtime inventory preserves its human display name", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "otto-brain-managed-"));
+  temps.push(root);
+  const runtimeRoot = path.join(root, "cuda-12-4-managed-b10265");
+  const bin = path.join(runtimeRoot, "build", "bin");
+  fs.mkdirSync(bin, { recursive: true });
+  fs.writeFileSync(path.join(bin, "llama-server"), "");
+  fs.writeFileSync(
+    path.join(runtimeRoot, ".otto-runtime.json"),
+    JSON.stringify({ displayName: "CUDA 12.4 · b10265 (Otto managed)" }),
+  );
+
+  const [runtime] = listManagedRuntimes(root, "linux");
+  assert.equal(runtime.displayName, "CUDA 12.4 · b10265 (Otto managed)");
+});

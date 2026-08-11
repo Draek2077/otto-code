@@ -36,24 +36,21 @@ Then, as before:
   that are only on the base branch never appear.
 
 Everything that measures against the base - the diff (`getCheckoutDiff`), ahead/behind
-(`getAheadBehind`), and the shortstat badge (`getCheckoutShortstat`) - funnels through the
+(`getAheadBehind`), and the branch shortstat (`getCheckoutShortstat`) - funnels through the
 comparison step, either directly or via the cached `comparisonBaseRef` on
 `getCheckoutSnapshotFacts`. Keep it that way: three copies of this logic is three different answers
 to "what changed?".
 
-**That means every diff-derived number in the UI moves together**, and there are only two places in
-the server that count anything (the `--numstat` in `getCheckoutDiff` and the `--shortstat` in
-`getCheckoutShortstat`). So the `+N/-N` chip on sidebar workspace rows (`diffStat` on the workspace
-snapshot, rendered by `sidebar-workspace-row.tsx` / `sidebar-status-list.tsx`), the ahead/behind
-counts behind the git actions, and the Changes list all report against the same base. When detection
-repoints a stacked branch at its parent, all of them shrink to that branch's own work in the same
-pass - there is no surface that keeps counting against the default branch. There is a regression
-test asserting the badge and ahead/behind specifically, not just the diff, because they are the
-numbers users notice first.
+The committed Changes view, its base chip, and ahead/behind counts therefore all answer the same
+branch-history question. When detection repoints a stacked branch at its parent, they shrink to that
+branch's own work in the same pass.
 
-One pre-existing subtlety worth knowing when reading the badge: `getCheckoutShortstat` diffs the
-**working tree** against the merge-base and adds untracked lines, so it is "everything since the
-fork point, committed or not" - not the committed diff alone.
+The workspace-list `+N/-N` indicator intentionally answers a different question by default:
+`workingTreeDiffStat` comes from `getCheckoutUncommittedShortstat`, which diffs `HEAD` against the
+working tree and adds untracked lines. It clears on commit, like a terminal git-status prompt. The
+Appearance → Layout → **Workspace change indicator** preference can instead show the legacy
+branch-versus-base `diffStat` or hide the count. The workspace hover card labels branch history as
+`vs <base> · N commits`, so it cannot be confused with uncommitted work.
 
 ## Parent detection is a heuristic, and has to look like one
 

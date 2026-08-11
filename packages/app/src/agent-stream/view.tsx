@@ -20,7 +20,6 @@ import {
   Text,
   Pressable,
   Platform,
-  ActivityIndicator,
   type PressableStateCallbackType,
   type StyleProp,
   type ViewStyle,
@@ -30,6 +29,7 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { useMutation } from "@tanstack/react-query";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { Check, ChevronDown, X } from "@/components/icons/material-icons";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ChatSeamFade } from "@/components/chat-seam-fade";
 import { useWebElementScrollbar } from "@/components/use-web-scrollbar";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
@@ -88,6 +88,7 @@ import {
   findTurnBoundary,
   type TurnRevealSpan,
   type TurnRevealTicker,
+  StreamResumeGate,
   useTurnRevealTicker,
 } from "./turn-reveal";
 import {
@@ -107,6 +108,7 @@ import {
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import { buildNewWorkspaceRoute } from "@/utils/host-routes";
 import { useStableEvent } from "@/hooks/use-stable-event";
+import { useAppVisible } from "@/hooks/use-app-visible";
 import { useAppSettings } from "@/hooks/use-settings";
 import { isWeb } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
@@ -691,19 +693,21 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       },
     );
 
-    // Freeze stream data while this tab slot is hidden to prevent offscreen FlatList
-    // cell-window renders on every 48ms flush from background agents.
-    // When isActive flips back to true, the context change triggers a re-render and
-    // the component reads the current (fresh) streamItems/streamHead from props.
+    // Freeze stream data while this tab slot OR the app is hidden to prevent
+    // offscreen cell-window renders on every 48ms flush from background agents.
+    // App visibility is separate from retained-panel activity: the current chat
+    // stays the active pane while a browser tab sleeps.
     const isActive = useRetainedPanelActive();
+    const isAppVisible = useAppVisible();
+    const isStreamVisible = isActive && isAppVisible;
     const frozenStreamItemsRef = useRef(streamItems);
     const frozenStreamHeadRef = useRef(streamHead);
-    if (isActive) {
+    if (isStreamVisible) {
       frozenStreamItemsRef.current = streamItems;
       frozenStreamHeadRef.current = streamHead;
     }
-    const effectiveStreamItems = isActive ? streamItems : frozenStreamItemsRef.current;
-    const effectiveStreamHead = isActive ? streamHead : frozenStreamHeadRef.current;
+    const effectiveStreamItems = isStreamVisible ? streamItems : frozenStreamItemsRef.current;
+    const effectiveStreamHead = isStreamVisible ? streamHead : frozenStreamHeadRef.current;
 
     // Defer the stream-derived inputs so React can interrupt the ~48ms flush
     // re-renders (render-model rebuild + layout + streaming markdown) with
@@ -716,6 +720,19 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     // frozen (inactive) the references never change, so deferral is a no-op.
     const deferredStreamItems = useDeferredValue(effectiveStreamItems);
     const deferredStreamHead = useDeferredValue(effectiveStreamHead);
+    // A return must not show the frozen snapshot and then regroup/reveal the
+    // away backlog when deferred data catches up. Every stream-derived path
+    // below consumes this one selected pair.
+    const streamResumeGateRef = useRef(new StreamResumeGate(isStreamVisible));
+    const displayedStream = streamResumeGateRef.current.select({
+      visible: isStreamVisible,
+      currentTail: effectiveStreamItems,
+      currentHead: effectiveStreamHead,
+      deferredTail: deferredStreamItems,
+      deferredHead: deferredStreamHead,
+    });
+    const displayedStreamItems = displayedStream.tail;
+    const displayedStreamHead = displayedStream.head;
 
     // The tool-call detail projection reads the SAME deferred pair the render
     // model does, for two reasons. Deferral has to stay intact - feeding the
@@ -727,8 +744,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     // history is regrouped only when history itself changes, never on the ~48ms
     // live-head flush. Keep it that way.
     const preparedToolCallHistory = useMemo(
-      () => prepareToolCallHistory(toolCallDetailLevel, deferredStreamItems),
-      [deferredStreamItems, toolCallDetailLevel],
+      () => prepareToolCallHistory(toolCallDetailLevel, displayedStreamItems),
+      [displayedStreamItems, toolCallDetailLevel],
     );
     // projectToolCallDetailLevel throws when the prepared history does not match
     // the level, so these two memos must always be derived from the same level.
@@ -736,15 +753,15 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       () =>
         projectToolCallDetailLevel({
           level: toolCallDetailLevel,
-          tail: deferredStreamItems,
-          head: deferredStreamHead ?? EMPTY_STREAM_HEAD,
+          tail: displayedStreamItems,
+          head: displayedStreamHead ?? EMPTY_STREAM_HEAD,
           preparedHistory: preparedToolCallHistory,
           isTurnActive: agent.status === "running",
         }),
       [
         agent.status,
-        deferredStreamHead,
-        deferredStreamItems,
+        displayedStreamHead,
+        displayedStreamItems,
         preparedToolCallHistory,
         toolCallDetailLevel,
       ],
@@ -876,17 +893,17 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       const running = agent.status === "running";
       if (!running) {
         settledTurnKeyRef.current = findTurnBoundary([
-          ...deferredStreamItems,
-          ...(deferredStreamHead ?? EMPTY_STREAM_HEAD),
+          ...displayedStreamItems,
+          ...(displayedStreamHead ?? EMPTY_STREAM_HEAD),
         ]).turnKey;
       }
       return computeLiveTurnReveal({
         running,
-        tail: deferredStreamItems,
-        head: deferredStreamHead ?? EMPTY_STREAM_HEAD,
+        tail: displayedStreamItems,
+        head: displayedStreamHead ?? EMPTY_STREAM_HEAD,
         settledTurnKey: settledTurnKeyRef.current,
       });
-    }, [agent.status, deferredStreamItems, deferredStreamHead]);
+    }, [agent.status, displayedStreamItems, displayedStreamHead]);
     const revealTicker = useTurnRevealTicker({
       turnKey: liveTurnReveal.turnKey,
       target: liveTurnReveal.totalChars,
@@ -895,14 +912,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       // target and snaps to the live one on the way back in. Without that,
       // every return to a busy chat replays the away-period backlog as a
       // typing rush. See TurnRevealTicker.update.
-      visible: isActive,
-      // The reveal target above is computed from the DEFERRED items, so the
-      // first render after reactivation still carries the frozen counts and
-      // the live ones land in the follow-up render. The ticker holds its
-      // return-snap until this says the target is live; snapping on the stale
-      // render is what made the rush survive the `visible` fix.
-      dataSettled:
-        deferredStreamItems === effectiveStreamItems && deferredStreamHead === effectiveStreamHead,
+      visible: isStreamVisible,
+      // On return the resume gate selects current data while deferral catches
+      // up. The ticker keeps its return-snap until that pair is equal, so the
+      // first fresh target cannot be replayed as an away-period typing rush.
+      dataSettled: displayedStream.dataSettled,
     });
 
     // The growing end of the live turn: the last assistant item the reveal spans
@@ -1549,7 +1563,6 @@ function ActionGroupSlot({
   return <ActionGroup {...rest} onInlineDetailsExpandedChange={handleExpandedChange} />;
 }
 
-const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
 const ThemedCheckIcon = withUnistyles(Check);
 const ThemedXIcon = withUnistyles(X);
 
@@ -1594,7 +1607,7 @@ function PermissionActionButton({
   return (
     <Pressable testID={testID} style={pressableStyle} onPress={handlePress} disabled={isResponding}>
       {isRespondingAction ? (
-        <ThemedActivityIndicator size="small" uniProps={colorMapping} />
+        <LoadingSpinner size="small" />
       ) : (
         <View style={permissionStyles.optionContent}>
           <Icon size={14} uniProps={colorMapping} />

@@ -75,6 +75,8 @@ const lastSuccessfulPullRequestStatus = new Map<string, PullRequestStatusResult>
 let shortstatCacheTtlMs = DEFAULT_SHORTSTAT_CACHE_TTL_MS;
 let shortstatCache = createShortstatCache(shortstatCacheTtlMs);
 const shortstatInFlight = new Map<string, Promise<CheckoutShortstat | null>>();
+let uncommittedShortstatCache = createShortstatCache(shortstatCacheTtlMs);
+const uncommittedShortstatInFlight = new Map<string, Promise<CheckoutShortstat | null>>();
 
 interface CheckoutReadCacheOptions {
   force?: boolean;
@@ -175,6 +177,10 @@ export function __resetCheckoutShortstatCacheForTests(): void {
   shortstatCacheTtlMs = DEFAULT_SHORTSTAT_CACHE_TTL_MS;
   shortstatCache = createShortstatCache(shortstatCacheTtlMs);
   shortstatInFlight.clear();
+  uncommittedShortstatCache.clear();
+  uncommittedShortstatCache.cancelTimer();
+  uncommittedShortstatCache = createShortstatCache(shortstatCacheTtlMs);
+  uncommittedShortstatInFlight.clear();
 }
 
 export function __setCheckoutShortstatCacheTtlForTests(ttlMs: number): void {
@@ -183,6 +189,10 @@ export function __setCheckoutShortstatCacheTtlForTests(ttlMs: number): void {
   shortstatCacheTtlMs = ttlMs;
   shortstatCache = createShortstatCache(ttlMs);
   shortstatInFlight.clear();
+  uncommittedShortstatCache.clear();
+  uncommittedShortstatCache.cancelTimer();
+  uncommittedShortstatCache = createShortstatCache(ttlMs);
+  uncommittedShortstatInFlight.clear();
 }
 
 interface CheckoutFileChange {
@@ -2164,6 +2174,12 @@ export async function getCheckoutSnapshotFacts(
 
 const PER_FILE_DIFF_MAX_BYTES = 1024 * 1024; // 1MB
 const TOTAL_DIFF_MAX_BYTES = 2 * 1024 * 1024; // 2MB
+// `runGitCommand` has one daemon-wide FIFO limiter. A structured checkout diff
+// used to enqueue every file patch and historical-content read at once, which
+// could put hundreds of low-priority reads ahead of session restoration RPCs.
+// Keep this workload below the shared limit so unrelated requests can always
+// make progress while Changes finishes its complete snapshot.
+const CHECKOUT_DIFF_MAX_CONCURRENT_FILES = 2;
 const RELAY_MAX_FRAME_BYTES = 32 * 1024 * 1024;
 const CHECKOUT_DIFF_FRAME_HEADROOM_BYTES = 1024 * 1024;
 // Temporary until diffs load lazily per file. The Paseo relay's 32 MiB frame limit is
@@ -2434,6 +2450,7 @@ async function redetectCheckoutBaseRef(
 
 function invalidateBaseRefDependentCaches(cwd: string): void {
   shortstatCache.delete(getShortstatCacheKey(cwd));
+  uncommittedShortstatCache.delete(getShortstatCacheKey(cwd));
   pullRequestStatusCache.clear();
 }
 
@@ -2723,6 +2740,44 @@ async function getCheckoutShortstatUncached(
   }
 }
 
+/**
+ * Counts only edits the user can still commit: the working tree relative to
+ * HEAD plus untracked files. Unlike {@link getCheckoutShortstat}, this never
+ * includes an already-committed branch change.
+ */
+async function getCheckoutUncommittedShortstatUncached(
+  cwd: string,
+  context?: CheckoutContext,
+): Promise<CheckoutShortstat | null> {
+  if (context?.facts?.isGit === false) {
+    return null;
+  }
+  if (!context?.facts?.isGit) {
+    try {
+      await requireGitRepo(cwd);
+    } catch {
+      return null;
+    }
+  }
+
+  try {
+    const [{ stdout }, untrackedAdditions] = await Promise.all([
+      runGitCommand(["diff", "--shortstat", "HEAD"], {
+        cwd,
+        envOverlay: READ_ONLY_GIT_ENV,
+      }),
+      countUntrackedAdditions(cwd),
+    ]);
+    const tracked = parseCheckoutShortstat(stdout);
+    if (tracked) {
+      return { additions: tracked.additions + untrackedAdditions, deletions: tracked.deletions };
+    }
+    return untrackedAdditions > 0 ? { additions: untrackedAdditions, deletions: 0 } : null;
+  } catch {
+    return null;
+  }
+}
+
 async function resolveShortstatComparisonRef(input: {
   cwd: string;
   currentBranch: string | null;
@@ -2786,6 +2841,35 @@ export async function getCheckoutShortstat(
   options?: CheckoutReadCacheOptions,
 ): Promise<CheckoutShortstat | null> {
   return getOrLoadCheckoutShortstat(cwd, context, options);
+}
+
+export async function getCheckoutUncommittedShortstat(
+  cwd: string,
+  context?: CheckoutContext,
+  options?: CheckoutReadCacheOptions,
+): Promise<CheckoutShortstat | null> {
+  const cacheKey = getShortstatCacheKey(cwd);
+  if (!options?.force) {
+    const cached = uncommittedShortstatCache.get(cacheKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const existing = uncommittedShortstatInFlight.get(cacheKey);
+    if (existing) {
+      return existing;
+    }
+  }
+
+  const load = getCheckoutUncommittedShortstatUncached(cwd, context)
+    .then((shortstat) => {
+      uncommittedShortstatCache.set(cacheKey, shortstat);
+      return shortstat;
+    })
+    .finally(() => {
+      uncommittedShortstatInFlight.delete(cacheKey);
+    });
+  uncommittedShortstatInFlight.set(cacheKey, load);
+  return load;
 }
 
 export function getCachedCheckoutShortstat(cwd: string): CheckoutShortstat | null | undefined {
@@ -2863,6 +2947,7 @@ async function appendStructuredTrackedDiffs(
             }
             return readGitFileContentAtRef(cwd, refsForDiff.targetRef, file.path);
           },
+          maxConcurrentFiles: CHECKOUT_DIFF_MAX_CONCURRENT_FILES,
         })
       : [];
   const parsedTrackedByPath = new Map(parsedTrackedFiles.map((file) => [file.path, file]));
@@ -3043,14 +3128,25 @@ async function processTrackedChanges(
   let trackedDiffText = "";
   let trackedDiffBytes = 0;
   if (trackedDiffPaths.length > 0) {
-    const trackedDiffs = await Promise.all(
-      trackedDiffPaths.map((path) =>
-        getTrackedDiffTextForPath({
+    const trackedDiffs: Array<Awaited<ReturnType<typeof getTrackedDiffTextForPath>>> = [];
+    let nextTrackedDiffIndex = 0;
+    const readNextTrackedDiff = async () => {
+      while (nextTrackedDiffIndex < trackedDiffPaths.length) {
+        const index = nextTrackedDiffIndex;
+        nextTrackedDiffIndex += 1;
+        const path = trackedDiffPaths[index];
+        trackedDiffs[index] = await getTrackedDiffTextForPath({
           cwd,
           refsForDiff,
           path,
           ignoreWhitespace,
-        }),
+        });
+      }
+    };
+    await Promise.all(
+      Array.from(
+        { length: Math.min(CHECKOUT_DIFF_MAX_CONCURRENT_FILES, trackedDiffPaths.length) },
+        () => readNextTrackedDiff(),
       ),
     );
 

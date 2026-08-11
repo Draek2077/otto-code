@@ -100,6 +100,38 @@ test("vision adds the projector only when enabled and available", () => {
   assert.ok(withVision.totalBytes > without.totalBytes);
 });
 
+test("disabled bundle components do not affect the budget, enabled ones do", () => {
+  const bundle = {
+    ...MODEL,
+    components: [
+      { id: "vision-projector", role: "vision_projector", available: true, bytes: 1 * vram.GIB },
+      {
+        id: "speculative-drafter",
+        role: "speculative_drafter",
+        available: true,
+        bytes: 0.5 * vram.GIB,
+      },
+    ],
+  } as unknown as Model;
+  const calibration = { kvBytesPerToken: 38.55 * 1024, baseOverheadBytes: 0.3 * vram.GIB };
+  const disabled = vram.budget({
+    model: bundle,
+    profile: { ...PROFILE, enabledComponents: [] },
+    calibration,
+    totalVramBytes: RTX5090,
+  });
+  const enabled = vram.budget({
+    model: bundle,
+    profile: { ...PROFILE, enabledComponents: ["vision-projector", "speculative-drafter"] },
+    calibration,
+    totalVramBytes: RTX5090,
+  });
+  assert.equal(disabled.componentBytes, 0);
+  assert.equal(enabled.componentBytes, 1.5 * vram.GIB);
+  assert.ok(enabled.drafterKvBytes > 0);
+  assert.ok(enabled.totalBytes > disabled.totalBytes);
+});
+
 test("an oversized context is reported as not fitting", () => {
   const calibration = { kvBytesPerToken: 38.55 * 1024, baseOverheadBytes: 0.3 * vram.GIB };
   const b = vram.budget({

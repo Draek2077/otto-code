@@ -7,16 +7,16 @@
  *
  * It composes the pieces that already existed inside Settings rather than
  * reimplementing them: `CatalogList` and `HuggingFaceSearch` were already
- * separate components, they were just wrapped in a settings card. The
- * installed-model list that sat alongside them deliberately does NOT come
- * along, because that is the Models tab's job now and two lists of the same
- * models on one page is how they drift.
+ * separate components, they were just wrapped in a settings card. Search
+ * results retain their quant picker after a download, so that same row is the
+ * place to download another quant or delete the installed one. The Models tab
+ * remains the detail and tuning surface.
  *
  * Search sits above the catalog: it is what most people reach for first, and
  * the catalog underneath is the fallback for "just pick something good."
- * Download progress rides inline on the row that started it (see
- * `InlineJobProgress` in `host-brain-models.tsx`) - there is no separate
- * jobs panel here to fall out of sync with those rows.
+ * The catalog stays complete, including models already installed. It is the
+ * permanent recommendation list, while Hugging Face rows are the place to
+ * manage a searched repository's individual quantizations.
  *
  * These run on the job RPCs, which shell out to the CLI. That is correct here
  * and stays: a download writes to this machine's model store. Only the reads
@@ -26,18 +26,28 @@ import { useCallback, useMemo } from "react";
 import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useQueryClient } from "@tanstack/react-query";
-import type { BrainJob } from "@otto-code/protocol/messages";
+import type { BrainInventoryModel, BrainJob } from "@otto-code/protocol/messages";
+import { ChatWidthBounds } from "@/components/chat-width-bounds";
 import { Alert } from "@/components/ui/alert";
 import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
+import { nonCatalogHuggingFaceModels } from "./library-model-filter";
+import { useBrainInventory } from "./use-brain-data";
 import {
   CatalogList,
+  DownloadedHuggingFaceModels,
   HuggingFaceSearch,
+  type PinnedHuggingFaceModel,
   prependJob,
   useBrainCatalog,
   useBrainJobs,
   useRefreshOnJobCompletion,
 } from "@/screens/settings/host-brain-models";
+
+function huggingFaceRepo(model: BrainInventoryModel): string | null {
+  const [owner, name, file] = model.id.split("/");
+  return owner && name && file ? `${owner}/${name}` : null;
+}
 
 export function BrainLibraryTab({
   serverId,
@@ -59,9 +69,32 @@ export function BrainLibraryTab({
 
   const catalogQuery = useBrainCatalog(serverId, enabled);
   const jobsQuery = useBrainJobs(serverId, enabled);
-
+  const inventoryQuery = useBrainInventory(serverId, enabled);
   const catalogModels = useMemo(() => catalogQuery.data ?? [], [catalogQuery.data]);
   const jobs = useMemo(() => jobsQuery.data ?? [], [jobsQuery.data]);
+  // The catalog owns some installed artifacts. Do not briefly render those in
+  // Downloaded Models while its slower catalog read is still in flight, then
+  // remove them a moment later.
+  const catalogReady = catalogQuery.data !== undefined;
+  const pinnedModels = useMemo<PinnedHuggingFaceModel[]>(
+    () =>
+      (catalogReady
+        ? nonCatalogHuggingFaceModels(inventoryQuery.data?.models ?? [], catalogModels)
+        : []
+      )
+        .map((model) => ({
+          id: model.id,
+          name: model.displayName,
+          repo: huggingFaceRepo(model),
+          quant: model.quant,
+          sizeBytes: model.sizeBytes,
+          hasProjector: model.hasProjector,
+        }))
+        // A disk walk is not a user-facing order. Keep this management list
+        // stable when a sibling quant is removed or a scan completes.
+        .sort((a, b) => a.id.localeCompare(b.id)),
+    [catalogModels, catalogReady, inventoryQuery.data],
+  );
   const client = useHostRuntimeClient(serverId);
   useRefreshOnJobCompletion(serverId, jobs);
 
@@ -118,32 +151,46 @@ export function BrainLibraryTab({
   }
 
   return (
-    <View style={styles.container}>
-      {hfSupported ? (
+    <ChatWidthBounds style={styles.catalogBounds}>
+      <View style={styles.container}>
+        {hfSupported ? (
+          <View style={styles.card}>
+            <HuggingFaceSearch
+              serverId={serverId}
+              busy={busy}
+              jobs={jobs}
+              onStarted={handleJobStarted}
+              onCancel={handleJobCancel}
+            />
+          </View>
+        ) : (
+          <Alert variant="info" description="Update the host to search Hugging Face from here." />
+        )}
+        {pinnedModels.length > 0 ? (
+          <View style={styles.card}>
+            <DownloadedHuggingFaceModels
+              serverId={serverId}
+              models={pinnedModels}
+              busy={busy}
+              jobs={jobs}
+              onStarted={handleJobStarted}
+              onCancel={handleJobCancel}
+            />
+          </View>
+        ) : null}
         <View style={styles.card}>
-          <HuggingFaceSearch
+          <CatalogList
             serverId={serverId}
+            models={catalogModels}
+            loading={catalogQuery.isLoading}
             busy={busy}
             jobs={jobs}
             onStarted={handleJobStarted}
             onCancel={handleJobCancel}
           />
         </View>
-      ) : (
-        <Alert variant="info" description="Update the host to search Hugging Face from here." />
-      )}
-      <View style={styles.card}>
-        <CatalogList
-          serverId={serverId}
-          models={catalogModels}
-          loading={catalogQuery.isLoading}
-          busy={busy}
-          jobs={jobs}
-          onStarted={handleJobStarted}
-          onCancel={handleJobCancel}
-        />
       </View>
-    </View>
+    </ChatWidthBounds>
   );
 }
 
@@ -151,6 +198,12 @@ const styles = StyleSheet.create((theme) => ({
   container: {
     gap: theme.spacing[3],
     paddingBottom: theme.spacing[6],
+  },
+  // Match the Metrics usage ledger: the whole Library tab respects the user's
+  // selected chat width on wide panes.
+  catalogBounds: {
+    width: "100%",
+    alignSelf: "center",
   },
   card: {
     borderRadius: theme.borderRadius.lg,

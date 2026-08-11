@@ -53,9 +53,11 @@ export async function sendDraftToQueue(page: Page): Promise<void> {
 }
 
 export async function expectQueuedMessageButton(page: Page): Promise<void> {
-  await expect(page.getByRole("button", { name: "Send queued message now" })).toBeVisible({
+  const sendQueuedMessage = page.getByRole("button", { name: "Send queued message now" });
+  await expect(sendQueuedMessage).toBeVisible({
     timeout: 10_000,
   });
+  await expect(sendQueuedMessage).toBeInViewport({ timeout: 10_000 });
 }
 
 export async function cancelAgent(page: Page): Promise<void> {

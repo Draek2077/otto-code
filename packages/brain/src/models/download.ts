@@ -4,7 +4,16 @@
  * `<managedModelsDir>/<publisher>/<repo>/<file>` to mirror the LM Studio layout
  * the scanner already understands.
  */
-import { createWriteStream, existsSync, mkdirSync, rmSync } from "node:fs";
+import {
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -51,10 +60,82 @@ function authHeaders(token?: string | null): Record<string, string> {
   return token ? { authorization: `Bearer ${token}` } : {};
 }
 
+interface PartialDownloadMetadata {
+  etag: string;
+  totalBytes: number;
+}
+
+function partialMetadataPath(tmp: string): string {
+  return `${tmp}.json`;
+}
+
+function clearPartial(tmp: string): void {
+  rmSync(tmp, { force: true });
+  rmSync(partialMetadataPath(tmp), { force: true });
+}
+
+/** Read only a partial whose source identity and total length were recorded. */
+function resumablePartial(
+  tmp: string,
+): { bytes: number; metadata: PartialDownloadMetadata } | null {
+  try {
+    const bytes = statSync(tmp).size;
+    const metadata = JSON.parse(
+      readFileSync(partialMetadataPath(tmp), "utf8"),
+    ) as PartialDownloadMetadata;
+    if (
+      bytes <= 0 ||
+      !metadata.etag ||
+      !Number.isSafeInteger(metadata.totalBytes) ||
+      metadata.totalBytes <= bytes
+    ) {
+      return null;
+    }
+    return { bytes, metadata };
+  } catch {
+    return null;
+  }
+}
+
+function contentLength(response: Response): number | null {
+  const length = Number(response.headers.get("content-length"));
+  return Number.isSafeInteger(length) && length >= 0 ? length : null;
+}
+
+function isMatchingRangeResponse(
+  response: Response,
+  partial: { bytes: number; metadata: PartialDownloadMetadata },
+): boolean {
+  if (response.status !== 206) return false;
+  const match = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(response.headers.get("content-range") ?? "");
+  if (!match) return false;
+  const start = Number(match[1]);
+  const end = Number(match[2]);
+  const totalBytes = Number(match[3]);
+  const length = contentLength(response);
+  const etag = response.headers.get("etag");
+  return (
+    start === partial.bytes &&
+    end >= start &&
+    totalBytes === partial.metadata.totalBytes &&
+    length === end - start + 1 &&
+    (!etag || etag === partial.metadata.etag)
+  );
+}
+
+function writePartialMetadata(tmp: string, metadata: PartialDownloadMetadata): void {
+  writeFileSync(partialMetadataPath(tmp), JSON.stringify(metadata), {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+}
+
 /**
  * Stream one HF file to `destPath`, reporting bytes received. Skips (returns
- * false) if the file already exists. Writes to a `.part` then renames so a
- * killed download never leaves a truncated file that looks complete.
+ * false) if the file already exists. Interrupted downloads keep a `.part` only
+ * when its ETag and complete length were recorded. A later attempt resumes it
+ * only after Hugging Face confirms the exact byte range belongs to that same
+ * representation; otherwise it restarts cleanly.
  */
 async function streamRepoFile(
   url: string,
@@ -65,31 +146,72 @@ async function streamRepoFile(
   received: { bytes: number },
 ): Promise<boolean> {
   const tmp = `${destPath}.part`;
-  // Remove leftovers from an earlier interrupted attempt before starting a
-  // fresh request, including when this request fails before opening a stream.
-  rmSync(tmp, { force: true });
   mkdirSync(path.dirname(destPath), { recursive: true });
-  if (existsSync(destPath)) return false;
+  if (existsSync(destPath)) {
+    clearPartial(tmp);
+    return false;
+  }
 
-  const response = await fetch(url, { headers: authHeaders(token) });
-  if (!response.ok || !response.body) {
+  let partial = resumablePartial(tmp);
+  if (!partial && existsSync(tmp)) clearPartial(tmp);
+
+  let response: Response;
+  if (partial) {
+    response = await fetch(url, {
+      headers: {
+        ...authHeaders(token),
+        range: `bytes=${partial.bytes}-`,
+        "if-range": partial.metadata.etag,
+      },
+    });
+    // A 200 is the defined If-Range response when the remote representation
+    // changed (or the server cannot range). The saved bytes are no longer safe
+    // to append, so start over with the complete response it supplied.
+    if (response.status === 200) {
+      clearPartial(tmp);
+      partial = null;
+    } else if (!isMatchingRangeResponse(response, partial)) {
+      throw new Error(`download resume failed (${response.status}) for ${url}`);
+    }
+  } else {
+    response = await fetch(url, { headers: authHeaders(token) });
+  }
+
+  if ((response.status !== 200 && response.status !== 206) || !response.body) {
     throw new Error(`download failed (${response.status}) for ${url}`);
   }
-  const totalBytes = Number(response.headers.get("content-length")) || undefined;
+  const append = partial !== null;
+  const resumedBytes = partial?.bytes ?? 0;
+  const totalBytes = partial?.metadata.totalBytes ?? contentLength(response);
+  if (!append) {
+    const etag = response.headers.get("etag");
+    if (etag && totalBytes !== null && totalBytes > 0) {
+      writePartialMetadata(tmp, { etag, totalBytes });
+    } else {
+      // An unidentifiable partial can never be proved safe to resume.
+      clearPartial(tmp);
+    }
+  }
   const body = Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]);
+  if (append) received.bytes += resumedBytes;
   body.on("data", (chunk: Buffer) => {
     received.bytes += chunk.length;
-    onProgress?.({ file: label, receivedBytes: received.bytes, totalBytes });
+    onProgress?.({
+      file: label,
+      receivedBytes: received.bytes,
+      totalBytes: totalBytes ?? undefined,
+    });
   });
 
   try {
-    await pipeline(body, createWriteStream(tmp));
-    const { renameSync } = await import("node:fs");
+    await pipeline(body, createWriteStream(tmp, { flags: append ? "a" : "w" }));
     renameSync(tmp, destPath);
-  } finally {
-    // Cancellation kills the CLI child while the stream is still writing. Do
-    // not leave a truncated `.part` behind for the next quant attempt.
-    rmSync(tmp, { force: true });
+    rmSync(partialMetadataPath(tmp), { force: true });
+  } catch (error) {
+    // Keep only a partial that has a recorded immutable identity and full
+    // length. Everything else is deliberately discarded on the next attempt.
+    if (!resumablePartial(tmp)) clearPartial(tmp);
+    throw error;
   }
   return true;
 }
@@ -100,6 +222,45 @@ export interface PullOptions {
   file?: string;
   token?: string | null;
   onProgress?: (progress: PullProgress) => void;
+}
+
+/** Exact, manifest-driven files for a bundle selection. No quant discovery is
+ * involved, so a component pull can never select an arbitrary projector. */
+export function bundleDownloadPlan(
+  model: CatalogModel,
+  componentIds: string[] = [],
+  primaryFiles?: string[],
+  primaryBytes?: number,
+): {
+  repo: string;
+  files: string[];
+  totalBytes: number | null;
+} {
+  const selected = new Set(componentIds);
+  const known = new Set((model.components ?? []).map((component) => component.id));
+  const unknown = componentIds.filter((id) => !known.has(id));
+  if (unknown.length) throw new Error(`unknown bundle components: ${unknown.join(", ")}`);
+  const components = (model.components ?? []).filter(
+    (component) => component.required || selected.has(component.id),
+  );
+  const foreign = components.find(
+    (component) => (component.hfRepo ?? model.hfRepo) !== model.hfRepo,
+  );
+  if (foreign)
+    throw new Error(`component ${foreign.id} uses a separate repository and needs its own plan`);
+  return {
+    repo: model.hfRepo,
+    files: [
+      ...(primaryFiles ?? [resolveFileName(model)]),
+      ...components.map((component) => component.file),
+    ],
+    totalBytes:
+      (primaryBytes ?? model.approxWeightsBytes) === undefined ||
+      components.some((component) => component.bytes == null)
+        ? null
+        : (primaryBytes ?? model.approxWeightsBytes!) +
+          components.reduce((sum, component) => sum + (component.bytes ?? 0), 0),
+  };
 }
 
 /** Download the model file; returns the local path it was written to. */

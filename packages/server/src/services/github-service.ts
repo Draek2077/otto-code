@@ -25,6 +25,7 @@ import {
   createUnavailableSearchResult,
   normalizeForgeSearchKinds,
   parseOptionalTime,
+  sortPullRequestsLatestFirst,
 } from "./forge-service.js";
 import type {
   CheckAnnotation,
@@ -1077,7 +1078,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
             z.array(GitHubPullRequestSummarySchema),
             "[]",
           );
-          return items.map(toPullRequestSummary);
+          return sortPullRequestsLatestFirst(items.map(toPullRequestSummary));
         },
       });
     },

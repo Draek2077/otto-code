@@ -1053,7 +1053,7 @@ function WorkspacesSectionHeader({
               )}
             </Pressable>
           </TooltipTrigger>
-          <TooltipContent side="bottom" align="center" offset={8}>
+          <TooltipContent side="left" align="center" offset={8}>
             <AddProjectTooltipContent newAgentKeys={newAgentKeys} label={addProjectLabel} />
           </TooltipContent>
         </Tooltip>
@@ -1076,7 +1076,7 @@ function WorkspacesSectionHeader({
               )}
             </Pressable>
           </TooltipTrigger>
-          <TooltipContent side="bottom" align="center" offset={8}>
+          <TooltipContent side="left" align="center" offset={8}>
             <HeaderIconTooltipContent label="Search" shortcutKeys={commandCenterKeys} />
           </TooltipContent>
         </Tooltip>
@@ -1086,7 +1086,7 @@ function WorkspacesSectionHeader({
               <SidebarDisplayPreferencesMenu />
             </View>
           </TooltipTrigger>
-          <TooltipContent side="bottom" align="center" offset={8}>
+          <TooltipContent side="left" align="center" offset={8}>
             <HeaderIconTooltipContent label="Display preferences" />
           </TooltipContent>
         </Tooltip>

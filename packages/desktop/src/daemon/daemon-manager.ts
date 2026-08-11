@@ -18,6 +18,7 @@ import {
 import {
   checkForAppUpdate,
   downloadAndInstallUpdate,
+  shouldStopDesktopManagedDaemonBeforeAppUpdate,
   type AppUpdateCheckIntent,
   type AppReleaseChannel,
 } from "../features/auto-updater.js";
@@ -670,13 +671,19 @@ export function createDaemonCommandHandlers(options?: {
       return downloadAndInstallUpdate(
         { currentVersion, releaseChannel: await resolveRequestedReleaseChannel(args) },
         async () => {
-          // The user already agreed to this quit by pressing "Update now", and
-          // the installer is spawned before app.quit() lands. A "warn before
-          // quitting" prompt here would be asking a question that's already
-          // answered - and cancelling it wouldn't save the session anyway,
-          // because the installer taskkills the app on its way through.
-          markQuitPreConfirmed();
-          await stopDesktopDaemon("app_update");
+          const stopBeforeUpdate = shouldStopDesktopManagedDaemonBeforeAppUpdate({
+            platform: process.platform,
+            isAppImage: Boolean(process.env.APPIMAGE),
+          });
+          if (stopBeforeUpdate) {
+            // The user already agreed to this quit by pressing "Update now", and
+            // the installer is spawned before app.quit() lands. A "warn before
+            // quitting" prompt here would be asking a question that's already
+            // answered - and cancelling it wouldn't save the session anyway,
+            // because the installer taskkills the app on its way through.
+            markQuitPreConfirmed();
+            await stopDesktopDaemon("app_update");
+          }
         },
       );
     },

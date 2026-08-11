@@ -301,6 +301,7 @@ const styles = StyleSheet.create((theme) => ({
   bar: {
     flexDirection: "row",
     alignItems: "center",
+    minHeight: 36,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
     backgroundColor: theme.colors.surface1,

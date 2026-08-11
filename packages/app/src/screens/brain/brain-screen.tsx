@@ -10,7 +10,7 @@
  * host has a brain: two brains are two machines with their own GPUs, models and
  * logs, and a combined view would be meaningless.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { MenuHeader } from "@/components/headers/menu-header";
@@ -37,9 +37,9 @@ type BrainTab = "overview" | "models" | "library" | "benchmarks" | "logs";
 
 const TAB_OPTIONS: { value: BrainTab; label: string }[] = [
   { value: "overview", label: "Overview" },
-  { value: "models", label: "Models" },
   { value: "library", label: "Library" },
-  { value: "benchmarks", label: "Benchmarks" },
+  { value: "models", label: "Models" },
+  { value: "benchmarks", label: "Benchmark" },
   { value: "logs", label: "Logs" },
 ];
 
@@ -175,6 +175,28 @@ function BrainHostPanel({
     tab,
   ]);
 
+  let content: ReactNode;
+  if (tab === "models" || tab === "benchmarks") {
+    // This tab owns a split surface that must consume the remaining page
+    // height. Giving it the page scroll would make its inner scroll regions
+    // size to content instead of the visible viewport.
+    content = <View style={styles.fullHeightContent}>{body}</View>;
+  } else if (tab === "logs") {
+    content = (
+      <View style={[styles.fullHeightContent, styles.paddedFullHeightContent]}>{body}</View>
+    );
+  } else {
+    content = (
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={!isWeb}
+      >
+        {body}
+      </ScrollView>
+    );
+  }
+
   return (
     <View style={styles.panel}>
       {/* Toolbar band: pinned above the scroll region so the tabs stay reachable
@@ -203,13 +225,7 @@ function BrainHostPanel({
           />
         </View>
       </View>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={!isWeb}
-      >
-        {body}
-      </ScrollView>
+      {content}
     </View>
   );
 }
@@ -316,6 +332,13 @@ const styles = StyleSheet.create((theme) => ({
   scrollContent: {
     paddingHorizontal: theme.spacing[4],
     paddingTop: theme.spacing[4],
+  },
+  fullHeightContent: {
+    flex: 1,
+    minHeight: 0,
+  },
+  paddedFullHeightContent: {
+    padding: theme.spacing[4],
   },
   placeholder: {
     fontSize: theme.fontSize.sm,

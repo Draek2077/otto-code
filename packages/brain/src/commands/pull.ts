@@ -10,6 +10,7 @@ import { loadBrainConfig, loadCatalog } from "../config/index.js";
 import type { CatalogModel } from "../config/schema.js";
 import {
   downloadRepoFiles,
+  bundleDownloadPlan,
   listRepoQuants,
   managedModelsDir,
   pullModel,
@@ -41,6 +42,7 @@ interface QuantRow {
   quant: string;
   size: string;
   files: number;
+  fileNames?: string[];
 }
 
 const quantSchema: OutputSchema<QuantRow> = {
@@ -78,6 +80,7 @@ export function addPullOptions(cmd: Command): Command {
     .argument("<model>", "catalog id or name fragment")
     .option("--file <name.gguf>", "explicit GGUF file name in the repo")
     .option("--quant <label>", "download a specific quantization (e.g. Q5_K_M)")
+    .option("--component <id...>", "download optional bundle component ids")
     .option("--list-quants", "list the quantizations the repo offers and exit");
 }
 
@@ -85,6 +88,7 @@ export interface PullOptionsInput {
   file?: string;
   quant?: string;
   listQuants?: boolean;
+  component?: string[];
 }
 
 export async function runPullCommand(
@@ -97,6 +101,64 @@ export async function runPullCommand(
   const model = findCatalogModel(catalog.models, modelArg);
   const token = resolveHfToken(config);
 
+  // A bundle combines one selected primary quant and explicit optional
+  // companions. It must not pull the generic discovery projector as a side
+  // effect, because that makes the download plan ambiguous.
+  if (model.components && !options.listQuants && !options.file) {
+    const { quants } = await listRepoQuants(model.hfRepo, token);
+    const choice = options.quant
+      ? quants.find((quant) => quant.quant.toLowerCase() === options.quant!.toLowerCase())
+      : undefined;
+    if (options.quant && !choice) {
+      throw new CommandError({
+        code: "NO_QUANT",
+        message: `${model.hfRepo} has no ${options.quant}`,
+      });
+    }
+    const plan = bundleDownloadPlan(
+      model,
+      options.component ?? [],
+      choice?.files,
+      choice?.sizeBytes,
+    );
+    let lastPct = -1;
+    const written = await withActivity("download", { target: model.name }, (activity) =>
+      downloadRepoFiles({
+        repo: plan.repo,
+        files: plan.files,
+        destRoot: managedModelsDir(config),
+        token,
+        onProgress: (progress) => {
+          activity.update(plan.totalBytes ? progress.receivedBytes / plan.totalBytes : null);
+          // The daemon owns the UI job record and only sees this child's
+          // stdout/stderr. Activity also feeds the host status, but emitting
+          // here is what keeps the Library's bundle progress ring live.
+          const pct = plan.totalBytes
+            ? Math.floor((progress.receivedBytes / plan.totalBytes) * 100)
+            : 0;
+          // Network chunks do not land exactly on 5% boundaries. Emit every
+          // new integer so the daemon receives continuous progress instead of
+          // often seeing only the initial and final updates.
+          if (pct > lastPct) {
+            lastPct = pct;
+            process.stderr.write(`  ${model.name}${choice ? ` ${choice.quant}` : ""}: ${pct}%\r`);
+          }
+        },
+      }),
+    );
+    process.stderr.write("\n");
+    return {
+      type: "single",
+      data: {
+        model: choice ? `${model.name} (${choice.quant})` : model.name,
+        repo: model.hfRepo,
+        path: written[0] ?? "(already present)",
+        size: plan.totalBytes ? formatBytes(plan.totalBytes) : "-",
+      },
+      schema: pullSchema,
+    };
+  }
+
   // Discover-and-choose paths both need the repo's quant listing.
   if (options.listQuants || options.quant) {
     const { quants, mmproj } = await listRepoQuants(model.hfRepo, token);
@@ -108,6 +170,7 @@ export async function runPullCommand(
           quant: q.quant,
           size: formatBytes(q.sizeBytes),
           files: q.files.length,
+          fileNames: q.files,
         })),
         schema: quantSchema,
       };
@@ -139,7 +202,7 @@ export async function runPullCommand(
           onProgress: (p) => {
             activity.update(total ? p.receivedBytes / total : null);
             const pct = total ? Math.floor((p.receivedBytes / total) * 100) : 0;
-            if (pct !== lastPct && pct % 5 === 0) {
+            if (pct > lastPct) {
               lastPct = pct;
               process.stderr.write(`  ${model.name} ${choice.quant}: ${pct}%\r`);
             }
@@ -173,7 +236,7 @@ export async function runPullCommand(
         if (!p.totalBytes) return;
         activity.update(p.receivedBytes / p.totalBytes);
         const pct = Math.floor((p.receivedBytes / p.totalBytes) * 100);
-        if (pct !== lastPct && pct % 5 === 0) {
+        if (pct > lastPct) {
           lastPct = pct;
           process.stderr.write(`  ${model.name}: ${pct}%\r`);
         }

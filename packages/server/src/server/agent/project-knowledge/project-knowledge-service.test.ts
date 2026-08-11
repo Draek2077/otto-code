@@ -93,6 +93,57 @@ describe("ProjectKnowledgeService", () => {
     }
   });
 
+  it("lists record pages with the conventional blank line after frontmatter", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "otto-project-knowledge-"));
+    try {
+      const knowledge = service(root);
+      const record = await knowledge.record({
+        cwd: root,
+        kind: "requirement",
+        title: "Blank frontmatter separator",
+        statement: "Normal Markdown spacing must not hide this record.",
+        status: "confirmed",
+      });
+      const pagePath = path.join(root, ".otto", "knowledge", "requirements", `${record.id}.md`);
+      const page = await readFile(pagePath, "utf8");
+      await writeFile(pagePath, page.replace("\n---\n#", "\n---\n\n#"));
+
+      expect((await knowledge.catalogView(root)).records).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: record.id })]),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("uses an already-resolved root without re-entering Git root resolution", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "otto-project-knowledge-"));
+    try {
+      let resolves = 0;
+      const knowledge = new ProjectKnowledgeService({
+        resolveProjectRoot: async () => {
+          resolves += 1;
+          return root;
+        },
+        logger: { warn: () => undefined } as never,
+      });
+      await knowledge.record({
+        cwd: root,
+        kind: "decision",
+        title: "Project roots are registered",
+        statement: "A workspace supplies its known project root to catalog reads.",
+      });
+      resolves = 0;
+
+      const view = await knowledge.catalogViewAtRoot(root);
+
+      expect(view.records).toHaveLength(1);
+      expect(resolves).toBe(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("makes every current-truth change append permanent provenance", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "otto-project-knowledge-"));
     try {

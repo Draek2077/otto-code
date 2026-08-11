@@ -50,6 +50,7 @@ function createSnapshot(
       behindOfOrigin: 0,
       hasRemote: true,
       diffStat: { additions: 1, deletions: 0 },
+      workingTreeDiffStat: { additions: 1, deletions: 0 },
     },
     forge: {
       featuresEnabled: true,
@@ -278,6 +279,7 @@ interface CreateServiceTestOptions {
   getCheckoutIdentity?: ReturnType<typeof vi.fn>;
   getCheckoutSnapshotFacts?: ReturnType<typeof vi.fn>;
   getCheckoutShortstat?: ReturnType<typeof vi.fn>;
+  getCheckoutUncommittedShortstat?: ReturnType<typeof vi.fn>;
   getPullRequestStatus?: ReturnType<typeof vi.fn>;
   github?: ForgeService;
   forgeOverrides?: Record<string, ForgeService>;
@@ -298,6 +300,10 @@ function buildDefaultTestServiceDeps() {
     getCheckoutStatus: vi.fn(async (cwd: string) => createCheckoutStatus(cwd)),
     getCheckoutIdentity: vi.fn(async (cwd: string) => createCheckoutIdentity(cwd)),
     getCheckoutShortstat: vi.fn(async () => ({
+      additions: 1,
+      deletions: 0,
+    })),
+    getCheckoutUncommittedShortstat: vi.fn(async () => ({
       additions: 1,
       deletions: 0,
     })),
@@ -528,6 +534,117 @@ describe("WorkspaceGitServiceImpl", () => {
       },
     });
     expect(getPullRequestStatus).toHaveBeenCalledTimes(1);
+
+    service.dispose();
+  });
+
+  test("refreshes forge identity when switching between GitHub and Bitbucket branches", async () => {
+    const githubRemote = "https://github.com/acme/repo.git";
+    const bitbucketRemote = "git@bitbucket.org:acme/repo.git";
+    const getCheckoutStatus = vi
+      .fn<() => Promise<CheckoutStatusGit>>()
+      .mockResolvedValueOnce(
+        createCheckoutStatus(REPO_CWD, { currentBranch: "github-branch", remoteUrl: githubRemote }),
+      )
+      .mockResolvedValueOnce(
+        createCheckoutStatus(REPO_CWD, {
+          currentBranch: "bitbucket-branch",
+          remoteUrl: bitbucketRemote,
+        }),
+      )
+      .mockResolvedValueOnce(
+        createCheckoutStatus(REPO_CWD, { currentBranch: "github-return", remoteUrl: githubRemote }),
+      );
+    const getCheckoutSnapshotFacts = vi
+      .fn<() => Promise<CheckoutSnapshotFacts>>()
+      .mockResolvedValueOnce({
+        ...createCheckoutSnapshotFacts(REPO_CWD),
+        currentBranch: "github-branch",
+        remoteUrl: githubRemote,
+        pullRequestLookupTarget: { headRef: "github-branch" },
+      })
+      .mockResolvedValueOnce({
+        ...createCheckoutSnapshotFacts(REPO_CWD),
+        currentBranch: "bitbucket-branch",
+        remoteUrl: bitbucketRemote,
+        pullRequestLookupTarget: { headRef: "bitbucket-branch" },
+      })
+      .mockResolvedValueOnce({
+        ...createCheckoutSnapshotFacts(REPO_CWD),
+        currentBranch: "github-return",
+        remoteUrl: githubRemote,
+        pullRequestLookupTarget: { headRef: "github-return" },
+      });
+    const getPullRequestStatus = vi
+      .fn<() => Promise<PullRequestStatusResult>>()
+      .mockResolvedValueOnce(
+        createPullRequestStatusResult({
+          status: {
+            url: "https://github.com/acme/repo/pull/1",
+            title: "GitHub branch",
+            state: "open",
+            baseRefName: "main",
+            headRefName: "github-branch",
+            isMerged: false,
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        createPullRequestStatusResult({
+          status: {
+            url: "https://bitbucket.org/acme/repo/pull-requests/2",
+            title: "Bitbucket branch",
+            state: "open",
+            baseRefName: "main",
+            headRefName: "bitbucket-branch",
+            isMerged: false,
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        createPullRequestStatusResult({
+          status: {
+            url: "https://github.com/acme/repo/pull/3",
+            title: "Back on GitHub",
+            state: "open",
+            baseRefName: "main",
+            headRefName: "github-return",
+            isMerged: false,
+          },
+        }),
+      );
+    const service = createService({
+      getCheckoutStatus,
+      getCheckoutSnapshotFacts,
+      getPullRequestStatus,
+      forgeOverrides: {
+        github: createGitHubServiceStub(),
+        "bitbucket-cloud": createGitHubServiceStub(),
+      },
+    });
+
+    expect((await service.getSnapshot(REPO_CWD)).forge).toMatchObject({
+      forge: "github",
+      pullRequest: { title: "GitHub branch" },
+    });
+    await service.getSnapshot(REPO_CWD, {
+      force: true,
+      includeForge: false,
+      reason: "test-switch-to-bitbucket",
+    });
+    expect(service.peekSnapshot(REPO_CWD)?.forge).toMatchObject({
+      forge: "bitbucket-cloud",
+      pullRequest: { title: "Bitbucket branch" },
+    });
+    await service.getSnapshot(REPO_CWD, {
+      force: true,
+      includeForge: false,
+      reason: "test-switch-to-github",
+    });
+    expect(service.peekSnapshot(REPO_CWD)?.forge).toMatchObject({
+      forge: "github",
+      pullRequest: { title: "Back on GitHub" },
+    });
 
     service.dispose();
   });

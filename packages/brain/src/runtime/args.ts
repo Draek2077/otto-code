@@ -71,6 +71,11 @@ export function buildArgs(profile: Profile, { port, host = "127.0.0.1" }: ServeT
     args.push("--mmproj", profile.mmprojPath);
   }
 
+  // Component paths were resolved by the host from the catalog manifest. Only
+  // the known llama.cpp role is emitted; clients never supply process paths.
+  const drafter = profile.componentPaths?.speculative_drafter;
+  if (drafter) args.push("--model-draft", drafter);
+
   // The setting that was actually breaking long agentic runs.
   if (profile.reasoningBudget !== null && profile.reasoningBudget !== undefined) {
     args.push("--reasoning-budget", String(profile.reasoningBudget));

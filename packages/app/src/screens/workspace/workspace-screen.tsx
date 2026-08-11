@@ -1360,7 +1360,7 @@ function GitCheckoutExplorerToggle({
       </TooltipTrigger>
       <TooltipContent
         testID="workspace-explorer-toggle-tooltip"
-        side="left"
+        side="bottom"
         align="center"
         offset={8}
       >
@@ -1404,7 +1404,7 @@ function PlainExplorerToggle({
         onPress={onPress}
         tooltipLabel={t("workspace.tabs.explorer.toggle")}
         tooltipKeys={explorerToggleKeys}
-        tooltipSide="left"
+        tooltipSide="bottom"
         active={isExplorerOpen}
         accessible
         accessibilityRole="button"
@@ -1432,7 +1432,7 @@ function PlainExplorerToggle({
       onPress={onPress}
       tooltipLabel={t("workspace.tabs.explorer.toggle")}
       tooltipKeys={explorerToggleKeys}
-      tooltipSide="left"
+      tooltipSide="bottom"
       style={styles.compactHeaderActionButton}
       active={isExplorerOpen}
       accessible
@@ -1541,7 +1541,7 @@ function WorkspaceHeaderMenu({
           </TooltipTrigger>
           <TooltipContent
             testID="workspace-header-menu-tooltip"
-            side="left"
+            side="bottom"
             align="center"
             offset={8}
           >
@@ -4685,7 +4685,7 @@ function WorkspaceScreenContent({
                 onPress={handleToggleExplorer}
                 tooltipLabel={t("workspace.tabs.explorer.toggle")}
                 tooltipKeys={explorerToggleKeys}
-                tooltipSide="left"
+                tooltipSide="bottom"
                 style={styles.compactHeaderActionButton}
                 active={isExplorerOpen}
                 accessible
@@ -4710,7 +4710,7 @@ function WorkspaceScreenContent({
                 onPress={handleToggleExplorer}
                 tooltipLabel={t("workspace.tabs.explorer.toggle")}
                 tooltipKeys={explorerToggleKeys}
-                tooltipSide="left"
+                tooltipSide="bottom"
                 active={isExplorerOpen}
                 accessible
                 accessibilityRole="button"

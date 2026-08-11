@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useImperativeHandle, useMemo, useRef } f
 import { useQuery } from "@tanstack/react-query";
 import type { FileReadResult } from "@otto-code/client/internal/daemon-client";
 import {
-  ActivityIndicator,
   ScrollView as RNScrollView,
   Text,
   View,
@@ -13,6 +12,7 @@ import {
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { MarkdownRenderer } from "@/components/markdown/renderer";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { MarkdownTaskToggle } from "@/components/markdown/task-context";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useSessionStore, type ExplorerFile } from "@/stores/session-store";
@@ -716,7 +716,7 @@ function FilePreviewBody({
   if (state === "loading") {
     return (
       <View style={styles.centerState}>
-        <ActivityIndicator size="small" />
+        <LoadingSpinner size="small" />
         <Text style={styles.loadingText}>{t("panels.file.loading")}</Text>
       </View>
     );
@@ -842,7 +842,7 @@ function FilePreviewBody({
     if (!svgXml && !imagePreviewUri) {
       return (
         <View style={styles.centerState}>
-          <ActivityIndicator size="small" />
+          <LoadingSpinner size="small" />
           <Text style={styles.loadingText}>{t("panels.file.loading")}</Text>
         </View>
       );
@@ -1098,7 +1098,9 @@ const styles = StyleSheet.create((theme) => {
     container: {
       flex: 1,
       minHeight: 0,
-      backgroundColor: theme.colors.surface0,
+      // Match the editable CodeMirror well so read-only source and rendered
+      // file previews retain the same reading surface.
+      backgroundColor: theme.colors.surfaceCode,
     },
     centerState: {
       flex: 1,

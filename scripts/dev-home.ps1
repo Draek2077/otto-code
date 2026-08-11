@@ -75,10 +75,10 @@ function Initialize-OttoDevEnvironment {
     # are never used for production.
     if (-not $env:OTTO_CORS_ORIGINS) { $env:OTTO_CORS_ORIGINS = "*" }
 
-    # Relay off by default in dev: the hosted relay endpoint is not live yet, so
-    # the daemon would just spam DNS-failure retries. Set OTTO_RELAY_ENABLED=true
-    # to opt in.
-    if (-not $env:OTTO_RELAY_ENABLED) { $env:OTTO_RELAY_ENABLED = "false" }
+    # The hosted relay is available in development too, so desktop pairing and
+    # relay-based verification exercise the same path as a packaged build. Set
+    # OTTO_RELAY_ENABLED=false to opt out for an isolated local run.
+    if (-not $env:OTTO_RELAY_ENABLED) { $env:OTTO_RELAY_ENABLED = "true" }
 
     # Share speech models with the installed app to avoid re-downloading GBs.
     # This is the one directory dev and production are meant to have in common.

@@ -84,8 +84,11 @@ export function nativeContextLimit(model: Model | null): number {
 
 /** The editable fields, resolved against one model's capabilities. */
 export function profileFieldDescriptors(model: Model | null): ProfileFieldDescriptor[] {
-  const hasProjector = Boolean(model?.mmprojPath);
-  return [
+  const projector = model?.components?.find((component) => component.role === "vision_projector");
+  const hasProjector = model?.components
+    ? Boolean(projector?.available)
+    : Boolean(model?.mmprojPath);
+  const fields: ProfileFieldDescriptor[] = [
     {
       key: "contextSize",
       label: "Context",
@@ -110,13 +113,6 @@ export function profileFieldDescriptors(model: Model | null): ProfileFieldDescri
       available: true,
     },
     { key: "flashAttention", label: "Flash attention", kind: "toggle", available: true },
-    {
-      key: "vision",
-      label: "Vision",
-      kind: "toggle",
-      available: hasProjector,
-      ...(hasProjector ? {} : { unavailableReason: "no projector" }),
-    },
     {
       key: "reasoningBudget",
       label: "Reasoning budget",
@@ -145,6 +141,25 @@ export function profileFieldDescriptors(model: Model | null): ProfileFieldDescri
       available: true,
     },
   ];
+
+  // Bundle models expose the projector in the component section below. Keep
+  // the legacy profile field for hand-scanned single-file models, but do not
+  // render two controls that write the same vision setting for bundles.
+  if (!model?.components) {
+    fields.splice(4, 0, {
+      key: "vision",
+      label: "Vision",
+      kind: "toggle",
+      available: hasProjector,
+      ...(hasProjector
+        ? {}
+        : {
+            unavailableReason: projector ? "download the vision component first" : "no projector",
+          }),
+    });
+  }
+
+  return fields;
 }
 
 /** A note attached to a field, or to the profile as a whole when `field` is null. */
@@ -261,7 +276,7 @@ function clamp(value: number, min: number, max: number): number {
  * Apply an editable patch to a profile, clamping every field to its range and
  * dropping anything the model cannot use.
  *
- * Only the eight editable keys are honoured. `modelPath`/`mmprojPath`/`modelId`
+ * Only the supported editable keys are honoured. `modelPath`/`mmprojPath`/`modelId`
  * are re-derived from the model on every read (`profiles.forModel`), so letting
  * a caller set them would be a lie at best and a path-traversal at worst.
  * `reasoningBudgetMessage`, `batchSize`, `ubatchSize` and `extraArgs` stay
@@ -339,6 +354,29 @@ export function sanitizeProfilePatch(
     } else {
       next.vision = p.vision;
     }
+  }
+
+  if ("enabledComponents" in p) {
+    if (
+      !Array.isArray(p.enabledComponents) ||
+      !p.enabledComponents.every((id) => typeof id === "string")
+    ) {
+      throw new Error("enabledComponents must be an array of component ids");
+    }
+    const requested = [...new Set(p.enabledComponents)];
+    const available = new Set(
+      model?.components
+        ?.filter((component) => component.available)
+        .map((component) => component.id) ?? [],
+    );
+    const unavailable = requested.filter((id) => !available.has(id));
+    if (unavailable.length)
+      throw new Error(`components are not downloaded: ${unavailable.join(", ")}`);
+    next.enabledComponents = requested;
+    const projector = model?.components?.find(
+      (component) => component.role === "vision_projector" && requested.includes(component.id),
+    );
+    if (model?.components) next.vision = Boolean(projector);
   }
 
   return { profile: next, adjustments };

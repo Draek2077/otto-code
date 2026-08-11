@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { summarizeProjectKnowledge } from "./model";
+import { formatDeliveryStatus, formatMetadataLabel, summarizeProjectKnowledge } from "./model";
 
 describe("project knowledge summary", () => {
+  it("formats stored metadata for people without changing its value", () => {
+    expect(formatMetadataLabel("in_build")).toBe("In Build");
+    expect(formatMetadataLabel("requirement")).toBe("Requirement");
+    expect(formatDeliveryStatus(undefined)).toBe("Charter");
+  });
+
   it("keeps charter counts separate from weighted completion metrics", () => {
     const records = [
       {

@@ -89,6 +89,15 @@ export function shouldInstallAppUpdateOnQuit(input: {
   return !(input.platform === "linux" && input.isAppImage);
 }
 
+export function shouldStopDesktopManagedDaemonBeforeAppUpdate(input: {
+  platform: NodeJS.Platform;
+  isAppImage: boolean;
+}): boolean {
+  // deb/rpm updates synchronously request polkit or sudo before Electron gets
+  // the updater quit handoff. A cancelled prompt must leave Otto usable.
+  return !(input.platform === "linux" && !input.isAppImage);
+}
+
 class ElectronAppUpdateRuntime implements AppUpdateRuntime {
   private configured = false;
 

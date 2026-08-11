@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Shortcut } from "@/components/ui/shortcut";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { compactUp, useIconSize } from "@/styles/theme";
@@ -24,6 +25,7 @@ interface GitActionsSplitButtonProps {
   hideLabels?: boolean;
   // Stretch to fill the available width (content stays centered).
   fill?: boolean;
+  tooltipSide?: "top" | "bottom";
 }
 
 interface GitActionMenuItemProps {
@@ -81,6 +83,7 @@ export function GitActionsSplitButton({
   gitActions,
   hideLabels,
   fill,
+  tooltipSide = "bottom",
 }: GitActionsSplitButtonProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -168,41 +171,55 @@ export function GitActionsSplitButton({
     <View style={rowStyle}>
       {gitActions.primary ? (
         <View style={splitButtonStyle}>
-          <Pressable
-            testID="changes-primary-cta"
-            style={primaryPressableStyle}
-            onPress={handlePrimaryPress}
-            disabled={gitActions.primary.disabled}
-            accessibilityRole="button"
-            accessibilityLabel={gitActions.primary.label}
-          >
-            {gitActions.primary.status === "pending" ? (
-              <LoadingSpinner
-                size="small"
-                color={theme.colors.foreground}
-                style={styles.splitButtonSpinnerOnly}
-              />
-            ) : (
-              <View style={styles.splitButtonContent}>
-                {gitActions.primary.icon}
-                {!hideLabels && (
-                  <Text style={styles.splitButtonText} numberOfLines={1}>
-                    {getActionDisplayLabel(gitActions.primary)}
-                  </Text>
+          <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
+            <TooltipTrigger asChild>
+              <Pressable
+                testID="changes-primary-cta"
+                style={primaryPressableStyle}
+                onPress={handlePrimaryPress}
+                disabled={gitActions.primary.disabled}
+                accessibilityRole="button"
+                accessibilityLabel={gitActions.primary.label}
+              >
+                {gitActions.primary.status === "pending" ? (
+                  <LoadingSpinner
+                    size="small"
+                    color={theme.colors.foreground}
+                    style={styles.splitButtonSpinnerOnly}
+                  />
+                ) : (
+                  <View style={styles.splitButtonContent}>
+                    {gitActions.primary.icon}
+                    {!hideLabels && (
+                      <Text style={styles.splitButtonText} numberOfLines={1}>
+                        {getActionDisplayLabel(gitActions.primary)}
+                      </Text>
+                    )}
+                  </View>
                 )}
-              </View>
-            )}
-          </Pressable>
+              </Pressable>
+            </TooltipTrigger>
+            <TooltipContent side={tooltipSide} align="center" offset={8}>
+              <Text style={styles.tooltipText}>{getActionDisplayLabel(gitActions.primary)}</Text>
+            </TooltipContent>
+          </Tooltip>
           {gitActions.secondary.length > 0 ? (
             <DropdownMenu>
-              <DropdownMenuTrigger
-                testID="changes-primary-cta-caret"
-                style={caretTriggerStyle}
-                accessibilityRole="button"
-                accessibilityLabel={t("workspace.git.actions.moreOptions")}
-              >
-                <ChevronDown size={iconSize.md} color={theme.colors.foregroundMuted} />
-              </DropdownMenuTrigger>
+              <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger
+                    testID="changes-primary-cta-caret"
+                    style={caretTriggerStyle}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("workspace.git.actions.moreOptions")}
+                  >
+                    <ChevronDown size={iconSize.md} color={theme.colors.foregroundMuted} />
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side={tooltipSide} align="center" offset={8}>
+                  <Text style={styles.tooltipText}>{t("workspace.git.actions.moreOptions")}</Text>
+                </TooltipContent>
+              </Tooltip>
               <DropdownMenuContent align="end" testID="changes-primary-cta-menu">
                 {gitActions.secondary.map((action, index) => (
                   <GitActionMenuItem
@@ -298,6 +315,10 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.normal,
     flexShrink: 1,
+  },
+  tooltipText: {
+    color: theme.colors.popoverForeground,
+    fontSize: theme.fontSize.sm,
   },
   splitButtonContent: {
     flexDirection: "row",

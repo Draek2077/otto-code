@@ -5,8 +5,10 @@ import {
   clampRevealBudget,
   computeLiveTurnReveal,
   nextRevealLength,
+  StreamResumeGate,
   TurnRevealTicker,
 } from "./turn-reveal";
+import { groupConsecutiveActionItems } from "./action-grouping";
 
 function assistant(id: string, text: string): StreamItem {
   return { kind: "assistant_message", id, text, timestamp: new Date(0) };
@@ -325,6 +327,75 @@ describe("TurnRevealTicker", () => {
     // its first character; on re-entry the snap wins.
     ticker.update({ turnKey: "u2", target: 300, enabled: true, visible: true });
     assert.equal(ticker.getRevealed(), 300);
+  });
+
+  it("shows the fresh grouped transcript before reveal resumes after app sleep", () => {
+    // Regression: the active chat pane does not become inactive when its app
+    // or browser tab sleeps. On return React first supplied its deferred,
+    // pre-sleep stream and then the current stream, making completed actions
+    // regroup and assistant text type out in view.
+    const beforeSleep = [tool("t1")];
+    const afterSleep = [tool("t1"), tool("t2")];
+    const emptyHead: StreamItem[] = [];
+    const gate = new StreamResumeGate();
+
+    gate.select({
+      visible: true,
+      currentTail: beforeSleep,
+      currentHead: emptyHead,
+      deferredTail: beforeSleep,
+      deferredHead: emptyHead,
+    });
+    gate.select({
+      visible: false,
+      currentTail: beforeSleep,
+      currentHead: emptyHead,
+      deferredTail: beforeSleep,
+      deferredHead: emptyHead,
+    });
+
+    // First app-visible render: current props contain all away events, but
+    // useDeferredValue still has the pre-sleep array.
+    const returned = gate.select({
+      visible: true,
+      currentTail: afterSleep,
+      currentHead: emptyHead,
+      deferredTail: beforeSleep,
+      deferredHead: emptyHead,
+    });
+    assert.equal(returned.tail, afterSleep);
+    assert.equal(returned.dataSettled, false);
+    assert.equal(groupConsecutiveActionItems(returned.tail)[0]?.kind, "action_group");
+
+    // The reveal shares the same return latch, so the assistant backlog is
+    // already visible. Once deferral catches up, later events animate again.
+    const ticker = new TurnRevealTicker({
+      turnKey: "u1",
+      target: 20,
+      isOnScreen: () => true,
+    });
+    ticker.update({ turnKey: "u1", target: 20, enabled: true, visible: false });
+    ticker.update({
+      turnKey: "u1",
+      target: 400,
+      enabled: true,
+      visible: true,
+      dataSettled: returned.dataSettled,
+    });
+    assert.equal(ticker.getRevealed(), 400);
+
+    const settled = gate.select({
+      visible: true,
+      currentTail: afterSleep,
+      currentHead: emptyHead,
+      deferredTail: afterSleep,
+      deferredHead: emptyHead,
+    });
+    assert.equal(settled.dataSettled, true);
+    ticker.update({ turnKey: "u1", target: 400, enabled: true, visible: true, dataSettled: true });
+    ticker.update({ turnKey: "u1", target: 440, enabled: true, visible: true, dataSettled: true });
+    ticker.tick();
+    assert.ok(ticker.getRevealed() > 400 && ticker.getRevealed() < 440);
   });
 
   it("notifies subscribers only when a tick moves the position", () => {

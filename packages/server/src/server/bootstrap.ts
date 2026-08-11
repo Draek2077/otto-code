@@ -976,6 +976,19 @@ export async function createOttoDaemon(
   const brainOpsManager = new BrainOpsManager({
     logger,
     ottoHome: config.ottoHome,
+    onRuntimeInstalled: ({ build, runtime }) => {
+      // A latest install resolves at request time, so retain the automatic
+      // policy. An explicitly named build is a deliberate pin.
+      daemonConfigStore.patch({
+        brain: {
+          runtime:
+            build && build !== "latest"
+              ? { source: "managed", path: runtime.dir }
+              : { source: "auto", path: null },
+        },
+      });
+    },
+    onPullCompleted: () => brainManager.rescanInventory(),
   });
   // Reconcile the helper-process ledger in the background so it never blocks the
   // daemon from coming up; terminating a live leftover can take a few seconds.

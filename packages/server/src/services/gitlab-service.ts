@@ -17,6 +17,7 @@ import {
   createUnavailableSearchResult,
   normalizeForgeSearchKinds,
   parseOptionalTime,
+  sortPullRequestsLatestFirst,
 } from "./forge-service.js";
 import type {
   CheckDetails,
@@ -972,7 +973,7 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
       { cwd: input.cwd },
       z.array(GitLabMergeRequestSchema),
     );
-    return mergeRequests.map(toPullRequestSummary);
+    return sortPullRequestsLatestFirst(mergeRequests.map(toPullRequestSummary));
   }
 
   /**

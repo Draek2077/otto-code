@@ -28,6 +28,8 @@ export type PrTimelineEntry =
   | PrThreadEntry
   | PrReviewEntry;
 
+export type PrTimelineDisplayOrder = "newest" | "oldest";
+
 /**
  * Builds the GitHub-style nested timeline:
  * - comments sharing a thread id collapse into one thread entry (root comment +
@@ -38,9 +40,25 @@ export type PrTimelineEntry =
  *   (GitHub's explicit signal: PullRequestReviewComment.pullRequestReview);
  * - everything else stays a standalone entry in original order.
  */
-export function buildPrTimeline(activities: readonly PrPaneActivity[]): PrTimelineEntry[] {
-  const entries = groupThreads(activities);
-  return nestThreadsUnderReviews(entries);
+export function buildPrTimeline(
+  activities: readonly PrPaneActivity[],
+  displayOrder: PrTimelineDisplayOrder = "newest",
+): PrTimelineEntry[] {
+  const entries = nestThreadsUnderReviews(
+    groupThreads([...activities].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))),
+  );
+  const direction = displayOrder === "newest" ? -1 : 1;
+  return [...entries].sort(
+    (left, right) => direction * (entryTimestamp(left) - entryTimestamp(right)),
+  );
+}
+
+function entryTimestamp(entry: PrTimelineEntry): number {
+  if (entry.kind === "single") return entry.activity.createdAt ?? 0;
+  if (entry.kind === "review") {
+    return Math.max(entry.review.createdAt ?? 0, ...entry.threads.map(entryTimestamp));
+  }
+  return Math.max(...entry.comments.map((comment) => comment.createdAt ?? 0));
 }
 
 function groupThreads(activities: readonly PrPaneActivity[]): PrTimelineEntry[] {

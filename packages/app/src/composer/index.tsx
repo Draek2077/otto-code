@@ -1,11 +1,4 @@
-import {
-  View,
-  Pressable,
-  Text,
-  ActivityIndicator,
-  Keyboard,
-  type PressableStateCallbackType,
-} from "react-native";
+import { View, Pressable, Text, Keyboard, type PressableStateCallbackType } from "react-native";
 import type { TFunction } from "i18next";
 import {
   useState,
@@ -50,6 +43,7 @@ import {
   type DraftAgentControlsProps,
 } from "@/composer/agent-controls";
 import { ContextWindowMeter } from "@/components/context-window-meter";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useCachedContextWindowUsage } from "@/hooks/use-cached-context-window-usage";
 import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
 import { useSessionStore, type Agent } from "@/stores/session-store";
@@ -990,7 +984,7 @@ function ComposerCancelButton({
     ? t("composer.cancel.cancelingAgent")
     : t("composer.cancel.stopAgent");
   const icon = isCancellingAgent ? (
-    <ActivityIndicator size="small" color="white" />
+    <LoadingSpinner size="small" />
   ) : (
     <Stop size={buttonIconSize} color="white" />
   );
@@ -1091,7 +1085,7 @@ function ComposerVoiceModeButton({
   const renderTriggerContent = useCallback(
     ({ hovered }: PressableStateCallbackType & { hovered?: boolean }) => {
       if (isVoiceSwitching) {
-        return <ActivityIndicator size="small" color="white" />;
+        return <LoadingSpinner size="small" />;
       }
       const colorMapping = hovered ? iconForegroundMapping : iconForegroundMutedMapping;
       return <ThemedAudioLines size={buttonIconSize} uniProps={colorMapping} />;
@@ -2680,6 +2674,8 @@ const styles = StyleSheet.create((theme: Theme) => ({
   },
   queueText: {
     flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
     color: theme.colors.foreground,
     fontSize: theme.fontSize.base,
   },
@@ -2700,6 +2696,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
+    flexShrink: 0,
   },
   queueActionButton: {
     width: 32,

@@ -10,7 +10,6 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
-  ActivityIndicator,
   FlatList,
   ListRenderItemInfo,
   Pressable,
@@ -318,7 +317,7 @@ function TreeRowItem({
               if (loading) {
                 return (
                   <View style={styles.treeLoadingIcon}>
-                    <ActivityIndicator size={iconSize.md} color={theme.colors.foregroundMuted} />
+                    <LoadingSpinner size={iconSize.md} />
                   </View>
                 );
               }
@@ -1607,7 +1606,7 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
   if (showInitialLoading && !isSolutionLens) {
     return (
       <View style={styles.centerState}>
-        <ActivityIndicator size="small" />
+        <LoadingSpinner size="small" />
         <Text style={styles.loadingText}>{t("workspace.fileExplorer.states.loading")}</Text>
       </View>
     );

@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ContextReport } from "@otto-code/protocol/messages";
 import { useSessionStore } from "@/stores/session-store";
@@ -157,5 +157,28 @@ describe("useContextReportQuery", () => {
     await waitFor(() => expect(result.current.error).toBe("daemon exploded"));
     expect(result.current.isLoading).toBe(false);
     expect(result.current.report).toBeNull();
+  });
+
+  it("keeps the loading state and retries after a host timeout", async () => {
+    vi.useFakeTimers();
+    requestContextReport
+      .mockRejectedValueOnce(new Error("Timeout waiting for message (60000ms)"))
+      .mockResolvedValueOnce({ report: makeReport(1000) });
+
+    const { result } = renderQuery();
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.error).toBeNull();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(result.current.report?.fixedTotal).toBe(1000);
+    expect(result.current.isLoading).toBe(false);
+    expect(requestContextReport).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
   });
 });

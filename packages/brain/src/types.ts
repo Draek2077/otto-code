@@ -31,6 +31,24 @@ export interface ModelFeatures {
   distilled: boolean;
 }
 
+export type ModelComponentRole = "vision_projector" | "speculative_drafter";
+
+/** A catalog-declared companion artifact resolved against local disk. */
+export interface ModelComponent {
+  id: string;
+  label: string;
+  description: string;
+  role: ModelComponentRole;
+  path: string | null;
+  bytes: number;
+  required: boolean;
+  defaultDownload: boolean;
+  defaultLoad: boolean;
+  available: boolean;
+  unavailableReason?: string;
+  minRuntimeBuild?: number;
+}
+
 /** A GGUF model discovered on disk (or resolvable from the download catalog). */
 export interface Model {
   id: string;
@@ -68,11 +86,15 @@ export interface Model {
   catalogId?: string;
   /** Back-reference: the hfRepo of the reconciled catalog entry, if matched. */
   catalogHfRepo?: string;
+  /** Present only when this catalog entry declares a component manifest. */
+  components?: ModelComponent[];
 }
 
 /** A resolved llama.cpp runtime: an executable paired with its vendor DLL dir. */
 export interface Runtime {
   label: string;
+  /** Human-readable runtime identity, separate from the filesystem-safe label. */
+  displayName?: string;
   version: string;
   dir: string;
   exe: string;

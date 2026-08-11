@@ -9,20 +9,6 @@ import {
   type ViewStyle,
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import {
-  CircleCheck,
-  CircleX,
-  Copy,
-  ExternalLink,
-  GitMerge,
-  GitPullRequest,
-  GitPullRequestClosed,
-  GitPullRequestDraft,
-  MessageSquare,
-  MessageSquarePlus,
-  MoreHorizontal,
-  RotateCw,
-} from "lucide-react-native";
 import type { PressableStateCallbackType } from "react-native";
 import { useTranslation } from "react-i18next";
 import { openExternalUrl } from "@/utils/open-external-url";
@@ -46,6 +32,22 @@ import { useCheckoutGitActionsStore } from "@/git/actions-store";
 import { isNative } from "@/constants/platform";
 import { useIsCompactFormFactor, WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
+import { COMPACT_CONTROL_HEIGHT } from "@/components/ui/control-geometry";
+import {
+  ArrowDownUp,
+  CircleCheck,
+  CircleX,
+  Copy,
+  ExternalLink,
+  GitMerge,
+  GitPullRequest,
+  GitPullRequestClosed,
+  GitPullRequestDraft,
+  MessageSquare,
+  MessageSquarePlus,
+  MoreHorizontal,
+  RotateCw,
+} from "@/components/icons/material-icons";
 import { getForgePresentation } from "@/git/forge";
 import { CLIENT_FORGE_VIEW_MODULES } from "@/git/forges/view";
 import type { PaneNativeContribution } from "@/git/client-forge-module";
@@ -71,6 +73,7 @@ import type { PrPaneActivity, PrPaneCheck, PrPaneData, PrState } from "./data";
 import type { ForgeSpecificStatusFacts } from "@/git/merge-capability";
 import {
   buildPrTimeline,
+  type PrTimelineDisplayOrder,
   type PrReviewEntry,
   type PrThreadEntry,
   type PrTimelineEntry,
@@ -92,6 +95,7 @@ const ThemedCircleCheck = withUnistyles(CircleCheck);
 const ThemedCircleX = withUnistyles(CircleX);
 const ThemedCopy = withUnistyles(Copy);
 const ThemedExternalLink = withUnistyles(ExternalLink);
+const ThemedArrowDownUp = withUnistyles(ArrowDownUp);
 const ThemedGitMerge = withUnistyles(GitMerge);
 const ThemedGitPullRequest = withUnistyles(GitPullRequest);
 const ThemedGitPullRequestClosed = withUnistyles(GitPullRequestClosed);
@@ -132,13 +136,15 @@ const PR_STATE_PRESENTATION: Record<PrState, PrStatePresentation> = {
 };
 
 const SUMMARY_COMMENT_ICON = (
-  <ThemedMessageSquare size={11} uniProps={foregroundMutedColorMapping} />
+  <ThemedMessageSquare size={ICON_SIZE.xs} uniProps={foregroundMutedColorMapping} />
 );
 const ADD_TO_CHAT_MENU_ICON = (
-  <ThemedMessageSquarePlus size={14} uniProps={foregroundMutedColorMapping} />
+  <ThemedMessageSquarePlus size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
 );
-const COPY_MENU_ICON = <ThemedCopy size={14} uniProps={foregroundMutedColorMapping} />;
-const OPEN_MENU_ICON = <ThemedExternalLink size={14} uniProps={foregroundMutedColorMapping} />;
+const COPY_MENU_ICON = <ThemedCopy size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />;
+const OPEN_MENU_ICON = (
+  <ThemedExternalLink size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
+);
 
 function handleMarkdownLinkPress(url: string): boolean {
   void openExternalUrl(url);
@@ -169,7 +175,7 @@ function refreshButtonStyle({
 function renderKebabTriggerIcon({ hovered }: { hovered?: boolean }) {
   return (
     <ThemedMoreHorizontal
-      size={14}
+      size={ICON_SIZE.sm}
       uniProps={hovered ? foregroundColorMapping : foregroundMutedColorMapping}
     />
   );
@@ -235,6 +241,8 @@ export function PullRequestPane({
   );
   const [checksOpen, setChecksOpen] = useState(true);
   const [activityOpen, setActivityOpen] = useState(true);
+  const [activityDisplayOrder, setActivityDisplayOrder] =
+    useState<PrTimelineDisplayOrder>("newest");
   const [activityState, setActivityState] = useState(getActivityState);
   const [loadingCheckKeys, setLoadingCheckKeys] = useState<ReadonlySet<string>>(() => new Set());
 
@@ -283,7 +291,10 @@ export function PullRequestPane({
       item.kind === "comment" || (item.kind === "review" && item.reviewState === "commented"),
   ).length;
 
-  const timelineEntries = useMemo(() => buildPrTimeline(data.activity), [data.activity]);
+  const timelineEntries = useMemo(
+    () => buildPrTimeline(data.activity, activityDisplayOrder),
+    [activityDisplayOrder, data.activity],
+  );
   const visibleEntries = useMemo(
     () =>
       getVisibleEntries(activityState, {
@@ -562,7 +573,7 @@ export function PullRequestPane({
                 </Text>
               </Text>
               <View style={styles.metaLine}>
-                <StateIcon size={14} uniProps={statePresentation.iconColor} />
+                <StateIcon size={ICON_SIZE.sm} uniProps={statePresentation.iconColor} />
                 <Text style={stateLabelStyle(data.state)} testID="pr-pane-state">
                   {getStateLabel(data.state)}
                 </Text>
@@ -573,7 +584,7 @@ export function PullRequestPane({
                   </Text>
                 ) : null}
                 <View style={hovered ? styles.headerLinkIcon : styles.headerLinkIconHidden}>
-                  <ThemedExternalLink size={12} uniProps={foregroundMutedColorMapping} />
+                  <ThemedExternalLink size={ICON_SIZE.xs} uniProps={foregroundMutedColorMapping} />
                 </View>
               </View>
             </>
@@ -643,6 +654,10 @@ export function PullRequestPane({
         >
           {timelineEntries.length > 0 && attachEnabled && visibleEntries.length > 0 ? (
             <View style={styles.activityToolbar}>
+              <ActivityOrderMenu
+                displayOrder={activityDisplayOrder}
+                onDisplayOrderChange={setActivityDisplayOrder}
+              />
               <Button
                 variant="ghost"
                 size="xs"
@@ -684,6 +699,51 @@ function stateLabelStyle(state: PrState) {
   if (state === "draft") return styles.stateLabelDraft;
   if (state === "merged") return styles.stateLabelMerged;
   return styles.stateLabelClosed;
+}
+
+function ActivityOrderMenu({
+  displayOrder,
+  onDisplayOrderChange,
+}: {
+  displayOrder: PrTimelineDisplayOrder;
+  onDisplayOrderChange: (order: PrTimelineDisplayOrder) => void;
+}) {
+  const handleNewestFirst = useCallback(
+    () => onDisplayOrderChange("newest"),
+    [onDisplayOrderChange],
+  );
+  const handleOldestFirst = useCallback(
+    () => onDisplayOrderChange("oldest"),
+    [onDisplayOrderChange],
+  );
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        accessibilityLabel={`Activity order: ${displayOrder === "newest" ? "newest first" : "oldest first"}`}
+        style={activityOrderTriggerStyle}
+        testID="pr-pane-activity-order"
+      >
+        {({ hovered, open }) => (
+          <ThemedArrowDownUp
+            size={ICON_SIZE.xs}
+            uniProps={hovered || open ? foregroundColorMapping : foregroundMutedColorMapping}
+          />
+        )}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" width={180}>
+        <DropdownMenuItem onSelect={handleNewestFirst}>Newest first</DropdownMenuItem>
+        <DropdownMenuItem onSelect={handleOldestFirst}>Oldest first</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function activityOrderTriggerStyle({
+  hovered = false,
+  open = false,
+}: PressableStateCallbackType & { hovered?: boolean; open?: boolean }) {
+  return [styles.activityOrderTrigger, (hovered || open) && styles.activityOrderTriggerActive];
 }
 
 function CheckRow({
@@ -873,7 +933,7 @@ function ActivityVerb({ activity }: { activity: PrPaneActivity }) {
   if (activity.kind === "review" && activity.reviewState === "approved") {
     return (
       <View style={styles.verbGroup}>
-        <ThemedCircleCheck size={12} uniProps={successColorMapping} />
+        <ThemedCircleCheck size={ICON_SIZE.xs} uniProps={successColorMapping} />
         <Text style={styles.verbSuccess}>{verb}</Text>
       </View>
     );
@@ -881,7 +941,7 @@ function ActivityVerb({ activity }: { activity: PrPaneActivity }) {
   if (activity.kind === "review" && activity.reviewState === "changes_requested") {
     return (
       <View style={styles.verbGroup}>
-        <ThemedCircleX size={12} uniProps={dangerColorMapping} />
+        <ThemedCircleX size={ICON_SIZE.xs} uniProps={dangerColorMapping} />
         <Text style={styles.verbDanger}>{verb}</Text>
       </View>
     );
@@ -1075,7 +1135,7 @@ function ReviewCard({
           ) : null}
           {collapsed ? (
             <View style={styles.threadCount}>
-              <ThemedMessageSquare size={11} uniProps={foregroundMutedColorMapping} />
+              <ThemedMessageSquare size={ICON_SIZE.xs} uniProps={foregroundMutedColorMapping} />
               <Text style={styles.ageText}>{threads.length}</Text>
             </View>
           ) : null}
@@ -1177,7 +1237,7 @@ function ThreadBlock({
         <View style={styles.headerTrailing}>
           {collapsed ? (
             <View style={styles.threadCount}>
-              <ThemedMessageSquare size={11} uniProps={foregroundMutedColorMapping} />
+              <ThemedMessageSquare size={ICON_SIZE.xs} uniProps={foregroundMutedColorMapping} />
               <Text style={styles.ageText}>{thread.comments.length}</Text>
             </View>
           ) : null}
@@ -1415,9 +1475,20 @@ const styles = StyleSheet.create((theme) => ({
   activityToolbar: {
     flexDirection: "row",
     alignItems: "center",
-    minHeight: 28,
+    minHeight: COMPACT_CONTROL_HEIGHT,
+    gap: theme.spacing[1],
     paddingRight: theme.spacing[3],
     paddingBottom: theme.spacing[2],
+  },
+  activityOrderTrigger: {
+    width: COMPACT_CONTROL_HEIGHT,
+    height: COMPACT_CONTROL_HEIGHT,
+    borderRadius: theme.borderRadius.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  activityOrderTriggerActive: {
+    backgroundColor: theme.colors.surfaceHover,
   },
   toolbarTrailing: {
     marginLeft: "auto",

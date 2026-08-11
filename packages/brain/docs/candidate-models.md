@@ -17,47 +17,66 @@ overestimates badly. Repos/files verified against public GGUF releases as of
 
 Target: keep weights ≈ 12–26GB so headroom stays free for KV cache + context.
 
+## Bundle companions
+
+Vision-capable rows below are bundles. Their text model remains the required
+download; image understanding is an optional projector that can be downloaded
+and loaded independently. Muse Glimmer also offers an optional faster-drafting
+component. The Brain Library labels these by what they enable rather than by
+their GGUF filenames.
+
+| Model                 | Optional components                                                                               |
+| --------------------- | ------------------------------------------------------------------------------------------------- |
+| Qwen3.6 27B           | Image understanding (`mmproj-F16.gguf`)                                                           |
+| Muse Glimmer 30B      | Image understanding (`mmproj-Muse-Glimmer-30B-Q8_0.gguf`), faster drafting (`dflash-kquant.gguf`) |
+| Gemma 3 27B           | Image understanding (`mmproj-model-f16.gguf`)                                                     |
+| Gemma 4 31B           | Image understanding (`mmproj-gemma-4-31B-it-BF16.gguf`)                                           |
+| Mistral Small 3.2 24B | Image understanding (`mmproj-mistralai_Mistral-Small-3.2-24B-Instruct-2506-bf16.gguf`)            |
+| Ornith 1.0 35B        | Image understanding (`mmproj-deepreinforce-ai_Ornith-1.0-35B-bf16.gguf`)                          |
+| DeepSeek OCR 2        | Document understanding (`mmproj-deepseek-ocr-2-q8_0.gguf`)                                        |
+
 ## All-rounders (coding + prose + analysis)
 
-| Model                     | Quant  | ~VRAM | Notes                                                                                     |
-| ------------------------- | ------ | ----- | ----------------------------------------------------------------------------------------- |
-| **Qwen3.6-27B**           | Q5_K_M | ~19GB | Newest Qwen gen, multi-token prediction + vision. **Thinking model** - cap with `sweep`.  |
-| **Qwen3-32B**             | Q5_K_M | ~23GB | Strong all-round reasoner + coder. **Thinking model** - cap the budget with `sweep`.      |
-| **Qwen3-30B-A3B** (MoE)   | Q5_K_M | ~22GB | ~3B active → very fast daily driver. Thinking model; cap the budget.                      |
-| **GLM-4.7-Flash** (MoE)   | Q4_K_M | ~17GB | Strongest 30B-A3B class; 200K window, ~3.6B active. Thinking model; cap the budget.       |
-| **Nemotron-3-Nano** (MoE) | Q4_K_M | ~23GB | NVIDIA 30B-A3B reasoner, very long context (confirm ceiling). Thinking; cap the budget.   |
-| **gpt-oss-20B** (MoE)     | MXFP4  | ~11GB | Cleanest tool-calls in class; native MXFP4 leaves the most context headroom.              |
-| **Ornith-1.0-35B** (MoE)  | Q4_K_S | ~19GB | Vision-capable 35B MoE. Largest pick; Q4_K_S keeps KV headroom. Thinking; cap the budget. |
-| **Mistral-Small-3.2-24B** | Q6_K   | ~19GB | No thinking tax, superb instruction-following, reliable document/JSON output. Vision.     |
+| Model                                    | Quant      | ~VRAM | Notes                                                                                                      |
+| ---------------------------------------- | ---------- | ----- | ---------------------------------------------------------------------------------------------------------- |
+| **Qwen3.6 27B**                          | Q5_K_M     | ~19GB | Vision-capable all-rounder for code, reasoning, writing, and image-aware tasks.                            |
+| **Muse Glimmer 30B**                     | UD-Q4_K_XL | ~15GB | Vision-capable agentic model for coding, tool use, multi-step reasoning, and recovery from failed actions. |
+| **Qwen3 32B**                            | Q5_K_M     | ~23GB | Thoughtful generalist for reasoning, programming, structured writing, and analysis.                        |
+| **Qwen3 30B A3B** (MoE)                  | Q5_K_M     | ~22GB | Responsive all-purpose choice for everyday programming, reasoning, writing, and analysis.                  |
+| **GLM-4.7 Flash** (MoE)                  | Q4_K_M     | ~17GB | Fast all-rounder for coding, reasoning, tool use, and interactive artifacts.                               |
+| **NVIDIA Nemotron 3 Nano 30B A3B** (MoE) | Q4_K_M     | ~23GB | Reasoning-focused choice for analysis, long inputs, and tool use.                                          |
+| **gpt-oss 20B** (MoE)                    | MXFP4      | ~11GB | Compact open-weight model with reliable tool calls, coding ability, and structured output.                 |
+| **Ornith 1.0 35B** (MoE)                 | Q4_K_S     | ~19GB | Vision-capable all-rounder for complex tasks that mix text, code, and images.                              |
+| **Mistral Small 3.2 24B**                | Q6_K       | ~19GB | Fast instruction follower for documents, structured data, and code.                                        |
 
 ## Coding & artifact/widget specialists
 
-| Model                                  | Quant  | ~VRAM | Notes                                                                              |
-| -------------------------------------- | ------ | ----- | ---------------------------------------------------------------------------------- |
-| **Qwen2.5-Coder-32B-Instruct**         | Q4_K_M | ~20GB | Best local coder here; excellent self-contained HTML/React artifacts + chart code. |
-| **Qwen3-Coder-30B-A3B-Instruct** (MoE) | Q5_K_M | ~21GB | Coder MoE, fast, agentic tool-use friendly.                                        |
-| **GLM-4-32B-0414**                     | Q4_K_M | ~20GB | Strong at single-file front-end web artifacts and interactive widgets.             |
-| **Codestral-22B-v0.1**                 | Q6_K   | ~18GB | Fast fill-in-the-middle for editor-style completion.                               |
+| Model                         | Quant  | ~VRAM | Notes                                                                                       |
+| ----------------------------- | ------ | ----- | ------------------------------------------------------------------------------------------- |
+| **Qwen 2.5 Coder 32B**        | Q4_K_M | ~20GB | Capable coding model for applications, self-contained HTML and React artifacts, and charts. |
+| **Qwen3 Coder 30B A3B** (MoE) | Q5_K_M | ~21GB | Fast coding-focused model for tools, widgets, and iterative UI work.                        |
+| **GLM-4 32B**                 | Q4_K_M | ~20GB | Coding specialist for single-file web apps, interactive widgets, and front-end prototypes.  |
+| **Codestral 22B**             | Q6_K   | ~18GB | Fast fill-in-the-middle model for editor-style code completion and targeted edits.          |
 
 ## Prose / analysis leaning
 
-| Model              | Quant  | ~VRAM | Notes                                                                                |
-| ------------------ | ------ | ----- | ------------------------------------------------------------------------------------ |
-| **Gemma-4-31B-it** | Q4_K_M | ~17GB | Newer Gemma gen, dense + vision. Strong prose/tone. High KV - measure context fit.   |
-| **Gemma-3-27B-it** | Q4_K_M | ~17GB | Best prose/tone for marketing & financial writing. Multimodal (reads charts/images). |
-| **Phi-4 (14B)**    | Q8_0   | ~16GB | Above-weight structured reasoning/analysis; most VRAM left for context.              |
+| Model           | Quant  | ~VRAM | Notes                                                                            |
+| --------------- | ------ | ----- | -------------------------------------------------------------------------------- |
+| **Gemma 4 31B** | Q4_K_M | ~17GB | Vision-capable choice for polished prose, document analysis, and reading images. |
+| **Gemma 3 27B** | Q4_K_M | ~17GB | Strong choice for marketing and financial writing, analysis, and document work.  |
+| **Phi-4 14B**   | Q8_0   | ~16GB | Compact model with strong structured reasoning and analysis for its size.        |
 
 ## Document ingestion companion
 
-| Model              | Quant | ~VRAM | Notes                                                                                                        |
-| ------------------ | ----- | ----- | ------------------------------------------------------------------------------------------------------------ |
-| **DeepSeek-OCR-2** | Q8_0  | ~3GB  | Doc/PDF OCR that rides alongside anything else. **Needs a specific llama.cpp PR branch**, not upstream main. |
+| Model              | Quant | ~VRAM | Notes                                                                           |
+| ------------------ | ----- | ----- | ------------------------------------------------------------------------------- |
+| **DeepSeek OCR 2** | Q8_0  | ~3GB  | Compact vision model for extracting text and structure from documents and PDFs. |
 
 ## Suggested first three to test
 
-1. **Qwen3.6-27B** - top all-rounder, vision
-2. **GLM-4.7-Flash** - strongest 30B-A3B class, 200K context
-3. **gpt-oss-20B** - cleanest tool-calls, most context headroom
+1. **Muse Glimmer 30B** for vision-capable coding and local agent workflows
+2. **Qwen3.6 27B** for vision-capable general work
+3. **GLM-4.7 Flash** for fast coding and tool use
 
 ## Workflow per model, after download
 

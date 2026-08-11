@@ -28,7 +28,13 @@ import {
 } from "../config/profile-edit.js";
 import { forModel, getCalibration, put } from "../config/profiles.js";
 import type { Profile, ProfileDefaults, ProfilesStore } from "../config/schema.js";
-import { deleteModelFiles, diskUsage, planDelete, totalModelBytes } from "../models/manage.js";
+import {
+  deleteComponentFile,
+  deleteModelFiles,
+  diskUsage,
+  planDelete,
+  totalModelBytes,
+} from "../models/manage.js";
 import { deleteDisplayName, updateDisplayName } from "../models/rename-map.js";
 import type { RankedModel } from "../ops/results.js";
 import type { GpuInfo, Model } from "../types.js";
@@ -112,7 +118,7 @@ export interface HostJob {
   label: string;
   target: string | null;
   status: "running" | "succeeded" | "failed" | "canceled";
-  percent: null;
+  percent: number | null;
   message: string | null;
   error: string | null;
   startedAt: string;
@@ -182,6 +188,7 @@ export interface InventoryRow {
   score: RankedModel | null;
   state: "loaded" | "loading" | "not-loaded";
   warnings: ReturnType<typeof profileWarnings>;
+  components: NonNullable<Model["components"]> | null;
 }
 
 function stateOf(supervisor: Supervisor, model: Model): InventoryRow["state"] {
@@ -229,7 +236,12 @@ export function buildInventoryRow(params: {
     contextLength: model.metadata?.contextLength ?? null,
     blockCount: model.metadata?.blockCount ?? null,
     headCountKv: model.metadata?.headCountKv ?? null,
-    hasProjector: Boolean(model.mmprojPath),
+    // A bundle declares vision capability even before its projector is
+    // downloaded. The badge describes what the model supports, while the
+    // profile's component row describes whether that artifact is ready.
+    hasProjector:
+      Boolean(model.mmprojPath) ||
+      Boolean(model.components?.some((component) => component.role === "vision_projector")),
     reasoning: Boolean(model.metadata?.reasoning ?? model.thinking),
     mtp: Boolean(model.features?.mtp),
     distilled: Boolean(model.features?.distilled),
@@ -242,6 +254,7 @@ export function buildInventoryRow(params: {
     score: ranked,
     state: stateOf(supervisor, model),
     warnings: profileWarnings(profile, model, store),
+    components: model.components ?? null,
   };
 }
 
@@ -553,6 +566,28 @@ export function createHostApi(deps: HostApiDeps): HostApi {
     }
   };
 
+  const handleComponentDelete = (
+    res: http.ServerResponse,
+    model: Model,
+    componentId: string,
+  ): void => {
+    if (deps.supervisor.model?.id === model.id && deps.supervisor.state !== "stopped") {
+      sendError(res, 409, "stop the model before removing a bundle component");
+      return;
+    }
+    try {
+      const plan = deleteComponentFile(model, componentId);
+      deps.rescan();
+      sendJson(res, {
+        deleted: plan.files,
+        freedBytes: plan.bytes,
+        componentIds: plan.componentIds,
+      });
+    } catch (error) {
+      sendError(res, 409, errorMessage(error));
+    }
+  };
+
   const handleLogs = (res: http.ServerResponse, params: URLSearchParams): void => {
     const raw = Number(params.get("limit"));
     const limit =
@@ -714,7 +749,27 @@ export function createHostApi(deps: HostApiDeps): HostApi {
         makeArgs: (body) => {
           const model = body.model;
           if (typeof model !== "string" || !model) throw new Error("model is required");
-          return { target: model, args: ["pull", "--json", "--", model] };
+          const components = body.components;
+          const quant = body.quant;
+          if (
+            components !== undefined &&
+            (!Array.isArray(components) || !components.every((id) => typeof id === "string"))
+          ) {
+            throw new Error("components must be component ids");
+          }
+          if (quant !== undefined && typeof quant !== "string")
+            throw new Error("quant must be a string");
+          return {
+            target: model,
+            args: [
+              "pull",
+              ...(typeof quant === "string" ? ["--quant", quant] : []),
+              ...(components ?? []).flatMap((id) => ["--component", id]),
+              "--json",
+              "--",
+              model,
+            ],
+          };
         },
       },
       "/__host/jobs/add": {
@@ -722,11 +777,26 @@ export function createHostApi(deps: HostApiDeps): HostApi {
         makeArgs: (body) => {
           const repo = body.repo;
           const quant = body.quant;
+          const components = body.components;
           if (typeof repo !== "string" || !repo || typeof quant !== "string" || !quant)
             throw new Error("repo and quant are required");
+          if (
+            components !== undefined &&
+            (!Array.isArray(components) || !components.every((id) => typeof id === "string"))
+          )
+            throw new Error("components must be component ids");
           return {
             target: `${repo}#${quant}`,
-            args: ["add", "--quant", quant, "--json", "--", repo],
+            args: [
+              "add",
+              "--quant",
+              quant,
+              ...(components === undefined ? [] : ["--primary-only"]),
+              ...(components ?? []).flatMap((id) => ["--component", id]),
+              "--json",
+              "--",
+              repo,
+            ],
           };
         },
       },
@@ -849,6 +919,15 @@ export function createHostApi(deps: HostApiDeps): HostApi {
       return true;
     }
 
+    // A local daemon may run downloads in its own tracked job process while
+    // this service owns the in-memory inventory. Reconcile that disk mutation
+    // without restarting the host or unloading its resident model.
+    if (route === "/__host/models/rescan" && method === "POST") {
+      const models = deps.rescan();
+      sendJson(res, { models: models.length });
+      return true;
+    }
+
     if (route === "/__host/model/unload" && method === "POST") {
       if (!guardWrite(res)) return true;
       handleUnload(res);
@@ -864,6 +943,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
       "/__host/model/fields",
       "/__host/model/rename",
       "/__host/model/rename/reset",
+      "/__host/model/component",
     ]);
     if (!modelRoutes.has(route)) return false;
 
@@ -909,6 +989,16 @@ export function createHostApi(deps: HostApiDeps): HostApi {
     if (route === "/__host/model" && method === "DELETE") {
       if (!guardWrite(res)) return true;
       handleDelete(res, model);
+      return true;
+    }
+    if (route === "/__host/model/component" && method === "DELETE") {
+      if (!guardWrite(res)) return true;
+      const componentId = params.get("component");
+      if (!componentId) {
+        sendError(res, 400, "a component query parameter is required");
+        return true;
+      }
+      handleComponentDelete(res, model, componentId);
       return true;
     }
     if (route === "/__host/model" && method === "GET") {

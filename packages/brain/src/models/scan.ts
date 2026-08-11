@@ -13,42 +13,12 @@ import type { Model, ModelFeatures, ModelMetadata } from "../types.js";
 
 export const LMSTUDIO_MODELS_DIR = path.join(os.homedir(), ".lmstudio", "models");
 
-// Quantisation labels as they appear in filenames, longest first so that
-// Q4_K_M wins over Q4_K.
-const QUANT_PATTERNS = [
-  "IQ1_S",
-  "IQ1_M",
-  "IQ2_XXS",
-  "IQ2_XS",
-  "IQ2_S",
-  "IQ2_M",
-  "IQ3_XXS",
-  "IQ3_XS",
-  "IQ3_S",
-  "IQ3_M",
-  "IQ4_XS",
-  "IQ4_NL",
-  "Q2_K_S",
-  "Q2_K",
-  "Q3_K_S",
-  "Q3_K_M",
-  "Q3_K_L",
-  "Q4_K_S",
-  "Q4_K_M",
-  "Q5_K_S",
-  "Q5_K_M",
-  "Q6_K",
-  "Q8_0",
-  "Q4_0",
-  "Q4_1",
-  "Q5_0",
-  "Q5_1",
-  "NVFP4",
-  "MXFP4",
-  "BF16",
-  "F16",
-  "F32",
-];
+// The quant is the terminal GGUF filename suffix, optionally preceded by a
+// source-defined qualifier such as Muse's `UD-`. Matching a known substring
+// truncates newer labels (for example Q2_K_XL -> Q2_K) and misses them when
+// their exact spelling is not in a hard-coded list.
+const QUANT_SUFFIX =
+  /(?:^|[-_])((?:UD-)?(?:IQ[1-4]|Q[2-8])(?:_[A-Z0-9]+)*|NVFP\d+|MXFP\d+|BF16|F16|F32)(?:-(?:MTP|IMATRIX|DISTILL))?(?:-\d{5}-OF-\d{5})?\.GGUF$/i;
 
 const MULTIPART = /-(\d{5})-of-(\d{5})\.gguf$/i;
 
@@ -68,11 +38,9 @@ function walk(dir: string, out: string[] = []): string[] {
 }
 
 export function detectQuant(filename: string): string | null {
-  const upper = filename.toUpperCase();
-  for (const pattern of QUANT_PATTERNS) {
-    if (upper.includes(pattern)) return pattern;
-  }
-  return null;
+  const match = path.basename(filename).match(QUANT_SUFFIX);
+  // `UD-` is a source filename qualifier, not part of the user-facing quant.
+  return match?.[1]?.replace(/^UD-/i, "").toUpperCase() ?? null;
 }
 
 export function isProjectorFile(filename: string): boolean {

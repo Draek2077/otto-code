@@ -64,22 +64,26 @@ export function saveProfilesStore(
 export function loadCatalog(paths: BrainPaths = resolveBrainPaths()): Catalog {
   const current = readJson(paths.catalogFile, CatalogSchema);
   if (current) {
-    // The catalog is intentionally persisted so local Brain homes survive
-    // package updates, but additive metadata still needs to reach existing
-    // homes. Backfill only fields introduced by the seed catalog; user-owned
-    // catalog values remain authoritative.
+    // Curated entries are Otto-owned product copy. Replace every entry whose
+    // stable download id ships in the seed so catalog corrections reach every
+    // existing Brain home after an upgrade. Keep entries with unknown ids: they
+    // are the only user-owned catalog records and must survive product updates.
+    //
+    // Do not merge field-by-field. A partial merge leaves old names or stale
+    // descriptions behind indefinitely, which is precisely what a catalog
+    // migration is meant to prevent.
     const legacy = readJson(path.join(packageRoot(), "config", "downloads.json"), CatalogSchema);
     if (!legacy) return current;
-    const seedById = new Map(legacy.models.map((model) => [model.id, model]));
-    let changed = false;
-    const models = current.models.map((model) => {
-      const seed = seedById.get(model.id);
-      if (model.reasoningEfforts === undefined && seed?.reasoningEfforts !== undefined) {
-        changed = true;
-        return { ...model, reasoningEfforts: seed.reasoningEfforts };
-      }
-      return model;
-    });
+    const seedIds = new Set(legacy.models.map((model) => model.id));
+    // A source repository can change while the underlying curated model stays
+    // the same. Those retired ids are product-owned too: drop them rather than
+    // displaying an obsolete duplicate beside its canonical replacement.
+    const retiredSeedIds = new Set(legacy.models.flatMap((model) => model.replaces ?? []));
+    const userModels = current.models.filter(
+      (model) => !seedIds.has(model.id) && !retiredSeedIds.has(model.id),
+    );
+    const models = [...legacy.models, ...userModels];
+    const changed = JSON.stringify(models) !== JSON.stringify(current.models);
     if (!changed) return current;
     const merged = { ...current, models };
     writeJson(paths.catalogFile, merged);

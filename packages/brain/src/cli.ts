@@ -35,8 +35,10 @@ import { addRescoreOptions, runRescoreCommand } from "./commands/rescore.js";
 import {
   addRuntimeInstallOptions,
   addRuntimeListOptions,
+  addRuntimeRemoveOptions,
   runRuntimeInstallCommand,
   runRuntimeListCommand,
+  runRuntimeRemoveCommand,
 } from "./commands/runtime.js";
 import { addScanOptions, runScanCommand } from "./commands/scan.js";
 import {
@@ -91,6 +93,7 @@ export function registerBrainCommands(program: Command): Command {
   const runtime = program.command("runtime").description("Manage the llama.cpp runtime");
   addRuntimeListOptions(runtime.command("list")).action(withOutput(runRuntimeListCommand));
   addRuntimeInstallOptions(runtime.command("install")).action(withOutput(runRuntimeInstallCommand));
+  addRuntimeRemoveOptions(runtime.command("remove")).action(withOutput(runRuntimeRemoveCommand));
 
   // config subgroup.
   const config = program.command("config").description("Inspect and edit brain config");

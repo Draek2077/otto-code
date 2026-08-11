@@ -24,6 +24,7 @@ import {
   getCurrentBranch,
   getCheckoutDiff,
   getCheckoutShortstat,
+  getCheckoutUncommittedShortstat,
   getPullRequestStatus,
   getCheckoutStatus,
   checkoutResolvedBranch,
@@ -907,6 +908,21 @@ const x = 1;
     const shortstat = await getCheckoutShortstat(repoDir);
 
     expect(shortstat).toEqual({ additions: 2, deletions: 1 });
+  });
+
+  it("keeps the uncommitted shortstat empty after a branch change is committed", async () => {
+    setupRemoteTrackingMain(repoDir, tempDir);
+    execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
+    commitFile(repoDir, "feature.txt", "feature\n", "feature change");
+
+    expect(await getCheckoutShortstat(repoDir)).toEqual({ additions: 1, deletions: 0 });
+    expect(await getCheckoutUncommittedShortstat(repoDir)).toBeNull();
+
+    writeFileSync(join(repoDir, "feature.txt"), "feature\nnext\n");
+    expect(await getCheckoutUncommittedShortstat(repoDir, undefined, { force: true })).toEqual({
+      additions: 1,
+      deletions: 0,
+    });
   });
 
   it("uses the freshest comparison base for status and shortstat when local main is stale", async () => {

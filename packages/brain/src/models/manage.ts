@@ -48,6 +48,7 @@ export interface DeletePlan {
   files: string[];
   bytes: number;
   includesProjector: boolean;
+  componentIds: string[];
 }
 
 /**
@@ -83,7 +84,7 @@ export function planDelete(model: Model): DeletePlan {
   // The projector is shared across the repo's quants; only remove it if this was
   // the last model GGUF in the directory.
   let includesProjector = false;
-  if (model.mmprojPath) {
+  if (model.mmprojPath || model.components?.length) {
     const dir = path.dirname(model.modelPath);
     const doomed = new Set(files.map((f) => path.resolve(f)));
     let othersRemain = false;
@@ -99,12 +100,24 @@ export function planDelete(model: Model): DeletePlan {
       othersRemain = true; // be conservative: keep the projector if unsure
     }
     if (!othersRemain) {
-      add(model.mmprojPath);
-      includesProjector = true;
+      if (model.mmprojPath) {
+        add(model.mmprojPath);
+        includesProjector = true;
+      }
+      for (const component of model.components ?? []) {
+        if (component.path && !files.includes(component.path)) add(component.path);
+      }
     }
   }
 
-  return { files, bytes, includesProjector };
+  return {
+    files,
+    bytes,
+    includesProjector,
+    componentIds: (model.components ?? [])
+      .filter((component) => component.path && files.includes(component.path))
+      .map((component) => component.id),
+  };
 }
 
 /** Delete the files a {@link planDelete} chose, plus a now-empty repo directory. */
@@ -121,4 +134,21 @@ export function deleteModelFiles(model: Model): DeletePlan {
     /* not empty or gone */
   }
   return plan;
+}
+
+/** Remove one optional bundle artifact. The primary model is never accepted,
+ * and a loaded profile may not lose a component underneath llama.cpp. */
+export function deleteComponentFile(model: Model, componentId: string): DeletePlan {
+  const component = model.components?.find((candidate) => candidate.id === componentId);
+  if (!component || !component.path) throw new Error(`component "${componentId}" is not installed`);
+  if (component.required)
+    throw new Error("required bundle components cannot be removed separately");
+  const bytes = fs.statSync(component.path).size;
+  fs.rmSync(component.path, { force: true });
+  return {
+    files: [component.path],
+    bytes,
+    includesProjector: component.role === "vision_projector",
+    componentIds: [component.id],
+  };
 }

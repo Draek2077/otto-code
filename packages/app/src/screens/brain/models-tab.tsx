@@ -11,7 +11,15 @@
  * name. A model you have measured is more useful than one you have not, and
  * alphabetical order buries it.
  */
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useQueryClient } from "@tanstack/react-query";
@@ -33,6 +41,7 @@ import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { AdaptiveRenameModal } from "@/components/rename-modal";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative } from "@/constants/platform";
@@ -45,7 +54,11 @@ import {
 import type { Theme } from "@/styles/theme";
 import { applyOptimisticBrainLifecycle } from "@/data/brain-status";
 import { confirmDialog } from "@/utils/confirm-dialog";
+import { useBrainLayoutStore } from "./brain-layout-store";
+import { BrainSplitter } from "./brain-splitter";
 import { BrainProfileEditor } from "./profile-editor";
+import { formatQuantLabel } from "./quant-label";
+import { uniqueBrainInventoryModels } from "./library-model-filter";
 import {
   brainInventoryQueryKey,
   brainStatusQueryKey,
@@ -127,13 +140,16 @@ const reasoningIconMapping = (theme: Theme) => ({
 // reads as extra space in the gap before it - an over-wide box makes the
 // row's gaps look uneven even though every gap is the same 10px. Sized at
 // `fontSize.code` (12px) mono, ~7.2px per character:
-//   score  "100%"      4 chars, and the header word "Score"
+//   score  "Score"     5 chars, plus a little breathing room at compact scale
 //   quant  "IQ2_XXS"   7 chars
 //   size   "104.3 GB"  8 chars - three-digit GB has to fit unclipped
 //   tags   three 12px icons at a 4px gap
 const COLUMN = {
-  name: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 140 },
-  score: { width: 36, flexShrink: 0 as const, textAlign: "right" as const },
+  // A dragged 25% list pane still keeps the model and score. The name gives
+  // up its formerly cosmetic 140px floor and truncates instead of forcing the
+  // score off the edge.
+  name: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 },
+  score: { width: 44, flexShrink: 0 as const, textAlign: "right" as const },
   quant: { width: 52, flexShrink: 0 as const, textAlign: "right" as const },
   size: { width: 58, flexShrink: 0 as const, textAlign: "right" as const },
   tags: { width: 44, flexShrink: 0 as const, textAlign: "right" as const },
@@ -213,6 +229,86 @@ function CapabilityIcons({ model }: { model: BrainInventoryModel }) {
   );
 }
 
+/** A compact action whose visible label lives in its desktop tooltip. */
+function ModelIconAction({
+  label,
+  icon,
+  onPress,
+  disabled = false,
+  loading = false,
+  testID,
+}: {
+  label: string;
+  icon: ReactElement;
+  onPress: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+  testID: string;
+}) {
+  return (
+    <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          leftIcon={icon}
+          onPress={onPress}
+          disabled={disabled}
+          loading={loading}
+          accessibilityLabel={label}
+          testID={testID}
+        />
+      </TooltipTrigger>
+      <TooltipContent side="top" align="center" offset={8}>
+        <Text style={styles.tooltipText}>{label}</Text>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function ModelDetailHeader({
+  model,
+  canWrite,
+  pending,
+  onOpenRename,
+  onResetName,
+}: {
+  model: BrainInventoryModel;
+  canWrite: boolean;
+  pending: ModelAction | null;
+  onOpenRename: () => void;
+  onResetName: () => void;
+}) {
+  return (
+    <View style={styles.detailHeader}>
+      <View style={styles.detailTitleRow}>
+        <Text style={styles.detailTitle} numberOfLines={2}>
+          {model.displayName}
+        </Text>
+        <View style={styles.nameActions}>
+          <ModelIconAction
+            label="Rename"
+            icon={renameIcon}
+            onPress={onOpenRename}
+            disabled={!canWrite || pending !== null}
+            testID="brain-model-rename"
+          />
+          <ModelIconAction
+            label="Reset name"
+            icon={resetNameIcon}
+            onPress={onResetName}
+            loading={pending === "reset-name"}
+            disabled={!canWrite || pending !== null}
+            testID="brain-model-reset-name"
+          />
+        </View>
+      </View>
+      {model.state === "loaded" ? <StatusBadge label="Loaded" variant="success" /> : null}
+      {model.state === "loading" ? <StatusBadge label="Loading" variant="warning" /> : null}
+    </View>
+  );
+}
+
 /** "Calibrating"/"Sweeping" for the job kinds this row can show live. */
 function tuningJobLabel(kind: BrainJob["kind"]): string {
   return kind === "calibrate" ? "Calibrating" : "Sweeping";
@@ -230,6 +326,7 @@ function ModelRow({
   onSelect,
   job,
   columns,
+  compactCaps,
 }: {
   model: BrainInventoryModel;
   selected: boolean;
@@ -237,6 +334,8 @@ function ModelRow({
   /** The most recent calibrate/sweep job for this model, if any. */
   job: BrainJob | undefined;
   columns: VisibleColumns;
+  /** Compact themes double capability icon size for touch readability. */
+  compactCaps: boolean;
 }) {
   const handlePress = useCallback(() => onSelect(model.id), [model.id, onSelect]);
   const rowStyle = useCallback(
@@ -277,7 +376,7 @@ function ModelRow({
       <ScoreText overall={model.score?.overall} />
       {columns.quant ? (
         <Text style={styles.cellQuant} numberOfLines={1}>
-          {model.quant ?? ""}
+          {formatQuantLabel(model.quant)}
         </Text>
       ) : null}
       {columns.size ? (
@@ -286,7 +385,7 @@ function ModelRow({
         </Text>
       ) : null}
       {columns.tags ? (
-        <View style={styles.cellTags}>
+        <View style={[styles.cellTags, compactCaps && styles.capsColumnCompact]}>
           <CapabilityIcons model={model} />
         </View>
       ) : null}
@@ -313,6 +412,9 @@ function ModelsTable({
   onSelect: (id: string) => void;
   jobByModelName: Map<string, BrainJob>;
 }) {
+  const isCompact = useIsCompactFormFactor();
+  const tableScrollRef = useRef<ScrollView>(null);
+  const scrollbar = useWebScrollViewScrollbar(tableScrollRef);
   const [tableWidth, setTableWidth] = useState(0);
   const handleLayout = useCallback(
     (event: { nativeEvent: { layout: { width: number } } }) =>
@@ -338,20 +440,34 @@ function ModelsTable({
         <Text style={styles.headerScore}>Score</Text>
         {columns.quant ? <Text style={styles.headerQuant}>Quant</Text> : null}
         {columns.size ? <Text style={styles.headerSize}>Size</Text> : null}
-        {columns.tags ? <Text style={styles.headerTags}>Caps</Text> : null}
+        {columns.tags ? (
+          <Text style={[styles.headerTags, isCompact && styles.capsColumnCompact]}>Caps</Text>
+        ) : null}
       </View>
-      <ScrollView style={styles.tableScroll} showsVerticalScrollIndicator={isNative}>
-        {models.map((model) => (
-          <ModelRow
-            key={model.id}
-            model={model}
-            selected={model.id === selectedId}
-            onSelect={onSelect}
-            job={jobByModelName.get(model.displayName)}
-            columns={columns}
-          />
-        ))}
-      </ScrollView>
+      <View style={styles.tableScrollRegion}>
+        <ScrollView
+          ref={tableScrollRef}
+          style={styles.tableScroll}
+          onLayout={scrollbar.onLayout}
+          onScroll={scrollbar.onScroll}
+          onContentSizeChange={scrollbar.onContentSizeChange}
+          scrollEventThrottle={16}
+          showsVerticalScrollIndicator={isNative}
+        >
+          {models.map((model) => (
+            <ModelRow
+              key={model.id}
+              model={model}
+              selected={model.id === selectedId}
+              onSelect={onSelect}
+              job={jobByModelName.get(model.displayName)}
+              columns={columns}
+              compactCaps={isCompact}
+            />
+          ))}
+        </ScrollView>
+        {scrollbar.overlay}
+      </View>
     </View>
   );
 }
@@ -593,6 +709,14 @@ function ModelActions({
 
   return (
     <View style={styles.actionsColumn}>
+      <ModelDetailHeader
+        model={model}
+        canWrite={canWrite}
+        pending={pending}
+        onOpenRename={handleOpenRename}
+        onResetName={handleResetName}
+      />
+      <MetadataLine model={model} />
       <View style={styles.actionsRow}>
         <LoadUnloadButton
           model={model}
@@ -629,38 +753,14 @@ function ModelActions({
             </Button>
           </>
         ) : null}
-        <Button
-          variant="ghost"
-          size="sm"
-          leftIcon={renameIcon}
-          onPress={handleOpenRename}
-          disabled={!canWrite || pending !== null}
-          testID="brain-model-rename"
-        >
-          Rename
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          leftIcon={resetNameIcon}
-          onPress={handleResetName}
-          loading={pending === "reset-name"}
-          disabled={!canWrite || pending !== null}
-          testID="brain-model-reset-name"
-        >
-          Reset name
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          leftIcon={deleteIcon}
+        <ModelIconAction
+          label="Delete"
+          icon={deleteIcon}
           onPress={handleDelete}
           loading={pending === "delete"}
           disabled={!canWrite || pending !== null || isLoaded}
           testID="brain-model-delete"
-        >
-          Delete
-        </Button>
+        />
       </View>
       <AdaptiveRenameModal
         visible={renameOpen}
@@ -731,14 +831,6 @@ function ModelDetail({
 
   return (
     <ScrollView style={styles.detail} contentContainerStyle={styles.detailContent}>
-      <View style={styles.detailHeader}>
-        <Text style={styles.detailTitle} numberOfLines={2}>
-          {model.displayName}
-        </Text>
-        {model.state === "loaded" ? <StatusBadge label="Loaded" variant="success" /> : null}
-        {model.state === "loading" ? <StatusBadge label="Loading" variant="warning" /> : null}
-      </View>
-      <MetadataLine model={model} />
       <ModelActions
         serverId={serverId}
         model={model}
@@ -756,6 +848,7 @@ function ModelDetail({
         key={model.id}
         serverId={serverId}
         modelId={model.id}
+        components={model.components}
         canWrite={canWrite}
         onSaved={onChanged}
         onRequiresRestartChange={setRequiresRestart}
@@ -777,6 +870,8 @@ export function BrainModelsTab({
   /** Calibrate and sweep shell out to the CLI, so they are local-brain only. */
   canRunJobs: boolean;
 }) {
+  const modelsSplitRatio = useBrainLayoutStore((state) => state.modelsSplitRatio);
+  const setModelsSplitRatio = useBrainLayoutStore((state) => state.setModelsSplitRatio);
   const isCompact = useIsCompactFormFactor();
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -823,7 +918,10 @@ export function BrainModelsTab({
     [queryClient, serverId],
   );
 
-  const models = useMemo(() => sortModels(query.data?.models ?? []), [query.data]);
+  const models = useMemo(
+    () => sortModels(uniqueBrainInventoryModels(query.data?.models ?? [])),
+    [query.data],
+  );
   const disk = query.data?.disk ?? null;
 
   const selected = useMemo(
@@ -903,7 +1001,12 @@ export function BrainModelsTab({
   }
 
   return (
-    <View style={styles.split}>
+    <BrainSplitter
+      direction="horizontal"
+      ratio={modelsSplitRatio}
+      onRatioChange={setModelsSplitRatio}
+      testID="brain-models-splitter"
+    >
       <View style={styles.listPane}>
         <ModelsTable
           models={models}
@@ -935,7 +1038,7 @@ export function BrainModelsTab({
           </View>
         )}
       </View>
-    </View>
+    </BrainSplitter>
   );
 }
 
@@ -953,29 +1056,28 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
   },
-  split: {
-    flexDirection: "row",
-    gap: theme.spacing[4],
-    minHeight: 420,
-  },
   listPane: {
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: 0,
     gap: theme.spacing[2],
+    minHeight: 0,
+    padding: theme.spacing[4],
   },
   detailPane: {
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: 0,
-    borderLeftWidth: 1,
-    borderLeftColor: theme.colors.border,
-    paddingLeft: theme.spacing[4],
+    minHeight: 0,
   },
   compactDetail: {
+    flex: 1,
     gap: theme.spacing[2],
+    minHeight: 0,
   },
   table: {
+    flex: 1,
+    minHeight: 0,
     borderRadius: theme.borderRadius.lg,
     borderWidth: 1,
     borderColor: theme.colors.border,
@@ -985,9 +1087,16 @@ const styles = StyleSheet.create((theme) => ({
     // against.
     backgroundColor: theme.colors.surface1,
     overflow: "hidden",
+    position: "relative",
   },
   tableScroll: {
-    maxHeight: 420,
+    flex: 1,
+    minHeight: 0,
+  },
+  tableScrollRegion: {
+    flex: 1,
+    minHeight: 0,
+    position: "relative",
   },
   headerRow: {
     flexDirection: "row",
@@ -1025,6 +1134,9 @@ const styles = StyleSheet.create((theme) => ({
     ...COLUMN.tags,
     fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
+  },
+  capsColumnCompact: {
+    width: COLUMN.tags.width * 2,
   },
   row: {
     flexDirection: "row",
@@ -1126,6 +1238,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   detailContent: {
     gap: theme.spacing[3],
+    paddingHorizontal: theme.spacing[4],
+    paddingTop: theme.spacing[4],
     paddingBottom: theme.spacing[6],
   },
   detailHeader: {
@@ -1134,10 +1248,25 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     flexWrap: "wrap",
   },
+  detailTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: 0,
+  },
   detailTitle: {
     fontSize: theme.fontSize.base,
     color: theme.colors.foreground,
     flexShrink: 1,
+  },
+  nameActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingLeft: 10,
+    gap: theme.spacing[1],
+    flexShrink: 0,
   },
   metadata: {
     fontSize: theme.fontSize.xs,
@@ -1181,6 +1310,8 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
   },
   compactList: {
+    flex: 1,
     gap: theme.spacing[2],
+    minHeight: 0,
   },
 }));

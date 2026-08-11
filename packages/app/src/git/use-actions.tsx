@@ -280,7 +280,7 @@ function useWorkspaceScreenArchiveController({
     name: workspaceDescriptor?.name ?? branchLabel,
     isDirty: archiveRisk.isDirty,
     aheadOfOrigin: archiveRisk.aheadOfOrigin,
-    diffStat: workspaceDescriptor?.diffStat ?? null,
+    diffStat: workspaceDescriptor?.workingTreeDiffStat ?? null,
     warningLabels: getWorktreeArchiveWarningLabels(t),
     onSetHiding: setIsHidingWorkspace,
     onArchiveStarted: () => {

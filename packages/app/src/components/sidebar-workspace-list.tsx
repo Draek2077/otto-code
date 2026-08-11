@@ -3,7 +3,6 @@ import {
   Text,
   Pressable,
   Platform,
-  ActivityIndicator,
   StatusBar,
   ScrollView,
   type GestureResponderEvent,
@@ -14,6 +13,7 @@ import * as Haptics from "expo-haptics";
 import { useProjects } from "@/hooks/use-projects";
 import { useMutation } from "@tanstack/react-query";
 import { ProjectIconView } from "@/components/project-icon-view";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { AdaptiveRenameModal } from "@/components/rename-modal";
 import {
   memo,
@@ -35,7 +35,7 @@ import {
   type ActiveWorkspaceSelection,
 } from "@/stores/navigation-active-workspace-store";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { compactUp, type Theme } from "@/styles/theme";
+import { compactUp, type Theme, useIconSize } from "@/styles/theme";
 import { type GestureType } from "react-native-gesture-handler";
 import * as Clipboard from "expo-clipboard";
 import { DiffStat } from "@/components/diff-stat";
@@ -73,13 +73,14 @@ import {
 } from "@/utils/host-routes";
 import {
   shouldShowSidebarHostLabels,
-  useSidebarProjectDiffStat,
   type SidebarProjectEntry,
   type SidebarWorkspaceEntry,
   type SidebarWorkspacePlacement,
 } from "@/hooks/use-sidebar-workspaces-list";
+import { selectWorkspaceChangeStat } from "@/hooks/sidebar-workspaces-view-model";
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
 import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
+import { useAppSettings } from "@/hooks/use-settings";
 import { useShowShortcutBadges } from "@/hooks/use-show-shortcut-badges";
 import {
   ContextMenu,
@@ -156,7 +157,7 @@ const EMPHASIZED_STATUS_DOT_SIZE = 9;
 const DEFAULT_STATUS_DOT_OFFSET = 0;
 const EMPHASIZED_STATUS_DOT_OFFSET = -1;
 const ThemedExternalLink = withUnistyles(ExternalLink);
-const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
+const ThemedActivityIndicator = withUnistyles(LoadingSpinner);
 const ThemedCircleAlert = withUnistyles(CircleAlert);
 const ThemedPlus = withUnistyles(Plus);
 const ThemedMoreVertical = withUnistyles(MoreVertical);
@@ -674,6 +675,7 @@ function buildWorkspaceRowTrailing({
   isHovered,
   isTouchPlatform,
   isCreating,
+  diffStat,
   showShortcutBadge,
   shortcutNumber,
   archiveLabel,
@@ -693,6 +695,7 @@ function buildWorkspaceRowTrailing({
   isHovered: boolean;
   isTouchPlatform: boolean;
   isCreating: boolean;
+  diffStat: { additions: number; deletions: number } | null;
   showShortcutBadge: boolean;
   shortcutNumber: number | null;
   archiveLabel?: string;
@@ -710,8 +713,12 @@ function buildWorkspaceRowTrailing({
   const showKebab = Boolean(onArchive && (isHovered || isTouchPlatform));
   // The shortcut badge owns this corner when it is on, so the kebab yields.
   const showKebabInSlot = showKebab && !showShortcut;
+  const hasDiffStat = diffStat !== null;
   const creating = isCreating ? (
     <Text style={styles.workspaceCreatingText}>{t("sidebar.workspace.status.creating")}</Text>
+  ) : null;
+  const diffStatNode = diffStat ? (
+    <DiffStat additions={diffStat.additions} deletions={diffStat.deletions} />
   ) : null;
   const kebab = onArchive ? (
     <SidebarWorkspaceMenu
@@ -732,24 +739,42 @@ function buildWorkspaceRowTrailing({
   ) : null;
 
   if (floatActions) {
-    // The kebab is the only trailing control here, and it is hover-only, so the
-    // row reserves nothing for it - the workspace name gets the full width.
-    return { flow: creating, floating: showKebabInSlot ? kebab : null };
+    return {
+      flow: hasDiffStat ? (
+        <>
+          {creating}
+          <SidebarWorkspaceTrailingActionSlot>
+            <SidebarWorkspaceTrailingActionBase visible={!showShortcut}>
+              {diffStatNode}
+            </SidebarWorkspaceTrailingActionBase>
+          </SidebarWorkspaceTrailingActionSlot>
+        </>
+      ) : (
+        creating
+      ),
+      floating: showKebabInSlot ? kebab : null,
+    };
   }
 
   return {
-    flow: onArchive ? (
-      <>
-        {creating}
-        <SidebarWorkspaceTrailingActionSlot>
-          <SidebarWorkspaceTrailingActionOverlay visible={showKebabInSlot}>
-            {kebab}
-          </SidebarWorkspaceTrailingActionOverlay>
-        </SidebarWorkspaceTrailingActionSlot>
-      </>
-    ) : (
-      creating
-    ),
+    flow:
+      onArchive || hasDiffStat ? (
+        <>
+          {creating}
+          <SidebarWorkspaceTrailingActionSlot>
+            <SidebarWorkspaceTrailingActionBase
+              visible={hasDiffStat && !showKebabInSlot && !showShortcut}
+            >
+              {diffStatNode}
+            </SidebarWorkspaceTrailingActionBase>
+            <SidebarWorkspaceTrailingActionOverlay visible={showKebabInSlot}>
+              {kebab}
+            </SidebarWorkspaceTrailingActionOverlay>
+          </SidebarWorkspaceTrailingActionSlot>
+        </>
+      ) : (
+        creating
+      ),
     floating: null,
   };
 }
@@ -790,10 +815,13 @@ function ProjectLeadingVisualStatus({
   shouldShowSyncedLoader: boolean;
   activeWorkspace: SidebarWorkspaceEntry;
 }) {
+  const iconSize = useIconSize();
+  const spinnerSize = iconSize.sm;
+
   if (isArchiving) {
     return (
       <View style={styles.projectLeadingVisualSlot}>
-        <ThemedActivityIndicator size={8} uniProps={foregroundMutedColorMapping} />
+        <ThemedActivityIndicator size={spinnerSize} uniProps={foregroundMutedColorMapping} />
       </View>
     );
   }
@@ -801,7 +829,7 @@ function ProjectLeadingVisualStatus({
   if (shouldShowSyncedLoader) {
     return (
       <View style={styles.projectLeadingVisualSlot}>
-        <ThemedBlobLoader size={11} />
+        <ThemedBlobLoader size={spinnerSize} />
       </View>
     );
   }
@@ -809,7 +837,7 @@ function ProjectLeadingVisualStatus({
   if (activeWorkspace.statusBucket === "needs_input") {
     return (
       <View style={styles.projectLeadingVisualSlot}>
-        <ThemedCircleAlert size={14} uniProps={amberColorMapping} />
+        <ThemedCircleAlert size={iconSize.sm} uniProps={amberColorMapping} />
       </View>
     );
   }
@@ -1235,7 +1263,6 @@ function ProjectHeaderRow({
   const [isHovered, setIsHovered] = useState(false);
   const isMobileBreakpoint = useIsCompactFormFactor();
   const floatActions = useFloatingRowActions();
-  const isDeveloperMode = useIsDeveloperMode();
   // Merge the sidebar-row anchor onto the row's existing drag-activator ref so a
   // reveal (tutorial / active-workspace) can measure this project block.
   const projectAnchorRef = useSidebarRowAnchor(projectRowKey(project.projectKey));
@@ -1244,9 +1271,9 @@ function ProjectHeaderRow({
     () => mergeRefs(projectActivatorRef, projectAnchorRef),
     [projectActivatorRef, projectAnchorRef],
   );
-  const projectDiffStat = useSidebarProjectDiffStat(project.workspaces);
-  // Diff counts are a developer/git surface - hidden in User interface mode.
-  const diffStat = isDeveloperMode ? projectDiffStat : null;
+  // A project groups workspaces; it is not a checkout and has no single base
+  // branch. Its row must not invent a summed +/- statistic.
+  const diffStat = null;
   const handleBeginWorkspaceSetup = useCallback(() => {
     if (!worktreeTarget) {
       return;
@@ -1453,6 +1480,7 @@ function WorkspaceRowInner({
   archiveShortcutKeys,
 }: WorkspaceRowInnerProps) {
   const { t } = useTranslation();
+  const { settings } = useAppSettings();
   const _isCompact = useIsCompactFormFactor();
   const floatActions = useFloatingRowActions();
   const isTouchPlatform = platformIsNative;
@@ -1476,6 +1504,7 @@ function WorkspaceRowInner({
   }, [interaction.didLongPressRef, onPress]);
 
   const accessibilityState = useMemo(() => ({ selected }), [selected]);
+  const diffStat = selectWorkspaceChangeStat(workspace, settings.workspaceChangeIndicator);
 
   // Merge the sidebar-row anchor onto the row's drag-activator ref so a reveal
   // (active-workspace / tutorial) can measure and scroll this row into view.
@@ -1512,6 +1541,7 @@ function WorkspaceRowInner({
           isHovered,
           isTouchPlatform,
           isCreating,
+          diffStat,
           showShortcutBadge,
           shortcutNumber,
           archiveLabel,
@@ -2691,13 +2721,13 @@ const styles = StyleSheet.create((theme) => ({
   projectBlock: {},
   workspaceListContainer: {},
   newWorkspaceGhostRow: {
+    // A project with no workspaces still gets the same full-width row shell as
+    // one that has them; this is an action row, not an indented sub-item.
     minHeight: 32,
-    marginLeft: theme.spacing[6],
-    marginRight: theme.spacing[1],
     marginBottom: 2,
-    paddingVertical: theme.spacing[1],
+    paddingVertical: theme.spacing[1.5],
     paddingHorizontal: theme.spacing[2],
-    borderRadius: theme.borderRadius.md,
+    borderRadius: theme.borderRadius.lg,
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
@@ -2709,6 +2739,8 @@ const styles = StyleSheet.create((theme) => ({
   newWorkspaceGhostIconSlot: {
     width: theme.iconSize.sm,
     height: theme.iconSize.sm,
+    // Center the smaller plus in the project/workspace leading column.
+    marginLeft: (theme.iconSize.lg - theme.iconSize.sm) / 2,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
@@ -2716,11 +2748,15 @@ const styles = StyleSheet.create((theme) => ({
   newWorkspaceGhostText: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
+    // The other half of the leading-column difference puts the label on the
+    // same column as workspace labels.
+    marginLeft: (theme.iconSize.lg - theme.iconSize.sm) / 2,
     minWidth: 0,
     flexShrink: 1,
   },
   newWorkspaceGhostTextHovered: {
     fontSize: theme.fontSize.sm,
+    marginLeft: (theme.iconSize.lg - theme.iconSize.sm) / 2,
     minWidth: 0,
     flexShrink: 1,
     color: theme.colors.foreground,
@@ -2881,7 +2917,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: 2,
-    paddingLeft: theme.spacing[2],
+    paddingLeft: theme.spacing[3],
     borderRadius: theme.borderRadius.md,
     backgroundColor: theme.colors.surfaceSidebarHover,
   },
@@ -2930,7 +2966,7 @@ const styles = StyleSheet.create((theme) => ({
     marginBottom: 2,
     paddingVertical: theme.spacing[1.5],
     paddingLeft: theme.spacing[2],
-    paddingRight: theme.spacing[3],
+    paddingRight: theme.spacing[2],
     borderRadius: theme.borderRadius.lg,
     flexDirection: "column",
     alignItems: "stretch",

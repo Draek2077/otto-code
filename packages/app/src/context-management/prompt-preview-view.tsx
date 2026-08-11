@@ -1,7 +1,8 @@
 import { type ReactElement } from "react";
-import { ActivityIndicator, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { ContextCategory, ContextPromptSection } from "@otto-code/protocol/messages";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { isWeb } from "@/constants/platform";
@@ -81,7 +82,7 @@ function PromptSectionBody({
   if (query.isLoading) {
     return (
       <View style={styles.centered} testID="context-prompt-section-loading">
-        <ActivityIndicator />
+        <LoadingSpinner />
       </View>
     );
   }

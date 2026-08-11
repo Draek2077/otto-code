@@ -15,6 +15,10 @@ export const ProfileSchema = z
     modelId: z.string().nullable().default(null),
     modelPath: z.string().nullable().default(null),
     mmprojPath: z.string().nullable().default(null),
+    /** Stable bundle component ids enabled for this load. Paths are re-derived. */
+    enabledComponents: z.array(z.string()).default([]),
+    /** Derived component paths for the launcher; never accepted from clients. */
+    componentPaths: z.record(z.string()).default({}),
     contextSize: z.number(),
     cacheTypeK: z.string().default("q8_0"),
     cacheTypeV: z.string().default("q8_0"),
@@ -189,6 +193,8 @@ export const DEFAULT_BRAIN_CONFIG: BrainConfig = BrainConfigSchema.parse({});
 export const CatalogModelSchema = z
   .object({
     id: z.string(),
+    /** Retired Otto-curated ids this canonical catalog entry replaces. */
+    replaces: z.array(z.string()).optional(),
     name: z.string(),
     publisher: z.string().optional(),
     hfRepo: z.string(),
@@ -205,6 +211,26 @@ export const CatalogModelSchema = z
     tier: z.string().optional(),
     why: z.string().optional(),
     status: z.string().optional(),
+    /** Declared only for multi-artifact model bundles. Plain models omit it. */
+    components: z
+      .array(
+        z
+          .object({
+            id: z.string(),
+            label: z.string(),
+            description: z.string(),
+            role: z.enum(["vision_projector", "speculative_drafter"]),
+            hfRepo: z.string().optional(),
+            file: z.string(),
+            bytes: z.number().nullable().optional(),
+            required: z.boolean().default(false),
+            defaultDownload: z.boolean().default(false),
+            defaultLoad: z.boolean().default(false),
+            minRuntimeBuild: z.number().optional(),
+          })
+          .strict(),
+      )
+      .optional(),
   })
   .passthrough();
 export type CatalogModel = z.infer<typeof CatalogModelSchema>;

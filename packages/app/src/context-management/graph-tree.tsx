@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, type ReactElement } from "react";
-import { ActivityIndicator, FlatList, Pressable, Text, View } from "react-native";
+import { FlatList, Pressable, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { ContextCategory, ContextNode, ContextReport } from "@otto-code/protocol/messages";
 import { Link, Zap } from "@/components/icons/material-icons";
 import { TreeChevron, TreeIndentGuides, TREE_INDENT_PER_LEVEL } from "@/components/tree-primitives";
@@ -136,8 +137,7 @@ export function ContextGraphTree({
       <View style={styles.empty}>
         {isLoading ? (
           <View style={styles.loadingRow} testID="context-tree-loading">
-            <ActivityIndicator size="small" />
-            <Text style={styles.emptyText}>{t("contextManagement.tree.loading")}</Text>
+            <LoadingSpinner size="small" />
           </View>
         ) : (
           <Text style={styles.emptyText}>{t("contextManagement.tree.empty")}</Text>

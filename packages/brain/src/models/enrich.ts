@@ -17,8 +17,11 @@
  * things unenriched on absence rather than raising - the caller decides whether
  * absence matters.
  */
+import fs from "node:fs";
+import path from "node:path";
+
 import type { Catalog, CatalogModel } from "../config/schema.js";
-import type { Model } from "../types.js";
+import type { Model, ModelComponent } from "../types.js";
 
 /** Normalize a repo/id path: forward slashes, lowercased, trailing slashes trimmed. */
 function normalizePath(value: string): string {
@@ -78,19 +81,84 @@ export function matchCatalogEntry(model: Model, catalog: Catalog): CatalogModel 
  * through untouched. Never throws.
  */
 export function enrichWithCatalog(models: Model[], catalog: Catalog): Model[] {
-  if (catalog.models.length === 0) return models;
   return models.map((model) => {
     const entry = matchCatalogEntry(model, catalog);
-    if (!entry) return model;
+    if (!entry) return enrichDiscoveredProjector(model);
+    const components = resolveComponents(model, entry);
+    const projector = components?.find((component) => component.role === "vision_projector");
     return {
       ...model,
       catalogId: entry.id,
       catalogHfRepo: entry.hfRepo,
+      components,
+      // A manifest is authoritative. Do not pair a random same-directory
+      // projector when the catalog declares the exact companion artifact.
+      mmprojPath: projector?.path ?? (components ? null : model.mmprojPath),
+      mmprojBytes: projector?.bytes ?? (components ? 0 : model.mmprojBytes),
       useCases: entry.useCases,
       tier: entry.tier,
       thinking: entry.thinking,
       reasoningEfforts: entry.reasoningEfforts,
       contextMax: entry.contextMax,
+    };
+  });
+}
+
+/** Promote a scanner-paired projector in an arbitrary Hugging Face repository
+ * into the same component inventory shape used by curated bundles. */
+function enrichDiscoveredProjector(model: Model): Model {
+  if (!model.mmprojPath) return model;
+  return {
+    ...model,
+    components: [
+      {
+        id: "vision-projector",
+        label: "Vision projector",
+        description: "Adds image understanding",
+        role: "vision_projector",
+        path: model.mmprojPath,
+        bytes: model.mmprojBytes,
+        required: false,
+        defaultDownload: false,
+        defaultLoad: true,
+        available: true,
+      },
+    ],
+  };
+}
+
+function resolveComponents(model: Model, entry: CatalogModel): ModelComponent[] | undefined {
+  if (!entry.components) return undefined;
+  const modelDir = path.dirname(model.modelPath);
+  return entry.components.map((component) => {
+    const componentRepo = component.hfRepo ?? entry.hfRepo;
+    // A selected catalog primary and its declared companions share a repo in the
+    // managed layout. For a companion repository, derive its absolute path from
+    // the scanned model's models root rather than accepting a client path.
+    const repoTail = componentRepo.split("/").join(path.sep);
+    const marker = entry.hfRepo.split("/").join(path.sep);
+    const root = modelDir.endsWith(marker) ? modelDir.slice(0, -marker.length) : modelDir;
+    const candidate = path.resolve(root, repoTail, component.file);
+    let bytes = 0;
+    try {
+      bytes = fs.statSync(candidate).size;
+    } catch {
+      bytes = component.bytes ?? 0;
+    }
+    const available = fs.existsSync(candidate);
+    return {
+      id: component.id,
+      label: component.label,
+      description: component.description,
+      role: component.role,
+      path: available ? candidate : null,
+      bytes,
+      required: component.required,
+      defaultDownload: component.defaultDownload,
+      defaultLoad: component.defaultLoad,
+      available,
+      ...(available ? {} : { unavailableReason: "Not downloaded" }),
+      ...(component.minRuntimeBuild ? { minRuntimeBuild: component.minRuntimeBuild } : {}),
     };
   });
 }

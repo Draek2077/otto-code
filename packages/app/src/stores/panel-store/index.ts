@@ -458,6 +458,7 @@ export const usePanelStore = create<PanelState>()(
         sidebarWidth: state.sidebarWidth,
         explorerWidth: state.explorerWidth,
         contextSidebarWidth: state.contextSidebarWidth,
+        projectKnowledgeSidebarWidth: state.projectKnowledgeSidebarWidth,
         explorerSortOption: state.explorerSortOption,
         explorerShowHiddenFiles: state.explorerShowHiddenFiles,
         explorerFilesSplitRatio: state.explorerFilesSplitRatio,

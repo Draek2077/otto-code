@@ -4120,16 +4120,44 @@ export class Session {
     }
   }
 
-  private handleBrainModelsPullRequest(model: string, requestId: string): void {
-    if (this.startRemoteBrainJob("pull", { model }, requestId, "brain.models.pull.response"))
+  private handleBrainModelsPullRequest(
+    model: string,
+    components: string[] | undefined,
+    quant: string | undefined,
+    requestId: string,
+  ): void {
+    if (
+      this.startRemoteBrainJob(
+        "pull",
+        { model, ...(components ? { components } : {}), ...(quant ? { quant } : {}) },
+        requestId,
+        "brain.models.pull.response",
+      )
+    )
       return;
-    this.startBrainJob(requestId, "brain.models.pull.response", (ops) => ops.pullModel(model));
+    this.startBrainJob(requestId, "brain.models.pull.response", (ops) =>
+      ops.pullModel(model, components, quant),
+    );
   }
 
-  private handleBrainModelsAddRequest(repo: string, quant: string, requestId: string): void {
-    if (this.startRemoteBrainJob("add", { repo, quant }, requestId, "brain.models.add.response"))
+  private handleBrainModelsAddRequest(
+    repo: string,
+    quant: string,
+    components: string[] | undefined,
+    requestId: string,
+  ): void {
+    if (
+      this.startRemoteBrainJob(
+        "add",
+        { repo, quant, components },
+        requestId,
+        "brain.models.add.response",
+      )
+    )
       return;
-    this.startBrainJob(requestId, "brain.models.add.response", (ops) => ops.addModel(repo, quant));
+    this.startBrainJob(requestId, "brain.models.add.response", (ops) =>
+      ops.addModel(repo, quant, components),
+    );
   }
 
   private handleBrainRuntimeInstallRequest(build: string | null, requestId: string): void {
@@ -4144,6 +4172,12 @@ export class Session {
       return;
     this.startBrainJob(requestId, "brain.runtime.install.response", (ops) =>
       ops.installRuntime(build),
+    );
+  }
+
+  private handleBrainRuntimeRemoveRequest(name: string, requestId: string): void {
+    this.startBrainJob(requestId, "brain.runtime.remove.response", (ops) =>
+      ops.removeRuntime(name),
     );
   }
 
@@ -4193,6 +4227,7 @@ export class Session {
       | "brain.models.pull.response"
       | "brain.models.add.response"
       | "brain.runtime.install.response"
+      | "brain.runtime.remove.response"
       | "brain.calibrate.response"
       | "brain.sweep.response",
   ): boolean {
@@ -4228,6 +4263,7 @@ export class Session {
       | "brain.models.pull.response"
       | "brain.models.add.response"
       | "brain.runtime.install.response"
+      | "brain.runtime.remove.response"
       | "brain.calibrate.response"
       | "brain.sweep.response"
       | "brain.bench.response",
@@ -4459,6 +4495,25 @@ export class Session {
         freedBytes: typeof data.freedBytes === "number" ? data.freedBytes : 0,
         includesProjector: data.includesProjector === true,
         remaining: typeof data.remaining === "number" ? data.remaining : 0,
+        error,
+        requestId,
+      },
+    });
+  }
+
+  private async handleBrainModelComponentDeleteRequest(
+    modelId: string,
+    componentId: string,
+    requestId: string,
+  ): Promise<void> {
+    const { data, error } = await this.callBrainConsole((manager) =>
+      manager.deleteModelComponent(modelId, componentId),
+    );
+    this.emit({
+      type: "brain.model.component.delete.response",
+      payload: {
+        deleted: parseBrainStrings(data.deleted),
+        freedBytes: typeof data.freedBytes === "number" ? data.freedBytes : 0,
         error,
         requestId,
       },
@@ -5172,11 +5227,22 @@ export class Session {
   private async projectKnowledgeCwd(workspaceId: string): Promise<string | null> {
     return (await this.workspaceRegistry.get(workspaceId))?.cwd ?? null;
   }
+  private async projectKnowledgeRoot(workspaceId: string): Promise<string | null> {
+    const workspace = await this.workspaceRegistry.get(workspaceId);
+    if (!workspace) return null;
+    const project = await this.projectRegistry.get(workspace.projectId);
+    return (
+      project?.rootPath ??
+      (await resolveProjectRootForCwd(workspace.cwd, (cwd) =>
+        this.workspaceGitService.resolveRepoRoot(cwd),
+      ))
+    );
+  }
   private async handleProjectKnowledgeListRequest(
     msg: Extract<SessionInboundMessage, { type: "project.knowledge.list.request" }>,
   ): Promise<void> {
-    const cwd = await this.projectKnowledgeCwd(msg.workspaceId);
-    if (!this.projectKnowledge || !cwd) {
+    const root = await this.projectKnowledgeRoot(msg.workspaceId);
+    if (!this.projectKnowledge || !root) {
       this.emit({
         type: "project.knowledge.list.response",
         payload: {
@@ -5192,7 +5258,7 @@ export class Session {
       });
       return;
     }
-    const view = await this.projectKnowledge.catalogView(cwd);
+    const view = await this.projectKnowledge.catalogViewAtRoot(root);
     this.emit({
       type: "project.knowledge.list.response",
       payload: {
@@ -5726,7 +5792,7 @@ export class Session {
         await this.handleBrainRuntimeListRequest(msg.requestId);
         return true;
       case "brain.models.pull.request":
-        this.handleBrainModelsPullRequest(msg.model, msg.requestId);
+        this.handleBrainModelsPullRequest(msg.model, msg.components, msg.quant, msg.requestId);
         return true;
       case "brain.hf.search.request":
         await this.handleBrainHfSearchRequest(msg.query, msg.limit, msg.requestId);
@@ -5735,10 +5801,13 @@ export class Session {
         await this.handleBrainHfQuantsRequest(msg.repo, msg.requestId);
         return true;
       case "brain.models.add.request":
-        this.handleBrainModelsAddRequest(msg.repo, msg.quant, msg.requestId);
+        this.handleBrainModelsAddRequest(msg.repo, msg.quant, msg.components, msg.requestId);
         return true;
       case "brain.runtime.install.request":
         this.handleBrainRuntimeInstallRequest(msg.build, msg.requestId);
+        return true;
+      case "brain.runtime.remove.request":
+        this.handleBrainRuntimeRemoveRequest(msg.name, msg.requestId);
         return true;
       case "brain.calibrate.request":
         this.handleBrainCalibrateRequest(msg.model, msg.requestId);
@@ -5787,6 +5856,13 @@ export class Session {
         return true;
       case "brain.model.delete.request":
         await this.handleBrainModelDeleteRequest(msg.modelId, msg.requestId);
+        return true;
+      case "brain.model.component.delete.request":
+        await this.handleBrainModelComponentDeleteRequest(
+          msg.modelId,
+          msg.componentId,
+          msg.requestId,
+        );
         return true;
       case "brain.model.rename.request":
         await this.handleBrainModelRenameRequest(msg.modelId, msg.displayName, msg.requestId);
@@ -8798,6 +8874,7 @@ export class Session {
       statusEnteredAt: null,
       activityAt: null,
       diffStat,
+      workingTreeDiffStat: snapshot?.git.workingTreeDiffStat ?? null,
       scripts: this.buildWorkspaceScriptPayloadSnapshot(workspace, resolvedProjectRecord),
       ...(resolvedProjectRecord
         ? {
@@ -8819,6 +8896,7 @@ export class Session {
       remoteUrl: snapshot.git.remoteUrl,
       isOttoOwnedWorktree: snapshot.git.isOttoOwnedWorktree,
       isDirty: snapshot.git.isDirty,
+      baseRef: snapshot.git.baseRef,
       aheadBehind: snapshot.git.aheadBehind,
       aheadOfOrigin: snapshot.git.aheadOfOrigin,
       behindOfOrigin: snapshot.git.behindOfOrigin,
@@ -8852,6 +8930,7 @@ export class Session {
       ...base,
       name: resolveWorkspaceName({ title: workspace.title, derivedDisplayName: displayName }),
       diffStat: snapshot.git.diffStat ?? null,
+      workingTreeDiffStat: snapshot.git.workingTreeDiffStat ?? null,
       gitRuntime: this.buildWorkspaceGitRuntimePayload(snapshot) ?? undefined,
       githubRuntime: this.buildWorkspaceGitHubRuntimePayload(snapshot),
       // Reuse the forge already resolved on the snapshot (probe-aware; GitHub-only
@@ -8887,12 +8966,14 @@ export class Session {
       statusEnteredAt: result.workspace.createdAt,
       activityAt: null,
       diffStat: { additions: 0, deletions: 0 },
+      workingTreeDiffStat: null,
       scripts: [],
       gitRuntime: {
         currentBranch: result.worktree.branchName || null,
         remoteUrl: null,
         isOttoOwnedWorktree: true,
         isDirty: false,
+        baseRef: null,
         aheadBehind: null,
         aheadOfOrigin: null,
         behindOfOrigin: null,

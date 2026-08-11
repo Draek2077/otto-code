@@ -18,6 +18,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/contexts/toast-context";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
@@ -38,6 +39,7 @@ interface WorkspaceOpenInEditorButtonProps {
   hideLabels?: boolean;
   // Stretch to fill the available width (content stays centered).
   fill?: boolean;
+  tooltipSide?: "top" | "bottom";
 }
 
 interface OpenTarget {
@@ -85,6 +87,7 @@ export function WorkspaceOpenInEditorButton({
   activeFile,
   hideLabels,
   fill,
+  tooltipSide = "bottom",
 }: WorkspaceOpenInEditorButtonProps) {
   const { t } = useTranslation();
   const toast = useToast();
@@ -209,53 +212,69 @@ export function WorkspaceOpenInEditorButton({
     return null;
   }
 
+  const primaryTooltipLabel = activeFileName
+    ? t("workspace.git.openInEditor.openFileIn", {
+        fileName: activeFileName,
+        target: primaryOption.label,
+      })
+    : t("workspace.git.openInEditor.openIn", {
+        target: primaryOption.label,
+      });
+
   return (
     <View style={rowStyle}>
       <View style={splitButtonStyle}>
-        <Pressable
-          testID="workspace-open-in-editor-primary"
-          style={primaryPressableStyle}
-          onPress={handlePrimaryPress}
-          disabled={openMutation.isPending}
-          accessibilityRole="button"
-          accessibilityLabel={
-            activeFileName
-              ? t("workspace.git.openInEditor.openFileIn", {
-                  fileName: activeFileName,
-                  target: primaryOption.label,
-                })
-              : t("workspace.git.openInEditor.openIn", {
-                  target: primaryOption.label,
-                })
-          }
-        >
-          {openMutation.isPending ? (
-            <ThemedActivityIndicator
-              size="small"
-              uniProps={foregroundColorMapping}
-              style={styles.splitButtonSpinnerOnly}
-            />
-          ) : (
-            <View style={styles.splitButtonContent}>
-              {primaryOption.icon}
-              {!hideLabels && (
-                <Text style={styles.splitButtonText} numberOfLines={1}>
-                  {t("workspace.git.openInEditor.open")}
-                </Text>
+        <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
+          <TooltipTrigger asChild>
+            <Pressable
+              testID="workspace-open-in-editor-primary"
+              style={primaryPressableStyle}
+              onPress={handlePrimaryPress}
+              disabled={openMutation.isPending}
+              accessibilityRole="button"
+              accessibilityLabel={primaryTooltipLabel}
+            >
+              {openMutation.isPending ? (
+                <ThemedActivityIndicator
+                  size="small"
+                  uniProps={foregroundColorMapping}
+                  style={styles.splitButtonSpinnerOnly}
+                />
+              ) : (
+                <View style={styles.splitButtonContent}>
+                  {primaryOption.icon}
+                  {!hideLabels && (
+                    <Text style={styles.splitButtonText} numberOfLines={1}>
+                      {t("workspace.git.openInEditor.open")}
+                    </Text>
+                  )}
+                </View>
               )}
-            </View>
-          )}
-        </Pressable>
+            </Pressable>
+          </TooltipTrigger>
+          <TooltipContent side={tooltipSide} align="center" offset={8}>
+            <Text style={styles.tooltipText}>{primaryTooltipLabel}</Text>
+          </TooltipContent>
+        </Tooltip>
         {targets.length > 1 ? (
           <DropdownMenu>
-            <DropdownMenuTrigger
-              testID="workspace-open-in-editor-caret"
-              style={caretTriggerStyle}
-              accessibilityRole="button"
-              accessibilityLabel={t("workspace.git.openInEditor.chooseEditor")}
-            >
-              <ThemedChevronDown size={16} uniProps={mutedColorMapping} />
-            </DropdownMenuTrigger>
+            <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger
+                  testID="workspace-open-in-editor-caret"
+                  style={caretTriggerStyle}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("workspace.git.openInEditor.chooseEditor")}
+                >
+                  <ThemedChevronDown size={16} uniProps={mutedColorMapping} />
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent side={tooltipSide} align="center" offset={8}>
+                <Text style={styles.tooltipText}>
+                  {t("workspace.git.openInEditor.chooseEditor")}
+                </Text>
+              </TooltipContent>
+            </Tooltip>
             <DropdownMenuContent
               align="end"
               minWidth={148}
@@ -327,6 +346,10 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.normal,
     flexShrink: 1,
+  },
+  tooltipText: {
+    color: theme.colors.popoverForeground,
+    fontSize: theme.fontSize.sm,
   },
   splitButtonContent: {
     flexDirection: "row",

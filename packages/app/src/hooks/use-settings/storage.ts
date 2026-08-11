@@ -33,6 +33,9 @@ export type LinkOpenBehavior = "in-app" | "external";
 export type WorkspaceTitleSource = "title" | "branch";
 export type PreviewServerCloseBehavior = "keep-running" | "stop-on-close";
 export type WorkspaceToolsPlacement = "header" | "workspaceList";
+// The workspace-row +/− indicator is a device-local viewing preference. The
+// default mirrors terminal git-status prompts: only work that remains to commit.
+export type WorkspaceChangeIndicator = "uncommitted" | "branch" | "hidden";
 // Where the Active Team switcher lives: the sidebar menu above "New workspace"
 // (default) or the workspace title bar ahead of the other tools.
 export type TeamSwitcherPlacement = "sidebar" | "titlebar";
@@ -81,6 +84,11 @@ const VALID_WORKSPACE_TITLE_SOURCES = new Set<WorkspaceTitleSource>(["title", "b
 const VALID_WORKSPACE_TOOLS_PLACEMENTS = new Set<WorkspaceToolsPlacement>([
   "header",
   "workspaceList",
+]);
+const VALID_WORKSPACE_CHANGE_INDICATORS = new Set<WorkspaceChangeIndicator>([
+  "uncommitted",
+  "branch",
+  "hidden",
 ]);
 const VALID_TEAM_SWITCHER_PLACEMENTS = new Set<TeamSwitcherPlacement>(["sidebar", "titlebar"]);
 const VALID_TAB_ORIENTATIONS = new Set<TabOrientation>(["horizontal", "vertical"]);
@@ -259,6 +267,7 @@ export interface AppSettings {
   previewAutoStartOnRestore: boolean;
   compactSidebarTopSpacing: boolean;
   workspaceToolsPlacement: WorkspaceToolsPlacement;
+  workspaceChangeIndicator: WorkspaceChangeIndicator;
   // Where the Agent Teams "Active Team" switcher renders. Device-local
   // presentation only; the active team itself is host-scoped daemon config.
   teamSwitcherPlacement: TeamSwitcherPlacement;
@@ -599,6 +608,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   previewAutoStartOnRestore: false,
   compactSidebarTopSpacing: false,
   workspaceToolsPlacement: "header",
+  workspaceChangeIndicator: "uncommitted",
   teamSwitcherPlacement: "sidebar",
   defaultTabOrientation: "vertical",
   verticalTabRailWidth: null,
@@ -1073,6 +1083,14 @@ function pickWorkspaceLayoutSettings(stored: Partial<AppSettings>): Partial<AppS
     VALID_WORKSPACE_TOOLS_PLACEMENTS.has(stored.workspaceToolsPlacement as WorkspaceToolsPlacement)
   ) {
     result.workspaceToolsPlacement = stored.workspaceToolsPlacement as WorkspaceToolsPlacement;
+  }
+  if (
+    typeof stored.workspaceChangeIndicator === "string" &&
+    VALID_WORKSPACE_CHANGE_INDICATORS.has(
+      stored.workspaceChangeIndicator as WorkspaceChangeIndicator,
+    )
+  ) {
+    result.workspaceChangeIndicator = stored.workspaceChangeIndicator as WorkspaceChangeIndicator;
   }
   if (
     typeof stored.teamSwitcherPlacement === "string" &&

@@ -52,6 +52,10 @@ const MAX_MESSAGE_CHARS = 200;
 export interface BrainOpsManagerOptions {
   logger: Logger;
   ottoHome: string;
+  /** Persist the runtime chosen by a successfully completed install. */
+  onRuntimeInstalled?: (result: { build: string | null; runtime: BrainRuntime }) => void;
+  /** Reconcile the running Brain host after this daemon writes model files. */
+  onPullCompleted?: () => Promise<void>;
 }
 
 interface JobState {
@@ -68,16 +72,22 @@ interface JobState {
   child: ChildProcess | null;
   /** Tail of stderr, kept so a failure can report why. */
   errBuffer: string;
+  /** The JSON result written by successful runtime installs. */
+  outBuffer: string;
 }
 
 export class BrainOpsManager {
   private readonly logger: Logger;
   private readonly ottoHome: string;
+  private readonly onRuntimeInstalled: BrainOpsManagerOptions["onRuntimeInstalled"];
+  private readonly onPullCompleted: BrainOpsManagerOptions["onPullCompleted"];
   private readonly jobsById = new Map<string, JobState>();
 
   constructor(options: BrainOpsManagerOptions) {
     this.logger = options.logger.child({ module: "brain-ops-manager" });
     this.ottoHome = options.ottoHome;
+    this.onRuntimeInstalled = options.onRuntimeInstalled;
+    this.onPullCompleted = options.onPullCompleted;
   }
 
   // --- Reads ---------------------------------------------------------------
@@ -126,6 +136,7 @@ export class BrainOpsManager {
         likes?: unknown;
         gated?: unknown;
         installed?: unknown;
+        summary?: unknown;
       };
       const parsed = BrainHfSearchResultSchema.safeParse({
         repo: typeof r.repo === "string" ? r.repo : "",
@@ -133,6 +144,7 @@ export class BrainOpsManager {
         likes: typeof r.likes === "number" ? r.likes : 0,
         gated: r.gated === true || r.gated === "yes",
         installed: r.installed === true,
+        summary: typeof r.summary === "string" ? r.summary : null,
       });
       if (parsed.success) {
         out.push(parsed.data);
@@ -153,7 +165,7 @@ export class BrainOpsManager {
   // --- Jobs ----------------------------------------------------------------
 
   /** Download a catalog model. */
-  pullModel(model: string): BrainJob {
+  pullModel(model: string, components: string[] = [], quant?: string): BrainJob {
     if (!model.trim()) {
       throw new Error("A model is required.");
     }
@@ -161,12 +173,19 @@ export class BrainOpsManager {
       kind: "pull",
       target: model,
       label: `Download ${model}`,
-      args: ["pull", "--json", "--", model],
+      args: [
+        "pull",
+        ...(quant ? ["--quant", quant] : []),
+        ...components.flatMap((component) => ["--component", component]),
+        "--json",
+        "--",
+        model,
+      ],
     });
   }
 
   /** Download a chosen quant of an arbitrary HF repo (a `pull` job). */
-  addModel(repo: string, quant: string): BrainJob {
+  addModel(repo: string, quant: string, components?: string[]): BrainJob {
     // An empty quant makes the CLI list quants instead of downloading, so the job
     // would report success while writing nothing - reject it up front.
     if (!repo.trim() || !quant.trim()) {
@@ -176,17 +195,41 @@ export class BrainOpsManager {
       kind: "pull",
       target: `${repo}#${quant}`,
       label: `Add ${repo} (${quant})`,
-      args: ["add", "--quant", quant, "--json", "--", repo],
+      args: [
+        "add",
+        "--quant",
+        quant,
+        ...(components === undefined ? [] : ["--primary-only"]),
+        ...(components ?? []).flatMap((component) => ["--component", component]),
+        "--json",
+        "--",
+        repo,
+      ],
     });
   }
 
   /** Install a llama.cpp runtime. */
   installRuntime(build: string | null): BrainJob {
+    // A managed install from the UI is an update request, not a request to
+    // reproduce the package's fallback pin. The brain CLI resolves "latest"
+    // against upstream at install time, while the completed job still selects
+    // the runtime through the automatic policy in bootstrap.
+    const requestedBuild = build ?? "latest";
     return this.startJob({
       kind: "runtime-install",
-      target: build,
-      label: build ? `Install runtime (${build})` : "Install llama.cpp runtime",
-      args: ["runtime", "install", "--json", ...(build ? ["--build", build] : [])],
+      target: requestedBuild,
+      label: build ? `Install runtime (${build})` : "Install latest llama.cpp runtime",
+      args: ["runtime", "install", "--json", "--build", requestedBuild],
+    });
+  }
+
+  /** Remove an Otto-managed runtime through the same tracked operations lane. */
+  removeRuntime(name: string): BrainJob {
+    return this.startJob({
+      kind: "runtime-remove",
+      target: name,
+      label: `Remove runtime (${name})`,
+      args: ["runtime", "remove", "--json", name],
     });
   }
 
@@ -298,6 +341,7 @@ export class BrainOpsManager {
       finishedAt: null,
       child: null,
       errBuffer: "",
+      outBuffer: "",
     };
     this.jobsById.set(job.id, job);
 
@@ -310,24 +354,29 @@ export class BrainOpsManager {
     }
     job.child = child;
 
-    const onProgress = (chunk: Buffer) => this.ingestProgress(job, chunk.toString("utf8"));
-    child.stdout?.on("data", onProgress);
-    child.stderr?.on("data", onProgress);
+    child.stdout?.on("data", (chunk: Buffer) => {
+      const text = chunk.toString("utf8");
+      job.outBuffer = appendTail(job.outBuffer, text);
+      this.ingestProgress(job, text);
+    });
+    child.stderr?.on("data", (chunk: Buffer) => this.ingestProgress(job, chunk.toString("utf8")));
     child.on("error", (error) => {
       job.errBuffer = appendTail(job.errBuffer, `[spawn error] ${error.message}\n`);
     });
-    child.on("exit", (code, signal) => this.handleExit(job, child, code, signal));
+    child.on("exit", (code, signal) => {
+      void this.handleExit(job, child, code, signal);
+    });
 
     this.logger.info({ jobId: job.id, kind: job.kind }, "started brain op");
     return toWire(job);
   }
 
-  private handleExit(
+  private async handleExit(
     job: JobState,
     child: ChildProcess,
     code: number | null,
     signal: NodeJS.Signals | null,
-  ): void {
+  ): Promise<void> {
     if (job.child !== child) {
       return; // Already canceled/replaced.
     }
@@ -336,6 +385,42 @@ export class BrainOpsManager {
       return;
     }
     if (code === 0) {
+      if (job.kind === "runtime-install") {
+        const runtime = parseInstalledRuntime(job.outBuffer);
+        if (runtime) {
+          try {
+            this.onRuntimeInstalled?.({ build: job.target, runtime });
+          } catch (error) {
+            this.logger.error({ err: error, jobId: job.id }, "Failed to select installed runtime");
+            this.settle(job, "failed", null, "Runtime installed, but Otto could not select it.");
+            return;
+          }
+        } else {
+          this.logger.warn(
+            { jobId: job.id, stdout: job.outBuffer },
+            "Runtime install returned no runtime",
+          );
+          this.settle(job, "failed", null, "Runtime installed, but Otto could not identify it.");
+          return;
+        }
+      }
+      if (job.kind === "pull" && this.onPullCompleted) {
+        try {
+          await this.onPullCompleted();
+        } catch (error) {
+          this.logger.error(
+            { err: error, jobId: job.id },
+            "Failed to refresh Brain inventory after pull",
+          );
+          this.settle(
+            job,
+            "failed",
+            null,
+            `Download completed, but Otto could not refresh the Brain inventory: ${getMessage(error)}`,
+          );
+          return;
+        }
+      }
       this.settle(job, "succeeded", job.message ?? "Done.", null, 100);
     } else {
       const detail = extractErrorDetail(job.errBuffer);
@@ -541,6 +626,15 @@ function extractErrorDetail(buffer: string): string | null {
     }
   }
   return lastMeaningfulLine(buffer);
+}
+
+function parseInstalledRuntime(stdout: string): BrainRuntime | null {
+  try {
+    const parsed = BrainRuntimeSchema.safeParse(JSON.parse(stdout) as unknown);
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
 }
 
 function truncateMessage(text: string): string {

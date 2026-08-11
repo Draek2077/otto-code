@@ -1010,6 +1010,15 @@ export class BrainManager {
     return this.requestHostJson("GET", "/__host/models");
   }
 
+  /** Rebuild the host's in-memory inventory after a local daemon-side pull. */
+  async rescanInventory(): Promise<void> {
+    // Downloads are allowed before the Brain service has been started. There
+    // is no in-memory catalog in that state, so the next service start scans
+    // disk naturally; do not misreport a completed download as failed.
+    if (!this.isReachable()) return;
+    await this.requestHostJson("POST", "/__host/models/rescan");
+  }
+
   /** One model's saved profile, its field descriptors, and its warnings. */
   async modelProfile(modelId: string): Promise<Record<string, unknown> | null> {
     this.requireReachable();
@@ -1076,6 +1085,17 @@ export class BrainManager {
   async deleteModel(modelId: string): Promise<Record<string, unknown> | null> {
     this.requireReachable();
     return this.requestHostJson("DELETE", this.modelPath("/__host/model", modelId));
+  }
+
+  async deleteModelComponent(
+    modelId: string,
+    componentId: string,
+  ): Promise<Record<string, unknown> | null> {
+    this.requireReachable();
+    return this.requestHostJson(
+      "DELETE",
+      `${this.modelPath("/__host/model/component", modelId)}&component=${encodeURIComponent(componentId)}`,
+    );
   }
 
   /** Tail the brain's llama-server log. */
@@ -1334,6 +1354,7 @@ export class BrainManager {
     const existingListen = isRecord(existing.listen) ? existing.listen : {};
     const existingAuth = isRecord(existing.auth) ? existing.auth : {};
     const existingTls = isRecord(existing.tls) ? existing.tls : {};
+    const existingRuntime = isRecord(existing.runtime) ? existing.runtime : {};
 
     const next: Record<string, unknown> = {
       ...existing,
@@ -1342,6 +1363,7 @@ export class BrainManager {
       autoStart: brain.autoStart,
       listen: { ...existingListen, host: brain.listen.host, port: brain.listen.port },
       defaultModel: brain.defaultModel,
+      runtime: { ...existingRuntime, ...(isRecord(brain.runtime) ? brain.runtime : {}) },
       lockModel: brain.lockModel,
       allowRemoteConfig: brain.allowRemoteConfig,
       allowInsecureBind: brain.allowInsecureBind,

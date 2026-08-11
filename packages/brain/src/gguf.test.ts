@@ -99,9 +99,13 @@ test("a non-GGUF file is rejected clearly", () => {
   }
 });
 
-test("quantisation labels prefer the longest match", () => {
+test("quantisation labels use the complete terminal filename suffix", () => {
   assert.equal(models.detectQuant("model-Q4_K_M.gguf"), "Q4_K_M");
   assert.equal(models.detectQuant("model-Q8_0.gguf"), "Q8_0");
+  assert.equal(models.detectQuant("Qwable-27b_Q4_K_M.gguf"), "Q4_K_M");
   assert.equal(models.detectQuant("model-NVFP4-MTP.gguf"), "NVFP4");
+  assert.equal(models.detectQuant("Muse-Glimmer-30B-UD-Q4_K_XL.gguf"), "Q4_K_XL");
+  assert.equal(models.detectQuant("Muse-Glimmer-30B-UD-Q2_K_XL.gguf"), "Q2_K_XL");
+  assert.equal(models.detectQuant("model-Q2_K_XL-00001-of-00002.gguf"), "Q2_K_XL");
   assert.equal(models.detectQuant("model-with-no-quant.gguf"), null);
 });

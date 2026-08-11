@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useRef, type ReactElement, type ReactNode } from "react";
-import { ActivityIndicator, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import type { SelectFieldOption } from "@/components/ui/select-field";
 import { isWeb } from "@/constants/platform";
@@ -113,7 +114,7 @@ export function ContextSummary({
           <View style={styles.titleRow}>
             <Text style={styles.title}>{t("contextManagement.summary.title")}</Text>
             {isRefreshing ? (
-              <ActivityIndicator size="small" testID="context-summary-refreshing" />
+              <LoadingSpinner size="small" testID="context-summary-refreshing" />
             ) : null}
           </View>
           <View style={styles.headlineRow}>
@@ -197,8 +198,7 @@ function SummaryPlaceholder({
   if (isLoading) {
     return (
       <View style={styles.loadingRow} testID="context-summary-loading">
-        <ActivityIndicator size="small" />
-        <Text style={styles.muted}>{t("contextManagement.summary.loading")}</Text>
+        <LoadingSpinner size="small" />
       </View>
     );
   }

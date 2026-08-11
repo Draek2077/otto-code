@@ -94,6 +94,20 @@ export interface ContextReportQueryResult {
  * settings hydrate, all used to cost a separate filesystem walk each.
  */
 const inFlight = new Map<string, Promise<ContextReport | null>>();
+const RETRY_DELAYS_MS = [1_000, 2_000, 5_000, 10_000] as const;
+
+function isRetryableHostWait(cause: unknown): boolean {
+  return cause instanceof Error && /timeout|timed out/i.test(cause.message);
+}
+
+function retryAfterHostWait(
+  attemptRef: { current: number },
+  retry: () => void,
+): ReturnType<typeof setTimeout> {
+  const delay = RETRY_DELAYS_MS[Math.min(attemptRef.current, RETRY_DELAYS_MS.length - 1)];
+  attemptRef.current += 1;
+  return setTimeout(retry, delay);
+}
 
 function fetchReport(params: {
   key: string;
@@ -166,6 +180,7 @@ export function useContextReportQuery(
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
+  const retryAttemptRef = useRef(0);
 
   // Only the run a `refresh()` triggered may bypass the in-flight cache; every
   // other run (a window change, a re-mount) is happy to join a scan already
@@ -175,12 +190,14 @@ export function useContextReportQuery(
     forceRef.current = true;
     setNonce((value) => value + 1);
   }, []);
+  const retry = useCallback(() => setNonce((value) => value + 1), []);
 
   useEffect(() => {
     if (!client || !workspaceId || !key) return;
     const force = forceRef.current;
     forceRef.current = false;
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
     setScanning(true);
     setError(null);
     void (async () => {
@@ -196,15 +213,23 @@ export function useContextReportQuery(
         });
         if (cancelled) return;
         setQueryReport({ serverId, key, report });
+        retryAttemptRef.current = 0;
         setScanning(false);
       } catch (cause) {
         if (cancelled) return;
+        if (isRetryableHostWait(cause)) {
+          retryTimer = retryAfterHostWait(retryAttemptRef, () => {
+            if (!cancelled) retry();
+          });
+          return;
+        }
         setError(cause instanceof Error ? cause.message : String(cause));
         setScanning(false);
       }
     })();
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
     };
   }, [
     client,
@@ -215,6 +240,7 @@ export function useContextReportQuery(
     windowTokens,
     personalityId,
     nonce,
+    retry,
     setQueryReport,
   ]);
 

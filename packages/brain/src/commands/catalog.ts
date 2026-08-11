@@ -10,6 +10,7 @@
 import type { Command } from "commander";
 
 import { loadBrainConfig, loadCatalog } from "../config/index.js";
+import type { CatalogModel } from "../config/schema.js";
 import { formatBytes, scanModels } from "../models/index.js";
 import type { AnyCommandResult, OutputSchema } from "../output/index.js";
 
@@ -29,6 +30,7 @@ export interface CatalogRow {
   tier: string;
   useCases: string[];
   why: string;
+  components?: CatalogModel["components"];
 }
 
 export const catalogSchema: OutputSchema<CatalogRow> = {
@@ -81,6 +83,7 @@ export async function runCatalogCommand(
     tier: model.tier ?? "",
     useCases: model.useCases ?? [],
     why: model.why ?? "",
+    components: model.components,
   }));
 
   return { type: "list", data: rows, schema: catalogSchema };

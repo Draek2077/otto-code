@@ -250,7 +250,9 @@ test.describe("Composer attachments", () => {
       prompt: "Stay running for queue test.",
     });
     try {
-      await fillComposerDraft(page, "queued draft text");
+      // A pasted no-whitespace prompt used to make the queue preview retain its
+      // intrinsic width and push the row actions past the viewport.
+      await fillComposerDraft(page, `queued-${"x".repeat(4_000)}`);
       await sendDraftToQueue(page);
 
       await expectQueuedMessageButton(page);

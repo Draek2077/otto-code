@@ -1,8 +1,9 @@
 import { memo, useCallback, useMemo, useState, type ReactNode } from "react";
 import { forgeToHostingProvider } from "@/git/forge";
-import { ActivityIndicator, Text, View, type StyleProp, type ViewStyle } from "react-native";
+import { Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Globe, SquareTerminal } from "@/components/icons/material-icons";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { StatusBucketIcon, isAttentionStatusBucket } from "@/components/status-bucket-icon";
 import { GitHostingIcon } from "@/components/icons/git-hosting-icon";
 import { WorkspaceHoverCard } from "@/components/workspace-hover-card";
@@ -12,18 +13,16 @@ import { isNative as platformIsNative } from "@/constants/platform";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import { usePrefetchWorkspaceCheckoutStatus } from "@/hooks/use-prefetch-workspace-checkout-status";
 import { useAppSettings } from "@/hooks/use-settings";
-import type { Theme } from "@/styles/theme";
+import { compactUp, type Theme, useIconSize } from "@/styles/theme";
 import type { PrHint } from "@/git/use-pr-status-query";
 import { shouldRenderSyncedStatusLoader } from "@/utils/status-loader";
 import { PrBadge } from "@/components/sidebar/pr-badge";
 import { resolveSidebarWorkspacePrimaryLabel } from "@/components/sidebar/sidebar-workspace-title";
 
-const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const blueColorMapping = (theme: Theme) => ({ color: theme.colors.palette.blue[500] });
 const redColorMapping = (theme: Theme) => ({ color: theme.colors.palette.red[500] });
 
 const ThemedGitHostingIcon = withUnistyles(GitHostingIcon);
-const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
 const ThemedGlobe = withUnistyles(Globe);
 const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 
@@ -126,11 +125,13 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   return (
     <View style={styles.workspaceRowContent}>
       <View style={styles.workspaceRowMain}>
-        <WorkspaceStatusIndicator
-          bucket={workspace.statusBucket}
-          loading={isLoading}
-          indexing={isIndexing}
-        />
+        <View style={styles.workspaceLeadingVisualSlot}>
+          <WorkspaceStatusIndicator
+            bucket={workspace.statusBucket}
+            loading={isLoading}
+            indexing={isIndexing}
+          />
+        </View>
         <View style={styles.workspaceContentColumn}>
           <View style={styles.workspaceTitleRow}>
             <View style={styles.workspaceTitleLeft}>
@@ -139,7 +140,6 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
               </Text>
               {scriptIconKind ? <WorkspaceScriptIcon kind={scriptIconKind} /> : null}
             </View>
-            {children ? <View style={sidebarWorkspaceRowStyles.rowRight}>{children}</View> : null}
           </View>
           {subtitle ? (
             <Text style={styles.workspaceSubtitle} numberOfLines={1}>
@@ -153,6 +153,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
             </View>
           ) : null}
         </View>
+        {children ? <View style={sidebarWorkspaceRowStyles.rowRight}>{children}</View> : null}
       </View>
       {floatingTrailing ? (
         <View style={sidebarWorkspaceRowStyles.floatingTrailingOverlay}>{floatingTrailing}</View>
@@ -196,12 +197,14 @@ function WorkspaceStatusIndicator({
    */
   indexing?: boolean;
 }) {
+  const iconSize = useIconSize();
+  const spinnerSize = iconSize.sm;
   const shouldShowSyncedLoader = shouldRenderSyncedStatusLoader({ bucket });
 
   if (loading) {
     return (
       <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-loading">
-        <ThemedActivityIndicator size={8} uniProps={foregroundMutedColorMapping} />
+        <LoadingSpinner size={spinnerSize} />
       </View>
     );
   }
@@ -209,7 +212,7 @@ function WorkspaceStatusIndicator({
   if (shouldShowSyncedLoader) {
     return (
       <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-running">
-        <ThemedBlobLoader size={11} />
+        <ThemedBlobLoader size={spinnerSize} />
       </View>
     );
   }
@@ -222,7 +225,7 @@ function WorkspaceStatusIndicator({
   if (isAttentionStatusBucket(bucket)) {
     return (
       <View style={styles.workspaceStatusDot} testID={`workspace-status-indicator-${bucket}`}>
-        <StatusBucketIcon bucket={bucket} size={14} />
+        <StatusBucketIcon bucket={bucket} size={iconSize.sm} />
       </View>
     );
   }
@@ -230,7 +233,7 @@ function WorkspaceStatusIndicator({
   if (indexing) {
     return (
       <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-indexing">
-        <ThemedActivityIndicator size={8} uniProps={blueColorMapping} />
+        <LoadingSpinner size={spinnerSize} />
       </View>
     );
   }
@@ -295,11 +298,10 @@ export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
   },
   hidden: { opacity: 0 },
   /**
-   * Hover-revealed controls painted over the title row's right edge. Anchored to
-   * the row's content box, height-matched to the title line (`lineHeight: 20`)
-   * so it centers on the title rather than on a row grown by a subtitle or PR
-   * badge. Reserves no width, so the label is full-width at rest and the row
-   * never reflows when the pointer arrives.
+   * Hover-revealed controls painted over the workspace row's right edge. They
+   * span the full content stack so their center follows the row as a subtitle,
+   * PR badge, or host metadata appears. Reserves no width, so the label is
+   * full-width at rest and the row never reflows when the pointer arrives.
    *
    * Opaque because it covers real content - the tail of a truncated label, and
    * the diff stat in the status grouping. `surfaceSidebarHover` is the row's own
@@ -310,8 +312,8 @@ export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
   floatingTrailingOverlay: {
     position: "absolute",
     top: 0,
+    bottom: 0,
     right: 0,
-    height: 20,
     flexDirection: "row",
     alignItems: "center",
     gap: 2,
@@ -321,8 +323,10 @@ export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
   },
   trailingActionSlot: {
     position: "relative",
-    minWidth: 18,
-    minHeight: 20,
+    // This is the same responsive square as the project kebab trigger. It
+    // reserves the full touch target, not just the three-dot glyph.
+    minWidth: compactUp(24),
+    minHeight: compactUp(24),
     flexShrink: 0,
     alignItems: "flex-end",
     justifyContent: "center",
@@ -383,7 +387,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   workspaceRowMain: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    // Status and actions are affordances for the workspace as a whole. Center
+    // them against the complete content stack as subtitles, PR badges, and
+    // host metadata appear or disappear.
+    alignItems: "center",
     gap: theme.spacing[2],
     width: "100%",
   },
@@ -406,14 +413,28 @@ const styles = StyleSheet.create((theme) => ({
   },
   shortcutBadgeOverlay: {
     position: "absolute",
-    top: 1,
+    top: 0,
+    bottom: 0,
     right: 0,
+    justifyContent: "center",
   },
   workspaceStatusDot: {
     position: "relative",
+    // The compact 28px status glyph needs a 32px square. Unlike the trailing
+    // kebab, this is a visual indicator rather than a touch target.
     width: theme.iconSize.md,
-    height: 20,
+    height: theme.iconSize.md,
     borderRadius: theme.borderRadius.full,
+    flexShrink: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  // Match the project row's leading column. The status visual remains a 32px
+  // indicator inside it, while its label starts on the same x-coordinate as a
+  // project label beside a 40px project icon.
+  workspaceLeadingVisualSlot: {
+    width: theme.iconSize.lg,
+    height: theme.iconSize.md,
     flexShrink: 0,
     alignItems: "center",
     justifyContent: "center",

@@ -25,7 +25,7 @@ import type {
   PullRequestTimelineItem,
   SearchIssuesAndPrsOptions,
 } from "../github-service.js";
-import { normalizeForgeSearchKinds } from "../forge-service.js";
+import { normalizeForgeSearchKinds, sortPullRequestsLatestFirst } from "../forge-service.js";
 import type { BitbucketForgeSpecificStatusFacts } from "./bitbucket-facts.js";
 import { createHostingHttpClient, type HostingHttpClient } from "./hosting-http-client.js";
 import { createHostingRequestCache } from "./request-cache.js";
@@ -732,7 +732,7 @@ export function createBitbucketCloudService(
             ? `state = "OPEN" AND (title ~ "${term}" OR description ~ "${term}")`
             : `state = "OPEN"`;
           const prs = await fetchPullRequests({ identity, q, limit: input.limit ?? 20 });
-          return prs.map(pullRequestSummaryFrom);
+          return sortPullRequestsLatestFirst(prs.map(pullRequestSummaryFrom));
         },
       });
     },

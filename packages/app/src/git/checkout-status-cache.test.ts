@@ -149,6 +149,47 @@ describe("applyCheckoutStatusUpdateFromEvent", () => {
     expect(queryClient.getQueryData(checkoutPrStatusQueryKey(serverId, otherCwd))).toBeUndefined();
   });
 
+  // Regression: a branch switch keeps the same cwd, so every PR-dependent
+  // surface must replace the provider facts from this subscription-fed cache.
+  it("replaces cached provider facts when switching between GitHub and Bitbucket", () => {
+    const queryClient = createQueryClient();
+    const github = prStatus({
+      hosting: { provider: "github", featuresEnabled: true },
+      forge: "github",
+    });
+    const bitbucket = prStatus({
+      hosting: { provider: "bitbucket-cloud", featuresEnabled: true },
+      forge: "bitbucket-cloud",
+      status: { ...prStatus().status!, forge: "bitbucket-cloud" },
+    });
+
+    applyCheckoutStatusUpdateFromEvent({
+      queryClient,
+      serverId,
+      message: checkoutStatusUpdate(checkoutStatus(), github),
+    });
+    applyCheckoutStatusUpdateFromEvent({
+      queryClient,
+      serverId,
+      message: checkoutStatusUpdate(
+        checkoutStatus({ currentBranch: "bitbucket-branch" }),
+        bitbucket,
+      ),
+    });
+    expect(
+      queryClient.getQueryData<CheckoutPrStatusPayload>(checkoutPrStatusQueryKey(serverId, cwd)),
+    ).toMatchObject({ hosting: { provider: "bitbucket-cloud" }, forge: "bitbucket-cloud" });
+
+    applyCheckoutStatusUpdateFromEvent({
+      queryClient,
+      serverId,
+      message: checkoutStatusUpdate(checkoutStatus({ currentBranch: "github-return" }), github),
+    });
+    expect(
+      queryClient.getQueryData<CheckoutPrStatusPayload>(checkoutPrStatusQueryKey(serverId, cwd)),
+    ).toMatchObject({ hosting: { provider: "github" }, forge: "github" });
+  });
+
   it("expires a manual diff-mode override when the pushed dirty state flipped", () => {
     const queryClient = createQueryClient();
     setDiffModeOverride(false);

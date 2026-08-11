@@ -1,5 +1,5 @@
-import { useCallback, useMemo } from "react";
-import { View } from "react-native";
+import { useCallback, useMemo, type ReactNode } from "react";
+import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -22,6 +22,7 @@ import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspac
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { resolveWorkspaceDirectory } from "@/utils/workspace-directory";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const EMPTY_TERMINAL_IDS: string[] = [];
 
@@ -166,31 +167,57 @@ export function SidebarActiveWorkspaceTools() {
   return (
     <View style={styles.container} onLayout={onContainerLayout}>
       <View style={styles.toolsRow}>
-        <WorkspaceScriptsButton
-          serverId={workspaceEntry.serverId}
-          workspaceId={workspaceEntry.workspaceId}
-          scripts={workspaceEntry.scripts}
-          liveTerminalIds={liveTerminalIds}
-          onScriptTerminalStarted={handleScriptTerminalStarted}
-          onViewTerminal={handleViewScriptTerminal}
-          onOpenUrlInBrowserTab={handleOpenUrlInBrowserTab}
-          hideLabels={isCompact}
-          fill={!isCompact}
-        />
+        <WorkspaceToolTooltip enabled={isCompact} label={t("workspace.scripts.title")}>
+          <WorkspaceScriptsButton
+            serverId={workspaceEntry.serverId}
+            workspaceId={workspaceEntry.workspaceId}
+            scripts={workspaceEntry.scripts}
+            liveTerminalIds={liveTerminalIds}
+            onScriptTerminalStarted={handleScriptTerminalStarted}
+            onViewTerminal={handleViewScriptTerminal}
+            onOpenUrlInBrowserTab={handleOpenUrlInBrowserTab}
+            hideLabels={isCompact}
+            fill={!isCompact}
+          />
+        </WorkspaceToolTooltip>
         <WorkspaceOpenInEditorButton
           serverId={workspaceEntry.serverId}
           cwd={workspaceDirectory}
           hideLabels={isCompact}
           fill={!isCompact}
+          tooltipSide="top"
         />
         <WorkspaceActions
           serverId={workspaceEntry.serverId}
           cwd={workspaceDirectory}
           hideLabels={isCompact}
           fill={!isCompact}
+          tooltipSide="top"
         />
       </View>
     </View>
+  );
+}
+
+function WorkspaceToolTooltip({
+  children,
+  enabled,
+  label,
+}: {
+  children: ReactNode;
+  enabled: boolean;
+  label: string;
+}) {
+  if (!enabled) return children;
+  return (
+    <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
+      <TooltipTrigger asChild>
+        <View collapsable={false}>{children}</View>
+      </TooltipTrigger>
+      <TooltipContent side="top" align="center" offset={8}>
+        <Text style={styles.tooltipText}>{label}</Text>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -203,6 +230,8 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[2],
     borderTopWidth: theme.borderWidth[1],
     borderTopColor: theme.colors.border,
+    borderBottomWidth: theme.borderWidth[1],
+    borderBottomColor: theme.colors.border,
   },
   toolsRow: {
     flex: 1,
@@ -211,4 +240,5 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     gap: theme.spacing[1],
   },
+  tooltipText: { color: theme.colors.popoverForeground, fontSize: theme.fontSize.sm },
 }));

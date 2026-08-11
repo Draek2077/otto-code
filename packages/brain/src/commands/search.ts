@@ -23,17 +23,20 @@ import { CommandError } from "../output/types.js";
 /** What is already on disk, so search + quant listings can mark installed rows. */
 function installedIndex(config: ReturnType<typeof loadBrainConfig>): {
   repos: Set<string>;
-  quants: Set<string>;
+  quants: Map<string, string>;
+  projectorRepos: Set<string>;
 } {
   const repos = new Set<string>();
-  const quants = new Set<string>();
+  const quants = new Map<string, string>();
+  const projectorRepos = new Set<string>();
   for (const model of scanModels(config)) {
     const repo = repoOfModel(model);
     if (!repo) continue;
     repos.add(repo.toLowerCase());
-    if (model.quant) quants.add(`${repo.toLowerCase()} ${model.quant.toUpperCase()}`);
+    if (model.quant) quants.set(`${repo.toLowerCase()} ${model.quant.toUpperCase()}`, model.id);
+    if (model.mmprojPath) projectorRepos.add(repo.toLowerCase());
   }
-  return { repos, quants };
+  return { repos, quants, projectorRepos };
 }
 
 export interface SearchRow {
@@ -42,6 +45,7 @@ export interface SearchRow {
   likes: number;
   gated: string;
   installed: boolean;
+  summary: string | null;
 }
 
 const searchSchema: OutputSchema<SearchRow> = {
@@ -80,6 +84,7 @@ export async function runSearchCommand(
       likes: r.likes,
       gated: r.gated ? "yes" : "",
       installed: repos.has(r.repo.toLowerCase()),
+      summary: r.summary,
     })),
     schema: searchSchema,
   };
@@ -98,6 +103,7 @@ interface AddQuantRow {
   sizeBytes: number;
   files: number;
   installed: boolean;
+  projector?: { file: string; sizeBytes: number; installed: boolean };
 }
 
 const addSchema: OutputSchema<AddRow> = {
@@ -125,12 +131,14 @@ export function addAddOptions(cmd: Command): Command {
     .description("Download a model from an arbitrary Hugging Face repo")
     .argument("<repo>", "owner/repo on Hugging Face")
     .option("--quant <label>", "quantization to download (e.g. Q5_K_M)")
+    .option("--component <id...>", "download optional discovered component ids")
+    .option("--primary-only", "download only the selected primary quant")
     .option("--list-quants", "list the quantizations the repo offers and exit");
 }
 
 export async function runAddCommand(
   repo: string,
-  options: { quant?: string; listQuants?: boolean },
+  options: { quant?: string; listQuants?: boolean; component?: string[]; primaryOnly?: boolean },
   _command: Command,
 ): Promise<AnyCommandResult<AddRow>> {
   const config = loadBrainConfig();
@@ -138,7 +146,7 @@ export async function runAddCommand(
   const { quants, mmproj } = await listRepoQuants(repo, token);
 
   if (options.listQuants || !options.quant) {
-    const { quants: installedQuants } = installedIndex(config);
+    const { quants: installedQuants, projectorRepos } = installedIndex(config);
     const listing: AnyCommandResult<AddQuantRow> = {
       type: "list",
       data: quants.map((q) => ({
@@ -146,7 +154,17 @@ export async function runAddCommand(
         size: formatBytes(q.sizeBytes),
         sizeBytes: q.sizeBytes,
         files: q.files.length,
+        modelId: installedQuants.get(`${repo.toLowerCase()} ${q.quant.toUpperCase()}`) ?? null,
         installed: installedQuants.has(`${repo.toLowerCase()} ${q.quant.toUpperCase()}`),
+        ...(mmproj
+          ? {
+              projector: {
+                file: mmproj.files[0],
+                sizeBytes: mmproj.sizeBytes,
+                installed: projectorRepos.has(repo.toLowerCase()),
+              },
+            }
+          : {}),
       })),
       schema: addQuantSchema,
     };
@@ -163,8 +181,19 @@ export async function runAddCommand(
       message: `${repo} has no ${options.quant} - available: ${quants.map((q) => q.quant).join(", ") || "none"}`,
     });
   }
-  const files = [...choice.files, ...(mmproj ? mmproj.files : [])];
-  const total = choice.sizeBytes + (mmproj?.sizeBytes ?? 0);
+  const requested = new Set(options.component ?? []);
+  const unknown = [...requested].filter((id) => id !== "vision-projector");
+  if (unknown.length)
+    throw new CommandError({
+      code: "NO_COMPONENT",
+      message: `unknown bundle components: ${unknown.join(", ")}`,
+    });
+  const includeProjector =
+    Boolean(mmproj) &&
+    (requested.has("vision-projector") ||
+      (!options.primaryOnly && options.component === undefined));
+  const files = [...choice.files, ...(includeProjector ? mmproj!.files : [])];
+  const total = choice.sizeBytes + (includeProjector ? mmproj!.sizeBytes : 0);
   let lastPct = -1;
   const written = await downloadRepoFiles({
     repo,
@@ -173,7 +202,10 @@ export async function runAddCommand(
     token,
     onProgress: (p) => {
       const pct = total ? Math.floor((p.receivedBytes / total) * 100) : 0;
-      if (pct !== lastPct && pct % 5 === 0) {
+      // A download chunk can jump straight over a five-percent boundary.
+      // Report each new integer percent so the UI ring never stalls until
+      // completion simply because no chunk hit an exact multiple of five.
+      if (pct > lastPct) {
         lastPct = pct;
         process.stderr.write(`  ${repo} ${choice.quant}: ${pct}%\r`);
       }

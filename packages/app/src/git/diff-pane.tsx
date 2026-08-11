@@ -14,7 +14,6 @@ import { DiffStat } from "@/components/diff-stat";
 import {
   View,
   Text,
-  ActivityIndicator,
   Pressable,
   FlatList,
   TextInput,
@@ -118,6 +117,7 @@ import {
   CheckoutGitRollbackFailedError,
   useCheckoutGitActionsStore,
 } from "@/git/actions-store";
+import { resolveRunningAgentLabels } from "@/git/running-agent-labels";
 import type {
   CheckoutBaseSource,
   CheckoutGitCommitError,
@@ -1425,7 +1425,7 @@ const accentForegroundIconColorMapping = (theme: Theme) => ({
   color: theme.colors.accentForeground,
 });
 
-const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
+const ThemedActivityIndicator = withUnistyles(LoadingSpinner);
 const ThemedAlignJustify = withUnistyles(AlignJustify);
 const ThemedColumns2 = withUnistyles(Columns2);
 const ThemedPilcrow = withUnistyles(Pilcrow);
@@ -1820,6 +1820,7 @@ function useDiffRollbackActions({
   const rollbackSupported = useSessionStore(
     (s) => s.sessions[serverId]?.serverInfo?.features?.checkoutGitRollback === true,
   );
+  const agentsById = useSessionStore((s) => s.sessions[serverId]?.agents);
   const rollbackFiles = useCheckoutGitActionsStore((s) => s.rollbackPaths);
 
   const runRollback = useCallback(
@@ -1842,9 +1843,11 @@ function useDiffRollbackActions({
         } catch (error) {
           if (error instanceof CheckoutGitRollbackFailedError) {
             if (error.rollbackError.kind === "agents_running") {
-              const agents = error.rollbackError.agents
-                .map((agent) => agent.title?.trim() || t("workspace.git.rollback.unnamedAgent"))
-                .join(", ");
+              const agents = resolveRunningAgentLabels(
+                error.rollbackError.agents,
+                agentsById,
+                t("workspace.git.rollback.unnamedAgent"),
+              );
               const overrideConfirmed = await confirmDialog({
                 title: t("workspace.git.rollback.agentsRunningTitle"),
                 message: t("workspace.git.rollback.agentsRunningMessage", { agents }),
@@ -1868,7 +1871,7 @@ function useDiffRollbackActions({
       };
       await attempt(false);
     },
-    [cwd, rollbackFiles, serverId, t, toast],
+    [agentsById, cwd, rollbackFiles, serverId, t, toast],
   );
 
   const onRollbackFile = useCallback(() => {

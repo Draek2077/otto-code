@@ -8,18 +8,17 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  Text,
-  useWindowDimensions,
-  View,
-} from "react-native";
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
+import Animated, {
+  FadeIn,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+} from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { PageLoading } from "@/components/ui/page-loading";
 import type { ContextCategory, ContextNode } from "@otto-code/protocol/messages";
 import { FileTabPane } from "@/components/file-tab-pane";
 import { AlertTriangle, ChevronLeft, X } from "@/components/icons/material-icons";
@@ -27,6 +26,7 @@ import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
 import { useAppSettings } from "@/hooks/use-settings";
+import { useAnimationsEnabled } from "@/hooks/use-animations-enabled";
 import { useIconSize } from "@/styles/theme";
 import { usePaneContext } from "@/panels/pane-context";
 import { useSessionStore } from "@/stores/session-store";
@@ -89,6 +89,7 @@ export function ContextManagementPanel(): ReactElement {
   const { t } = useTranslation();
   const toast = useToast();
   const { serverId, workspaceId } = usePaneContext();
+  const animationsEnabled = useAnimationsEnabled();
   const isCompact = useIsCompactFormFactor();
   // The back chevron carries a label, so it takes the gentler 1.5x compact bump
   // rather than the ×2 an icon-only control gets - the label only grows by +2.
@@ -435,7 +436,7 @@ export function ContextManagementPanel(): ReactElement {
       return <PromptSectionView category={selectedCategory} query={promptPreview} />;
     }
     if (!selectedNode || !workspaceId) {
-      return <ContextFilePlaceholder isLoading={isLoading} isEmptyReport={isEmptyReport} />;
+      return <ContextFilePlaceholder isEmptyReport={isEmptyReport} />;
     }
     // Desktop: the load-mode switch rides in the file toolbar rather than above
     // it - a second full-width bar spent a whole row saying two words. A phone
@@ -486,7 +487,6 @@ export function ContextManagementPanel(): ReactElement {
     handleDismissReveal,
     isCompact,
     isEmptyReport,
-    isLoading,
     loadModeControl,
     promptPreview,
     selectedCategory,
@@ -495,83 +495,108 @@ export function ContextManagementPanel(): ReactElement {
     workspaceId,
   ]);
 
-  if (isCompact) {
-    if (compactShowsPane && hasSelection) {
+  return renderAfterInitialLoad(isLoading, () => {
+    if (isCompact) {
+      if (compactShowsPane && hasSelection) {
+        return (
+          <Animated.View
+            entering={animationsEnabled ? FadeIn.duration(180) : undefined}
+            style={styles.root}
+            testID="context-management-panel"
+          >
+            <CompactPaneHeader
+              node={selectedNode}
+              category={selectedCategory}
+              iconSize={backIconSize.md}
+              onBack={handleCompactBack}
+            />
+            <View style={styles.fill}>{filePane}</View>
+          </Animated.View>
+        );
+      }
       return (
-        <View style={styles.root} testID="context-management-panel">
-          <CompactPaneHeader
-            node={selectedNode}
-            category={selectedCategory}
-            iconSize={backIconSize.md}
-            onBack={handleCompactBack}
-          />
-          <View style={styles.fill}>{filePane}</View>
-        </View>
+        <Animated.View
+          entering={animationsEnabled ? FadeIn.duration(180) : undefined}
+          style={styles.root}
+          testID="context-management-panel"
+        >
+          <ScrollView
+            ref={compactScrollRef}
+            style={styles.fill}
+            onLayout={compactScrollbar.onLayout}
+            onScroll={compactScrollbar.onScroll}
+            onContentSizeChange={compactScrollbar.onContentSizeChange}
+            scrollEventThrottle={16}
+            showsVerticalScrollIndicator={!isWeb}
+          >
+            <ContextSummary
+              report={report}
+              isLoading={isLoading}
+              isRefreshing={isRefreshing}
+              error={scanError}
+              windowTokens={windowTokens}
+              onWindowTokensChange={handleWindowTokensChange}
+              personalitySlot={personalitySlot}
+            />
+            <ContextSidebarTabs
+              active={sidebarTab}
+              findingCount={findingCount}
+              lessonCount={lessonCount}
+              onChange={setSidebarTab}
+              leading={refineAction}
+            />
+            <View style={styles.compactTree}>{sidebarBody}</View>
+          </ScrollView>
+          {compactScrollbar.overlay}
+        </Animated.View>
       );
     }
-    return (
-      <View style={styles.root} testID="context-management-panel">
-        <ScrollView
-          ref={compactScrollRef}
-          style={styles.fill}
-          onLayout={compactScrollbar.onLayout}
-          onScroll={compactScrollbar.onScroll}
-          onContentSizeChange={compactScrollbar.onContentSizeChange}
-          scrollEventThrottle={16}
-          showsVerticalScrollIndicator={!isWeb}
-        >
-          <ContextSummary
-            report={report}
-            isLoading={isLoading}
-            isRefreshing={isRefreshing}
-            error={scanError}
-            windowTokens={windowTokens}
-            onWindowTokensChange={handleWindowTokensChange}
-            personalitySlot={personalitySlot}
-          />
-          <ContextSidebarTabs
-            active={sidebarTab}
-            findingCount={findingCount}
-            lessonCount={lessonCount}
-            onChange={setSidebarTab}
-            leading={refineAction}
-          />
-          <View style={styles.compactTree}>{sidebarBody}</View>
-        </ScrollView>
-        {compactScrollbar.overlay}
-      </View>
-    );
-  }
 
-  return (
-    <View style={styles.rootRow} testID="context-management-panel">
-      <Animated.View style={sidebarShellStyle}>
-        <View style={styles.sidebar}>
-          <ContextSummary
-            report={report}
-            isLoading={isLoading}
-            isRefreshing={isRefreshing}
-            error={scanError}
-            windowTokens={windowTokens}
-            onWindowTokensChange={handleWindowTokensChange}
-            personalitySlot={personalitySlot}
-          />
-          <View style={styles.divider} />
-          <ContextSidebarTabs
-            active={sidebarTab}
-            findingCount={findingCount}
-            lessonCount={lessonCount}
-            onChange={setSidebarTab}
-            leading={refineAction}
-          />
-          {sidebarBody}
-        </View>
-        <GestureDetector gesture={resizeGesture}>
-          <View style={RESIZE_HANDLE_STYLE} testID="context-management-splitter" />
-        </GestureDetector>
+    return (
+      <Animated.View
+        entering={animationsEnabled ? FadeIn.duration(180) : undefined}
+        style={styles.rootRow}
+        testID="context-management-panel"
+      >
+        <Animated.View style={sidebarShellStyle}>
+          <View style={styles.sidebar}>
+            <ContextSummary
+              report={report}
+              isLoading={isLoading}
+              isRefreshing={isRefreshing}
+              error={scanError}
+              windowTokens={windowTokens}
+              onWindowTokensChange={handleWindowTokensChange}
+              personalitySlot={personalitySlot}
+            />
+            <View style={styles.divider} />
+            <ContextSidebarTabs
+              active={sidebarTab}
+              findingCount={findingCount}
+              lessonCount={lessonCount}
+              onChange={setSidebarTab}
+              leading={refineAction}
+            />
+            {sidebarBody}
+          </View>
+          <GestureDetector gesture={resizeGesture}>
+            <View style={RESIZE_HANDLE_STYLE} testID="context-management-splitter" />
+          </GestureDetector>
+        </Animated.View>
+        <View style={styles.fill}>{filePane}</View>
       </Animated.View>
-      <View style={styles.fill}>{filePane}</View>
-    </View>
+    );
+  });
+}
+
+function renderAfterInitialLoad(
+  isLoading: boolean,
+  renderLoaded: () => ReactElement,
+): ReactElement {
+  return isLoading ? (
+    <PageLoading label="Loading context…" testID="context-management-loading" />
+  ) : (
+    renderLoaded()
   );
 }
 
@@ -716,22 +741,8 @@ function CompactPaneHeader({
  * actually happening instead. And a project that loads nothing is a clean slate
  * rather than an error, which is a different sentence again.
  */
-function ContextFilePlaceholder({
-  isLoading,
-  isEmptyReport,
-}: {
-  isLoading: boolean;
-  isEmptyReport: boolean;
-}): ReactElement {
+function ContextFilePlaceholder({ isEmptyReport }: { isEmptyReport: boolean }): ReactElement {
   const { t } = useTranslation();
-  if (isLoading) {
-    return (
-      <View style={styles.filePlaceholder} testID="context-file-loading">
-        <ActivityIndicator size="small" />
-        <Text style={styles.placeholderBody}>{t("contextManagement.summary.loading")}</Text>
-      </View>
-    );
-  }
   const prefix = isEmptyReport
     ? "contextManagement.emptyState"
     : "contextManagement.filePlaceholder";

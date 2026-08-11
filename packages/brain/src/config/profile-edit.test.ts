@@ -78,6 +78,37 @@ describe("profileFieldDescriptors", () => {
     expect(withProjector?.available).toBe(true);
   });
 
+  it("uses the bundle component toggle instead of the legacy vision field", () => {
+    const fields = profileFieldDescriptors(
+      makeModel({
+        components: [
+          {
+            id: "vision-projector",
+            label: "Image understanding",
+            description: "Reads images.",
+            role: "vision_projector",
+            path: "/models/vendor/mmproj.gguf",
+            bytes: 1024,
+            required: false,
+            defaultDownload: true,
+            defaultLoad: false,
+            available: true,
+          },
+        ],
+      }),
+    );
+    expect(fields.some((field) => field.key === "vision")).toBe(false);
+    expect(fields.map((field) => field.key)).toEqual([
+      "contextSize",
+      "cacheTypeK",
+      "cacheTypeV",
+      "flashAttention",
+      "reasoningBudget",
+      "gpuLayers",
+      "parallelSlots",
+    ]);
+  });
+
   it("caps the context field at the model's native window", () => {
     const field = profileFieldDescriptors(makeModel()).find((f) => f.key === "contextSize");
     expect(field?.max).toBe(32768);

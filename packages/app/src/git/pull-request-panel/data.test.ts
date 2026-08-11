@@ -282,6 +282,7 @@ describe("mapPrPaneData", () => {
         avatarColor: deriveAvatarColor("inline-reviewer"),
         avatarUrl: "https://avatars.githubusercontent.com/u/3?v=4",
         body: "This should include line context.",
+        createdAt: Date.UTC(2026, 0, 1, 11, 0, 0),
         age: "1h ago",
         url: "https://github.com/Draek2077/otto-code/pull/42#discussion_r1",
         location: {

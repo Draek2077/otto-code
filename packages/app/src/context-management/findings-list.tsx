@@ -1,10 +1,11 @@
 import { useCallback, useMemo, useRef, useState, type ReactElement } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { ContextFinding, ContextNode, ContextReport } from "@otto-code/protocol/messages";
 import { ChevronRight, Wrench } from "@/components/icons/material-icons";
 import { Button } from "@/components/ui/button";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative, isWeb } from "@/constants/platform";
@@ -63,8 +64,7 @@ export function ContextFindingsList({
       <View style={styles.empty}>
         {isLoading ? (
           <View style={styles.loadingRow} testID="context-findings-loading">
-            <ActivityIndicator size="small" />
-            <Text style={styles.emptyText}>{t("contextManagement.findings.loading")}</Text>
+            <LoadingSpinner size="small" />
           </View>
         ) : (
           <Text style={styles.emptyText}>{t("contextManagement.findings.empty")}</Text>

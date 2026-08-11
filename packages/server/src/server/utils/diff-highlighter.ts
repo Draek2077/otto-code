@@ -45,6 +45,11 @@ export function isFullFileHighlightable(fileContent: string): boolean {
 interface ParseAndHighlightDiffOptions {
   getOldFileContent?: (file: ParsedDiffFile) => Promise<string | null>;
   getNewFileContent?: (file: ParsedDiffFile) => Promise<string | null>;
+  /**
+   * Bounds file-content reads and highlighting for callers whose callbacks use
+   * scarce shared resources such as the daemon-wide Git command limiter.
+   */
+  maxConcurrentFiles?: number;
 }
 
 /**
@@ -396,18 +401,26 @@ export async function parseAndHighlightDiff(
 ): Promise<ParsedDiffFile[]> {
   const files = parseDiff(diffText);
 
-  const highlightedFiles = await Promise.all(
-    files.map(async (file) => {
+  const maxConcurrentFiles = Math.max(1, options.maxConcurrentFiles ?? files.length);
+  const highlightedFiles: ParsedDiffFile[] = [];
+  let nextIndex = 0;
+  const highlightNextFile = async () => {
+    while (nextIndex < files.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      const file = files[index];
       const [oldFileContent, newFileContent] = await Promise.all([
         options.getOldFileContent?.(file),
         options.getNewFileContent?.(file),
       ]);
-
-      return highlightDiffWithFileContent(file, cwd, {
+      highlightedFiles[index] = await highlightDiffWithFileContent(file, cwd, {
         oldFileContent: oldFileContent ?? undefined,
         newFileContent: newFileContent ?? undefined,
       });
-    }),
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(maxConcurrentFiles, files.length) }, () => highlightNextFile()),
   );
 
   return highlightedFiles;

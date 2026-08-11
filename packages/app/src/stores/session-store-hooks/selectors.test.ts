@@ -6,8 +6,10 @@ import {
   selectHasWorkspaces,
   selectHydratedWorkspaceServerIds,
   selectProjectOrder,
+  selectProjectChangeStat,
   selectRecommendedProjectPaths,
   selectWorkspace,
+  selectWorkspaceChangeStat,
   selectWorkspaceDirectory,
   selectWorkspaceFields,
   selectWorkspaceKeys,
@@ -40,6 +42,7 @@ function createWorkspace(
     status: input.status ?? "done",
     archivingAt: input.archivingAt ?? null,
     statusEnteredAt: null,
+    workingTreeDiffStat: input.workingTreeDiffStat ?? null,
     diffStat: input.diffStat ?? null,
     scripts: input.scripts ?? [],
   };
@@ -122,6 +125,57 @@ function selectWorkspaceStructureProjectKeys(
 
 afterEach(() => {
   useSessionStore.getState().clearSession(SERVER_ID);
+});
+
+describe("workspace change indicators", () => {
+  it("selects the workspace stat for each presentation mode", () => {
+    const workspace = createWorkspace({
+      id: "feature",
+      workingTreeDiffStat: { additions: 3, deletions: 2 },
+      diffStat: { additions: 11, deletions: 7 },
+    });
+
+    expect(selectWorkspaceChangeStat(workspace, "uncommitted")).toEqual({
+      additions: 3,
+      deletions: 2,
+    });
+    expect(selectWorkspaceChangeStat(workspace, "branch")).toEqual({
+      additions: 11,
+      deletions: 7,
+    });
+    expect(selectWorkspaceChangeStat(workspace, "hidden")).toBeNull();
+  });
+
+  it("aggregates project rows using the selected presentation mode", () => {
+    const first = createWorkspace({
+      id: "first",
+      workingTreeDiffStat: { additions: 2, deletions: 1 },
+      diffStat: { additions: 10, deletions: 4 },
+    });
+    const second = createWorkspace({
+      id: "second",
+      workingTreeDiffStat: { additions: 5, deletions: 3 },
+      diffStat: { additions: 20, deletions: 6 },
+    });
+    initializeWorkspaces([first, second]);
+    const projectWorkspaces = [
+      { serverId: SERVER_ID, workspaceId: first.id },
+      { serverId: SERVER_ID, workspaceId: second.id },
+    ];
+
+    expect(
+      selectProjectChangeStat(useSessionStore.getState(), projectWorkspaces, "uncommitted"),
+    ).toEqual({ additions: 7, deletions: 4 });
+    expect(
+      selectProjectChangeStat(useSessionStore.getState(), projectWorkspaces, "branch"),
+    ).toEqual({
+      additions: 30,
+      deletions: 10,
+    });
+    expect(
+      selectProjectChangeStat(useSessionStore.getState(), projectWorkspaces, "hidden"),
+    ).toBeNull();
+  });
 });
 
 describe("workspace replica authority", () => {

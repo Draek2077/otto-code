@@ -6,6 +6,7 @@ import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store"
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { type SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import type { StatusGroup } from "@/hooks/sidebar-status-view-model";
+import { selectWorkspaceChangeStat } from "@/hooks/sidebar-workspaces-view-model";
 import { isWeb as platformIsWeb, isNative as platformIsNative } from "@/constants/platform";
 import { StyleSheet } from "react-native-unistyles";
 import type { Theme } from "@/styles/theme";
@@ -31,6 +32,7 @@ import type { ShortcutKey } from "@/utils/format-shortcut";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useClearWorkspaceAttention } from "@/hooks/use-clear-workspace-attention";
+import { useAppSettings } from "@/hooks/use-settings";
 import {
   SidebarWorkspaceRowFrame,
   SidebarWorkspaceRowContent,
@@ -519,7 +521,9 @@ function StatusWorkspaceRowInner({
   onMarkAsRead?: () => void;
   archiveShortcutKeys?: ShortcutKey[][] | null;
 }) {
+  const { settings } = useAppSettings();
   const isTouchPlatform = platformIsNative;
+  const diffStat = selectWorkspaceChangeStat(workspace, settings.workspaceChangeIndicator);
 
   const isDesktop = !isTouchPlatform;
   const showScriptsIcon = isDesktop && workspace.hasRunningScripts;
@@ -544,7 +548,7 @@ function StatusWorkspaceRowInner({
         const showShortcut = showShortcutBadge && shortcutNumber !== null;
         const showKebab = Boolean(onArchive && (isHovered || isTouchPlatform));
         const showKebabInSlot = showKebab && !showShortcut;
-        const shouldRenderActionSlot = Boolean(onArchive || workspace.diffStat);
+        const shouldRenderActionSlot = Boolean(onArchive || diffStat);
         const workspaceRowStyle = getStatusWorkspaceRowStyle({ selected, isHovered });
         const rowContent = (
           <SidebarWorkspaceRowContent
@@ -559,7 +563,8 @@ function StatusWorkspaceRowInner({
             {shouldRenderActionSlot ? (
               <StatusWorkspaceActionSlot
                 workspace={workspace}
-                showBase={Boolean(workspace.diffStat && !showKebabInSlot && !showShortcut)}
+                diffStat={diffStat}
+                showBase={Boolean(diffStat && !showKebabInSlot && !showShortcut)}
                 showOverlay={showKebabInSlot}
                 onCopyPath={onCopyPath}
                 onCopyBranchName={onCopyBranchName}
@@ -632,6 +637,7 @@ function StatusWorkspaceRowInner({
 
 function StatusWorkspaceActionSlot({
   workspace,
+  diffStat,
   showBase,
   showOverlay,
   onCopyPath,
@@ -645,6 +651,7 @@ function StatusWorkspaceActionSlot({
   archiveShortcutKeys,
 }: {
   workspace: SidebarWorkspaceEntry;
+  diffStat: { additions: number; deletions: number } | null | undefined;
   showBase: boolean;
   showOverlay: boolean;
   onCopyPath?: () => void;
@@ -660,11 +667,8 @@ function StatusWorkspaceActionSlot({
   return (
     <SidebarWorkspaceTrailingActionSlot>
       <SidebarWorkspaceTrailingActionBase visible={showBase}>
-        {workspace.diffStat ? (
-          <DiffStat
-            additions={workspace.diffStat.additions}
-            deletions={workspace.diffStat.deletions}
-          />
+        {diffStat ? (
+          <DiffStat additions={diffStat.additions} deletions={diffStat.deletions} />
         ) : null}
       </SidebarWorkspaceTrailingActionBase>
       <SidebarWorkspaceTrailingActionOverlay visible={showOverlay}>
@@ -779,8 +783,7 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 32,
     marginBottom: 2,
     paddingVertical: theme.spacing[1.5],
-    paddingLeft: theme.spacing[2],
-    paddingRight: theme.spacing[3],
+    paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.lg,
     flexDirection: "column",
     alignItems: "stretch",

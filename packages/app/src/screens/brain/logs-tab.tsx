@@ -6,19 +6,29 @@
  * matters most exactly when the brain is failing, which is when the TUI is least
  * likely to be reachable.
  */
+import * as Clipboard from "expo-clipboard";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { Copy } from "@/components/icons/material-icons";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { isNative } from "@/constants/platform";
+import { useToast } from "@/contexts/toast-context";
+import type { Theme } from "@/styles/theme";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { useBrainLogs } from "./use-brain-data";
 
 const ThemedSpinner = withUnistyles(LoadingSpinner, (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
+const ThemedCopy = withUnistyles(Copy);
+const copyIconMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+  size: theme.iconSize.sm,
+});
+const copyIcon = <ThemedCopy uniProps={copyIconMapping} />;
 
 /**
  * llama.cpp writes warnings and errors on the same stream as ordinary progress,
@@ -53,6 +63,7 @@ export function BrainLogsTab({
   isConnected: boolean;
 }) {
   const query = useBrainLogs(serverId, isConnected);
+  const toast = useToast();
   const scrollRef = useRef<ScrollView>(null);
   const [follow, setFollow] = useState(true);
 
@@ -101,6 +112,12 @@ export function BrainLogsTab({
     scrollRef.current?.scrollToEnd({ animated: true });
   }, []);
 
+  const handleCopy = useCallback(() => {
+    void Clipboard.setStringAsync(lines.join("\n"))
+      .then(() => toast.copied("Logs copied to clipboard"))
+      .catch(() => toast.error("Could not copy logs"));
+  }, [lines, toast]);
+
   if (query.isLoading && lineCount === 0) {
     return (
       <View style={styles.centered}>
@@ -132,11 +149,22 @@ export function BrainLogsTab({
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.meta}>{`${total} lines · ${query.data?.state ?? "unknown"}`}</Text>
-        {follow ? null : (
-          <Button variant="ghost" size="sm" onPress={handleResume} testID="brain-logs-follow">
-            Jump to latest
+        <View style={styles.actions}>
+          {follow ? null : (
+            <Button variant="ghost" size="sm" onPress={handleResume} testID="brain-logs-follow">
+              Jump to latest
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            leftIcon={copyIcon}
+            onPress={handleCopy}
+            testID="brain-logs-copy"
+          >
+            Copy
           </Button>
-        )}
+        </View>
       </View>
       <ScrollView
         ref={scrollRef}
@@ -157,7 +185,9 @@ export function BrainLogsTab({
 
 const styles = StyleSheet.create((theme) => ({
   container: {
+    flex: 1,
     gap: theme.spacing[2],
+    minHeight: 0,
   },
   centered: {
     paddingVertical: theme.spacing[12],
@@ -178,6 +208,11 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "space-between",
     gap: theme.spacing[2],
   },
+  actions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
   meta: {
     fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
@@ -186,7 +221,8 @@ const styles = StyleSheet.create((theme) => ({
   // `surfaceCode` - the same well the editor and tool-card diffs paint
   // (styles/theme.ts) - rather than the generic elevated-panel `surface3`.
   scroll: {
-    maxHeight: 520,
+    flex: 1,
+    minHeight: 0,
     borderRadius: theme.borderRadius.lg,
     borderWidth: 1,
     borderColor: theme.colors.border,

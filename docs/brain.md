@@ -195,6 +195,26 @@ profile editor renders read-only rather than offering a Save that would 403.
 
 ## The hosting profile
 
+### Model bundles
+
+A catalog entry is a bundle only when it declares companion components. The
+primary GGUF remains required. Optional components, such as image
+understanding projectors and speculative drafters, are selected independently
+in the Library and are then enabled independently in the model profile. The
+profile stores stable component IDs only; the host derives every artifact path
+from its catalog manifest and local inventory.
+
+An unavailable component stays visibly unavailable and cannot be enabled. The
+host never downloads it during launch. Plain text-only models have no bundle
+controls and retain the ordinary profile flow.
+
+Each enabled component is part of the launch argv, VRAM budget, and calibration
+identity. A main-model-only calibration is historical data, not an exact
+measurement of a projector- or drafter-enabled load. The current Supervisor
+still owns one llama.cpp process, so this delivery does not claim concurrent
+independent main models. A future process pool must reserve VRAM per process
+and may not assume weights are shared across processes.
+
 Each model carries a profile: the eight settings that decide how `llama-server` is launched for it.
 
 | Field            | Effect                                                              |

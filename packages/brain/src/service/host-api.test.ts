@@ -94,6 +94,28 @@ describe("buildInventoryRow", () => {
     expect(rich.distilled).toBe(true);
   });
 
+  it("shows vision capability for a bundle before its projector is downloaded", () => {
+    const row = build({
+      model: makeModel({
+        components: [
+          {
+            id: "vision-projector",
+            label: "Image understanding",
+            description: "Reads images.",
+            role: "vision_projector",
+            path: null,
+            bytes: 1024,
+            required: false,
+            defaultDownload: true,
+            defaultLoad: false,
+            available: false,
+          },
+        ],
+      }),
+    });
+    expect(row.hasProjector).toBe(true);
+  });
+
   it("computes a VRAM budget and a max context when a GPU is present", () => {
     const row = build({});
     expect(row.budget).not.toBeNull();

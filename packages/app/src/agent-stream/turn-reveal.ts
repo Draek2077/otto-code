@@ -261,6 +261,60 @@ export class TurnRevealTicker {
   getRevealed = (): number => this.revealed;
 }
 
+/**
+ * Keeps a returning transcript on one coherent stream snapshot.
+ *
+ * React defers the expensive transcript projection, which normally means an
+ * update renders the previous stream once before the current one. That is
+ * useful while reading an active chat, but not after a hidden app or retained
+ * pane returns: the previous snapshot is the entire away-period transcript.
+ * Rendering it first makes action groups reshape and text reveal after the
+ * chat is visible again. Hold the current snapshot until deferral catches up,
+ * then resume normal deferral for future, on-screen events.
+ */
+export class StreamResumeGate {
+  private wasVisible: boolean;
+  private pendingFreshSnapshot = false;
+
+  constructor(visible = true) {
+    this.wasVisible = visible;
+  }
+
+  select<Tail, Head>(params: {
+    visible: boolean;
+    currentTail: Tail;
+    currentHead: Head;
+    deferredTail: Tail;
+    deferredHead: Head;
+  }): { tail: Tail; head: Head; dataSettled: boolean } {
+    if (!params.visible) {
+      this.wasVisible = false;
+      this.pendingFreshSnapshot = true;
+      return {
+        tail: params.deferredTail,
+        head: params.deferredHead,
+        dataSettled:
+          params.currentTail === params.deferredTail && params.currentHead === params.deferredHead,
+      };
+    }
+
+    if (!this.wasVisible) {
+      this.pendingFreshSnapshot = true;
+    }
+    this.wasVisible = true;
+
+    const dataSettled =
+      params.currentTail === params.deferredTail && params.currentHead === params.deferredHead;
+    if (this.pendingFreshSnapshot) {
+      if (dataSettled) {
+        this.pendingFreshSnapshot = false;
+      }
+      return { tail: params.currentTail, head: params.currentHead, dataSettled };
+    }
+    return { tail: params.deferredTail, head: params.deferredHead, dataSettled };
+  }
+}
+
 export function useTurnRevealTicker(params: {
   turnKey: string;
   target: number;

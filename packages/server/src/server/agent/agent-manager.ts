@@ -3757,8 +3757,7 @@ export class AgentManager {
     // error (or a replacement already holding the slot) skips the drain: a
     // queued turn must never run unprompted into a broken session - the queue
     // is held and surfaced so the supervisor decides. A cancel holds it for the
-    // same reason: the user pressed stop, so nothing new starts on its own,
-    // and the queue stays put for them to send when ready.
+    // same reason: the user pressed stop, so nothing new starts on its own.
     const drainBatch =
       !shouldHoldBusyForReplacement && !terminalError && !mutableAgent.steerQueueHeld
         ? takeNextSteerQueueBatch(mutableAgent.steerQueue)
@@ -4328,12 +4327,6 @@ export class AgentManager {
     if (!hasForegroundTurn && !isAutonomousRunning && !pendingRun) {
       return { status: "not_running" };
     }
-
-    // Stop means stop. Without the hold, finalizing the cancelled turn drains
-    // the steer queue, so pressing Stop immediately started the agent again on
-    // whatever was queued behind it. The hold covers this turn only; the next
-    // run clears it and the queue rides behind that one instead.
-    this.holdSteerQueue(agentId);
 
     const interruptOutcome = await this.interruptSession(agent.session, agentId);
     if (interruptOutcome !== "acknowledged" && this.isRunStillActive(agent, foregroundTurnId)) {

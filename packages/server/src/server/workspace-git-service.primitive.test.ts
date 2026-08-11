@@ -169,6 +169,7 @@ function createSnapshot(
       behindOfOrigin: 0,
       hasRemote: true,
       diffStat: { additions: 1, deletions: 0 },
+      workingTreeDiffStat: { additions: 1, deletions: 0 },
     },
     // Otto's provider-neutral hosting layer (docs/git-providers.md) replaced the
     // GitHub-specific `github` block with `forge`, which additionally carries
@@ -262,6 +263,7 @@ interface CreateServiceOptions {
   getCheckoutSnapshotFacts?: ReturnType<typeof vi.fn>;
   getCheckoutStatus?: ReturnType<typeof vi.fn>;
   getCheckoutShortstat?: ReturnType<typeof vi.fn>;
+  getCheckoutUncommittedShortstat?: ReturnType<typeof vi.fn>;
   getPullRequestStatus?: ReturnType<typeof vi.fn>;
   getCheckoutDiff?: ReturnType<typeof vi.fn>;
   resolveBranchCheckout?: ReturnType<typeof vi.fn>;
@@ -285,6 +287,10 @@ function buildDefaultServiceDeps() {
     getCheckoutSnapshotFacts: vi.fn(async (cwd: string) => createCheckoutFacts(cwd)),
     getCheckoutStatus: vi.fn(async (cwd: string) => createCheckoutStatus(cwd)),
     getCheckoutShortstat: vi.fn(async () => ({
+      additions: 1,
+      deletions: 0,
+    })),
+    getCheckoutUncommittedShortstat: vi.fn(async () => ({
       additions: 1,
       deletions: 0,
     })),

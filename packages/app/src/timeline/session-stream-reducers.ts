@@ -1416,6 +1416,7 @@ export interface CreateSessionAgentStreamReducerQueueInput {
   ) => void;
   setAgents: (serverId: string, state: (prev: Map<string, Agent>) => Map<string, Agent>) => void;
   recoverTimelineGap: (agentId: string, cursor: { epoch: string; endSeq: number }) => void;
+  onAgentBecameIdle: (agentId: string) => void;
 }
 
 function scheduleAgentStreamReducerFlush(callback: () => void): number {
@@ -1503,6 +1504,9 @@ export function createSessionAgentStreamReducerQueue(
           });
           return next;
         });
+        if (nextAgent.status === "idle") {
+          input.onAgentBecameIdle(agentId);
+        }
       }
     },
     handleSideEffects: (agentId, sideEffects) => {

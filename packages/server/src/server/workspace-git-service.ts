@@ -17,6 +17,7 @@ import {
   getCheckoutDiff,
   getCheckoutSnapshotFacts,
   getCheckoutShortstat,
+  getCheckoutUncommittedShortstat,
   getCheckoutStatus,
   getCheckoutIdentity,
   getPullRequestStatus,
@@ -93,6 +94,7 @@ export interface WorkspaceGitRuntimeSnapshot {
     behindOfOrigin: number | null;
     hasRemote: boolean;
     diffStat: { additions: number; deletions: number } | null;
+    workingTreeDiffStat: { additions: number; deletions: number } | null;
   };
   forge: {
     // Otto's provider-neutral hosting layer (docs/git-providers.md). Upstream's forge
@@ -333,6 +335,7 @@ interface WorkspaceGitServiceDependencies {
   getCheckoutStatus: typeof getCheckoutStatus;
   getCheckoutIdentity: typeof getCheckoutIdentity;
   getCheckoutShortstat: typeof getCheckoutShortstat;
+  getCheckoutUncommittedShortstat: typeof getCheckoutUncommittedShortstat;
   getCheckoutDiff: typeof getCheckoutDiff;
   getPullRequestStatus: typeof getPullRequestStatus;
   resolveBranchCheckout: typeof resolveBranchCheckout;
@@ -493,6 +496,7 @@ function buildDefaultWorkspaceGitServiceDeps(): WorkspaceGitServiceDependencies 
     getCheckoutStatus,
     getCheckoutIdentity,
     getCheckoutShortstat,
+    getCheckoutUncommittedShortstat,
     getCheckoutDiff,
     getPullRequestStatus,
     resolveBranchCheckout,
@@ -2317,13 +2321,19 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     request: WorkspaceGitRefreshRequest,
   ): Promise<WorkspaceGitRuntimeSnapshot> {
     target.currentPassReadGit = false;
+    // A watcher refresh normally skips the provider request, but a branch change
+    // changes the PR poll target. Reload the forge in the same snapshot so the
+    // old branch's provider facts cannot briefly render as GitHub defaults.
+    const previousForgePrStatusPollKey = this.getForgePrStatusPollKey(target);
     const facts = await this.refreshGitSnapshot(target, request);
+    const forgePrStatusPollTargetChanged =
+      previousForgePrStatusPollKey !== this.getForgePrStatusPollKey(target);
     // Past this line the git half of this pass is fixed, so a change landing now
     // cannot be reported by it.
     target.currentPassReadGit = true;
     const inFlightRefreshIncludesForge =
       target.refreshState.status === "in-flight" && target.refreshState.includeForge;
-    if (request.includeForge || inFlightRefreshIncludesForge) {
+    if (request.includeForge || inFlightRefreshIncludesForge || forgePrStatusPollTargetChanged) {
       await this.refreshForgeSnapshot(target, request, facts);
     }
 
@@ -2360,9 +2370,12 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       return facts;
     }
 
-    const diffStat = await this.deps
-      .getCheckoutShortstat(cwd, context, { force: request.force })
-      .catch(() => null);
+    const [diffStat, workingTreeDiffStat] = await Promise.all([
+      this.deps.getCheckoutShortstat(cwd, context, { force: request.force }).catch(() => null),
+      this.deps
+        .getCheckoutUncommittedShortstat(cwd, context, { force: request.force })
+        .catch(() => null),
+    ]);
 
     target.latestGit = {
       isGit: true,
@@ -2378,6 +2391,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       behindOfOrigin: checkoutStatus.behindOfOrigin,
       hasRemote: checkoutStatus.hasRemote,
       diffStat,
+      workingTreeDiffStat,
     };
     target.latestGitLoadedAtMs = this.deps.now().getTime();
 
@@ -2781,6 +2795,7 @@ function buildNotGitSnapshot(cwd: string): WorkspaceGitRuntimeSnapshot {
       behindOfOrigin: null,
       hasRemote: false,
       diffStat: null,
+      workingTreeDiffStat: null,
     },
     forge: buildForgeUnavailableSnapshot(),
   };

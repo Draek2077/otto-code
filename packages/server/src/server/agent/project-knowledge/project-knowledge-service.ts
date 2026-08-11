@@ -80,9 +80,13 @@ export class ProjectKnowledgeService {
 
   async briefForCwd(cwd: string): Promise<ProjectKnowledgeBrief> {
     const root = await this.projectRoot(cwd);
+    return this.briefForRoot(root);
+  }
+
+  private async briefForRoot(root: string): Promise<ProjectKnowledgeBrief> {
     if (!(await this.isInitialized(root)))
       return { text: "", estTokens: 0, includedIds: [], omittedCount: 0 };
-    const records = (await this.list(cwd)).filter((record) => record.status === "confirmed");
+    const records = (await this.listAtRoot(root)).filter((record) => record.status === "confirmed");
     const lines = [
       "## Project knowledge catalog",
       "",
@@ -109,6 +113,10 @@ export class ProjectKnowledgeService {
 
   async list(cwd: string): Promise<ProjectKnowledgeRecord[]> {
     const root = await this.projectRoot(cwd);
+    return this.listAtRoot(root);
+  }
+
+  private async listAtRoot(root: string): Promise<ProjectKnowledgeRecord[]> {
     await this.migrateLegacyIfNeeded(root);
     if (await this.isInitialized(root)) await this.ensureCurrentLayout(root);
     return this.readPages(root);
@@ -116,17 +124,29 @@ export class ProjectKnowledgeService {
 
   async view(cwd: string): Promise<ProjectKnowledgeView> {
     const root = await this.projectRoot(cwd);
-    const records = await this.list(cwd);
+    return this.viewAtRoot(root);
+  }
+
+  private async viewAtRoot(root: string): Promise<ProjectKnowledgeView> {
+    const records = await this.listAtRoot(root);
     return {
       records,
       rootPages: await this.readRootPages(root),
       findings: findFindings(records),
-      brief: await this.briefForCwd(cwd),
+      brief: await this.briefForRoot(root),
     };
   }
 
   async catalogView(cwd: string): Promise<ProjectKnowledgeView> {
-    const view = await this.view(cwd);
+    return this.catalogViewAtRoot(await this.projectRoot(cwd));
+  }
+
+  /**
+   * The session already knows a workspace's registered project root. Accepting
+   * it here keeps a local Markdown catalog read out of the Git snapshot path.
+   */
+  async catalogViewAtRoot(root: string): Promise<ProjectKnowledgeView> {
+    const view = await this.viewAtRoot(root);
     return {
       ...view,
       records: view.records.map((record) => {
@@ -853,7 +873,10 @@ function parsePage(raw: string, relativePath: string): ProjectKnowledgeRecord | 
   const fields = parseFrontmatter(frontmatter[1]);
   if (!KINDS.includes(fields.kind as ProjectKnowledgeKind) || !fields.id || !fields.title)
     return null;
-  const body = parsePageBody(normalized.slice(frontmatter[0].length));
+  // Markdown frontmatter conventionally has a blank line before its heading.
+  // Treat that separator as structural whitespace rather than discarding the
+  // entire record, which otherwise leaves a valid catalog looking empty.
+  const body = parsePageBody(normalized.slice(frontmatter[0].length).replace(/^\n+/, ""));
   if (!body) return null;
   const evidence = body.legacyEvidence || evidenceFromTimeline(body.timeline);
   const deliveryStatus = DELIVERY_STATUSES.has(fields.delivery_status as ProjectDeliveryStatus)

@@ -198,6 +198,13 @@ function coerceEventPoint(event: unknown): { pageX: number; pageY: number } | nu
   return null;
 }
 
+function hasWebTextSelection(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return (window.getSelection()?.toString().length ?? 0) > 0;
+}
+
 /**
  * Extracts an anchor point (window coordinates) from a web `contextmenu` or a
  * native press event, suppressing the default browser menu. For imperative
@@ -297,6 +304,7 @@ export function ContextMenuTrigger({
   enabled = true,
   enabledOnMobile = false,
   enabledOnWeb = true,
+  preserveTextSelection = false,
   longPressDelayMs,
   triggerRef,
   ...props
@@ -306,6 +314,8 @@ export function ContextMenuTrigger({
     enabled?: boolean;
     enabledOnMobile?: boolean;
     enabledOnWeb?: boolean;
+    /** Keep the platform copy/select menu when the trigger contains selected text. */
+    preserveTextSelection?: boolean;
     longPressDelayMs?: number;
     triggerRef?: Ref<View | null>;
   }
@@ -361,6 +371,9 @@ export function ContextMenuTrigger({
       if (isNative) {
         return;
       }
+      if (preserveTextSelection && hasWebTextSelection()) {
+        return;
+      }
       if (typeof event === "object" && event !== null) {
         const preventDefault = Reflect.get(event, "preventDefault");
         const stopPropagation = Reflect.get(event, "stopPropagation");
@@ -369,7 +382,7 @@ export function ContextMenuTrigger({
       }
       openAtEvent(event);
     },
-    [openAtEvent],
+    [openAtEvent, preserveTextSelection],
   );
 
   const pressableStyle = useCallback(
@@ -388,6 +401,10 @@ export function ContextMenuTrigger({
       ref={handleRef}
       collapsable={false}
       disabled={disabled}
+      // On native the menu is normally disabled. Do not let this otherwise
+      // inert Pressable become the gesture responder for scrollable children
+      // such as the chat transcript.
+      pointerEvents={shouldEnableOnThisPlatform ? props.pointerEvents : "box-none"}
       delayLongPress={longPressDelayMs}
       onLongPress={handleLongPress}
       // @ts-ignore - onContextMenu is web-only and not in RN types.

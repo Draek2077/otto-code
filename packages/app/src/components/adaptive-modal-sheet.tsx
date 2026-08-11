@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode, Ref } from "react";
+import type { ReactElement, ReactNode, Ref } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -35,6 +35,7 @@ import {
 } from "@gorhom/bottom-sheet";
 import Animated from "react-native-reanimated";
 import { ArrowLeft, Search, X } from "@/components/icons/material-icons";
+import { SearchClearButton } from "@/components/ui/search-clear-button";
 import {
   IsolatedBottomSheetModal,
   useIsolatedBottomSheetVisibility,
@@ -461,15 +462,11 @@ export function SheetHeaderView({
       {search ? (
         <View style={styles.searchRow}>
           <Search size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
-          <AdaptiveTextInput
-            // @ts-expect-error - outlineStyle is web-only
-            style={SEARCH_INPUT_STYLE}
+          <HeaderSearchInput
+            autoFocus={search.autoFocus}
+            onChange={handleSearchChange}
             placeholder={search.placeholder ?? t("common.actions.search")}
             resetKey={search.resetKey}
-            onChangeText={handleSearchChange}
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoFocus={search.autoFocus}
             testID={search.testID}
           />
         </View>
@@ -518,20 +515,63 @@ export function InlineHeaderView({ header }: { header: SheetHeader }) {
       {header.search ? (
         <View style={styles.inlineSearchRow}>
           <Search size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-          <AdaptiveTextInput
-            // @ts-expect-error - outlineStyle is web-only
-            style={SEARCH_INPUT_STYLE}
+          <HeaderSearchInput
+            autoFocus={header.search.autoFocus}
+            onChange={header.search.onChange}
             placeholder={header.search.placeholder ?? t("common.actions.search")}
             resetKey={header.search.resetKey}
-            onChangeText={header.search.onChange}
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoFocus={header.search.autoFocus}
             testID={header.search.testID}
           />
         </View>
       ) : null}
     </View>
+  );
+}
+
+function HeaderSearchInput({
+  autoFocus,
+  onChange,
+  placeholder,
+  resetKey,
+  testID,
+}: {
+  autoFocus?: boolean;
+  onChange: (value: string) => void;
+  placeholder: string;
+  resetKey?: string | number;
+  testID?: string;
+}): ReactElement {
+  const inputRef = useRef<TextInput>(null);
+  const [value, setValue] = useState("");
+  useEffect(() => setValue(""), [resetKey]);
+  const handleChange = useCallback(
+    (next: string) => {
+      setValue(next);
+      onChange(next);
+    },
+    [onChange],
+  );
+  const clear = useCallback(() => {
+    inputRef.current?.clear();
+    handleChange("");
+  }, [handleChange]);
+
+  return (
+    <>
+      <AdaptiveTextInput
+        ref={inputRef}
+        // @ts-expect-error - outlineStyle is web-only
+        style={SEARCH_INPUT_STYLE}
+        placeholder={placeholder}
+        resetKey={resetKey}
+        onChangeText={handleChange}
+        autoCapitalize="none"
+        autoCorrect={false}
+        autoFocus={autoFocus}
+        testID={testID}
+      />
+      {value ? <SearchClearButton onPress={clear} /> : null}
+    </>
   );
 }
 

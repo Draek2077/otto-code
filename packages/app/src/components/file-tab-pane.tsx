@@ -2516,7 +2516,7 @@ const styles = StyleSheet.create((theme) => {
       alignItems: "center",
       gap: theme.spacing[2],
       paddingHorizontal: theme.spacing[2],
-      paddingVertical: theme.spacing[1],
+      paddingVertical: 2,
       // Pinned so every pane toolbar (this, the preview variant below, and the
       // visualizer bar) shares one height and lines up across a split.
       minHeight: PANE_TOOLBAR_HEIGHT,
@@ -2528,7 +2528,7 @@ const styles = StyleSheet.create((theme) => {
       alignItems: "center",
       gap: theme.spacing[2],
       paddingHorizontal: theme.spacing[2],
-      paddingVertical: theme.spacing[1],
+      paddingVertical: 2,
       // Keep the preview toolbar at full height even when the mode bar is
       // hidden (images, binaries, loading) so the chrome doesn't jump.
       minHeight: PANE_TOOLBAR_HEIGHT,

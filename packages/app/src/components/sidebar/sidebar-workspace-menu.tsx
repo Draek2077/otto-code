@@ -15,7 +15,7 @@ import {
 import { isNative, isWeb } from "@/constants/platform";
 import { openContextManagementTab } from "@/context-management/open-context-management-tab";
 import { openProjectKnowledgeTab } from "@/project-knowledge/open-project-knowledge-tab";
-import type { Theme } from "@/styles/theme";
+import { compactUp, type Theme } from "@/styles/theme";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import {
   DropdownMenu,
@@ -25,9 +25,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Shortcut } from "@/components/ui/shortcut";
 
-const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
+const foregroundColorMapping = (theme: Theme) => ({
+  color: theme.colors.foreground,
+  size: theme.iconSize.sm,
+});
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
+  size: theme.iconSize.sm,
 });
 
 const ThemedMoreVertical = withUnistyles(MoreVertical);
@@ -55,10 +59,7 @@ const openBaseCheckoutLeadingIcon = (
 
 function renderTriggerIcon({ hovered }: { hovered?: boolean }) {
   return (
-    <ThemedMoreVertical
-      size={14}
-      uniProps={hovered ? foregroundColorMapping : foregroundMutedColorMapping}
-    />
+    <ThemedMoreVertical uniProps={hovered ? foregroundColorMapping : foregroundMutedColorMapping} />
   );
 }
 
@@ -272,11 +273,17 @@ function triggerStyle({ hovered = false }: PressableStateCallbackType & { hovere
 
 const styles = StyleSheet.create((theme) => ({
   trigger: {
-    padding: 2,
-    borderRadius: 4,
-    marginLeft: 2,
+    // Match the project-row kebab exactly. The glyph itself scales on compact
+    // layouts, so the control needs the same explicit responsive square rather
+    // than merely padding whatever size the icon happens to be.
+    width: compactUp(24),
+    height: compactUp(24),
+    borderRadius: theme.borderRadius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
   },
   triggerHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
 }));

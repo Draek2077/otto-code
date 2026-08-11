@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactElement } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { ProjectKnowledgeListResponseMessage } from "@otto-code/protocol/messages";
 import { formatTokens } from "./format";
 import { confirmDialog } from "@/utils/confirm-dialog";
@@ -27,7 +28,7 @@ export function ProjectKnowledgeList({
   if (loading && !view)
     return (
       <View style={styles.empty}>
-        <ActivityIndicator size="small" />
+        <LoadingSpinner size="small" />
         <Text style={styles.muted}>Loading project knowledge…</Text>
       </View>
     );

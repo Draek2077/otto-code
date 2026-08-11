@@ -17,6 +17,16 @@ import {
 export function defaultProfile(model: Model | null, defaults?: ProfileDefaults): Profile {
   const nativeContext = model?.metadata?.contextLength || 32768;
   const contextCap = defaults?.contextCap ?? 225000;
+  const enabledComponents = model?.components
+    ? model.components
+        .filter((component) => component.available && component.defaultLoad)
+        .map((component) => component.id)
+    : [];
+  const componentPaths = Object.fromEntries(
+    (model?.components ?? [])
+      .filter((component) => enabledComponents.includes(component.id) && component.path)
+      .map((component) => [component.role, component.path!]),
+  );
   return {
     modelId: model?.id ?? null,
     modelPath: model?.modelPath ?? null,
@@ -28,7 +38,16 @@ export function defaultProfile(model: Model | null, defaults?: ProfileDefaults):
     cacheTypeV: defaults?.cacheTypeV ?? "q8_0",
     flashAttention: defaults?.flashAttention ?? true, // required for a quantised V cache
     gpuLayers: 999, // everything on GPU; the budget check guards this
-    vision: Boolean(model?.mmprojPath),
+    // Existing hand-scanned models keep the historical vision default. Bundles
+    // instead opt in only to installed components whose manifest says so.
+    enabledComponents,
+    componentPaths,
+    vision: model?.components
+      ? model.components.some(
+          (component) =>
+            component.role === "vision_projector" && component.available && component.defaultLoad,
+        )
+      : Boolean(model?.mmprojPath),
     reasoningBudget: defaults?.reasoningBudget ?? 1536,
     reasoningBudgetMessage: DEFAULT_REASONING_MESSAGE,
     parallelSlots: defaults?.parallelSlots ?? 1, // one agent at a time: max context per request
@@ -44,7 +63,36 @@ export function forModel(store: ProfilesStore, model: Model, defaults?: ProfileD
   const base = defaultProfile(model, defaults);
   if (!stored) return base;
   // Paths are re-derived so a moved model library does not break the profile.
-  return { ...base, ...stored, modelPath: model.modelPath, mmprojPath: model.mmprojPath };
+  const enabledComponents = (stored.enabledComponents ?? []).filter((id) =>
+    model.components?.some((component) => component.id === id && component.available),
+  );
+  // COMPAT(bundleProfiles): added in v0.8.7, remove after 2027-02-11.
+  // Old vision profiles become the manifest's vision component when it exists.
+  if (model.components && enabledComponents.length === 0 && stored.vision) {
+    enabledComponents.push(
+      ...model.components
+        .filter((component) => component.role === "vision_projector" && component.available)
+        .map((component) => component.id),
+    );
+  }
+  const mmproj = model.components?.find(
+    (component) =>
+      component.role === "vision_projector" && enabledComponents.includes(component.id),
+  );
+  const componentPaths = Object.fromEntries(
+    (model.components ?? [])
+      .filter((component) => enabledComponents.includes(component.id) && component.path)
+      .map((component) => [component.role, component.path!]),
+  );
+  return {
+    ...base,
+    ...stored,
+    enabledComponents,
+    modelPath: model.modelPath,
+    mmprojPath: mmproj?.path ?? (model.components ? null : model.mmprojPath),
+    componentPaths,
+    vision: model.components ? Boolean(mmproj) : stored.vision,
+  };
 }
 
 export function put(store: ProfilesStore, model: Model, profile: Profile): ProfilesStore {
@@ -54,7 +102,13 @@ export function put(store: ProfilesStore, model: Model, profile: Profile): Profi
 
 /** Calibration is keyed by cache types, since those change bytes/token. */
 export function calibrationKey(profile: Profile): string {
-  return `${profile.cacheTypeK}:${profile.cacheTypeV}`;
+  const components = [...(profile.enabledComponents ?? [])].sort();
+  // COMPAT(bundleCalibrationKey): added in v0.8.7, remove after 2027-02-11.
+  // A main-model-only load remains the historical identity; any enabled bundle
+  // artifact gets a distinct key and therefore cannot claim that measurement.
+  return components.length
+    ? `${profile.cacheTypeK}:${profile.cacheTypeV}:components=${components.join(",")}`
+    : `${profile.cacheTypeK}:${profile.cacheTypeV}`;
 }
 
 /**

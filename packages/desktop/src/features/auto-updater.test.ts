@@ -20,6 +20,7 @@ import {
   rolloutManifestSchema,
   shouldAdmitToRollout,
   shouldInstallAppUpdateOnQuit,
+  shouldStopDesktopManagedDaemonBeforeAppUpdate,
 } from "./auto-updater";
 
 describe("shouldInstallAppUpdateOnQuit", () => {
@@ -28,6 +29,20 @@ describe("shouldInstallAppUpdateOnQuit", () => {
     expect(shouldInstallAppUpdateOnQuit({ platform: "linux", isAppImage: false })).toBe(true);
     expect(shouldInstallAppUpdateOnQuit({ platform: "darwin", isAppImage: false })).toBe(true);
     expect(shouldInstallAppUpdateOnQuit({ platform: "win32", isAppImage: false })).toBe(true);
+  });
+});
+
+describe("shouldStopDesktopManagedDaemonBeforeAppUpdate", () => {
+  it("defers daemon shutdown until Linux package elevation succeeds", () => {
+    expect(
+      shouldStopDesktopManagedDaemonBeforeAppUpdate({ platform: "linux", isAppImage: false }),
+    ).toBe(false);
+    expect(
+      shouldStopDesktopManagedDaemonBeforeAppUpdate({ platform: "linux", isAppImage: true }),
+    ).toBe(true);
+    expect(
+      shouldStopDesktopManagedDaemonBeforeAppUpdate({ platform: "win32", isAppImage: false }),
+    ).toBe(true);
   });
 });
 

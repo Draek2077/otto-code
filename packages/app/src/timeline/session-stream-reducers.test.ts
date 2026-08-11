@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AgentStreamEventPayload } from "@otto-code/protocol/messages";
 import {
   buildOptimisticUserMessage,
@@ -8,6 +8,7 @@ import {
 } from "@/types/stream";
 import {
   createAgentStreamReducerQueue,
+  createSessionAgentStreamReducerQueue,
   processTimelineResponse,
   processAgentStreamEvent,
   processAgentStreamEvents,
@@ -16,6 +17,7 @@ import {
   type AgentStreamReducerEvent,
   type TimelineCursor,
 } from "./session-stream-reducers";
+import { useSessionStore, type Agent } from "@/stores/session-store";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -2971,5 +2973,96 @@ describe("createAgentStreamReducerQueue", () => {
 
     expect(commits).toEqual(["agent-1:queued"]);
     expect(scheduler.size).toBe(0);
+  });
+});
+
+describe("queued-send idle transition regression", () => {
+  it("signals one drain for the running-to-idle completion edge", () => {
+    const serverId = "queued-send-regression";
+    const agentId = "agent-1";
+    const store = useSessionStore.getState();
+    store.initializeSession(serverId, null as never);
+    const now = new Date(1_000);
+    store.setAgents(
+      serverId,
+      () =>
+        new Map([
+          [
+            agentId,
+            { id: agentId, status: "running", updatedAt: now, lastActivityAt: now } as Agent,
+          ],
+        ]),
+    );
+    const onAgentBecameIdle = vi.fn();
+    const queue = createSessionAgentStreamReducerQueue({
+      serverId,
+      setAgentStreamState: store.setAgentStreamState,
+      setAgentTimelineCursor: store.setAgentTimelineCursor,
+      setAgents: store.setAgents,
+      recoverTimelineGap: () => undefined,
+      onAgentBecameIdle,
+    });
+
+    queue.enqueue(agentId, {
+      event: { type: "turn_completed", provider: "claude" } as AgentStreamEventPayload,
+      seq: undefined,
+      epoch: undefined,
+      timestamp: new Date(2_000),
+    });
+    queue.flushAgent(agentId);
+
+    expect(onAgentBecameIdle).toHaveBeenCalledTimes(1);
+    expect(useSessionStore.getState().sessions[serverId]?.agents.get(agentId)?.status).toBe("idle");
+
+    queue.enqueue(agentId, {
+      event: { type: "turn_completed", provider: "claude" } as AgentStreamEventPayload,
+      seq: undefined,
+      epoch: undefined,
+      timestamp: new Date(3_000),
+    });
+    queue.flushAgent(agentId);
+    expect(onAgentBecameIdle).toHaveBeenCalledTimes(1);
+    store.clearSession(serverId);
+  });
+
+  it("does not drain on a failed turn", () => {
+    const serverId = "queued-send-failure-regression";
+    const agentId = "agent-1";
+    const store = useSessionStore.getState();
+    store.initializeSession(serverId, null as never);
+    const now = new Date(1_000);
+    store.setAgents(
+      serverId,
+      () =>
+        new Map([
+          [
+            agentId,
+            { id: agentId, status: "running", updatedAt: now, lastActivityAt: now } as Agent,
+          ],
+        ]),
+    );
+    const onAgentStopped = vi.fn();
+    const queue = createSessionAgentStreamReducerQueue({
+      serverId,
+      setAgentStreamState: store.setAgentStreamState,
+      setAgentTimelineCursor: store.setAgentTimelineCursor,
+      setAgents: store.setAgents,
+      recoverTimelineGap: () => undefined,
+      onAgentBecameIdle: onAgentStopped,
+    });
+
+    queue.enqueue(agentId, {
+      event: { type: "turn_failed", provider: "claude" } as AgentStreamEventPayload,
+      seq: undefined,
+      epoch: undefined,
+      timestamp: new Date(2_000),
+    });
+    queue.flushAgent(agentId);
+
+    expect(onAgentStopped).not.toHaveBeenCalled();
+    expect(useSessionStore.getState().sessions[serverId]?.agents.get(agentId)?.status).toBe(
+      "error",
+    );
+    store.clearSession(serverId);
   });
 });

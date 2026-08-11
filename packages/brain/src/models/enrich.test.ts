@@ -85,6 +85,28 @@ test("empty catalog is safe and passes models through untouched", () => {
   assert.equal(enriched.useCases, undefined);
 });
 
+test("promotes a discovered projector to a removable managed component", () => {
+  const scanned = model("someone/vision-GGUF/vision-Q4_K_M.gguf", {
+    mmprojPath: "/models/someone/vision-GGUF/mmproj-F16.gguf",
+    mmprojBytes: 512_000_000,
+  });
+  const [enriched] = enrichWithCatalog([scanned], catalog([]));
+  assert.deepEqual(enriched.components, [
+    {
+      id: "vision-projector",
+      label: "Vision projector",
+      description: "Adds image understanding",
+      role: "vision_projector",
+      path: "/models/someone/vision-GGUF/mmproj-F16.gguf",
+      bytes: 512_000_000,
+      required: false,
+      defaultDownload: false,
+      defaultLoad: true,
+      available: true,
+    },
+  ]);
+});
+
 test("a partial repo-segment prefix does not match", () => {
   // "unsloth/Qwen3-Coder-30B-GGUF" must not match a sibling repo whose name
   // merely starts with the same characters.

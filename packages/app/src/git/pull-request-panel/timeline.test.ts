@@ -9,6 +9,7 @@ function activity(overrides: Partial<PrPaneActivity> & { id: string }): PrPaneAc
     author: "alice",
     avatarColor: "#8b5cf6",
     body: "body",
+    createdAt: 1,
     age: "1h ago",
     url: "https://github.com/acme/app/pull/1#comment",
     ...overrides,
@@ -16,6 +17,26 @@ function activity(overrides: Partial<PrPaneActivity> & { id: string }): PrPaneAc
 }
 
 describe("buildPrTimeline", () => {
+  it("defaults activity to newest-first while keeping replies chronological", () => {
+    const oldest = activity({ id: "oldest", createdAt: 1 });
+    const latest = activity({ id: "latest", createdAt: 3 });
+    const root = activity({ id: "root", createdAt: 4, threadId: "T1" });
+    const reply = activity({ id: "reply", createdAt: 5, threadId: "T1" });
+
+    const entries = buildPrTimeline([latest, reply, oldest, root]);
+    expect(entries.map((entry) => entry.id)).toEqual(["thread:T1", "latest", "oldest"]);
+    expect(entries[0]).toMatchObject({ comments: [root, reply] });
+  });
+
+  it("supports oldest-first activity display", () => {
+    const oldest = activity({ id: "oldest", createdAt: 1 });
+    const latest = activity({ id: "latest", createdAt: 2 });
+    expect(buildPrTimeline([latest, oldest], "oldest").map((entry) => entry.id)).toEqual([
+      "oldest",
+      "latest",
+    ]);
+  });
+
   it("keeps standalone comments and reviews as single entries in order", () => {
     const comment = activity({ id: "c1" });
     const review = activity({ id: "r1", kind: "review", reviewState: "approved" });

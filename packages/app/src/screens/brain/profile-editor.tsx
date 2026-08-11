@@ -1,5 +1,6 @@
+/* oxlint-disable react-perf/jsx-no-new-function-as-prop -- component ids are bound per rendered bundle row */
 /**
- * The eight per-model hosting fields, plus the VRAM budget they produce.
+ * The per-model hosting fields, plus the VRAM budget they produce.
  *
  * This is the TUI's Configuration panel and VRAM panel, which had no UI outside
  * the terminal at all. Two decisions carry over from there and are worth keeping:
@@ -22,6 +23,7 @@ import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type {
   BrainBudget,
+  BrainInventoryModel,
   BrainProfile,
   BrainProfileField,
   BrainProfileWarning,
@@ -352,12 +354,15 @@ function BudgetPanel({
 export function BrainProfileEditor({
   serverId,
   modelId,
+  components,
   canWrite,
   onSaved,
   onRequiresRestartChange,
 }: {
   serverId: string;
   modelId: string;
+  /** Bundle-only companion artifacts. Plain models omit this surface entirely. */
+  components?: BrainInventoryModel["components"];
   /** False when the brain has not opted into remote configuration. */
   canWrite: boolean;
   onSaved: () => void;
@@ -377,6 +382,8 @@ export function BrainProfileEditor({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [enabledComponents, setEnabledComponents] = useState<string[]>([]);
+  const [savedComponents, setSavedComponents] = useState<string[]>([]);
 
   // Load the profile and its descriptors whenever the selected model changes.
   useEffect(() => {
@@ -396,6 +403,9 @@ export function BrainProfileEditor({
         setFields(result.fields);
         setSaved(nextDraft);
         setDraft(nextDraft);
+        const enabled = result.profile?.enabledComponents ?? [];
+        setEnabledComponents(enabled);
+        setSavedComponents(enabled);
         setWarnings(result.warnings);
         setCalibration(result.calibration?.state ?? null);
       } catch (err) {
@@ -448,7 +458,12 @@ export function BrainProfileEditor({
   // what used to be a read-only preview request plus a separate Save button.
   const saveRequestRef = useRef(0);
   useEffect(() => {
-    if (!client || loading || !canWrite || draftsMatch(draft, saved)) {
+    if (
+      !client ||
+      loading ||
+      !canWrite ||
+      (draftsMatch(draft, saved) && enabledComponents.join("\0") === savedComponents.join("\0"))
+    ) {
       return;
     }
     const requestId = ++saveRequestRef.current;
@@ -457,7 +472,10 @@ export function BrainProfileEditor({
         setSaving(true);
         setError(null);
         try {
-          const result = await client.brainModelProfileSet(modelId, draft);
+          const result = await client.brainModelProfileSet(modelId, {
+            ...draft,
+            enabledComponents,
+          });
           // Drop a reply that a newer edit has already superseded, or the
           // panel flickers back to a value the user has moved past.
           if (requestId !== saveRequestRef.current) {
@@ -466,6 +484,9 @@ export function BrainProfileEditor({
           const nextDraft = buildDraft(result.profile, fields);
           setSaved(nextDraft);
           setDraft(nextDraft);
+          const enabled = result.profile?.enabledComponents ?? [];
+          setEnabledComponents(enabled);
+          setSavedComponents(enabled);
           setWarnings(result.warnings);
           setCalibration(result.calibration?.state ?? null);
           setBudget(result.budget);
@@ -490,9 +511,60 @@ export function BrainProfileEditor({
       })();
     }, BUDGET_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [client, canWrite, draft, saved, fields, loading, modelId, onSaved, onRequiresRestartChange]);
+  }, [
+    client,
+    canWrite,
+    draft,
+    enabledComponents,
+    fields,
+    loading,
+    modelId,
+    onSaved,
+    onRequiresRestartChange,
+    saved,
+    savedComponents,
+  ]);
 
   const blocking = useMemo(() => warnings.find((warning) => warning.blocksStart), [warnings]);
+  const visibleFields = useMemo(() => {
+    const hasVisionComponent = components?.some(
+      (component) => component.role === "vision_projector",
+    );
+    return hasVisionComponent ? fields.filter((field) => field.key !== "vision") : fields;
+  }, [components, fields]);
+  const hasLegacyVisionField = visibleFields.some((field) => field.key === "vision");
+
+  const bundleOptions = components?.length ? (
+    <View style={isCompact ? styles.gridCompact : styles.grid}>
+      {components.map((component) => {
+        const enabled = enabledComponents.includes(component.id);
+        return (
+          <View key={component.id} style={styles.fieldRow}>
+            <View style={styles.fieldLabelColumn}>
+              <Text style={styles.fieldLabel}>{component.label}</Text>
+              <Text style={styles.fieldUnavailable}>
+                {component.available
+                  ? component.description
+                  : (component.unavailableReason ?? "Not downloaded")}
+              </Text>
+            </View>
+            <Switch
+              value={enabled}
+              disabled={!canWrite || saving || !component.available || component.required}
+              onValueChange={(value) =>
+                setEnabledComponents((current) =>
+                  value
+                    ? [...new Set([...current, component.id])]
+                    : current.filter((id) => id !== component.id),
+                )
+              }
+              accessibilityLabel={component.label}
+            />
+          </View>
+        );
+      })}
+    </View>
+  ) : null;
 
   const handleChange = useCallback((key: string, value: DraftValue) => {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -523,7 +595,7 @@ export function BrainProfileEditor({
       ) : null}
 
       <View style={isCompact ? styles.gridCompact : styles.grid}>
-        {fields.map((field) => (
+        {visibleFields.map((field) => (
           <Fragment key={field.key}>
             {field.key === "contextSize" ? (
               <BudgetPanel budget={budget} calibration={calibration} />
@@ -538,6 +610,9 @@ export function BrainProfileEditor({
                 field.key === "contextSize" && canWrite && maxContext ? handleFitContext : undefined
               }
             />
+            {field.key === (hasLegacyVisionField ? "vision" : "flashAttention")
+              ? bundleOptions
+              : null}
           </Fragment>
         ))}
       </View>

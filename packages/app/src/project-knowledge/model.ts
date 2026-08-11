@@ -45,5 +45,15 @@ export function summarizeProjectKnowledge(records: readonly Record[]): ProjectKn
 }
 
 export function formatDeliveryStatus(status: string | undefined): string {
-  return (status ?? "charter").replaceAll("_", " ");
+  return formatMetadataLabel(status ?? "charter");
+}
+
+/** Stored metadata stays machine-readable; only its presentation is polished. */
+export function formatMetadataLabel(value: string): string {
+  return value
+    .replaceAll("_", " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`)
+    .join(" ");
 }

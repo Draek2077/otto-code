@@ -218,6 +218,9 @@ export interface WorkspaceDescriptor {
   status: WorkspaceDescriptorPayload["status"];
   statusEnteredAt: Date | null;
   archivingAt: string | null;
+  // Working tree relative to HEAD. Unlike the legacy `diffStat`, this is empty
+  // after commit and is the default workspace-row indicator.
+  workingTreeDiffStat?: { additions: number; deletions: number } | null;
   diffStat: { additions: number; deletions: number } | null;
   scripts: WorkspaceDescriptorPayload["scripts"];
   gitRuntime?: WorkspaceDescriptorPayload["gitRuntime"];
@@ -252,6 +255,7 @@ export function normalizeWorkspaceDescriptor(
     status: payload.status,
     statusEnteredAt,
     archivingAt: payload.archivingAt ?? null,
+    workingTreeDiffStat: payload.workingTreeDiffStat ?? null,
     diffStat: payload.diffStat ?? null,
     scripts: (payload.scripts ?? []).map((s) => Object.assign({}, s)),
     gitRuntime: payload.gitRuntime,

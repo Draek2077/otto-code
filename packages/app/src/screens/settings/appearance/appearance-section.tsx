@@ -602,6 +602,39 @@ function TabOrientationRow({ value, onChange }: TabOrientationRowProps) {
   );
 }
 
+interface WorkspaceChangeIndicatorRowProps {
+  value: AppSettings["workspaceChangeIndicator"];
+  onChange: (value: AppSettings["workspaceChangeIndicator"]) => void;
+}
+
+function WorkspaceChangeIndicatorRow({ value, onChange }: WorkspaceChangeIndicatorRowProps) {
+  const options = useMemo<SegmentedControlOption<AppSettings["workspaceChangeIndicator"]>[]>(
+    () => [
+      { value: "uncommitted", label: "Uncommitted" },
+      { value: "branch", label: "Branch" },
+      { value: "hidden", label: "Hidden" },
+    ],
+    [],
+  );
+  return (
+    <View style={ROW_RESPONSIVE_WITH_BORDER}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>Workspace change indicator</Text>
+        <Text style={settingsStyles.rowHint}>
+          Uncommitted clears when you commit. Branch compares your branch with its selected base.
+        </Text>
+      </View>
+      <SegmentedControl
+        size="sm"
+        value={value}
+        onValueChange={onChange}
+        options={options}
+        testID="settings-workspace-change-indicator"
+      />
+    </View>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Message timestamp display (Clock time / Time ago)
 // ---------------------------------------------------------------------------
@@ -1022,6 +1055,13 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
+  const handleWorkspaceChangeIndicatorChange = useCallback(
+    (workspaceChangeIndicator: AppSettings["workspaceChangeIndicator"]) => {
+      void updateSettings({ workspaceChangeIndicator });
+    },
+    [updateSettings],
+  );
+
   const handleTeamSwitcherPlacementChange = useCallback(
     (showInTitlebar: boolean) => {
       void updateSettings({
@@ -1194,6 +1234,12 @@ export function AppearanceSection() {
                 withBorder
                 onValueChange={handleWorkspaceToolsPlacementChange}
                 testID="settings-workspace-tools-placement-switch"
+              />
+            ) : null}
+            {isDeveloperMode ? (
+              <WorkspaceChangeIndicatorRow
+                value={settings.workspaceChangeIndicator}
+                onChange={handleWorkspaceChangeIndicatorChange}
               />
             ) : null}
             {/* i18n: English-only pending a translation pass (Agent Teams). */}

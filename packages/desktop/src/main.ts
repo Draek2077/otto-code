@@ -1695,6 +1695,7 @@ const quitLifecycle = createQuitLifecycle({
     });
   },
   createUpdateDeadlineSignal: () => AbortSignal.timeout(UPDATE_QUIT_DEADLINE_MS),
+  deferDaemonStopUntilUpdateHandoff: process.platform === "linux" && !process.env.APPIMAGE,
   onStopError: (error) => {
     log.error("[desktop daemon] failed to stop managed daemon on quit", error);
   },

@@ -11,9 +11,9 @@ export interface ReviewDraftComment {
   updatedAt: string;
 }
 
-// A manual mode selection is valid only while the checkout's dirty state matches the
-// value at the time of selection. serverId/cwd identify the checkout so the override can
-// be expired when its dirty state changes (see expireStaleDiffModeOverridesInState).
+// A manual mode selection belongs to the checkout, not its momentary dirty
+// state. A commit can make an Uncommitted view empty, but it must not also move
+// the reader to Committed behind their back.
 export interface DiffModeOverride {
   serverId: string;
   cwd: string;
@@ -45,41 +45,24 @@ export function setDiffModeOverrideInState(
   };
 }
 
-// Drops every override for the checkout whose dirty state no longer matches the value it
-// was selected under. Called whenever a checkout status enters the app (push or fetch),
-// so expiry does not depend on any screen being mounted.
+// Kept as a data-boundary no-op while old callers continue to report status
+// transitions. Manual selection now persists across dirty/clean transitions.
 export function expireStaleDiffModeOverridesInState(
   state: ReviewDraftStoreState,
   input: { serverId: string; cwd: string; isDirty: boolean },
 ): ReviewDraftStoreState {
-  const staleScopeKeys = Object.entries(state.diffModeOverrides)
-    .filter(
-      ([, override]) =>
-        override.serverId === input.serverId &&
-        override.cwd === input.cwd &&
-        override.isDirtyAtSelection !== input.isDirty,
-    )
-    .map(([scopeKey]) => scopeKey);
-  if (staleScopeKeys.length === 0) {
-    return state;
-  }
-  const next = { ...state.diffModeOverrides };
-  for (const scopeKey of staleScopeKeys) {
-    delete next[scopeKey];
-  }
-  return { ...state, diffModeOverrides: next };
+  void input;
+  return state;
 }
 
-// Pure read - returns the effective mode without mutating state. The staleness check is
-// kept even though stale overrides are expired at the data boundary: a render can observe
-// a fresh dirty state before the expiry lands, and resolution must be correct under any
-// interleaving.
+// Pure read - returns the effective mode without mutating state. A user-selected
+// mode deliberately wins even when a commit or a new edit flips the dirty bit.
 export function resolveDiffMode(input: {
   override: DiffModeOverride | undefined;
   hasUncommittedChanges: boolean;
 }): ReviewDraftMode {
   const { override, hasUncommittedChanges } = input;
-  if (override && override.isDirtyAtSelection === hasUncommittedChanges) {
+  if (override) {
     return override.mode;
   }
   return hasUncommittedChanges ? "uncommitted" : "base";

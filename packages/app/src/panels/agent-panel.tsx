@@ -12,7 +12,7 @@ import React, {
   useSyncExternalStore,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import ReanimatedAnimated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -20,6 +20,7 @@ import invariant from "tiny-invariant";
 import { shallow, useShallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { AgentStreamView, type AgentStreamViewHandle } from "@/agent-stream/view";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
 import { ObservedSubagentCallout } from "@/components/observed-subagent-callout";
 import { BlackChatScope } from "@/components/black-chat-scope";
@@ -1526,23 +1527,36 @@ const AgentStreamSection = memo(function AgentStreamSection({
     () => streamViewRef.current?.setAllExpandableContentExpanded(false),
     [streamViewRef],
   );
+  const streamView = (
+    <AgentStreamView
+      ref={streamViewRef}
+      agentId={agent.id}
+      serverId={serverId}
+      context={agent}
+      streamItems={streamItems}
+      pendingPermissions={pendingPermissions}
+      routeBottomAnchorRequest={routeBottomAnchorRequest}
+      isAuthoritativeHistoryReady={hasAppliedAuthoritativeHistory}
+      toast={toast}
+      onOpenWorkspaceFile={onOpenWorkspaceFile}
+    />
+  );
 
   return (
     <ContextMenu open={isChatContextMenuOpen} onOpenChange={handleChatContextMenuOpenChange}>
-      <ContextMenuTrigger style={styles.chatContextTrigger} testID="agent-chat-background">
-        <AgentStreamView
-          ref={streamViewRef}
-          agentId={agent.id}
-          serverId={serverId}
-          context={agent}
-          streamItems={streamItems}
-          pendingPermissions={pendingPermissions}
-          routeBottomAnchorRequest={routeBottomAnchorRequest}
-          isAuthoritativeHistoryReady={hasAppliedAuthoritativeHistory}
-          toast={toast}
-          onOpenWorkspaceFile={onOpenWorkspaceFile}
-        />
-      </ContextMenuTrigger>
+      {isWeb ? (
+        <ContextMenuTrigger
+          preserveTextSelection
+          style={styles.chatContextTrigger}
+          testID="agent-chat-background"
+        >
+          {streamView}
+        </ContextMenuTrigger>
+      ) : (
+        <View style={styles.chatContextTrigger} testID="agent-chat-background">
+          {streamView}
+        </View>
+      )}
       <ContextMenuContent side="bottom" align="start" testID="agent-chat-context-menu">
         <ContextMenuItem
           closeOnSelect={false}
@@ -1993,7 +2007,7 @@ function AgentSessionUnavailableState({
       <View style={styles.centerState}>
         {isConnecting || isPreparingSession ? (
           <>
-            <ActivityIndicator size="large" />
+            <LoadingSpinner size="large" />
             <Text style={styles.loadingText}>
               {isPreparingSession
                 ? t("agentPanel.unavailable.preparingSession", { serverLabel })
@@ -2021,7 +2035,7 @@ function AgentSessionUnavailableState({
   );
 }
 
-const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
+const ThemedActivityIndicator = withUnistyles(LoadingSpinner);
 const ThemedChevronRight = withUnistyles(ChevronRight);
 
 const foregroundMutedColorMapping = (theme: Theme) => ({

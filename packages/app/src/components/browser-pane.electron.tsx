@@ -8,15 +8,7 @@ import {
   type ReactNode,
   createElement,
 } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  Text,
-  TextInput,
-  View,
-  type StyleProp,
-  type ViewStyle,
-} from "react-native";
+import { Pressable, Text, TextInput, View, type StyleProp, type ViewStyle } from "react-native";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -37,6 +29,7 @@ import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles"
 import { useTranslation } from "react-i18next";
 import * as Clipboard from "expo-clipboard";
 import { Button } from "@/components/ui/button";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/contexts/toast-context";
 import {
@@ -1897,7 +1890,7 @@ export function BrowserPane({
             <View style={styles.previewOverlayCard}>
               {browser.previewStatus === "starting" ? (
                 <>
-                  <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
+                  <LoadingSpinner size="small" />
                   <Text style={previewOverlayTitleStyle}>
                     {t("workspace.browser.preview.starting")}
                   </Text>

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   AgentSnapshotPayloadSchema,
+  BrainRepoQuantSchema,
   FileExplorerRequestSchema,
   MutableDaemonConfigPatchSchema,
   MutableDaemonConfigSchema,
@@ -9,6 +10,46 @@ import {
   SessionInboundMessageSchema,
   SessionOutboundMessageSchema,
 } from "./messages.js";
+
+describe("Brain Hugging Face bundle discovery compatibility", () => {
+  test("accepts a detected projector on a quant row", () => {
+    expect(
+      BrainRepoQuantSchema.parse({
+        quant: "Q4_K_M",
+        size: "4.2 GB",
+        projector: {
+          file: "mmproj-model-f16.gguf",
+          sizeBytes: 512_000_000,
+          installed: true,
+        },
+      }),
+    ).toMatchObject({
+      projector: {
+        file: "mmproj-model-f16.gguf",
+        sizeBytes: 512_000_000,
+        installed: true,
+      },
+    });
+  });
+
+  test("accepts explicit components on an arbitrary repository download", () => {
+    expect(
+      SessionInboundMessageSchema.parse({
+        type: "brain.models.add.request",
+        repo: "publisher/vision-GGUF",
+        quant: "Q4_K_M",
+        components: ["vision-projector"],
+        requestId: "request-1",
+      }),
+    ).toMatchObject({ components: ["vision-projector"] });
+  });
+
+  test("continues to accept quant rows from older Brain hosts", () => {
+    expect(BrainRepoQuantSchema.parse({ quant: "Q4_K_M", size: "4.2 GB" }).projector).toBe(
+      undefined,
+    );
+  });
+});
 
 function workspaceDescriptor(overrides: Record<string, unknown> = {}) {
   return {

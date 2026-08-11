@@ -1,13 +1,38 @@
 /* oxlint-disable react-perf/jsx-no-new-function-as-prop */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from "react-native";
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import Animated, {
+  FadeIn,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+} from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import { StyleSheet } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { MarkdownRenderer } from "@/components/markdown/renderer";
+import {
+  Archive,
+  Architecture,
+  BookOpen,
+  Check,
+  Checklist,
+  FolderOpen,
+  FolderTree,
+  Lightbulb,
+  Pencil,
+  Search,
+  Shield,
+  SquarePen,
+} from "@/components/icons/material-icons";
 import { Button } from "@/components/ui/button";
+import { PageLoading } from "@/components/ui/page-loading";
+import { PANE_TOOLBAR_HEIGHT } from "@/components/ui/control-geometry";
 import { SegmentedControl } from "@/components/ui/segmented-control";
+import { SearchClearButton } from "@/components/ui/search-clear-button";
+import { ToolbarIconButton } from "@/components/ui/toolbar-icon-button";
+import { ToolbarSeparator } from "@/components/ui/toolbar-separator";
 import { isWeb } from "@/constants/platform";
+import { useAnimationsEnabled } from "@/hooks/use-animations-enabled";
 import { usePaneContext } from "@/panels/pane-context";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import {
@@ -16,24 +41,27 @@ import {
   type ProjectReferenceDisposition,
 } from "@/context-management/use-project-knowledge";
 import { usePanelStore } from "@/stores/panel-store";
-import { formatDeliveryStatus, summarizeProjectKnowledge } from "./model";
+import { formatDeliveryStatus, formatMetadataLabel, summarizeProjectKnowledge } from "./model";
 
 const MIN_SIDEBAR_WIDTH = 260;
 const MAX_SIDEBAR_WIDTH = 520;
 const MIN_VIEWER_WIDTH = 360;
 const SIDEBAR_SHELL_STYLE = { position: "relative" } as const;
+const SELECTED_ACCESSIBILITY_STATE = { selected: true } as const;
 
 /** Markdown knowledge is rendered as a document, while Otto owns mutations. */
 // eslint-disable-next-line complexity -- panel intentionally owns its three explicit review states.
 export function ProjectKnowledgePanel(): ReactElement {
   const { serverId, workspaceId, openFileInWorkspace } = usePaneContext();
   const knowledge = useProjectKnowledge(serverId, workspaceId);
+  const animationsEnabled = useAnimationsEnabled();
   const readRecord = knowledge.readRecord;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [recordDetail, setRecordDetail] = useState<KnowledgeRecord | null>(null);
   const [selectedRootSlug, setSelectedRootSlug] = useState<string | null>(null);
   const [scope, setScope] = useState<"knowledge" | "projects" | "references">("knowledge");
   const [filter, setFilter] = useState<"all" | "proposed" | "confirmed" | "superseded">("all");
+  const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
   const [editingTruth, setEditingTruth] = useState(false);
   const [editingMetadata, setEditingMetadata] = useState(false);
@@ -91,13 +119,16 @@ export function ProjectKnowledgePanel(): ReactElement {
     () => [SIDEBAR_SHELL_STYLE, sidebarWidthStyle],
     [sidebarWidthStyle],
   );
+  const normalizedQuery = query.trim().toLowerCase();
   const records = useMemo(
     () =>
       knowledge.view?.records.filter(
         (record) =>
-          (filter === "all" || record.status === filter) && recordMatchesScope(record.kind, scope),
+          (filter === "all" || record.status === filter) &&
+          recordMatchesScope(record.kind, scope) &&
+          record.title.toLowerCase().includes(normalizedQuery),
       ) ?? [],
-    [filter, knowledge.view, scope],
+    [filter, knowledge.view, normalizedQuery, scope],
   );
   const selectedRoot =
     scope === "knowledge"
@@ -140,7 +171,7 @@ export function ProjectKnowledgePanel(): ReactElement {
   let document =
     "# Project knowledge\n\nSelect a root page or record to inspect its Markdown-backed current truth.";
   if (selectedRoot) {
-    document = selectedRoot.body;
+    document = rootDocumentBody(selectedRoot.body);
   } else if (selected) {
     document = recordMarkdown(
       selected,
@@ -314,7 +345,16 @@ export function ProjectKnowledgePanel(): ReactElement {
   const emptyCopy = emptyScopeCopy(scope);
   const newButtonLabel = emptyCopy.newLabel;
   let viewer: ReactElement;
-  if (creating) {
+  if (knowledge.error) {
+    viewer = (
+      <View style={styles.empty}>
+        <Text style={styles.description}>{knowledge.error}</Text>
+        <Button size="sm" variant="outline" onPress={knowledge.reload}>
+          Retry
+        </Button>
+      </View>
+    );
+  } else if (creating) {
     viewer = (
       <View style={styles.composer}>
         <Text style={styles.viewerTitle}>{creationCopy.title}</Text>
@@ -452,7 +492,12 @@ export function ProjectKnowledgePanel(): ReactElement {
       </View>
     );
   } else if (selectedRoot) {
-    viewer = <MarkdownRenderer text={document} remoteImages="altText" />;
+    viewer = (
+      <View style={styles.documentContent}>
+        <Text style={styles.documentContentTitle}>{selectedRoot.title}</Text>
+        <MarkdownRenderer text={document} remoteImages="altText" />
+      </View>
+    );
   } else if (editingTruth && selected) {
     viewer = (
       <View style={styles.composer}>
@@ -584,62 +629,10 @@ export function ProjectKnowledgePanel(): ReactElement {
     );
   } else if (selected) {
     viewer = (
-      <>
-        <View style={styles.viewerHeader}>
-          <View>
-            <Text style={styles.viewerTitle}>{selected.title}</Text>
-            <Text style={styles.muted}>
-              {recordStatusLabel(selected)} · Updated{" "}
-              {new Date(selected.updatedAt).toLocaleDateString()}
-            </Text>
-          </View>
-          <View style={styles.viewerToolbar}>
-            <Button
-              variant="outline"
-              size="sm"
-              onPress={() => {
-                setStatement(selected.statement);
-                setTruthReason("");
-                setEditingTruth(true);
-              }}
-            >
-              Update truth
-            </Button>
-            {selected.kind === "project" || selected.kind === "reference" ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onPress={() => {
-                  setDeliveryStatus(selected.deliveryStatus ?? "charter");
-                  setProgressCompleted(
-                    selected.progress ? String(selected.progress.completed) : "",
-                  );
-                  setProgressTotal(selected.progress ? String(selected.progress.total) : "");
-                  setProgressUnit(selected.progress?.unit ?? "milestones");
-                  setReferenceDisposition(selected.referenceDisposition ?? "unevaluated");
-                  setSourceUrl(selected.sourceUrl ?? "");
-                  setMetadataReason("");
-                  setFormError(null);
-                  setEditingMetadata(true);
-                }}
-              >
-                {selected.kind === "project" ? "Update delivery" : "Update evaluation"}
-              </Button>
-            ) : null}
-            {selected.status !== "confirmed" ? (
-              <Button variant="outline" size="sm" onPress={() => void setStatus("confirmed")}>
-                Confirm
-              </Button>
-            ) : null}
-            {selected.status !== "superseded" ? (
-              <Button variant="outline" size="sm" onPress={() => void setStatus("superseded")}>
-                Supersede
-              </Button>
-            ) : null}
-          </View>
-        </View>
+      <View style={styles.documentContent}>
+        <Text style={styles.documentContentTitle}>{selected.title}</Text>
         <MarkdownRenderer text={document} remoteImages="altText" />
-      </>
+      </View>
     );
   } else {
     viewer = (
@@ -650,16 +643,18 @@ export function ProjectKnowledgePanel(): ReactElement {
       </View>
     );
   }
+  if (knowledge.loading)
+    return <PageLoading label="Loading project knowledge…" testID="project-knowledge-loading" />;
+
   return (
-    <View style={styles.root} testID="project-knowledge-panel">
+    <Animated.View
+      entering={animationsEnabled ? FadeIn.duration(180) : undefined}
+      style={styles.root}
+      testID="project-knowledge-panel"
+    >
       <Animated.View style={sidebarShellStyle}>
         <View style={styles.sidebar}>
           <View style={styles.summary}>
-            <Text style={styles.heading}>Knowledge</Text>
-            <Text style={styles.description}>
-              Confirmed pages are discoverable in every chat. Full Markdown loads only when the task
-              needs it.
-            </Text>
             <SegmentedControl
               size="sm"
               stretch
@@ -669,6 +664,7 @@ export function ProjectKnowledgePanel(): ReactElement {
                 setSelectedId(null);
                 setSelectedRootSlug(null);
                 setCreating(false);
+                setQuery("");
               }}
               options={[
                 { value: "knowledge", label: "Knowledge" },
@@ -676,66 +672,76 @@ export function ProjectKnowledgePanel(): ReactElement {
                 { value: "references", label: "References" },
               ]}
             />
-            <Text style={styles.muted}>
+            <Text style={styles.summaryStats}>
               {scopeSummary(scope, summary, knowledge.view?.briefTokens ?? 0)}
             </Text>
             <Button size="sm" onPress={startCreate}>
               {newButtonLabel}
             </Button>
           </View>
-          {scope === "knowledge" ? (
-            <View style={styles.filters}>
-              <Text style={styles.fieldLabel}>Knowledge map</Text>
-              <ScrollView horizontal contentContainerStyle={styles.rootPages}>
-                {(knowledge.view?.rootPages ?? []).map((page) => (
-                  <Button
-                    key={page.slug}
-                    variant={selectedRoot?.slug === page.slug ? "secondary" : "outline"}
-                    size="sm"
-                    onPress={() => {
-                      setSelectedRootSlug(page.slug);
-                      setSelectedId(null);
-                    }}
-                  >
-                    {page.title}
-                  </Button>
-                ))}
-              </ScrollView>
+          <>
+            {scope === "knowledge" ? (
+              <View style={styles.filters}>
+                <Text style={styles.fieldLabel}>Knowledge map</Text>
+                <View style={styles.rootPages}>
+                  {(knowledge.view?.rootPages ?? []).map((page) => (
+                    <Button
+                      key={page.slug}
+                      variant={selectedRoot?.slug === page.slug ? "secondary" : "outline"}
+                      size="sm"
+                      onPress={() => {
+                        setSelectedRootSlug(page.slug);
+                        setSelectedId(null);
+                      }}
+                    >
+                      {page.title}
+                    </Button>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+            <View style={styles.searchBox}>
+              <ThemedSearch uniProps={searchIconProps} />
+              <ThemedTextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder={`Search ${scope}`}
+                accessibilityLabel={`Search ${scope}`}
+                testID="project-knowledge-search-input"
+                uniProps={searchInputProps}
+                // @ts-expect-error - outlineStyle is web-only
+                style={[styles.searchInput, isWeb && { outlineStyle: "none" }]}
+              />
+              {query ? <SearchClearButton onPress={() => setQuery("")} /> : null}
             </View>
-          ) : null}
-          <View style={styles.filters}>
-            <SegmentedControl
-              size="sm"
-              stretch
-              value={filter}
-              onValueChange={setFilter}
-              options={[
-                { value: "all", label: "All" },
-                { value: "proposed", label: "Proposed" },
-                { value: "confirmed", label: "Confirmed" },
-                { value: "superseded", label: "History" },
-              ]}
-            />
-          </View>
-          <ScrollView style={styles.browser}>
-            {records.map((record) => (
-              <Pressable
-                key={record.id}
-                // oxlint-disable-next-line react-perf/jsx-no-new-function-as-prop
-                onPress={() => {
-                  setSelectedRootSlug(null);
-                  setSelectedId(record.id);
-                }}
-                style={record.id === selected?.id ? styles.selectedRow : styles.row}
-              >
-                <Text style={styles.rowTitle}>{record.title}</Text>
-                <Text style={styles.muted}>{recordStatusLabel(record)}</Text>
-                <Text numberOfLines={2} style={styles.muted}>
-                  {record.statement}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
+            <View style={styles.statusFilters}>
+              <SegmentedControl
+                size="sm"
+                stretch
+                value={filter}
+                onValueChange={setFilter}
+                options={[
+                  { value: "all", label: "All" },
+                  { value: "proposed", label: "Proposed" },
+                  { value: "confirmed", label: "Confirmed" },
+                  { value: "superseded", label: "History" },
+                ]}
+              />
+            </View>
+            <ScrollView style={styles.browser} contentContainerStyle={styles.browserContent}>
+              {records.map((record) => (
+                <KnowledgeRecordRow
+                  key={record.id}
+                  record={record}
+                  selected={record.id === selected?.id}
+                  onSelect={() => {
+                    setSelectedRootSlug(null);
+                    setSelectedId(record.id);
+                  }}
+                />
+              ))}
+            </ScrollView>
+          </>
         </View>
         <GestureDetector gesture={resizeGesture}>
           <View
@@ -744,24 +750,163 @@ export function ProjectKnowledgePanel(): ReactElement {
           />
         </GestureDetector>
       </Animated.View>
-      <ScrollView style={styles.viewer} contentContainerStyle={styles.viewerContent}>
-        <View style={styles.viewerToolbar}>
-          <Text style={styles.pathLabel}>{markdownPath ?? "Markdown source unavailable"}</Text>
-          {markdownPath ? (
-            <Button variant="outline" size="sm" onPress={openMarkdown}>
-              Open Markdown
-            </Button>
-          ) : null}
+      <View style={styles.viewer}>
+        {selectedRoot || selected ? (
+          <View style={styles.documentHeader}>
+            <View style={styles.documentIdentity}>
+              <Text style={styles.muted}>
+                {selectedRoot
+                  ? `Knowledge root · ${selectedRoot.slug}`
+                  : `${recordStatusLabel(selected!)} · Updated ${new Date(selected!.updatedAt).toLocaleDateString()}`}
+              </Text>
+            </View>
+            <View style={styles.documentToolbar}>
+              {markdownPath ? (
+                <ToolbarIconButton
+                  label="Open Markdown source"
+                  Icon={ThemedFolderOpen}
+                  onPress={openMarkdown}
+                />
+              ) : null}
+              {selected && !editingTruth && !editingMetadata && !creating ? (
+                <>
+                  {markdownPath ? <ToolbarSeparator /> : null}
+                  <ToolbarIconButton
+                    label="Edit current truth"
+                    Icon={ThemedPencil}
+                    onPress={() => {
+                      setStatement(selected.statement);
+                      setTruthReason("");
+                      setEditingTruth(true);
+                    }}
+                  />
+                  {selected.kind === "project" || selected.kind === "reference" ? (
+                    <ToolbarIconButton
+                      label={`Edit ${selected.kind === "project" ? "delivery" : "evaluation"}`}
+                      Icon={ThemedSquarePen}
+                      onPress={() => {
+                        setDeliveryStatus(selected.deliveryStatus ?? "charter");
+                        setProgressCompleted(
+                          selected.progress ? String(selected.progress.completed) : "",
+                        );
+                        setProgressTotal(selected.progress ? String(selected.progress.total) : "");
+                        setProgressUnit(selected.progress?.unit ?? "milestones");
+                        setReferenceDisposition(selected.referenceDisposition ?? "unevaluated");
+                        setSourceUrl(selected.sourceUrl ?? "");
+                        setMetadataReason("");
+                        setFormError(null);
+                        setEditingMetadata(true);
+                      }}
+                    />
+                  ) : null}
+                  {selected.status !== "confirmed" ? (
+                    <ToolbarIconButton
+                      label="Confirm project knowledge"
+                      Icon={ThemedCheck}
+                      onPress={() => void setStatus("confirmed")}
+                    />
+                  ) : null}
+                  {selected.status !== "superseded" ? (
+                    <ToolbarIconButton
+                      label="Supersede project knowledge"
+                      Icon={ThemedArchive}
+                      onPress={() => void setStatus("superseded")}
+                    />
+                  ) : null}
+                </>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
+        <View style={styles.documentCanvas}>
+          <ScrollView contentContainerStyle={styles.viewerContent}>{viewer}</ScrollView>
         </View>
-        {viewer}
-      </ScrollView>
-    </View>
+        {selectedRoot || selected ? (
+          <View style={styles.documentStatusBar}>
+            <Text numberOfLines={1} style={styles.pathLabel}>
+              {markdownPath ?? "Markdown source unavailable"}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+    </Animated.View>
   );
 }
 
 type KnowledgeRecord = NonNullable<
   ReturnType<typeof useProjectKnowledge>["view"]
 >["records"][number];
+
+function KnowledgeRecordRow({
+  record,
+  selected,
+  onSelect,
+}: {
+  record: KnowledgeRecord;
+  selected: boolean;
+  onSelect: () => void;
+}): ReactElement {
+  return (
+    <Pressable
+      onPress={onSelect}
+      accessibilityRole="button"
+      accessibilityState={selected ? SELECTED_ACCESSIBILITY_STATE : undefined}
+      style={({ hovered, pressed }) => [
+        styles.row,
+        selected ? styles.selectedRow : null,
+        hovered && !selected ? styles.hoveredRow : null,
+        pressed ? styles.pressedRow : null,
+      ]}
+    >
+      <View style={styles.rowIcon}>
+        <ThemedKnowledgeKindIcon kind={record.kind} size={18} />
+      </View>
+      <View style={styles.rowContent}>
+        <Text numberOfLines={2} style={styles.rowTitle}>
+          {record.title}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function KnowledgeKindIcon({
+  kind,
+  size,
+  color,
+}: {
+  kind: KnowledgeRecord["kind"];
+  size: number;
+  color: string;
+}): ReactElement {
+  if (kind === "architecture") return <Architecture size={size} color={color} />;
+  if (kind === "constraint") return <Shield size={size} color={color} />;
+  if (kind === "requirement") return <Checklist size={size} color={color} />;
+  if (kind === "project") return <FolderTree size={size} color={color} />;
+  if (kind === "reference") return <BookOpen size={size} color={color} />;
+  return <Lightbulb size={size} color={color} />;
+}
+const ThemedKnowledgeKindIcon = withUnistyles(KnowledgeKindIcon, (theme) => ({
+  color: theme.colors.foregroundMuted,
+}));
+const ThemedArchive = withUnistyles(Archive);
+const ThemedCheck = withUnistyles(Check);
+const ThemedFolderOpen = withUnistyles(FolderOpen);
+const ThemedPencil = withUnistyles(Pencil);
+const ThemedSearch = withUnistyles(Search);
+const ThemedSquarePen = withUnistyles(SquarePen);
+const ThemedTextInput = withUnistyles(TextInput);
+
+const searchIconProps = (theme: {
+  colors: { foregroundMuted: string };
+  iconSize: { md: number };
+}) => ({
+  color: theme.colors.foregroundMuted,
+  size: theme.iconSize.md,
+});
+const searchInputProps = (theme: { colors: { foregroundMuted: string } }) => ({
+  placeholderTextColor: theme.colors.foregroundMuted,
+});
 
 function knowledgePathForRecord(record: KnowledgeRecord | null): string | null {
   if (!record) return null;
@@ -776,16 +921,19 @@ function recordMarkdown(record: KnowledgeRecord, findings: readonly { message: s
     operational = `\n\n## Delivery\n\n- Status: **${formatDeliveryStatus(record.deliveryStatus)}**\n- Progress: ${progress}`;
   } else if (record.kind === "reference") {
     const source = record.sourceUrl ? `[${record.sourceUrl}](${record.sourceUrl})` : "Not recorded";
-    operational = `\n\n## Reference\n\n- Evaluation: **${record.referenceDisposition ?? "unevaluated"}**\n- Source: ${source}`;
+    operational = `\n\n## Reference\n\n- Evaluation: **${formatMetadataLabel(record.referenceDisposition ?? "unevaluated")}**\n- Source: ${source}`;
   }
-  return `# ${record.title}\n\n**${record.kind} · ${record.status}**${operational}\n\n## Current understanding\n\n${record.statement}\n\n## Evidence\n\n${record.evidence || "No evidence recorded."}\n\n## Tags\n\n${record.tags.map((tag) => `\`${tag}\``).join(" ") || "None"}\n\n## Timeline\n\n${record.provenance?.map((entry) => `- ${entry.recordedAt} [${entry.kind ?? "note"}]: ${entry.text}${entry.source ? ` (${entry.source})` : ""}`).join("\n") || "No timeline recorded."}\n\n## Review signals\n\n${findings.map((finding) => `- ${finding.message}`).join("\n") || "No current signals."}\n\n_Last updated ${record.updatedAt}._`;
+  return `## Current understanding\n\n${record.statement}${operational}\n\n## Evidence\n\n${record.evidence || "No evidence recorded."}\n\n## Tags\n\n${record.tags.map((tag) => `\`${tag}\``).join(" ") || "None"}\n\n## Timeline\n\n${record.provenance?.map((entry) => `- ${entry.recordedAt} [${entry.kind ?? "note"}]: ${entry.text}${entry.source ? ` (${entry.source})` : ""}`).join("\n") || "No timeline recorded."}\n\n## Review signals\n\n${findings.map((finding) => `- ${finding.message}`).join("\n") || "No current signals."}`;
+}
+function rootDocumentBody(body: string): string {
+  return body.replace(/^---\s*\r?\n[\s\S]*?\r?\n---\s*\r?\n?/, "").replace(/^# [^\r\n]+\r?\n+/, "");
 }
 function recordStatusLabel(record: KnowledgeRecord): string {
   if (record.kind === "project")
-    return `project · ${formatDeliveryStatus(record.deliveryStatus)} · ${record.status}`;
+    return `${formatMetadataLabel(record.kind)} · ${formatDeliveryStatus(record.deliveryStatus)} · ${formatMetadataLabel(record.status)}`;
   if (record.kind === "reference")
-    return `reference · ${record.referenceDisposition ?? "unevaluated"} · ${record.status}`;
-  return `${record.kind} · ${record.status}`;
+    return `${formatMetadataLabel(record.kind)} · ${formatMetadataLabel(record.referenceDisposition ?? "unevaluated")} · ${formatMetadataLabel(record.status)}`;
+  return `${formatMetadataLabel(record.kind)} · ${formatMetadataLabel(record.status)}`;
 }
 function recordMatchesScope(
   kind: KnowledgeRecord["kind"],
@@ -860,7 +1008,7 @@ function scopeSummary(
   briefTokens: number,
 ): string {
   if (scope === "projects")
-    return `${summary.projects} projects · ${summary.projectsComplete} complete · ${summary.projectsInFlight} active${summary.measuredPercentage === null ? "" : ` · ${summary.measuredPercentage}% measured progress`}`;
+    return `${summary.projects} projects · ${summary.projectsComplete} complete · ${summary.projectsInFlight} active`;
   if (scope === "references")
     return `${summary.references} references · ${summary.referencesAdopted} adopted · ${summary.referencesRejected} rejected`;
   return `${briefTokens} catalog tokens per chat`;
@@ -904,12 +1052,13 @@ const styles = StyleSheet.create((theme) => ({
     borderBottomWidth: theme.borderWidth[1],
     borderBottomColor: theme.colors.border,
   },
-  heading: {
-    color: theme.colors.foreground,
-    fontWeight: theme.fontWeight.medium,
-    fontSize: theme.fontSize.base,
-  },
   muted: { color: theme.colors.mutedForeground, fontSize: theme.fontSize.sm },
+  summaryStats: {
+    color: theme.colors.mutedForeground,
+    fontSize: theme.fontSize.sm,
+    textAlign: "center",
+    paddingVertical: 4,
+  },
   description: { color: theme.colors.mutedForeground, fontSize: theme.fontSize.sm, lineHeight: 20 },
   filters: {
     padding: theme.spacing[2],
@@ -917,39 +1066,112 @@ const styles = StyleSheet.create((theme) => ({
     borderBottomWidth: theme.borderWidth[1],
     borderBottomColor: theme.colors.border,
   },
-  rootPages: { gap: theme.spacing[2], paddingTop: theme.spacing[2] },
-  browser: { flex: 1 },
-  row: {
-    padding: theme.spacing[3],
-    gap: theme.spacing[1],
-    borderBottomWidth: theme.borderWidth[1],
-    borderBottomColor: theme.colors.border,
-  },
-  selectedRow: {
-    padding: theme.spacing[3],
-    gap: theme.spacing[1],
-    borderBottomWidth: theme.borderWidth[1],
-    borderBottomColor: theme.colors.border,
-    backgroundColor: theme.colors.background,
-  },
-  rowTitle: { color: theme.colors.foreground, fontWeight: "600" },
-  viewer: { flex: 1 },
-  viewerContent: { padding: theme.spacing[6], maxWidth: 920 },
-  viewerHeader: {
+  rootPages: {
     flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.spacing[2],
+    paddingTop: theme.spacing[2],
+  },
+  searchBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    minHeight: 40,
+    marginHorizontal: theme.spacing[2],
+    marginTop: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.surface1,
+  },
+  statusFilters: {
+    paddingTop: theme.spacing[2],
+    paddingHorizontal: theme.spacing[2],
+    paddingBottom: theme.spacing[2],
+    borderBottomWidth: theme.borderWidth[1],
+    borderBottomColor: theme.colors.border,
+  },
+  searchInput: {
+    flex: 1,
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.base,
+    paddingVertical: theme.spacing[1],
+  },
+  browser: { flex: 1 },
+  browserContent: { gap: theme.spacing[1], padding: theme.spacing[1] },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[2],
+    borderRadius: theme.borderRadius.md,
+    userSelect: "none",
+  },
+  hoveredRow: { backgroundColor: theme.colors.surface1 },
+  selectedRow: { backgroundColor: theme.colors.surfaceToggleSelected },
+  pressedRow: { backgroundColor: theme.colors.surface2 },
+  rowIcon: {
+    alignItems: "center",
+    justifyContent: "center",
+    width: theme.iconSize.lg,
+    height: theme.iconSize.lg,
+  },
+  rowContent: { flex: 1, minWidth: 0 },
+  rowTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+  },
+  viewer: { flex: 1, minWidth: 0, minHeight: 0, backgroundColor: theme.colors.surface0 },
+  // Articles share the Text Editor's content well; the surrounding header and
+  // footer deliberately remain on surface0 as pane chrome.
+  documentCanvas: { flex: 1, minHeight: 0, backgroundColor: theme.colors.surfaceCode },
+  viewerContent: { padding: theme.spacing[6], maxWidth: 920 },
+  documentContent: { gap: 0 },
+  documentContentTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.xl,
+    fontWeight: theme.fontWeight.medium,
+    paddingBottom: theme.spacing[2],
+    borderBottomWidth: 2,
+    borderBottomColor: theme.colors.foreground,
+  },
+  documentHeader: {
+    flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: theme.spacing[3],
-    paddingBottom: theme.spacing[3],
-    marginBottom: theme.spacing[4],
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
+    minHeight: PANE_TOOLBAR_HEIGHT,
     borderBottomWidth: theme.borderWidth[1],
     borderBottomColor: theme.colors.border,
   },
+  documentIdentity: { flex: 1, minWidth: 0, gap: theme.spacing[1] },
   viewerTitle: {
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.medium,
     fontSize: theme.fontSize.base,
   },
   viewerToolbar: { flexDirection: "row", alignItems: "center", gap: theme.spacing[2] },
+  documentToolbar: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: theme.spacing[1],
+  },
+  documentStatusBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[1],
+    minHeight: 24,
+    borderTopWidth: theme.borderWidth[1],
+    borderTopColor: theme.colors.border,
+  },
   pathLabel: { color: theme.colors.mutedForeground, fontSize: theme.fontSize.xs, flex: 1 },
   empty: { gap: theme.spacing[3], maxWidth: 440, paddingTop: theme.spacing[12] },
   composer: { gap: theme.spacing[3], maxWidth: 640 },

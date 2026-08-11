@@ -32,6 +32,7 @@ import type { GestureResponderEvent } from "react-native";
 import { Portal } from "@gorhom/portal";
 import { useBottomSheetModalInternal } from "@gorhom/bottom-sheet";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
+import { selectWorkspaceChangeStat } from "@/hooks/sidebar-workspaces-view-model";
 import type { PrHint } from "@/git/use-pr-status-query";
 import { openLink } from "@/utils/open-link";
 import { shortenPath } from "@/utils/shorten-path";
@@ -39,6 +40,7 @@ import { copyToClipboard } from "@/utils/copy-to-clipboard";
 import { PrBadge } from "@/components/sidebar/pr-badge";
 import { useHoverSafeZone } from "@/hooks/use-hover-safe-zone";
 import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
+import { useAppSettings } from "@/hooks/use-settings";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { FloatingSurface } from "@/components/ui/floating";
 import { isWeb } from "@/constants/platform";
@@ -232,6 +234,8 @@ function WorkspaceHoverCardContent({
 }): ReactElement | null {
   const { t } = useTranslation();
   const isDeveloperMode = useIsDeveloperMode();
+  const { settings } = useAppSettings();
+  const selectedDiffStat = selectWorkspaceChangeStat(workspace, settings.workspaceChangeIndicator);
   const cwdDisplay = shortenPath(workspace.workspaceDirectory);
   const bottomSheetInternal = useBottomSheetModalInternal(true);
   const [triggerRect, setTriggerRect] = useState<Rect | null>(null);
@@ -325,17 +329,18 @@ function WorkspaceHoverCardContent({
               testID="hover-card-workspace-cwd"
             />
           ) : null}
-          {prHint || (isDeveloperMode && workspace.diffStat) ? (
+          {prHint || (isDeveloperMode && selectedDiffStat) ? (
             <View style={styles.cardMetaRow}>
-              {isDeveloperMode && workspace.diffStat ? (
+              {isDeveloperMode && selectedDiffStat ? (
                 <DiffStat
-                  additions={workspace.diffStat.additions}
-                  deletions={workspace.diffStat.deletions}
+                  additions={selectedDiffStat.additions}
+                  deletions={selectedDiffStat.deletions}
                 />
               ) : null}
               {prHint ? <PrBadge hint={prHint} /> : null}
             </View>
           ) : null}
+          <BranchHistory workspace={workspace} visible={isDeveloperMode} />
           {prHint?.checks && prHint.checks.length > 0 ? (
             <>
               <View style={styles.separator} />
@@ -349,6 +354,23 @@ function WorkspaceHoverCardContent({
         </FloatingSurface>
       </View>
     </Portal>
+  );
+}
+
+function BranchHistory({
+  workspace,
+  visible,
+}: {
+  workspace: SidebarWorkspaceEntry;
+  visible: boolean;
+}): ReactElement | null {
+  if (!visible || !workspace.branchBaseRef || (workspace.branchAheadCount ?? 0) === 0) {
+    return null;
+  }
+  return (
+    <Text style={styles.cardBranchHistory}>
+      vs {workspace.branchBaseRef} · {workspace.branchAheadCount} commits
+    </Text>
   );
 }
 
@@ -618,6 +640,11 @@ const styles = StyleSheet.create((theme) => ({
     gap: 6,
     paddingHorizontal: theme.spacing[3],
     paddingBottom: theme.spacing[2],
+  },
+  cardBranchHistory: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    marginTop: theme.spacing[1],
   },
   cardInfoRow: {
     flexDirection: "row",

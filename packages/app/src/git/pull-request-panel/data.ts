@@ -49,6 +49,7 @@ export interface PrPaneActivity {
   avatarUrl?: string | null;
   reviewState?: ReviewState;
   body: string;
+  createdAt?: number;
   age: string;
   url: string;
   /** For inline review comments: the review this comment was submitted with. */
@@ -254,12 +255,13 @@ function mapActivity(item: PullRequestTimelineItem, nowMs: number, forge: Forge)
         avatarColor: deriveAvatarColor(item.author),
         avatarUrl: item.avatarUrl,
         body: item.body,
+        createdAt: item.createdAt,
         age: formatAge(item.createdAt, nowMs),
         url: item.url,
-        reviewId: item.reviewId,
-        threadId: item.threadId,
-        threadIsResolved: item.threadIsResolved,
-        location: item.location,
+        ...(item.reviewId ? { reviewId: item.reviewId } : {}),
+        ...(item.threadId ? { threadId: item.threadId } : {}),
+        ...(item.threadIsResolved !== undefined ? { threadIsResolved: item.threadIsResolved } : {}),
+        ...(item.location ? { location: item.location } : {}),
       },
     ];
   }
@@ -279,6 +281,7 @@ function mapActivity(item: PullRequestTimelineItem, nowMs: number, forge: Forge)
       avatarUrl: item.avatarUrl,
       reviewState: item.reviewState,
       body: item.body,
+      createdAt: item.createdAt,
       age: formatAge(item.createdAt, nowMs),
       url: item.url,
     },

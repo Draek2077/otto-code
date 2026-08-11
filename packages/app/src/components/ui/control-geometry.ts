@@ -28,7 +28,7 @@ const FIELD_CONTROL_HEIGHT = 44;
 // Pin every pane toolbar's `minHeight` to this; don't let content drive it, or
 // the bars drift apart when their tallest child differs (a 32px combobox vs a
 // 30px mode-bar pill vs a 24px icon button).
-export const PANE_TOOLBAR_HEIGHT = COMPACT_CONTROL_HEIGHT + 8;
+export const PANE_TOOLBAR_HEIGHT = COMPACT_CONTROL_HEIGHT + 4;
 const SEGMENTED_TIGHT_INSET = 2;
 const SEGMENTED_COMPACT_INSET = 2;
 const SEGMENTED_FIELD_INSET = 3;
@@ -231,17 +231,17 @@ export function createControlGeometry(theme: Theme) {
     },
     segmentedSegmentXs: {
       minHeight: controlHeights.tight - SEGMENTED_TIGHT_INSET * 2,
-      paddingHorizontal: theme.spacing[3],
+      paddingHorizontal: theme.spacing[2],
       borderRadius: nestedRadius(segmentedContainerXsRadius, SEGMENTED_TIGHT_INSET),
     },
     segmentedSegmentSm: {
       minHeight: controlHeights.compact - SEGMENTED_COMPACT_INSET * 2,
-      paddingHorizontal: theme.spacing[4],
+      paddingHorizontal: theme.spacing[2],
       borderRadius: nestedRadius(segmentedContainerSmRadius, SEGMENTED_COMPACT_INSET),
     },
     segmentedSegmentMd: {
       minHeight: controlHeights.field - SEGMENTED_FIELD_INSET * 2,
-      paddingHorizontal: theme.spacing[6],
+      paddingHorizontal: theme.spacing[2],
       borderRadius: nestedRadius(segmentedContainerMdRadius, SEGMENTED_FIELD_INSET),
     },
     segmentedLabelXs: {

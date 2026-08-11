@@ -7010,10 +7010,23 @@ export class DaemonClient {
     return payload.runtimes;
   }
 
-  async brainModelsPull(model: string, requestId?: string): Promise<BrainJob> {
+  async brainModelsPull(
+    model: string,
+    componentsOrRequestId?: string[] | string,
+    quantOrRequestId?: string,
+  ): Promise<BrainJob> {
+    const components = Array.isArray(componentsOrRequestId) ? componentsOrRequestId : undefined;
+    const quant = Array.isArray(componentsOrRequestId) ? quantOrRequestId : undefined;
+    const correlationId =
+      typeof componentsOrRequestId === "string" ? componentsOrRequestId : undefined;
     const payload = await this.sendCorrelatedSessionRequest({
-      requestId,
-      message: { type: "brain.models.pull.request", model },
+      requestId: correlationId,
+      message: {
+        type: "brain.models.pull.request",
+        model,
+        ...(components ? { components } : {}),
+        ...(quant ? { quant } : {}),
+      },
       responseType: "brain.models.pull.response",
     });
     return unwrapBrainJob(payload);
@@ -7047,10 +7060,15 @@ export class DaemonClient {
     return payload.quants;
   }
 
-  async brainModelsAdd(repo: string, quant: string, requestId?: string): Promise<BrainJob> {
+  async brainModelsAdd(
+    repo: string,
+    quant: string,
+    components?: string[],
+    requestId?: string,
+  ): Promise<BrainJob> {
     const payload = await this.sendCorrelatedSessionRequest({
       requestId,
-      message: { type: "brain.models.add.request", repo, quant },
+      message: { type: "brain.models.add.request", repo, quant, components },
       responseType: "brain.models.add.response",
     });
     return unwrapBrainJob(payload);
@@ -7061,6 +7079,15 @@ export class DaemonClient {
       requestId,
       message: { type: "brain.runtime.install.request", build: build ?? null },
       responseType: "brain.runtime.install.response",
+    });
+    return unwrapBrainJob(payload);
+  }
+
+  async brainRuntimeRemove(name: string, requestId?: string): Promise<BrainJob> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.runtime.remove.request", name },
+      responseType: "brain.runtime.remove.response",
     });
     return unwrapBrainJob(payload);
   }
@@ -7245,6 +7272,16 @@ export class DaemonClient {
     if (payload.error) {
       throw new Error(payload.error);
     }
+    return payload;
+  }
+
+  async brainModelComponentDelete(modelId: string, componentId: string, requestId?: string) {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.model.component.delete.request", modelId, componentId },
+      responseType: "brain.model.component.delete.response",
+    });
+    if (payload.error) throw new Error(payload.error);
     return payload;
   }
 
