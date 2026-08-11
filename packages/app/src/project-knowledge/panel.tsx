@@ -925,7 +925,7 @@ const ThemedKnowledgeKindIcon = withUnistyles(KnowledgeKindIcon, (theme) => ({
 }));
 const ThemedArticleKnowledgeKindIcon = withUnistyles(KnowledgeKindIcon, (theme) => ({
   color: theme.colors.foregroundMuted,
-  size: theme.iconSize.xl,
+  size: theme.iconSize.lg,
 }));
 const ThemedArchive = withUnistyles(Archive);
 const ThemedCheck = withUnistyles(Check);
@@ -1224,7 +1224,7 @@ const styles = StyleSheet.create((theme) => ({
   documentContentTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[3],
+    gap: theme.spacing[2],
     paddingBottom: theme.spacing[2],
     borderBottomWidth: 2,
     borderBottomColor: theme.colors.foreground,

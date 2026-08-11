@@ -1109,7 +1109,6 @@ export const ICON_SIZE = {
   sm: 14,
   md: 16,
   lg: 20,
-  xl: 28,
 } as const;
 
 // Breakpoint-shaped value for a geometry style property (padding, minHeight, gap, ...)
