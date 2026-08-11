@@ -6395,7 +6395,14 @@ export class DaemonClient {
     input: {
       workspaceId: string;
       id?: string;
-      kind: "decision" | "constraint" | "requirement" | "architecture" | "project" | "reference";
+      kind:
+        | "decision"
+        | "constraint"
+        | "requirement"
+        | "architecture"
+        | "finding"
+        | "project"
+        | "reference";
       title: string;
       statement: string;
       evidence?: string;

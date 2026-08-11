@@ -4452,6 +4452,7 @@ export const ProjectKnowledgeKindSchema = z.enum([
   "constraint",
   "requirement",
   "architecture",
+  "finding",
   "project",
   "reference",
 ]);
@@ -4506,10 +4507,13 @@ export const ProjectKnowledgeRecordSchema = z.object({
     .optional(),
   path: z.string().optional(),
 });
-export const ProjectKnowledgeFindingSchema = z.object({
+/** Review health, not a persisted project-knowledge finding record. */
+export const ProjectKnowledgeHealthSchema = z.object({
   kind: z.enum(["stale", "overlapping_tags", "overlapping_statement"]),
   recordId: z.string(),
   relatedRecordId: z.string().optional(),
+  tagOverlap: z.enum(["complete", "partial"]).optional(),
+  sharedTags: z.array(z.string()).optional(),
   message: z.string(),
 });
 export const ProjectKnowledgeRootPageSchema = z.object({
@@ -4529,7 +4533,7 @@ export const ProjectKnowledgeListResponseMessageSchema = z.object({
     requestId: z.string(),
     records: z.array(ProjectKnowledgeRecordSchema),
     rootPages: z.array(ProjectKnowledgeRootPageSchema).optional(),
-    findings: z.array(ProjectKnowledgeFindingSchema),
+    findings: z.array(ProjectKnowledgeHealthSchema),
     brief: z.string(),
     briefTokens: z.number(),
     includedIds: z.array(z.string()),

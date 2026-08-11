@@ -6,7 +6,7 @@ import type { Logger } from "pino";
 import type {
   LegacyProjectKnowledgeFile,
   ProjectKnowledgeBrokenLink,
-  ProjectKnowledgeFinding,
+  ProjectKnowledgeHealth,
   ProjectKnowledgeKind,
   ProjectKnowledgeRecord,
   ProjectKnowledgeRootPage,
@@ -27,6 +27,7 @@ const KINDS: readonly ProjectKnowledgeKind[] = [
   "constraint",
   "requirement",
   "architecture",
+  "finding",
   "project",
   "reference",
 ];
@@ -67,7 +68,7 @@ export interface ProjectKnowledgeBrief {
 export interface ProjectKnowledgeView {
   records: ProjectKnowledgeRecord[];
   rootPages: ProjectKnowledgeRootPage[];
-  findings: ProjectKnowledgeFinding[];
+  findings: ProjectKnowledgeHealth[];
   brief: ProjectKnowledgeBrief;
 }
 
@@ -132,7 +133,7 @@ export class ProjectKnowledgeService {
     return {
       records,
       rootPages: await this.readRootPages(root),
-      findings: findFindings(records),
+      findings: findKnowledgeHealth(records),
       brief: await this.briefForRoot(root),
     };
   }
@@ -274,6 +275,44 @@ export class ProjectKnowledgeService {
       await this.reindex(root);
     });
     return record;
+  }
+
+  /**
+   * Imports the repository's historical measured-investigation reports as
+   * first-class Knowledge finding records. The source tree is intentionally
+   * retained: deleting it is a separate, user-approved operation after a
+   * reviewer verifies the imported records.
+   */
+  async importLegacyFindings(cwd: string): Promise<{ imported: number; skipped: number }> {
+    const root = await this.projectRoot(cwd);
+    let imported = 0;
+    let skipped = 0;
+    await this.queued(root, async () => {
+      await this.bootstrapFiles(root);
+      const sourceRoot = path.join(root, "findings");
+      const reports = await this.legacyFindingPaths(sourceRoot);
+      const existing = await this.readPages(root);
+      const existingIds = new Set(existing.map((record) => record.id));
+      for (const reportPath of reports) {
+        const sourcePath = path.relative(root, reportPath).split(path.sep).join("/");
+        if (existingIds.has(legacyFindingId(sourcePath))) {
+          skipped += 1;
+          continue;
+        }
+        const raw = await readFile(reportPath, "utf8");
+        const report = legacyFindingRecord(raw, sourcePath, existingIds);
+        if (!report) {
+          this.deps.logger.warn({ sourcePath }, "Skipping legacy findings report without a title");
+          skipped += 1;
+          continue;
+        }
+        existingIds.add(report.id);
+        await this.writePage(root, report);
+        imported += 1;
+      }
+      await this.reindex(root);
+    });
+    return { imported, skipped };
   }
 
   /** A truth change is inseparable from its append-only explanation. */
@@ -444,6 +483,9 @@ export class ProjectKnowledgeService {
         error = "The project knowledge page path is not safe to delete.";
         return;
       }
+      // The removed record must not leave live current-truth or project-map
+      // links behind. Timeline history remains immutable evidence.
+      await this.removeCurrentLinksTo(root, record.id);
       await unlink(target);
       await this.reindex(root);
       deleted = true;
@@ -649,6 +691,19 @@ export class ProjectKnowledgeService {
     await mkdir(path.dirname(pagePath), { recursive: true });
     await writeAtomic(pagePath, renderPage(record));
   }
+  private async removeCurrentLinksTo(root: string, id: string): Promise<void> {
+    for (const record of await this.readPages(root)) {
+      if (record.id === id) continue;
+      const statement = removeWikiLinksTo(record.statement, id);
+      if (statement !== record.statement) await this.writePage(root, { ...record, statement });
+    }
+    for (const slug of ROOT_PAGES) {
+      const target = path.join(this.knowledgeDirectory(root), `${slug}.md`);
+      const body = await readFile(target, "utf8");
+      const rewritten = removeWikiLinksTo(body, id);
+      if (rewritten !== body) await writeAtomic(target, rewritten);
+    }
+  }
   private async pagePaths(directory: string): Promise<string[]> {
     const paths: string[] = [];
     const entries = await readdir(directory, { withFileTypes: true });
@@ -658,6 +713,21 @@ export class ProjectKnowledgeService {
       else if (entry.name.endsWith(".md") && entry.name !== "index.md") paths.push(target);
     }
     return paths;
+  }
+  private async legacyFindingPaths(directory: string): Promise<string[]> {
+    try {
+      const entries = await readdir(directory, { withFileTypes: true });
+      const paths: string[] = [];
+      for (const entry of entries) {
+        const target = path.join(directory, entry.name);
+        if (entry.isDirectory()) paths.push(...(await this.legacyFindingPaths(target)));
+        else if (entry.name.endsWith(".md") && entry.name !== "README.md") paths.push(target);
+      }
+      return paths.sort();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
+    }
   }
   private async bootstrapFiles(root: string): Promise<void> {
     await mkdir(this.knowledgeDirectory(root), { recursive: true });
@@ -1028,6 +1098,58 @@ function catalogLabel(record: ProjectKnowledgeRecord): string {
     return `reference · ${record.referenceDisposition ?? "unevaluated"}`;
   return record.kind;
 }
+function legacyFindingId(sourcePath: string): string {
+  const date = sourcePath.match(/(?:^|\/)(\d{4}-\d{2}-\d{2})-/)?.[1] ?? "legacy";
+  const stem = path.posix.basename(sourcePath, ".md").replace(/^\d{4}-\d{2}-\d{2}-/, "");
+  return slugify(`finding-${date}-${stem}`);
+}
+function legacyFindingRecord(
+  raw: string,
+  sourcePath: string,
+  existingIds: ReadonlySet<string>,
+): ProjectKnowledgeRecord | null {
+  const normalized = cleanText(raw);
+  const heading = normalized.match(/^#\s+(.+?)\s*$/m);
+  if (!heading) return null;
+  const title = singleLine(heading[1], 160);
+  const sourceDirectory = path.posix.dirname(sourcePath);
+  const content = rewriteLegacyFindingLinks(
+    normalized.replace(/^#\s+.+?\s*(?:\n|$)/, "").trim(),
+    sourceDirectory,
+  );
+  const id = availableSlug(legacyFindingId(sourcePath), existingIds);
+  const timestamp = new Date().toISOString();
+  return {
+    id,
+    kind: "finding",
+    title,
+    statement: content,
+    tags: normalizeTags(["finding", ...sourceDirectory.split("/").slice(1)]),
+    status: "confirmed",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    provenance: [
+      {
+        kind: "migration",
+        text: "Migrated from the legacy findings report without discarding its evidence.",
+        recordedAt: new Date().toISOString(),
+        source: sourcePath,
+      },
+    ],
+  };
+}
+function rewriteLegacyFindingLinks(content: string, sourceDirectory: string): string {
+  return content.replace(
+    /(!?\[[^\]]*\])\(([^)\s]+)(\s+[^)]*)?\)/g,
+    (match, label, target, suffix = "") => {
+      if (/^(?:[a-z]+:|\/|#)/i.test(target)) return match;
+      const resolved = path.posix.normalize(path.posix.join(sourceDirectory, target));
+      const fromFindingPage = ".otto/knowledge/findings";
+      const rewritten = path.posix.relative(fromFindingPage, resolved) || ".";
+      return `${label}(${rewritten}${suffix})`;
+    },
+  );
+}
 function singleLine(value: string, cap: number): string {
   return cleanText(value).replace(/\s+/g, " ").trim().slice(0, cap);
 }
@@ -1196,6 +1318,11 @@ function rewriteWikiLinks(markdown: string, idMap: ReadonlyMap<string, string>):
     return replacement ? `[[${replacement}${suffix}]]` : full;
   });
 }
+function removeWikiLinksTo(markdown: string, id: string): string {
+  return markdown.replace(/\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/g, (full, rawTarget) =>
+    String(rawTarget).trim() === id ? "" : full,
+  );
+}
 function isCanonicalPage(raw: string): boolean {
   return raw.replace(/\r\n/g, "\n").includes("\n<!-- compiled_truth -->\n");
 }
@@ -1222,10 +1349,10 @@ async function writeAtomic(target: string, contents: string): Promise<void> {
   await rename(temp, target);
 }
 function knowledgeProtocol(): string {
-  return "# Otto project knowledge\n\nKnowledge lives in this directory as rich Markdown. Every chat receives the active-page catalog, then reads relevant pages through Otto's project-knowledge tools. When a chat establishes durable knowledge that is not already recorded, capture it immediately through the matching tool and leave confirmation to the user. This includes decisions, constraints, requirements, architecture, project charters and delivery updates, and evaluated references. Project delivery status is separate from knowledge review status. Atomic pages use human slugs and [[wiki links]] to other atomic pages; the six writable root pages are background, architecture, flow, mindmap, stack, and roadmap. Do not hand-edit generated indexes. Every compiled-truth, project delivery, or reference evaluation update must include a reason, which Otto appends to the uncapped timeline.\n";
+  return "# Otto project knowledge\n\nKnowledge lives in this directory as rich Markdown. Every chat receives the active-page catalog, then reads relevant pages through Otto's project-knowledge tools. When a chat establishes durable knowledge that is not already recorded, capture it immediately through the matching tool and leave confirmation to the user. This includes decisions, constraints, requirements, architecture, measured findings, project charters and delivery updates, and evaluated references. Project delivery status is separate from knowledge review status. Atomic pages use human slugs and [[wiki links]] to other atomic pages; the six writable root pages are background, architecture, flow, mindmap, stack, and roadmap. Do not hand-edit generated indexes. Every compiled-truth, project delivery, or reference evaluation update must include a reason, which Otto appends to the uncapped timeline.\n";
 }
-function findFindings(records: ProjectKnowledgeRecord[]): ProjectKnowledgeFinding[] {
-  const findings: ProjectKnowledgeFinding[] = [];
+function findKnowledgeHealth(records: ProjectKnowledgeRecord[]): ProjectKnowledgeHealth[] {
+  const health: ProjectKnowledgeHealth[] = [];
   const confirmed = records.filter((record) => record.status === "confirmed");
   const comparable = confirmed.filter(
     (record) => record.kind !== "project" && record.kind !== "reference",
@@ -1233,7 +1360,7 @@ function findFindings(records: ProjectKnowledgeRecord[]): ProjectKnowledgeFindin
   const now = Date.now();
   for (const record of confirmed)
     if (now - Date.parse(record.updatedAt) > STALE_AFTER_MS)
-      findings.push({
+      health.push({
         kind: "stale",
         recordId: record.id,
         message: "Confirmed knowledge has not been reviewed in 180 days.",
@@ -1244,21 +1371,29 @@ function findFindings(records: ProjectKnowledgeRecord[]): ProjectKnowledgeFindin
   for (let index = 0; index < comparable.length; index += 1)
     for (const other of comparable.slice(index + 1)) {
       const record = comparable[index];
-      if (record.tags.some((tag) => other.tags.includes(tag)))
-        findings.push({
+      const recordTags = new Set(record.tags);
+      const otherTags = new Set(other.tags);
+      const sharedTags = [...recordTags].filter((tag) => otherTags.has(tag));
+      if (sharedTags.length > 0)
+        health.push({
           kind: "overlapping_tags",
           recordId: record.id,
           relatedRecordId: other.id,
+          tagOverlap:
+            recordTags.size === otherTags.size && sharedTags.length === recordTags.size
+              ? "complete"
+              : "partial",
+          sharedTags,
           message: "Confirmed records share tags and may overlap.",
         });
       const words = new Set(record.statement.toLowerCase().match(/[a-z0-9_-]{5,}/g) ?? []);
       if ([...words].filter((word) => other.statement.toLowerCase().includes(word)).length >= 3)
-        findings.push({
+        health.push({
           kind: "overlapping_statement",
           recordId: record.id,
           relatedRecordId: other.id,
           message: "Confirmed records have overlapping current truth; review them.",
         });
     }
-  return findings;
+  return health;
 }

@@ -55,7 +55,14 @@ export function useProjectKnowledge(
     status: "proposed" | "confirmed" | "superseded",
   ) => Promise<string | null>;
   createProposal: (input: {
-    kind: "decision" | "constraint" | "requirement" | "architecture" | "project" | "reference";
+    kind:
+      | "decision"
+      | "constraint"
+      | "requirement"
+      | "architecture"
+      | "finding"
+      | "project"
+      | "reference";
     title: string;
     statement: string;
     evidence?: string;
@@ -85,6 +92,7 @@ export function useProjectKnowledge(
     reason: string;
     expectedUpdatedAt: string;
   }) => Promise<string | null>;
+  deleteRecord: (input: { id: string; expectedUpdatedAt: string }) => Promise<string | null>;
 } {
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   const enabled = useProjectKnowledgeEnabled(serverId);
@@ -153,7 +161,14 @@ export function useProjectKnowledge(
   );
   const createProposal = useCallback(
     async (input: {
-      kind: "decision" | "constraint" | "requirement" | "architecture" | "project" | "reference";
+      kind:
+        | "decision"
+        | "constraint"
+        | "requirement"
+        | "architecture"
+        | "finding"
+        | "project"
+        | "reference";
       title: string;
       statement: string;
       evidence?: string;
@@ -234,6 +249,26 @@ export function useProjectKnowledge(
     },
     [client, reload, workspaceId],
   );
+  const deleteRecord = useCallback(
+    async (input: { id: string; expectedUpdatedAt: string }) => {
+      if (!client) return "Not connected.";
+      try {
+        const result = await client.deleteProjectKnowledge({
+          workspaceId,
+          id: input.id,
+          reason: "Deleted through Manage knowledge.",
+          expectedUpdatedAt: input.expectedUpdatedAt,
+        });
+        if (result.error) return result.error;
+        if (!result.deleted) return "Project knowledge was not deleted.";
+        reload();
+        return null;
+      } catch (cause) {
+        return cause instanceof Error ? cause.message : String(cause);
+      }
+    },
+    [client, reload, workspaceId],
+  );
   return useMemo(
     () => ({
       view,
@@ -246,9 +281,11 @@ export function useProjectKnowledge(
       updateTruth,
       updateProject,
       updateReference,
+      deleteRecord,
     }),
     [
       createProposal,
+      deleteRecord,
       error,
       loading,
       reload,

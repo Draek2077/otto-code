@@ -214,6 +214,88 @@ describe("ProjectKnowledgeService", () => {
     }
   });
 
+  it("separates identical tag sets from partial tag overlap in review findings", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "otto-project-knowledge-"));
+    try {
+      const knowledge = service(root);
+      await knowledge.record({
+        cwd: root,
+        kind: "decision",
+        title: "Primary record",
+        statement: "Primary durable knowledge statement.",
+        tags: ["knowledge", "review"],
+        status: "confirmed",
+      });
+      await knowledge.record({
+        cwd: root,
+        kind: "requirement",
+        title: "Same tags",
+        statement: "A distinct requirement statement.",
+        tags: ["review", "knowledge"],
+        status: "confirmed",
+      });
+      await knowledge.record({
+        cwd: root,
+        kind: "architecture",
+        title: "Some shared tags",
+        statement: "A distinct architecture statement.",
+        tags: ["knowledge", "architecture"],
+        status: "confirmed",
+      });
+
+      const tagFindings = (await knowledge.catalogView(root)).findings.filter(
+        (finding) => finding.kind === "overlapping_tags",
+      );
+      expect(tagFindings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            tagOverlap: "complete",
+            sharedTags: expect.arrayContaining(["knowledge", "review"]),
+          }),
+          expect.objectContaining({ tagOverlap: "partial", sharedTags: ["knowledge"] }),
+        ]),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("imports every legacy findings report as a normal finding record without deleting the source", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "otto-project-knowledge-"));
+    try {
+      const reportPath = path.join(root, "findings", "performance", "2026-08-11-runtime-cost.md");
+      await mkdir(path.dirname(reportPath), { recursive: true });
+      await writeFile(
+        reportPath,
+        "# Runtime cost investigation\n\n**Date:** 2026-08-11\n\nSee [the method](../../docs/method.md).\n",
+      );
+      const knowledge = service(root);
+
+      await expect(knowledge.importLegacyFindings(root)).resolves.toEqual({
+        imported: 1,
+        skipped: 0,
+      });
+      await expect(knowledge.importLegacyFindings(root)).resolves.toEqual({
+        imported: 0,
+        skipped: 1,
+      });
+
+      const finding = (await knowledge.list(root)).find((record) => record.kind === "finding");
+      expect(finding).toMatchObject({
+        title: "Runtime cost investigation",
+        status: "confirmed",
+      });
+      expect(finding?.statement).toContain("[the method](../../../docs/method.md)");
+      expect(finding?.provenance?.at(-1)).toMatchObject({
+        kind: "migration",
+        source: "findings/performance/2026-08-11-runtime-cost.md",
+      });
+      await expect(readFile(reportPath, "utf8")).resolves.toContain("Runtime cost investigation");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("creates and updates all six rich root pages and lints wiki links", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "otto-project-knowledge-"));
     try {
@@ -497,6 +579,18 @@ describe("ProjectKnowledgeService", () => {
         title: "Test",
         statement: "Test",
       });
+      const source = await knowledge.record({
+        cwd: root,
+        kind: "requirement",
+        title: "Source",
+        statement: `Current truth links [[${record.id}]] and [[${record.id}|with a label]].`,
+        evidence: `Historical evidence retains [[${record.id}]].`,
+      });
+      await knowledge.updateRoot({
+        cwd: root,
+        slug: "architecture",
+        body: `Current map links [[${record.id}#section]].`,
+      });
 
       expect(await knowledge.delete({ cwd: root, id: record.id, reason: "" })).toEqual({
         deleted: false,
@@ -519,6 +613,14 @@ describe("ProjectKnowledgeService", () => {
         }),
       ).toEqual({ deleted: true });
       expect(await knowledge.get(root, record.id, { includeInactive: true })).toBeNull();
+      expect(
+        (await knowledge.get(root, source.id, { includeInactive: true }))?.statement,
+      ).not.toContain(record.id);
+      expect((await knowledge.get(root, source.id, { includeInactive: true }))?.evidence).toContain(
+        `[[${record.id}]]`,
+      );
+      expect((await knowledge.getRoot(root, "architecture"))?.body).not.toContain(record.id);
+      expect(await knowledge.lintLinks(root)).toEqual([]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

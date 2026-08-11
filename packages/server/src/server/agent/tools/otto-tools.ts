@@ -3453,13 +3453,13 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         title: "Record project knowledge",
         description:
           "Record a durable project fact in the repository's shared knowledge store. Default to a proposal. Set " +
-          "confirmed only when the user explicitly made or confirmed the decision, requirement, or constraint. " +
+          "confirmed only when the user explicitly made or confirmed the record. Findings capture unresolved observations and do not imply a decision or remediation plan. " +
           "Use this proactively as soon as the chat establishes durable knowledge; do not wait for a separate request. " +
           "Do not record guesses, transient implementation details, secrets, or information that source code states plainly. " +
           "The catalog is injected automatically, while the rich page remains pull-on-demand. Use update_project_knowledge_truth for any later change to current truth, " +
           "because it atomically records the reason in the page timeline.",
         inputSchema: {
-          kind: z.enum(["decision", "constraint", "requirement", "architecture"]),
+          kind: z.enum(["finding", "decision", "constraint", "requirement", "architecture"]),
           id: z
             .string()
             .optional()
@@ -3497,6 +3497,24 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           content: [],
           structuredContent: ensureValidJson({ id: record.id, status: record.status }),
         };
+      },
+    );
+
+    registerTool(
+      "migrate_legacy_project_findings",
+      {
+        title: "Migrate legacy project findings",
+        description:
+          "Import every dated report under the repository's legacy findings/ tree as a confirmed first-class Knowledge finding. The import preserves the report body and migration provenance, rewrites relative links for the new location, and never deletes the source tree.",
+        inputSchema: {},
+        outputSchema: {
+          imported: z.number().int().nonnegative(),
+          skipped: z.number().int().nonnegative(),
+        },
+      },
+      async () => {
+        const result = await projectKnowledge.importLegacyFindings(requireProjectCwd());
+        return { content: [], structuredContent: ensureValidJson(result) };
       },
     );
 

@@ -8,6 +8,7 @@ export type ProjectKnowledgeKind =
   | "constraint"
   | "requirement"
   | "architecture"
+  | "finding"
   | "project"
   | "reference";
 export type ProjectKnowledgeStatus = "proposed" | "confirmed" | "superseded";
@@ -77,11 +78,16 @@ export interface ProjectKnowledgeRecord {
   path?: string;
 }
 
-export type ProjectKnowledgeFindingKind = "stale" | "overlapping_tags" | "overlapping_statement";
-export interface ProjectKnowledgeFinding {
-  kind: ProjectKnowledgeFindingKind;
+export type ProjectKnowledgeHealthKind = "stale" | "overlapping_tags" | "overlapping_statement";
+/** A review signal about the health of stored knowledge, not a persisted finding record. */
+export interface ProjectKnowledgeHealth {
+  kind: ProjectKnowledgeHealthKind;
   recordId: string;
   relatedRecordId?: string;
+  /** Present for tag-overlap findings so review UI can distinguish taxonomy from identical tag sets. */
+  tagOverlap?: "complete" | "partial";
+  /** The normalized tags both records share, when the finding concerns tags. */
+  sharedTags?: string[];
   message: string;
 }
 

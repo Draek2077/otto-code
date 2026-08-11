@@ -18,11 +18,13 @@ import {
   Checklist,
   FolderOpen,
   FolderTree,
+  Gavel,
   Lightbulb,
   Pencil,
   Search,
   Shield,
   SquarePen,
+  Trash2,
 } from "@/components/icons/material-icons";
 import { Button } from "@/components/ui/button";
 import { PageLoading } from "@/components/ui/page-loading";
@@ -34,7 +36,7 @@ import { ToolbarSeparator } from "@/components/ui/toolbar-separator";
 import { isWeb } from "@/constants/platform";
 import { useAnimationsEnabled } from "@/hooks/use-animations-enabled";
 import { usePaneContext } from "@/panels/pane-context";
-import { confirmDialog } from "@/utils/confirm-dialog";
+import { alertDialog, confirmDialog } from "@/utils/confirm-dialog";
 import {
   useProjectKnowledge,
   type ProjectDeliveryStatus,
@@ -68,7 +70,7 @@ export function ProjectKnowledgePanel(): ReactElement {
   const [title, setTitle] = useState("");
   const [statement, setStatement] = useState("");
   const [kind, setKind] = useState<
-    "decision" | "constraint" | "requirement" | "architecture" | "project" | "reference"
+    "decision" | "constraint" | "requirement" | "architecture" | "finding" | "project" | "reference"
   >("decision");
   const [evidence, setEvidence] = useState("");
   const [tags, setTags] = useState("");
@@ -175,12 +177,17 @@ export function ProjectKnowledgePanel(): ReactElement {
   } else if (selected) {
     document = recordMarkdown(
       selected,
+      knowledge.view?.records ?? [],
       knowledge.view?.findings.filter(
         (finding) => finding.recordId === selected.id || finding.relatedRecordId === selected.id,
       ) ?? [],
     );
   }
   const markdownPath = selectedRoot?.path ?? knowledgePathForRecord(selected);
+  let documentIdentity = "";
+  if (selectedRoot) documentIdentity = `Knowledge root · ${selectedRoot.slug}`;
+  else if (selected)
+    documentIdentity = `${recordStatusLabel(selected)} · Updated ${new Date(selected.updatedAt).toLocaleDateString()}`;
   const openMarkdown = useCallback(() => {
     if (!markdownPath) return;
     openFileInWorkspace({ location: { path: markdownPath }, disposition: "main" });
@@ -202,6 +209,21 @@ export function ProjectKnowledgePanel(): ReactElement {
     },
     [knowledge, selected],
   );
+  const deleteRecord = useCallback(async () => {
+    if (!selected) return;
+    const confirmed = await confirmDialog({
+      title: "Delete project knowledge?",
+      message: `Delete “${selected.title}” permanently? Its Markdown page and recorded history will be removed. This cannot be undone.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!confirmed) return;
+    const error = await knowledge.deleteRecord({
+      id: selected.id,
+      expectedUpdatedAt: selected.updatedAt,
+    });
+    if (error) await alertDialog({ title: "Unable to delete project knowledge", message: error });
+  }, [knowledge, selected]);
   const startCreate = useCallback(() => {
     if (scope === "projects") setKind("project");
     else if (scope === "references") setKind("reference");
@@ -368,6 +390,7 @@ export function ProjectKnowledgePanel(): ReactElement {
               value={kind}
               onValueChange={setKind}
               options={[
+                { value: "finding", label: "Finding" },
                 { value: "decision", label: "Decision" },
                 { value: "constraint", label: "Constraint" },
                 { value: "requirement", label: "Requirement" },
@@ -630,7 +653,10 @@ export function ProjectKnowledgePanel(): ReactElement {
   } else if (selected) {
     viewer = (
       <View style={styles.documentContent}>
-        <Text style={styles.documentContentTitle}>{selected.title}</Text>
+        <View style={styles.documentContentTitleRow}>
+          <ThemedArticleKnowledgeKindIcon kind={selected.kind} />
+          <Text style={styles.documentContentTitle}>{selected.title}</Text>
+        </View>
         <MarkdownRenderer text={document} remoteImages="altText" />
       </View>
     );
@@ -754,11 +780,7 @@ export function ProjectKnowledgePanel(): ReactElement {
         {selectedRoot || selected ? (
           <View style={styles.documentHeader}>
             <View style={styles.documentIdentity}>
-              <Text style={styles.muted}>
-                {selectedRoot
-                  ? `Knowledge root · ${selectedRoot.slug}`
-                  : `${recordStatusLabel(selected!)} · Updated ${new Date(selected!.updatedAt).toLocaleDateString()}`}
-              </Text>
+              <Text style={styles.muted}>{documentIdentity}</Text>
             </View>
             <View style={styles.documentToolbar}>
               {markdownPath ? (
@@ -813,6 +835,13 @@ export function ProjectKnowledgePanel(): ReactElement {
                       onPress={() => void setStatus("superseded")}
                     />
                   ) : null}
+                  <ToolbarIconButton
+                    label={purgeLabel(selected.kind)}
+                    Icon={ThemedTrash2}
+                    onPress={() => void deleteRecord()}
+                    tone="destructive"
+                    testID="project-knowledge-delete"
+                  />
                 </>
               ) : null}
             </View>
@@ -836,6 +865,9 @@ export function ProjectKnowledgePanel(): ReactElement {
 type KnowledgeRecord = NonNullable<
   ReturnType<typeof useProjectKnowledge>["view"]
 >["records"][number];
+type KnowledgeFinding = NonNullable<
+  ReturnType<typeof useProjectKnowledge>["view"]
+>["findings"][number];
 
 function KnowledgeRecordRow({
   record,
@@ -880,14 +912,20 @@ function KnowledgeKindIcon({
   color: string;
 }): ReactElement {
   if (kind === "architecture") return <Architecture size={size} color={color} />;
+  if (kind === "decision") return <Gavel size={size} color={color} />;
   if (kind === "constraint") return <Shield size={size} color={color} />;
   if (kind === "requirement") return <Checklist size={size} color={color} />;
+  if (kind === "finding") return <Lightbulb size={size} color={color} />;
   if (kind === "project") return <FolderTree size={size} color={color} />;
   if (kind === "reference") return <BookOpen size={size} color={color} />;
-  return <Lightbulb size={size} color={color} />;
+  return <Gavel size={size} color={color} />;
 }
 const ThemedKnowledgeKindIcon = withUnistyles(KnowledgeKindIcon, (theme) => ({
   color: theme.colors.foregroundMuted,
+}));
+const ThemedArticleKnowledgeKindIcon = withUnistyles(KnowledgeKindIcon, (theme) => ({
+  color: theme.colors.foregroundMuted,
+  size: theme.iconSize.xl,
 }));
 const ThemedArchive = withUnistyles(Archive);
 const ThemedCheck = withUnistyles(Check);
@@ -895,6 +933,7 @@ const ThemedFolderOpen = withUnistyles(FolderOpen);
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedSearch = withUnistyles(Search);
 const ThemedSquarePen = withUnistyles(SquarePen);
+const ThemedTrash2 = withUnistyles(Trash2);
 const ThemedTextInput = withUnistyles(TextInput);
 
 const searchIconProps = (theme: {
@@ -912,7 +951,11 @@ function knowledgePathForRecord(record: KnowledgeRecord | null): string | null {
   if (!record) return null;
   return record.path ?? `.otto/knowledge/${record.kind}s/${record.id}.md`;
 }
-function recordMarkdown(record: KnowledgeRecord, findings: readonly { message: string }[]): string {
+function recordMarkdown(
+  record: KnowledgeRecord,
+  records: readonly KnowledgeRecord[],
+  findings: readonly KnowledgeFinding[],
+): string {
   let operational = "";
   if (record.kind === "project") {
     const progress = record.progress
@@ -923,7 +966,50 @@ function recordMarkdown(record: KnowledgeRecord, findings: readonly { message: s
     const source = record.sourceUrl ? `[${record.sourceUrl}](${record.sourceUrl})` : "Not recorded";
     operational = `\n\n## Reference\n\n- Evaluation: **${formatMetadataLabel(record.referenceDisposition ?? "unevaluated")}**\n- Source: ${source}`;
   }
-  return `## Current understanding\n\n${record.statement}${operational}\n\n## Evidence\n\n${record.evidence || "No evidence recorded."}\n\n## Tags\n\n${record.tags.map((tag) => `\`${tag}\``).join(" ") || "None"}\n\n## Timeline\n\n${record.provenance?.map((entry) => `- ${entry.recordedAt} [${entry.kind ?? "note"}]: ${entry.text}${entry.source ? ` (${entry.source})` : ""}`).join("\n") || "No timeline recorded."}\n\n## Review signals\n\n${findings.map((finding) => `- ${finding.message}`).join("\n") || "No current signals."}`;
+  return `## Current understanding\n\n${record.statement}${operational}\n\n## Evidence\n\n${record.evidence || "No evidence recorded."}\n\n## Tags\n\n${record.tags.map((tag) => `\`${tag}\``).join(" ") || "None"}\n\n## Timeline\n\n${record.provenance?.map((entry) => `- ${entry.recordedAt} [${entry.kind ?? "note"}]: ${entry.text}${entry.source ? ` (${entry.source})` : ""}`).join("\n") || "No timeline recorded."}\n\n${reviewSignalsMarkdown(record, records, findings)}`;
+}
+
+function reviewSignalsMarkdown(
+  record: KnowledgeRecord,
+  records: readonly KnowledgeRecord[],
+  findings: readonly KnowledgeFinding[],
+): string {
+  const byId = new Map(records.map((candidate) => [candidate.id, candidate]));
+  let identicalTagSets = 0;
+  let partialTagOverlap = 0;
+  let overlappingTruth = 0;
+  let stale = 0;
+  for (const finding of findings) {
+    if (finding.kind === "stale") {
+      stale += 1;
+      continue;
+    }
+    if (finding.kind === "overlapping_statement") {
+      overlappingTruth += 1;
+      continue;
+    }
+    const related = finding.relatedRecordId ? byId.get(finding.relatedRecordId) : undefined;
+    const other = related?.id === record.id ? byId.get(finding.recordId) : related;
+    const complete =
+      finding.tagOverlap === "complete" ||
+      (!finding.tagOverlap &&
+        other &&
+        record.tags.length === other.tags.length &&
+        record.tags.every((tag) => other.tags.includes(tag)));
+    if (complete) identicalTagSets += 1;
+    else partialTagOverlap += 1;
+  }
+  const bullets = [
+    identicalTagSets > 0 ? `- **${identicalTagSets}** records share the complete tag set.` : "",
+    partialTagOverlap > 0
+      ? `- **${partialTagOverlap}** records share one or more, but not all, tags.`
+      : "",
+    overlappingTruth > 0
+      ? `- **${overlappingTruth}** records have potentially overlapping current truth.`
+      : "",
+    stale > 0 ? `- **${stale}** stale-review signals.` : "",
+  ].filter(Boolean);
+  return `## Review signals\n\n${bullets.join("\n") || "No current signals."}`;
 }
 function rootDocumentBody(body: string): string {
   return body.replace(/^---\s*\r?\n[\s\S]*?\r?\n---\s*\r?\n?/, "").replace(/^# [^\r\n]+\r?\n+/, "");
@@ -934,6 +1020,11 @@ function recordStatusLabel(record: KnowledgeRecord): string {
   if (record.kind === "reference")
     return `${formatMetadataLabel(record.kind)} · ${formatMetadataLabel(record.referenceDisposition ?? "unevaluated")} · ${formatMetadataLabel(record.status)}`;
   return `${formatMetadataLabel(record.kind)} · ${formatMetadataLabel(record.status)}`;
+}
+function purgeLabel(kind: KnowledgeRecord["kind"]): string {
+  if (kind === "project") return "Purge project";
+  if (kind === "reference") return "Purge reference";
+  return "Purge knowledge";
 }
 function recordMatchesScope(
   kind: KnowledgeRecord["kind"],
@@ -1130,13 +1221,20 @@ const styles = StyleSheet.create((theme) => ({
   documentCanvas: { flex: 1, minHeight: 0, backgroundColor: theme.colors.surfaceCode },
   viewerContent: { padding: theme.spacing[6], maxWidth: 920 },
   documentContent: { gap: 0 },
-  documentContentTitle: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.xl,
-    fontWeight: theme.fontWeight.medium,
+  documentContentTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[3],
     paddingBottom: theme.spacing[2],
     borderBottomWidth: 2,
     borderBottomColor: theme.colors.foreground,
+  },
+  documentContentTitle: {
+    flex: 1,
+    minWidth: 0,
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.xl,
+    fontWeight: theme.fontWeight.medium,
   },
   documentHeader: {
     flexDirection: "row",

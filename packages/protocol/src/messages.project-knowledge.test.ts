@@ -24,6 +24,20 @@ describe("project knowledge protocol", () => {
     ).toBe(statement);
   });
 
+  it("accepts an unresolved finding as a normal knowledge kind", () => {
+    expect(
+      ProjectKnowledgeCreateRequestMessageSchema.safeParse({
+        type: "project.knowledge.create.request",
+        requestId: "request-finding",
+        workspaceId: "workspace-1",
+        kind: "finding",
+        title: "Unexpected retry burst",
+        statement:
+          "We observed the burst but do not yet know its cause or whether it needs action.",
+      }).success,
+    ).toBe(true);
+  });
+
   it("keeps old records parseable while allowing timeline metadata and paths", () => {
     const base = {
       id: "daemon-owns-memory",
@@ -79,6 +93,21 @@ describe("project knowledge protocol", () => {
         sourceUrl: "https://example.test/brain-md",
         createdAt: "2026-08-07T00:00:00.000Z",
         updatedAt: "2026-08-07T00:00:00.000Z",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("supports finding records without narrowing older record shapes", () => {
+    expect(
+      ProjectKnowledgeRecordSchema.safeParse({
+        id: "finding-runtime-cost",
+        kind: "finding",
+        title: "Runtime cost investigation",
+        statement: "Measured evidence.",
+        tags: ["finding", "performance"],
+        status: "confirmed",
+        createdAt: "2026-08-11T00:00:00.000Z",
+        updatedAt: "2026-08-11T00:00:00.000Z",
       }).success,
     ).toBe(true);
   });

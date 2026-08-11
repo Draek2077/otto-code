@@ -41,12 +41,15 @@ const mutedIconColorMapping = (theme: Theme) => ({ color: theme.colors.foregroun
 // solid accent chip is taller than the icon buttons beside it and would break
 // the pinned toolbar height it sits in.
 const accentIconColorMapping = (theme: Theme) => ({ color: theme.colors.accent });
+const destructiveIconColorMapping = (theme: Theme) => ({ color: theme.colors.destructive });
 
 /**
  * `accent` marks the toolbar's primary action. At most one per toolbar - the
  * tint only means "this is the one" while nothing else is competing for it.
+ * `destructive` marks an irreversible action without turning it into a filled
+ * button that would disrupt the toolbar's compact geometry.
  */
-export type ToolbarIconButtonTone = "default" | "accent";
+export type ToolbarIconButtonTone = "default" | "accent" | "destructive";
 
 export function ToolbarIconButton({
   label,
@@ -139,6 +142,9 @@ function resolveIconMapping({
   }
   if (tone === "accent") {
     return accentIconColorMapping;
+  }
+  if (tone === "destructive") {
+    return destructiveIconColorMapping;
   }
   return selected ? selectedIconColorMapping : mutedIconColorMapping;
 }
