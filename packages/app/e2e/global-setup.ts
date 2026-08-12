@@ -110,13 +110,33 @@ function sleep(ms: number): Promise<void> {
 // compile outside every test's clock; it costs nothing net, since the first
 // navigation would have paid it anyway.
 async function warmMetroWebBundle(input: { metroPort: number; timeoutMs: number }): Promise<void> {
+  const start = Date.now();
+  console.log(`[e2e] Warming Metro web bundle on port ${input.metroPort}...`);
   const browser = await chromium.launch({ channel: process.env.E2E_BROWSER_CHANNEL });
   try {
     const page = await browser.newPage();
-    await page.goto(`http://localhost:${input.metroPort}/`, {
-      waitUntil: "load",
-      timeout: input.timeoutMs,
-    });
+    const deadline = Date.now() + input.timeoutMs;
+    while (Date.now() < deadline) {
+      try {
+        const resp = await page.goto(`http://localhost:${input.metroPort}/`, {
+          waitUntil: "domcontentloaded",
+          timeout: 10_000,
+        });
+        if (resp?.status() !== 200) {
+          await page.waitForTimeout(500);
+          continue;
+        }
+        const body = await page.content();
+        if (body && body.length > 0) {
+          console.log(`[e2e] Metro warm-up succeeded in ${Date.now() - start}ms`);
+          return;
+        }
+      } catch {
+        // ignore transient errors and retry
+      }
+      await page.waitForTimeout(500);
+    }
+    throw new Error("Metro warm-up timed out");
   } finally {
     await browser.close();
   }
@@ -1129,7 +1149,8 @@ export default async function globalSetup() {
       getRecentOutput: daemonLineBuffer.dump,
     });
 
-    await warmMetroWebBundle({ metroPort, timeoutMs: 180000 });
+    await warmMetroWebBundle({ metroPort, timeoutMs: 240000 });
+    console.log(`[e2e] Global setup complete at ${new Date().toISOString()}`);
 
     const offer = await waitForPairingOfferFromDaemon({
       port,
