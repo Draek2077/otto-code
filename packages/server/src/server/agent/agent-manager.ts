@@ -346,6 +346,12 @@ export type AgentAttentionCallback = (params: {
   reason: "finished" | "error" | "permission";
 }) => void;
 
+/** `/compact` only changes the conversation's internal context. It is not an
+ * assistant reply and must not create an unread/notification completion. */
+function isCompactCommand(prompt: AgentPromptInput): boolean {
+  return typeof prompt === "string" && /^\/compact(?:\s|$)/i.test(prompt.trim());
+}
+
 export type AgentArchivedCallback = (agentId: string) => Promise<void> | void;
 
 export interface ProviderAvailability {
@@ -1409,6 +1415,8 @@ export class AgentManager {
   // read by the Otto tools for the notify-on-finish default.
   private agentBehaviors: AgentBehaviorSettings;
   private onAgentAttention?: AgentAttentionCallback;
+  /** Foreground turns whose idle transition is intentionally silent. */
+  private readonly silentCompletionTurnIds = new Map<string, string>();
   private isAgentActivelyWatched?: (agentId: string) => boolean;
   private onAgentArchived?: AgentArchivedCallback;
   private onWorkspaceStateMayHaveChanged?: (params: { cwd: string }) => void;
@@ -3684,6 +3692,7 @@ export class AgentManager {
     // has an open todo list. Stripped from the recorded user message for display
     // (normalizeUserMessageForDisplay); the provider still sees it this turn.
     const effectivePrompt = this.maybeAppendTodoNudge(agent, prompt);
+    const isCompact = isCompactCommand(prompt);
 
     const pendingRun = this.foregroundRuns.createPendingRun(agentId);
 
@@ -3707,6 +3716,11 @@ export class AgentManager {
 
       pendingRun.started = true;
       agent.activeForegroundTurnId = turnId;
+      if (isCompact) {
+        this.silentCompletionTurnIds.set(agentId, turnId);
+      } else {
+        this.silentCompletionTurnIds.delete(agentId);
+      }
       // Cleared here, not when the run was requested: between the old turn
       // being cancelled and this one becoming current there is a gap in which
       // the old turn's terminal event can still arrive. The flag is what stops
@@ -6991,6 +7005,11 @@ export class AgentManager {
 
     // Check if agent transitioned from running to idle (finished)
     if (previousStatus === "running" && currentStatus === "idle") {
+      const silentTurnId = this.silentCompletionTurnIds.get(agent.id);
+      if (silentTurnId !== undefined) {
+        this.silentCompletionTurnIds.delete(agent.id);
+        return;
+      }
       agent.attention = {
         requiresAttention: true,
         attentionReason: "finished",

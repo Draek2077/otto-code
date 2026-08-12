@@ -212,6 +212,7 @@ export interface ModelEntry {
   id: string;
   /** Brain's editable human-facing name; `id` remains the stable model key. */
   name: string;
+  family?: string;
   object: "model";
   created: number;
   owned_by: string;
@@ -251,6 +252,7 @@ export function describeModel(
     // OpenAI-compatible clients send `id`; Otto uses `name` for presentation.
     id: model.id,
     name: model.displayName,
+    ...(model.family ? { family: model.family } : {}),
     object: "model",
     created: Math.floor((createdAt ? createdAt.getTime() : Date.now()) / 1000),
     owned_by: model.publisher || "local",
@@ -261,7 +263,14 @@ export function describeModel(
     compatibility_type: "gguf",
     quantization: model.quant || null,
     state,
-    max_context_length: md.contextLength ?? null,
+    // The GGUF header remains the native limit, but an actively loaded YaRN
+    // profile intentionally extends the server's usable maximum. Publish that
+    // effective ceiling so OpenAI-compatible clients do not reject a context
+    // that this very llama-server instance has been configured to accept.
+    max_context_length:
+      typeof md.contextLength === "number"
+        ? md.contextLength * (profile?.contextMultiplier ?? 1)
+        : null,
     // GGUF template detection is deliberately conservative. A false result
     // means "not detected", not proof that a catalog-marked reasoner is not
     // one, so preserve the catalog's positive capability metadata.
@@ -748,7 +757,12 @@ export function createRouter({
   getResources = null,
   statusEvents = null,
 }: RouterOptions): (req: http.IncomingMessage, res: http.ServerResponse) => void {
-  const agent = new http.Agent({ keepAlive: true, maxSockets: 32 });
+  // llama-server may close an idle response socket while this scheduler holds
+  // the next request in queue. A reused keep-alive socket then fails as
+  // ECONNRESET ("socket hang up") before the queued request reaches inference.
+  // Inference time dwarfs localhost connection setup, so isolate each request
+  // instead of letting a second client inherit a stale upstream connection.
+  const agent = new http.Agent({ keepAlive: false, maxSockets: 32 });
   const scheduler = loadModel
     ? new Scheduler({
         supervisor,

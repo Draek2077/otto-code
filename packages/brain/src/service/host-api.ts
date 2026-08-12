@@ -165,6 +165,8 @@ export interface HostApiDeps {
 export interface InventoryRow {
   id: string;
   displayName: string;
+  /** Curated model-family identity for the Otto Brain client glyph. */
+  family: string | null;
   publisher: string | null;
   quant: string | null;
   sizeBytes: number;
@@ -227,6 +229,7 @@ export function buildInventoryRow(params: {
   return {
     id: model.id,
     displayName: model.displayName,
+    family: model.family ?? null,
     publisher: model.publisher ?? null,
     quant: model.quant,
     sizeBytes: model.sizeBytes,
@@ -382,9 +385,10 @@ export function createHostApi(deps: HostApiDeps): HostApi {
     const profile = forModel(store, model, deps.getProfileDefaults());
     sendJson(res, {
       profile,
-      fields: profileFieldDescriptors(model),
+      fields: profileFieldDescriptors(model, profile),
       warnings: profileWarnings(profile, model, store),
       calibration: calibrationInfo(store, model, profile),
+      requiresRestart: store.pendingReloadModelIds[model.id] === true,
     });
   };
 
@@ -403,7 +407,13 @@ export function createHostApi(deps: HostApiDeps): HostApi {
           const store = deps.getProfilesStore();
           const current = forModel(store, model, deps.getProfileDefaults());
           const { profile, adjustments } = sanitizeProfilePatch(current, result.body, model);
-          deps.saveProfiles(put(store, model, profile));
+          put(store, model, profile);
+          // A setting is only unapplied when it was changed on the currently
+          // resident model. Edits to an unloaded model take effect naturally
+          // when it is next loaded and do not earn a misleading reload badge.
+          const requiresRestart = deps.supervisor.model?.id === model.id;
+          if (requiresRestart) store.pendingReloadModelIds[model.id] = true;
+          deps.saveProfiles(store);
 
           // Return the recomputed budget so an edit costs one round trip rather
           // than a write followed by a read the UI has to sequence.
@@ -414,13 +424,14 @@ export function createHostApi(deps: HostApiDeps): HostApi {
             : null;
           sendJson(res, {
             profile,
+            fields: profileFieldDescriptors(model, profile),
             adjustments,
             warnings: profileWarnings(profile, model, store),
             calibration: calibrationInfo(store, model, profile),
             budget: options ? vram.budget(options) : null,
             maxContextThatFits: options ? vram.maxContextThatFits(options) : null,
             /** True when the running model is the one just edited: a restart applies it. */
-            requiresRestart: deps.supervisor.model?.id === model.id,
+            requiresRestart,
           });
         } catch (error) {
           sendError(res, 400, errorMessage(error));

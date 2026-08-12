@@ -75,6 +75,7 @@ export const MAX_PARALLEL_SLOTS = 16;
 export const MAX_GPU_LAYERS = 999;
 export const MIN_CONTEXT_SIZE = 1024;
 export const CONTEXT_STEP = 8192;
+export const CONTEXT_MULTIPLIERS = [1, 2, 4];
 
 /** The context ceiling: the model's native window, or a generous bound if unknown. */
 export function nativeContextLimit(model: Model | null): number {
@@ -82,20 +83,36 @@ export function nativeContextLimit(model: Model | null): number {
   return typeof native === "number" && native > 0 ? native : 1_000_000;
 }
 
+export function contextLimit(model: Model | null, multiplier = 1): number {
+  return nativeContextLimit(model) * multiplier;
+}
+
 /** The editable fields, resolved against one model's capabilities. */
-export function profileFieldDescriptors(model: Model | null): ProfileFieldDescriptor[] {
+export function profileFieldDescriptors(
+  model: Model | null,
+  profile?: Profile | null,
+): ProfileFieldDescriptor[] {
   const projector = model?.components?.find((component) => component.role === "vision_projector");
   const hasProjector = model?.components
     ? Boolean(projector?.available)
     : Boolean(model?.mmprojPath);
   const fields: ProfileFieldDescriptor[] = [
     {
+      key: "contextMultiplier",
+      label: "Context multiplier",
+      kind: "cycle",
+      options: CONTEXT_MULTIPLIERS,
+      optionLabels: ["Off", "2× (YaRN)", "4× (YaRN)"],
+      available: Boolean(model?.metadata?.contextLength),
+      ...(model?.metadata?.contextLength ? {} : { unavailableReason: "native context unknown" }),
+    },
+    {
       key: "contextSize",
       label: "Context",
       kind: "number",
       step: CONTEXT_STEP,
       min: MIN_CONTEXT_SIZE,
-      max: nativeContextLimit(model),
+      max: contextLimit(model, profile?.contextMultiplier ?? 1),
       available: true,
     },
     {
@@ -212,6 +229,15 @@ export function profileWarnings(
     });
   }
 
+  if (profile.contextMultiplier > 1) {
+    warnings.push({
+      field: "contextMultiplier",
+      severity: "warn",
+      message: `YaRN ×${profile.contextMultiplier} extrapolates beyond the native context. Recalibrate before relying on this profile.`,
+      blocksStart: false,
+    });
+  }
+
   if (model && store && hasStaleCalibration(store, model, profile)) {
     warnings.push({
       field: "cacheTypeK",
@@ -324,7 +350,14 @@ export function sanitizeProfilePatch(
     (next as Record<string, unknown>)[key] = value;
   };
 
-  takeNumber("contextSize", MIN_CONTEXT_SIZE, nativeContextLimit(model));
+  if ("contextMultiplier" in p) {
+    const raw = p.contextMultiplier;
+    if (typeof raw !== "number" || !CONTEXT_MULTIPLIERS.includes(raw)) {
+      throw new Error("contextMultiplier must be one of 1, 2, or 4");
+    }
+    next.contextMultiplier = raw;
+  }
+  takeNumber("contextSize", MIN_CONTEXT_SIZE, contextLimit(model, next.contextMultiplier));
   takeCacheType("cacheTypeK");
   takeCacheType("cacheTypeV");
   takeBoolean("flashAttention");

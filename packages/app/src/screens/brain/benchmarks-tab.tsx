@@ -49,10 +49,11 @@ const ThemedSpinner = withUnistyles(LoadingSpinner, (theme) => ({
 const ThemedMedal = withUnistyles(Medal);
 const ThemedX = withUnistyles(X);
 
-// Same box the Calibrate/Sweep job status uses (models-tab.tsx): a spinner,
-// not a status color, is what says "running" here.
-const smallIcon = (theme: Theme) => ({ color: theme.colors.foreground, size: theme.iconSize.sm });
-const cancelIcon = <ThemedX uniProps={smallIcon} />;
+const dangerIcon = (theme: Theme) => ({
+  color: theme.colors.palette.red[500],
+  size: theme.iconSize.sm,
+});
+const cancelIcon = <ThemedX uniProps={dangerIcon} />;
 
 const EVALS_POLL_MS = 10_000;
 const JOBS_POLL_MS = 2000;
@@ -1132,6 +1133,44 @@ function RunListRow({
   );
 }
 
+/** A bench job is a run in progress, so it belongs beside the completed runs. */
+function RunningBenchmarkRow({
+  job,
+  showModel,
+  columns,
+  onCancel,
+}: {
+  job: BrainJob;
+  showModel: boolean;
+  columns: VisibleRunColumns;
+  onCancel: () => void;
+}) {
+  return (
+    <View style={styles.row} testID="brain-running-bench-row">
+      {showModel ? <Text style={styles.runCellModel}>Benchmark</Text> : null}
+      <View style={styles.runCellConfig}>
+        <ThemedSpinner size={10} />
+        <Text style={styles.runCellConfigText} numberOfLines={ONE_LINE}>
+          {job.message ? `Running: ${job.message}` : "Running..."}
+        </Text>
+      </View>
+      {columns.ran ? <Text style={styles.runCellRan}>Now</Text> : null}
+      <View style={styles.runCellAction}>
+        <Button
+          variant="ghost"
+          size="xs"
+          leftIcon={cancelIcon}
+          onPress={onCancel}
+          accessibilityLabel="Cancel benchmark"
+          testID="brain-bench-cancel"
+        />
+      </View>
+      {columns.count ? <Text style={styles.runCellCount}>—</Text> : null}
+      {columns.spread ? <Text style={styles.runCellSpread}>—</Text> : null}
+    </View>
+  );
+}
+
 /**
  * Every run, or one model's runs, with its configuration spelled out.
  *
@@ -1144,6 +1183,8 @@ function RunsTable({
   showModel,
   selectedKey,
   latestKey,
+  runningJob,
+  onCancelRunning,
   onSelect,
   fill = false,
 }: {
@@ -1152,6 +1193,8 @@ function RunsTable({
   selectedKey: string | null;
   /** The run the detail pane pins, so the list can mark it. */
   latestKey: string | null;
+  runningJob: BrainJob | null;
+  onCancelRunning: () => void;
   onSelect: (run: LatestRun) => void;
   /** Desktop's split sidebar gives both tables equal remaining height. */
   fill?: boolean;
@@ -1223,6 +1266,14 @@ function RunsTable({
           scrollEventThrottle={16}
           showsVerticalScrollIndicator={isNative}
         >
+          {runningJob ? (
+            <RunningBenchmarkRow
+              job={runningJob}
+              showModel={showModel}
+              columns={columns}
+              onCancel={onCancelRunning}
+            />
+          ) : null}
           {entries.map((entry) => (
             <RunListRow
               key={entry.run.key}
@@ -1420,6 +1471,8 @@ function LeaderboardPanes({
   canRun,
   starting,
   running,
+  runningJob,
+  onCancelRunning,
   onRun,
   rows,
   runEntries,
@@ -1436,6 +1489,8 @@ function LeaderboardPanes({
   canRun: boolean;
   starting: boolean;
   running: boolean;
+  runningJob: BrainJob | null;
+  onCancelRunning: () => void;
   onRun: () => void;
   rows: RankedRow[];
   runEntries: RunListEntry[];
@@ -1472,6 +1527,8 @@ function LeaderboardPanes({
       // Only meaningful once the list is one model's: across every model the
       // newest row is just the newest benchmark anybody ran, not a reference.
       latestKey={selected ? (latest?.run.key ?? null) : null}
+      runningJob={runningJob}
+      onCancelRunning={onCancelRunning}
       onSelect={onSelectRun}
       fill={!isCompact}
     />
@@ -1867,58 +1924,25 @@ export function BrainBenchmarksTab({
   return (
     <View style={styles.container}>
       {startError ? <Alert variant="error" description={startError} /> : null}
-      {runningBench ? (
-        <View style={styles.jobStatus} testID="brain-bench-job-status">
-          <ThemedSpinner size="small" />
-          <View style={styles.jobStatusText}>
-            <Text style={styles.jobStatusRunning}>Benchmark running</Text>
-            {runningBench.message ? (
-              <Text style={styles.jobStatusDetail} numberOfLines={2}>
-                {runningBench.message}
-              </Text>
-            ) : null}
-          </View>
-          <Button variant="ghost" size="sm" leftIcon={cancelIcon} onPress={handleCancelBench}>
-            Cancel
-          </Button>
-        </View>
-      ) : null}
-
-      {rankings.length === 0 ? (
-        <View style={styles.emptyState}>
-          <BenchmarkToolbar
-            runCount={evals?.runCount ?? 0}
-            canRun={manageSupported && canRunJobs}
-            starting={starting}
-            running={runningBench !== null}
-            onRun={handleRun}
-          />
-          <View style={styles.centered}>
-            <Text style={styles.empty}>No benchmark runs yet</Text>
-            <Text style={styles.emptyHint}>
-              Run the suite to rank the models installed on this host.
-            </Text>
-          </View>
-        </View>
-      ) : (
-        <LeaderboardPanes
-          runCount={evals?.runCount ?? 0}
-          canRun={manageSupported && canRunJobs}
-          starting={starting}
-          running={runningBench !== null}
-          onRun={handleRun}
-          rows={rankings}
-          runEntries={runEntries}
-          selected={selected}
-          latest={latest}
-          compared={compared}
-          selectedRunKey={selectedRunKey}
-          spreadFor={spreadFor}
-          onSelectModel={handleSelectModel}
-          onSelectRun={handleSelectRun}
-          onBack={handleBack}
-        />
-      )}
+      <LeaderboardPanes
+        runCount={evals?.runCount ?? 0}
+        canRun={manageSupported && canRunJobs}
+        starting={starting}
+        running={runningBench !== null}
+        runningJob={runningBench}
+        onRun={handleRun}
+        onCancelRunning={handleCancelBench}
+        rows={rankings}
+        runEntries={runEntries}
+        selected={selected}
+        latest={latest}
+        compared={compared}
+        selectedRunKey={selectedRunKey}
+        spreadFor={spreadFor}
+        onSelectModel={handleSelectModel}
+        onSelectRun={handleSelectRun}
+        onBack={handleBack}
+      />
     </View>
   );
 }
@@ -1928,31 +1952,6 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     gap: theme.spacing[3],
     minHeight: 0,
-  },
-  // Matches the Calibrate/Sweep job status row in models-tab.tsx: a spinner
-  // and plain text, not a colored status alert.
-  jobStatus: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    padding: theme.spacing[3],
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface1,
-  },
-  jobStatusText: {
-    flex: 1,
-    gap: theme.spacing[1],
-  },
-  jobStatusRunning: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.foreground,
-    fontWeight: theme.fontWeight.medium,
-  },
-  jobStatusDetail: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.foregroundMuted,
   },
   centered: {
     paddingVertical: theme.spacing[12],
@@ -2001,10 +2000,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   compactStack: {
     gap: theme.spacing[2],
-  },
-  emptyState: {
-    flex: 1,
-    minHeight: 0,
   },
   sectionLabel: {
     fontSize: theme.fontSize.sm,
@@ -2246,6 +2241,10 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: theme.fontFamily.mono,
     fontSize: theme.fontSize.code,
     color: theme.colors.foreground,
+  },
+  runCellAction: {
+    ...RUN_COLUMN.score,
+    alignItems: "flex-end",
   },
   runCellCount: {
     ...RUN_COLUMN.count,

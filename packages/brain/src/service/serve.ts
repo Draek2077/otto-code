@@ -19,8 +19,11 @@ import {
   forModel,
   loadPersistedConfig,
   loadProfilesStore,
+  put,
+  putCalibration,
   saveBrainConfig,
   saveProfilesStore,
+  resolveHostingProfileForLaunch,
 } from "../config/index.js";
 import { resolveBrainPaths } from "../config/paths.js";
 import type { BrainConfig } from "../config/schema.js";
@@ -32,6 +35,10 @@ import type { Model } from "../types.js";
 import * as vram from "../vram.js";
 import { resolveVersion } from "../version.js";
 import * as results from "../ops/results.js";
+import * as archive from "../ops/archive.js";
+import { calibrate } from "../ops/calibrate.js";
+import { sweep } from "../ops/sweep.js";
+import * as bench from "../bench/index.js";
 import { createCpuSampler, sample as sampleSystem } from "../sysmon.js";
 import { createHostApi, type HostJob, type HostJobRunner } from "./host-api.js";
 import { errorMessage } from "./http-util.js";
@@ -76,15 +83,33 @@ const REMOTE_JOB_RETENTION_MS = 5 * 60_000;
  * rather than in the connecting daemon: its process, model store, results
  * directory and GPU all belong to the host that is being benchmarked.
  */
-class ServiceJobRunner implements HostJobRunner {
-  private readonly jobs = new Map<string, HostJob & { child: ChildProcess | null }>();
+interface ResidentJobUpdate {
+  message: (value: string) => void;
+  percent: (value: number | null) => void;
+}
 
-  constructor(private readonly onPullCompleted: () => void) {}
+type ResidentJobRunner = (
+  kind: "calibrate" | "sweep" | "bench",
+  target: string | null,
+  update: ResidentJobUpdate,
+  signal: AbortSignal,
+) => Promise<void>;
+
+class ServiceJobRunner implements HostJobRunner {
+  private readonly jobs = new Map<
+    string,
+    HostJob & { child: ChildProcess | null; controller: AbortController | null }
+  >();
+
+  constructor(
+    private readonly onPullCompleted: () => void,
+    private readonly runResidentJob: ResidentJobRunner,
+  ) {}
 
   start(kind: HostJob["kind"], target: string | null, args: string[]): HostJob {
     const running = [...this.jobs.values()].find((job) => job.status === "running");
     if (running) throw new Error(`Another operation is already running (${running.label}).`);
-    const job: HostJob & { child: ChildProcess | null } = {
+    const job: HostJob & { child: ChildProcess | null; controller: AbortController | null } = {
       id: `brainjob_${randomUUID()}`,
       kind,
       label:
@@ -101,7 +126,33 @@ class ServiceJobRunner implements HostJobRunner {
       startedAt: new Date().toISOString(),
       finishedAt: null,
       child: null,
+      controller: null,
     };
+    this.jobs.set(job.id, job);
+
+    if (kind === "calibrate" || kind === "sweep" || kind === "bench") {
+      const controller = new AbortController();
+      job.controller = controller;
+      void this.runResidentJob(
+        kind,
+        target,
+        {
+          message: (value) => {
+            if (job.status === "running") job.message = value.slice(-1000);
+          },
+          percent: (value) => {
+            if (job.status === "running") job.percent = value;
+          },
+        },
+        controller.signal,
+      )
+        .then(() => this.finish(job, "succeeded", null))
+        .catch((error: unknown) =>
+          this.finish(job, controller.signal.aborted ? "canceled" : "failed", errorMessage(error)),
+        );
+      return this.publicJob(job);
+    }
+
     // The service is launched by the same CLI entry point as `otto-brain bench`.
     // Reusing that entry point keeps its config/path resolution on this host.
     const entry = process.argv[1];
@@ -113,7 +164,6 @@ class ServiceJobRunner implements HostJobRunner {
       windowsHide: true,
     });
     job.child = child;
-    this.jobs.set(job.id, job);
     child.stderr?.setEncoding("utf8");
     child.stderr?.on("data", (chunk: string) => this.ingestOutput(job, chunk));
     child.once("error", (error) => this.finish(job, "failed", error.message));
@@ -183,7 +233,12 @@ class ServiceJobRunner implements HostJobRunner {
 
   async cancel(jobId: string): Promise<HostJob[]> {
     const job = this.jobs.get(jobId);
-    if (!job || job.status !== "running" || !job.child) return this.list();
+    if (!job || job.status !== "running") return this.list();
+    if (!job.child) {
+      job.controller?.abort();
+      this.finish(job, "canceled", "Canceled.");
+      return this.list();
+    }
     const child = job.child;
     if (process.platform === "win32" && child.pid) {
       await new Promise<void>((resolve) =>
@@ -196,7 +251,10 @@ class ServiceJobRunner implements HostJobRunner {
     return this.list();
   }
 
-  private ingestOutput(job: HostJob & { child: ChildProcess | null }, chunk: string): void {
+  private ingestOutput(
+    job: HostJob & { child: ChildProcess | null; controller: AbortController | null },
+    chunk: string,
+  ): void {
     for (const line of chunk
       .split(/[\r\n]+/u)
       .map((value) => value.trim())
@@ -210,19 +268,24 @@ class ServiceJobRunner implements HostJobRunner {
   }
 
   private finish(
-    job: HostJob & { child: ChildProcess | null },
+    job: HostJob & { child: ChildProcess | null; controller: AbortController | null },
     status: HostJob["status"],
     error: string | null,
   ): void {
     if (job.status !== "running") return;
     job.child = null;
+    job.controller = null;
     job.status = status;
     job.error = error;
     job.finishedAt = new Date().toISOString();
     if (status === "succeeded") job.percent = 100;
   }
 
-  private publicJob({ child: _child, ...job }: HostJob & { child: ChildProcess | null }): HostJob {
+  private publicJob({
+    child: _child,
+    controller: _controller,
+    ...job
+  }: HostJob & { child: ChildProcess | null; controller: AbortController | null }): HostJob {
     return job;
   }
 }
@@ -422,7 +485,11 @@ export async function startService({
       if (!fit.adjusted && !fit.budget.fits) throw new Error(fit.reason ?? "does not fit");
       fitProfile = fit.profile;
     }
-    await supervisor.start(target, fitProfile);
+    await supervisor.start(
+      target,
+      resolveHostingProfileForLaunch(paths, store, fitProfile, target.family),
+    );
+    delete store.pendingReloadModelIds[target.id];
     store.lastModelId = target.id;
     saveProfilesStore(store, paths);
   };
@@ -475,7 +542,157 @@ export async function startService({
   // /__host/events. One instance, so `capabilities.events` and the stream can
   // never disagree about whether this brain publishes.
   const statusEvents = new BrainStatusPublisher();
-  const jobs = new ServiceJobRunner(rescanCatalog);
+  const runResidentJob: ResidentJobRunner = async (kind, target, update, signal) => {
+    const ensureActive = (): void => {
+      if (signal.aborted) throw new Error("Operation canceled.");
+    };
+    const modelId = target ?? supervisor.model?.id ?? store.lastModelId ?? null;
+    const targetModel = modelId
+      ? catalog.find((candidate) => candidate.id === modelId || candidate.displayName === modelId)
+      : null;
+    if (!targetModel) throw new Error("No installed model is available for this operation.");
+
+    const restoreModel = supervisor.model;
+    const restoreProfile = supervisor.profile;
+    const restore = async (): Promise<void> => {
+      if (restoreModel && restoreProfile && !signal.aborted) {
+        await supervisor.start(restoreModel, restoreProfile, { preserveLogs: true });
+      }
+    };
+
+    if (kind === "calibrate") {
+      const runtime = supervisor.runtime ?? resolveRuntime(config, env);
+      if (!runtime)
+        throw new Error("no llama.cpp runtime available; install one from the Library tab");
+      const profile = forModel(store, targetModel, config.defaults);
+      update.message(`Calibrating ${targetModel.displayName}`);
+      supervisor.recordLog(`operation calibrate: ${targetModel.displayName}`);
+      try {
+        const measurement = await calibrate({
+          runtime,
+          model: targetModel,
+          profile,
+          supervisor,
+          onProgress: (event) => {
+            ensureActive();
+            const message =
+              event.phase === "loading"
+                ? `Calibrating ${event.contextSize.toLocaleString()} context`
+                : event.phase === "measured"
+                  ? `Measured ${event.contextSize.toLocaleString()} context`
+                  : (event.reason ??
+                    event.error ??
+                    `Skipped ${event.contextSize.toLocaleString()} context`);
+            update.message(message);
+            supervisor.recordLog(`operation calibrate: ${message}`);
+          },
+        });
+        ensureActive();
+        putCalibration(store, targetModel, profile, measurement);
+        saveProfilesStore(store, paths);
+        update.percent(100);
+        supervisor.recordLog(
+          `operation calibrate: saved measurement for ${targetModel.displayName}`,
+        );
+      } finally {
+        await restore();
+      }
+      return;
+    }
+
+    if (kind === "sweep") {
+      const runtime = supervisor.runtime ?? resolveRuntime(config, env);
+      if (!runtime)
+        throw new Error("no llama.cpp runtime available; install one from the Library tab");
+      const profile = forModel(store, targetModel, config.defaults);
+      update.message(`Sweeping ${targetModel.displayName}`);
+      supervisor.recordLog(`operation sweep: ${targetModel.displayName}`);
+      try {
+        const report = await sweep({
+          runtime,
+          model: targetModel,
+          profile,
+          supervisor,
+          onProgress: (event) => {
+            ensureActive();
+            const message =
+              event.phase === "loading"
+                ? `Budget ${event.budget}: loading`
+                : event.phase === "generating"
+                  ? `Budget ${event.budget}: generating`
+                  : event.phase === "done"
+                    ? `Budget ${event.budget}: complete`
+                    : `Budget ${event.budget}: ${event.error ?? "failed"}`;
+            update.message(message);
+            supervisor.recordLog(`operation sweep: ${message}`);
+          },
+        });
+        ensureActive();
+        if (report.recommended !== null) {
+          profile.reasoningBudget = report.recommended;
+          put(store, targetModel, profile);
+          saveProfilesStore(store, paths);
+          supervisor.recordLog(`operation sweep: saved budget ${report.recommended}`);
+        }
+        update.percent(100);
+      } finally {
+        await restore();
+      }
+      return;
+    }
+
+    update.message(`Benchmarking ${targetModel.displayName}`);
+    supervisor.recordLog(`operation benchmark: ${targetModel.displayName}`);
+    await loadModel(targetModel);
+    ensureActive();
+    supervisor.recordLog(`operation benchmark: resident model ready`);
+    const profile = supervisor.profile ?? forModel(store, targetModel, config.defaults);
+    const gpuInfo = await queryGpu();
+    const calibration = getCalibration(store, targetModel, profile);
+    const fit = gpuInfo
+      ? vram.fitToBudget({
+          model: targetModel,
+          profile,
+          calibration,
+          totalVramBytes: gpuInfo.totalBytes,
+        })
+      : null;
+    const archiveId = archive.runId(targetModel);
+    const report = await bench.runSuite({
+      host: supervisor.host,
+      port: supervisor.internalPort,
+      concurrency: 3,
+      reasoningBudget: profile.reasoningBudget ?? null,
+      contextWindow: profile.contextSize ?? null,
+      archiveId,
+      onProgress: (event) => {
+        ensureActive();
+        const message = event.title
+          ? `${event.title}: ${event.phase}`
+          : (event.summary ?? event.phase);
+        update.message(message);
+        supervisor.recordLog(`operation benchmark: ${message}`);
+      },
+    });
+    ensureActive();
+    results.save({
+      model: targetModel,
+      profile,
+      report,
+      gpu: gpuInfo,
+      runtime: supervisor.runtime
+        ? `${supervisor.runtime.label} v${supervisor.runtime.version}`
+        : "unknown runtime",
+      archiveId,
+      args: supervisor.args,
+      fit,
+      calibration,
+      suite: { execute: true, concurrency: 3, depths: null, only: null, mined: false },
+    });
+    update.percent(100);
+    supervisor.recordLog(`operation benchmark: saved result for ${targetModel.displayName}`);
+  };
+  const jobs = new ServiceJobRunner(rescanCatalog, runResidentJob);
   // Assigned once `stop` exists below. This indirection lets the management API
   // answer a remote restart request before closing its own socket.
   let requestRestart = (): void => {};
@@ -558,7 +775,11 @@ export async function startService({
   certManager?.start();
 
   if (model && profile && runtime) {
-    await supervisor.start(model, profile);
+    await supervisor.start(
+      model,
+      resolveHostingProfileForLaunch(paths, store, profile, model.family),
+    );
+    delete store.pendingReloadModelIds[model.id];
     store.lastModelId = model.id;
     saveProfilesStore(store, paths);
   } else if (!runtime) {

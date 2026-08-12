@@ -11,15 +11,7 @@
  * name. A model you have measured is more useful than one you have not, and
  * alphabetical order buries it.
  */
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactElement,
-  type ReactNode,
-} from "react";
+import { useCallback, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useQueryClient } from "@tanstack/react-query";
@@ -37,6 +29,7 @@ import {
   Zap,
 } from "@/components/icons/material-icons";
 import { Alert } from "@/components/ui/alert";
+import { BrainModelFamilyIcon } from "@/components/brain/brain-model-family-icon";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -76,6 +69,9 @@ const ThemedX = withUnistyles(X);
 const ThemedEye = withUnistyles(Eye);
 const ThemedZap = withUnistyles(Zap);
 const ThemedBrainCap = withUnistyles(Brain);
+const ThemedBrainModelFamilyIcon = withUnistyles(BrainModelFamilyIcon, (theme) => ({
+  color: theme.colors.foregroundMuted,
+}));
 const ThemedSpinner = withUnistyles(LoadingSpinner, (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
@@ -282,6 +278,7 @@ function ModelDetailHeader({
   return (
     <View style={styles.detailHeader}>
       <View style={styles.detailTitleRow}>
+        <ThemedBrainModelFamilyIcon family={model.family} size={22} />
         <Text style={styles.detailTitle} numberOfLines={2}>
           {model.displayName}
         </Text>
@@ -359,6 +356,7 @@ function ModelRow({
       <View style={styles.cellName}>
         <View style={styles.nameRow}>
           {model.state === "loaded" ? <View style={styles.loadedDot} /> : null}
+          <ThemedBrainModelFamilyIcon family={model.family} size={16} />
           <Text style={styles.nameText} numberOfLines={1}>
             {model.displayName}
           </Text>
@@ -821,12 +819,10 @@ function ModelDetail({
   onChanged: () => void;
   onJobStarted: (job: BrainJob) => void;
 }) {
-  // Set by the profile editor when a save lands on the loaded model without
-  // applying it (the brain's `requiresRestart` verdict) - drives the
-  // Unload-becomes-Reload swap below. Reset on selection change since this
-  // component is not remounted per model, only the editor is.
+  // Brain persists an unapplied resident-model edit. The editor restores that
+  // verdict whenever this detail view is reopened, while a successful reload
+  // clears it at the source.
   const [requiresRestart, setRequiresRestart] = useState(false);
-  useEffect(() => setRequiresRestart(false), [model.id]);
   const handleReloaded = useCallback(() => setRequiresRestart(false), []);
 
   return (
@@ -1251,6 +1247,7 @@ const styles = StyleSheet.create((theme) => ({
   detailTitleRow: {
     flexDirection: "row",
     alignItems: "center",
+    gap: theme.spacing[2],
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: 0,

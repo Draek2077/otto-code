@@ -37,17 +37,17 @@ their GGUF filenames.
 
 ## All-rounders (coding + prose + analysis)
 
-| Model                                    | Quant      | ~VRAM | Notes                                                                                                      |
-| ---------------------------------------- | ---------- | ----- | ---------------------------------------------------------------------------------------------------------- |
-| **Qwen3.6 27B**                          | Q5_K_M     | ~19GB | Vision-capable all-rounder for code, reasoning, writing, and image-aware tasks.                            |
-| **Muse Glimmer 30B**                     | UD-Q4_K_XL | ~15GB | Vision-capable agentic model for coding, tool use, multi-step reasoning, and recovery from failed actions. |
-| **Qwen3 32B**                            | Q5_K_M     | ~23GB | Thoughtful generalist for reasoning, programming, structured writing, and analysis.                        |
-| **Qwen3 30B A3B** (MoE)                  | Q5_K_M     | ~22GB | Responsive all-purpose choice for everyday programming, reasoning, writing, and analysis.                  |
-| **GLM-4.7 Flash** (MoE)                  | Q4_K_M     | ~17GB | Fast all-rounder for coding, reasoning, tool use, and interactive artifacts.                               |
-| **NVIDIA Nemotron 3 Nano 30B A3B** (MoE) | Q4_K_M     | ~23GB | Reasoning-focused choice for analysis, long inputs, and tool use.                                          |
-| **gpt-oss 20B** (MoE)                    | MXFP4      | ~11GB | Compact open-weight model with reliable tool calls, coding ability, and structured output.                 |
-| **Ornith 1.0 35B** (MoE)                 | Q4_K_S     | ~19GB | Vision-capable all-rounder for complex tasks that mix text, code, and images.                              |
-| **Mistral Small 3.2 24B**                | Q6_K       | ~19GB | Fast instruction follower for documents, structured data, and code.                                        |
+| Model                                    | Quant   | ~VRAM | Notes                                                                                                      |
+| ---------------------------------------- | ------- | ----- | ---------------------------------------------------------------------------------------------------------- |
+| **Qwen3.6 27B**                          | Q5_K_M  | ~19GB | Vision-capable all-rounder for code, reasoning, writing, and image-aware tasks.                            |
+| **Muse Glimmer 30B**                     | Q4_K_XL | ~15GB | Vision-capable agentic model for coding, tool use, multi-step reasoning, and recovery from failed actions. |
+| **Qwen3 32B**                            | Q5_K_M  | ~23GB | Thoughtful generalist for reasoning, programming, structured writing, and analysis.                        |
+| **Qwen3 30B A3B** (MoE)                  | Q5_K_M  | ~22GB | Responsive all-purpose choice for everyday programming, reasoning, writing, and analysis.                  |
+| **GLM-4.7 Flash** (MoE)                  | Q4_K_M  | ~17GB | Fast all-rounder for coding, reasoning, tool use, and interactive artifacts.                               |
+| **NVIDIA Nemotron 3 Nano 30B A3B** (MoE) | Q4_K_M  | ~23GB | Reasoning-focused choice for analysis, long inputs, and tool use.                                          |
+| **gpt-oss 20B** (MoE)                    | MXFP4   | ~11GB | Compact open-weight model with reliable tool calls, coding ability, and structured output.                 |
+| **Ornith 1.0 35B** (MoE)                 | Q4_K_S  | ~19GB | Vision-capable all-rounder for complex tasks that mix text, code, and images.                              |
+| **Mistral Small 3.2 24B**                | Q6_K    | ~19GB | Fast instruction follower for documents, structured data, and code.                                        |
 
 ## Coding & artifact/widget specialists
 

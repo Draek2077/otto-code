@@ -4,6 +4,7 @@ import {
   exceedsHighlightBudget,
   HIGHLIGHT_MAX_CHARS,
   HIGHLIGHT_MAX_LINES,
+  isRenderedHtmlFile,
   isRenderedMarkdownFile,
   isRenderedMermaidFile,
   renderedDocumentKind,
@@ -42,12 +43,25 @@ describe("isRenderedMermaidFile", () => {
   });
 });
 
+describe("isRenderedHtmlFile", () => {
+  it("recognizes HTML files case-insensitively", () => {
+    expect(isRenderedHtmlFile("site/index.html")).toBe(true);
+    expect(isRenderedHtmlFile("site/LANDING.HTML")).toBe(true);
+    expect(isRenderedHtmlFile("site/legacy.htm")).toBe(true);
+  });
+
+  it("does not treat HTML-suffixed files as HTML", () => {
+    expect(isRenderedHtmlFile("site/index.html.txt")).toBe(false);
+  });
+});
+
 describe("renderedDocumentKind", () => {
   it("names the pipeline a file renders through", () => {
     expect(renderedDocumentKind("README.md")).toBe("markdown");
     expect(renderedDocumentKind("docs/flow.mmd")).toBe("mermaid");
     expect(renderedDocumentKind("archdocs/pages/01-overview.adoc")).toBe("asciidoc");
     expect(renderedDocumentKind("notes.asciidoc")).toBe("asciidoc");
+    expect(renderedDocumentKind("site/index.html")).toBe("html");
     expect(renderedDocumentKind("src/index.ts")).toBeNull();
   });
 
@@ -80,6 +94,7 @@ describe("defaultFileViewMode", () => {
     expect(defaultFileViewMode("docs/flow.mmd")).toBe("preview");
     expect(defaultFileViewMode("docs/arch.mermaid")).toBe("preview");
     expect(defaultFileViewMode("archdocs/pages/01-overview.adoc")).toBe("preview");
+    expect(defaultFileViewMode("site/index.html")).toBe("preview");
     expect(defaultFileViewMode("assets/logo.svg")).toBe("preview");
     expect(defaultFileViewMode("shots/screen.PNG")).toBe("preview");
     expect(defaultFileViewMode("build/app.zip")).toBe("preview");

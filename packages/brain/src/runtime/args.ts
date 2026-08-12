@@ -4,7 +4,7 @@
  * managed one, since both resolve to a `Runtime` (exe + optional vendorDir).
  */
 import type { Profile } from "../config/schema.js";
-import type { Runtime } from "../types.js";
+import type { Model, Runtime } from "../types.js";
 
 export interface ServeTarget {
   port: number;
@@ -46,7 +46,11 @@ export function buildEnv(
  * Only settings that demonstrably matter for stable local inference are emitted -
  * no experimental sampler knobs.
  */
-export function buildArgs(profile: Profile, { port, host = "127.0.0.1" }: ServeTarget): string[] {
+export function buildArgs(
+  profile: Profile,
+  { port, host = "127.0.0.1" }: ServeTarget,
+  model?: Model,
+): string[] {
   const args: string[] = [
     "-m",
     profile.modelPath ?? "",
@@ -85,8 +89,27 @@ export function buildArgs(profile: Profile, { port, host = "127.0.0.1" }: ServeT
   }
 
   if (profile.parallelSlots) args.push("--parallel", String(profile.parallelSlots));
+  if (profile.contextMultiplier > 1) {
+    const nativeContext = model?.metadata?.contextLength;
+    args.push(
+      "--rope-scaling",
+      "yarn",
+      "--rope-scale",
+      String(profile.contextMultiplier),
+      ...(nativeContext ? ["--yarn-orig-ctx", String(nativeContext)] : []),
+      ...(model?.metadata?.arch
+        ? ["--override-kv", `${model.metadata.arch}.context_length=int:${profile.contextSize}`]
+        : []),
+    );
+  }
   if (profile.batchSize) args.push("-b", String(profile.batchSize));
   if (profile.ubatchSize) args.push("-ub", String(profile.ubatchSize));
+  if (profile.chatTemplateFile) {
+    args.push("--chat-template-file", profile.chatTemplateFile);
+    if (Object.keys(profile.chatTemplateKwargs ?? {}).length > 0) {
+      args.push("--chat-template-kwargs", JSON.stringify(profile.chatTemplateKwargs));
+    }
+  }
   if (profile.extraArgs && profile.extraArgs.length) args.push(...profile.extraArgs);
 
   return args;

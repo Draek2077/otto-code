@@ -253,6 +253,8 @@ export const ProviderCompactionConfigSchema = z.object({
     .optional(),
   /** Recent-conversation budget kept verbatim through compaction. Default 20000. */
   keepRecentTokens: z.number().int().positive().optional(),
+  /** Maximum tokens the compaction summary may generate. Omitted leaves the endpoint default. */
+  summaryMaxTokens: z.number().int().positive().optional(),
   /**
    * true hides the per-agent "Auto-compact" feature select in chats; agents
    * always run with the provider-level default above (persisted per-agent

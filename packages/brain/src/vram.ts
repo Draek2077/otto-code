@@ -197,9 +197,10 @@ export function maxContextThatFits({
   if (room <= 0) return null;
 
   const tokens = Math.floor(room / probe.kvBytesPerToken);
-  const capped = model.metadata?.contextLength
-    ? Math.min(tokens, model.metadata.contextLength)
-    : tokens;
+  const native = model.metadata?.contextLength;
+  const contextLimit =
+    typeof native === "number" && native > 0 ? native * profile.contextMultiplier : tokens;
+  const capped = Math.min(tokens, contextLimit);
   return Math.max(0, Math.floor(capped / step) * step);
 }
 

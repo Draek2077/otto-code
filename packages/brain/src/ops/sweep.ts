@@ -187,6 +187,8 @@ export interface SweepOptions {
   maxTokens?: number;
   temperature?: number;
   internalPort?: number;
+  /** Reuse the host's resident supervisor instead of creating a sidecar server. */
+  supervisor?: Supervisor;
   onProgress?: (event: SweepProgress) => void;
 }
 
@@ -198,15 +200,20 @@ export async function sweep({
   maxTokens = 8192,
   temperature = 0.7,
   internalPort = DEFAULT_INTERNAL_PORT + 2,
+  supervisor: optionsSupervisor,
   onProgress = () => {},
 }: SweepOptions): Promise<SweepReport> {
   const results: SweepResult[] = [];
 
   for (const budget of budgets) {
-    const supervisor = new Supervisor({ runtime, internalPort });
+    const supervisor = optionsSupervisor ?? new Supervisor({ runtime, internalPort });
     onProgress({ phase: "loading", budget });
     try {
-      await supervisor.start(model, { ...profile, reasoningBudget: budget });
+      await supervisor.start(
+        model,
+        { ...profile, reasoningBudget: budget },
+        { preserveLogs: Boolean(optionsSupervisor) },
+      );
       onProgress({ phase: "generating", budget });
       const trial = await runTrial({ supervisor, maxTokens, temperature });
       results.push({ budget, ...trial, error: null });

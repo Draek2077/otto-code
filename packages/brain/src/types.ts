@@ -86,6 +86,8 @@ export interface Model {
   catalogId?: string;
   /** Back-reference: the hfRepo of the reconciled catalog entry, if matched. */
   catalogHfRepo?: string;
+  /** Stable family identity supplied by the curated catalog for model iconography. */
+  family?: string;
   /** Present only when this catalog entry declares a component manifest. */
   components?: ModelComponent[];
 }

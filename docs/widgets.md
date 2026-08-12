@@ -60,6 +60,12 @@ single-provider gap this fork exists to close.
 Normalization is idempotent (guarded on the detail still being `unknown`), because the chokepoint
 runs it on the way to both the stream and the store, and history import runs it again on replay.
 
+**Codex visualize compatibility.** Codex may instead emit its `visualize{…}` content reference
+after writing a local HTML fragment. The Codex adapter recognizes the complete reference while it
+streams, reads a bounded local `.html` file, and emits a synthetic `show_widget` call in its place.
+The Widget renderer remains the sole rendering path; malformed markers, missing files, and oversized
+files remain ordinary visible text rather than creating a second, permissive file-preview surface.
+
 ## Streaming, and why there is no token-by-token render
 
 Claude's host renders the fragment as it streams. Otto renders it complete, and that is a deliberate

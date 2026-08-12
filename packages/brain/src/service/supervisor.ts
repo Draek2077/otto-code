@@ -115,8 +115,23 @@ export class Supervisor extends EventEmitter {
     this.emit("log", line);
   }
 
+  /**
+   * Add a host-operation event to the same bounded tail as llama-server output.
+   *
+   * Calibrate, sweep, and benchmark deliberately reuse this supervisor rather
+   * than creating invisible sidecar servers. Their lifecycle markers belong in
+   * the same log stream as the child they exercise.
+   */
+  recordLog(line: string): void {
+    this.#log(line);
+  }
+
   /** Start (or restart) the server for a model + profile. */
-  async start(model: Model, profile: Profile): Promise<this> {
+  async start(
+    model: Model,
+    profile: Profile,
+    options: { preserveLogs?: boolean } = {},
+  ): Promise<this> {
     await this.stop();
 
     if (!this.runtime) {
@@ -129,13 +144,14 @@ export class Supervisor extends EventEmitter {
     this.model = model;
     this.profile = profile;
     this.lastError = null;
-    this.logLines = [];
+    if (!options.preserveLogs) this.logLines = [];
     this.vramBaselineBytes = await usedBytes();
     this.#setState("starting");
 
     const args = buildArgs(
       { ...profile, modelPath: model.modelPath, mmprojPath: model.mmprojPath },
       { port: this.internalPort, host: this.host },
+      model,
     );
     this.args = args;
     this.command = formatCommand(runtime, args);

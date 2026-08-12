@@ -408,6 +408,7 @@ export function BrainProfileEditor({
         setSavedComponents(enabled);
         setWarnings(result.warnings);
         setCalibration(result.calibration?.state ?? null);
+        onRequiresRestartChange(result.requiresRestart);
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : String(err));
@@ -421,7 +422,7 @@ export function BrainProfileEditor({
     return () => {
       cancelled = true;
     };
-  }, [client, modelId]);
+  }, [client, modelId, onRequiresRestartChange]);
 
   // Preview the VRAM budget for the draft, independent of saving it - this is
   // what answers "what happens if I keep this" while a control is still being
@@ -482,6 +483,7 @@ export function BrainProfileEditor({
             return;
           }
           const nextDraft = buildDraft(result.profile, fields);
+          setFields(result.fields);
           setSaved(nextDraft);
           setDraft(nextDraft);
           const enabled = result.profile?.enabledComponents ?? [];

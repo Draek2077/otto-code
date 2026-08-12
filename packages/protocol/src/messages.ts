@@ -959,6 +959,7 @@ const AgentSelectOptionSchema = z.object({
   id: z.string(),
   label: z.string(),
   description: z.string().optional(),
+  family: z.string().optional(),
   isDefault: z.boolean().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
@@ -1017,6 +1018,7 @@ const AgentModelDefinitionSchema: z.ZodType<AgentModelDefinition> = z.object({
   id: z.string(),
   label: z.string(),
   description: z.string().optional(),
+  family: z.string().optional(),
   isDefault: z.boolean().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   contextWindowMaxTokens: z.number().optional(),
@@ -2213,6 +2215,7 @@ export const BrainCatalogModelSchema = z
   .object({
     id: z.string(),
     name: z.string().default(""),
+    family: z.string().nullable().optional(),
     installed: z.boolean().default(false),
     publisher: z.string().default(""),
     repo: z.string().default(""),
@@ -2569,6 +2572,7 @@ export const BrainProfileSchema = z
     enabledComponents: z.array(z.string()).optional(),
     reasoningBudget: z.number().default(0),
     parallelSlots: z.number().default(1),
+    contextMultiplier: z.number().default(1),
   })
   .passthrough();
 export type BrainProfile = z.infer<typeof BrainProfileSchema>;
@@ -2663,6 +2667,7 @@ export const BrainInventoryModelSchema = z
   .object({
     id: z.string(),
     displayName: z.string().default(""),
+    family: z.string().nullable().optional(),
     publisher: z.string().nullable().default(null),
     quant: z.string().nullable().default(null),
     sizeBytes: z.number().default(0),
@@ -2744,6 +2749,8 @@ export const BrainModelProfileGetResponseSchema = z.object({
     fields: z.array(BrainProfileFieldSchema).default([]),
     warnings: z.array(BrainProfileWarningSchema).default([]),
     calibration: BrainCalibrationInfoSchema.nullable().default(null),
+    /** True when a previous resident-model edit still awaits a reload. */
+    requiresRestart: z.boolean().default(false),
     error: z.string().nullable(),
     requestId: z.string(),
   }),
@@ -2762,6 +2769,7 @@ export const BrainModelProfileSetResponseSchema = z.object({
   type: z.literal("brain.model.profile.set.response"),
   payload: z.object({
     profile: BrainProfileSchema.nullable().default(null),
+    fields: z.array(BrainProfileFieldSchema).default([]),
     /** Human-readable notes about anything clamped or ignored. */
     adjustments: z.array(z.string()).default([]),
     warnings: z.array(BrainProfileWarningSchema).default([]),

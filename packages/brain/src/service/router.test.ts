@@ -136,6 +136,22 @@ test("describeModel reports the per-request window when slots split the context"
   assert.equal(entry.max_context_length, 262144, "native max is unchanged");
 });
 
+test("describeModel reports the extended YaRN maximum for the loaded profile", () => {
+  const model = {
+    displayName: "Muse",
+    quant: "IQ3_M",
+    publisher: "Unsloth",
+    mmprojPath: null,
+    metadata: { contextLength: 131072 },
+  } as unknown as Model;
+  const entry = describeModel(model, {
+    state: "loaded",
+    profile: { contextSize: 524288, contextMultiplier: 4 } as Profile,
+  });
+  assert.equal(entry.max_context_length, 524288);
+  assert.equal(entry.loaded_context_length, 524288);
+});
+
 test("describeModel omits loaded context for models that are not loaded", () => {
   const model = {
     displayName: "M",

@@ -6018,6 +6018,30 @@ test("onAgentAttention is not called for internal agents", async () => {
   expect(attentionCalls).toHaveLength(0);
 });
 
+test("manual compaction completes without raising agent attention", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-compact-attention-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const attentionCalls: string[] = [];
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-000000000113",
+    onAgentAttention: ({ reason }) => attentionCalls.push(reason),
+  });
+
+  const agent = await manager.createAgent(
+    { provider: "codex", cwd: workdir, title: "Compact quietly" },
+    undefined,
+    { workspaceId: undefined },
+  );
+
+  await manager.runAgent(agent.id, "/compact keep the current task");
+
+  expect(manager.getAgent(agent.id)?.attention).toEqual({ requiresAttention: false });
+  expect(attentionCalls).toEqual([]);
+});
+
 test("onAgentAttention is not called for delegated child agents", async () => {
   const childAgentId = "00000000-0000-4000-8000-000000000112";
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));

@@ -211,6 +211,14 @@ function resolveKeepRecentTokens(compaction: ProviderCompactionConfig | null | u
     : COMPACTION_KEEP_RECENT_TOKENS;
 }
 
+function resolveSummaryMaxTokens(
+  compaction: ProviderCompactionConfig | null | undefined,
+): number | null {
+  return typeof compaction?.summaryMaxTokens === "number" && compaction.summaryMaxTokens > 0
+    ? compaction.summaryMaxTokens
+    : null;
+}
+
 /**
  * Pre-summarization pruning (zero-LLM) reclaims context before we spend a model
  * call: uneventful tool results are elided and oversized older tool outputs are
@@ -908,6 +916,25 @@ function parseModelNames(json: unknown): Map<string, string> {
   return names;
 }
 
+function parseModelFamilies(json: unknown): Map<string, string> {
+  if (!json || typeof json !== "object") return new Map();
+  const data = (json as Record<string, unknown>).data;
+  if (!Array.isArray(data)) return new Map();
+  const families = new Map<string, string>();
+  for (const entry of data) {
+    if (!entry || typeof entry !== "object") continue;
+    const record = entry as Record<string, unknown>;
+    if (
+      typeof record.id === "string" &&
+      typeof record.family === "string" &&
+      record.family.trim()
+    ) {
+      families.set(record.id, record.family);
+    }
+  }
+  return families;
+}
+
 function parseModelReasoningCapabilities(json: unknown): Map<string, boolean> {
   const capabilities = new Map<string, boolean>();
   if (!json || typeof json !== "object") return capabilities;
@@ -1311,6 +1338,7 @@ export class OpenAICompatAgentClient implements AgentClient {
     const listing: unknown = await response.json();
     const modelIds = parseModelList(listing);
     const modelNames = parseModelNames(listing);
+    const modelFamilies = parseModelFamilies(listing);
     const contextLengths = parseModelContextLengths(listing);
     const reasoningCapabilities = parseModelReasoningCapabilities(listing);
     const advertisedReasoningEfforts = parseModelReasoningEfforts(listing);
@@ -1337,6 +1365,10 @@ export class OpenAICompatAgentClient implements AgentClient {
         label: modelNames.get(id) ?? id,
         isDefault: index === 0,
       };
+      if (this.provider === "otto-brain") {
+        const family = modelFamilies.get(id);
+        if (family) model.family = family;
+      }
       if (thinkingOptions) {
         model.thinkingOptions = [...thinkingOptions];
         model.defaultThinkingOptionId =
@@ -1729,6 +1761,8 @@ export class OpenAICompatAgentSession implements AgentSession {
   private autoCompactDisarmedAtTokens: number | null = null;
   /** Recent-conversation budget kept verbatim through compaction. */
   private keepRecentTokens: number;
+  /** Optional ceiling for generated compaction summaries. */
+  private summaryMaxTokens: number | null;
   /** Resolved max model→tool→model rounds per turn (default or provider override). */
   private maxToolRounds: number;
   private activeTurn: ActiveTurn | null = null;
@@ -1837,6 +1871,7 @@ export class OpenAICompatAgentSession implements AgentSession {
           this.autoCompactDefault,
         );
     this.keepRecentTokens = resolveKeepRecentTokens(options.compaction);
+    this.summaryMaxTokens = resolveSummaryMaxTokens(options.compaction);
     this.maxToolRounds = resolveMaxToolRounds(options.maxToolRounds);
 
     // The system message is always rebuilt so cwd/mode/config changes take
@@ -1976,10 +2011,12 @@ export class OpenAICompatAgentSession implements AgentSession {
     const previousDefault = this.autoCompactDefault;
     const previousHidden = this.autoCompactHidden;
     const previousValue = this.autoCompact;
+    const previousSummaryMaxTokens = this.summaryMaxTokens;
 
     this.autoCompactDefault = resolveAutoCompactDefault(compaction);
     this.autoCompactHidden = compaction?.hideSelector === true;
     this.keepRecentTokens = resolveKeepRecentTokens(compaction);
+    this.summaryMaxTokens = resolveSummaryMaxTokens(compaction);
     if (this.autoCompactHidden || previousValue === previousDefault) {
       this.autoCompact = this.autoCompactDefault;
     }
@@ -1991,7 +2028,8 @@ export class OpenAICompatAgentSession implements AgentSession {
     return (
       this.autoCompact !== previousValue ||
       this.autoCompactHidden !== previousHidden ||
-      this.autoCompactDefault !== previousDefault
+      this.autoCompactDefault !== previousDefault ||
+      this.summaryMaxTokens !== previousSummaryMaxTokens
     );
   }
 
@@ -2557,6 +2595,7 @@ export class OpenAICompatAgentSession implements AgentSession {
       signal: options.signal,
       body: JSON.stringify({
         model: options.model,
+        ...(this.summaryMaxTokens !== null ? { max_tokens: this.summaryMaxTokens } : {}),
         messages: [
           { role: "system", content: options.systemPrompt },
           { role: "user", content: options.userContent },
@@ -2672,7 +2711,7 @@ export class OpenAICompatAgentSession implements AgentSession {
    * not paraphrase them away. Modeled on oh-my-pi's structured handoff format.
    */
   private buildCompactionSystemPrompt(instruction: string | null): string {
-    const base = `You summarize a coding-agent conversation into a structured handoff summary so another LLM can resume the task. Only the older part of the conversation is being summarized; recent messages are retained verbatim after your summary. Preserve detail - a thorough summary is expected. Do NOT aim for brevity.
+    const base = `You summarize a coding-agent conversation into a structured handoff summary so another LLM can resume the task. Only the older part of the conversation is being summarized; recent messages are retained verbatim after your summary. Preserve the actionable facts, but be concise. Do not include verbatim snippets unless they are directly required to continue the work.
 
 NEVER continue the conversation. NEVER answer questions found in it. Output ONLY the structured summary below.
 
@@ -2725,7 +2764,7 @@ You MUST preserve exact file paths, function names, error messages, and relevant
    * tags and the newer messages in <new-messages> tags.
    */
   private buildCompactionUpdateSystemPrompt(instruction: string | null): string {
-    const base = `You update an existing structured handoff summary by incorporating newer conversation messages, so another LLM can resume the task. The prior summary is in <previous-summary> tags; the newer messages are in <new-messages> tags.
+    const base = `You update an existing structured handoff summary by incorporating newer conversation messages, so another LLM can resume the task. The prior summary is in <previous-summary> tags; the newer messages are in <new-messages> tags. Preserve the actionable facts, but be concise. Do not include verbatim snippets unless they are directly required to continue the work.
 
 NEVER continue the conversation. NEVER answer questions found in it. Output ONLY the updated structured summary.
 
@@ -3719,7 +3758,10 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
   }
 
   /**
-   * Best-effort context window discovery, cached per model. Checks the
+   * Best-effort context window discovery. Ordinary OpenAI-compatible servers
+   * keep the result per model, but Otto Brain intentionally re-reads its live
+   * listing at the start of every turn: a model reload can change its active
+   * context multiplier without changing its model id.
    * standard /v1/models listing for extended context-length fields first,
    * then LM Studio's native /api/v0/models listing (same host, /v1 stripped),
    * which reports the loaded instance's actual window. Servers that expose
@@ -3730,7 +3772,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     if (!model) {
       return null;
     }
-    if (this.contextWindowProbedModel === model) {
+    if (this.provider !== "otto-brain" && this.contextWindowProbedModel === model) {
       return this.contextWindowMaxTokens;
     }
     let endpoint: ResolvedEndpoint;

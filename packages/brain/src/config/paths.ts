@@ -22,6 +22,8 @@ export interface BrainPaths {
   logFile: string;
   logsDir: string;
   resultsDir: string;
+  /** Brain-owned Jinja files materialized from named hosting profiles. */
+  templatesDir: string;
 }
 
 export function resolveBrainPaths(env: NodeJS.ProcessEnv = process.env): BrainPaths {
@@ -44,6 +46,7 @@ export function resolveBrainPaths(env: NodeJS.ProcessEnv = process.env): BrainPa
     logFile: path.join(root, "otto-brain.log"),
     logsDir: path.join(root, "logs"),
     resultsDir: path.join(root, "results"),
+    templatesDir: path.join(root, "templates"),
   };
 }
 

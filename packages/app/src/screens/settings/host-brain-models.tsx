@@ -13,6 +13,7 @@ import type {
   BrainRuntime,
 } from "@otto-code/protocol/messages";
 import { CircleCheck, Download, HardDrive, Settings2 } from "@/components/icons/material-icons";
+import { BrainModelFamilyIcon } from "@/components/brain/brain-model-family-icon";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Switch } from "@/components/ui/switch";
@@ -35,6 +36,9 @@ const ThemedDownload = withUnistyles(Download);
 const ThemedHardDrive = withUnistyles(HardDrive);
 const ThemedCircleCheck = withUnistyles(CircleCheck);
 const ThemedBundleOptions = withUnistyles(Settings2);
+const ThemedBrainModelFamilyIcon = withUnistyles(BrainModelFamilyIcon, (theme) => ({
+  color: theme.colors.foregroundMuted,
+}));
 
 const foregroundIcon = (theme: Theme) => ({
   color: theme.colors.foreground,
@@ -825,9 +829,12 @@ function CatalogRow({
   return (
     <View style={rowStyle}>
       <View style={styles.modelHeader}>
-        <Text style={[settingsStyles.rowTitle, styles.modelTitle]} numberOfLines={1}>
-          {model.name}
-        </Text>
+        <View style={styles.catalogModelName}>
+          <ThemedBrainModelFamilyIcon family={model.family} size={18} />
+          <Text style={[settingsStyles.rowTitle, styles.modelTitle]} numberOfLines={1}>
+            {model.name}
+          </Text>
+        </View>
         {trailing}
       </View>
       <View style={styles.modelDetails}>
@@ -1765,6 +1772,13 @@ const styles = StyleSheet.create((theme) => ({
   modelTitle: {
     flex: 1,
     minWidth: 0,
+  },
+  catalogModelName: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    minWidth: 0,
+    gap: theme.spacing[2],
   },
   modelDetails: {
     gap: theme.spacing[1],

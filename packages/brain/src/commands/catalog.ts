@@ -17,6 +17,7 @@ import type { AnyCommandResult, OutputSchema } from "../output/index.js";
 export interface CatalogRow {
   id: string;
   name: string;
+  family: string | null;
   installed: boolean;
   publisher: string;
   repo: string;
@@ -70,6 +71,7 @@ export async function runCatalogCommand(
   const rows: CatalogRow[] = catalog.models.map((model) => ({
     id: model.id,
     name: model.name,
+    family: model.family ?? null,
     installed: installedCatalogIds.has(model.id),
     publisher: model.publisher ?? "",
     repo: model.hfRepo,

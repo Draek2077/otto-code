@@ -144,9 +144,10 @@ async function startEndpoint(options?: {
 function createClient(
   baseUrl: string,
   reasoningEffortMode?: "levels" | "toggle",
+  providerId = "lmstudio",
 ): OpenAICompatAgentClient {
   return new OpenAICompatAgentClient({
-    providerId: "lmstudio",
+    providerId,
     label: "LM Studio",
     env: { OPENAI_BASE_URL: baseUrl },
     reasoningEffortMode,
@@ -521,6 +522,21 @@ describe("OpenAICompatAgentClient", () => {
       contextWindowUsedTokens: 10,
       contextWindowMaxTokens: 8192,
     });
+  });
+
+  test("Otto Brain refreshes its context window after a same-model reload", async () => {
+    const options = { nativeContextLength: 131072 };
+    const endpoint = await startEndpoint(options);
+    const client = createClient(endpoint.baseUrl, undefined, "otto-brain");
+    const session = await client.createSession({
+      provider: "otto-brain",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    expect((await session.run("Before reload")).usage?.contextWindowMaxTokens).toBe(131072);
+    options.nativeContextLength = 524288;
+    expect((await session.run("After reload")).usage?.contextWindowMaxTokens).toBe(524288);
   });
 
   test("reads vLLM-style context length extensions from /v1/models", async () => {
@@ -2931,6 +2947,29 @@ describe("OpenAICompatAgentSession /compact", () => {
     const reqMessages = compactRequest?.messages as Array<{ role: string; content: string }>;
     expect(reqMessages[0]?.role).toBe("system");
     expect(reqMessages[0]?.content).toContain("structured handoff summary");
+
+    await session.close();
+  });
+
+  test("caps the compaction summary when the provider config requests it", async () => {
+    const endpoint = await startCompactEndpoint({ summary: "Bounded summary." });
+    const client = new OpenAICompatAgentClient({
+      providerId: "lmstudio",
+      label: "LM Studio",
+      env: { OPENAI_BASE_URL: endpoint.baseUrl },
+      compaction: { summaryMaxTokens: 4_000 },
+    });
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    await session.run("First message");
+    await session.run("/compact");
+
+    const compactRequest = findFullSummaryRequest(endpoint.compactRequests);
+    expect(compactRequest?.max_tokens).toBe(4_000);
 
     await session.close();
   });

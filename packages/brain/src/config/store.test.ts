@@ -25,6 +25,7 @@ function testPaths(): BrainPaths {
     logFile: path.join(root, "otto-brain.log"),
     logsDir: path.join(root, "logs"),
     resultsDir: path.join(root, "results"),
+    templatesDir: path.join(root, "templates"),
   };
 }
 
@@ -65,5 +66,12 @@ describe("loadCatalog", () => {
     expect(catalog.models.find((model) => model.id === userModel.id)).toEqual(userModel);
     expect(catalog.models.find((model) => model.id === retiredModel.id)).toBeUndefined();
     expect(JSON.parse(readFileSync(paths.catalogFile, "utf8")).models).toEqual(catalog.models);
+  });
+
+  it("uses the normalized Muse Glimmer quant label that repository discovery returns", () => {
+    const catalog = loadCatalog(testPaths());
+    const muse = catalog.models.find((model) => model.name === "Muse Glimmer 30B");
+
+    expect(muse?.quant).toBe("Q4_K_XL");
   });
 });

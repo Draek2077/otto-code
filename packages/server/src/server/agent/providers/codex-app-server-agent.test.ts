@@ -4847,6 +4847,58 @@ describe("Codex app-server provider", () => {
     ]);
   });
 
+  test("adapts a Codex visualize marker into an Otto widget", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "codex-visualize-marker-"));
+    const fragmentPath = path.join(directory, "icon-grid.html");
+    writeFileSync(fragmentPath, '<div id="icon-grid"><svg viewBox="0 0 24 24"></svg></div>');
+    try {
+      const session = createSession();
+      const events: AgentStreamEvent[] = [];
+      session.subscribe((event) => events.push(event));
+      const marker = `\uE200visualize\uE202${JSON.stringify({ path: fragmentPath }).replaceAll(
+        '"',
+        "“",
+      )}\uE201`;
+
+      asInternals(session).handleNotification("item/agentMessage/delta", {
+        itemId: "assistant-visualize-item",
+        delta: `Here are the icons.\n\n${marker}\n\nThey are monochrome.`,
+      });
+
+      expect(events).toEqual([
+        expect.objectContaining({
+          item: {
+            type: "assistant_message",
+            messageId: "assistant-visualize-item",
+            text: "Here are the icons.\n\n",
+          },
+        }),
+        expect.objectContaining({
+          item: expect.objectContaining({
+            type: "tool_call",
+            callId: "codex-visualize-assistant-visualize-item",
+            name: "show_widget",
+            detail: expect.objectContaining({
+              input: expect.objectContaining({
+                title: "icon_grid",
+                widget_code: '<div id="icon-grid"><svg viewBox="0 0 24 24"></svg></div>',
+              }),
+            }),
+          }),
+        }),
+        expect.objectContaining({
+          item: {
+            type: "assistant_message",
+            messageId: "assistant-visualize-item",
+            text: "\n\nThey are monochrome.",
+          },
+        }),
+      ]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   test("emits only the missing assistant suffix when completed text extends streamed deltas", () => {
     const session = createSession();
     const events: AgentStreamEvent[] = [];

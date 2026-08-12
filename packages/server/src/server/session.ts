@@ -4196,18 +4196,24 @@ export class Session {
   private handleBrainCalibrateRequest(model: string, requestId: string): void {
     if (this.startRemoteBrainJob("calibrate", { model }, requestId, "brain.calibrate.response"))
       return;
-    this.startBrainJob(requestId, "brain.calibrate.response", (ops) => ops.calibrate(model));
+    this.emit({
+      type: "brain.calibrate.response",
+      payload: { job: null, error: "The Brain service is not running on this host.", requestId },
+    });
   }
 
   private handleBrainSweepRequest(model: string, requestId: string): void {
     if (this.startRemoteBrainJob("sweep", { model }, requestId, "brain.sweep.response")) return;
-    this.startBrainJob(requestId, "brain.sweep.response", (ops) => ops.sweep(model));
+    this.emit({
+      type: "brain.sweep.response",
+      payload: { job: null, error: "The Brain service is not running on this host.", requestId },
+    });
   }
 
   private handleBrainBenchRequest(model: string | null, requestId: string): void {
-    if (this.brainManager?.isRemote()) {
+    if (this.brainManager) {
       void this.brainManager
-        .remoteBench(model)
+        .hostJob("bench", { model })
         .then((data) => {
           const job = BrainJobSchema.safeParse(data?.job);
           this.emit({
@@ -4228,7 +4234,10 @@ export class Session {
         );
       return;
     }
-    this.startBrainJob(requestId, "brain.bench.response", (ops) => ops.bench(model));
+    this.emit({
+      type: "brain.bench.response",
+      payload: { job: null, error: "The Brain service is not running on this host.", requestId },
+    });
   }
 
   private startRemoteBrainJob(
@@ -4243,9 +4252,9 @@ export class Session {
       | "brain.calibrate.response"
       | "brain.sweep.response",
   ): boolean {
-    if (!this.brainManager?.isRemote()) return false;
+    if (!this.brainManager) return false;
     void this.brainManager
-      .remoteJob(route, body)
+      .hostJob(route, body)
       .then((data) => {
         const job = BrainJobSchema.safeParse(data?.job);
         this.emit({
@@ -4300,9 +4309,9 @@ export class Session {
   }
 
   private handleBrainJobsListRequest(requestId: string): void {
-    if (this.brainManager?.isRemote()) {
+    if (this.brainManager) {
       void this.brainManager
-        .remoteJobs()
+        .hostJobs()
         .then((data) =>
           this.emit({
             type: "brain.jobs.list.response",
@@ -4331,9 +4340,9 @@ export class Session {
   }
 
   private async handleBrainJobsCancelRequest(jobId: string, requestId: string): Promise<void> {
-    if (this.brainManager?.isRemote()) {
+    if (this.brainManager) {
       try {
-        const data = await this.brainManager.cancelRemoteJob(jobId);
+        const data = await this.brainManager.cancelHostJob(jobId);
         this.emit({
           type: "brain.jobs.cancel.response",
           payload: { jobs: parseBrainArray(data?.jobs, BrainJobSchema), error: null, requestId },
@@ -4416,6 +4425,7 @@ export class Session {
         fields: parseBrainArray(data.fields, BrainProfileFieldSchema),
         warnings: parseBrainArray(data.warnings, BrainProfileWarningSchema),
         calibration: calibration.success ? calibration.data : null,
+        requiresRestart: data.requiresRestart === true,
         error,
         requestId,
       },
@@ -4437,6 +4447,7 @@ export class Session {
       type: "brain.model.profile.set.response",
       payload: {
         profile: profile.success ? profile.data : null,
+        fields: parseBrainArray(data.fields, BrainProfileFieldSchema),
         adjustments: parseBrainStrings(data.adjustments),
         warnings: parseBrainArray(data.warnings, BrainProfileWarningSchema),
         calibration: calibration.success ? calibration.data : null,

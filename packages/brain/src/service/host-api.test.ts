@@ -68,12 +68,17 @@ describe("buildInventoryRow", () => {
     const row = build({});
     expect(row.id).toBe("vendor/model-Q5_K_M.gguf");
     expect(row.displayName).toBe("Test Model");
+    expect(row.family).toBeNull();
     expect(row.quant).toBe("Q5_K_M");
     expect(row.arch).toBe("qwen3");
     expect(row.blockCount).toBe(48);
     expect(row.headCountKv).toBe(8);
     expect(row.contextLength).toBe(32768);
     expect(row.origin).toBe("managed");
+  });
+
+  it("carries the curated family identity to the Models tab", () => {
+    expect(build({ model: makeModel({ family: "qwen" }) }).family).toBe("qwen");
   });
 
   it("reports the capability flags the TUI badges V, M and R", () => {

@@ -21,6 +21,7 @@ export {
   putCalibration,
   hasStaleCalibration,
 } from "./profiles.js";
+export { effectiveHostingProfile, resolveHostingProfileForLaunch } from "./hosting-profiles.js";
 export {
   calibrationInfo,
   nativeContextLimit,

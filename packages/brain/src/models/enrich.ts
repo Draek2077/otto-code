@@ -90,6 +90,7 @@ export function enrichWithCatalog(models: Model[], catalog: Catalog): Model[] {
       ...model,
       catalogId: entry.id,
       catalogHfRepo: entry.hfRepo,
+      family: entry.family,
       components,
       // A manifest is authoritative. Do not pair a random same-directory
       // projector when the catalog declares the exact companion artifact.

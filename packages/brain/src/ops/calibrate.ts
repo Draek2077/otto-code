@@ -40,6 +40,8 @@ export interface CalibrateOptions {
   profile: Profile;
   samples?: number[];
   internalPort?: number;
+  /** Reuse the host's resident supervisor instead of creating a sidecar server. */
+  supervisor?: Supervisor;
   onProgress?: (event: CalibrateProgress) => void;
 }
 
@@ -60,27 +62,36 @@ export async function calibrate({
   runtime,
   model,
   profile,
-  samples = DEFAULT_SAMPLES,
+  samples,
   internalPort = DEFAULT_INTERNAL_PORT + 1,
+  supervisor: optionsSupervisor,
   onProgress = () => {},
 }: CalibrateOptions): Promise<CalibrationMeasurement> {
-  if (samples.length < 2) throw new Error("calibration needs at least two context sizes");
+  const nativeContext = model.metadata?.contextLength ?? null;
+  const effectiveSamples =
+    samples ??
+    (nativeContext ? [8192, nativeContext * profile.contextMultiplier] : DEFAULT_SAMPLES);
+  if (effectiveSamples.length < 2) throw new Error("calibration needs at least two context sizes");
 
-  const native = model.metadata?.contextLength || Math.max(...samples);
+  const native = (nativeContext || Math.max(...effectiveSamples)) * profile.contextMultiplier;
   const points: CalibrationSample[] = [];
 
-  for (const contextSize of samples) {
+  for (const contextSize of effectiveSamples) {
     if (contextSize > native) {
-      onProgress({ phase: "skip", contextSize, reason: `exceeds native context ${native}` });
+      onProgress({ phase: "skip", contextSize, reason: `exceeds configured context ${native}` });
       continue;
     }
 
-    const supervisor = new Supervisor({ runtime, internalPort });
+    const supervisor = optionsSupervisor ?? new Supervisor({ runtime, internalPort });
     onProgress({ phase: "loading", contextSize });
 
     const baseline = await usedBytes();
     try {
-      await supervisor.start(model, { ...profile, contextSize });
+      await supervisor.start(
+        model,
+        { ...profile, contextSize },
+        { preserveLogs: Boolean(optionsSupervisor) },
+      );
       const used = supervisor.vramAtReadyBytes ?? (await usedBytes());
       const delta = Number(used) - Number(supervisor.vramBaselineBytes ?? baseline);
       points.push({ contextSize, deltaBytes: delta, loadSeconds: supervisor.loadSeconds });

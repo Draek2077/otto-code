@@ -22,6 +22,7 @@ import type { SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { getProviderIcon } from "@/components/provider-icons";
+import { BrainModelFamilyIcon } from "@/components/brain/brain-model-family-icon";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative, isWeb } from "@/constants/platform";
 import {
@@ -54,6 +55,9 @@ const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 const ThemedSearch = withUnistyles(Search);
 const ThemedSettings = withUnistyles(Settings);
 const ThemedStar = withUnistyles(Star);
+const ThemedBrainModelFamilyIcon = withUnistyles(BrainModelFamilyIcon, (theme) => ({
+  color: theme.colors.foregroundMuted,
+}));
 
 function ProviderSettingsAction({
   accessibilityLabel,
@@ -550,8 +554,13 @@ function ModelRow({
     [onToggleFavorite, row.modelId, row.provider],
   );
   const leadingSlot = useMemo(
-    () => <ModelProviderGlyph provider={row.provider} size={ICON_SIZE.sm} />,
-    [row.provider],
+    () =>
+      row.provider === "otto-brain" && row.family ? (
+        <ThemedBrainModelFamilyIcon family={row.family} size={ICON_SIZE.sm} />
+      ) : (
+        <ModelProviderGlyph provider={row.provider} size={ICON_SIZE.sm} />
+      ),
+    [row.family, row.provider],
   );
   const trailingSlot = useMemo(
     () =>

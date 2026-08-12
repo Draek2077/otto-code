@@ -948,6 +948,29 @@ export class BrainManager {
     return this.requestHostJson("POST", `/__host/jobs/${route}`, body);
   }
 
+  /**
+   * Start a job owned by the selected Brain host. Unlike the legacy CLI shell-
+   * out lane, this resolves through the host endpoint in both local and remote
+   * modes, so the resident Supervisor owns the operation and its logs.
+   */
+  async hostJob(
+    route: string,
+    body: Record<string, unknown>,
+  ): Promise<Record<string, unknown> | null> {
+    this.requireReachable();
+    return this.requestHostJson("POST", `/__host/jobs/${route}`, body);
+  }
+
+  async hostJobs(): Promise<Record<string, unknown> | null> {
+    this.requireReachable();
+    return this.requestHostJson("GET", "/__host/jobs");
+  }
+
+  async cancelHostJob(jobId: string): Promise<Record<string, unknown> | null> {
+    this.requireReachable();
+    return this.requestHostJson("POST", "/__host/jobs/cancel", { jobId });
+  }
+
   async remoteCatalog(): Promise<Record<string, unknown> | null> {
     if (this.mode !== "remote") throw new Error("The brain is not configured in remote mode.");
     this.requireReachable();

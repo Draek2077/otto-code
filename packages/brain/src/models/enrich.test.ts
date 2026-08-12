@@ -28,6 +28,7 @@ function catalog(models: Catalog["models"]): Catalog {
 const CODER = {
   id: "qwen3-coder-30b",
   name: "Qwen3 Coder 30B",
+  family: "qwen",
   hfRepo: "unsloth/Qwen3-Coder-30B-GGUF",
   quant: "Q4_K_M",
   quantFile: "Qwen3-Coder-30B-Q4_K_M.gguf",
@@ -46,6 +47,7 @@ test("attaches catalog coding metadata when a scanned path matches hfRepo", () =
   assert.equal(enriched.contextMax, 262144);
   assert.equal(enriched.catalogId, "qwen3-coder-30b");
   assert.equal(enriched.catalogHfRepo, "unsloth/Qwen3-Coder-30B-GGUF");
+  assert.equal(enriched.family, "qwen");
 });
 
 test("carries catalog reasoning efforts onto a scanned model", () => {

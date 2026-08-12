@@ -7,6 +7,7 @@
     {
       "id": "bartowski/Qwen2.5-Coder-32B-Instruct-GGUF/Qwen2.5-Coder-32B-Instruct-Q4_K_M.gguf",
       "name": "Qwen 2.5 Coder 32B",
+      "family": "qwen",
       "publisher": "bartowski",
       "hfRepo": "bartowski/Qwen2.5-Coder-32B-Instruct-GGUF",
       "quant": "Q4_K_M",
@@ -27,6 +28,7 @@
         "Qwen/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-Q5_K_M.gguf"
       ],
       "name": "Qwen3 Coder 30B A3B",
+      "family": "qwen",
       "publisher": "Qwen",
       "hfRepo": "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF",
       "quant": "Q5_K_M",
@@ -44,6 +46,7 @@
     {
       "id": "Qwen/Qwen3-32B-GGUF/Qwen3-32B-Q5_K_M.gguf",
       "name": "Qwen3 32B",
+      "family": "qwen",
       "publisher": "Qwen",
       "hfRepo": "Qwen/Qwen3-32B-GGUF",
       "quant": "Q5_K_M",
@@ -61,6 +64,7 @@
     {
       "id": "Qwen/Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q5_K_M.gguf",
       "name": "Qwen3 30B A3B",
+      "family": "qwen",
       "publisher": "Qwen",
       "hfRepo": "Qwen/Qwen3-30B-A3B-GGUF",
       "quant": "Q5_K_M",
@@ -78,6 +82,7 @@
     {
       "id": "unsloth/Qwen3.6-27B-MTP-GGUF/Qwen3.6-27B-Q5_K_M.gguf",
       "name": "Qwen3.6 27B",
+      "family": "qwen",
       "publisher": "unsloth",
       "hfRepo": "unsloth/Qwen3.6-27B-MTP-GGUF",
       "quant": "Q5_K_M",
@@ -107,9 +112,10 @@
     {
       "id": "unsloth/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-UD-Q4_K_XL.gguf",
       "name": "Muse Glimmer 30B",
+      "family": "meta",
       "publisher": "Unsloth",
       "hfRepo": "unsloth/Muse-Glimmer-30B-GGUF",
-      "quant": "UD-Q4_K_XL",
+      "quant": "Q4_K_XL",
       "quantFile": "Muse-Glimmer-30B-UD-Q4_K_XL.gguf",
       "approxWeightsBytes": 15878222368,
       "params": "30B dense",
@@ -150,6 +156,7 @@
     {
       "id": "lmstudio-community/gemma-3-27b-it-GGUF/gemma-3-27b-it-Q4_K_M.gguf",
       "name": "Gemma 3 27B",
+      "family": "gemma",
       "publisher": "lmstudio-community",
       "hfRepo": "lmstudio-community/gemma-3-27b-it-GGUF",
       "quant": "Q4_K_M",
@@ -179,6 +186,7 @@
     {
       "id": "lmstudio-community/gemma-4-31B-it-GGUF/gemma-4-31B-it-Q4_K_M.gguf",
       "name": "Gemma 4 31B",
+      "family": "gemma",
       "publisher": "lmstudio-community",
       "hfRepo": "lmstudio-community/gemma-4-31B-it-GGUF",
       "quant": "Q4_K_M",
@@ -208,6 +216,7 @@
     {
       "id": "bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF/mistralai_Mistral-Small-3.2-24B-Instruct-2506-Q6_K.gguf",
       "name": "Mistral Small 3.2 24B",
+      "family": "mistral",
       "publisher": "bartowski",
       "hfRepo": "bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF",
       "quant": "Q6_K",
@@ -237,6 +246,7 @@
     {
       "id": "bartowski/deepreinforce-ai_Ornith-1.0-35B-GGUF/deepreinforce-ai_Ornith-1.0-35B-Q4_K_S.gguf",
       "name": "Ornith 1.0 35B",
+      "family": "qwen",
       "publisher": "bartowski",
       "hfRepo": "bartowski/deepreinforce-ai_Ornith-1.0-35B-GGUF",
       "quant": "Q4_K_S",
@@ -266,6 +276,7 @@
     {
       "id": "bartowski/THUDM_GLM-4-32B-0414-GGUF/THUDM_GLM-4-32B-0414-Q4_K_M.gguf",
       "name": "GLM-4 32B",
+      "family": "chatglm",
       "publisher": "bartowski",
       "hfRepo": "bartowski/THUDM_GLM-4-32B-0414-GGUF",
       "quant": "Q4_K_M",
@@ -283,6 +294,7 @@
     {
       "id": "unsloth/GLM-4.7-Flash-GGUF/GLM-4.7-Flash-Q4_K_M.gguf",
       "name": "GLM-4.7 Flash",
+      "family": "chatglm",
       "publisher": "unsloth",
       "hfRepo": "unsloth/GLM-4.7-Flash-GGUF",
       "quant": "Q4_K_M",
@@ -300,6 +312,7 @@
     {
       "id": "bartowski/Codestral-22B-v0.1-GGUF/Codestral-22B-v0.1-Q6_K.gguf",
       "name": "Codestral 22B",
+      "family": "mistral",
       "publisher": "bartowski",
       "hfRepo": "bartowski/Codestral-22B-v0.1-GGUF",
       "quant": "Q6_K",
@@ -317,6 +330,7 @@
     {
       "id": "lmstudio-community/NVIDIA-Nemotron-3-Nano-30B-A3B-GGUF/NVIDIA-Nemotron-3-Nano-30B-A3B-Q4_K_M.gguf",
       "name": "NVIDIA Nemotron 3 Nano 30B A3B",
+      "family": "nvidia",
       "publisher": "lmstudio-community",
       "hfRepo": "lmstudio-community/NVIDIA-Nemotron-3-Nano-30B-A3B-GGUF",
       "quant": "Q4_K_M",
@@ -334,6 +348,7 @@
     {
       "id": "ggml-org/gpt-oss-20b-GGUF/gpt-oss-20b-MXFP4.gguf",
       "name": "gpt-oss 20B",
+      "family": "openai",
       "publisher": "ggml-org",
       "hfRepo": "ggml-org/gpt-oss-20b-GGUF",
       "quant": "MXFP4",
@@ -351,6 +366,7 @@
     {
       "id": "bartowski/phi-4-GGUF/phi-4-Q8_0.gguf",
       "name": "Phi-4 14B",
+      "family": "microsoft",
       "publisher": "bartowski",
       "hfRepo": "bartowski/phi-4-GGUF",
       "quant": "Q8_0",
@@ -368,6 +384,7 @@
     {
       "id": "sabafallah/DeepSeek-OCR-2-GGUF/deepseek-ocr-2-q8_0.gguf",
       "name": "DeepSeek OCR 2",
+      "family": "deepseek",
       "publisher": "sabafallah",
       "hfRepo": "sabafallah/DeepSeek-OCR-2-GGUF",
       "quant": "Q8_0",

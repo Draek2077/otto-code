@@ -95,6 +95,8 @@ export interface AgentModelDefinition {
   id: string;
   label: string;
   description?: string;
+  /** Catalog-owned model-family identity, currently emitted by Otto Brain only. */
+  family?: string;
   isDefault?: boolean;
   metadata?: AgentMetadata;
   contextWindowMaxTokens?: number;

@@ -12,6 +12,7 @@ import {
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { MarkdownRenderer } from "@/components/markdown/renderer";
+import { HtmlFilePreview } from "@/components/html-file-preview";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { MarkdownTaskToggle } from "@/components/markdown/task-context";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -68,9 +69,9 @@ interface CodeLineProps {
 export interface FilePreviewFileInfo {
   kind: "text" | "image" | "binary";
   /**
-   * The preview renders this file through the markdown pipeline (`.md`,
-   * `.markdown`, `.mmd`, `.mermaid`) rather than as highlighted lines - so
-   * there is no line mapping for find-in-file to highlight.
+   * The preview renders this file as a document (`.md`, `.markdown`, `.mmd`,
+   * `.mermaid`, `.html`) rather than as highlighted lines - so there is no
+   * line mapping for find-in-file to highlight.
    */
   isRenderedDocument: boolean;
   /** Bytes on disk; feeds the status bar in preview-only mode. */
@@ -462,6 +463,37 @@ function usePreviewFindHighlights({
   return matchRangesByLine;
 }
 
+function isFilePreviewAvailable(
+  state: FilePreviewState,
+  preview: ExplorerFile | null,
+): preview is ExplorerFile {
+  return state !== "loading" && state !== "unavailable" && preview !== null;
+}
+
+function resolveRenderedDocument(kind: ReturnType<typeof renderedDocumentKind>, content: string) {
+  if (!kind || kind === "html") {
+    return null;
+  }
+  return toRenderedDocument(kind, content);
+}
+
+function FilePreviewUnavailable({ state }: Pick<FilePreviewBodyProps, "state">) {
+  const { t } = useTranslation();
+  if (state === "loading") {
+    return (
+      <View style={styles.centerState}>
+        <LoadingSpinner size="small" />
+        <Text style={styles.loadingText}>{t("panels.file.loading")}</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.centerState}>
+      <Text style={styles.emptyText}>{t("panels.file.noPreview")}</Text>
+    </View>
+  );
+}
+
 function FilePreviewBody({
   preview,
   state,
@@ -502,7 +534,7 @@ function FilePreviewBody({
   // depends on it are hooks, not work redone on every keystroke of a live
   // split-view draft.
   const renderedDocument = useMemo(
-    () => (documentKind ? toRenderedDocument(documentKind, effectiveContent) : null),
+    () => resolveRenderedDocument(documentKind, effectiveContent),
     [documentKind, effectiveContent],
   );
 
@@ -713,24 +745,20 @@ function FilePreviewBody({
     return () => clearTimeout(timeout);
   }, [lineHeight, lineSelection]);
 
-  if (state === "loading") {
-    return (
-      <View style={styles.centerState}>
-        <LoadingSpinner size="small" />
-        <Text style={styles.loadingText}>{t("panels.file.loading")}</Text>
-      </View>
-    );
-  }
-
-  if (state === "unavailable" || !preview) {
-    return (
-      <View style={styles.centerState}>
-        <Text style={styles.emptyText}>{t("panels.file.noPreview")}</Text>
-      </View>
-    );
+  if (!isFilePreviewAvailable(state, preview)) {
+    return <FilePreviewUnavailable state={state} />;
   }
 
   if (preview.kind === "text") {
+    if (documentKind === "html") {
+      return (
+        <HtmlFilePreview
+          content={effectiveContent}
+          title={getFileNameFromPath(filePath) ?? filePath}
+        />
+      );
+    }
+
     if (renderedDocument) {
       const { frontmatter, body, enableHtmlish } = renderedDocument;
       return (

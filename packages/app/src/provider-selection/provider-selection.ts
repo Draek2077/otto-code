@@ -10,7 +10,10 @@ import { buildFavoriteModelKey, type FavoriteModelRow } from "@/hooks/use-form-p
 import { i18n } from "@/i18n/i18next";
 import { compareMatchScores, scoreTextFields } from "@/utils/score-match";
 
-export type ProviderSelectionModelRow = FavoriteModelRow & { isDefault?: boolean };
+export type ProviderSelectionModelRow = FavoriteModelRow & {
+  family?: string;
+  isDefault?: boolean;
+};
 
 export type ProviderModelSelection =
   | { kind: "models"; rows: ProviderSelectionModelRow[] }
@@ -68,6 +71,7 @@ function buildModelRows(
     modelId: model.id,
     modelLabel: model.label,
     description: model.description ?? model.id,
+    family: model.family,
     isDefault: model.isDefault,
   }));
 }

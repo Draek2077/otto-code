@@ -21,16 +21,23 @@ export function isRenderedAsciiDocFile(filePath: string): boolean {
   return normalizedPath.endsWith(".adoc") || normalizedPath.endsWith(".asciidoc");
 }
 
+/** A standalone HTML document, rendered in an isolated browser viewport. */
+export function isRenderedHtmlFile(filePath: string): boolean {
+  const normalizedPath = filePath.trim().toLowerCase();
+  return normalizedPath.endsWith(".html") || normalizedPath.endsWith(".htm");
+}
+
 /**
- * Which kind of document the viewer renders through the markdown pipeline
- * instead of showing as highlighted source. `null` means "show the source".
+ * Which kind of document the viewer renders instead of showing as highlighted
+ * source. `null` means "show the source".
  */
-export type RenderedDocumentKind = "markdown" | "mermaid" | "asciidoc";
+export type RenderedDocumentKind = "markdown" | "mermaid" | "asciidoc" | "html";
 
 export function renderedDocumentKind(filePath: string): RenderedDocumentKind | null {
   if (isRenderedMarkdownFile(filePath)) return "markdown";
   if (isRenderedMermaidFile(filePath)) return "mermaid";
   if (isRenderedAsciiDocFile(filePath)) return "asciidoc";
+  if (isRenderedHtmlFile(filePath)) return "html";
   return null;
 }
 

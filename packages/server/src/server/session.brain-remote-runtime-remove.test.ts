@@ -29,12 +29,10 @@ const REMOTE_JOB = {
   finishedAt: null,
 };
 
-const LOCAL_JOB = { ...REMOTE_JOB, id: "brainjob_local" };
-
 interface Harness {
   session: Session;
   emitted: SessionOutboundMessage[];
-  remoteJob: ReturnType<typeof vi.fn>;
+  hostJob: ReturnType<typeof vi.fn>;
   removeRuntime: ReturnType<typeof vi.fn>;
 }
 
@@ -49,7 +47,7 @@ function createHarness(mode: "local" | "remote"): Harness {
     error: vi.fn(),
   };
 
-  const remoteJob = vi.fn(async () => ({ job: REMOTE_JOB }));
+  const hostJob = vi.fn(async () => ({ job: REMOTE_JOB }));
   const removeRuntime = vi.fn(() => LOCAL_JOB);
 
   const session = new Session({
@@ -96,19 +94,18 @@ function createHarness(mode: "local" | "remote"): Harness {
     tts: null,
     providerSnapshotManager: createProviderSnapshotManagerStub().manager,
     terminalManager: null,
-    // A remote brain answers isRemote() and proxies jobs to its own host. The
-    // ops manager is the local-disk lane: every unstubbed member of the stub
-    // throws, so any stray local call fails loudly rather than silently.
+    // Every managed Brain job is host-owned in both modes. The ops manager is
+    // retained only as an explicit unavailable fallback for an unhosted brain.
     brainManager: createStub<NonNullable<SessionOptions["brainManager"]>>({
       isRemote: () => mode === "remote",
-      remoteJob,
+      hostJob,
     }),
     brainOpsManager: createStub<NonNullable<SessionOptions["brainOpsManager"]>>({
       removeRuntime,
     }),
   });
 
-  return { session, emitted, remoteJob, removeRuntime };
+  return { session, emitted, hostJob, removeRuntime };
 }
 
 async function requestRemove(session: Session, name: string): Promise<void> {
@@ -127,13 +124,13 @@ function removeResponse(emitted: SessionOutboundMessage[]) {
 
 describe("brain runtime remove target selection", () => {
   test("a remote brain removes on the remote host and never touches local disk", async () => {
-    const { session, emitted, remoteJob, removeRuntime } = createHarness("remote");
+    const { session, emitted, hostJob, removeRuntime } = createHarness("remote");
 
     await requestRemove(session, "b10355-win-cuda");
     await vi.waitFor(() => expect(removeResponse(emitted)).not.toBeNull());
 
-    expect(remoteJob).toHaveBeenCalledTimes(1);
-    expect(remoteJob).toHaveBeenCalledWith("runtime-remove", { name: "b10355-win-cuda" });
+    expect(hostJob).toHaveBeenCalledTimes(1);
+    expect(hostJob).toHaveBeenCalledWith("runtime-remove", { name: "b10355-win-cuda" });
     // The invariant: the local ops manager, which is the only path to
     // fs.rmSync on this machine's runtimes directory, is never reached.
     expect(removeRuntime).not.toHaveBeenCalled();
@@ -145,15 +142,16 @@ describe("brain runtime remove target selection", () => {
     });
   });
 
-  test("a local brain still removes through the local ops manager", async () => {
-    const { session, emitted, remoteJob, removeRuntime } = createHarness("local");
+  test("a local brain removes through its hosted service, never a daemon sidecar", async () => {
+    const { session, emitted, hostJob, removeRuntime } = createHarness("local");
 
     await requestRemove(session, "b10355-win-cuda");
+    await vi.waitFor(() => expect(removeResponse(emitted)).not.toBeNull());
 
-    expect(removeRuntime).toHaveBeenCalledWith("b10355-win-cuda");
-    expect(remoteJob).not.toHaveBeenCalled();
+    expect(hostJob).toHaveBeenCalledWith("runtime-remove", { name: "b10355-win-cuda" });
+    expect(removeRuntime).not.toHaveBeenCalled();
     expect(removeResponse(emitted)).toEqual({
-      job: LOCAL_JOB,
+      job: REMOTE_JOB,
       error: null,
       requestId: "req-remove-1",
     });

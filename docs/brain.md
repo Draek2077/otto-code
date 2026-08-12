@@ -27,6 +27,16 @@ to a TLS certificate path, and burying them there is what made them hard to find
 The Brain page is reached from the Brain icon in the bottom-left icon rail. It is a top-level route
 outside any workspace, because a brain belongs to a host, not to a project.
 
+## Agent compaction
+
+Otto Brain uses the daemon-owned OpenAI-compatible compactor, with local-model defaults chosen to
+release context decisively: it retains the newest 6,000 conversation tokens verbatim and caps the
+generated handoff summary at 4,000 tokens. The compactor preserves the active goal, constraints,
+decisions, changed files, commands and errors, and next steps, without treating a detailed transcript
+as the product. These are provider defaults: an `otto-brain` provider override may set
+`compaction.keepRecentTokens` or `compaction.summaryMaxTokens` when a model needs a different
+tradeoff.
+
 When Brain is disabled in Settings → Host → Brain, its rail icon stays grey and its tooltip reads
 "Brain - Disabled". Selecting it opens that host's Brain settings section so the owner can enable it.
 
@@ -112,8 +122,15 @@ reads, and reconnect repair invalidates that entry once.
 The daemon reaches the brain two different ways, and which one a capability uses decides whether a
 **remote** brain can have it.
 
-**Shell-out (`BrainOpsManager`).** Runs `otto-brain <verb> --json` as a child process. Downloads,
-runtime installs, calibrate and sweep still use it and are therefore local-only.
+**Host-owned operations.** Calibrate, sweep and benchmark execute inside the Brain service against
+its one resident `Supervisor`. They never create an independent `llama-server`, alternate port or
+unobserved log buffer. The service reports their progress as jobs and appends operation markers to
+the same bounded log tail as `llama-server` output.
+
+llama.cpp applies context size and reasoning budget at launch. Calibration and sweep therefore
+transition that one resident supervisor between their measurement configurations, then restore the
+previous loaded model/profile. This is a controlled reload in one hosted lane, not a second server.
+Benchmark runs against the resident supervisor directly and leaves its selected model loaded.
 
 **HTTP proxy (`BrainManager`).** Forwards to the brain's `/__host/*`. `BrainManager` already resolves
 its endpoint by mode, so the same call reaches a local child or a remote host with no branch on
@@ -123,10 +140,10 @@ Everything added for the Brain page uses the proxy. That is the whole reason a r
 model inventory, the profile editor, the VRAM budget, load, unload, delete and logs at all, rather
 than being permanently limited to status and evals.
 
-**Host-owned benchmark jobs.** The service starts `otto-brain bench` on its own machine and exposes
-the tracked job through `/__host/jobs`. The daemon only proxies start, list and cancel calls. A
-remote benchmark therefore uses the remote model store, GPU and results directory, and can never
-fall back to the connecting machine. The `jobs` capability keeps older brains read-only.
+**Host-owned jobs.** The daemon proxies start, list and cancel calls to the Brain host for local and
+remote modes alike. A benchmark, calibration, or sweep therefore uses the selected host's model
+store, GPU, results directory and resident `llama-server`; it can never fall back to the connecting
+machine. The `jobs` capability keeps older brains read-only.
 
 **Remote restart.** A brain that advertises `capabilities.restart` accepts `POST /__host/restart`
 only when remote configuration is enabled. It acknowledges the request before gracefully exiting;

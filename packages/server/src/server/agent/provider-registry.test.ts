@@ -1601,6 +1601,21 @@ describe("otto-brain built-in provider", () => {
     });
   });
 
+  test("uses aggressive but overridable compaction defaults", () => {
+    const registry = buildProviderRegistry(logger, {
+      providerOverrides: {
+        "otto-brain": {
+          compaction: { keepRecentTokens: 7_000 },
+        },
+      },
+    });
+
+    const client = registry["otto-brain"]!.createClient(logger);
+    expect(client).toMatchObject({
+      compaction: { keepRecentTokens: 7_000, summaryMaxTokens: 4_000 },
+    });
+  });
+
   test("surfaces the brain's own reason when the host is unavailable", async () => {
     const registry = buildProviderRegistry(logger, {
       brainEndpoint: () => ({ state: "unavailable", reason: "Otto Brain is turned off." }),

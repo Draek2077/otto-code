@@ -192,7 +192,14 @@ const PROVIDER_CLIENT_FACTORIES: Record<string, ProviderClientFactory> = {
       mcpServers: options?.providerOverride?.mcpServers,
       connectors: options?.connectors,
       mcpToolPermissions: options?.providerOverride?.mcpToolPermissions,
-      compaction: options?.providerOverride?.compaction,
+      // Local models benefit from a much smaller retained tail and a bounded
+      // handoff. External OpenAI-compatible providers retain their existing
+      // conservative defaults; explicit Brain overrides still win.
+      compaction: {
+        keepRecentTokens: 6_000,
+        summaryMaxTokens: 4_000,
+        ...options?.providerOverride?.compaction,
+      },
       reasoningEffortMode: "toggle",
       maxToolRounds: options?.providerOverride?.maxToolRounds,
       managedProcesses: options?.managedProcesses,

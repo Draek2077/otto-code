@@ -28,12 +28,39 @@ export const ProfileSchema = z
     reasoningBudget: z.number().default(1536),
     reasoningBudgetMessage: z.string().default(DEFAULT_REASONING_MESSAGE),
     parallelSlots: z.number().default(1),
+    /** RoPE extension factor; 1 keeps the GGUF-native context window. */
+    contextMultiplier: z.number().default(1),
     batchSize: z.number().nullable().default(null),
     ubatchSize: z.number().nullable().default(null),
     extraArgs: z.array(z.string()).default([]),
+    /** Null means use the model metadata's embedded template unchanged. */
+    hostingProfileId: z.string().nullable().default(null),
+    /** Derived at load time from the selected Brain-owned hosting profile. */
+    chatTemplateFile: z.string().nullable().default(null),
+    /** Derived at load time; passed directly to llama-server's Jinja engine. */
+    chatTemplateKwargs: z.record(z.unknown()).default({}),
   })
   .passthrough();
 export type Profile = z.infer<typeof ProfileSchema>;
+
+/**
+ * A named, Brain-owned inference composition. The template is intentionally
+ * text, rather than a user-owned path: remote Brains must be able to apply the
+ * same profile and no client is allowed to make llama-server read arbitrary
+ * files from its host.
+ */
+export const HostingProfileSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    family: z.string(),
+    description: z.string().default(""),
+    template: z.string().nullable().default(null),
+    systemPromptAddendum: z.string().nullable().default(null),
+    templateKwargs: z.record(z.unknown()).default({}),
+  })
+  .strict();
+export type HostingProfile = z.infer<typeof HostingProfileSchema>;
 
 export const CalibrationSampleSchema = z
   .object({
@@ -77,6 +104,16 @@ export const ProfilesStoreSchema = z
     profiles: z.record(ProfileSchema).default({}),
     calibrations: z.record(z.record(CalibrationSchema)).default({}),
     geometryCalibrations: z.record(GeometryCalibrationSchema).default({}),
+    /** Named reusable profiles, scoped to this Brain rather than any client. */
+    hostingProfiles: z.record(HostingProfileSchema).default({}),
+    /** Optional family default; individual model profiles may override it. */
+    familyHostingProfileIds: z.record(z.string().nullable()).default({}),
+    /**
+     * A saved edit made while that model was resident. It stays visible when
+     * the user leaves and revisits the model settings, and clears only after a
+     * successful fresh llama-server load of that model.
+     */
+    pendingReloadModelIds: z.record(z.boolean()).default({}),
     lastModelId: z.string().nullable().default(null),
   })
   .passthrough();
@@ -196,6 +233,8 @@ export const CatalogModelSchema = z
     /** Retired Otto-curated ids this canonical catalog entry replaces. */
     replaces: z.array(z.string()).optional(),
     name: z.string(),
+    /** Stable UI family identity. Otto clients resolve this to a monochrome glyph. */
+    family: z.string().optional(),
     publisher: z.string().optional(),
     hfRepo: z.string(),
     quant: z.string(),

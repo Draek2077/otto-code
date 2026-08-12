@@ -53,14 +53,15 @@ describe("nativeContextLimit", () => {
 });
 
 describe("profileFieldDescriptors", () => {
-  it("offers the eight editable fields", () => {
+  it("offers the context multiplier and eight hosting fields", () => {
     const keys = profileFieldDescriptors(makeModel()).map((f) => f.key);
     expect(keys).toEqual([
+      "contextMultiplier",
       "contextSize",
       "cacheTypeK",
       "cacheTypeV",
-      "flashAttention",
       "vision",
+      "flashAttention",
       "reasoningBudget",
       "gpuLayers",
       "parallelSlots",
@@ -99,6 +100,7 @@ describe("profileFieldDescriptors", () => {
     );
     expect(fields.some((field) => field.key === "vision")).toBe(false);
     expect(fields.map((field) => field.key)).toEqual([
+      "contextMultiplier",
       "contextSize",
       "cacheTypeK",
       "cacheTypeV",

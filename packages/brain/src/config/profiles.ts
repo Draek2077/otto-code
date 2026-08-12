@@ -34,6 +34,7 @@ export function defaultProfile(model: Model | null, defaults?: ProfileDefaults):
     // Long context is the point of this hardware; start at the native limit and
     // let the VRAM budget pull it down.
     contextSize: Math.min(nativeContext, contextCap),
+    contextMultiplier: 1,
     cacheTypeK: defaults?.cacheTypeK ?? "q8_0",
     cacheTypeV: defaults?.cacheTypeV ?? "q8_0",
     flashAttention: defaults?.flashAttention ?? true, // required for a quantised V cache
@@ -54,6 +55,9 @@ export function defaultProfile(model: Model | null, defaults?: ProfileDefaults):
     batchSize: null,
     ubatchSize: null,
     extraArgs: [],
+    hostingProfileId: null,
+    chatTemplateFile: null,
+    chatTemplateKwargs: {},
   };
 }
 
@@ -103,12 +107,14 @@ export function put(store: ProfilesStore, model: Model, profile: Profile): Profi
 /** Calibration is keyed by cache types, since those change bytes/token. */
 export function calibrationKey(profile: Profile): string {
   const components = [...(profile.enabledComponents ?? [])].sort();
+  const multiplier =
+    profile.contextMultiplier > 1 ? `:contextMultiplier=${profile.contextMultiplier}` : "";
   // COMPAT(bundleCalibrationKey): added in v0.8.7, remove after 2027-02-11.
   // A main-model-only load remains the historical identity; any enabled bundle
   // artifact gets a distinct key and therefore cannot claim that measurement.
   return components.length
-    ? `${profile.cacheTypeK}:${profile.cacheTypeV}:components=${components.join(",")}`
-    : `${profile.cacheTypeK}:${profile.cacheTypeV}`;
+    ? `${profile.cacheTypeK}:${profile.cacheTypeV}${multiplier}:components=${components.join(",")}`
+    : `${profile.cacheTypeK}:${profile.cacheTypeV}${multiplier}`;
 }
 
 /**

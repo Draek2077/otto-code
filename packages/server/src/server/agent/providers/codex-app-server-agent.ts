@@ -39,7 +39,7 @@ import type { Logger } from "pino";
 
 import type { ChildProcess, ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { Dirent } from "node:fs";
+import { Dirent, readFileSync, statSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -152,6 +152,61 @@ const CODEX_TOOL_THREAD_ITEM_TYPES = new Set([
 const CODEX_CONTEXT_COMPACTION_TYPE = "contextCompaction";
 const CODEX_PLAN_IMPLEMENTATION_PROMPT_PREFIX =
   "The user approved the plan. Implement it now. Do not restate or revise the plan unless blocked.";
+// Codex's `visualize` skill emits these host-specific content references. Otto
+// translates their local HTML into the same provider-neutral Widget payload that
+// every other provider renders, rather than making the model guess another tool.
+const CODEX_VISUALIZE_PREFIX = "\uE200visualize\uE202";
+const CODEX_VISUALIZE_SUFFIX = "\uE201";
+const CODEX_VISUALIZE_MAX_MARKER_CHARS = 4_096;
+
+function trailingPrefixLength(text: string, prefix: string): number {
+  for (let length = Math.min(prefix.length - 1, text.length); length > 0; length -= 1) {
+    if (text.endsWith(prefix.slice(0, length))) return length;
+  }
+  return 0;
+}
+
+function widgetCallFromCodexVisualizeMarker(
+  marker: string,
+  messageId: string,
+): ToolCallTimelineItem | null {
+  const rawJson = marker.slice(CODEX_VISUALIZE_PREFIX.length, -CODEX_VISUALIZE_SUFFIX.length);
+  let payload: unknown;
+  try {
+    // The skill specifies JSON, but models sometimes substitute typographic
+    // quotes. They are unambiguous in the tiny path-only marker grammar.
+    payload = JSON.parse(rawJson.replace(/[\u201C\u201D]/g, '"'));
+  } catch {
+    return null;
+  }
+  const sourcePath = isRecord(payload) && typeof payload.path === "string" ? payload.path : null;
+  if (!sourcePath || path.extname(sourcePath).toLowerCase() !== ".html") {
+    return null;
+  }
+  try {
+    const stat = statSync(sourcePath);
+    if (!stat.isFile() || stat.size > 128_000) return null;
+    const code = readFileSync(sourcePath, "utf8");
+    return {
+      type: "tool_call",
+      callId: `codex-visualize-${messageId}`,
+      name: "show_widget",
+      status: "completed",
+      error: null,
+      detail: {
+        type: "unknown",
+        input: {
+          title: path.basename(sourcePath, ".html").replace(/[^a-zA-Z0-9_]+/g, "_") || "widget",
+          loading_messages: ["Rendering visual"],
+          widget_code: code,
+        },
+        output: null,
+      },
+    };
+  } catch {
+    return null;
+  }
+}
 
 // Codex's experimental `goals` feature ships in 0.128.0+. Older binaries reject
 // `--enable goals` at launch, so we gate by version and silently skip the flag
@@ -3217,6 +3272,8 @@ export class CodexAppServerAgentSession implements AgentSession {
   private pendingPermissionHandlers = new Map<string, CodexPendingPermissionHandler>();
   private resolvedPermissionRequests = new Set<string>();
   private pendingAgentMessages = new Map<string, string>();
+  /** Markers withheld from the visible stream until their closing delimiter arrives. */
+  private pendingVisualizationMarkers = new Map<string, string>();
   private pendingReasoning = new Map<string, string[]>();
   private pendingCommandOutputDeltas = new Map<string, string[]>();
   private pendingFileChangeOutputDeltas = new Map<string, string[]>();
@@ -5354,15 +5411,7 @@ export class CodexAppServerAgentSession implements AgentSession {
       // inter-bubble gap. Nothing is injected into the model's text to mark
       // the seam: a synthetic `---` renders as a full-width rule and follows
       // the text into copies and retained transcripts.
-      this.emitEvent({
-        type: "timeline",
-        provider: CODEX_PROVIDER,
-        item: {
-          type: "assistant_message",
-          messageId: parsed.itemId,
-          text: parsed.delta,
-        },
-      });
+      this.emitCodexAssistantDelta(parsed.itemId, parsed.delta);
       return;
     }
     if (parsed.kind === "reasoning_delta") {
@@ -5512,6 +5561,7 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.activeForegroundToolCalls.clear();
     }
     this.pendingAgentMessages.clear();
+    this.pendingVisualizationMarkers.clear();
     this.pendingReasoning.clear();
     this.pendingCommandOutputDeltas.clear();
     this.pendingFileChangeOutputDeltas.clear();
@@ -5876,6 +5926,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     if (timelineItem.type === "assistant_message" && this.pendingAgentMessages.has(itemId)) {
       const streamedText = this.pendingAgentMessages.get(itemId) ?? "";
       this.pendingAgentMessages.delete(itemId);
+      this.flushPendingVisualizationMarker(itemId);
       this.emitMissingFinalTextSuffix(timelineItem, streamedText);
       return true;
     }
@@ -5886,6 +5937,69 @@ export class CodexAppServerAgentSession implements AgentSession {
       return true;
     }
     return false;
+  }
+
+  private emitCodexAssistantDelta(messageId: string, delta: string): void {
+    let remaining = delta;
+    while (remaining || this.pendingVisualizationMarkers.has(messageId)) {
+      const pendingMarker = this.pendingVisualizationMarkers.get(messageId);
+      if (pendingMarker !== undefined) {
+        const marker = pendingMarker + remaining;
+        const markerEnd = marker.indexOf(CODEX_VISUALIZE_SUFFIX);
+        if (markerEnd === -1) {
+          if (marker.length <= CODEX_VISUALIZE_MAX_MARKER_CHARS) {
+            this.pendingVisualizationMarkers.set(messageId, marker);
+            return;
+          }
+          this.pendingVisualizationMarkers.delete(messageId);
+          this.emitCodexAssistantText(messageId, marker);
+          return;
+        }
+        this.pendingVisualizationMarkers.delete(messageId);
+        const completeMarker = marker.slice(0, markerEnd + CODEX_VISUALIZE_SUFFIX.length);
+        const widget = widgetCallFromCodexVisualizeMarker(completeMarker, messageId);
+        if (widget) {
+          this.emitEvent({ type: "timeline", provider: CODEX_PROVIDER, item: widget });
+        } else {
+          this.emitCodexAssistantText(messageId, completeMarker);
+        }
+        remaining = marker.slice(markerEnd + CODEX_VISUALIZE_SUFFIX.length);
+        continue;
+      }
+
+      const markerStart = remaining.indexOf(CODEX_VISUALIZE_PREFIX);
+      if (markerStart !== -1) {
+        this.emitCodexAssistantText(messageId, remaining.slice(0, markerStart));
+        this.pendingVisualizationMarkers.set(messageId, remaining.slice(markerStart));
+        remaining = "";
+        continue;
+      }
+      const trailingLength = trailingPrefixLength(remaining, CODEX_VISUALIZE_PREFIX);
+      this.emitCodexAssistantText(
+        messageId,
+        trailingLength === 0 ? remaining : remaining.slice(0, -trailingLength),
+      );
+      if (trailingLength > 0) {
+        this.pendingVisualizationMarkers.set(messageId, remaining.slice(-trailingLength));
+      }
+      return;
+    }
+  }
+
+  private flushPendingVisualizationMarker(messageId: string): void {
+    const marker = this.pendingVisualizationMarkers.get(messageId);
+    if (marker === undefined) return;
+    this.pendingVisualizationMarkers.delete(messageId);
+    this.emitCodexAssistantText(messageId, marker);
+  }
+
+  private emitCodexAssistantText(messageId: string, text: string): void {
+    if (!text) return;
+    this.emitEvent({
+      type: "timeline",
+      provider: CODEX_PROVIDER,
+      item: { type: "assistant_message", messageId, text },
+    });
   }
 
   private emitMissingFinalTextSuffix(

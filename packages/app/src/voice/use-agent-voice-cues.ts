@@ -68,6 +68,9 @@ interface AgentCueState {
   doneDeferred: boolean;
   /** "waiting" already spoke for this deferral - say it once, not per tick. */
   waitingAnnounced: boolean;
+  /** The current turn is `/compact`, an internal maintenance action rather
+   * than a user-facing assistant reply. */
+  compacting: boolean;
 }
 
 function newCueState(): AgentCueState {
@@ -77,6 +80,7 @@ function newCueState(): AgentCueState {
     prevStatus: null,
     doneDeferred: false,
     waitingAnnounced: false,
+    compacting: false,
   };
 }
 
@@ -278,6 +282,21 @@ function hasRunningSubagents(serverId: string, parentAgentId: string): boolean {
   return agents ? hasRunningObservedSubagent(agents, parentAgentId) : false;
 }
 
+function isCompactTurn(serverId: string, agentId: string): boolean {
+  const session = useSessionStore.getState().sessions[serverId];
+  const items = [
+    ...(session?.agentStreamTail.get(agentId) ?? []),
+    ...(session?.agentStreamHead.get(agentId) ?? []),
+  ];
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item?.kind === "user_message") {
+      return /^\/compact(?:\s|$)/i.test(item.text.trim());
+    }
+  }
+  return false;
+}
+
 export interface UseAgentVoiceCuesInput {
   serverId: string;
   /** null = every workspace on this host (the app-global host's mode). */
@@ -414,10 +433,14 @@ export function useAgentVoiceCues(input: UseAgentVoiceCuesInput): void {
         // A new turn supersedes any deferred "done" from the previous one.
         state.doneDeferred = false;
         state.waitingAnnounced = false;
+        state.compacting = isCompactTurn(serverId, agent.id);
       }
       if (!state.thoughtOnce && agent.status === "running") {
         state.thoughtOnce = true;
         state.prevStatus = agent.status;
+        if (state.compacting) {
+          return;
+        }
         fireCue(agent, "thinking");
         return;
       }
@@ -431,6 +454,12 @@ export function useAgentVoiceCues(input: UseAgentVoiceCuesInput): void {
       }
       state.prevStatus = agent.status;
       if (state.doneDeferred && agent.status === "idle") {
+        if (state.compacting) {
+          state.doneDeferred = false;
+          state.waitingAnnounced = false;
+          state.compacting = false;
+          return;
+        }
         if (hasRunningSubagents(serverId, agent.id)) {
           // Announce the wait once per idle stretch (observed rows land over
           // several store ticks, so this branch runs repeatedly), then hold the
