@@ -6318,23 +6318,6 @@ export class Session {
       agentId,
     );
 
-    const storedAfterCleanup = await this.agentStorage.get(agentId);
-    if (storedAfterCleanup) {
-      // The byte field is part of the record, so calculate its fixed point
-      // before the final write. This keeps the displayed total equal to the
-      // bytes unlink() will reclaim, including the accounting field itself.
-      let archiveBytes = 0;
-      for (let attempt = 0; attempt < 4; attempt += 1) {
-        const next = Buffer.byteLength(
-          JSON.stringify({ ...storedAfterCleanup, archiveBytes }, null, 2),
-          "utf8",
-        );
-        if (next === archiveBytes) break;
-        archiveBytes = next;
-      }
-      await this.agentStorage.upsert({ ...storedAfterCleanup, archiveBytes });
-    }
-
     if (this.agentUpdates.hasSubscription()) {
       const payload = await this.agentUpdates.emitStoredRecord(
         (await this.agentStorage.get(agentId)) ?? archivedRecord,

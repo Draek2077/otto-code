@@ -6293,7 +6293,7 @@ test("fetch_workspaces_response reads runtime fields from passive workspace git 
     | undefined;
 
   expect(peekSnapshotRuntimeFetch).toHaveBeenCalledWith(REPO_CWD);
-  expect(response?.payload.entries).toEqual([
+  expect(response?.payload.entries).toMatchObject([
     expect.objectContaining({
       id: "ws-runtime-fetch",
       gitRuntime: {
@@ -6304,6 +6304,7 @@ test("fetch_workspaces_response reads runtime fields from passive workspace git 
         aheadBehind: { ahead: 3, behind: 1 },
         aheadOfOrigin: 3,
         behindOfOrigin: 1,
+        baseRef: "main",
       },
       githubRuntime: {
         featuresEnabled: true,

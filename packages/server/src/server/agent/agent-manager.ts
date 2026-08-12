@@ -3389,7 +3389,19 @@ export class AgentManager {
       throw new Error(`Agent not found: ${agentId}`);
     }
 
-    const nextRecord = buildArchivedAgentRecord(record, { archivedAt });
+    const archivedRecord = buildArchivedAgentRecord(record, { archivedAt });
+    // archiveBytes is stored on the record it measures. Find its fixed point
+    // before persisting so the displayed value is exactly what cleanup reclaims.
+    let archiveBytes = 0;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const next = Buffer.byteLength(
+        JSON.stringify({ ...archivedRecord, archiveBytes }, null, 2),
+        "utf8",
+      );
+      if (next === archiveBytes) break;
+      archiveBytes = next;
+    }
+    const nextRecord = { ...archivedRecord, archiveBytes };
     await registry.upsert(nextRecord);
 
     await this.archiveNativeSessionBestEffort(record.provider, record.persistence);
