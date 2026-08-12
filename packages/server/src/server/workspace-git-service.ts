@@ -2327,6 +2327,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     const previousForgePrStatusPollKey = this.getForgePrStatusPollKey(target);
     const facts = await this.refreshGitSnapshot(target, request);
     const forgePrStatusPollTargetChanged =
+      previousForgePrStatusPollKey !== null &&
       previousForgePrStatusPollKey !== this.getForgePrStatusPollKey(target);
     // Past this line the git half of this pass is fixed, so a change landing now
     // cannot be reported by it.

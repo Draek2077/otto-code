@@ -535,7 +535,6 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
           currentBranch: "feature",
           diffStat: { additions: 4, deletions: 2 },
         },
-        forge: { ...UNPOLLED_FORGE, error: null },
       }),
     );
     expect(getCheckoutStatus).toHaveBeenCalledTimes(2);

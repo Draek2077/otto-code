@@ -103,13 +103,13 @@ describe("fetchCheckoutStatus", () => {
     expect(client.getCheckoutStatus).toHaveBeenCalledExactlyOnceWith(cwd);
   });
 
-  it("expires a manual diff-mode override when the fetched dirty state flipped", async () => {
+  it("preserves a manual diff-mode override when the fetched dirty state flipped", async () => {
     setDiffModeOverride(true);
     const client = { getCheckoutStatus: vi.fn(async () => checkoutStatus({ isDirty: false })) };
 
     await fetchCheckoutStatus({ client, serverId, cwd });
 
-    expect(useReviewDraftStore.getState().diffModeOverrides["review:scope"]).toBeUndefined();
+    expect(useReviewDraftStore.getState().diffModeOverrides["review:scope"]).toBeDefined();
   });
 });
 
@@ -190,7 +190,7 @@ describe("applyCheckoutStatusUpdateFromEvent", () => {
     ).toMatchObject({ hosting: { provider: "github" }, forge: "github" });
   });
 
-  it("expires a manual diff-mode override when the pushed dirty state flipped", () => {
+  it("preserves a manual diff-mode override when the pushed dirty state flipped", () => {
     const queryClient = createQueryClient();
     setDiffModeOverride(false);
 
@@ -200,7 +200,7 @@ describe("applyCheckoutStatusUpdateFromEvent", () => {
       message: checkoutStatusUpdate(checkoutStatus({ isDirty: true })),
     });
 
-    expect(useReviewDraftStore.getState().diffModeOverrides["review:scope"]).toBeUndefined();
+    expect(useReviewDraftStore.getState().diffModeOverrides["review:scope"]).toBeDefined();
   });
 
   it("keeps a manual diff-mode override while the pushed dirty state still matches", () => {
