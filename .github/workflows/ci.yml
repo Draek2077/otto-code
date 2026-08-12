@@ -544,7 +544,7 @@ jobs:
     # setup, so the old 35-minute cap killed every shard mid-run and the tier had
     # never once completed. Eight shards puts a shard around 22 minutes; the cap
     # stays well above that so a genuinely hung suite still cannot run for hours.
-    timeout-minutes: 50
+    timeout-minutes: 65
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       # Stay below `timeout-minutes` above. When a shard runs past the job cap the
@@ -557,7 +557,7 @@ jobs:
       #
       # The margin is wide because the cap covers job setup (install, browsers,
       # two builds) as well as the run itself.
-      E2E_GLOBAL_TIMEOUT_MINUTES: "38"
+      E2E_GLOBAL_TIMEOUT_MINUTES: "55"
       RUN_TESTS: >-
         ${{ github.event_name == 'workflow_dispatch' ||
             needs.changes.result != 'success' ||

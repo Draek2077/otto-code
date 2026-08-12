@@ -1106,17 +1106,12 @@ const x = 1;
 
     warmCheckoutShortstatInBackground(repoDir);
 
-    // A repo with no origin/main computes to null, but null should still be cached.
-    for (let attempts = 0; attempts < 20; attempts += 1) {
-      const cached = getCachedCheckoutShortstat(repoDir);
-      if (cached !== undefined) {
-        expect(cached).toBeNull();
-        return;
-      }
-      await sleep(25);
-    }
-
-    throw new Error("shortstat background warm did not populate cache in time");
+    // This joins the already-started background load instead of racing a short
+    // wall-clock poll. It proves the cache is populated while ensuring teardown
+    // never removes the fixture directory under an in-flight Git subprocess.
+    // A repo with no origin/main computes to null, but null is still cached.
+    await expect(getCheckoutShortstat(repoDir)).resolves.toBeNull();
+    expect(getCachedCheckoutShortstat(repoDir)).toBeNull();
   });
 
   it("commits messages with quotes safely", async () => {
