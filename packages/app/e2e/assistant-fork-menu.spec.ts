@@ -15,6 +15,7 @@ import {
   openExistingWorkspaceFromOccupiedSteer,
   submitNewWorkspaceEmpty,
 } from "./helpers/new-workspace";
+import { visibleWorkspaceTabStrip } from "./helpers/workspace-tabs";
 
 const test = base.extend<{
   seedForkWorkspace: (options: MockAgentOptions) => Promise<MockAgentWorkspace>;
@@ -115,8 +116,7 @@ test.describe("Assistant fork menu", () => {
     await openAssistantForkMenu(page);
     await page.getByTestId("assistant-fork-menu-new-tab").click();
 
-    const selectedTab = page
-      .getByTestId("workspace-tabs-row")
+    const selectedTab = visibleWorkspaceTabStrip(page)
       .getByRole("button")
       .and(page.locator('[aria-selected="true"]'));
     await expect(selectedTab).toHaveAttribute("data-testid", /^workspace-tab-draft_/, {

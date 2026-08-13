@@ -62,7 +62,7 @@ test.describe("Visualizer new-chat redirect", () => {
       // It reused the sibling chat pane: the draft shares a tab row with the
       // agent tab.
       const draftRow = page
-        .locator('[data-testid="workspace-tabs-row"]')
+        .locator('[data-testid="workspace-tabs-row"], [data-testid="workspace-tabs-rail"]')
         .filter({ has: page.locator(DRAFT_TAB_SELECTOR) })
         .filter({ visible: true })
         .first();

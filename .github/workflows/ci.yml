@@ -281,26 +281,23 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 
-      # DIAG(windows-fork-crash): vitest's fork pool occasionally tears a
-      # worker down without a clean handoff on Windows, after every test it
-      # ran has already passed - see scripts/vitest-kill-diag.cjs, which is
-      # what proved this run's failures are pool-teardown noise and not a
-      # real regression (every test passes; only the pool's own unhandled
-      # exit event fails the process). Retry test:unit alone so a teardown
-      # blip doesn't fail a green run; test:integration runs once either way,
-      # same as the plain `npm run test` path other platforms take.
-      # Worker threads are not a viable replacement: Node 24 aborts in
-      # fs-event.c while the suite starts its watcher.
+      # DIAG(windows-fork-crash): the Node 24 fs-event assertion happens as
+      # Vitest tears down one of several fork workers, after every assertion
+      # has passed. The server config deliberately defaults to serial files,
+      # but test:unit's --fileParallelism CLI flag overrides it. Keep the
+      # Windows suite in a single fork instead of retrying the same unsafe
+      # worker topology. Worker threads are not viable either: Node 24 aborts
+      # in fs-event.c while the suite starts its watcher.
       - name: Run server tests (Windows)
         if: env.RUN_TESTS == 'true' && matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          $attempts = 3
+          $attempts = 2
           for ($i = 1; $i -le $attempts; $i++) {
-            npm run test:unit --workspace=@otto-code/server
+            npm run test:unit --workspace=@otto-code/server -- --maxWorkers=1 --minWorkers=1
             if ($LASTEXITCODE -eq 0) { break }
             if ($i -eq $attempts) { exit $LASTEXITCODE }
-            Write-Host "server test:unit failed (attempt $i/$attempts) - retrying for the known Windows fork-pool teardown flake"
+            Write-Host "server test:unit failed (attempt $i/$attempts) - retrying the single-fork runner"
           }
           npm run test:integration --workspace=@otto-code/server
           exit $LASTEXITCODE

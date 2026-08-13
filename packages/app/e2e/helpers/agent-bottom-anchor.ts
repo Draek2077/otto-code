@@ -11,7 +11,19 @@ export interface ScrollMetrics {
 }
 
 function getVisibleChatScroll(page: Page) {
-  return page.locator('[data-testid="agent-chat-scroll"]:visible').first();
+  // Workspace tab retention can leave an inactive stream surface mounted while
+  // its active sibling receives the new timeline rows. Both surfaces are
+  // technically visible to Playwright during the handoff, so choosing the
+  // first one made the scroll assertions measure an empty transcript and
+  // report a permanent 0px scroll range. These helpers are only called after
+  // a user or assistant row has rendered; bind the measurement to that
+  // transcript rather than DOM order.
+  return page
+    .locator('[data-testid="agent-chat-scroll"]:visible')
+    .filter({
+      has: page.locator('[data-testid="assistant-message"], [data-testid="user-message"]'),
+    })
+    .first();
 }
 
 export async function readScrollMetrics(page: Page): Promise<ScrollMetrics> {

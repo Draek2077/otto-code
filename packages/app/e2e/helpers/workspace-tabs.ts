@@ -17,7 +17,7 @@ function visibleTestId(page: Page, testId: string) {
   return page.getByTestId(testId).filter({ visible: true });
 }
 
-function visibleWorkspaceTabStrip(page: Page) {
+export function visibleWorkspaceTabStrip(page: Page) {
   return visibleTestId(page, "workspace-tabs-row")
     .or(visibleTestId(page, "workspace-tabs-rail"))
     .first();

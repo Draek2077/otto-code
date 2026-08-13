@@ -37,7 +37,7 @@ export function visualizerIframe(page: Page): Locator {
 /** The pane tab-row that contains the Visualizer tab (desktop split layout). */
 export function visualizerPaneTabsRow(page: Page): Locator {
   return page
-    .locator('[data-testid="workspace-tabs-row"]')
+    .locator('[data-testid="workspace-tabs-row"], [data-testid="workspace-tabs-rail"]')
     .filter({ has: page.getByTestId("workspace-tab-visualizer") })
     .filter({ visible: true })
     .first();
