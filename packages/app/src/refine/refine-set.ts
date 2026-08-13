@@ -45,6 +45,9 @@ export interface RefineFileProposal {
   id: string;
   label: string;
   absolutePath: string;
+  /** Immutable complete snapshots for parser-safe Structural review. */
+  beforeSource?: string;
+  afterSource?: string;
   diff: RefineDiff;
 }
 

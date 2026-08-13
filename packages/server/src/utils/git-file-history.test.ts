@@ -168,6 +168,8 @@ describe("getFileCommitDiff", () => {
     // Scoped to the requested file, not the whole commit.
     expect(result.diff).not.toContain("other changed");
     expect(result.truncated).toBe(false);
+    expect(result.beforeSource).toBe("one\n");
+    expect(result.afterSource).toBe("one\ntwo\n");
   });
 
   it("shows the real edits across a rename instead of the whole file as new", async () => {

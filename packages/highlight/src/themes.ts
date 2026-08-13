@@ -46,7 +46,7 @@ export const SYNTAX_THEME_OPTIONS: readonly SyntaxThemeOption[] = [
 export type SyntaxColors = Record<HighlightStyle, string> & DiffBackgroundColors;
 
 // A compact per-theme role palette. `expandRolePalette` maps these roles onto
-// all 20 HighlightStyle tokens plus the diff row background pair, so every
+// all 20 HighlightStyle tokens plus the diff colors, so every
 // theme stays complete and internally consistent. GitHub keeps its own
 // hand-tuned maps (colors.ts) for exactness and byte-for-byte back-compat with
 // the previous default.
@@ -63,6 +63,10 @@ interface RolePalette {
   operator: string;
   diffAdded: string; // added diff row background (semi-transparent green)
   diffRemoved: string; // removed diff row background (semi-transparent red)
+  diffAddedForeground: string; // added diff coordinates and marker
+  diffRemovedForeground: string; // removed diff coordinates and marker
+  diffFormatting: string; // whitespace-only diff row background (neutral purple)
+  diffMoved: string; // moved/reordered/compactly-renamed foreground (purple)
 }
 
 // Re-derives an rgba() string at a different alpha. Boosts each theme's diff
@@ -99,8 +103,12 @@ function expandRolePalette(r: RolePalette): SyntaxColors {
     link: r.string,
     diffAdded: r.diffAdded,
     diffRemoved: r.diffRemoved,
+    diffAddedForeground: r.diffAddedForeground,
+    diffRemovedForeground: r.diffRemovedForeground,
     diffAddedEmphasis: withAlpha(r.diffAdded, 0.4),
     diffRemovedEmphasis: withAlpha(r.diffRemoved, 0.35),
+    diffFormatting: r.diffFormatting,
+    diffMoved: r.diffMoved,
   };
 }
 
@@ -118,6 +126,10 @@ const defaultLight: RolePalette = {
   operator: "#000000",
   diffAdded: "rgba(0, 128, 0, 0.12)",
   diffRemoved: "rgba(170, 0, 0, 0.12)",
+  diffAddedForeground: "#008000",
+  diffRemovedForeground: "#aa0000",
+  diffFormatting: "rgba(122, 62, 157, 0.12)",
+  diffMoved: "#7a3e9d",
 };
 const defaultDark: RolePalette = {
   base: "#ffffff",
@@ -132,6 +144,10 @@ const defaultDark: RolePalette = {
   operator: "#ffffff",
   diffAdded: "rgba(85, 255, 85, 0.18)",
   diffRemoved: "rgba(255, 85, 85, 0.18)",
+  diffAddedForeground: "#55ff55",
+  diffRemovedForeground: "#ff5555",
+  diffFormatting: "rgba(214, 140, 255, 0.18)",
+  diffMoved: "#d68cff",
 };
 
 // --- VS Code (Light+ / Dark+) ---------------------------------------------
@@ -148,6 +164,10 @@ const vscodeLight: RolePalette = {
   operator: "#000000",
   diffAdded: "rgba(46, 125, 50, 0.14)",
   diffRemoved: "rgba(198, 40, 40, 0.14)",
+  diffAddedForeground: "#2e7d32",
+  diffRemovedForeground: "#c62828",
+  diffFormatting: "rgba(111, 66, 193, 0.14)",
+  diffMoved: "#6f42c1",
 };
 const vscodeDark: RolePalette = {
   base: "#d4d4d4",
@@ -162,6 +182,10 @@ const vscodeDark: RolePalette = {
   operator: "#d4d4d4",
   diffAdded: "rgba(75, 139, 31, 0.22)",
   diffRemoved: "rgba(190, 17, 0, 0.22)",
+  diffAddedForeground: "#89d185",
+  diffRemovedForeground: "#f48771",
+  diffFormatting: "rgba(197, 134, 192, 0.2)",
+  diffMoved: "#c586c0",
 };
 
 // --- JetBrains (IntelliJ Light / Darcula) ---------------------------------
@@ -178,6 +202,10 @@ const jetbrainsLight: RolePalette = {
   operator: "#000000",
   diffAdded: "rgba(56, 142, 60, 0.15)",
   diffRemoved: "rgba(198, 40, 40, 0.15)",
+  diffAddedForeground: "#388e3c",
+  diffRemovedForeground: "#c62828",
+  diffFormatting: "rgba(122, 62, 157, 0.15)",
+  diffMoved: "#7a3e9d",
 };
 const jetbrainsDark: RolePalette = {
   base: "#a9b7c6",
@@ -192,6 +220,10 @@ const jetbrainsDark: RolePalette = {
   operator: "#a9b7c6",
   diffAdded: "rgba(46, 107, 62, 0.3)",
   diffRemoved: "rgba(107, 46, 46, 0.3)",
+  diffAddedForeground: "#629755",
+  diffRemovedForeground: "#a64a4a",
+  diffFormatting: "rgba(199, 146, 234, 0.22)",
+  diffMoved: "#c792ea",
 };
 
 // --- Monokai (Light / Dark) ------------------------------------------------
@@ -208,6 +240,10 @@ const monokaiLight: RolePalette = {
   operator: "#c4133b",
   diffAdded: "rgba(75, 139, 31, 0.14)",
   diffRemoved: "rgba(179, 37, 31, 0.14)",
+  diffAddedForeground: "#4b8b1f",
+  diffRemovedForeground: "#b3251f",
+  diffFormatting: "rgba(124, 63, 181, 0.14)",
+  diffMoved: "#7c3fb5",
 };
 const monokaiDark: RolePalette = {
   base: "#f8f8f2",
@@ -222,6 +258,10 @@ const monokaiDark: RolePalette = {
   operator: "#f92672",
   diffAdded: "rgba(166, 226, 46, 0.18)",
   diffRemoved: "rgba(248, 53, 53, 0.18)",
+  diffAddedForeground: "#a6e22e",
+  diffRemovedForeground: "#f83535",
+  diffFormatting: "rgba(174, 129, 255, 0.18)",
+  diffMoved: "#ae81ff",
 };
 
 // --- Nightshade (Light / Dark - gothic pink/purple/cyan, formerly "Dracula";
@@ -239,6 +279,10 @@ const nightshadeLight: RolePalette = {
   operator: "#bd2f7a",
   diffAdded: "rgba(31, 156, 74, 0.14)",
   diffRemoved: "rgba(179, 54, 54, 0.14)",
+  diffAddedForeground: "#1f9c4a",
+  diffRemovedForeground: "#b33636",
+  diffFormatting: "rgba(124, 79, 209, 0.14)",
+  diffMoved: "#7c4fd1",
 };
 const nightshadeDark: RolePalette = {
   base: "#f8f8f2",
@@ -253,6 +297,10 @@ const nightshadeDark: RolePalette = {
   operator: "#ff79c6",
   diffAdded: "rgba(80, 250, 123, 0.18)",
   diffRemoved: "rgba(255, 85, 85, 0.18)",
+  diffAddedForeground: "#50fa7b",
+  diffRemovedForeground: "#ff5555",
+  diffFormatting: "rgba(189, 147, 249, 0.18)",
+  diffMoved: "#bd93f9",
 };
 
 // --- Neotokyo (Light / Dark - cyber yellow, hot pink, neon cyan) ----------
@@ -269,6 +317,10 @@ const neotokyoLight: RolePalette = {
   operator: "#0089a3",
   diffAdded: "rgba(31, 156, 26, 0.14)",
   diffRemoved: "rgba(194, 31, 61, 0.14)",
+  diffAddedForeground: "#1f9c1a",
+  diffRemovedForeground: "#c21f3d",
+  diffFormatting: "rgba(123, 47, 212, 0.14)",
+  diffMoved: "#7b2fd4",
 };
 const neotokyoDark: RolePalette = {
   base: "#e4e4f4",
@@ -283,6 +335,10 @@ const neotokyoDark: RolePalette = {
   operator: "#0ff0fc",
   diffAdded: "rgba(57, 255, 20, 0.18)",
   diffRemoved: "rgba(255, 43, 78, 0.18)",
+  diffAddedForeground: "#39ff14",
+  diffRemovedForeground: "#ff2b4e",
+  diffFormatting: "rgba(185, 103, 255, 0.18)",
+  diffMoved: "#b967ff",
 };
 
 export function isSyntaxThemeId(value: string): value is SyntaxThemeId {

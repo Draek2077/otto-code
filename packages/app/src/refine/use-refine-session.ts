@@ -366,7 +366,8 @@ export function useRefineSession(input: UseRefineSessionInput): RefineSession {
             if (!source || !isWritable(source)) {
               continue;
             }
-            const diff = buildRefineDiff(source.content, normalizeToLf(file.content));
+            const afterSource = normalizeToLf(file.content);
+            const diff = buildRefineDiff(source.content, afterSource);
             if (diff.hunks.length === 0) {
               continue;
             }
@@ -374,6 +375,8 @@ export function useRefineSession(input: UseRefineSessionInput): RefineSession {
               id: source.id,
               label: source.label,
               absolutePath: source.absolutePath,
+              beforeSource: source.content,
+              afterSource,
               diff,
             });
           }

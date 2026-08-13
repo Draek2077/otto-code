@@ -21,6 +21,7 @@
     "lint": "expo lint",
     "typecheck": "tsgo --noEmit",
     "test": "vitest run",
+    "test:structural-diff": "vitest run src/utils/diff-document.test.ts src/utils/structural-render-plan.test.ts src/utils/structural-diff-fixtures.test.ts src/utils/structural-diff-language-matrix.test.ts --bail=1",
     "browsers:install": "node ../../scripts/ensure-browsers.mjs",
     "pretest:browser": "npm run browsers:install",
     "test:browser": "vitest run --project browser",

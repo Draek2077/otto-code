@@ -40,11 +40,11 @@ const styles = StyleSheet.create((theme) => ({
   additions: {
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
-    color: theme.colors.diffAddition,
+    color: theme.colors.syntax.diffAddedForeground,
   },
   deletions: {
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
-    color: theme.colors.diffDeletion,
+    color: theme.colors.syntax.diffRemovedForeground,
   },
 }));

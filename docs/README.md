@@ -140,12 +140,12 @@ An unlisted page is an invisible page.
 
 ## Testing
 
-| Page                                                     | What's in it                                                                                                                                             |
-| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [testing.md](testing.md)                                 | TDD workflow, determinism, real dependencies over mocks, test organization, **the three app E2E tiers** (mock / local-AI / real) and the coverage matrix |
-| [mobile-testing.md](mobile-testing.md)                   | Maestro and mobile test workflows                                                                                                                        |
-| [ad-hoc-daemon-testing.md](ad-hoc-daemon-testing.md)     | The isolated in-process daemon test harness                                                                                                              |
-| [browser-capture-harness.md](browser-capture-harness.md) | The real-Electron browser screenshot harness and the compositor-surface gotcha                                                                           |
+| Page                                                     | What's in it                                                                                                                                                                              |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [testing.md](testing.md)                                 | TDD workflow, determinism, real dependencies over mocks, test organization, the fast structural-diff corpus, **the three app E2E tiers** (mock / local-AI / real) and the coverage matrix |
+| [mobile-testing.md](mobile-testing.md)                   | Maestro and mobile test workflows                                                                                                                                                         |
+| [ad-hoc-daemon-testing.md](ad-hoc-daemon-testing.md)     | The isolated in-process daemon test harness                                                                                                                                               |
+| [browser-capture-harness.md](browser-capture-harness.md) | The real-Electron browser screenshot harness and the compositor-surface gotcha                                                                                                            |
 
 ## Build, release and operations
 

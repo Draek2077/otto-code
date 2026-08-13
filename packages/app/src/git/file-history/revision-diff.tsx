@@ -1,10 +1,11 @@
-import { useMemo } from "react";
-import { Text, View } from "react-native";
+import { useCallback, useMemo } from "react";
+import { Pressable, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import type { GitBlameCommit } from "@otto-code/protocol/messages";
-import { DiffViewer } from "@/components/diff-viewer";
+import { DiffViewer, type DiffLeadingGutter } from "@/components/diff-viewer";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
+import { isMarkdownPath } from "@/editor/markdown/markdown-path";
 import { compactFont, compactUp } from "@/styles/theme";
 import type { ParsedDiffFile } from "@/git/use-diff-query";
 import type { DiffLine } from "@/utils/tool-call-parsers";
@@ -12,6 +13,11 @@ import { countDifferences } from "./diff-stats";
 import { RevisionDiffBody } from "./revision-diff-body";
 import { TABLE_COMPACT_SCALE, TABLE_HEADER_HEIGHT } from "./table-geometry";
 import { useFileCommitDiff, useRevisionBlame } from "./use-file-history-data";
+import { useChangesPreferences } from "@/hooks/use-changes-preferences";
+import { useAppSettingValue } from "@/hooks/use-settings";
+import { buildNumberedDiffHunks } from "@/utils/diff-layout";
+import { createDiffDocumentFromParsedFile, type DiffPresentation } from "@/utils/diff-document";
+import { buildBlameRunFlags } from "./blame-runs";
 
 /**
  * What one revision did to this file, with a header that names *both sides* of
@@ -23,6 +29,76 @@ import { useFileCommitDiff, useRevisionBlame } from "./use-file-history-data";
  * frequently a commit that never touched this file, and naming it would point
  * the reader at a revision where nothing happened.
  */
+
+const selectCodeFontSize = (settings: { codeFontSize: number }) => settings.codeFontSize;
+const BLAME_GUTTER_PADDING = 12;
+const BLAME_GUTTER_MAX_WIDTH = 180;
+
+function HistoryBlameGutterCell({
+  commit,
+  onSelectBlameCommit,
+}: {
+  commit: GitBlameCommit;
+  onSelectBlameCommit: ((commit: GitBlameCommit) => void) | undefined;
+}) {
+  const handlePress = useCallback(
+    () => onSelectBlameCommit?.(commit),
+    [commit, onSelectBlameCommit],
+  );
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`View commit by ${commit.authorName}`}
+      onPress={handlePress}
+      style={styles.blameGutterCell}
+    >
+      <Text numberOfLines={1} style={styles.blameGutterText}>
+        {commit.authorName}
+      </Text>
+    </Pressable>
+  );
+}
+
+function useHistoryBlameGutter(
+  file: ParsedDiffFile | null,
+  blameByLine: ReadonlyMap<number, GitBlameCommit>,
+  onSelectBlameCommit: ((commit: GitBlameCommit) => void) | undefined,
+): DiffLeadingGutter | undefined {
+  const codeFontSize = useAppSettingValue(selectCodeFontSize);
+  return useMemo(() => {
+    if (!file || blameByLine.size === 0) return undefined;
+    const numberedLines = buildNumberedDiffHunks(file).flatMap((hunk) => hunk.lines);
+    const runFlags = buildBlameRunFlags(
+      numberedLines,
+      (lineNumber) => blameByLine.get(lineNumber)?.sha,
+    );
+    const runStartByLine = new Map<number, GitBlameCommit>();
+    for (let index = 0; index < numberedLines.length; index += 1) {
+      const lineNumber = numberedLines[index]?.newLineNumber;
+      if (lineNumber === null || lineNumber === undefined || runFlags[index] === null) continue;
+      const commit = blameByLine.get(lineNumber);
+      if (commit) runStartByLine.set(lineNumber, commit);
+    }
+    const longestName = Math.max(
+      0,
+      ...[...blameByLine.values()].map((commit) => commit.authorName.length),
+    );
+    const width = Math.min(
+      BLAME_GUTTER_MAX_WIDTH,
+      longestName * Math.ceil(codeFontSize * 0.62) + BLAME_GUTTER_PADDING * 2,
+    );
+    return {
+      width,
+      renderLine: (line) => {
+        const lineNumber = line.newLineNumber;
+        const commit = lineNumber === undefined ? undefined : runStartByLine.get(lineNumber);
+        return commit ? (
+          <HistoryBlameGutterCell commit={commit} onSelectBlameCommit={onSelectBlameCommit} />
+        ) : null;
+      },
+    };
+  }, [blameByLine, codeFontSize, file, onSelectBlameCommit]);
+}
 
 /** The revision under inspection and the file's name at that revision. */
 export interface RevisionFocus {
@@ -71,6 +147,8 @@ export function RevisionDiff({
   onSelectBlameCommit,
 }: RevisionDiffProps) {
   const { t } = useTranslation();
+  const { preferences } = useChangesPreferences();
+  const presentation = preferences.presentation;
   const diff = useFileCommitDiff({
     serverId,
     cwd,
@@ -118,6 +196,8 @@ export function RevisionDiff({
         loading={diff.loading}
         truncated={diff.truncated}
         file={diff.file}
+        filePath={focus.path}
+        presentation={presentation}
         diffLines={diff.diffLines}
         blameByLine={blameByLine}
         onSelectBlameCommit={onSelectBlameCommit}
@@ -145,6 +225,8 @@ function DiffBody({
   loading,
   truncated,
   file,
+  filePath,
+  presentation,
   diffLines,
   blameByLine,
   onSelectBlameCommit,
@@ -153,11 +235,30 @@ function DiffBody({
   loading: boolean;
   truncated: boolean;
   file: ParsedDiffFile | null;
+  filePath: string;
+  presentation: DiffPresentation;
   diffLines: DiffLine[];
   blameByLine: ReadonlyMap<number, GitBlameCommit>;
   onSelectBlameCommit?: (commit: GitBlameCommit) => void;
 }) {
   const { t } = useTranslation();
+  const structuralDocument = useMemo(
+    () => (file ? createDiffDocumentFromParsedFile(file) : null),
+    [file],
+  );
+  const blameGutter = useHistoryBlameGutter(file, blameByLine, onSelectBlameCommit);
+  const renderSharedDiff = useCallback(
+    () => (
+      <DiffViewer
+        diffLines={structuralDocument?.lines ?? []}
+        document={structuralDocument ?? undefined}
+        presentation={presentation}
+        leadingGutter={blameGutter}
+        fillAvailableHeight
+      />
+    ),
+    [blameGutter, presentation, structuralDocument],
+  );
   if (error) {
     return (
       <View style={styles.placeholder}>
@@ -173,16 +274,29 @@ function DiffBody({
     );
   }
   if (file && file.hunks.length > 0) {
+    // Only the formatted Markdown mode remains specialized. Its raw diff is
+    // the shared viewer, just like every other code-review surface.
+    if (isMarkdownPath(file.path)) {
+      return (
+        <View style={styles.diffHost}>
+          {truncated ? (
+            <Text style={styles.truncatedNote}>{t("gitFileHistory.diffTruncated")}</Text>
+          ) : null}
+          <RevisionDiffBody
+            file={file}
+            blameByLine={blameByLine}
+            onSelectBlameCommit={onSelectBlameCommit}
+            renderRawDiff={renderSharedDiff}
+          />
+        </View>
+      );
+    }
     return (
       <View style={styles.diffHost}>
         {truncated ? (
           <Text style={styles.truncatedNote}>{t("gitFileHistory.diffTruncated")}</Text>
         ) : null}
-        <RevisionDiffBody
-          file={file}
-          blameByLine={blameByLine}
-          onSelectBlameCommit={onSelectBlameCommit}
-        />
+        {renderSharedDiff()}
       </View>
     );
   }
@@ -195,6 +309,7 @@ function DiffBody({
       ) : null}
       <DiffViewer
         diffLines={diffLines}
+        filePath={filePath}
         fillAvailableHeight
         emptyLabel={t("gitFileHistory.noChangesInCommit")}
       />
@@ -306,6 +421,16 @@ const styles = StyleSheet.create((theme) => ({
   diffHost: {
     flex: 1,
     minHeight: 0,
+  },
+  blameGutterCell: {
+    minHeight: "100%",
+    justifyContent: "center",
+    paddingHorizontal: theme.spacing[1.5],
+  },
+  blameGutterText: {
+    color: theme.colors.foregroundMuted,
+    fontFamily: theme.fontFamily.mono,
+    fontSize: theme.fontSize.code,
   },
   truncatedNote: {
     paddingHorizontal: theme.spacing[3],

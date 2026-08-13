@@ -945,7 +945,10 @@ export class CheckoutSession {
       // rather than failing the whole request.
       let structured: ParsedDiffFile[] | undefined;
       try {
-        structured = await parseAndHighlightDiff(result.diff, resolvedCwd);
+        structured = await parseAndHighlightDiff(result.diff, resolvedCwd, {
+          getOldFileContent: async () => result.beforeSource ?? null,
+          getNewFileContent: async () => result.afterSource ?? null,
+        });
       } catch (parseError) {
         this.logger.debug(
           { err: parseError, path, sha },

@@ -50,6 +50,17 @@ describe("resolveSyntaxColors", () => {
         it("has semi-transparent rgba diff background colors", () => {
           expect(colors.diffAdded).toMatch(/^rgba\(\d+, \d+, \d+, 0(\.\d+)?\)$/);
           expect(colors.diffRemoved).toMatch(/^rgba\(\d+, \d+, \d+, 0(\.\d+)?\)$/);
+          expect(colors.diffAddedForeground).toMatch(/^#[0-9a-fA-F]{6}$/);
+          expect(colors.diffRemovedForeground).toMatch(/^#[0-9a-fA-F]{6}$/);
+          expect(colors.diffFormatting).toMatch(/^rgba\(\d+, \d+, \d+, 0(\.\d+)?\)$/);
+          expect(colors.diffFormatting).not.toBe(colors.diffAdded);
+          expect(colors.diffFormatting).not.toBe(colors.diffRemoved);
+        });
+
+        it("has a dedicated foreground color for moved or compactly renamed code", () => {
+          expect(colors.diffMoved).toMatch(/^#[0-9a-fA-F]{6}$/);
+          expect(colors.diffMoved).not.toBe(colors.diffAdded);
+          expect(colors.diffMoved).not.toBe(colors.diffRemoved);
         });
 
         it("derives intraline emphasis colors that share the diff hues", () => {

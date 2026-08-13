@@ -1,18 +1,30 @@
 import { z } from "zod";
-import type { HighlightToken } from "@otto-code/highlight";
-
 export interface DiffSegment {
   text: string;
   changed: boolean;
 }
 
+/**
+ * The daemon protocol transports syntax roles as strings so a newer host can
+ * add a role without breaking an older client. Renderers map unknown roles to
+ * their base code color.
+ */
+export interface DiffToken {
+  text: string;
+  style: string | null;
+}
+
 export interface DiffLine {
   type: "add" | "remove" | "context" | "header";
   content: string;
+  /** 1-based source coordinate before the change, when the producer knows it. */
+  oldLineNumber?: number;
+  /** 1-based source coordinate after the change, when the producer knows it. */
+  newLineNumber?: number;
   segments?: DiffSegment[];
   // Syntax-highlight tokens for the code on this line (prefix char excluded),
   // attached by highlightDiffLines when the file's language is supported.
-  tokens?: HighlightToken[];
+  tokens?: DiffToken[];
 }
 
 function splitIntoLines(text: string): string[] {
@@ -20,7 +32,11 @@ function splitIntoLines(text: string): string[] {
     return [];
   }
 
-  return text.replace(/\r\n/g, "\n").split("\n");
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  // A terminal newline terminates the final source line; it is not an extra
+  // empty display line. Preserve deliberate blank lines before that newline.
+  if (lines.at(-1) === "") lines.pop();
+  return lines;
 }
 
 function splitIntoWords(text: string): string[] {
@@ -134,6 +150,38 @@ function computeWordLevelDiff(
   };
 }
 
+function addSingleLineIntralineSegments(diff: DiffLine[]): void {
+  // Only attach intraline segments when a complete changed run has one line
+  // on each side. A multi-line run can contain wrapping, insertion, movement,
+  // or reordered statements. Pairing arbitrary adjacent `-` and `+` lines in
+  // that run gives the fragments the wrong counterpart and can make unchanged
+  // text appear highlighted in a Structural view.
+  for (let start = 0; start < diff.length; ) {
+    if (diff[start]?.type !== "remove" && diff[start]?.type !== "add") {
+      start += 1;
+      continue;
+    }
+    let end = start;
+    const removals: DiffLine[] = [];
+    const additions: DiffLine[] = [];
+    while (end < diff.length && (diff[end]?.type === "remove" || diff[end]?.type === "add")) {
+      const line = diff[end]!;
+      if (line.type === "remove") removals.push(line);
+      else additions.push(line);
+      end += 1;
+    }
+    if (removals.length === 1 && additions.length === 1) {
+      const { oldSegments, newSegments } = computeWordLevelDiff(
+        removals[0]!.content.slice(1),
+        additions[0]!.content.slice(1),
+      );
+      removals[0]!.segments = oldSegments;
+      additions[0]!.segments = newSegments;
+    }
+    start = end;
+  }
+}
+
 export function buildLineDiff(originalText: string, updatedText: string): DiffLine[] {
   const originalLines = splitIntoLines(originalText);
   const updatedLines = splitIntoLines(updatedText);
@@ -158,48 +206,47 @@ export function buildLineDiff(originalText: string, updatedText: string): DiffLi
   }
 
   const diff: DiffLine[] = [];
+  let oldLineNumber = 1;
+  let newLineNumber = 1;
 
   let i = 0;
   let j = 0;
   while (i < m && j < n) {
     if (originalLines[i] === updatedLines[j]) {
-      diff.push({ type: "context", content: ` ${originalLines[i]}` });
+      diff.push({
+        type: "context",
+        content: ` ${originalLines[i]}`,
+        oldLineNumber,
+        newLineNumber,
+      });
       i += 1;
       j += 1;
+      oldLineNumber += 1;
+      newLineNumber += 1;
     } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-      diff.push({ type: "remove", content: `-${originalLines[i]}` });
+      diff.push({ type: "remove", content: `-${originalLines[i]}`, oldLineNumber });
       i += 1;
+      oldLineNumber += 1;
     } else {
-      diff.push({ type: "add", content: `+${updatedLines[j]}` });
+      diff.push({ type: "add", content: `+${updatedLines[j]}`, newLineNumber });
       j += 1;
+      newLineNumber += 1;
     }
   }
 
   while (i < m) {
-    diff.push({ type: "remove", content: `-${originalLines[i]}` });
+    diff.push({ type: "remove", content: `-${originalLines[i]}`, oldLineNumber });
     i += 1;
+    oldLineNumber += 1;
   }
 
   while (j < n) {
-    diff.push({ type: "add", content: `+${updatedLines[j]}` });
+    diff.push({ type: "add", content: `+${updatedLines[j]}`, newLineNumber });
     j += 1;
+    newLineNumber += 1;
   }
 
-  // Post-process to add word-level segments for adjacent remove/add pairs
-  for (let idx = 0; idx < diff.length - 1; idx++) {
-    const curr = diff[idx];
-    const next = diff[idx + 1];
-
-    if (curr.type === "remove" && next.type === "add") {
-      // Strip the leading -/+ from content for comparison
-      const oldLineText = curr.content.slice(1);
-      const newLineText = next.content.slice(1);
-
-      const { oldSegments, newSegments } = computeWordLevelDiff(oldLineText, newLineText);
-      curr.segments = oldSegments;
-      next.segments = newSegments;
-    }
-  }
+  addSingleLineIntralineSegments(diff);
 
   return diff;
 }
@@ -211,6 +258,8 @@ export function parseUnifiedDiff(diffText?: string): DiffLine[] {
 
   const lines = splitIntoLines(diffText);
   const diff: DiffLine[] = [];
+  let oldLineNumber: number | undefined;
+  let newLineNumber: number | undefined;
 
   for (const line of lines) {
     if (!line.length) {
@@ -220,19 +269,24 @@ export function parseUnifiedDiff(diffText?: string): DiffLine[] {
 
     if (line.startsWith("@@")) {
       diff.push({ type: "header", content: line });
+      const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+      oldLineNumber = hunk ? Number(hunk[1]) : undefined;
+      newLineNumber = hunk ? Number(hunk[2]) : undefined;
       continue;
     }
 
     if (line.startsWith("+")) {
       if (!line.startsWith("+++")) {
-        diff.push({ type: "add", content: line });
+        diff.push({ type: "add", content: line, newLineNumber });
+        if (newLineNumber !== undefined) newLineNumber += 1;
       }
       continue;
     }
 
     if (line.startsWith("-")) {
       if (!line.startsWith("---")) {
-        diff.push({ type: "remove", content: line });
+        diff.push({ type: "remove", content: line, oldLineNumber });
+        if (oldLineNumber !== undefined) oldLineNumber += 1;
       }
       continue;
     }
@@ -251,7 +305,9 @@ export function parseUnifiedDiff(diffText?: string): DiffLine[] {
       continue;
     }
 
-    diff.push({ type: "context", content: line });
+    diff.push({ type: "context", content: line, oldLineNumber, newLineNumber });
+    if (oldLineNumber !== undefined) oldLineNumber += 1;
+    if (newLineNumber !== undefined) newLineNumber += 1;
   }
 
   return diff;

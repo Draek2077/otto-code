@@ -723,6 +723,8 @@ describe("appearance settings", () => {
     expect(result.codeFontSize).toBe(DEFAULT_CODE_FONT_SIZE);
     expect(result.terminalFontSize).toBe(DEFAULT_TERMINAL_FONT_SIZE);
     expect(result.syntaxTheme).toBe("default");
+    expect(result.formattingDiffHighlights).toBe(true);
+    expect(result.structuralReplacementPresentation).toBe("new-token");
   });
 
   it("defaults hide-pinned-toolbar-options to false when omitted", async () => {
@@ -933,6 +935,28 @@ describe("appearance settings", () => {
     });
 
     expect((await loadAppSettingsFromStorage(deps)).syntaxTheme).toBe("nightshade");
+  });
+
+  it("preserves the formatting-only diff indicator preference", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ formattingDiffHighlights: false }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).formattingDiffHighlights).toBe(false);
+  });
+
+  it("preserves the compact Structural replacement presentation", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ structuralReplacementPresentation: "before-after" }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).structuralReplacementPresentation).toBe(
+      "before-after",
+    );
   });
 
   it("drops a removed syntax theme id back to the default", async () => {

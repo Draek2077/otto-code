@@ -73,6 +73,8 @@ import { getFileIconSvg } from "@/components/material-file-icons";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { useCheckoutPrStatusQuery } from "@/git/use-pr-status-query";
 import { useChangesPreferences } from "@/hooks/use-changes-preferences";
+import { DiffViewer, type DiffLineContextMenuHandler } from "@/components/diff-viewer";
+import { createDiffDocumentFromParsedFile, type DiffPresentation } from "@/utils/diff-document";
 import { useAppSettings } from "@/hooks/use-settings";
 import { DiffScroll } from "@/components/diff-scroll";
 import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
@@ -80,7 +82,6 @@ import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { shouldAnchorHeaderBeforeCollapse } from "@/git/diff-scroll";
 import {
   buildSplitDiffRows,
-  buildUnifiedDiffLines,
   type ReviewableDiffTarget,
   type SplitDiffDisplayLine,
   type SplitDiffRow,
@@ -267,11 +268,7 @@ interface DiffContextMenuRequest {
   y: number;
 }
 
-type LineContextMenuHandler = (input: {
-  target: ReviewableDiffTarget;
-  x: number;
-  y: number;
-}) => void;
+type LineContextMenuHandler = DiffLineContextMenuHandler;
 
 function noopStartComment(): void {}
 
@@ -436,76 +433,6 @@ const DiffGutterCell = memo(function DiffGutterCell({
   );
 });
 
-const DiffTextLine = memo(function DiffTextLine({
-  line,
-  wrapLines,
-  textMetricsStyle,
-  reviewTarget,
-  reviewActions,
-  onHoverChange,
-  hoverTargetKey,
-  onHoverTargetChange,
-  onLineContextMenu,
-  textTestID,
-}: {
-  line: DiffLine;
-  wrapLines: boolean;
-  textMetricsStyle: TextStyle;
-  reviewTarget?: ReviewableDiffTarget | null;
-  reviewActions?: InlineReviewActions;
-  onHoverChange?: (hovered: boolean) => void;
-  hoverTargetKey?: string | null;
-  onHoverTargetChange?: (key: string | null) => void;
-  onLineContextMenu?: LineContextMenuHandler;
-  textTestID?: string;
-}) {
-  const visibleTokens = hasVisibleDiffTokens(line.tokens) ? line.tokens : null;
-  const rowMetricsStyle = useDiffRowMetricsStyle(textMetricsStyle);
-
-  const containerStyle = useMemo(
-    () => [styles.textLineContainer, lineTypeBackground(line.type), rowMetricsStyle],
-    [line.type, rowMetricsStyle],
-  );
-  const textStyle = useMemo(
-    () => [
-      styles.diffTextMetrics,
-      textMetricsStyle,
-      styles.diffLineText,
-      getWrappedTextStyle(wrapLines),
-      line.type === "add" && styles.addLineText,
-      line.type === "remove" && styles.removeLineText,
-      line.type === "header" && styles.headerLineText,
-      line.type === "context" && styles.contextLineText,
-    ],
-    [line.type, textMetricsStyle, wrapLines],
-  );
-
-  return (
-    <LongPressableLine
-      reviewTarget={reviewTarget}
-      reviewActions={reviewActions}
-      onHoverChange={onHoverChange}
-      hoverTargetKey={hoverTargetKey}
-      onHoverTargetChange={onHoverTargetChange}
-      onLineContextMenu={onLineContextMenu}
-      style={containerStyle}
-    >
-      {line.type !== "header" && visibleTokens ? (
-        <HighlightedText
-          tokens={visibleTokens}
-          textMetricsStyle={textMetricsStyle}
-          wrapLines={wrapLines}
-          testID={textTestID}
-        />
-      ) : (
-        <Text style={textStyle} testID={textTestID}>
-          {formatDiffContentText(line.content)}
-        </Text>
-      )}
-    </LongPressableLine>
-  );
-});
-
 const SplitTextLine = memo(function SplitTextLine({
   line,
   wrapLines,
@@ -564,78 +491,6 @@ const SplitTextLine = memo(function SplitTextLine({
         />
       ) : (
         <Text style={textStyle}>{formatDiffContentText(line?.content)}</Text>
-      )}
-    </LongPressableLine>
-  );
-});
-
-const DiffLineView = memo(function DiffLineView({
-  line,
-  lineNumber,
-  gutterWidth,
-  wrapLines,
-  textMetricsStyle,
-  reviewTarget,
-  reviewActions,
-  onLineContextMenu,
-}: {
-  line: DiffLine;
-  lineNumber: number | null;
-  gutterWidth: number;
-  wrapLines: boolean;
-  textMetricsStyle: TextStyle;
-  reviewTarget?: ReviewableDiffTarget | null;
-  reviewActions?: InlineReviewActions;
-  onLineContextMenu?: LineContextMenuHandler;
-}) {
-  const [isLineHovered, setIsLineHovered] = useState(false);
-  const visibleTokens = hasVisibleDiffTokens(line.tokens) ? line.tokens : null;
-  const rowMetricsStyle = useDiffRowMetricsStyle(textMetricsStyle);
-
-  const containerStyle = useMemo(
-    () => [styles.diffLineContainer, lineTypeBackground(line.type), rowMetricsStyle],
-    [line.type, rowMetricsStyle],
-  );
-  const textStyle = useMemo(
-    () => [
-      styles.diffTextMetrics,
-      textMetricsStyle,
-      styles.diffLineText,
-      getWrappedTextStyle(wrapLines),
-      line.type === "add" && styles.addLineText,
-      line.type === "remove" && styles.removeLineText,
-      line.type === "header" && styles.headerLineText,
-      line.type === "context" && styles.contextLineText,
-    ],
-    [line.type, textMetricsStyle, wrapLines],
-  );
-
-  return (
-    <LongPressableLine
-      reviewTarget={reviewTarget}
-      reviewActions={reviewActions}
-      onHoverChange={setIsLineHovered}
-      onLineContextMenu={onLineContextMenu}
-      style={containerStyle}
-    >
-      <DiffGutterCell
-        lineNumber={lineNumber}
-        type={line.type}
-        gutterWidth={gutterWidth}
-        textMetricsStyle={textMetricsStyle}
-        reviewTarget={reviewTarget}
-        reviewActions={reviewActions}
-        isLineHovered={isLineHovered}
-        style={styles.lineNumberGutter}
-      />
-      {line.type !== "header" && visibleTokens ? (
-        <HighlightedText
-          tokens={visibleTokens}
-          textMetricsStyle={textMetricsStyle}
-          wrapLines={wrapLines}
-        />
-      ) : (
-        <Text style={textStyle}>{formatDiffContentText(line.content)}</Text>
       )}
     </LongPressableLine>
   );
@@ -1204,9 +1059,13 @@ function isDiffBodyTooLargeToRender(file: ParsedDiffFile): boolean {
 // expanded individually, and each over-cap file is itself placeholdered above.
 const MAX_EXPAND_ALL_FILE_COUNT = 500;
 
-const DiffFileBody = memo(function DiffFileBody({
+// Used by the Changes surface and the Appearance diff preview. Keeping the
+// preview on this component makes the old/new comparison honest while the
+// shared review-surface frame is extracted.
+export const LegacyDiffFileBody = memo(function LegacyDiffFileBody({
   file,
   layout,
+  presentation,
   wrapLines,
   codeFontSize,
   textMetricsStyle,
@@ -1217,6 +1076,7 @@ const DiffFileBody = memo(function DiffFileBody({
 }: {
   file: ParsedDiffFile;
   layout: "unified" | "split";
+  presentation: DiffPresentation;
   wrapLines: boolean;
   codeFontSize: number;
   textMetricsStyle: TextStyle;
@@ -1225,9 +1085,6 @@ const DiffFileBody = memo(function DiffFileBody({
   onBodyHeightChange?: (file: ParsedDiffFile, height: number) => void;
   testID?: string;
 }) {
-  const [scrollViewWidth, setScrollViewWidth] = useState(0);
-  const [bodyWidth, setBodyWidth] = useState(0);
-  const [hoveredReviewTargetKey, setHoveredReviewTargetKey] = useState<string | null>(null);
   const { t } = useTranslation();
 
   const isBinary = file.status === "binary";
@@ -1245,31 +1102,18 @@ const DiffFileBody = memo(function DiffFileBody({
     }
     return max;
   }, [file, isBinary, isTooLarge]);
-  const gutterWidth = lineNumberGutterWidth(maxLineNo, codeFontSize);
+  const splitGutterWidth = lineNumberGutterWidth(maxLineNo, codeFontSize);
   const splitRows = useMemo(
     () => (!isBinary && !isTooLarge && layout === "split" ? buildSplitDiffRows(file) : null),
     [file, isBinary, isTooLarge, layout],
   );
-  const unifiedLines = useMemo(
-    () => (!isBinary && !isTooLarge && layout !== "split" ? buildUnifiedDiffLines(file) : null),
-    [file, isBinary, isTooLarge, layout],
-  );
+  const structuralDocument = useMemo(() => createDiffDocumentFromParsedFile(file), [file]);
 
   const handleLayout = useCallback(
     (event: LayoutChangeEvent) => {
-      setBodyWidth(event.nativeEvent.layout.width);
       onBodyHeightChange?.(file, event.nativeEvent.layout.height);
     },
     [file, onBodyHeightChange],
-  );
-
-  const availableWidth = bodyWidth > 0 ? bodyWidth : scrollViewWidth;
-  const linesContainerRowStyle = useMemo(
-    () => [
-      styles.linesContainer,
-      availableWidth > 0 && inlineUnistylesStyle({ minWidth: availableWidth }),
-    ],
-    [availableWidth],
   );
 
   return (
@@ -1285,14 +1129,17 @@ const DiffFileBody = memo(function DiffFileBody({
           );
         }
 
-        if (layout === "split") {
+        // Line keeps its established split implementation. Structural uses
+        // the shared renderer in both layouts so the semantic plan, syntax,
+        // review targets, and gutter behavior stay identical.
+        if (layout === "split" && presentation === "line") {
           const rows = splitRows ?? [];
           return (
             <View style={DIFF_CONTENT_SPLIT_ROW_STYLE} dataSet={CODE_SURFACE_DATASET}>
               <SplitDiffColumn
                 rows={rows}
                 side="left"
-                gutterWidth={gutterWidth}
+                gutterWidth={splitGutterWidth}
                 wrapLines={wrapLines}
                 textMetricsStyle={textMetricsStyle}
                 reviewActions={reviewActions}
@@ -1301,7 +1148,7 @@ const DiffFileBody = memo(function DiffFileBody({
               <SplitDiffColumn
                 rows={rows}
                 side="right"
-                gutterWidth={gutterWidth}
+                gutterWidth={splitGutterWidth}
                 wrapLines={wrapLines}
                 textMetricsStyle={textMetricsStyle}
                 reviewActions={reviewActions}
@@ -1311,96 +1158,17 @@ const DiffFileBody = memo(function DiffFileBody({
             </View>
           );
         }
-
-        const computedLines = unifiedLines ?? [];
-
-        if (wrapLines) {
-          return (
-            <View style={styles.diffContent} dataSet={CODE_SURFACE_DATASET}>
-              <View style={styles.linesContainer}>
-                {computedLines.map(({ line, lineNumber, key, reviewTarget }, index) => (
-                  <View key={key} testID={`diff-wrapped-row-${index}`}>
-                    <DiffLineView
-                      line={line}
-                      lineNumber={lineNumber}
-                      gutterWidth={gutterWidth}
-                      wrapLines={wrapLines}
-                      textMetricsStyle={textMetricsStyle}
-                      reviewTarget={reviewTarget}
-                      reviewActions={reviewActions}
-                      onLineContextMenu={onLineContextMenu}
-                    />
-                    <InlineReviewRow
-                      reviewTarget={reviewTarget}
-                      reviewActions={reviewActions}
-                      gutterWidth={gutterWidth}
-                    />
-                  </View>
-                ))}
-              </View>
-            </View>
-          );
-        }
-
-        const textViewportWidth =
-          scrollViewWidth > 0 ? scrollViewWidth : Math.max(0, bodyWidth - gutterWidth);
         return (
-          <View style={DIFF_CONTENT_ROW_STYLE} dataSet={CODE_SURFACE_DATASET}>
-            <View style={styles.gutterColumn}>
-              {computedLines.map(({ line, lineNumber, key, reviewTarget }, index) => (
-                <View key={key} testID={`diff-gutter-row-${index}`}>
-                  <DiffGutterCell
-                    lineNumber={lineNumber}
-                    type={line.type}
-                    gutterWidth={gutterWidth}
-                    textMetricsStyle={textMetricsStyle}
-                    reviewTarget={reviewTarget}
-                    reviewActions={reviewActions}
-                    isLineHovered={
-                      reviewTarget?.key !== undefined && hoveredReviewTargetKey === reviewTarget.key
-                    }
-                    textTestID={`diff-gutter-text-${index}`}
-                    actionTestID={`diff-gutter-action-${index}`}
-                  />
-                  <InlineReviewGutterSpacer
-                    reviewTarget={reviewTarget}
-                    reviewActions={reviewActions}
-                    gutterWidth={gutterWidth}
-                  />
-                </View>
-              ))}
-            </View>
-            <DiffScroll
-              scrollViewWidth={scrollViewWidth}
-              onScrollViewWidthChange={setScrollViewWidth}
-              style={styles.splitColumnScroll}
-              contentContainerStyle={styles.diffContentInner}
-            >
-              <View style={linesContainerRowStyle}>
-                {computedLines.map(({ line, key, reviewTarget }, index) => (
-                  <View key={key} testID={`diff-code-row-${index}`}>
-                    <DiffTextLine
-                      line={line}
-                      wrapLines={false}
-                      textMetricsStyle={textMetricsStyle}
-                      reviewTarget={reviewTarget}
-                      reviewActions={reviewActions}
-                      hoverTargetKey={reviewTarget?.key ?? null}
-                      onHoverTargetChange={setHoveredReviewTargetKey}
-                      onLineContextMenu={onLineContextMenu}
-                      textTestID={`diff-code-text-${index}`}
-                    />
-                    <InlineReviewThreadContent
-                      reviewTarget={reviewTarget}
-                      reviewActions={reviewActions}
-                      viewportWidth={textViewportWidth}
-                      pinToViewport
-                    />
-                  </View>
-                ))}
-              </View>
-            </DiffScroll>
-          </View>
+          <DiffViewer
+            diffLines={structuralDocument.lines}
+            document={structuralDocument}
+            presentation={presentation}
+            layout={layout}
+            reviewActions={reviewActions}
+            onLineContextMenu={onLineContextMenu}
+            frame="top"
+            wrap={wrapLines}
+          />
         );
       })()}
     </View>
@@ -2318,8 +2086,12 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
   const canUseSplitLayout = isWeb && !isMobile;
   const { preferences: changesPreferences, updatePreferences: updateChangesPreferences } =
     useChangesPreferences();
+  const presentation = changesPreferences.presentation;
   const wrapLines = changesPreferences.wrapLines;
   const viewMode = changesPreferences.viewMode;
+  // Both presentations honor the existing unified/side-by-side preference.
+  // Structural receives this choice through the shared renderer; only Line
+  // uses the established legacy split body.
   const effectiveLayout = canUseSplitLayout ? changesPreferences.layout : "unified";
 
   const handleToggleWrapLines = useCallback(() => {
@@ -3260,9 +3032,10 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
         );
       }
       return (
-        <DiffFileBody
+        <LegacyDiffFileBody
           file={item.file}
           layout={effectiveLayout}
+          presentation={presentation}
           wrapLines={wrapLines}
           codeFontSize={codeFontSize}
           textMetricsStyle={diffTextMetricsStyle}
@@ -3279,6 +3052,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
       deselectedPaths,
       diffTextMetricsStyle,
       effectiveLayout,
+      presentation,
       handleBodyHeightChange,
       handleFolderRowHeightChange,
       handleHeaderHeightChange,
@@ -3317,6 +3091,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
       commitSelectionEnabled,
       deselectedPaths,
       effectiveLayout,
+      presentation,
       diffBodyTypographyKey,
       heightVersion,
       viewMode,
@@ -3329,6 +3104,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
       commitSelectionEnabled,
       deselectedPaths,
       effectiveLayout,
+      presentation,
       diffBodyTypographyKey,
       heightVersion,
       viewMode,
@@ -3936,7 +3712,7 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
   },
   newBadge: {
-    backgroundColor: "rgba(46, 160, 67, 0.2)",
+    backgroundColor: theme.colors.syntax.diffAdded,
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[1],
     borderRadius: theme.borderRadius.md,
@@ -3945,10 +3721,10 @@ const styles = StyleSheet.create((theme) => ({
   newBadgeText: {
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
-    color: theme.colors.diffAddition,
+    color: theme.colors.syntax.diffAddedForeground,
   },
   deletedBadge: {
-    backgroundColor: "rgba(248, 81, 73, 0.2)",
+    backgroundColor: theme.colors.syntax.diffRemoved,
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[1],
     borderRadius: theme.borderRadius.md,
@@ -3957,17 +3733,17 @@ const styles = StyleSheet.create((theme) => ({
   deletedBadgeText: {
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
-    color: theme.colors.diffDeletion,
+    color: theme.colors.syntax.diffRemovedForeground,
   },
   additions: {
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
-    color: theme.colors.diffAddition,
+    color: theme.colors.syntax.diffAddedForeground,
   },
   deletions: {
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
-    color: theme.colors.diffDeletion,
+    color: theme.colors.syntax.diffRemovedForeground,
   },
   diffContent: {
     borderTopWidth: theme.borderWidth[1],
@@ -3998,6 +3774,21 @@ const styles = StyleSheet.create((theme) => ({
     elevation: 4,
     overflow: "visible",
   },
+  pairedGutterCell: {
+    alignSelf: "stretch",
+    justifyContent: "flex-start",
+  },
+  pairedGutterCoordinates: {
+    flexDirection: "row",
+    gap: theme.spacing[1.5],
+    paddingLeft: theme.spacing[1],
+    paddingRight: theme.spacing[2],
+  },
+  pairedLineNumberText: {
+    textAlign: "right",
+    color: theme.colors.foregroundMuted,
+    userSelect: "none",
+  },
   inlineReviewRow: {
     flexDirection: "row",
     alignItems: "stretch",
@@ -4013,6 +3804,9 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "stretch",
     paddingLeft: theme.spacing[2],
+  },
+  unifiedTextLineContainer: {
+    paddingLeft: 0,
   },
   splitRow: {
     flexDirection: "row",
@@ -4056,6 +3850,14 @@ const styles = StyleSheet.create((theme) => ({
     elevation: 4,
     overflow: "visible",
   },
+  unifiedLineMarker: {
+    flexShrink: 0,
+    marginLeft: theme.spacing[2],
+    width: theme.spacing[2],
+    color: theme.colors.foregroundMuted,
+    textAlign: "left",
+    userSelect: "none",
+  },
   diffTextMetrics: {
     fontSize: theme.fontSize.code,
     lineHeight: theme.lineHeight.diff,
@@ -4069,10 +3871,10 @@ const styles = StyleSheet.create((theme) => ({
     userSelect: "none",
   },
   addLineNumberText: {
-    color: theme.colors.diffAddition,
+    color: theme.colors.syntax.diffAddedForeground,
   },
   removeLineNumberText: {
-    color: theme.colors.diffDeletion,
+    color: theme.colors.syntax.diffRemovedForeground,
   },
   diffLineText: {
     flex: 1,
@@ -4081,13 +3883,13 @@ const styles = StyleSheet.create((theme) => ({
     userSelect: "text",
   },
   addLineContainer: {
-    backgroundColor: "rgba(46, 160, 67, 0.15)", // GitHub green
+    backgroundColor: theme.colors.syntax.diffAdded,
   },
   addLineText: {
     color: theme.colors.foreground,
   },
   removeLineContainer: {
-    backgroundColor: "rgba(248, 81, 73, 0.1)", // GitHub red
+    backgroundColor: theme.colors.syntax.diffRemoved,
   },
   removeLineText: {
     color: theme.colors.foreground,
@@ -4128,5 +3930,4 @@ const styles = StyleSheet.create((theme) => ({
 const FILE_SECTION_BODY_STYLE = [styles.fileSectionBodyContainer, styles.fileSectionBorder];
 const SELECTED_FILE_CHECKBOX_STYLE = [styles.fileCheckbox, styles.fileCheckboxChecked];
 const DIFF_CONTENT_SPLIT_ROW_STYLE = [styles.diffContent, styles.splitRow];
-const DIFF_CONTENT_ROW_STYLE = [styles.diffContent, styles.diffContentRow];
 const DIFF_HEIGHT_CHANGE_EPSILON = 0.5;

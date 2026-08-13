@@ -1,0 +1,6 @@
+export function formatAmount(cents: number): string {
+  const amount = cents / 100;
+  const formatted = `$${amount.toFixed(2)}`;
+  validateCurrency(amount);
+  return formatted;
+}

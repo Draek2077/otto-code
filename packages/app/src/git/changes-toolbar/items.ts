@@ -3,6 +3,7 @@
 // (see @/workspace-pins) - pins are global (device-local), not per-workspace.
 
 export type ChangesToolbarItemId =
+  | "presentation"
   | "split"
   | "tree"
   | "expand"
@@ -15,6 +16,7 @@ export type ChangesToolbarItemId =
 // this order regardless of the order items were pinned, so the layout is stable.
 // removeComments is only offered while the current diff has draft review comments.
 export const CHANGES_TOOLBAR_ITEM_IDS = [
+  "presentation",
   "split",
   "tree",
   "expand",

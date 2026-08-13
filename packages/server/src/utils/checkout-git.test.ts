@@ -484,6 +484,8 @@ const x = 1;
 
     expect(addedLine?.tokens).toEqual([{ text: "new comment line", style: "comment" }]);
     expect(removedLine?.tokens).toEqual([{ text: "old comment line", style: "comment" }]);
+    expect(file?.beforeSource).toBe(originalContent);
+    expect(file?.afterSource).toBe(updatedContent);
   });
 
   it("preserves no-prefix structured paths that start with a or b", async () => {

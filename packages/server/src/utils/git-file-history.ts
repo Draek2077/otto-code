@@ -14,6 +14,7 @@
  */
 
 import { runGitCommand } from "./run-git-command.js";
+import { isFullFileHighlightable } from "../server/utils/diff-highlighter.js";
 
 const READ_ONLY_GIT_ENV = {
   GIT_OPTIONAL_LOCKS: "0",
@@ -290,12 +291,31 @@ export interface GitFileCommitDiffResult {
    */
   previousSha?: string;
   previousPath?: string;
+  /** Complete parser-safe sides when the blob-to-blob comparison supplied them. */
+  beforeSource?: string;
+  afterSource?: string;
 }
 
 /** One revision of one file: the commit, and the name the file had in it. */
 interface FileRevision {
   sha: string;
   path: string;
+}
+
+async function readFileRevisionSource(
+  cwd: string,
+  revision: FileRevision,
+): Promise<string | undefined> {
+  try {
+    const { stdout } = await runGitCommand(["show", `${revision.sha}:./${revision.path}`], {
+      cwd,
+      envOverlay: READ_ONLY_GIT_ENV,
+      timeout: HISTORY_TIMEOUT_MS,
+    });
+    return isFullFileHighlightable(stdout) ? stdout : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -399,11 +419,18 @@ export async function getFileCommitDiff(
       },
     );
     if (result.exitCode !== 128) {
+      const current = { sha: input.sha, path: input.path };
+      const [beforeSource, afterSource] = await Promise.all([
+        readFileRevisionSource(cwd, previous),
+        readFileRevisionSource(cwd, current),
+      ]);
       return {
         diff: result.stdout,
         truncated: result.truncated,
         previousSha: previous.sha,
         previousPath: previous.path,
+        ...(beforeSource === undefined ? {} : { beforeSource }),
+        ...(afterSource === undefined ? {} : { afterSource }),
       };
     }
   }

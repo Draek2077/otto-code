@@ -5,7 +5,7 @@ import { useChangesPreferences } from "@/hooks/use-changes-preferences";
 import { settingsStyles } from "@/styles/settings";
 import { SettingsSection } from "./settings-section";
 
-/** Global default only. Every review surface keeps its own transient override. */
+/** The one persisted presentation choice used by every code-review surface. */
 export function DiffPresentationSection() {
   const { preferences, updatePreferences } = useChangesPreferences();
   const options = useMemo(
@@ -29,11 +29,10 @@ export function DiffPresentationSection() {
       <View style={settingsStyles.card}>
         <View style={settingsStyles.rowResponsive}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Default view</Text>
+            <Text style={settingsStyles.rowTitle}>Review view</Text>
             <Text style={settingsStyles.rowHint}>
-              Choose the default for new diffs. A local switch changes only the review you are
-              looking at. Structural falls back to the complete Line diff when it cannot align the
-              file safely.
+              Applies to Changes, History, Refine, and agent edits. Structural uses Line only when
+              the file cannot be aligned safely.
             </Text>
           </View>
           <SegmentedControl

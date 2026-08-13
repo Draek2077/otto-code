@@ -486,16 +486,30 @@ function SubAgentDetailSection({
 
 interface EditDetailProps {
   diffLines: DiffLine[] | undefined;
+  filePath?: string | null;
+  /** Full snapshots let the shared renderer safely opt into Structural. */
+  beforeSource?: string | null;
+  afterSource?: string | null;
   ds: DetailStyles;
 }
 
-function EditDetailSection({ diffLines, ds }: EditDetailProps) {
+function EditDetailSection({
+  diffLines,
+  filePath,
+  beforeSource,
+  afterSource,
+  ds,
+}: EditDetailProps) {
   return (
     <View style={ds.sectionFillStyle}>
       {diffLines ? (
         <View style={ds.codeBlockFillStyle}>
           <DiffViewer
             diffLines={diffLines}
+            filePath={filePath}
+            source="agent-edit"
+            beforeSource={beforeSource}
+            afterSource={afterSource}
             maxHeight={ds.resolvedMaxHeight}
             fillAvailableHeight={ds.shouldFill}
             wrap={ds.wrap}
@@ -736,7 +750,16 @@ function buildDetailSections(
     ];
   }
   if (detail.type === "edit") {
-    return [<EditDetailSection key="edit" diffLines={diffLines} ds={ds} />];
+    return [
+      <EditDetailSection
+        key="edit"
+        diffLines={diffLines}
+        filePath={detail.filePath}
+        beforeSource={detail.oldString}
+        afterSource={detail.newString}
+        ds={ds}
+      />,
+    ];
   }
   if (detail.type === "write") {
     return [

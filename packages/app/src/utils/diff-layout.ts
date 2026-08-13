@@ -64,6 +64,8 @@ export interface UnifiedDiffDisplayLine {
   key: string;
   line: DiffLine;
   lineNumber: number | null;
+  oldLineNumber: number | null;
+  newLineNumber: number | null;
   reviewTarget: ReviewableDiffTarget | null;
 }
 
@@ -231,6 +233,8 @@ export function buildUnifiedDiffLines(file: ParsedDiffFile): UnifiedDiffDisplayL
       key: numberedLine.key,
       line: numberedLine.line,
       lineNumber: numberedLine.unifiedCell?.lineNumber ?? null,
+      oldLineNumber: numberedLine.oldLineNumber,
+      newLineNumber: numberedLine.newLineNumber,
       reviewTarget: numberedLine.unifiedCell ? toReviewTarget(numberedLine.unifiedCell) : null,
     })),
   );

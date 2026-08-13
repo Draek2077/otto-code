@@ -23,6 +23,9 @@ export interface ParsedDiffFile {
   additions: number;
   deletions: number;
   hunks: DiffHunk[];
+  /** Complete parser-safe snapshots, when the caller can read both sides. */
+  beforeSource?: string;
+  afterSource?: string;
   status?: "ok" | "too_large" | "binary";
 }
 
@@ -413,10 +416,22 @@ export async function parseAndHighlightDiff(
         options.getOldFileContent?.(file),
         options.getNewFileContent?.(file),
       ]);
-      highlightedFiles[index] = await highlightDiffWithFileContent(file, cwd, {
+      const highlighted = await highlightDiffWithFileContent(file, cwd, {
         oldFileContent: oldFileContent ?? undefined,
         newFileContent: newFileContent ?? undefined,
       });
+      // Structural alignment needs the exact complete snapshots. Retain only
+      // the same bounded content we already parse for full-file highlighting,
+      // so the existing checkout frame guard remains authoritative.
+      highlightedFiles[index] = {
+        ...highlighted,
+        ...(typeof oldFileContent === "string" && isFullFileHighlightable(oldFileContent)
+          ? { beforeSource: oldFileContent }
+          : {}),
+        ...(typeof newFileContent === "string" && isFullFileHighlightable(newFileContent)
+          ? { afterSource: newFileContent }
+          : {}),
+      };
     }
   };
   await Promise.all(

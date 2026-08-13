@@ -21,6 +21,7 @@ export {
 } from "./store";
 
 export {
+  getInlineReviewThreadHeight,
   getInlineReviewThreadState,
   getInlineReviewThreadViewportStyle,
   getSplitInlineReviewThreadState,
@@ -28,6 +29,7 @@ export {
   InlineReviewEditor,
   InlineReviewGutterCell,
   InlineReviewThread,
+  INLINE_REVIEW_EDITOR_HEIGHT,
   isInlineReviewEditorForTarget,
   SMALL_ACTION_HIT_SLOP,
   useInlineReviewController,

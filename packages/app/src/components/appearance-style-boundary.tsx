@@ -52,6 +52,14 @@ const appearanceStyleBoundaryMapping = (theme: Theme): Partial<AppearanceStyleBo
     theme.colors.syntax.meta,
     theme.colors.syntax.heading,
     theme.colors.syntax.link,
+    theme.colors.syntax.diffAdded,
+    theme.colors.syntax.diffRemoved,
+    theme.colors.syntax.diffAddedForeground,
+    theme.colors.syntax.diffRemovedForeground,
+    theme.colors.syntax.diffAddedEmphasis,
+    theme.colors.syntax.diffRemovedEmphasis,
+    theme.colors.syntax.diffFormatting,
+    theme.colors.syntax.diffMoved,
   ].join("\u0000"),
 });
 

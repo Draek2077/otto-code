@@ -32,6 +32,7 @@ import { i18n } from "@/i18n/i18next";
 import { usePaneContext } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
 import { useRefineFeature } from "@/refine/use-refine-feature";
+import { useChangesPreferences } from "@/hooks/use-changes-preferences";
 import {
   useRefineSession,
   type RefinePhase,
@@ -54,6 +55,7 @@ import type { RefineHunk } from "@/refine/hunks";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import type { WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import { compactFont, type Theme } from "@/styles/theme";
+import type { DiffPresentation } from "@/utils/diff-document";
 
 /**
  * An AI rewrite as an auditable job - the document half of what the rename tab
@@ -160,6 +162,8 @@ function RefinePanel() {
   const job = preset?.job ?? "refine";
   const [instruction, setInstruction] = useState(() => preset?.instruction ?? "");
   const [activePresetId, setActivePresetId] = useState<string | null>(preset?.id ?? null);
+  const { preferences: changesPreferences } = useChangesPreferences();
+  const presentation = changesPreferences.presentation;
 
   const groups = useCollapsedGroups();
   const { allExpanded, toggleAll } = groups;
@@ -218,7 +222,7 @@ function RefinePanel() {
         onPickPreset={applyPreset}
         session={session}
       />
-      <RefineBody session={session} groups={groups} job={job} />
+      <RefineBody session={session} groups={groups} job={job} presentation={presentation} />
     </View>
   );
 }
@@ -646,10 +650,12 @@ function RefineBody({
   session,
   groups,
   job,
+  presentation,
 }: {
   session: RefineSession;
   groups: ReturnType<typeof useCollapsedGroups>;
   job: RefineJobKind;
+  presentation: DiffPresentation;
 }) {
   const { phase, proposals } = session;
 
@@ -668,15 +674,17 @@ function RefineBody({
   if (proposals.length === 0) {
     return <CenteredNote text={i18n.t("refine.body.idle", { job: jobTitle(job) })} />;
   }
-  return <ProposalList session={session} groups={groups} />;
+  return <ProposalList session={session} groups={groups} presentation={presentation} />;
 }
 
 function ProposalList({
   session,
   groups,
+  presentation,
 }: {
   session: RefineSession;
   groups: ReturnType<typeof useCollapsedGroups>;
+  presentation: DiffPresentation;
 }) {
   const scrollRef = useRef<ScrollView>(null);
   const scrollbar = useWebScrollViewScrollbar(scrollRef, { enabled: isWeb });
@@ -699,6 +707,7 @@ function ProposalList({
             session={session}
             collapsed={groups.isCollapsed(proposal.id)}
             onToggleCollapsed={groups.toggle}
+            presentation={presentation}
           />
         ))}
       </ScrollView>
@@ -719,11 +728,13 @@ function FileProposalGroup({
   session,
   collapsed,
   onToggleCollapsed,
+  presentation,
 }: {
   proposal: RefineFileProposal;
   session: RefineSession;
   collapsed: boolean;
   onToggleCollapsed: (id: string) => void;
+  presentation: DiffPresentation;
 }) {
   const keptCount = proposal.diff.hunks.filter((hunk) =>
     session.isKept(proposal.id, hunk.id),
@@ -773,10 +784,14 @@ function FileProposalGroup({
             <HunkGroup
               key={hunk.id}
               fileId={proposal.id}
+              filePath={proposal.label}
+              beforeSource={proposal.beforeSource}
+              afterSource={proposal.afterSource}
               hunk={hunk}
               ordinal={index + 1}
               kept={session.isKept(proposal.id, hunk.id)}
               onToggle={session.toggleHunk}
+              presentation={presentation}
             />
           ))}
     </View>
@@ -794,22 +809,40 @@ function FileProposalGroup({
  */
 function HunkGroup({
   fileId,
+  filePath,
+  beforeSource,
+  afterSource,
   hunk,
   ordinal,
   kept,
   onToggle,
+  presentation,
 }: {
   fileId: string;
+  filePath: string;
+  beforeSource?: string;
+  afterSource?: string;
   hunk: RefineHunk;
   ordinal: number;
   kept: boolean;
   onToggle: (fileId: string, hunkId: string) => void;
+  presentation: DiffPresentation;
 }) {
   const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(false);
   const toggleCollapsed = useCallback(() => setCollapsed((current) => !current), []);
   const toggleKept = useCallback(() => onToggle(fileId, hunk.id), [fileId, hunk.id, onToggle]);
   const bodyStyle = useMemo(() => [styles.hunkBody, !kept && styles.hunkBodyDropped], [kept]);
+  const document = useMemo(
+    () => ({
+      source: "proposal" as const,
+      filePath,
+      lines: hunk.lines,
+      beforeSource,
+      afterSource,
+    }),
+    [afterSource, beforeSource, filePath, hunk.lines],
+  );
   const foldState = useMemo(() => ({ expanded: !collapsed }), [collapsed]);
 
   return (
@@ -840,7 +873,12 @@ function HunkGroup({
       </Pressable>
       {collapsed ? null : (
         <View style={bodyStyle}>
-          <DiffViewer diffLines={hunk.lines} />
+          <DiffViewer
+            diffLines={hunk.lines}
+            document={document}
+            presentation={presentation}
+            frame="top"
+          />
         </View>
       )}
     </View>
@@ -1148,12 +1186,10 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
-    // Indented past the file heading's chevron, so the nesting is legible
-    // without a second chevron column.
-    paddingLeft: theme.spacing[6],
-    paddingRight: theme.spacing[3],
+    minHeight: 32,
+    paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[1],
-    backgroundColor: theme.colors.surface0,
+    backgroundColor: theme.colors.surface1,
     ...(isWeb ? ({ cursor: "pointer" } as object) : {}),
   },
   hunkName: {
@@ -1175,7 +1211,9 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: compactFont(theme.fontSize.sm),
   },
   hunkBody: {
-    backgroundColor: theme.colors.background,
+    // The shared diff surface owns its code well, gutter, and borders. Refine
+    // only provides the decision row immediately above it.
+    backgroundColor: theme.colors.surfaceCode,
   },
   // A refused change stays visible but recedes: it is context for the decision,
   // not something you are still being asked about.

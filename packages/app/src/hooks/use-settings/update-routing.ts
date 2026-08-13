@@ -20,6 +20,8 @@ const APP_SETTINGS_UPDATE_KEYS = [
   "terminalFontSize",
   "fontContrast",
   "syntaxTheme",
+  "formattingDiffHighlights",
+  "structuralReplacementPresentation",
   "rulerEnabled",
   "rulerColumn",
   "workspaceTitleSource",

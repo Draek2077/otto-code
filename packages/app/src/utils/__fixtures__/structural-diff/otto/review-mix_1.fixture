@@ -1,0 +1,6 @@
+export function formatPrice(cents: number) {
+  const amount = cents / 100;
+  validateCurrency(amount);
+  const label = "$" + amount;
+  return label;
+}

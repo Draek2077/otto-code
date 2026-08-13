@@ -33,6 +33,18 @@ describe("collectAppSettingsUpdates", () => {
     ).toEqual({ autoExpandReasoning: true, toolCallDetailLevel: "overview" });
   });
 
+  it("routes Structural diff presentation preferences to app settings", () => {
+    expect(
+      collectAppSettingsUpdates({
+        formattingDiffHighlights: false,
+        structuralReplacementPresentation: "before-after",
+      }),
+    ).toEqual({
+      formattingDiffHighlights: false,
+      structuralReplacementPresentation: "before-after",
+    });
+  });
+
   it("routes the Hey Otto feature gate and listening pause independently", () => {
     expect(
       collectAppSettingsUpdates({

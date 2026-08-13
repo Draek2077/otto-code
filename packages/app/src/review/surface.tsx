@@ -229,6 +229,13 @@ export function getInlineReviewThreadState(input: {
   return { comments, hasEditor, editingCommentId, height };
 }
 
+export function getInlineReviewThreadHeight(
+  reservedHeight: number,
+  measuredContentHeight: number,
+): number {
+  return Math.max(reservedHeight, measuredContentHeight);
+}
+
 export function getSplitInlineReviewThreadState(input: {
   left: ReviewableDiffTarget | null | undefined;
   right: ReviewableDiffTarget | null | undefined;
@@ -381,14 +388,18 @@ export function InlineReviewThread({
   reviewTarget,
   reviewActions,
   height,
+  onHeightChange,
   viewportWidth,
+  viewportLeft,
   pinToViewport = false,
   testID,
 }: {
   reviewTarget: ReviewableDiffTarget;
   reviewActions: InlineReviewActions;
   height: number;
+  onHeightChange?: (height: number) => void;
   viewportWidth?: number;
+  viewportLeft?: number;
   pinToViewport?: boolean;
   testID?: string;
 }) {
@@ -399,6 +410,17 @@ export function InlineReviewThread({
   const editingCommentId = editor?.commentId ?? null;
   const editingExisting =
     editingCommentId !== null && comments.some((comment) => comment.id === editingCommentId);
+  const [measuredContentHeight, setMeasuredContentHeight] = useState(0);
+  const effectiveHeight = getInlineReviewThreadHeight(height, measuredContentHeight);
+  const handleContentLayout = useCallback(
+    (event: { nativeEvent: { layout: { height: number } } }) =>
+      setMeasuredContentHeight(event.nativeEvent.layout.height),
+    [],
+  );
+
+  useEffect(() => {
+    onHeightChange?.(effectiveHeight);
+  }, [effectiveHeight, onHeightChange]);
 
   const editorElement = editor ? (
     <InlineReviewEditor
@@ -413,29 +435,31 @@ export function InlineReviewThread({
   const containerStyle = useMemo<StyleProp<ViewStyle>>(
     () => [
       styles.threadContainer,
-      getInlineReviewThreadViewportStyle({ viewportWidth, pinToViewport }),
-      inlineUnistylesStyle({ minHeight: height }),
+      getInlineReviewThreadViewportStyle({ viewportWidth, viewportLeft, pinToViewport }),
+      inlineUnistylesStyle({ minHeight: effectiveHeight }),
     ],
-    [viewportWidth, pinToViewport, height],
+    [viewportWidth, viewportLeft, pinToViewport, effectiveHeight],
   );
 
   return (
     <View style={containerStyle} testID={testID}>
-      {comments.map((comment) => {
-        if (comment.id === editingCommentId) {
-          return <React.Fragment key={comment.id}>{editorElement}</React.Fragment>;
-        }
-        return (
-          <CommentRow
-            key={comment.id}
-            comment={comment}
-            reviewTarget={reviewTarget}
-            onEditComment={reviewActions.onEditComment}
-            onDeleteComment={reviewActions.onDeleteComment}
-          />
-        );
-      })}
-      {editor && !editingExisting ? editorElement : null}
+      <View style={styles.threadContent} onLayout={handleContentLayout}>
+        {comments.map((comment) => {
+          if (comment.id === editingCommentId) {
+            return <React.Fragment key={comment.id}>{editorElement}</React.Fragment>;
+          }
+          return (
+            <CommentRow
+              key={comment.id}
+              comment={comment}
+              reviewTarget={reviewTarget}
+              onEditComment={reviewActions.onEditComment}
+              onDeleteComment={reviewActions.onDeleteComment}
+            />
+          );
+        })}
+        {editor && !editingExisting ? editorElement : null}
+      </View>
     </View>
   );
 }
@@ -496,16 +520,18 @@ function CommentRow({
 export function getInlineReviewThreadViewportStyle({
   viewportWidth,
   pinToViewport,
+  viewportLeft = 0,
 }: {
   viewportWidth?: number;
   pinToViewport: boolean;
+  viewportLeft?: number;
 }): StyleProp<ViewStyle> {
   const widthStyle =
     viewportWidth && viewportWidth > 0 ? inlineUnistylesStyle({ width: viewportWidth }) : null;
   if (!pinToViewport || !isWeb) {
     return widthStyle;
   }
-  const stickyStyle = { position: "sticky", left: 0 } as unknown as ViewStyle;
+  const stickyStyle = { position: "sticky", left: viewportLeft } as unknown as ViewStyle;
   return [stickyStyle, widthStyle];
 }
 
@@ -673,6 +699,8 @@ const styles = StyleSheet.create((theme) => ({
   threadContainer: {
     flex: 1,
     minWidth: 0,
+  },
+  threadContent: {
     gap: INLINE_REVIEW_GAP,
     paddingVertical: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],

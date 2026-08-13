@@ -81,6 +81,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "typecheck:server": "npm run typecheck --workspace=@otto-code/relay && npm run typecheck --workspace=@otto-code/protocol && npm run typecheck --workspace=@otto-code/client && npm run typecheck --workspace=@otto-code/server && npm run typecheck --workspace=@otto-code/brain && npm run typecheck --workspace=@otto-code/cli",
     "test": "npm run test --workspaces --if-present",
+    "test:structural-diff": "npm run test:structural-diff --workspace=@otto-code/app",
     "format": "oxfmt .",
     "format:files": "oxfmt",
     "format:check": "oxfmt --check .",

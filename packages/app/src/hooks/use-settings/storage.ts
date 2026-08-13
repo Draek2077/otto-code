@@ -208,6 +208,12 @@ export interface AppSettings {
   // presentation only. See `resolveInkOverrides` in styles/theme.ts.
   fontContrast: number;
   syntaxTheme: SyntaxThemeId; // default "default"
+  // Whether whitespace-only changes appear in diff review. Device-local
+  // presentation only. Default on.
+  formattingDiffHighlights: boolean;
+  // How compact Structural replacements expose the old identifier. Device-local
+  // presentation only. Default keeps the review focused on the new token.
+  structuralReplacementPresentation: "new-token" | "before-after";
   // Vertical line-length marker painted behind the code editor's text, the way
   // an IDE marks the 80/120-column limit. Device-local presentation only.
   // Default on.
@@ -601,6 +607,8 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
   fontContrast: DEFAULT_FONT_CONTRAST,
   syntaxTheme: "default",
+  formattingDiffHighlights: true,
+  structuralReplacementPresentation: "new-token",
   rulerEnabled: true,
   rulerColumn: DEFAULT_RULER_COLUMN,
   workspaceTitleSource: "title",
@@ -931,6 +939,15 @@ function pickFontSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   }
   if (typeof stored.syntaxTheme === "string" && isSyntaxThemeId(stored.syntaxTheme)) {
     result.syntaxTheme = stored.syntaxTheme;
+  }
+  if (typeof stored.formattingDiffHighlights === "boolean") {
+    result.formattingDiffHighlights = stored.formattingDiffHighlights;
+  }
+  if (
+    stored.structuralReplacementPresentation === "new-token" ||
+    stored.structuralReplacementPresentation === "before-after"
+  ) {
+    result.structuralReplacementPresentation = stored.structuralReplacementPresentation;
   }
   if (typeof stored.rulerEnabled === "boolean") {
     result.rulerEnabled = stored.rulerEnabled;

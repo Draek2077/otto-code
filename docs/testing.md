@@ -358,6 +358,25 @@ Test suites in this repo are heavy. Running them in bulk freezes the machine, es
 - CI can shard app Playwright across multiple jobs; each shard still owns a full isolated daemon/relay/Metro stack from global setup. Helpers that restart the daemon must preserve the global setup environment, including disabled speech/local-model settings, so a restart does not change the tested surface or start background downloads.
 - Global setup starts Metro before Wrangler, assigns Wrangler explicit distinct relay and inspector ports, and accepts Metro as ready only when `/status` returns `packager-status:running`. A generic TCP listener is not sufficient readiness evidence.
 
+### Structural diff corpus
+
+`npm run test:structural-diff` is the structural-diff inner loop. It reads
+version-pinned source pairs from
+`packages/app/src/utils/__fixtures__/structural-diff/` and evaluates only pure
+diff functions. It never starts Electron, the daemon, a browser, or the
+Difftastic executable.
+
+Copied Difftastic cases retain their source, commit pin, and license notice in
+that directory. Each case asserts review semantics rather than terminal output:
+shared context, replacements, pure additions and removals, exact moves, and
+formatting-only changes. The corpus also asserts parser-safe fallback for
+malformed complete sources. Structural eligibility is derived directly from
+the syntax parser registry, and its unit test prevents a supported language
+from silently falling out of the Structural pipeline. Add a fixture only with
+the smallest expectation that captures the reviewer-visible behavior being
+changed. A separate visual regression gate is responsible for renderer
+snapshots; do not turn this fast corpus into a screenshot suite.
+
 ## Agent authentication in tests
 
 Agent providers handle their own auth. Do not add auth checks, environment variable gates, or conditional skips to tests. If auth fails, report it.

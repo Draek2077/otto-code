@@ -2573,9 +2573,28 @@ export const BrainProfileSchema = z
     reasoningBudget: z.number().default(0),
     parallelSlots: z.number().default(1),
     contextMultiplier: z.number().default(1),
+    calibrationRequired: z.boolean().default(true),
+    hostingProfileId: z.string().nullable().default(null),
+    /** Matches the brain's own default: a profile written before this field
+     * existed meant "use the family default", which is `inherit`. */
+    hostingProfileMode: z.enum(["inherit", "off", "custom"]).default("inherit"),
   })
   .passthrough();
 export type BrainProfile = z.infer<typeof BrainProfileSchema>;
+
+/** A Brain-owned, named llama-server template composition. */
+export const BrainHostingProfileSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    family: z.string(),
+    description: z.string().default(""),
+    template: z.string().nullable().default(null),
+    systemPromptAddendum: z.string().nullable().default(null),
+    templateKwargs: z.record(z.string(), z.unknown()).default({}),
+  })
+  .passthrough();
+export type BrainHostingProfile = z.infer<typeof BrainHostingProfileSchema>;
 
 /** One editable field, as the brain describes it, so the editor cannot drift. */
 export const BrainProfileFieldSchema = z
@@ -2751,6 +2770,8 @@ export const BrainModelProfileGetResponseSchema = z.object({
     calibration: BrainCalibrationInfoSchema.nullable().default(null),
     /** True when a previous resident-model edit still awaits a reload. */
     requiresRestart: z.boolean().default(false),
+    hostingProfiles: z.array(BrainHostingProfileSchema).default([]),
+    familyHostingProfileId: z.string().nullable().default(null),
     error: z.string().nullable(),
     requestId: z.string(),
   }),
@@ -2778,6 +2799,8 @@ export const BrainModelProfileSetResponseSchema = z.object({
     maxContextThatFits: z.number().nullable().default(null),
     /** True when the edited model is the resident one, so a restart applies it. */
     requiresRestart: z.boolean().default(false),
+    hostingProfiles: z.array(BrainHostingProfileSchema).default([]),
+    familyHostingProfileId: z.string().nullable().default(null),
     error: z.string().nullable(),
     requestId: z.string(),
   }),
@@ -6291,6 +6314,11 @@ const ParsedDiffFileSchema = z.object({
   additions: z.number(),
   deletions: z.number(),
   hunks: z.array(DiffHunkSchema),
+  // Optional so older daemons remain wire-compatible. Whole snapshots are
+  // size-bounded by the daemon and let Structural parse files, never isolated
+  // patch hunks.
+  beforeSource: z.string().optional(),
+  afterSource: z.string().optional(),
   status: z.enum(["ok", "too_large", "binary"]).optional(),
 });
 

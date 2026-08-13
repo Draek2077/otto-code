@@ -8,10 +8,12 @@ import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { useReviewDraftStore, type ReviewDraftComment } from "./store";
 import { buildReviewableDiffTargetKey, type ReviewableDiffTarget } from "@/utils/diff-layout";
 import {
+  getInlineReviewThreadHeight,
   getInlineReviewThreadState,
   getInlineReviewThreadViewportStyle,
   getSplitInlineReviewThreadState,
   groupInlineReviewCommentsByTarget,
+  INLINE_REVIEW_EDITOR_HEIGHT,
   InlineReviewEditor,
   InlineReviewGutterCell,
   InlineReviewThread,
@@ -273,6 +275,10 @@ describe("git diff inline review helpers", () => {
     expect(rowState?.height).toBe(210);
   });
 
+  it("expands a review row to the measured editor height", () => {
+    expect(getInlineReviewThreadHeight(INLINE_REVIEW_EDITOR_HEIGHT, 280)).toBe(280);
+  });
+
   it("pins no-wrap review threads to the visible diff viewport", () => {
     expect(
       getInlineReviewThreadViewportStyle({
@@ -280,6 +286,16 @@ describe("git diff inline review helpers", () => {
         pinToViewport: true,
       }),
     ).toEqual([{ position: "sticky", left: 0 }, inlineUnistylesStyle({ width: 320 })]);
+  });
+
+  it("pins a review thread after its visible number gutter", () => {
+    expect(
+      getInlineReviewThreadViewportStyle({
+        viewportWidth: 272,
+        viewportLeft: 48,
+        pinToViewport: true,
+      }),
+    ).toEqual([{ position: "sticky", left: 48 }, inlineUnistylesStyle({ width: 272 })]);
   });
 
   it("keeps the gutter add-comment target accessible and clicking opens the editor", () => {

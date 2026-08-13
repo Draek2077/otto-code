@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { GitBlameCommit } from "@otto-code/protocol/messages";
@@ -38,6 +38,8 @@ export interface RevisionDiffBodyProps {
   blameByLine: ReadonlyMap<number, GitBlameCommit>;
   /** Select a commit from a blame annotation. */
   onSelectBlameCommit?: (commit: GitBlameCommit) => void;
+  /** Raw code view supplied by the shared renderer; formatted Markdown stays local. */
+  renderRawDiff?: () => ReactNode;
 }
 
 interface DiffRow {
@@ -123,6 +125,7 @@ export function RevisionDiffBody({
   file,
   blameByLine,
   onSelectBlameCommit,
+  renderRawDiff,
 }: RevisionDiffBodyProps) {
   const isCompact = useIsCompactFormFactor();
   const [formatted, setFormatted] = useState(false);
@@ -190,60 +193,62 @@ export function RevisionDiffBody({
           <Text style={styles.formattedToggleText}>{formatted ? "Raw diff" : "Formatted"}</Text>
         </Pressable>
       ) : null}
-      {formatted && formattedAvailable ? (
-        <FormattedMarkdownHistoryDiff file={file} />
-      ) : (
-        <>
-          <ScrollView
-            ref={verticalScrollRef}
-            style={styles.verticalScroll}
-            onLayout={scrollbar.onLayout}
-            onScroll={scrollbar.onScroll}
-            onContentSizeChange={scrollbar.onContentSizeChange}
-            scrollEventThrottle={16}
-            showsVerticalScrollIndicator={!isWeb}
-            nestedScrollEnabled
-          >
-            <View style={styles.row} dataSet={CODE_SURFACE_DATASET}>
-              <View style={inlineUnistylesStyle({ width: gutterWidth })}>
-                {rows.map((row, index) => (
-                  <GutterRow
-                    key={row.key}
-                    row={row}
-                    oldNumberWidth={oldNumberWidth}
-                    newNumberWidth={newNumberWidth}
-                    blame={blameRows[index] ?? null}
-                    blameWidth={blameWidth}
-                    onSelectBlameCommit={onSelectBlameCommit}
-                  />
-                ))}
-              </View>
-              <DiffScroll
-                scrollViewWidth={scrollWidth}
-                onScrollViewWidthChange={setScrollWidth}
-                style={styles.codeScroll}
-                scrollRef={horizontalScrollRef}
-                onScroll={horizontalScrollbar.onScroll}
-                onContentSizeChange={horizontalScrollbar.onContentSizeChange}
-                onLayout={horizontalScrollbar.onLayout}
-              >
-                <View style={codeContainerStyle}>
-                  {rows.map((row) => (
-                    <CodeRow key={row.key} row={row} />
+      {(() => {
+        if (formatted && formattedAvailable) return <FormattedMarkdownHistoryDiff file={file} />;
+        if (renderRawDiff) return renderRawDiff();
+        return (
+          <>
+            <ScrollView
+              ref={verticalScrollRef}
+              style={styles.verticalScroll}
+              onLayout={scrollbar.onLayout}
+              onScroll={scrollbar.onScroll}
+              onContentSizeChange={scrollbar.onContentSizeChange}
+              scrollEventThrottle={16}
+              showsVerticalScrollIndicator={!isWeb}
+              nestedScrollEnabled
+            >
+              <View style={styles.row} dataSet={CODE_SURFACE_DATASET}>
+                <View style={inlineUnistylesStyle({ width: gutterWidth })}>
+                  {rows.map((row, index) => (
+                    <GutterRow
+                      key={row.key}
+                      row={row}
+                      oldNumberWidth={oldNumberWidth}
+                      newNumberWidth={newNumberWidth}
+                      blame={blameRows[index] ?? null}
+                      blameWidth={blameWidth}
+                      onSelectBlameCommit={onSelectBlameCommit}
+                    />
                   ))}
                 </View>
-              </DiffScroll>
-            </View>
-          </ScrollView>
-          {scrollbar.overlay}
-          {/* Inset past the gutter, which does not scroll horizontally: the bar has
+                <DiffScroll
+                  scrollViewWidth={scrollWidth}
+                  onScrollViewWidthChange={setScrollWidth}
+                  style={styles.codeScroll}
+                  scrollRef={horizontalScrollRef}
+                  onScroll={horizontalScrollbar.onScroll}
+                  onContentSizeChange={horizontalScrollbar.onContentSizeChange}
+                  onLayout={horizontalScrollbar.onLayout}
+                >
+                  <View style={codeContainerStyle}>
+                    {rows.map((row) => (
+                      <CodeRow key={row.key} row={row} />
+                    ))}
+                  </View>
+                </DiffScroll>
+              </View>
+            </ScrollView>
+            {scrollbar.overlay}
+            {/* Inset past the gutter, which does not scroll horizontally: the bar has
           to span exactly the region it scrolls, or its travel lies about where
           in the line you are. */}
-          <View style={horizontalOverlayStyle} pointerEvents="box-none">
-            {horizontalScrollbar.overlay}
-          </View>
-        </>
-      )}
+            <View style={horizontalOverlayStyle} pointerEvents="box-none">
+              {horizontalScrollbar.overlay}
+            </View>
+          </>
+        );
+      })()}
     </View>
   );
 }
@@ -491,8 +496,8 @@ const styles = StyleSheet.create((theme) => ({
   formattedContent: { paddingBottom: theme.spacing[3] },
   formattedRow: { flexDirection: "row", alignItems: "flex-start", minHeight: 28 },
   formattedContext: { backgroundColor: theme.colors.surface1 },
-  formattedAdded: { backgroundColor: "rgba(46, 160, 67, 0.15)" },
-  formattedRemoved: { backgroundColor: "rgba(248, 81, 73, 0.1)" },
+  formattedAdded: { backgroundColor: theme.colors.syntax.diffAdded },
+  formattedRemoved: { backgroundColor: theme.colors.syntax.diffRemoved },
   formattedGutter: {
     width: 52,
     paddingTop: 5,
@@ -558,10 +563,10 @@ const styles = StyleSheet.create((theme) => ({
     userSelect: "none",
   },
   addLineNumberText: {
-    color: theme.colors.diffAddition,
+    color: theme.colors.syntax.diffAddedForeground,
   },
   removeLineNumberText: {
-    color: theme.colors.diffDeletion,
+    color: theme.colors.syntax.diffRemovedForeground,
   },
   blameCell: {
     justifyContent: "center",

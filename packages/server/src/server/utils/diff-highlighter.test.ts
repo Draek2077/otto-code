@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   parseDiff,
+  parseAndHighlightDiff,
   reconstructNewFile,
   reconstructOldFile,
   highlightDiffFromHunks,
@@ -327,6 +328,20 @@ describe("reconstructOldFile", () => {
 
     expect(oldFile.get(1)).toBe("const legacy = true;");
     expect(oldFile.get(2)).toBe("export { legacy };");
+  });
+});
+
+describe("parseAndHighlightDiff", () => {
+  it("retains bounded complete snapshots for Structural consumers", async () => {
+    const beforeSource = ["const foo = 1;", "const bar = 2;", "const baz = foo + bar;"].join("\n");
+    const afterSource = ["const foo = 1;", "const bar = 3;", "const baz = foo + bar;"].join("\n");
+
+    const [file] = await parseAndHighlightDiff(SIMPLE_DIFF, "/tmp/unused", {
+      getOldFileContent: async () => beforeSource,
+      getNewFileContent: async () => afterSource,
+    });
+
+    expect(file).toMatchObject({ beforeSource, afterSource });
   });
 });
 

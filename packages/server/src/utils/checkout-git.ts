@@ -607,6 +607,14 @@ async function readGitFileContentAtRef(
   }
 }
 
+async function readWorkingFileContent(cwd: string, path: string): Promise<string | null> {
+  try {
+    return await readFile(resolve(cwd, path), "utf8");
+  } catch {
+    return null;
+  }
+}
+
 async function tryResolveMergeBase(cwd: string, baseRef: string): Promise<string | null> {
   try {
     const { stdout } = await runGitCommand(["merge-base", baseRef, "HEAD"], {
@@ -2943,7 +2951,7 @@ async function appendStructuredTrackedDiffs(
           },
           getNewFileContent: async (file) => {
             if (!refsForDiff.targetRef) {
-              return null;
+              return readWorkingFileContent(cwd, file.path);
             }
             return readGitFileContentAtRef(cwd, refsForDiff.targetRef, file.path);
           },

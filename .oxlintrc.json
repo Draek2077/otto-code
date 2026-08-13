@@ -6,6 +6,7 @@
   "ignorePatterns": [
     ".dev/**",
     "packages/app/demo/staging/templates/**",
+    "packages/app/src/utils/__fixtures__/structural-diff/**",
     "vendor/**",
     "test-documents/**"
   ],
