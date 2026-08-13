@@ -7,9 +7,9 @@ tags: ["developer-experience", "editor", "terminal", "neovim", "vim", "tmux", "d
 delivery_status: "partial"
 progress_completed: 4
 progress_total: 5
-progress_unit: "delivery milestones"
+progress_unit: "phases"
 created_at: "2026-08-12T22:38:12.272Z"
-updated_at: "2026-08-13T06:57:34.386Z"
+updated_at: "2026-08-13T08:33:27.050Z"
 ---
 
 # Vim and Neovim developer workflows
@@ -148,4 +148,8 @@ The terminal-backed editor is the supported Neovim path. It preserves the user's
 - time: "2026-08-13T06:57:34.386Z"
   kind: "note"
   summary: "In-app Vim mode, terminal diagnostics, terminal-backed Vim/Neovim editing, and the direct-Neovim-embedding evaluation are complete. The evaluation concluded no-go; remaining work is release/host alignment and real-host acceptance, not a native Neovim UI build."
+  affects: ["vim-neovim-developer-workflows"]
+- time: "2026-08-13T08:33:27.050Z"
+  kind: "note"
+  summary: "Security and reliability audit remediation completed on 2026-08-13: hardened file argv handling, recoverable/deduplicated external-editor ownership, destructive-close warnings, stable active-session configuration, correct two-key leader/Escape behavior, truthful live alternate-screen probing, native gating, and explicit older-host update messaging. Focused tests, server build, repository typecheck, and targeted lint pass. The final real-host acceptance/release phase remains."
   affects: ["vim-neovim-developer-workflows"]

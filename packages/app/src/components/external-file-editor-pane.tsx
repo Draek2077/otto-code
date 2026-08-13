@@ -4,14 +4,18 @@ import { StyleSheet } from "react-native-unistyles";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { TerminalPane } from "@/components/terminal-pane";
 import {
+  buildExternalFileEditorPresentationOwner,
+  registerActiveExternalFileEditor,
   resolveExternalEditorCapability,
   resolveExternalFileEditorCommand,
   type FileEditorMode,
 } from "@/editor/external-file-editor";
+import { isWeb } from "@/constants/platform";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import { revealFileInFiles } from "@/git/changes-reveal";
 import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
+import { resolveWorkspaceFilePaths } from "@/workspace/file-open";
 
 export interface ExternalFileEditorPaneProps {
   serverId: string;
@@ -87,8 +91,38 @@ export function ExternalFileEditorPane({
   const [terminalId, setTerminalId] = useState<string | null>(null);
   const [fileState, setFileState] = useState<"clean" | "changed" | "deleted">("clean");
   const terminalIdRef = useRef<string | null>(null);
+  const clientRef = useRef(client);
+  clientRef.current = client;
+  const preserveSessionOnUnmountRef = useRef(false);
   const editorName = resolveFileEditorName(mode);
   const terminalTitle = `${editorName}: ${fileNameFromPath(path)}`;
+  const resolvedFile = resolveWorkspaceFilePaths({ path, workspaceRoot });
+  const absolutePath = resolvedFile?.absolutePath ?? null;
+  const presentationOwner = absolutePath
+    ? buildExternalFileEditorPresentationOwner({ workspaceId, absolutePath })
+    : null;
+
+  useEffect(() => {
+    if (!absolutePath) {
+      return;
+    }
+    return registerActiveExternalFileEditor({
+      serverId,
+      workspaceId,
+      path,
+    });
+  }, [absolutePath, path, serverId, workspaceId]);
+
+  useEffect(() => {
+    if (!isWeb) {
+      return;
+    }
+    const handleBeforeUnload = () => {
+      preserveSessionOnUnmountRef.current = true;
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, []);
 
   useEffect(() => {
     if (terminalIdRef.current) {
@@ -98,10 +132,27 @@ export function ExternalFileEditorPane({
       onLaunchFailure("The Otto host is not connected. Reconnect the host and try again.");
       return;
     }
+    if (!absolutePath || !presentationOwner) {
+      onLaunchFailure("Otto could not resolve an absolute host path for this file.");
+      return;
+    }
 
     let cancelled = false;
     void (async () => {
       try {
+        const listed = await client.listTerminals(workspaceRoot, undefined, { workspaceId });
+        const existing = listed.terminals.find(
+          (terminal) =>
+            terminal.presentation === "embedded" &&
+            terminal.presentationOwner === presentationOwner,
+        );
+        if (existing) {
+          if (!cancelled) {
+            terminalIdRef.current = existing.id;
+            setTerminalId(existing.id);
+          }
+          return;
+        }
         if (mode === "vim" || mode === "neovim") {
           const diagnostic = await client.runTerminalCompatibilityDiagnostic();
           const capabilityError = resolveExternalEditorCapability(diagnostic, mode);
@@ -112,7 +163,7 @@ export function ExternalFileEditorPane({
         const editorCommand = resolveExternalFileEditorCommand({
           mode,
           customCommand,
-          path,
+          path: absolutePath,
         });
         if (!editorCommand) {
           throw new Error("Set a custom file editor command before opening this file.");
@@ -126,10 +177,11 @@ export function ExternalFileEditorPane({
             args: editorCommand.args,
             workspaceId,
             presentation: "embedded",
+            presentationOwner,
           },
         );
         if (cancelled) {
-          if (result.terminal) {
+          if (result.terminal && !preserveSessionOnUnmountRef.current) {
             await client.killTerminal(result.terminal.id).catch(() => undefined);
           }
           return;
@@ -147,7 +199,9 @@ export function ExternalFileEditorPane({
           })
           .catch(() => undefined);
         if (cancelled) {
-          await client.killTerminal(result.terminal.id).catch(() => undefined);
+          if (!preserveSessionOnUnmountRef.current) {
+            await client.killTerminal(result.terminal.id).catch(() => undefined);
+          }
           return;
         }
         terminalIdRef.current = result.terminal.id;
@@ -164,12 +218,14 @@ export function ExternalFileEditorPane({
     };
   }, [
     client,
+    absolutePath,
     customCommand,
     editorName,
     isConnected,
     mode,
     onLaunchFailure,
     path,
+    presentationOwner,
     serverId,
     terminalTitle,
     workspaceId,
@@ -179,12 +235,13 @@ export function ExternalFileEditorPane({
   useEffect(() => {
     return () => {
       const id = terminalIdRef.current;
-      if (id && client) {
-        void client.killTerminal(id).catch(() => undefined);
+      const activeClient = clientRef.current;
+      if (id && activeClient && !preserveSessionOnUnmountRef.current) {
+        void activeClient.killTerminal(id).catch(() => undefined);
       }
       terminalIdRef.current = null;
     };
-  }, [client, serverId, workspaceId]);
+  }, []);
 
   useEffect(() => {
     if (!client || !terminalId) {

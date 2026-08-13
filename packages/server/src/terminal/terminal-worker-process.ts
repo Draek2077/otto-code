@@ -68,6 +68,7 @@ function toTerminalInfo(session: TerminalSession): WorkerTerminalInfo {
     cwd: session.cwd,
     workspaceId: session.workspaceId,
     ...(session.presentation ? { presentation: session.presentation } : {}),
+    ...(session.presentationOwner ? { presentationOwner: session.presentationOwner } : {}),
     ...(session.getTitle() ? { title: session.getTitle() } : {}),
     activity: session.getActivity(),
   };

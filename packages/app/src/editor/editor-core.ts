@@ -1088,29 +1088,53 @@ function buildVimOttoShortcutHandlers(
  * Capture only plain normal-mode keys on this editor's DOM instead; the host
  * callback then routes into the existing action/focus infrastructure.
  */
+interface VimMappingExtension {
+  extension: Extension;
+  dispose: () => void;
+}
+
+function isUnmodifiedEscape(event: KeyboardEvent): boolean {
+  return event.key === "Escape" && !event.ctrlKey && !event.metaKey && !event.altKey;
+}
+
+function isPlainVimMappingKey(event: KeyboardEvent): boolean {
+  if (event.ctrlKey || event.metaKey || event.altKey) {
+    return false;
+  }
+  return event.key === " " || (/^[A-Za-z0-9]$/.test(event.key) && !event.shiftKey);
+}
+
+function isVimMappingNormalMode(cm: CodeMirror | null | undefined): cm is CodeMirror {
+  const vimState = cm?.state.vim;
+  return Boolean(cm && vimState && !vimState.insertMode && !vimState.visualMode);
+}
+
 function buildVimMappings(
   settings: VimMappingSettings,
   onAction: ((action: import("./vim-mappings").VimMappingAction) => void) | undefined,
   onPendingChanged: ((pending: boolean) => void) | undefined,
-): Extension {
+): VimMappingExtension {
   if (!onAction || Object.keys(settings.mappings).length === 0) {
-    return [];
+    return { extension: [], dispose: () => undefined };
   }
-  let pendingLeader = false;
+  let pendingSequence: string | null = null;
   let timeout: ReturnType<typeof setTimeout> | null = null;
 
   const clearPending = (): void => {
-    if (pendingLeader) {
+    if (pendingSequence !== null) {
       onPendingChanged?.(false);
     }
-    pendingLeader = false;
+    pendingSequence = null;
     if (timeout !== null) {
       clearTimeout(timeout);
       timeout = null;
     }
   };
-  const replayLeader = (cm: CodeMirror): void => {
+  const replayPendingSequence = (cm: CodeMirror, sequence: string): void => {
     Vim.handleKey(cm, " ", "otto-vim-leader");
+    for (const key of sequence) {
+      Vim.handleKey(cm, key, "otto-vim-leader");
+    }
   };
   const armTimeout = (cm: CodeMirror): void => {
     if (timeout !== null) {
@@ -1118,60 +1142,71 @@ function buildVimMappings(
     }
     timeout = setTimeout(() => {
       timeout = null;
-      if (pendingLeader) {
-        pendingLeader = false;
-        replayLeader(cm);
+      if (pendingSequence !== null) {
+        const sequence = pendingSequence;
+        pendingSequence = null;
+        onPendingChanged?.(false);
+        replayPendingSequence(cm, sequence);
       }
     }, 650);
   };
 
-  return Prec.highest(
-    EditorView.domEventHandlers({
-      keydown: (event, view) => {
-        const cm = getCM(view);
-        const vimState = cm?.state.vim;
-        if (!cm || !vimState || vimState.insertMode || vimState.visualMode) {
-          clearPending();
-          return false;
-        }
-        const plainKey = event.key === " " || (/^[A-Za-z0-9]$/.test(event.key) && !event.shiftKey);
-        if (!plainKey || event.ctrlKey || event.metaKey || event.altKey) {
-          if (pendingLeader) {
+  return {
+    extension: Prec.highest(
+      EditorView.domEventHandlers({
+        keydown: (event, view) => {
+          const cm = getCM(view);
+          if (!isVimMappingNormalMode(cm)) {
             clearPending();
-            replayLeader(cm);
-          }
-          return false;
-        }
-        if (!pendingLeader) {
-          if (event.key !== " " || !isVimMappingPrefix(settings, "")) {
             return false;
           }
-          pendingLeader = true;
-          onPendingChanged?.(true);
-          armTimeout(cm);
-          event.preventDefault();
-          return true;
-        }
+          if (pendingSequence !== null && isUnmodifiedEscape(event)) {
+            clearPending();
+            event.preventDefault();
+            return true;
+          }
+          if (!isPlainVimMappingKey(event)) {
+            if (pendingSequence !== null) {
+              const sequence = pendingSequence;
+              clearPending();
+              replayPendingSequence(cm, sequence);
+            }
+            return false;
+          }
+          if (pendingSequence === null) {
+            if (event.key !== " " || !isVimMappingPrefix(settings, "")) {
+              return false;
+            }
+            pendingSequence = "";
+            onPendingChanged?.(true);
+            armTimeout(cm);
+            event.preventDefault();
+            return true;
+          }
 
-        const sequence = event.key;
-        const action = getVimMappingAction(settings, sequence);
-        if (action) {
+          const sequence = `${pendingSequence}${event.key}`;
+          const action = getVimMappingAction(settings, sequence);
+          if (action) {
+            clearPending();
+            onAction(action);
+            event.preventDefault();
+            return true;
+          }
+          if (isVimMappingPrefix(settings, sequence)) {
+            pendingSequence = sequence;
+            armTimeout(cm);
+            event.preventDefault();
+            return true;
+          }
+          const prefix = pendingSequence;
           clearPending();
-          onAction(action);
-          event.preventDefault();
-          return true;
-        }
-        if (isVimMappingPrefix(settings, sequence)) {
-          armTimeout(cm);
-          event.preventDefault();
-          return true;
-        }
-        clearPending();
-        replayLeader(cm);
-        return false;
-      },
-    }),
-  );
+          replayPendingSequence(cm, prefix);
+          return false;
+        },
+      }),
+    ),
+    dispose: clearPending,
+  };
 }
 
 export function createEditorCore(options: EditorCoreOptions): EditorCore {
@@ -1188,6 +1223,11 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
   let findActive = false;
   let vimKeybindings = Boolean(options.vimKeybindings);
   let vimMappings = options.vimMappings ?? DEFAULT_VIM_MAPPING_SETTINGS;
+  let vimMappingExtension = buildVimMappings(
+    vimMappings,
+    vimKeybindings ? options.onVimAction : undefined,
+    options.onVimMappingPendingChanged,
+  );
 
   // Dirty is a COMPARISON against the saved text, not a latch on "an edit
   // happened". Any edit that leaves the document equal to that text is not a
@@ -1336,11 +1376,7 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
             )
           : [],
       ),
-      vimMappingCompartment.of(
-        options.vimKeybindings
-          ? buildVimMappings(vimMappings, options.onVimAction, options.onVimMappingPendingChanged)
-          : [],
-      ),
+      vimMappingCompartment.of(vimMappingExtension.extension),
       // Otto's own editor commands, keyed by the user's shortcut registry.
       // Highest precedence is intentional: Vim's default Ctrl-f page motion
       // must not take the existing File Editor Find binding away.
@@ -1745,9 +1781,12 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
     },
     setVimKeybindings: (enabled) => {
       vimKeybindings = enabled;
-      if (!enabled) {
-        options.onVimMappingPendingChanged?.(false);
-      }
+      vimMappingExtension.dispose();
+      vimMappingExtension = buildVimMappings(
+        vimMappings,
+        enabled ? options.onVimAction : undefined,
+        options.onVimMappingPendingChanged,
+      );
       view.dispatch({
         effects: [
           vimCompartment.reconfigure(enabled ? vim() : []),
@@ -1760,27 +1799,22 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
                 )
               : [],
           ),
-          vimMappingCompartment.reconfigure(
-            enabled
-              ? buildVimMappings(
-                  vimMappings,
-                  options.onVimAction,
-                  options.onVimMappingPendingChanged,
-                )
-              : [],
-          ),
+          vimMappingCompartment.reconfigure(vimMappingExtension.extension),
         ],
       });
       attachVimMode(enabled);
     },
     setVimMappings: (settings) => {
       vimMappings = settings;
-      options.onVimMappingPendingChanged?.(false);
+      vimMappingExtension.dispose();
+      vimMappingExtension = buildVimMappings(
+        vimMappings,
+        vimKeybindings ? options.onVimAction : undefined,
+        options.onVimMappingPendingChanged,
+      );
       if (vimKeybindings) {
         view.dispatch({
-          effects: vimMappingCompartment.reconfigure(
-            buildVimMappings(vimMappings, options.onVimAction, options.onVimMappingPendingChanged),
-          ),
+          effects: vimMappingCompartment.reconfigure(vimMappingExtension.extension),
         });
       }
     },
@@ -1817,6 +1851,7 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
     },
     destroy: () => {
       destroyed = true;
+      vimMappingExtension.dispose();
       vimModeCleanup?.();
       vimModeCleanup = null;
       if (scrollFrame !== null) {

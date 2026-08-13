@@ -8,6 +8,42 @@ export interface ExternalFileEditorCommand {
   args: string[];
 }
 
+export interface ExternalFileEditorIdentity {
+  serverId: string;
+  workspaceId: string;
+  path: string;
+}
+
+const activeExternalFileEditors = new Map<string, number>();
+
+export function buildExternalFileEditorPresentationOwner(input: {
+  workspaceId: string;
+  absolutePath: string;
+}): string {
+  return `otto.file-editor:${encodeURIComponent(input.workspaceId)}:${encodeURIComponent(input.absolutePath)}`;
+}
+
+function externalFileEditorRegistryKey(input: ExternalFileEditorIdentity): string {
+  return `${encodeURIComponent(input.serverId)}:${encodeURIComponent(input.workspaceId)}:${encodeURIComponent(input.path.replace(/\\/gu, "/"))}`;
+}
+
+export function registerActiveExternalFileEditor(input: ExternalFileEditorIdentity): () => void {
+  const key = externalFileEditorRegistryKey(input);
+  activeExternalFileEditors.set(key, (activeExternalFileEditors.get(key) ?? 0) + 1);
+  return () => {
+    const remaining = (activeExternalFileEditors.get(key) ?? 1) - 1;
+    if (remaining > 0) {
+      activeExternalFileEditors.set(key, remaining);
+    } else {
+      activeExternalFileEditors.delete(key);
+    }
+  };
+}
+
+export function hasActiveExternalFileEditor(input: ExternalFileEditorIdentity): boolean {
+  return activeExternalFileEditors.has(externalFileEditorRegistryKey(input));
+}
+
 type DiagnosticPayload = TerminalCompatibilityDiagnosticResponse["payload"];
 
 /**
@@ -45,7 +81,9 @@ export function resolveExternalFileEditorCommand(input: {
   if (tokens.length === 0 || !tokens[0]) {
     return null;
   }
-  return { command: tokens[0], args: [...tokens.slice(1), input.path] };
+  const pathArgs =
+    input.mode === "vim" || input.mode === "neovim" ? ["--", input.path] : [input.path];
+  return { command: tokens[0], args: [...tokens.slice(1), ...pathArgs] };
 }
 
 export function resolveExternalEditorCapability(

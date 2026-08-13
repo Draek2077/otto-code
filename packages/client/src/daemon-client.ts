@@ -7862,6 +7862,7 @@ export class DaemonClient {
       args?: string[];
       workspaceId?: string;
       presentation?: "embedded";
+      presentationOwner?: string;
     },
   ): Promise<CreateTerminalPayload> {
     const resolvedRequestId = this.createRequestId(requestId);
@@ -7873,6 +7874,7 @@ export class DaemonClient {
       command: options?.command,
       args: options?.args,
       presentation: options?.presentation,
+      presentationOwner: options?.presentationOwner,
       ...(options?.workspaceId !== undefined ? { workspaceId: options.workspaceId } : {}),
       requestId: resolvedRequestId,
     });

@@ -156,6 +156,7 @@ function listSession(input: {
   cwd: string;
   workspaceId?: string;
   presentation?: "embedded";
+  presentationOwner?: string;
 }): TerminalSession {
   return {
     id: input.id,
@@ -163,6 +164,7 @@ function listSession(input: {
     cwd: input.cwd,
     workspaceId: input.workspaceId ?? "ws-test",
     ...(input.presentation ? { presentation: input.presentation } : {}),
+    ...(input.presentationOwner ? { presentationOwner: input.presentationOwner } : {}),
     send: vi.fn(),
     subscribe: () => vi.fn(),
     onExit: () => vi.fn(),
@@ -197,6 +199,7 @@ describe("terminal-session-controller legacy terminal creation", () => {
           cwd: options.cwd,
           workspaceId: options.workspaceId,
           presentation: options.presentation,
+          presentationOwner: options.presentationOwner,
         }),
     );
     const terminalManager: TerminalManager = {
@@ -236,6 +239,7 @@ describe("terminal-session-controller legacy terminal creation", () => {
       cwd: terminalCwd,
       name: "App Shell",
       presentation: "embedded",
+      presentationOwner: "otto.file-editor:ws-app:file.ts",
       requestId: "req-1",
     });
 
@@ -245,6 +249,7 @@ describe("terminal-session-controller legacy terminal creation", () => {
         workspaceId: "ws-app",
         name: "App Shell",
         presentation: "embedded",
+        presentationOwner: "otto.file-editor:ws-app:file.ts",
       }),
     );
     expect(outboundMessages).toEqual([
@@ -257,6 +262,7 @@ describe("terminal-session-controller legacy terminal creation", () => {
             cwd: terminalCwd,
             workspaceId: "ws-app",
             presentation: "embedded",
+            presentationOwner: "otto.file-editor:ws-app:file.ts",
             activity: null,
           },
           error: null,

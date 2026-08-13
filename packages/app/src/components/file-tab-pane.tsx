@@ -2233,6 +2233,23 @@ function isSelectedTerminalFileEditorAvailable(input: {
   );
 }
 
+function isTerminalFileEditorHostUpdateRequired(input: {
+  desktop: boolean;
+  hostInfoKnown: boolean;
+  compatibilityDiagnosticAvailable: boolean;
+  embeddedTerminalAvailable: boolean;
+  mode: FileEditorMode;
+  editorAllowed: boolean;
+}): boolean {
+  return (
+    input.desktop &&
+    input.hostInfoKnown &&
+    input.mode !== "off" &&
+    input.editorAllowed &&
+    (!input.compatibilityDiagnosticAvailable || !input.embeddedTerminalAvailable)
+  );
+}
+
 export function FileTabPane({
   serverId,
   workspaceId,
@@ -2272,9 +2289,16 @@ export function FileTabPane({
   const { settings } = useAppSettings();
   const externalEditorCapability = useHostFeature(serverId, "terminalCompatibilityDiagnostic");
   const embeddedTerminalCapability = useHostFeature(serverId, "terminalEmbeddedPresentation");
-  const externalEditorDesktop = getIsElectron() && !isCompact;
+  const externalEditorHostInfoKnown = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo != null,
+  );
+  const externalEditorDesktop = getIsElectron();
   const externalEditorLabel = resolveExternalEditorLabel(settings.fileEditorMode);
-  const [externalEditorActive, setExternalEditorActive] = useState(false);
+  const [externalEditorLaunch, setExternalEditorLaunch] = useState<{
+    mode: FileEditorMode;
+    customCommand: string;
+  } | null>(null);
+  const autoOpenedExternalEditorPathRef = useRef<string | null>(null);
   const [externalEditorFailure, setExternalEditorFailure] = useState<string | null>(null);
   const [fileInfo, setFileInfo] = useState<FilePreviewFileInfo | null>(null);
   const controllerRef = useRef<EditorController | null>(null);
@@ -2284,6 +2308,14 @@ export function FileTabPane({
   const editorAllowed = canEdit && (fileInfo === null || fileInfo.kind === "text");
   const externalEditorAvailable = isSelectedTerminalFileEditorAvailable({
     desktop: externalEditorDesktop,
+    compatibilityDiagnosticAvailable: externalEditorCapability,
+    embeddedTerminalAvailable: embeddedTerminalCapability,
+    mode: settings.fileEditorMode,
+    editorAllowed,
+  });
+  const externalEditorHostUpdateRequired = isTerminalFileEditorHostUpdateRequired({
+    desktop: externalEditorDesktop,
+    hostInfoKnown: externalEditorHostInfoKnown,
     compatibilityDiagnosticAvailable: externalEditorCapability,
     embeddedTerminalAvailable: embeddedTerminalCapability,
     mode: settings.fileEditorMode,
@@ -2305,23 +2337,37 @@ export function FileTabPane({
       renderedDocumentKind(location.path) !== null);
 
   useEffect(() => {
-    setExternalEditorActive(opensInSelectedFileEditor);
-    setExternalEditorFailure(null);
-  }, [location.path, opensInSelectedFileEditor]);
+    if (opensInSelectedFileEditor && autoOpenedExternalEditorPathRef.current !== location.path) {
+      autoOpenedExternalEditorPathRef.current = location.path;
+      setExternalEditorLaunch({
+        mode: settings.fileEditorMode,
+        customCommand: settings.fileEditorCustomCommand,
+      });
+      setExternalEditorFailure(null);
+    }
+  }, [
+    location.path,
+    opensInSelectedFileEditor,
+    settings.fileEditorCustomCommand,
+    settings.fileEditorMode,
+  ]);
 
   const openExternalEditor = useCallback(() => {
     if (!externalEditorAvailable) {
       return;
     }
     setExternalEditorFailure(null);
-    setExternalEditorActive(true);
-  }, [externalEditorAvailable]);
+    setExternalEditorLaunch({
+      mode: settings.fileEditorMode,
+      customCommand: settings.fileEditorCustomCommand,
+    });
+  }, [externalEditorAvailable, settings.fileEditorCustomCommand, settings.fileEditorMode]);
   const handleExternalEditorExit = useCallback((reason?: string) => {
-    setExternalEditorActive(false);
+    setExternalEditorLaunch(null);
     setExternalEditorFailure(reason ?? null);
   }, []);
   const handleExternalEditorFailure = useCallback((message: string) => {
-    setExternalEditorActive(false);
+    setExternalEditorLaunch(null);
     setExternalEditorFailure(message);
   }, []);
 
@@ -2627,15 +2673,15 @@ export function FileTabPane({
       />
     );
 
-  const content = externalEditorActive ? (
+  const content = externalEditorLaunch ? (
     <ExternalFileEditorPane
-      key={`${location.path}:${settings.fileEditorMode}`}
+      key={location.path}
       serverId={serverId}
       workspaceId={workspaceId}
       workspaceRoot={workspaceRoot}
       path={location.path}
-      mode={settings.fileEditorMode as FileEditorMode}
-      customCommand={settings.fileEditorCustomCommand}
+      mode={externalEditorLaunch.mode}
+      customCommand={externalEditorLaunch.customCommand}
       onExit={handleExternalEditorExit}
       onLaunchFailure={handleExternalEditorFailure}
     />
@@ -2645,6 +2691,15 @@ export function FileTabPane({
         <View style={styles.externalEditorFailure} testID="external-file-editor-failure">
           <Text style={styles.externalEditorFailureTitle}>File editor was not opened</Text>
           <Text style={styles.externalEditorFailureText}>{externalEditorFailure}</Text>
+        </View>
+      ) : null}
+      {externalEditorHostUpdateRequired ? (
+        <View style={styles.externalEditorFailure} testID="external-file-editor-host-update">
+          <Text style={styles.externalEditorFailureTitle}>Update the connected host</Text>
+          <Text style={styles.externalEditorFailureText}>
+            This host does not support the selected File editor. Update it to use Vim, Neovim, or a
+            custom command, or choose Otto in Settings &gt; Editor.
+          </Text>
         </View>
       ) : null}
       {standardContent}

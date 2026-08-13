@@ -17,6 +17,7 @@ import { useWorkspaceDirectory, useWorkspaceProjectId } from "@/stores/session-s
 import { useProjectLinkSet } from "@/projects/project-links";
 import { resolveEditGate } from "@/projects/cross-project-open";
 import { confirmDialog } from "@/utils/confirm-dialog";
+import { hasActiveExternalFileEditor } from "@/editor/external-file-editor";
 
 const CENTERED_PADDED_STYLE = {
   flex: 1,
@@ -61,6 +62,19 @@ interface EditorBufferId {
  * explicit discard first. Mode switches inside the tab never discard.
  */
 async function confirmDiscardEditorBuffer(bufferId: EditorBufferId): Promise<boolean> {
+  if (hasActiveExternalFileEditor(bufferId)) {
+    const confirmed = await confirmDialog({
+      title: "Close the running file editor?",
+      message:
+        "Closing this tab stops the external file editor. Unsaved changes inside Vim or Neovim may be lost.",
+      confirmLabel: "Close and stop editor",
+      cancelLabel: i18n.t("editor.cancel"),
+      destructive: true,
+    });
+    if (!confirmed) {
+      return false;
+    }
+  }
   if (!isEditorBufferDirty(bufferId)) {
     removeEditorBuffer(bufferId);
     return true;

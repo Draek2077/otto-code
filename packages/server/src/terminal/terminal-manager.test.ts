@@ -137,6 +137,26 @@ it("creates additional terminal with auto-incrementing name", async () => {
   expect(terminals.length).toBe(2);
 });
 
+it("reuses an embedded terminal with the same stable owner in one workspace", async () => {
+  manager = createTerminalManager();
+  const cwd = realpathSync(tmpdir());
+  const first = await manager.createTerminal({
+    cwd,
+    workspaceId: "ws-test",
+    presentation: "embedded",
+    presentationOwner: "otto.file-editor:ws-test:file.ts",
+  });
+  const adopted = await manager.createTerminal({
+    cwd,
+    workspaceId: "ws-test",
+    presentation: "embedded",
+    presentationOwner: "otto.file-editor:ws-test:file.ts",
+  });
+
+  expect(adopted.id).toBe(first.id);
+  expect(await manager.getTerminals(cwd, { workspaceId: "ws-test" })).toHaveLength(1);
+});
+
 it("uses custom name when provided", async () => {
   manager = createTerminalManager();
   const session = await manager.createTerminal({

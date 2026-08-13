@@ -23,6 +23,7 @@ export interface TerminalListItem {
   title?: string;
   activity: TerminalActivity | null;
   presentation?: "embedded";
+  presentationOwner?: string;
 }
 
 export interface TerminalsChangedEvent {
@@ -71,6 +72,7 @@ export interface TerminalManager {
     activityToken?: string;
     activityUrl?: string | null;
     presentation?: "embedded";
+    presentationOwner?: string;
   }): Promise<TerminalSession>;
   registerCwdEnv(options: { cwd: string; env: Record<string, string> }): void;
   validateTerminalActivityToken(terminalId: string, token: string): "valid" | "unknown" | "invalid";
@@ -107,6 +109,28 @@ export interface TerminalManagerOptions {
 
 function createActivityToken(): string {
   return randomBytes(32).toString("base64url");
+}
+
+function findEmbeddedTerminalByOwner(
+  terminals: Iterable<TerminalSession>,
+  input: { workspaceId: string; presentation?: "embedded"; presentationOwner?: string },
+): TerminalSession | undefined {
+  if (input.presentation !== "embedded" || !input.presentationOwner) {
+    return undefined;
+  }
+  return Array.from(terminals).find(
+    (session) =>
+      session.workspaceId === input.workspaceId &&
+      session.presentation === "embedded" &&
+      session.presentationOwner === input.presentationOwner,
+  );
+}
+
+function mergeTerminalEnvironment(
+  inherited: Record<string, string> | undefined,
+  provided: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+  return inherited || provided ? { ...inherited, ...provided } : undefined;
 }
 
 export function createTerminalManager(
@@ -228,6 +252,9 @@ export function createTerminalManager(
       cwd: input.session.cwd,
       workspaceId: input.session.workspaceId,
       ...(input.session.presentation ? { presentation: input.session.presentation } : {}),
+      ...(input.session.presentationOwner
+        ? { presentationOwner: input.session.presentationOwner }
+        : {}),
       title: input.session.getTitle(),
       activity: input.session.getActivity(),
     };
@@ -333,14 +360,19 @@ export function createTerminalManager(
       activityToken?: string;
       activityUrl?: string | null;
       presentation?: "embedded";
+      presentationOwner?: string;
     }): Promise<TerminalSession> {
       assertAbsolutePath(options.cwd);
+
+      const existing = findEmbeddedTerminalByOwner(terminalsById.values(), options);
+      if (existing) {
+        return existing;
+      }
 
       const terminals = terminalsByCwd.get(options.cwd) ?? [];
       const defaultName = `Terminal ${terminals.length + 1}`;
       const inheritedEnv = resolveDefaultEnvForCwd(options.cwd);
-      const mergedEnv =
-        inheritedEnv || options.env ? { ...inheritedEnv, ...options.env } : undefined;
+      const mergedEnv = mergeTerminalEnvironment(inheritedEnv, options.env);
       const terminalId = options.id ?? randomUUID();
       const activityToken = options.activityToken ?? createActivityToken();
       const terminalActivityUrl =
@@ -367,6 +399,7 @@ export function createTerminalManager(
             ...(options.command ? { command: options.command } : {}),
             ...(options.args ? { args: options.args } : {}),
             presentation: options.presentation,
+            presentationOwner: options.presentationOwner,
             ...(options.rows !== undefined ? { rows: options.rows } : {}),
             ...(options.cols !== undefined ? { cols: options.cols } : {}),
             ...(mergedEnv ? { env: mergedEnv } : {}),

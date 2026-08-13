@@ -13,14 +13,24 @@ const PTY_PROBE_TIMEOUT_MS = 1_500;
 const PTY_PROBE_OUTPUT_DELAY_MS = 250;
 const PTY_PROBE_WORKSPACE_ID = "__otto_terminal_compatibility_diagnostic__";
 const PTY_PROBE_SCRIPT = [
-  `setTimeout(() => process.stdout.write("\\x1b[?1049h\\x1b[2JHALT_SCREEN_OK"), ${PTY_PROBE_OUTPUT_DELAY_MS});`,
-  `setTimeout(() => { process.stdout.write("\\x1b[?1049lNORMAL_SCREEN_OK"); process.exit(0); }, ${PTY_PROBE_OUTPUT_DELAY_MS + 150});`,
+  `setTimeout(() => process.stdout.write("PRIMARY_SCREEN_OK"), ${PTY_PROBE_OUTPUT_DELAY_MS});`,
+  `setTimeout(() => process.stdout.write("\\x1b[?1049h\\x1b[2J\\x1b[H" + "ALT_SCREEN_OK"), ${PTY_PROBE_OUTPUT_DELAY_MS + 150});`,
+  `setTimeout(() => process.stdout.write("\\x1b[?1049l\\r\\nNORMAL_SCREEN_OK"), ${PTY_PROBE_OUTPUT_DELAY_MS + 500});`,
+  `setTimeout(() => process.exit(0), ${PTY_PROBE_OUTPUT_DELAY_MS + 750});`,
 ].join(" ");
 const WINDOWS_PTY_PROBE_SCRIPT = [
+  "$esc = [char]27",
   `Start-Sleep -Milliseconds ${PTY_PROBE_OUTPUT_DELAY_MS}`,
-  '[Console]::Out.Write("`e[?1049h`e[2JHALT_SCREEN_OK")',
+  '[Console]::Out.Write("PRIMARY_SCREEN_OK")',
+  "[Console]::Out.Flush()",
   "Start-Sleep -Milliseconds 150",
-  '[Console]::Out.Write("`e[?1049lNORMAL_SCREEN_OK")',
+  '[Console]::Out.Write("$esc[?1049h$esc[2J$esc[H")',
+  '[Console]::Out.Write("ALT_SCREEN_OK")',
+  "[Console]::Out.Flush()",
+  "Start-Sleep -Milliseconds 350",
+  '[Console]::Out.Write("$esc[?1049l`r`nNORMAL_SCREEN_OK")',
+  "[Console]::Out.Flush()",
+  "Start-Sleep -Milliseconds 250",
 ].join("; ");
 
 type DiagnosticCheck = TerminalCompatibilityDiagnosticCheck;
@@ -87,6 +97,32 @@ function firstLine(value: string): string | undefined {
 
 function stateText(state: { grid: Array<Array<{ char: string }>> }): string {
   return state.grid.map((row) => row.map((cell) => cell.char).join("")).join("\n");
+}
+
+export function didAlternateScreenProbePass(alternateText: string, finalText: string): boolean {
+  return (
+    alternateText.includes("ALT_SCREEN_OK") &&
+    !alternateText.includes("PRIMARY_SCREEN_OK") &&
+    finalText.includes("PRIMARY_SCREEN_OK") &&
+    finalText.includes("NORMAL_SCREEN_OK") &&
+    !finalText.includes("ALT_SCREEN_OK")
+  );
+}
+
+async function waitForTerminalStateText(
+  session: Awaited<ReturnType<TerminalManager["createTerminal"]>>,
+  predicate: (text: string) => boolean,
+  timeoutMs: number,
+): Promise<string | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const text = stateText(session.getState());
+    if (predicate(text)) {
+      return text;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return null;
 }
 
 async function runDefaultCommand(
@@ -335,12 +371,19 @@ async function runPtyProbe(
             `${beforeResize.rows}x${beforeResize.cols} → ${afterResize.rows}x${afterResize.cols}`,
           );
 
-    const output: string[] = [];
-    const unsubscribe = session.subscribe((message) => {
-      if (message.type === "output") {
-        output.push(message.data);
-      }
-    });
+    // Attach through the same subscription path as a real terminal pane. Its
+    // initial empty write also flushes any xterm writes queued during startup.
+    const unsubscribe = session.subscribe(() => undefined, { initialSnapshot: "ready" });
+    const alternateText = await waitForTerminalStateText(
+      session,
+      (text) => text.includes("ALT_SCREEN_OK"),
+      PTY_PROBE_TIMEOUT_MS,
+    );
+    const restoredText = await waitForTerminalStateText(
+      session,
+      (text) => text.includes("NORMAL_SCREEN_OK"),
+      PTY_PROBE_TIMEOUT_MS,
+    );
     const exited = new Promise<void>((resolve) => {
       session?.onExit(() => resolve());
     });
@@ -350,10 +393,10 @@ async function runPtyProbe(
     ]);
     unsubscribe();
 
-    const finalText = stateText(session.getState());
-    const streamText = output.join("");
     const altScreenPassed =
-      streamText.includes("ALT_SCREEN_OK") && finalText.includes("NORMAL_SCREEN_OK");
+      alternateText !== null &&
+      restoredText !== null &&
+      didAlternateScreenProbePass(alternateText, restoredText);
     const alternateScreenCheck = altScreenPassed
       ? check(
           "alternate-screen",
@@ -367,7 +410,7 @@ async function runPtyProbe(
           "alternate screen",
           "unknown",
           "The diagnostic could not observe both sides of the alternate-screen round trip before timeout.",
-          finalText.slice(-200),
+          `${alternateText?.slice(-100) ?? "no alternate snapshot"} → ${restoredText?.slice(-100) ?? "no restored snapshot"}`,
         );
     return [
       resizeCheck,

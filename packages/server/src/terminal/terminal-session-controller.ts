@@ -344,7 +344,13 @@ export class TerminalSessionController {
   private toTerminalInfo(
     terminal: Pick<
       TerminalSession,
-      "id" | "name" | "workspaceId" | "presentation" | "getTitle" | "getActivity"
+      | "id"
+      | "name"
+      | "workspaceId"
+      | "presentation"
+      | "presentationOwner"
+      | "getTitle"
+      | "getActivity"
     >,
   ): {
     id: string;
@@ -353,6 +359,7 @@ export class TerminalSessionController {
     title?: string;
     activity: TerminalActivity | null;
     presentation?: "embedded";
+    presentationOwner?: string;
   } {
     const title = terminal.getTitle();
     const activity = terminal.getActivity();
@@ -361,6 +368,7 @@ export class TerminalSessionController {
       name: terminal.name,
       workspaceId: terminal.workspaceId,
       ...(terminal.presentation ? { presentation: terminal.presentation } : {}),
+      ...(terminal.presentationOwner ? { presentationOwner: terminal.presentationOwner } : {}),
       ...(title ? { title } : {}),
       activity,
     };
@@ -580,6 +588,7 @@ export class TerminalSessionController {
         rows: msg.size?.rows,
         cols: msg.size?.cols,
         presentation: msg.presentation,
+        presentationOwner: msg.presentationOwner,
       });
       this.ensureExitSubscription(session);
       this.emit({
@@ -591,6 +600,7 @@ export class TerminalSessionController {
             cwd: session.cwd,
             workspaceId: session.workspaceId,
             ...(session.presentation ? { presentation: session.presentation } : {}),
+            ...(session.presentationOwner ? { presentationOwner: session.presentationOwner } : {}),
             ...(session.getTitle() ? { title: session.getTitle() } : {}),
             activity: session.getActivity(),
           },

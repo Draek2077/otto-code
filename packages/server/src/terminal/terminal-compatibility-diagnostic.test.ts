@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  didAlternateScreenProbePass,
   getPtyProbeLaunch,
   runTerminalCompatibilityDiagnostic,
 } from "./terminal-compatibility-diagnostic.js";
@@ -25,10 +26,25 @@ describe("terminal compatibility diagnostic", () => {
         "-NoProfile",
         "-NonInteractive",
         "-Command",
-        expect.stringContaining("HALT_SCREEN_OK"),
+        expect.stringContaining("ALT_SCREEN_OK"),
       ],
     });
     expect(getPtyProbeLaunch("win32").args.at(-1)).toContain("Start-Sleep -Milliseconds 250");
+    expect(getPtyProbeLaunch("win32").args.at(-1)).toContain("$esc = [char]27");
+    expect(getPtyProbeLaunch("win32").args.at(-1)).not.toContain("`e[");
+  });
+
+  it("requires buffer replacement and primary-screen restoration", () => {
+    expect(
+      didAlternateScreenProbePass("ALT_SCREEN_OK", "PRIMARY_SCREEN_OK\nNORMAL_SCREEN_OK"),
+    ).toBe(true);
+    expect(didAlternateScreenProbePass("ALT_SCREEN_OK", "NORMAL_SCREEN_OK")).toBe(false);
+    expect(
+      didAlternateScreenProbePass(
+        "PRIMARY_SCREEN_OK\nALT_SCREEN_OK",
+        "PRIMARY_SCREEN_OK\nNORMAL_SCREEN_OK",
+      ),
+    ).toBe(false);
   });
 
   it("reports tool, terminfo, color, and font evidence without claiming Kitty support", async () => {

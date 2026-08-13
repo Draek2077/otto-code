@@ -138,6 +138,7 @@ function cloneTerminalInfo(info: RequiredWorkerTerminalInfo): RequiredWorkerTerm
     cwd: info.cwd,
     workspaceId: info.workspaceId,
     ...(info.presentation ? { presentation: info.presentation } : {}),
+    ...(info.presentationOwner ? { presentationOwner: info.presentationOwner } : {}),
     ...(info.title ? { title: info.title } : {}),
     activity: info.activity,
   };
@@ -216,6 +217,10 @@ export function createWorkerTerminalManager(
         cwd: record.info.cwd,
         workspaceId: record.info.workspaceId,
         ...(record.info.title ? { title: record.info.title } : {}),
+        ...(record.info.presentation ? { presentation: record.info.presentation } : {}),
+        ...(record.info.presentationOwner
+          ? { presentationOwner: record.info.presentationOwner }
+          : {}),
         activity: record.activity,
       });
     }
@@ -262,6 +267,9 @@ export function createWorkerTerminalManager(
       },
       get presentation() {
         return record.info.presentation;
+      },
+      get presentationOwner() {
+        return record.info.presentationOwner;
       },
       send(message: ClientMessage): void {
         if (message.type === "resize") {
@@ -693,6 +701,17 @@ export function createWorkerTerminalManager(
     async createTerminal(
       options: WorkerCreateTerminalOptions & { workspaceId: string },
     ): Promise<TerminalSession> {
+      if (options.presentation === "embedded" && options.presentationOwner) {
+        const existing = Array.from(recordsById.values()).find(
+          (record) =>
+            record.info.workspaceId === options.workspaceId &&
+            record.info.presentation === "embedded" &&
+            record.info.presentationOwner === options.presentationOwner,
+        )?.session;
+        if (existing) {
+          return existing;
+        }
+      }
       const terminalId = options.id ?? randomUUID();
       const activityToken = createActivityToken();
       const terminalActivityUrl = managerOptions.getTerminalActivityUrl?.() ?? null;

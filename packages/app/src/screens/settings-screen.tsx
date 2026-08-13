@@ -2886,7 +2886,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
         case "visualizer":
           return isDeveloperMode ? <VisualizerSection /> : null;
         case "editor":
-          return isDeveloperMode ? <EditorSection /> : null;
+          return isDeveloperMode ? <EditorSection serverId={activeHostServerId} /> : null;
         case "shortcuts":
           return isDesktopApp ? <KeyboardShortcutsSection /> : null;
         case "integrations":

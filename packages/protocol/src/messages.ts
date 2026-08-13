@@ -6933,6 +6933,8 @@ export const CreateTerminalRequestSchema = z.object({
   args: z.array(z.string()).optional(),
   /** An embedded terminal renders inside another pane and never gets its own workspace tab. */
   presentation: z.enum(["embedded"]).optional(),
+  /** Stable owner identity used to adopt an embedded terminal after a renderer reload. */
+  presentationOwner: z.string().optional(),
   // Initial PTY size. Added in v0.1.107; the app no longer sends it (the estimate cache that fed
   // it was removed - the pane-focus resize claim sizes the PTY instead). Kept and honored
   // permanently: released v0.1.107 clients still send it, and programmatic callers may pass an
@@ -11799,6 +11801,7 @@ const TerminalInfoSchema = z.object({
   title: z.string().optional(),
   activity: TerminalActivitySchema.nullable().optional(),
   presentation: z.enum(["embedded"]).optional(),
+  presentationOwner: z.string().optional(),
 });
 
 export const TerminalCellSchema = z.object({

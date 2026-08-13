@@ -134,7 +134,7 @@ describe("editor core Vim mode", () => {
       vimKeybindings: true,
       vimMappings: normalizeVimMappingSettings({
         leader: "Space",
-        mappings: { openChanges: "c", find: "f", unsupported: "x" },
+        mappings: { openChanges: "gc", find: "f", unsupported: "x" },
       }),
       onVimAction: (action) => actions.push(action),
       onVimMappingPendingChanged: (value) => pending.push(value),
@@ -144,6 +144,8 @@ describe("editor core Vim mode", () => {
     core.focus();
     await userEvent.keyboard("{Space}");
     expect(pending.at(-1)).toBe(true);
+    await userEvent.keyboard("g");
+    expect(actions).toEqual([]);
     await userEvent.keyboard("c");
     expect(actions).toEqual(["openChanges"]);
     expect(pending.at(-1)).toBe(false);
@@ -153,5 +155,26 @@ describe("editor core Vim mode", () => {
 
     await userEvent.keyboard("i{Space}f{Escape}");
     expect(actions).toEqual(["openChanges"]);
+  });
+
+  it("cancels a pending leader with Escape without replaying Space", async () => {
+    const actions: VimMappingAction[] = [];
+    const pending: boolean[] = [];
+    const core = mount({
+      vimKeybindings: true,
+      vimMappings: normalizeVimMappingSettings({
+        leader: "Space",
+        mappings: { openChanges: "gc" },
+      }),
+      onVimAction: (action) => actions.push(action),
+      onVimMappingPendingChanged: (value) => pending.push(value),
+    });
+
+    core.focus();
+    await userEvent.keyboard("{Space}{Escape}");
+    expect(pending.at(-1)).toBe(false);
+    await userEvent.keyboard("iX{Escape}");
+    expect(core.getDoc()).toMatch(/^Xconst/u);
+    expect(actions).toEqual([]);
   });
 });

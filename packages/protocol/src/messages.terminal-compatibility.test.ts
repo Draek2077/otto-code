@@ -38,6 +38,7 @@ describe("terminal compatibility diagnostic messages", () => {
       cwd: "C:/repo",
       workspaceId: "workspace-1",
       presentation: "embedded",
+      presentationOwner: "otto.file-editor:workspace-1:file.ts",
       requestId: "request-2",
     });
     const response = SessionOutboundMessageSchema.parse({
@@ -51,12 +52,17 @@ describe("terminal compatibility diagnostic messages", () => {
           cwd: "C:/repo",
           workspaceId: "workspace-1",
           presentation: "embedded",
+          presentationOwner: "otto.file-editor:workspace-1:file.ts",
           activity: null,
         },
       },
     });
 
     expect(request.presentation).toBe("embedded");
+    expect(request.presentationOwner).toBe("otto.file-editor:workspace-1:file.ts");
     expect(response.payload.terminal?.presentation).toBe("embedded");
+    expect(response.payload.terminal?.presentationOwner).toBe(
+      "otto.file-editor:workspace-1:file.ts",
+    );
   });
 });

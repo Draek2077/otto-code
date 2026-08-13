@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { TerminalCompatibilityDiagnosticResponse } from "@otto-code/protocol/messages";
 import {
   parseExternalEditorCommand,
+  buildExternalFileEditorPresentationOwner,
+  hasActiveExternalFileEditor,
+  registerActiveExternalFileEditor,
   resolveExternalEditorCapability,
   resolveExternalFileEditorCommand,
 } from "./external-file-editor";
@@ -30,17 +33,41 @@ describe("external file editor commands", () => {
       resolveExternalFileEditorCommand({ mode: "vim", customCommand: "", path: "README.md" }),
     ).toEqual({
       command: "vim",
-      args: ["README.md"],
+      args: ["--", "README.md"],
     });
     expect(
       resolveExternalFileEditorCommand({ mode: "neovim", customCommand: "", path: "README.md" }),
     ).toEqual({
       command: "nvim",
-      args: ["README.md"],
+      args: ["--", "README.md"],
     });
     expect(
       resolveExternalFileEditorCommand({ mode: "off", customCommand: "vim", path: "README.md" }),
     ).toBeNull();
+  });
+
+  it("terminates Vim option parsing before an untrusted file path", () => {
+    expect(
+      resolveExternalFileEditorCommand({ mode: "vim", customCommand: "", path: "+quit" }),
+    ).toEqual({ command: "vim", args: ["--", "+quit"] });
+  });
+
+  it("tracks active sessions by their stable renderer-independent owner", () => {
+    const identity = {
+      serverId: "host-a",
+      workspaceId: "workspace-a",
+      path: "src/app.ts",
+    };
+    const owner = buildExternalFileEditorPresentationOwner({
+      workspaceId: identity.workspaceId,
+      absolutePath: "/repo/src/app.ts",
+    });
+    expect(owner).toContain("workspace-a");
+    expect(hasActiveExternalFileEditor(identity)).toBe(false);
+    const unregister = registerActiveExternalFileEditor(identity);
+    expect(hasActiveExternalFileEditor(identity)).toBe(true);
+    unregister();
+    expect(hasActiveExternalFileEditor(identity)).toBe(false);
   });
 
   it("requires a passing host executable check", () => {

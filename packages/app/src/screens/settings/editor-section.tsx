@@ -8,8 +8,9 @@ import { Shortcut } from "@/components/ui/shortcut";
 import { Switch } from "@/components/ui/switch";
 import { SelectField, type SelectFieldOption } from "@/components/ui/select-field";
 import { getIsElectron, isNative } from "@/constants/platform";
-import { useIsCompactFormFactor } from "@/constants/layout";
 import { useAppSettings } from "@/hooks/use-settings";
+import { useHostFeature } from "@/runtime/host-features";
+import { useSessionStore } from "@/stores/session-store";
 import { settingsStyles } from "@/styles/settings";
 import {
   DEFAULT_VIM_MAPPING_SETTINGS,
@@ -96,7 +97,7 @@ function VimMappingRow({
   );
 }
 
-export function EditorSection() {
+export function EditorSection({ serverId }: { serverId: string | null }) {
   const { t } = useTranslation();
   const { settings, updateSettings } = useAppSettings();
   const [capturingAction, setCapturingAction] = useState<VimMappingAction | null>(null);
@@ -105,8 +106,13 @@ export function EditorSection() {
     () => normalizeVimMappingSettings(settings.vimMappings),
     [settings.vimMappings],
   );
-  const isCompact = useIsCompactFormFactor();
-  const desktop = getIsElectron() && !isCompact;
+  const desktop = getIsElectron();
+  const terminalDiagnosticSupported = useHostFeature(serverId, "terminalCompatibilityDiagnostic");
+  const embeddedTerminalSupported = useHostFeature(serverId, "terminalEmbeddedPresentation");
+  const hostInfoKnown = useSessionStore((state) =>
+    serverId ? state.sessions[serverId]?.serverInfo != null : false,
+  );
+  const externalEditorSupported = terminalDiagnosticSupported && embeddedTerminalSupported;
   const externalEditorDisplay = useMemo(
     () => ({
       label:
@@ -160,6 +166,10 @@ export function EditorSection() {
     (value: FileEditorMode) => void updateSettings({ fileEditorMode: value }),
     [updateSettings],
   );
+  const handleUseOttoEditor = useCallback(
+    () => handleExternalEditorModeChange("off"),
+    [handleExternalEditorModeChange],
+  );
   const handleExternalEditorCommandChange = useCallback(
     (value: string) => void updateSettings({ fileEditorCustomCommand: value }),
     [updateSettings],
@@ -212,26 +222,60 @@ export function EditorSection() {
       void updateSettings({ vimMappings });
     }
   }, [settings.vimMappings, updateSettings, vimMappings]);
+  let externalEditorHint =
+    "New source files open in the selected editor. Vim and Neovim run on the Otto host in the File Editor terminal.";
+  if (!externalEditorSupported) {
+    externalEditorHint = hostInfoKnown
+      ? "Update the connected host to choose Vim, Neovim, or a custom File editor."
+      : "Connect a host to choose Vim, Neovim, or a custom File editor.";
+  }
+  let externalEditorControl = null;
+  if (externalEditorSupported) {
+    externalEditorControl = (
+      <SelectField<FileEditorMode>
+        label="File editor"
+        value={settings.fileEditorMode}
+        selectedDisplay={externalEditorDisplay}
+        options={FILE_EDITOR_OPTIONS}
+        onChange={handleExternalEditorModeChange}
+        placeholder="Otto"
+        emptyText="No editor modes"
+        size="sm"
+        field={false}
+        triggerStyle={styles.externalEditorModeTrigger}
+        testID="external-file-editor-mode"
+        triggerTestID="external-file-editor-mode-trigger"
+      />
+    );
+  } else if (hostInfoKnown && settings.fileEditorMode !== "off") {
+    externalEditorControl = (
+      <Button size="sm" variant="secondary" onPress={handleUseOttoEditor}>
+        Use Otto
+      </Button>
+    );
+  }
   return (
     <>
-      <SettingsSection title={t("settings.editor.title")}>
-        <View style={settingsStyles.card}>
-          <View style={settingsStyles.row}>
-            <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>{t("settings.editor.vimKeybindings")}</Text>
-              <Text style={settingsStyles.rowHint}>{t("settings.editor.vimHint")}</Text>
+      {!isNative ? (
+        <SettingsSection title={t("settings.editor.title")}>
+          <View style={settingsStyles.card}>
+            <View style={settingsStyles.row}>
+              <View style={settingsStyles.rowContent}>
+                <Text style={settingsStyles.rowTitle}>{t("settings.editor.vimKeybindings")}</Text>
+                <Text style={settingsStyles.rowHint}>{t("settings.editor.vimHint")}</Text>
+              </View>
+              <Switch
+                value={settings.vimKeybindings}
+                onValueChange={handleChange}
+                accessibilityLabel={t("settings.editor.vimKeybindings")}
+                testID="vim-keybindings-toggle"
+              />
             </View>
-            <Switch
-              value={settings.vimKeybindings}
-              onValueChange={handleChange}
-              accessibilityLabel={t("settings.editor.vimKeybindings")}
-              testID="vim-keybindings-toggle"
-            />
           </View>
-        </View>
-      </SettingsSection>
+        </SettingsSection>
+      ) : null}
 
-      {settings.vimKeybindings ? (
+      {!isNative && settings.vimKeybindings ? (
         <SettingsSection title="Vim shortcuts">
           <View style={settingsStyles.card}>
             <View style={settingsStyles.row}>
@@ -266,27 +310,11 @@ export function EditorSection() {
             <View style={settingsStyles.rowResponsive}>
               <View style={settingsStyles.rowContent}>
                 <Text style={settingsStyles.rowTitle}>File editor</Text>
-                <Text style={settingsStyles.rowHint}>
-                  New source files open in the selected editor. Vim and Neovim run on the Otto host
-                  in the File Editor terminal.
-                </Text>
+                <Text style={settingsStyles.rowHint}>{externalEditorHint}</Text>
               </View>
-              <SelectField<FileEditorMode>
-                label="File editor"
-                value={settings.fileEditorMode}
-                selectedDisplay={externalEditorDisplay}
-                options={FILE_EDITOR_OPTIONS}
-                onChange={handleExternalEditorModeChange}
-                placeholder="Otto"
-                emptyText="No editor modes"
-                size="sm"
-                field={false}
-                triggerStyle={styles.externalEditorModeTrigger}
-                testID="external-file-editor-mode"
-                triggerTestID="external-file-editor-mode-trigger"
-              />
+              {externalEditorControl}
             </View>
-            {settings.fileEditorMode === "custom" ? (
+            {externalEditorSupported && settings.fileEditorMode === "custom" ? (
               <View style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}>
                 <View style={settingsStyles.rowContent}>
                   <Text style={settingsStyles.rowTitle}>Command</Text>

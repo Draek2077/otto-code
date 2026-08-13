@@ -83,6 +83,8 @@ export interface TerminalSession {
   workspaceId: string;
   /** Embedded sessions belong to a host pane rather than a standalone workspace tab. */
   presentation?: "embedded";
+  /** Stable owner identity for an embedded session that can survive renderer reloads. */
+  presentationOwner?: string;
   send(msg: ClientMessage): void;
   subscribe(listener: (msg: ServerMessage) => void, options?: TerminalSubscribeOptions): () => void;
   onExit(listener: (info: TerminalExitInfo) => void): () => void;
@@ -137,6 +139,7 @@ export interface CreateTerminalOptions {
   command?: string;
   args?: string[];
   presentation?: "embedded";
+  presentationOwner?: string;
 }
 
 function toTerminalActivity(snapshot: {
@@ -844,6 +847,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     cwd,
     workspaceId,
     presentation,
+    presentationOwner,
     shell,
     env = {},
     activityEnv = {},
@@ -1526,6 +1530,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     cwd,
     workspaceId,
     ...(presentation ? { presentation } : {}),
+    ...(presentationOwner ? { presentationOwner } : {}),
     send,
     subscribe,
     onExit,

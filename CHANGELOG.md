@@ -10,6 +10,10 @@
 
 ### Fixed
 
+- Hardened terminal-backed Vim and Neovim editing against option-like file paths, renderer reloads,
+  duplicate embedded sessions, and accidental tab closure
+- Improved terminal compatibility evidence for alternate-screen restoration and older-host update
+  prompts
 - Qwen Sharp prompt templates now load the intended tool-safe conversation format
 - Brain hosting-profile family defaults now recognize compatible downloaded and LM Studio GGUF models outside the curated catalog
 - Hardened Brain model-profile edits against unsafe template ids, stale context windows, incompatible runtime components, and orphaned materialized templates

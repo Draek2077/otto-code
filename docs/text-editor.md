@@ -182,6 +182,11 @@ editor. They route to existing editor callbacks or the keyboard action dispatche
 developer-mode capability gates remain authoritative. No mapping claims modifier chords, terminal
 input, message input, browser shortcuts, or other editor surfaces.
 
+The mapping dispatcher accumulates the full one- or two-character sequence. Escape cancels a
+pending leader without replaying Space into Vim, while timeout or an unrelated key replays the
+leader so ordinary Vim motion semantics are preserved. Reconfiguring or destroying the editor
+cancels the pending timer.
+
 The supported actions are Save, Find, Go to definition, Find references, Rename symbol, File
 search, Changes, and New terminal. Code formatting, code actions, and agent chat are not exposed by
 this mapping surface until each has a stable, honest editor entry point.
@@ -464,13 +469,26 @@ stack. Rendered text documents, including Markdown, open in the selected editor 
 media formats keep their normal preview behavior.
 
 The terminal is pane-owned: choosing Vim or Neovim replaces the file's content in the existing File
-tab and does not create a second workspace terminal tab.
+tab and does not create a second workspace terminal tab. The setting is desktop-only, is independent
+of compact layout, and is offered only when the selected host advertises both the compatibility
+diagnostic and embedded-terminal capabilities. A selected mode against an older host produces an
+explicit update-host message instead of silently falling back to Otto.
+
+The launcher resolves the file to an absolute host path before spawning anything. Vim and Neovim
+receive `--` before that path, so a filename beginning with `+` or `-` cannot be interpreted as an
+editor command or option. Custom commands are parsed into executable and argv without a shell.
 
 While a terminal-backed session is mounted, the terminal and selected file editor are authoritative. The
 CodeMirror editor, its document mirror, and Otto's autosave path are unmounted, so they cannot race
 the external process. The daemon continues watching the file and reports changed, deleted, and
 recreated states in the terminal-backed pane. Files, Changes, Git, and agent context continue to
 derive from daemon-owned disk state.
+
+Each embedded session has a stable `(workspace, absolute file path)` presentation owner. Renderer
+reload leaves the PTY running, then the remounted pane adopts that owner; the daemon also deduplicates
+concurrent creates for it. Responsive layout and File editor preference changes apply to future
+opens and do not terminate a running editor. Closing its File tab is the intentional stop path and
+requires confirmation that unsaved changes inside the external editor may be lost.
 
 Quitting the process or losing its terminal stream removes the dedicated session and returns to the
 standard Otto editor, which reads the file from disk. Otto never overwrites an external edit as part

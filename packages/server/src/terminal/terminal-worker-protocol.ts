@@ -22,6 +22,7 @@ export interface WorkerTerminalInfo {
   titleIncludePaths?: boolean;
   activity: TerminalActivity | null;
   presentation?: "embedded";
+  presentationOwner?: string;
 }
 
 export interface WorkerCreateTerminalOptions {
@@ -38,6 +39,7 @@ export interface WorkerCreateTerminalOptions {
   activityToken?: string;
   activityUrl?: string | null;
   presentation?: "embedded";
+  presentationOwner?: string;
 }
 
 export interface WorkerKillAndWaitOptions {
