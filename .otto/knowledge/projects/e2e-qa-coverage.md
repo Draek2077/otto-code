@@ -6,7 +6,7 @@ status: "confirmed"
 tags: ["project-charter", "legacy-projects-migration"]
 delivery_status: "partial"
 created_at: "2026-08-08T06:17:54.313Z"
-updated_at: "2026-08-08T06:37:07.203Z"
+updated_at: "2026-08-12T23:56:06.847Z"
 ---
 
 # E2e Qa Coverage
@@ -703,3 +703,13 @@ regression spec by the rules above.
 - time: "2026-08-08T06:37:07.203Z"
   kind: "decision"
   summary: "Re-synchronized the retained legacy migration source before its final retirement."
+- time: "2026-08-12T23:43:59.082Z"
+  kind: "evidence"
+  summary: "2026-08-12 cleanup verification: the active file route is the unified FileTabPane/CodeEditor path; the former packages/app/src/file-pane implementation is unmounted and has been removed. The active editor/daemon path preserves CRLF line endings on save; BOM preservation remains an explicit skipped coverage gap in file-editing.spec.ts. The duplicate skipped dirty-draft/conflict test was removed because editor-dirty-guard.spec.ts already covers the live dirty-close behavior."
+  source: "packages/app/src/editor/editor-core.ts; packages/app/src/editor/editor-buffer-state.ts; packages/server/src/server/session/files/workspace-files-session.ts; pac"
+  affects: ["vim-neovim-developer-workflows"]
+- time: "2026-08-12T23:56:06.847Z"
+  kind: "evidence"
+  summary: "Follow-up correction, 2026-08-12: the former packages/app/src/file-pane/ tree was restored as an unmounted Paseo reference/merge surface. It is intentionally retained for future upstream comparison and porting; the active app graph still uses FileTabPane/CodeEditor. Only the redundant skipped dirty-draft/conflict E2E was removed."
+  source: "packages/app/src/file-pane/; packages/app/e2e/file-editing.spec.ts"
+  affects: ["vim-neovim-developer-workflows"]
