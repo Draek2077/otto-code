@@ -69,6 +69,7 @@ import {
   type PendingWorkspaceDraftSetup,
 } from "@/stores/workspace-draft-submission-store";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
+import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useFormPreferences } from "@/hooks/use-form-preferences";
 import type { CreateAgentInitialValues } from "@/hooks/use-agent-form-state";
 import { generateMessageId } from "@/types/stream";
@@ -1935,6 +1936,17 @@ export function NewWorkspaceScreen({
   const openProjectPicker = useCallback(() => {
     setProjectPickerOpen(true);
   }, []);
+
+  useKeyboardActionHandler({
+    handlerId: "new-workspace-project-picker",
+    actions: ["workspace.project.pick"],
+    enabled: true,
+    priority: 100,
+    handle: () => {
+      openProjectPicker();
+      return true;
+    },
+  });
 
   const openIsolationPicker = useCallback(() => {
     setIsolationPickerOpen(true);
