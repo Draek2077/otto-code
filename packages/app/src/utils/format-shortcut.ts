@@ -6,7 +6,7 @@ const KEY_DISPLAY: Record<string, string> = {
   Backspace: "⌫",
   Enter: "⏎",
   Esc: "Esc",
-  Space: "␣",
+  Space: "Space",
   Left: "←",
   Right: "→",
   Up: "↑",

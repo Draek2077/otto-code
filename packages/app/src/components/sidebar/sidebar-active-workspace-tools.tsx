@@ -230,8 +230,6 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[2],
     borderTopWidth: theme.borderWidth[1],
     borderTopColor: theme.colors.border,
-    borderBottomWidth: theme.borderWidth[1],
-    borderBottomColor: theme.colors.border,
   },
   toolsRow: {
     flex: 1,

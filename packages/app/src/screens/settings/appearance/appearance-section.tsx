@@ -49,6 +49,7 @@ import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import { settingsStyles } from "@/styles/settings";
 import { TEXT_EFFECT_THEME_IDS, type TextEffectThemeId } from "@/styles/text-effects";
 import { AppearancePreview } from "./appearance-preview";
+import { DiffPresentationPreview } from "../diff-presentation-preview";
 
 // ---------------------------------------------------------------------------
 // Theme-reactive leaf icons (withUnistyles + uniProps color mapping - no
@@ -519,6 +520,42 @@ function SyntaxRow({ value, onChange }: SyntaxRowProps) {
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
+    </View>
+  );
+}
+
+function ReplacementPresentationRow({
+  value,
+  onChange,
+}: {
+  value: AppSettings["structuralReplacementPresentation"];
+  onChange: (value: AppSettings["structuralReplacementPresentation"]) => void;
+}) {
+  const options = useMemo<
+    SegmentedControlOption<AppSettings["structuralReplacementPresentation"]>[]
+  >(
+    () => [
+      { value: "new-token", label: "New token" },
+      { value: "before-after", label: "Old → new" },
+    ],
+    [],
+  );
+  return (
+    <View style={settingsStyles.rowResponsive}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>Compact replacements</Text>
+        <Text style={settingsStyles.rowHint}>
+          Show a small Structural replacement as the new token only, or as adjacent old and new
+          tokens.
+        </Text>
+      </View>
+      <SegmentedControl
+        size="sm"
+        value={value}
+        onValueChange={onChange}
+        options={options}
+        testID="settings-structural-replacement-presentation"
+      />
     </View>
   );
 }
@@ -1025,6 +1062,20 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
+  const handleFormattingDiffHighlightsChange = useCallback(
+    (formattingDiffHighlights: boolean) => {
+      void updateSettings({ formattingDiffHighlights });
+    },
+    [updateSettings],
+  );
+
+  const handleStructuralReplacementPresentationChange = useCallback(
+    (structuralReplacementPresentation: AppSettings["structuralReplacementPresentation"]) => {
+      void updateSettings({ structuralReplacementPresentation });
+    },
+    [updateSettings],
+  );
+
   const handleRulerEnabledChange = useCallback(
     (rulerEnabled: boolean) => {
       void updateSettings({ rulerEnabled });
@@ -1430,6 +1481,20 @@ export function AppearanceSection() {
       <SettingsSection title={t("settings.appearance.syntax.title")}>
         <View style={settingsStyles.card}>
           <SyntaxRow value={settings.syntaxTheme} onChange={handleSyntaxThemeChange} />
+          <LayoutToggleRow
+            title="Formatting-only changes"
+            hint="Show whitespace-only changes with a neutral theme color in diff review. Turn off to hide them entirely."
+            accessibilityLabel="Formatting-only changes"
+            value={settings.formattingDiffHighlights}
+            withBorder
+            onValueChange={handleFormattingDiffHighlightsChange}
+            testID="settings-formatting-diff-highlights-switch"
+          />
+          <ReplacementPresentationRow
+            value={settings.structuralReplacementPresentation}
+            onChange={handleStructuralReplacementPresentationChange}
+          />
+          <DiffPresentationPreview showFormattingChanges={settings.formattingDiffHighlights} />
           <LayoutToggleRow
             title="Line-length ruler"
             hint="Draw a faint vertical line behind the code in the editor, marking a maximum line length."

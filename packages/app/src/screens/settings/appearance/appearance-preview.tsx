@@ -199,9 +199,9 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
   },
   markerAdd: {
-    color: theme.colors.diffAddition,
+    color: theme.colors.syntax.diffAddedForeground,
   },
   markerRemove: {
-    color: theme.colors.diffDeletion,
+    color: theme.colors.syntax.diffRemovedForeground,
   },
 }));
