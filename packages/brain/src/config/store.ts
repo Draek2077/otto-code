@@ -20,6 +20,7 @@ import {
   type ProfilesStore,
 } from "./schema.js";
 import { applyEnvOverrides } from "./env.js";
+import { seedBuiltinHostingProfiles } from "./builtin-hosting-profiles.js";
 
 function readJson<S extends z.ZodTypeAny>(file: string, schema: S): z.infer<S> | null {
   if (!existsSync(file)) return null;
@@ -41,15 +42,24 @@ function writeJson(file: string, data: unknown): void {
 
 export function loadProfilesStore(paths: BrainPaths = resolveBrainPaths()): ProfilesStore {
   const current = readJson(paths.profilesFile, ProfilesStoreSchema);
-  if (current) return current;
+  if (current) {
+    if (seedBuiltinHostingProfiles(current)) writeJson(paths.profilesFile, current);
+    return current;
+  }
 
   const legacy = path.join(packageRoot(), "config", "profiles.json");
   const migrated = readJson(legacy, ProfilesStoreSchema);
   if (migrated) {
+    seedBuiltinHostingProfiles(migrated);
     writeJson(paths.profilesFile, migrated);
     return migrated;
   }
-  return ProfilesStoreSchema.parse({});
+  const seeded = ProfilesStoreSchema.parse({});
+  seedBuiltinHostingProfiles(seeded);
+  // A read-only command must not create profiles.json. In-memory seeding keeps
+  // built-ins available; the first real profile save persists the whole store.
+  // This avoids racing a running service that later writes its startup snapshot.
+  return seeded;
 }
 
 export function saveProfilesStore(
