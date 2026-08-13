@@ -133,6 +133,12 @@ export function KeyboardShortcutsDialog() {
   const handleClose = useCallback(() => setOpen(false), [setOpen]);
   const header = useMemo<SheetHeader>(() => ({ title: t("settings.shortcuts.dialogTitle") }), [t]);
 
+  useEffect(() => {
+    if (!open || !isWeb) return;
+    const timer = setTimeout(() => searchInputRef.current?.focus(), 0);
+    return () => clearTimeout(timer);
+  }, [open]);
+
   return (
     <AdaptiveModalSheet
       header={header}

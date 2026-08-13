@@ -87,6 +87,7 @@ import {
   BrainDiskUsageSchema,
   BrainInventoryModelSchema,
   BrainProfileFieldSchema,
+  BrainHostingProfileSchema,
   BrainProfileSchema,
   BrainProfileWarningSchema,
 } from "@otto-code/protocol/messages";
@@ -4309,6 +4310,16 @@ export class Session {
   }
 
   private handleBrainJobsListRequest(requestId: string): void {
+    // Library downloads are daemon-owned CLI jobs. The Brain host has its own
+    // job lane for host-owned operations, but it cannot report progress for a
+    // download the daemon spawned. Prefer the local owner whenever it exists.
+    if (this.brainOpsManager) {
+      this.emit({
+        type: "brain.jobs.list.response",
+        payload: { jobs: this.brainOpsManager.jobs(), error: null, requestId },
+      });
+      return;
+    }
     if (this.brainManager) {
       void this.brainManager
         .hostJobs()
@@ -4326,20 +4337,29 @@ export class Session {
         );
       return;
     }
-    if (!this.brainOpsManager) {
-      this.emit({
-        type: "brain.jobs.list.response",
-        payload: { jobs: [], error: BRAIN_OPS_UNAVAILABLE, requestId },
-      });
-      return;
-    }
     this.emit({
       type: "brain.jobs.list.response",
-      payload: { jobs: this.brainOpsManager.jobs(), error: null, requestId },
+      payload: { jobs: [], error: BRAIN_OPS_UNAVAILABLE, requestId },
     });
   }
 
   private async handleBrainJobsCancelRequest(jobId: string, requestId: string): Promise<void> {
+    // See handleBrainJobsListRequest: the same owner must receive Cancel.
+    if (this.brainOpsManager) {
+      try {
+        const jobs = await this.brainOpsManager.cancel(jobId);
+        this.emit({
+          type: "brain.jobs.cancel.response",
+          payload: { jobs, error: null, requestId },
+        });
+      } catch (err) {
+        this.emit({
+          type: "brain.jobs.cancel.response",
+          payload: { jobs: this.brainOpsManager.jobs(), error: getErrorMessage(err), requestId },
+        });
+      }
+      return;
+    }
     if (this.brainManager) {
       try {
         const data = await this.brainManager.cancelHostJob(jobId);
@@ -4355,22 +4375,10 @@ export class Session {
       }
       return;
     }
-    if (!this.brainOpsManager) {
-      this.emit({
-        type: "brain.jobs.cancel.response",
-        payload: { jobs: [], error: BRAIN_OPS_UNAVAILABLE, requestId },
-      });
-      return;
-    }
-    try {
-      const jobs = await this.brainOpsManager.cancel(jobId);
-      this.emit({ type: "brain.jobs.cancel.response", payload: { jobs, error: null, requestId } });
-    } catch (err) {
-      this.emit({
-        type: "brain.jobs.cancel.response",
-        payload: { jobs: this.brainOpsManager.jobs(), error: getErrorMessage(err), requestId },
-      });
-    }
+    this.emit({
+      type: "brain.jobs.cancel.response",
+      payload: { jobs: [], error: BRAIN_OPS_UNAVAILABLE, requestId },
+    });
   }
 
   // --- Brain Console: proxied management RPCs -------------------------------
@@ -4426,6 +4434,9 @@ export class Session {
         warnings: parseBrainArray(data.warnings, BrainProfileWarningSchema),
         calibration: calibration.success ? calibration.data : null,
         requiresRestart: data.requiresRestart === true,
+        hostingProfiles: parseBrainArray(data.hostingProfiles, BrainHostingProfileSchema),
+        familyHostingProfileId:
+          typeof data.familyHostingProfileId === "string" ? data.familyHostingProfileId : null,
         error,
         requestId,
       },
@@ -4455,6 +4466,9 @@ export class Session {
         maxContextThatFits:
           typeof data.maxContextThatFits === "number" ? data.maxContextThatFits : null,
         requiresRestart: data.requiresRestart === true,
+        hostingProfiles: parseBrainArray(data.hostingProfiles, BrainHostingProfileSchema),
+        familyHostingProfileId:
+          typeof data.familyHostingProfileId === "string" ? data.familyHostingProfileId : null,
         error,
         requestId,
       },
@@ -9390,7 +9404,11 @@ export class Session {
         subscription.lastEmittedByWorkspaceId.delete(workspaceId);
         this.bufferOrEmitWorkspaceUpdate(
           subscription,
-          await this.buildWorkspaceRemoveUpdatePayload(workspaceId, options?.removedProjectId),
+          await this.buildWorkspaceRemoveUpdatePayload(
+            workspaceId,
+            options?.removedProjectId,
+            lastEmitted?.kind === "upsert" ? lastEmitted.workspace.projectId : undefined,
+          ),
         );
         continue;
       }
@@ -9435,6 +9453,7 @@ export class Session {
   private async buildWorkspaceRemoveUpdatePayload(
     workspaceId: string,
     removedProjectId?: string,
+    projectId?: string,
   ): Promise<WorkspaceUpdatePayload> {
     if (removedProjectId) {
       return { kind: "remove", id: workspaceId, removedProjectId };
@@ -9442,7 +9461,10 @@ export class Session {
     return {
       kind: "remove",
       id: workspaceId,
-      ...(await this.resolveProjectWithoutActiveWorkspacesForArchivedWorkspace(workspaceId)),
+      ...(await this.resolveProjectWithoutActiveWorkspacesForArchivedWorkspace(
+        workspaceId,
+        projectId,
+      )),
     };
   }
 
@@ -9451,13 +9473,15 @@ export class Session {
   // sidebar in sync without a full re-hydration.
   private async resolveProjectWithoutActiveWorkspacesForArchivedWorkspace(
     workspaceId: string,
+    knownProjectId?: string,
   ): Promise<{ emptyProject: WorkspaceProjectDescriptorPayload } | null> {
     const archivedWorkspace = await this.workspaceRegistry.get(workspaceId);
-    if (!archivedWorkspace) {
+    const projectId = archivedWorkspace?.projectId ?? knownProjectId;
+    if (!projectId) {
       return null;
     }
     const projectWithoutActiveWorkspaces = (await this.workspaceDirectory.listEmptyProjects()).find(
-      (project) => project.projectId === archivedWorkspace.projectId,
+      (project) => project.projectId === projectId,
     );
     return projectWithoutActiveWorkspaces ? { emptyProject: projectWithoutActiveWorkspaces } : null;
   }
