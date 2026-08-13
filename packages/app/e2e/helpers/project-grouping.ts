@@ -108,7 +108,7 @@ export async function renameProject(page: Page, name: string): Promise<void> {
 
 export async function openGroupedProjectSettings(page: Page, projectName: string): Promise<void> {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await expect(page).toHaveURL(/\/settings\/general$/);
+  await expect(page).toHaveURL(/\/settings$/);
   await page.getByRole("button", { name: "Projects", exact: true }).click();
   await expect(page).toHaveURL(/\/settings\/projects$/);
   await openProjectSettings(page, projectName);

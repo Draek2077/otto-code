@@ -155,7 +155,7 @@ async function openAppWideNewWorkspace(page: Page): Promise<void> {
 
 async function openSettingsThenBackToWorkspace(page: Page): Promise<void> {
   await page.getByTestId("sidebar-settings").filter({ visible: true }).first().click();
-  await expect(page).toHaveURL(/\/settings\/general$/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/settings$/, { timeout: 30_000 });
   await page.getByTestId("settings-back-to-workspace").click();
   await page.waitForURL((url) => url.pathname.includes("/workspace/"), { timeout: 30_000 });
 }

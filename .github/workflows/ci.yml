@@ -294,7 +294,7 @@ jobs:
         run: |
           $attempts = 2
           for ($i = 1; $i -le $attempts; $i++) {
-            npm run test:unit --workspace=@otto-code/server -- --maxWorkers=1 --minWorkers=1
+            npm run test:unit --workspace=@otto-code/server -- --maxWorkers=1
             if ($LASTEXITCODE -eq 0) { break }
             if ($i -eq $attempts) { exit $LASTEXITCODE }
             Write-Host "server test:unit failed (attempt $i/$attempts) - retrying the single-fork runner"

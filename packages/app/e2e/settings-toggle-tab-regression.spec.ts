@@ -4,6 +4,7 @@ import { createIdleAgent, openWorkspaceWithAgents } from "./helpers/archive-tab"
 import { waitForTabBar, expectAgentTabActive } from "./helpers/launcher";
 import { seedWorkspace } from "./helpers/seed-client";
 import { getServerId } from "./helpers/server-id";
+import { openSettingsSection } from "./helpers/settings";
 
 // Settings has no keyboard shortcut of its own (Mod+, opens the file finder),
 // so the round trip is the sidebar button in and the back button out - the same
@@ -76,7 +77,8 @@ test.describe("Settings toggle tab regression", () => {
       await expectAgentTabActive(page, secondAgent.id);
 
       await openSettingsFromSidebar(page);
-      await expect(page).toHaveURL(/\/settings\/general$/);
+      await expect(page).toHaveURL(/\/settings$/);
+      await openSettingsSection(page, "general");
 
       await page.getByRole("button", { name: "Queue", exact: true }).click();
       await expectSendBehavior(page, "queue");
