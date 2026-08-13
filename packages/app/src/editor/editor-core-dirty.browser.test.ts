@@ -1,4 +1,4 @@
-import { userEvent } from "@vitest/browser/context";
+import { userEvent } from "vitest/browser";
 import { afterEach, describe, expect, it } from "vitest";
 import { resolveSyntaxColors } from "@otto-code/highlight";
 import type { EditorThemeSpec } from "./editor-contract";

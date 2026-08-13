@@ -10,6 +10,7 @@
 
 ### Fixed
 
+- Browser-mode tests now use Vitest's supported browser entry point
 - Hardened terminal-backed Vim and Neovim editing against option-like file paths, renderer reloads,
   duplicate embedded sessions, and accidental tab closure
 - Improved terminal compatibility evidence for alternate-screen restoration and older-host update
