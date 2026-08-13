@@ -1038,6 +1038,15 @@ interface MobileMountedTabSlotProps {
   }) => WorkspacePaneContentModel;
 }
 
+const selectBlackTabBackground = (settings: AppSettings) => settings.blackTabBackground;
+
+// A hidden retained tab freezes its stream store subscription by design. Keep
+// the slot itself subscribed to this pane-wide appearance setting so React
+// reconciles its content when the black chat background changes.
+function useBlackChatBackgroundRefresh(): void {
+  useAppSettingValue(selectBlackTabBackground);
+}
+
 const MobileMountedTabSlot = memo(function MobileMountedTabSlot({
   tabDescriptor,
   isVisible,
@@ -1046,6 +1055,7 @@ const MobileMountedTabSlot = memo(function MobileMountedTabSlot({
   paneId,
   buildPaneContentModel,
 }: MobileMountedTabSlotProps) {
+  useBlackChatBackgroundRefresh();
   const content = useMemo(
     () =>
       buildPaneContentModel({

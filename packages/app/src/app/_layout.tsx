@@ -18,6 +18,7 @@ import {
   useContext,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -675,7 +676,12 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
   // the light/dark keys adaptively on its own, but the black repaint must
   // re-run here when the OS scheme changes.
   const osColorScheme = useColorScheme();
-  useEffect(() => {
+  // These patches change native paint values used by the scoped black chat
+  // theme. A passive effect leaves one committed frame using the boot palette,
+  // which can split a newly mounted chat between two backgrounds. Apply them
+  // in the layout phase so the persisted palette is in place before that frame
+  // reaches the screen.
+  useLayoutEffect(() => {
     if (settingsLoading) return;
     applyColorScheme({
       colorSchemeMode: settings.colorSchemeMode,
@@ -697,7 +703,7 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
   // Sibling to the theme effect above; order is irrelevant because both patch
   // all registered theme keys, so the active key is always current. Also re-runs on
   // compact-layout changes so fontSize/iconSize repaint when crossing the breakpoint.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (settingsLoading) return;
     applyAppearance({
       uiFontFamily: settings.uiFontFamily,
