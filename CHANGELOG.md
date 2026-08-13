@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.10 - 2026-08-13
+
+### Fixed
+
+- Chats scroll again, and jump to the bottom again, instead of opening stuck in place
+- Closing a tab that holds a Vim or Neovim session now warns that the external editor will be stopped
+
 ## 0.8.9 - 2026-08-13
 
 ### Added
