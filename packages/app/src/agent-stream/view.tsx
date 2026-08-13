@@ -86,6 +86,7 @@ import {
   clampRevealBudget,
   computeLiveTurnReveal,
   findTurnBoundary,
+  getGrowingAssistantItemId,
   type TurnRevealSpan,
   type TurnRevealTicker,
   StreamResumeGate,
@@ -975,18 +976,17 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       dataSettled: displayedStream.dataSettled,
     });
 
-    // The growing end of the live turn: the last assistant item the reveal spans
-    // cover, which is the one the model is still appending to (block promotion
-    // always adds the new segment last). Undefined when nothing is running, so
-    // every item then counts as finished. Consumers that treat a message as a
-    // complete thing - the playback button, the auto-speech queue - key off it.
+    // The growing end of the live turn. An action after assistant prose closes
+    // that bubble, so only an assistant item that is literally last can still
+    // be extended. Undefined when nothing is running, so every item then counts
+    // as finished. Consumers that treat a message as a complete thing - the
+    // playback button, the auto-speech queue - key off it.
     const liveTurnTailItemId = useMemo(() => {
-      let tailId: string | undefined;
-      for (const itemId of liveTurnReveal.spans.keys()) {
-        tailId = itemId;
-      }
-      return tailId;
-    }, [liveTurnReveal]);
+      return getGrowingAssistantItemId(
+        [...displayedStreamItems, ...(displayedStreamHead ?? EMPTY_STREAM_HEAD)],
+        liveTurnReveal,
+      );
+    }, [displayedStreamHead, displayedStreamItems, liveTurnReveal]);
 
     const renderAssistantMessageItem = useCallback(
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "assistant_message" }>) => {

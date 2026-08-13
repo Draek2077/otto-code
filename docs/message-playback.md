@@ -11,14 +11,15 @@ control.
 The per-bubble button (`components/message-playback-button.tsx`, mounted by
 `components/message.tsx`) appears on a bubble only once that bubble is **settled**:
 
-- the model has moved past it - it is not the growing end of a running turn, and
+- the model has moved past it - it is not the growing end of a running turn. Starting an
+  action also closes the preceding bubble, even though the turn is still running, and
 - the typewriter reveal (`agent-stream/turn-reveal.ts`) has finished laying it out.
 
 Both halves matter. A Play affordance on a message still being written offers
 something that does not exist yet, and the icon riding an expanding bubble's edge
-looks broken. `agent-stream/view.tsx` computes the live turn's tail item - the last
-id in the reveal spans - and passes `isTurnTail` down; when nothing is running there
-are no spans, so every message counts as finished.
+looks broken. `agent-stream/view.tsx` computes the live turn's tail item and passes
+`isTurnTail` down; when nothing is running there are no spans, so every message counts
+as finished.
 
 One button per _visual_ bubble, on the segment that closes the group, reading the
 whole group's joined text (`agent-stream/assistant-bubble-text.ts`).
@@ -84,8 +85,9 @@ a source mounts before its chat has ever been opened, so the history arrives _af
 it and would read the whole chat aloud.
 
 `voice/auto-speech-segments.ts` holds the one rule that decides what is offered, pure
-and tested: every assistant segment of the live turn **except the one the model is
-still appending to**. Two details it has to get right, both learned from the same bug
+and tested: every assistant segment of the live turn **except the final assistant item
+while it is still the last turn item**. Starting an action closes the preceding bubble
+and makes it speakable. Two details it has to get right, both learned from the same bug
 where hitting send read the previous reply's last paragraph back at you:
 
 - **A turn that has already been settled never spans anything.** Sending flips the

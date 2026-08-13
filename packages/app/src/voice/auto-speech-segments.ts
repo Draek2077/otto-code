@@ -15,7 +15,7 @@
 import {
   computeLiveTurnReveal,
   findTurnBoundary,
-  type LiveTurnReveal,
+  getGrowingAssistantItemId,
 } from "@/agent-stream/turn-reveal";
 import type { StreamItem } from "@/types/stream";
 
@@ -43,15 +43,6 @@ function segmentOf(item: StreamItem): FinishedSegment | null {
   };
 }
 
-/** The growing end of the live turn - the last item the reveal spans cover. */
-function growingTailItemId(reveal: LiveTurnReveal): string | undefined {
-  let last: string | undefined;
-  for (const itemId of reveal.spans.keys()) {
-    last = itemId;
-  }
-  return last;
-}
-
 export function finishedAssistantSegments(input: {
   tail: readonly StreamItem[];
   head: readonly StreamItem[];
@@ -76,7 +67,7 @@ export function finishedAssistantSegments(input: {
     head: input.head,
     settledTurnKey,
   });
-  const growingTail = growingTailItemId(reveal);
+  const growingTail = getGrowingAssistantItemId(all, reveal);
 
   const segments: FinishedSegment[] = [];
   for (let index = boundary.index + 1; index < all.length; index += 1) {

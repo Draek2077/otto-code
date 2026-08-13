@@ -2234,10 +2234,9 @@ function useAssistantBubblePlaybackState(input: {
   handlePointerLeave: () => void;
 } {
   const { serverId, spacing, groupId, blockIndex, message } = input;
-  // "Received in full": the model has moved past this item AND the typewriter
-  // has finished laying it out. Both halves matter - a bubble still growing
-  // across the screen is not a message you can be offered to play, and text the
-  // reader has not been shown yet is not text to read aloud.
+  // A bubble is only ready for its visible Play control after the model has
+  // moved on AND the typewriter has drawn its full text. Starting an action
+  // closes the preceding bubble even while the turn itself remains running.
   const isSettled = input.isTurnTail !== true && input.displayedLength >= message.length;
   const [hovered, setHovered] = useState(false);
   const handlePointerEnter = useCallback(() => setHovered(true), []);

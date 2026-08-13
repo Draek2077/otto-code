@@ -153,6 +153,21 @@ export function clampRevealBudget(revealedTotal: number, span: TurnRevealSpan): 
 }
 
 /**
+ * The only assistant item the model can still be extending. An action after
+ * prose closes that prose bubble even while the turn continues, so the bubble
+ * is no longer the growing tail just because it is the latest assistant item.
+ */
+export function getGrowingAssistantItemId(
+  items: readonly StreamItem[],
+  reveal: LiveTurnReveal,
+): string | undefined {
+  const lastItem = items.at(-1);
+  return lastItem?.kind === "assistant_message" && reveal.spans.has(lastItem.id)
+    ? lastItem.id
+    : undefined;
+}
+
+/**
  * The paced reveal position for the live turn. Plain external store rather
  * than React state so the 32ms ticks NEVER re-render the stream view - each
  * assistant item subscribes to its own clamped budget via

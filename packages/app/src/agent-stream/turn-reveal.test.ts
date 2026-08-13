@@ -4,6 +4,7 @@ import type { StreamItem } from "@/types/stream";
 import {
   clampRevealBudget,
   computeLiveTurnReveal,
+  getGrowingAssistantItemId,
   nextRevealLength,
   StreamResumeGate,
   TurnRevealTicker,
@@ -186,6 +187,13 @@ describe("computeLiveTurnReveal", () => {
     });
     assert.equal(before.totalChars, after.totalChars);
     assert.deepEqual(after.spans.get("live:head"), { start: 11, length: 11 });
+  });
+
+  it("closes an assistant bubble as soon as an action follows it", () => {
+    const items = [user("u1", "ask"), assistant("a1", "I will check."), tool("t1")];
+    const reveal = computeLiveTurnReveal({ running: true, tail: items, head: [] });
+
+    assert.equal(getGrowingAssistantItemId(items, reveal), undefined);
   });
 });
 

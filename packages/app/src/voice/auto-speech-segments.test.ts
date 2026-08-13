@@ -21,6 +21,25 @@ function user(id: string, text: string): StreamItem {
   return { kind: "user_message", id, text, timestamp: new Date(0) };
 }
 
+function tool(id: string): StreamItem {
+  return {
+    kind: "tool_call",
+    id,
+    timestamp: new Date(0),
+    payload: {
+      source: "agent",
+      data: {
+        provider: "claude",
+        callId: id,
+        name: "Read",
+        status: "running",
+        error: null,
+        detail: { type: "read", filePath: "file.ts" },
+      },
+    },
+  };
+}
+
 function keys(segments: { key: string }[]): string[] {
   return segments.map((segment) => segment.key);
 }
@@ -33,6 +52,17 @@ describe("finishedAssistantSegments", () => {
         assistant({ id: "g1:block:0", text: "first", groupId: "g1", blockIndex: 0 }),
         assistant({ id: "g1:head", text: "second, still gro", groupId: "g1", blockIndex: 1 }),
       ],
+      running: true,
+      settledTurnKey: null,
+    });
+
+    expect(keys(segments)).toEqual(["g1:0"]);
+  });
+
+  it("releases a bubble when the stream moves on to an action", () => {
+    const { segments } = finishedAssistantSegments({
+      tail: [user("u1", "go"), assistant({ id: "g1:head", text: "I will check.", groupId: "g1" })],
+      head: [tool("t1")],
       running: true,
       settledTurnKey: null,
     });
