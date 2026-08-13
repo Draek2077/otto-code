@@ -3,9 +3,12 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 
 import { buildArgs, buildEnv, formatCommand } from "../runtime/index.js";
+import { resolveHostingProfileForLaunch } from "../config/hosting-profiles.js";
+import { resolveBrainPaths, type BrainPaths } from "../config/paths.js";
+import { loadProfilesStore } from "../config/store.js";
 import { usedBytes } from "../gpu.js";
 import type { Model, Runtime } from "../types.js";
-import type { Profile } from "../config/schema.js";
+import type { Profile, ProfilesStore } from "../config/schema.js";
 
 const LOG_LINES_KEPT = 300;
 
@@ -28,6 +31,14 @@ export interface SupervisorOptions {
   internalPort?: number;
   host?: string;
   readyTimeoutMs?: number;
+  /**
+   * Long-lived hosts provide their live store so profile edits applied just
+   * before a model switch are visible without a second disk read. Standalone
+   * operations use the current persisted store, which still preserves the
+   * launch-resolution invariant.
+   */
+  paths?: BrainPaths;
+  getProfilesStore?: () => ProfilesStore;
 }
 
 export interface SupervisorStatus {
@@ -54,6 +65,8 @@ export class Supervisor extends EventEmitter {
   internalPort: number;
   host: string;
   readyTimeoutMs: number;
+  paths: BrainPaths;
+  getProfilesStore: () => ProfilesStore;
 
   state: SupervisorState;
   child: ChildProcess | null;
@@ -78,12 +91,16 @@ export class Supervisor extends EventEmitter {
     internalPort = DEFAULT_INTERNAL_PORT,
     host = "127.0.0.1",
     readyTimeoutMs = 300_000,
+    paths = resolveBrainPaths(),
+    getProfilesStore = loadProfilesStore,
   }: SupervisorOptions) {
     super();
     this.runtime = runtime;
     this.internalPort = internalPort;
     this.host = host;
     this.readyTimeoutMs = readyTimeoutMs;
+    this.paths = paths;
+    this.getProfilesStore = getProfilesStore;
 
     this.state = "stopped"; // stopped | starting | ready | failed
     this.child = null;
@@ -126,7 +143,14 @@ export class Supervisor extends EventEmitter {
     this.#log(line);
   }
 
-  /** Start (or restart) the server for a model + profile. */
+  /**
+   * Start (or restart) the server for a model + profile.
+   *
+   * This is the sole llama-server launch boundary, so it materializes the
+   * selected hosting profile here. Keeping it beside `buildArgs()` makes the
+   * Jinja template and router-visible system addendum mandatory for every
+   * caller, including future maintenance operations that start a sidecar.
+   */
   async start(
     model: Model,
     profile: Profile,
@@ -140,16 +164,22 @@ export class Supervisor extends EventEmitter {
       throw new Error(this.lastError);
     }
     const runtime = this.runtime;
+    const launchProfile = resolveHostingProfileForLaunch(
+      this.paths,
+      this.getProfilesStore(),
+      profile,
+      model.family,
+    );
 
     this.model = model;
-    this.profile = profile;
+    this.profile = launchProfile;
     this.lastError = null;
     if (!options.preserveLogs) this.logLines = [];
     this.vramBaselineBytes = await usedBytes();
     this.#setState("starting");
 
     const args = buildArgs(
-      { ...profile, modelPath: model.modelPath, mmprojPath: model.mmprojPath },
+      { ...launchProfile, modelPath: model.modelPath, mmprojPath: model.mmprojPath },
       { port: this.internalPort, host: this.host },
       model,
     );

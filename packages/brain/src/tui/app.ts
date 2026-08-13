@@ -350,7 +350,7 @@ export class App {
     this.rankings = new Map(); // model id/name -> averaged benchmark rank + score
     this.rankedModels = []; // ranked list (mean of runs), best first | help
     this.telemetry = new Telemetry();
-    this.supervisor = new Supervisor({ runtime });
+    this.supervisor = new Supervisor({ runtime, getProfilesStore: () => this.store });
     this.routerServer = null;
 
     this.supervisor.on("state", () => this.draw());

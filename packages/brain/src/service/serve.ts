@@ -23,7 +23,6 @@ import {
   putCalibration,
   saveBrainConfig,
   saveProfilesStore,
-  resolveHostingProfileForLaunch,
 } from "../config/index.js";
 import { resolveBrainPaths } from "../config/paths.js";
 import type { BrainConfig } from "../config/schema.js";
@@ -454,7 +453,7 @@ export async function startService({
   }
 
   const telemetry = new Telemetry();
-  const supervisor = new Supervisor({ runtime });
+  const supervisor = new Supervisor({ runtime, paths, getProfilesStore: () => store });
   supervisor.on("log", (line: string) => {
     runLog.write(line);
     if (/error|failed|warn/i.test(line)) onLog(line);
@@ -485,10 +484,7 @@ export async function startService({
       if (!fit.adjusted && !fit.budget.fits) throw new Error(fit.reason ?? "does not fit");
       fitProfile = fit.profile;
     }
-    await supervisor.start(
-      target,
-      resolveHostingProfileForLaunch(paths, store, fitProfile, target.family),
-    );
+    await supervisor.start(target, fitProfile);
     delete store.pendingReloadModelIds[target.id];
     store.lastModelId = target.id;
     saveProfilesStore(store, paths);
@@ -775,10 +771,7 @@ export async function startService({
   certManager?.start();
 
   if (model && profile && runtime) {
-    await supervisor.start(
-      model,
-      resolveHostingProfileForLaunch(paths, store, profile, model.family),
-    );
+    await supervisor.start(model, profile);
     delete store.pendingReloadModelIds[model.id];
     store.lastModelId = model.id;
     saveProfilesStore(store, paths);

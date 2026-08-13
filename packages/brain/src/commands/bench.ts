@@ -1,14 +1,22 @@
 /**
  * `otto brain bench` - score a model's agentic coding ability on this machine.
  * Either benchmarks an endpoint that is already serving (`--endpoint`) or loads
- * each requested model itself. A long streaming run, so it prints a formatted
- * report directly rather than going through the output layer.
+ * each requested model itself. Locally loaded runs use the router scheduler, so
+ * their requests receive the same profile system addendum as normal serving. A
+ * long streaming run, so it prints a formatted report directly rather than going
+ * through the output layer.
  */
 import http from "node:http";
 import path from "node:path";
 import type { Command } from "commander";
 
-import { forModel, getCalibration, loadBrainConfig, loadProfilesStore } from "../config/index.js";
+import {
+  forModel,
+  getCalibration,
+  loadBrainConfig,
+  loadProfilesStore,
+  resolveBrainPaths,
+} from "../config/index.js";
 import { query as queryGpu } from "../gpu.js";
 import { pickModel, scanModels } from "../models/index.js";
 import { CommandError } from "../output/types.js";
@@ -241,10 +249,22 @@ async function runBenchSuite(options: BenchOptions, _command: Command): Promise<
     }
 
     process.stdout.write(`\n${"=".repeat(74)}\n${model.displayName}\n${"=".repeat(74)}\n`);
-    const supervisor = new Supervisor({ runtime, internalPort: port });
+    const supervisor = new Supervisor({
+      runtime,
+      internalPort: port,
+      paths: resolveBrainPaths(),
+      getProfilesStore: () => store,
+    });
     const telemetry = new Telemetry();
     const server = http.createServer(
-      createRouter({ supervisor, telemetry, getCatalog: () => catalog }),
+      createRouter({
+        supervisor,
+        telemetry,
+        getCatalog: () => catalog,
+        loadModel: async (target) => {
+          await supervisor.start(target, forModel(store, target, config.defaults));
+        },
+      }),
     );
     await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
