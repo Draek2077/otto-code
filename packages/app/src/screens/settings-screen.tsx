@@ -29,6 +29,7 @@ import {
   Brain,
   Bot,
   Boxes,
+  CodeBlocks,
   DataObject,
   Gauge,
   Groups,
@@ -59,6 +60,8 @@ import { ScreenTitle } from "@/components/headers/screen-title";
 import { HeaderIconBadge } from "@/components/headers/header-icon-badge";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { AppearanceSection } from "@/screens/settings/appearance/appearance-section";
+import { EditorSection } from "@/screens/settings/editor-section";
+import { DiffPresentationSection } from "@/screens/settings/diff-presentation-section";
 import { VisualizerSection } from "@/screens/settings/visualizer-section";
 import {
   useAppSettings,
@@ -580,6 +583,12 @@ const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
     id: "visualizer",
     labelKey: "settings.appearance.visualizer.title",
     icon: Waypoints,
+    developerOnly: true,
+  },
+  {
+    id: "editor",
+    labelKey: "settings.editor.title",
+    icon: CodeBlocks,
     developerOnly: true,
   },
   { id: "shortcuts", labelKey: "settings.sections.shortcuts", icon: Keyboard, desktopOnly: true },
@@ -1223,6 +1232,7 @@ function GeneralSection({
           ) : null}
         </View>
       </SettingsSection>
+      <DiffPresentationSection />
       <SettingsSection title="Agents">
         <View style={settingsStyles.card}>
           <View style={settingsStyles.row}>
@@ -2875,6 +2885,8 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
           return <AppearanceSection />;
         case "visualizer":
           return isDeveloperMode ? <VisualizerSection /> : null;
+        case "editor":
+          return isDeveloperMode ? <EditorSection /> : null;
         case "shortcuts":
           return isDesktopApp ? <KeyboardShortcutsSection /> : null;
         case "integrations":
