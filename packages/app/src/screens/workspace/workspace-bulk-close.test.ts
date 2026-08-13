@@ -64,7 +64,7 @@ describe("workspace bulk close helpers", () => {
     );
 
     expect(message).toBe(
-      "This will archive 2 agent(s), close 1 terminal(s), and close 1 tab(s). Any running process in a closed terminal will be stopped immediately.",
+      "This will archive 2 agent(s), close 1 terminal(s), and close 1 tab(s). Any running process or external file editor in them will be stopped immediately.",
     );
   });
 

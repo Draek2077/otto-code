@@ -1010,15 +1010,16 @@ export const en = {
         closeTabsRightTitle: "Close tabs to the right?",
         closeOtherTabsTitle: "Close other tabs?",
         bulk: {
-          all: "This will archive {{agents}} chat(s), close {{terminals}} terminal(s), and close {{tabs}} tab(s). Any running process in a closed terminal will be stopped immediately.",
+          all: "This will archive {{agents}} chat(s), close {{terminals}} terminal(s), and close {{tabs}} tab(s). Any running process or external file editor in them will be stopped immediately.",
           agentsAndTerminals:
             "This will archive {{agents}} chat(s) and close {{terminals}} terminal(s). Any running process in a closed terminal will be stopped immediately.",
           terminalsAndTabs:
-            "This will close {{terminals}} terminal(s) and close {{tabs}} tab(s). Any running process in a closed terminal will be stopped immediately.",
-          agentsAndTabs: "This will archive {{agents}} chat(s) and close {{tabs}} tab(s).",
+            "This will close {{terminals}} terminal(s) and close {{tabs}} tab(s). Any running process or external file editor in them will be stopped immediately.",
+          agentsAndTabs:
+            "This will archive {{agents}} chat(s) and close {{tabs}} tab(s). Any external file editor in a closed tab will be stopped immediately.",
           terminals:
             "This will close {{terminals}} terminal(s). Any running process in a closed terminal will be stopped immediately.",
-          tabs: "This will close {{tabs}} tab(s).",
+          tabs: "This will close {{tabs}} tab(s). Any external file editor in a closed tab will be stopped immediately.",
           agents: "This will archive {{agents}} chat(s).",
         },
         unsavedTitle: "Unsaved changes",
