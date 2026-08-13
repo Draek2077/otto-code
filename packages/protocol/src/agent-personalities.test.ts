@@ -59,13 +59,17 @@ describe("composeRoleFocusDirective", () => {
     const directive = composeRoleFocusDirective(["orchestrator"]);
     expect(directive).toContain("sole conductor");
     expect(directive).toContain("start_run");
-    expect(directive).toContain("complexity gate");
+    expect(directive).toContain("Choose tools because the task needs their specific capability");
+    expect(directive).toContain("Use create_agent only");
+    expect(directive).toContain("Use spawn_task only");
+    expect(directive).not.toContain("Prefer start_run");
   });
 
   test("a non-orchestrator coordinator gets the lighter delegate nudge", () => {
     const directive = composeRoleFocusDirective(["chatter"]);
     expect(directive).toContain("coordinator");
-    expect(directive).toContain("hand off to the team's orchestrator");
+    expect(directive).toContain("do the work directly");
+    expect(directive).toContain("hand off genuinely multi-agent work to the team's orchestrator");
     expect(directive).not.toContain("start_run");
   });
 

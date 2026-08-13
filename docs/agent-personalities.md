@@ -70,14 +70,14 @@ The role catalog lives in `PERSONALITY_ROLES` and the shared predicate/helpers i
 
 Roles fall into two behavioral **tiers** (`PERSONALITY_ROLE_INFO` in `agent-personalities.ts`):
 
-- **Coordinators** - **Chatter, Artificer, Scheduler, Advisor, Orchestrator.** They converse, plan, and delegate; they're expected to enumerate the roster and launch other agents/personalities to get work done.
+- **Coordinators** - **Chatter, Artificer, Scheduler, Advisor, Orchestrator.** They converse, plan, and may delegate when the task benefits from a dedicated worker or multi-agent coordination.
 - **Focused workers** - **Writer, Coder, Judger.** They lift a single thing someone is waiting on and should stay on task, not fan out into sub-agents.
 
 A personality that carries **any** coordinator role is a coordinator (`personalityCanLaunch` - a `chatter + coder` both codes and delegates); one whose roles are entirely focused (or roleless) is a focused worker.
 
 **This is guidance, not a gate.** Every agent keeps the same tools - `list_personalities` and personality-named spawns are open to all (that's the "see and understand each other" property). The tier only drives two in-context nudges:
 
-- **A spawn-time role directive** (`composeRoleFocusDirective`) folded into the personality's system prompt at spawn: coordinators are told "orchestration is yours"; focused workers are told "someone is waiting on this - stay on it, don't spawn sub-agents unless essential."
+- **A spawn-time role directive** (`composeRoleFocusDirective`) folded into the personality's system prompt at spawn: the Orchestrator selects direct work, `create_agent`, `spawn_task`, or `start_run` by the capability the task actually needs; other coordinators may delegate only when that helps; focused workers are told "someone is waiting on this - stay on it, don't spawn sub-agents unless essential."
 - **`list_personalities` decision-aid fields** - every entry carries `tier`, `canLaunch`, and a `guidance` "why you'd choose me" blurb (joined from its roles' taglines), so a deciding agent self-selects the right teammate from the list alone.
 
 **Writer and Coder replaced the old single `Worker` role.** Worker split into the fast small-text tier (`writer`) and the coding sub-agent tier (`coder`). A personality persisted with the retired `worker` tag resolves to `coder` via `LEGACY_ROLE_ALIASES` in `agent-personalities.ts` - normalization maps it before filtering, so no personality silently loses its role. Roles still ride the wire as plain strings, so old peers keep parsing.

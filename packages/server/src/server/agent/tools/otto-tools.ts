@@ -5843,7 +5843,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       {
         title: "Start orchestration run",
         description:
-          "Declare a multi-agent plan the daemon executes as a Run: typed phases (research/plan/implement/design/verify/gate/deliver), fanning out candidates, judging them, looping until enough pass, and pausing at gates for approval. Each phase dispatches to the active team's member for its role - fails loudly if the team lacks one. Blocks until the run finishes (returning `result`, the final deliverable, which you should relay to the user) or pauses at a gate (returning a `note` to relay). Prefer this over hand-spawning and tracking agents yourself.",
+          "Use when active work needs a declared multi-agent plan with daemon-managed fan-out, gathering, judging, loops, or approval gates. The daemon executes typed phases (research/plan/implement/design/verify/gate/deliver), fans out candidates, judges them, loops until enough pass, and pauses at gates for approval. Each phase dispatches to the active team's member for its role - fails loudly if the team lacks one. Blocks until the run finishes (returning `result`, the final deliverable, which you should relay to the user) or pauses at a gate (returning a `note` to relay). Do not use for a discrete task that can be completed directly or by one dedicated agent.",
         inputSchema: RunPlanSchema,
         outputSchema: {
           runId: z.string(),

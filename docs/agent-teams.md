@@ -56,7 +56,7 @@ The one rule, applied at every spawn path (`composeTeamAndPersonalityPrompt`, `p
 
 > **If the spawning personality is a member of the active team at spawn time, the team prompt stacks directly ahead of the personality prompt.**
 
-The personality-owned prompt composes top to bottom as **team prompt** (frames the collective) → **personality prompt** (specializes within it) → **role-focus directive** (`composeRoleFocusDirective`; tells a coordinator "orchestration is yours" or a focused worker "stay on task"). Then the existing global-append machinery runs unchanged (`applyDaemonAppendSystemPrompt`, `agent-manager.ts`), stacking the daemon-global `appendSystemPrompt` unless the personality set `respectGlobalAppendPrompt: false`. So the full stack: **provider base → team prompt → personality prompt → role directive → global append**. With no team layer and no roles the personality prompt passes through byte-identical to pre-teams behavior.
+The personality-owned prompt composes top to bottom as **team prompt** (frames the collective) → **personality prompt** (specializes within it) → **role-focus directive** (`composeRoleFocusDirective`; tells the Orchestrator to select the appropriate direct, agent, task, or Run tool for the work, and tells focused workers to stay on task). Then the existing global-append machinery runs unchanged (`applyDaemonAppendSystemPrompt`, `agent-manager.ts`), stacking the daemon-global `appendSystemPrompt` unless the personality set `respectGlobalAppendPrompt: false`. So the full stack: **provider base → team prompt → personality prompt → role directive → global append**. With no team layer and no roles the personality prompt passes through byte-identical to pre-teams behavior.
 
 Deliberate boundaries of the rule:
 
