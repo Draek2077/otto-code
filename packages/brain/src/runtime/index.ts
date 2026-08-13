@@ -81,6 +81,17 @@ export function resolveRuntime(
   return managed[0] ?? lmstudio[0] ?? null; // auto
 }
 
+/**
+ * The numeric llama.cpp build carried by a resolved runtime, when its source
+ * identifies one. LM Studio and explicit overrides need not expose their
+ * upstream build, so callers must treat null as incompatible with a component
+ * that declares a minimum build rather than guessing compatibility.
+ */
+export function runtimeBuild(runtime: Runtime | null | undefined): number | null {
+  const match = /^b(\d+)$/iu.exec(runtime?.version ?? "");
+  return match ? Number(match[1]) : null;
+}
+
 /** Ensure a runtime exists, downloading the default managed build if none does. */
 export async function ensureRuntime(
   config: BrainConfig,

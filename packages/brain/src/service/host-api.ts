@@ -19,6 +19,7 @@
  * files may be deleted over the network.
  */
 import type http from "node:http";
+import { randomUUID } from "node:crypto";
 
 import {
   calibrationInfo,
@@ -26,8 +27,19 @@ import {
   profileWarnings,
   sanitizeProfilePatch,
 } from "../config/profile-edit.js";
+import {
+  familyHostingProfileId,
+  hostingFamily,
+  removeHostingProfileMaterialization,
+} from "../config/hosting-profiles.js";
 import { forModel, getCalibration, put } from "../config/profiles.js";
-import type { Profile, ProfileDefaults, ProfilesStore } from "../config/schema.js";
+import {
+  HostingProfileSchema,
+  type HostingProfile,
+  type Profile,
+  type ProfileDefaults,
+  type ProfilesStore,
+} from "../config/schema.js";
 import {
   deleteComponentFile,
   deleteModelFiles,
@@ -38,6 +50,7 @@ import {
 import { deleteDisplayName, updateDisplayName } from "../models/rename-map.js";
 import type { RankedModel } from "../ops/results.js";
 import type { GpuInfo, Model } from "../types.js";
+import { runtimeBuild } from "../runtime/index.js";
 import * as vram from "../vram.js";
 import type { SystemSample } from "../sysmon.js";
 import { errorMessage, readJsonBody, sendError, sendJson } from "./http-util.js";
@@ -46,6 +59,15 @@ import type { Supervisor } from "./supervisor.js";
 
 const MAX_PATCH_BYTES = 256 * 1024;
 const MAX_DISPLAY_NAME = 200;
+const MAX_HOSTING_PROFILE_NAME = 80;
+const MAX_HOSTING_PROFILE_TEXT = 128 * 1024;
+const MAX_HOSTING_PROFILES = 100;
+const MAX_HOSTING_PROFILE_ID = 80;
+const HOSTING_PROFILE_ID = /^[a-zA-Z0-9_-]+$/u;
+// Keep product-owned records immutable through this API. Their source lives in
+// builtin-hosting-profiles.ts, so an update would otherwise look successful but
+// be replaced at the next Brain start with no user-facing restore action.
+const BUILTIN_HOSTING_PROFILE_IDS = new Set(["qwen-sharp-v21.3"]);
 const DEFAULT_LOG_LINES = 200;
 
 /**
@@ -193,6 +215,151 @@ export interface InventoryRow {
   components: NonNullable<Model["components"]> | null;
 }
 
+/**
+ * Apply the hosting-profile half of a profile patch, mutating both `profile`
+ * (this model's selection) and `store` (the shared library and family default).
+ *
+ * Separate from `sanitizeProfilePatch` because these keys are not profile
+ * fields: three of the five write to the store rather than the profile.
+ * Exported for testing - the ordering and the cross-profile cleanup are the
+ * parts worth pinning down, and they are unreachable through the HTTP surface
+ * without standing up a service.
+ *
+ * Throws on any invalid input; the caller turns that into a 400.
+ */
+export function applyHostingProfilePatch(
+  store: ProfilesStore,
+  model: Model,
+  profile: Profile,
+  patch: Record<string, unknown>,
+  onDelete: ((id: string) => void) | undefined = undefined,
+): void {
+  const family = hostingFamily(model.family);
+
+  if ("hostingProfileId" in patch) {
+    const selected = patch.hostingProfileId;
+    if (selected !== null && typeof selected !== "string") {
+      throw new Error("hostingProfileId must be a string or null");
+    }
+    if (selected && !store.hostingProfiles[selected]) {
+      throw new Error("selected hosting profile does not exist");
+    }
+    profile.hostingProfileId = selected || null;
+    profile.hostingProfileMode = selected ? "custom" : "off";
+  }
+
+  // After the id, so a client can send both and have the explicit mode win.
+  if ("hostingProfileMode" in patch) {
+    const mode = patch.hostingProfileMode;
+    if (mode !== "inherit" && mode !== "off" && mode !== "custom") {
+      throw new Error("hostingProfileMode must be inherit, off, or custom");
+    }
+    if (mode === "custom" && !profile.hostingProfileId) {
+      throw new Error("select a custom profile before using custom mode");
+    }
+    profile.hostingProfileMode = mode;
+  }
+
+  if ("familyHostingProfileId" in patch) {
+    const selected = patch.familyHostingProfileId;
+    if (selected !== null && typeof selected !== "string") {
+      throw new Error("familyHostingProfileId must be a string or null");
+    }
+    if (selected && !store.hostingProfiles[selected]) {
+      throw new Error("selected family hosting profile does not exist");
+    }
+    if (selected && store.hostingProfiles[selected].family !== family) {
+      throw new Error("selected family hosting profile must match the selected model");
+    }
+    // Null is a real instruction: it is the only way off a family default.
+    store.familyHostingProfileIds[family] = selected || null;
+  }
+
+  if ("hostingProfile" in patch) {
+    const candidate = HostingProfileSchema.safeParse(patch.hostingProfile);
+    if (!candidate.success) throw new Error("hosting profile is invalid");
+    const item = candidate.data;
+    // Name the field that is wrong. One shared "name or text is too long" for an
+    // empty name, a missing template and an oversized addendum told a remote or
+    // CLI caller nothing about what to change.
+    if (item.name.trim().length === 0) throw new Error("hosting profile needs a name");
+    if (item.name.length > MAX_HOSTING_PROFILE_NAME) {
+      throw new Error(
+        `hosting profile name must be ${MAX_HOSTING_PROFILE_NAME} characters or fewer`,
+      );
+    }
+    if (!item.template?.trim()) throw new Error("hosting profile needs a Jinja chat template");
+    if (item.template.length > MAX_HOSTING_PROFILE_TEXT) {
+      throw new Error("hosting profile chat template is too long");
+    }
+    if ((item.systemPromptAddendum?.length ?? 0) > MAX_HOSTING_PROFILE_TEXT) {
+      throw new Error("hosting profile system prompt is too long");
+    }
+    if (item.family !== family) {
+      throw new Error("hosting profile family must match the selected model");
+    }
+    const isNew = item.id.length === 0;
+    const id = isNew ? `hosting_${randomUUID()}` : item.id;
+    if (!isNew && BUILTIN_HOSTING_PROFILE_IDS.has(id)) {
+      throw new Error("built-in hosting profiles cannot be edited");
+    }
+    if (!isNew && (id.length > MAX_HOSTING_PROFILE_ID || !HOSTING_PROFILE_ID.test(id))) {
+      throw new Error(
+        `hosting profile id must use only letters, numbers, underscores, or hyphens and be ${MAX_HOSTING_PROFILE_ID} characters or fewer`,
+      );
+    }
+    if (!isNew && !store.hostingProfiles[id]) {
+      throw new Error("hosting profile does not exist; create profiles without an id");
+    }
+    if (isNew && Object.keys(store.hostingProfiles).length >= MAX_HOSTING_PROFILES) {
+      throw new Error(`hosting profile limit of ${MAX_HOSTING_PROFILES} reached`);
+    }
+    store.hostingProfiles[id] = { ...item, id, name: item.name.trim() };
+    // Only a freshly created profile is auto-selected. Editing the text of an
+    // existing one must not silently convert a model that was on System default
+    // into a custom override of it.
+    if (isNew) {
+      profile.hostingProfileId = id;
+      profile.hostingProfileMode = "custom";
+    }
+  }
+
+  if (typeof patch.deleteHostingProfileId === "string") {
+    const id = patch.deleteHostingProfileId;
+    if (BUILTIN_HOSTING_PROFILE_IDS.has(id)) {
+      throw new Error("built-in hosting profiles cannot be deleted");
+    }
+    delete store.hostingProfiles[id];
+    onDelete?.(id);
+    if (profile.hostingProfileId === id) {
+      profile.hostingProfileId = null;
+      profile.hostingProfileMode = "off";
+    }
+    // Clear the mode alongside the id on every other model. Leaving `custom`
+    // behind with no id left those models unsavable: the mode guard above
+    // rejects the next write each of them makes.
+    for (const saved of Object.values(store.profiles)) {
+      if (saved.hostingProfileId !== id) continue;
+      saved.hostingProfileId = null;
+      saved.hostingProfileMode = "off";
+    }
+    for (const [key, selected] of Object.entries(store.familyHostingProfileIds)) {
+      if (selected === id) store.familyHostingProfileIds[key] = null;
+    }
+  }
+
+  // One invariant, enforced after every branch: an id belongs only to `custom`.
+  // It is what lets `forModel`'s legacy migration read a stored id as an
+  // unambiguous "this profile predates hostingProfileMode".
+  if (profile.hostingProfileMode !== "custom") profile.hostingProfileId = null;
+}
+
+/** The hosting profiles a model may choose from: its family's bucket, nothing else. */
+function hostingProfilesFor(store: ProfilesStore, model: Model): HostingProfile[] {
+  const family = hostingFamily(model.family);
+  return Object.values(store.hostingProfiles).filter((candidate) => candidate.family === family);
+}
+
 function stateOf(supervisor: Supervisor, model: Model): InventoryRow["state"] {
   if (!supervisor.model || supervisor.model.id !== model.id) return "not-loaded";
   if (supervisor.state === "ready") return "loaded";
@@ -214,10 +381,19 @@ export function buildInventoryRow(params: {
   gpu: GpuInfo | null;
   ranking: RankedModel[];
   supervisor: Supervisor;
+  runtimeBuild?: number | null;
 }): InventoryRow {
-  const { model, store, defaults, gpu, ranking, supervisor } = params;
+  const {
+    model,
+    store,
+    defaults,
+    gpu,
+    ranking,
+    supervisor,
+    runtimeBuild: activeRuntimeBuild = null,
+  } = params;
   const profile = forModel(store, model, defaults);
-  const calibration = getCalibration(store, model, profile);
+  const calibration = profile.calibrationRequired ? null : getCalibration(store, model, profile);
 
   const budgetOptions = gpu
     ? { model, profile, calibration, totalVramBytes: gpu.totalBytes }
@@ -257,7 +433,23 @@ export function buildInventoryRow(params: {
     score: ranked,
     state: stateOf(supervisor, model),
     warnings: profileWarnings(profile, model, store),
-    components: model.components ?? null,
+    components:
+      model.components?.map((component) => {
+        if (
+          component.minRuntimeBuild === undefined ||
+          (activeRuntimeBuild !== null && activeRuntimeBuild >= component.minRuntimeBuild)
+        ) {
+          return component;
+        }
+        const active = activeRuntimeBuild === null ? "unknown" : `b${activeRuntimeBuild}`;
+        return {
+          ...component,
+          available: false,
+          unavailableReason:
+            `Requires llama.cpp build b${component.minRuntimeBuild} or newer ` +
+            `(active build: ${active})`,
+        };
+      }) ?? null,
   };
 }
 
@@ -303,7 +495,7 @@ function profileFromQuery(base: Profile, params: URLSearchParams, model: Model):
     if (raw !== null && raw !== "") patch[key] = raw === "true" || raw === "1";
   }
   if (Object.keys(patch).length === 0) return base;
-  return sanitizeProfilePatch(base, patch, model).profile;
+  return sanitizeProfilePatch(base, patch, model, runtimeBuild(null)).profile;
 }
 
 export interface HostApi {
@@ -357,11 +549,17 @@ export function createHostApi(deps: HostApiDeps): HostApi {
     const [gpu, store] = [await deps.queryGpuInfo(), deps.getProfilesStore()];
     const defaults = deps.getProfileDefaults();
     const ranking = deps.getRanking();
-    return deps
-      .getCatalog()
-      .map((model) =>
-        buildInventoryRow({ model, store, defaults, gpu, ranking, supervisor: deps.supervisor }),
-      );
+    return deps.getCatalog().map((model) =>
+      buildInventoryRow({
+        model,
+        store,
+        defaults,
+        gpu,
+        ranking,
+        supervisor: deps.supervisor,
+        runtimeBuild: runtimeBuild(deps.supervisor.runtime),
+      }),
+    );
   };
 
   const handleModelsList = (res: http.ServerResponse): void => {
@@ -389,6 +587,8 @@ export function createHostApi(deps: HostApiDeps): HostApi {
       warnings: profileWarnings(profile, model, store),
       calibration: calibrationInfo(store, model, profile),
       requiresRestart: store.pendingReloadModelIds[model.id] === true,
+      hostingProfiles: hostingProfilesFor(store, model),
+      familyHostingProfileId: familyHostingProfileId(store, model.family),
     });
   };
 
@@ -406,7 +606,20 @@ export function createHostApi(deps: HostApiDeps): HostApi {
         try {
           const store = deps.getProfilesStore();
           const current = forModel(store, model, deps.getProfileDefaults());
-          const { profile, adjustments } = sanitizeProfilePatch(current, result.body, model);
+          const activeRuntimeBuild = runtimeBuild(deps.supervisor.runtime);
+          const { profile, adjustments } = sanitizeProfilePatch(
+            current,
+            result.body,
+            model,
+            activeRuntimeBuild,
+          );
+          applyHostingProfilePatch(
+            store,
+            model,
+            profile,
+            result.body as Record<string, unknown>,
+            (id) => removeHostingProfileMaterialization(deps.supervisor.paths, id),
+          );
           put(store, model, profile);
           // A setting is only unapplied when it was changed on the currently
           // resident model. Edits to an unloaded model take effect naturally
@@ -418,7 +631,9 @@ export function createHostApi(deps: HostApiDeps): HostApi {
           // Return the recomputed budget so an edit costs one round trip rather
           // than a write followed by a read the UI has to sequence.
           const gpu = await deps.queryGpuInfo();
-          const calibration = getCalibration(store, model, profile);
+          const calibration = profile.calibrationRequired
+            ? null
+            : getCalibration(store, model, profile);
           const options = gpu
             ? { model, profile, calibration, totalVramBytes: gpu.totalBytes }
             : null;
@@ -432,6 +647,8 @@ export function createHostApi(deps: HostApiDeps): HostApi {
             maxContextThatFits: options ? vram.maxContextThatFits(options) : null,
             /** True when the running model is the one just edited: a restart applies it. */
             requiresRestart,
+            hostingProfiles: hostingProfilesFor(store, model),
+            familyHostingProfileId: familyHostingProfileId(store, model.family),
           });
         } catch (error) {
           sendError(res, 400, errorMessage(error));
@@ -519,7 +736,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
         const options = {
           model,
           profile,
-          calibration: getCalibration(store, model, profile),
+          calibration: profile.calibrationRequired ? null : getCalibration(store, model, profile),
           totalVramBytes: gpu.totalBytes,
         };
         sendJson(res, {
@@ -1061,6 +1278,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
               gpu,
               ranking: deps.getRanking(),
               supervisor: deps.supervisor,
+              runtimeBuild: runtimeBuild(deps.supervisor.runtime),
             }),
           );
         } catch (error) {

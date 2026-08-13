@@ -8,7 +8,7 @@ import {
   profileWarnings,
   sanitizeProfilePatch,
 } from "./profile-edit.js";
-import { defaultProfile } from "./profiles.js";
+import { defaultProfile, putCalibration } from "./profiles.js";
 import { ProfilesStoreSchema, type Profile, type ProfilesStore } from "./schema.js";
 import type { Model } from "../types.js";
 
@@ -142,6 +142,21 @@ describe("sanitizeProfilePatch", () => {
     expect(adjustments).toEqual(["contextSize clamped to 32768"]);
   });
 
+  it("re-clamps an inherited extended context when the multiplier drops", () => {
+    const model = makeModel();
+    const current = makeProfile(model, {
+      contextMultiplier: 4,
+      contextSize: 131072,
+      calibrationRequired: false,
+    });
+
+    const { profile, adjustments } = sanitizeProfilePatch(current, { contextMultiplier: 1 }, model);
+
+    expect(profile.contextSize).toBe(32768);
+    expect(adjustments).toEqual(["contextSize clamped to 32768"]);
+    expect(profile.calibrationRequired).toBe(true);
+  });
+
   it("clamps parallel slots to the supported range", () => {
     const model = makeModel();
     expect(
@@ -212,6 +227,22 @@ describe("sanitizeProfilePatch", () => {
   });
 });
 
+describe("putCalibration", () => {
+  it("persists a cleared calibration requirement for the calibrated model", () => {
+    const model = makeModel();
+    const profile = makeProfile(model, { calibrationRequired: true });
+    const store = emptyStore();
+
+    putCalibration(store, model, profile, {
+      kvBytesPerToken: 1234,
+      baseOverheadBytes: 600,
+      measuredAt: "2026-08-01T00:00:00.000Z",
+    });
+
+    expect(store.profiles[model.id]?.calibrationRequired).toBe(false);
+  });
+});
+
 describe("formatReasoningBudget", () => {
   it("names the -1 sentinel rather than printing it", () => {
     expect(formatReasoningBudget(-1)).toBe("unrestricted");
@@ -262,7 +293,7 @@ describe("calibrationInfo", () => {
 
   it("reports measured for an exact cache-type match", () => {
     const model = makeModel();
-    const profile = makeProfile(model);
+    const profile = makeProfile(model, { calibrationRequired: false });
     const store = emptyStore();
     store.calibrations[model.id] = {
       [`${profile.cacheTypeK}:${profile.cacheTypeV}`]: {
@@ -278,7 +309,11 @@ describe("calibrationInfo", () => {
 
   it("reports stale when the measurement is for other cache types", () => {
     const model = makeModel();
-    const profile = makeProfile(model, { cacheTypeK: "f16", cacheTypeV: "f16" });
+    const profile = makeProfile(model, {
+      cacheTypeK: "f16",
+      cacheTypeV: "f16",
+      calibrationRequired: false,
+    });
     const store = emptyStore();
     // Measured for q8_0:q8_0, but the profile now asks for f16:f16. The geometry
     // fallback is keyed on cache types too, so it cannot rescue this either.
@@ -290,7 +325,7 @@ describe("calibrationInfo", () => {
 
   it("never presents an inherited measurement as measured on this file", () => {
     const model = makeModel();
-    const profile = makeProfile(model);
+    const profile = makeProfile(model, { calibrationRequired: false });
     const store = emptyStore();
     store.geometryCalibrations[
       ["qwen3", 8, 128, 128, profile.cacheTypeK, profile.cacheTypeV].join(":")
@@ -303,5 +338,95 @@ describe("calibrationInfo", () => {
     expect(info.state).toBe("inherited");
     expect(info.kvBytesPerToken).toBe(100 * 48);
     expect(info.measuredOn).toBe("A Relative");
+  });
+
+  it("does not use an old measurement after a profile edit", () => {
+    const model = makeModel();
+    const profile = makeProfile(model, { calibrationRequired: true });
+    const store = emptyStore();
+    store.calibrations[model.id] = {
+      [`${profile.cacheTypeK}:${profile.cacheTypeV}`]: {
+        kvBytesPerToken: 1234,
+        baseOverheadBytes: 600,
+      },
+    };
+
+    expect(calibrationInfo(store, model, profile).state).toBe("theoretical");
+  });
+});
+
+describe("sanitizeProfilePatch", () => {
+  it("marks VRAM-affecting edits as needing calibration", () => {
+    const model = makeModel();
+    const result = sanitizeProfilePatch(
+      makeProfile(model, { calibrationRequired: false }),
+      { cacheTypeK: "q4_0" },
+      model,
+    );
+
+    expect(result.profile.calibrationRequired).toBe(true);
+  });
+
+  // The editor autosaves the whole draft, so every calibration input is present
+  // in every patch. Keying off presence threw a real measurement away whenever
+  // any unrelated field was saved.
+  it("keeps the calibration when a resent value has not changed", () => {
+    const model = makeModel();
+    const current = makeProfile(model, { calibrationRequired: false });
+    const result = sanitizeProfilePatch(
+      current,
+      {
+        contextSize: current.contextSize,
+        cacheTypeK: current.cacheTypeK,
+        cacheTypeV: current.cacheTypeV,
+        flashAttention: current.flashAttention,
+        gpuLayers: current.gpuLayers,
+        parallelSlots: current.parallelSlots,
+        contextMultiplier: current.contextMultiplier,
+        // Not a VRAM input: changing it must not cost the measurement either.
+        reasoningBudget: 512,
+      },
+      model,
+    );
+
+    expect(result.profile.reasoningBudget).toBe(512);
+    expect(result.profile.calibrationRequired).toBe(false);
+  });
+
+  it("ignores the order of the enabled component list", () => {
+    const model = makeModel({
+      components: [
+        { id: "a", role: "vision_projector", available: true },
+        { id: "b", role: "speech", available: true },
+      ] as Model["components"],
+    });
+    const current = makeProfile(model, {
+      calibrationRequired: false,
+      enabledComponents: ["a", "b"],
+      // Already true, since the enabled projector is what derives it. Leaving it
+      // false would make this a real vision change rather than a reorder.
+      vision: true,
+    });
+
+    const result = sanitizeProfilePatch(current, { enabledComponents: ["b", "a"] }, model);
+
+    expect(result.profile.calibrationRequired).toBe(false);
+  });
+
+  it("refuses a component that needs a newer llama.cpp build", () => {
+    const model = makeModel({
+      components: [
+        {
+          id: "draft",
+          role: "speculative_drafter",
+          available: true,
+          minRuntimeBuild: 10265,
+        },
+      ] as Model["components"],
+    });
+
+    expect(() =>
+      sanitizeProfilePatch(makeProfile(model), { enabledComponents: ["draft"] }, model, 10264),
+    ).toThrow(/require llama\.cpp build b10265 or newer/i);
   });
 });

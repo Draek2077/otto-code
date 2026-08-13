@@ -238,6 +238,9 @@ export function profileWarnings(
     });
   }
 
+  // Distinct from `calibrationRequired`, which says this profile has never been
+  // measured in its current shape. This says a measurement exists but was taken
+  // for other cache types, so it names the reason rather than just the verdict.
   if (model && store && hasStaleCalibration(store, model, profile)) {
     warnings.push({
       field: "cacheTypeK",
@@ -271,6 +274,17 @@ export function calibrationInfo(
   model: Model,
   profile: Profile,
 ): CalibrationInfo {
+  // A historical measurement is invalid as soon as any VRAM-affecting setting
+  // changes. Keep the data for comparison, but do not present or use it as the
+  // current model budget until a calibration commits the new profile.
+  if (profile.calibrationRequired) {
+    return {
+      state: "theoretical",
+      kvBytesPerToken: null,
+      measuredAt: null,
+      measuredOn: null,
+    };
+  }
   const calibration: Calibration | null = getCalibration(store, model, profile);
   if (!calibration) {
     return {
@@ -298,6 +312,27 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+/** The settings whose value changes what a calibration would measure. */
+const CALIBRATION_INPUTS = [
+  "contextMultiplier",
+  "contextSize",
+  "cacheTypeK",
+  "cacheTypeV",
+  "flashAttention",
+  "gpuLayers",
+  "parallelSlots",
+  "vision",
+  "enabledComponents",
+] as const;
+
+/** Every calibration input is a scalar except the component id list, which is a set. */
+function sameCalibrationInput(before: unknown, after: unknown): boolean {
+  if (Array.isArray(before) && Array.isArray(after)) {
+    return [...before].sort().join("\0") === [...after].sort().join("\0");
+  }
+  return before === after;
+}
+
 /**
  * Apply an editable patch to a profile, clamping every field to its range and
  * dropping anything the model cannot use.
@@ -313,6 +348,7 @@ export function sanitizeProfilePatch(
   current: Profile,
   patch: unknown,
   model: Model | null,
+  runtimeBuild: number | null = null,
 ): SanitizeResult {
   const adjustments: string[] = [];
   const next: Profile = { ...current };
@@ -397,6 +433,19 @@ export function sanitizeProfilePatch(
       throw new Error("enabledComponents must be an array of component ids");
     }
     const requested = [...new Set(p.enabledComponents)];
+    const requiredBuild = requested
+      .map((id) => model?.components?.find((component) => component.id === id))
+      .find(
+        (component) =>
+          component?.minRuntimeBuild !== undefined &&
+          (runtimeBuild === null || runtimeBuild < component.minRuntimeBuild),
+      )?.minRuntimeBuild;
+    if (requiredBuild !== undefined) {
+      const active = runtimeBuild === null ? "unknown" : `b${runtimeBuild}`;
+      throw new Error(
+        `components require llama.cpp build b${requiredBuild} or newer (active build: ${active})`,
+      );
+    }
     const available = new Set(
       model?.components
         ?.filter((component) => component.available)
@@ -410,6 +459,33 @@ export function sanitizeProfilePatch(
       (component) => component.role === "vision_projector" && requested.includes(component.id),
     );
     if (model?.components) next.vision = Boolean(projector);
+  }
+
+  // A partial patch may lower the multiplier without naming contextSize. Clamp
+  // the saved value after every field has settled so launch args can never keep
+  // an extended context after YaRN has been turned off.
+  const contextSize = clamp(
+    next.contextSize,
+    MIN_CONTEXT_SIZE,
+    contextLimit(model, next.contextMultiplier),
+  );
+  if (contextSize !== next.contextSize) {
+    next.contextSize = contextSize;
+    adjustments.push(`contextSize clamped to ${contextSize}`);
+  }
+
+  // The saved profile carries the calibration verdict. Do not infer it from
+  // whether an old measurement happens to exist: a person who changes settings,
+  // leaves, and returns must still be told to calibrate this new configuration.
+  //
+  // Compare values, never key presence. The editor autosaves the whole draft on
+  // every edit, so every one of these keys is in `p` every time; keying off
+  // presence threw away a real measurement whenever any unrelated field - or a
+  // hosting-profile choice, which does not touch VRAM at all - was saved.
+  const before = current as unknown as Record<string, unknown>;
+  const after = next as unknown as Record<string, unknown>;
+  if (CALIBRATION_INPUTS.some((key) => !sameCalibrationInput(before[key], after[key]))) {
+    next.calibrationRequired = true;
   }
 
   return { profile: next, adjustments };

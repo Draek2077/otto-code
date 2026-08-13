@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { buildInventoryRow } from "./host-api.js";
+import { applyHostingProfilePatch, buildInventoryRow } from "./host-api.js";
 import type { Supervisor } from "./supervisor.js";
+import { forModel } from "../config/profiles.js";
 import { ProfilesStoreSchema, type ProfilesStore } from "../config/schema.js";
 import type { RankedModel } from "../ops/results.js";
 import type { GpuInfo, Model } from "../types.js";
@@ -51,6 +52,7 @@ function build(params: {
   gpu?: GpuInfo | null;
   ranking?: RankedModel[];
   supervisor?: Supervisor;
+  runtimeBuild?: number | null;
 }) {
   const model = params.model ?? makeModel();
   return buildInventoryRow({
@@ -60,6 +62,7 @@ function build(params: {
     gpu: params.gpu === undefined ? GPU : params.gpu,
     ranking: params.ranking ?? [],
     supervisor: params.supervisor ?? fakeSupervisor("stopped", null),
+    runtimeBuild: params.runtimeBuild,
   });
 }
 
@@ -119,6 +122,34 @@ describe("buildInventoryRow", () => {
       }),
     });
     expect(row.hasProjector).toBe(true);
+  });
+
+  it("marks components unavailable when the active runtime is too old", () => {
+    const row = build({
+      runtimeBuild: 10264,
+      model: makeModel({
+        components: [
+          {
+            id: "draft",
+            label: "Draft model",
+            description: "Accelerates decoding.",
+            role: "speculative_drafter",
+            path: "/models/draft.gguf",
+            bytes: 1024,
+            required: false,
+            defaultDownload: false,
+            defaultLoad: false,
+            available: true,
+            minRuntimeBuild: 10265,
+          },
+        ],
+      }),
+    });
+
+    expect(row.components?.[0]).toMatchObject({
+      available: false,
+      unavailableReason: expect.stringMatching(/requires llama\.cpp build b10265/i),
+    });
   });
 
   it("computes a VRAM budget and a max context when a GPU is present", () => {
@@ -197,5 +228,179 @@ describe("buildInventoryRow", () => {
     const row = build({ model, store });
     expect(row.profile.flashAttention).toBe(false);
     expect(row.warnings.some((w) => w.blocksStart)).toBe(true);
+  });
+});
+
+describe("applyHostingProfilePatch", () => {
+  const template = "{% for m in messages %}{{ m.content }}{% endfor %}";
+
+  function hostingProfile(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "hp1",
+      name: "Coding",
+      family: "qwen",
+      description: "",
+      template,
+      systemPromptAddendum: null,
+      templateKwargs: {},
+      ...overrides,
+    };
+  }
+
+  function setup(storeInput: Record<string, unknown> = {}, model = makeModel({ family: "qwen" })) {
+    const store = ProfilesStoreSchema.parse(storeInput);
+    return { store, model, profile: forModel(store, model) };
+  }
+
+  it("selects a custom profile and clears the id again when switched off", () => {
+    const { store, model, profile } = setup({ hostingProfiles: { hp1: hostingProfile() } });
+
+    applyHostingProfilePatch(store, model, profile, { hostingProfileId: "hp1" });
+    expect(profile).toMatchObject({ hostingProfileMode: "custom", hostingProfileId: "hp1" });
+
+    applyHostingProfilePatch(store, model, profile, {
+      hostingProfileId: null,
+      hostingProfileMode: "off",
+    });
+    expect(profile).toMatchObject({ hostingProfileMode: "off", hostingProfileId: null });
+  });
+
+  it("drops a stale id whenever the mode is not custom", () => {
+    const { store, model, profile } = setup({ hostingProfiles: { hp1: hostingProfile() } });
+    profile.hostingProfileId = "hp1";
+    profile.hostingProfileMode = "custom";
+
+    applyHostingProfilePatch(store, model, profile, { hostingProfileMode: "inherit" });
+
+    // The invariant `forModel`'s legacy migration relies on: an id means custom.
+    expect(profile.hostingProfileId).toBeNull();
+  });
+
+  it("files a family default under generic for a model with no family", () => {
+    const generic = hostingProfile({ id: "hp2", family: "generic" });
+    const { store, model, profile } = setup(
+      { hostingProfiles: { hp2: generic } },
+      makeModel({ family: undefined }),
+    );
+
+    applyHostingProfilePatch(store, model, profile, { familyHostingProfileId: "hp2" });
+
+    expect(store.familyHostingProfileIds.generic).toBe("hp2");
+  });
+
+  it("clears the family default when sent null", () => {
+    const { store, model, profile } = setup({
+      hostingProfiles: { hp1: hostingProfile() },
+      familyHostingProfileIds: { qwen: "hp1" },
+    });
+
+    applyHostingProfilePatch(store, model, profile, { familyHostingProfileId: null });
+
+    expect(store.familyHostingProfileIds.qwen).toBeNull();
+  });
+
+  it("auto-selects a newly created profile but not an edited one", () => {
+    const { store, model, profile } = setup({
+      hostingProfiles: { hp1: hostingProfile() },
+      familyHostingProfileIds: { qwen: "hp1" },
+    });
+    profile.hostingProfileMode = "inherit";
+
+    applyHostingProfilePatch(store, model, profile, {
+      hostingProfile: hostingProfile({ id: "hp1", name: "Coding v2" }),
+    });
+    expect(store.hostingProfiles.hp1.name).toBe("Coding v2");
+    expect(profile.hostingProfileMode).toBe("inherit", "editing must not hijack the selection");
+
+    applyHostingProfilePatch(store, model, profile, {
+      hostingProfile: hostingProfile({ id: "", name: "Brand new" }),
+    });
+    expect(profile.hostingProfileMode).toBe("custom");
+    expect(store.hostingProfiles[profile.hostingProfileId!].name).toBe("Brand new");
+  });
+
+  it("resets every model that used a deleted profile, mode included", () => {
+    const { store, model, profile } = setup({
+      profiles: {
+        other: { contextSize: 4096, hostingProfileId: "hp1", hostingProfileMode: "custom" },
+      },
+      hostingProfiles: { hp1: hostingProfile() },
+      familyHostingProfileIds: { qwen: "hp1" },
+    });
+    profile.hostingProfileId = "hp1";
+    profile.hostingProfileMode = "custom";
+
+    const deleted: string[] = [];
+    applyHostingProfilePatch(store, model, profile, { deleteHostingProfileId: "hp1" }, (id) =>
+      deleted.push(id),
+    );
+
+    expect(store.hostingProfiles.hp1).toBeUndefined();
+    expect(deleted).toEqual(["hp1"]);
+    expect(store.familyHostingProfileIds.qwen).toBeNull();
+    expect(profile).toMatchObject({ hostingProfileMode: "off", hostingProfileId: null });
+    // A leftover `custom` with no id makes the next save of that model fail.
+    expect(store.profiles.other).toMatchObject({
+      hostingProfileMode: "off",
+      hostingProfileId: null,
+    });
+  });
+
+  it("names the field that is wrong instead of blaming length", () => {
+    const { store, model, profile } = setup();
+    const attempt = (overrides: Record<string, unknown>) => () =>
+      applyHostingProfilePatch(store, model, profile, {
+        hostingProfile: hostingProfile({ id: "", ...overrides }),
+      });
+
+    expect(attempt({ name: "  " })).toThrow(/needs a name/);
+    expect(attempt({ template: null })).toThrow(/needs a Jinja chat template/);
+    expect(attempt({ name: "x".repeat(200) })).toThrow(/characters or fewer/);
+    expect(attempt({ systemPromptAddendum: "x".repeat(200_000) })).toThrow(
+      /system prompt is too long/,
+    );
+    expect(attempt({ family: "llama" })).toThrow(/family must match/);
+  });
+
+  it("refuses a selection that does not exist", () => {
+    const { store, model, profile } = setup();
+    expect(() =>
+      applyHostingProfilePatch(store, model, profile, { hostingProfileId: "ghost" }),
+    ).toThrow(/does not exist/);
+    expect(() =>
+      applyHostingProfilePatch(store, model, profile, { hostingProfileMode: "custom" }),
+    ).toThrow(/select a custom profile/);
+  });
+
+  it("validates update ids and refuses product-owned records", () => {
+    const { store, model, profile } = setup({
+      hostingProfiles: {
+        hp1: hostingProfile(),
+        "qwen-sharp-v21.3": hostingProfile({ id: "qwen-sharp-v21.3" }),
+      },
+    });
+    const attempt = (id: string) => () =>
+      applyHostingProfilePatch(store, model, profile, { hostingProfile: hostingProfile({ id }) });
+
+    expect(attempt("unsafe/id")).toThrow(/only letters, numbers, underscores, or hyphens/i);
+    expect(attempt("x".repeat(81))).toThrow(/80 characters or fewer/i);
+    expect(attempt("missing")).toThrow(/does not exist/i);
+    expect(attempt("qwen-sharp-v21.3")).toThrow(/built-in hosting profiles cannot be edited/i);
+  });
+
+  it("caps created hosting profiles", () => {
+    const hostingProfiles = Object.fromEntries(
+      Array.from({ length: 100 }, (_, index) => {
+        const id = `hp${index}`;
+        return [id, hostingProfile({ id })];
+      }),
+    );
+    const { store, model, profile } = setup({ hostingProfiles });
+
+    expect(() =>
+      applyHostingProfilePatch(store, model, profile, {
+        hostingProfile: hostingProfile({ id: "", name: "One too many" }),
+      }),
+    ).toThrow(/hosting profile limit of 100 reached/i);
   });
 });
