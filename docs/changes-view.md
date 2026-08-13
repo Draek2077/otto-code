@@ -190,6 +190,19 @@ rule - downstream code reads a single boolean rather than branching on daemon ve
 come from `getBranchSuggestions`, whose `branchDetails` already carry `hasLocal` / `hasRemote`, which
 is what lets the picker render `main` and `origin/main` as separate rows without a new RPC.
 
+## Switching branches with uncommitted changes
+
+Otto stages agent edits, so it does not expose a second Unstaged-files surface merely to make branch
+switching possible. When Git rejects a branch switch because the working tree is dirty, the branch
+switcher offers **Stash, Switch & Pop**. It creates an Otto stash with untracked files included,
+switches to the requested branch, then immediately pops that stash so the work travels with the user.
+
+The workflow stops at the first failure. A failed checkout leaves the new stash on the source branch;
+a failed pop, including a conflict, leaves the stash intact on the destination branch. In either case
+the UI surfaces Git's error and never tries to drop or overwrite the user's work. The usual clean
+branch switch remains unchanged, including its separate prompt for a previously saved Otto stash
+belonging to the destination branch.
+
 ## Crossing between Files and Changes
 
 The two directions are symmetric, and both go through ephemeral request slots on the panel store

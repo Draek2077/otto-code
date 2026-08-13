@@ -2152,7 +2152,7 @@ export const ptBR: TranslationResources = {
     title: "Trocar branch",
     uncommittedTitle: "Alterações sem commit",
     uncommittedMessage: "Você tem alterações sem commit. Fazer stash antes de trocar de branch?",
-    stashAndSwitch: "Fazer stash e trocar",
+    stashAndSwitch: "Guardar, trocar e restaurar",
     failedToStash: "Falha ao fazer stash das alterações",
     failedToSwitch: "Falha ao trocar de branch",
     restoreStashTitle: "Restaurar alterações em stash?",

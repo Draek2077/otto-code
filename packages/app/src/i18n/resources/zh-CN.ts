@@ -2082,7 +2082,7 @@ export const zhCN: TranslationResources = {
     title: "切换分支",
     uncommittedTitle: "未 commit 的变更",
     uncommittedMessage: "你有未 commit 的变更。切换分支前要先 stash 吗？",
-    stashAndSwitch: "Stash 并切换",
+    stashAndSwitch: "Stash、切换并恢复",
     failedToStash: "Stash 变更失败",
     failedToSwitch: "切换分支失败",
     restoreStashTitle: "恢复 stashed 变更？",

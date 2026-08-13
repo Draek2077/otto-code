@@ -11,9 +11,18 @@ export const CHECKOUT_STATUS_STALE_TIME = 15_000;
 interface UseCheckoutStatusQueryOptions {
   serverId: string;
   cwd: string;
+  /**
+   * An action whose availability depends on the current working tree can ask
+   * for one fresh snapshot when it mounts. Status is otherwise push-driven.
+   */
+  refreshOnMount?: boolean;
 }
 
-export function useCheckoutStatusQuery({ serverId, cwd }: UseCheckoutStatusQueryOptions) {
+export function useCheckoutStatusQuery({
+  serverId,
+  cwd,
+  refreshOnMount = false,
+}: UseCheckoutStatusQueryOptions) {
   const { t } = useTranslation();
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
@@ -28,10 +37,10 @@ export function useCheckoutStatusQuery({ serverId, cwd }: UseCheckoutStatusQuery
     },
     enabled: !!client && isConnected && !!cwd,
     staleTime: Infinity,
-    // Freshness is push-driven (checkout_status_update applied globally); with
-    // staleTime: Infinity, refetchOnMount only fires after an explicit invalidation
-    // (e.g. reconnect), which is exactly when the push stream may have been missed.
-    refetchOnMount: true,
+    // Freshness is ordinarily push-driven (checkout_status_update applied
+    // globally). `refreshOnMount` is reserved for UI affordances that need to
+    // repair a missed push before deciding whether to render.
+    refetchOnMount: refreshOnMount ? "always" : true,
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
   });

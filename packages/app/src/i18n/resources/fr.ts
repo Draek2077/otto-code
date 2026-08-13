@@ -2177,7 +2177,7 @@ export const fr: TranslationResources = {
     uncommittedTitle: "Modifications non validées",
     uncommittedMessage:
       "Vous avez des modifications non validées. Les ranger avant de changer de branche?",
-    stashAndSwitch: "Cachette et changement",
+    stashAndSwitch: "Mettre de côté, changer et restaurer",
     failedToStash: "Échec de la sauvegarde des modifications",
     failedToSwitch: "Échec du changement de branche",
     restoreStashTitle: "Restaurer les modifications cachées?",

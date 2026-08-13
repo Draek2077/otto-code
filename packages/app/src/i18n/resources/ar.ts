@@ -2108,7 +2108,7 @@ export const ar: TranslationResources = {
     title: "فرع التبديل",
     uncommittedTitle: "تغييرات غير ملتزم بها",
     uncommittedMessage: "لديك تغييرات غير ملتزم بها. خبأهم قبل تبديل الفروع؟",
-    stashAndSwitch: "خبأ والتبديل",
+    stashAndSwitch: "حفظ مؤقت وتبديل واستعادة",
     failedToStash: "فشل في تخزين التغييرات",
     failedToSwitch: "فشل في تبديل الفرع",
     restoreStashTitle: "هل تريد استعادة التغييرات المخبأة؟",

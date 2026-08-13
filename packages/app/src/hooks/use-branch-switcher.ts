@@ -6,6 +6,7 @@ import type { ComboboxOption } from "@/components/ui/combobox";
 import type { ToastApi } from "@/components/toast-host";
 import { invalidateCheckoutGitQueriesForClient } from "@/git/query-keys";
 import { createBranchSwitcherOperations } from "@/git/branch-switcher-operations";
+import { stashSwitchAndPop } from "@/git/stash-switch-pop";
 import { useCheckoutGitActionsStore } from "@/git/actions-store";
 import { confirmDialog } from "@/utils/confirm-dialog";
 
@@ -182,7 +183,7 @@ export function useBranchSwitcher({
     [operations, invalidateStashAndCheckout, toast, t],
   );
 
-  const stashAndSwitch = useCallback(
+  const stashSwitchAndPopCurrentChanges = useCallback(
     async (branchId: string) => {
       if (!operations) return;
       const shouldStash = await confirmDialog({
@@ -194,15 +195,15 @@ export function useBranchSwitcher({
       if (!shouldStash) return;
 
       try {
-        const stashPayload = await operations.saveStash(currentBranchName ?? undefined);
-        if (stashPayload.error) {
-          toast.error(stashPayload.error.message);
-          return;
-        }
-        await invalidateStashAndCheckout();
-        const switchResult = await performSwitch(branchId);
-        if (!switchResult.ok) {
-          toast.error(switchResult.message);
+        const result = await stashSwitchAndPop({
+          saveStash: () => operations.saveStash(currentBranchName ?? undefined),
+          switchBranch: () => performSwitch(branchId),
+          // The stash just created is on top. A failed pop leaves it there, so
+          // conflicts preserve the work instead of silently dropping it.
+          popStash: () => operations.popStash(0),
+        });
+        if (!result.ok) {
+          toast.error(result.message);
           return;
         }
         await invalidateStashAndCheckout();
@@ -235,7 +236,7 @@ export function useBranchSwitcher({
         if (!result.ok) {
           // If the error is about uncommitted changes, offer the stash dialog
           if (result.message.toLowerCase().includes("uncommitted")) {
-            await stashAndSwitch(branchId);
+            await stashSwitchAndPopCurrentChanges(branchId);
             return;
           }
           toast.error(result.message);
@@ -254,7 +255,7 @@ export function useBranchSwitcher({
       maybeRestoreStashForBranch,
       normalizedServerId,
       performSwitch,
-      stashAndSwitch,
+      stashSwitchAndPopCurrentChanges,
       toast,
       workspaceDirectory,
     ],

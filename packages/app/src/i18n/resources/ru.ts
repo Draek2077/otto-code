@@ -2150,7 +2150,7 @@ export const ru: TranslationResources = {
     uncommittedTitle: "Незафиксированные изменения",
     uncommittedMessage:
       "У вас есть незафиксированные изменения. Спрятать их перед переключением веток?",
-    stashAndSwitch: "Тайник и переключатель",
+    stashAndSwitch: "Спрятать, переключить и восстановить",
     failedToStash: "Не удалось сохранить изменения.",
     failedToSwitch: "Не удалось переключить ветку",
     restoreStashTitle: "Восстановить спрятанные изменения?",

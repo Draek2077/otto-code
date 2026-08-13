@@ -2165,7 +2165,7 @@ export const es: TranslationResources = {
     title: "Cambiar rama",
     uncommittedTitle: "Cambios no confirmados",
     uncommittedMessage: "Tienes cambios no confirmados. ¿Guardarlos antes de cambiar de sucursal?",
-    stashAndSwitch: "Guardar y cambiar",
+    stashAndSwitch: "Guardar, cambiar y restaurar",
     failedToStash: "No se pudieron ocultar los cambios",
     failedToSwitch: "No se pudo cambiar de sucursal",
     restoreStashTitle: "¿Restaurar cambios ocultos?",

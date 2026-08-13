@@ -2139,7 +2139,7 @@ export const ja: TranslationResources = {
     title: "ブランチを切り替え",
     uncommittedTitle: "未コミットの変更",
     uncommittedMessage: "未コミットの変更があります。ブランチを切り替える前にスタッシュしますか？",
-    stashAndSwitch: "スタッシュして切り替え",
+    stashAndSwitch: "スタッシュして切り替え、復元",
     failedToStash: "変更のスタッシュに失敗しました",
     failedToSwitch: "ブランチの切り替えに失敗しました",
     restoreStashTitle: "スタッシュした変更を復元しますか？",

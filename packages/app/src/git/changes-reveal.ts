@@ -74,7 +74,11 @@ export function useChangedFilePaths({
   cwd,
   enabled = true,
 }: ChangedPathsInput): ReadonlySet<string> {
-  const { status } = useCheckoutStatusQuery({ serverId, cwd });
+  // The Changes action must make a fresh dirty/base decision when an editor tab
+  // opens. A missed status push otherwise leaves the cached tree "clean",
+  // subscribes this action to the committed diff, and hides the uncommitted
+  // file even though the Changes pane would show it.
+  const { status } = useCheckoutStatusQuery({ serverId, cwd, refreshOnMount: enabled });
   const { preferences: changesPreferences } = useChangesPreferences();
   const gitStatus = status && status.isGit ? status : null;
   const isGit = Boolean(gitStatus);

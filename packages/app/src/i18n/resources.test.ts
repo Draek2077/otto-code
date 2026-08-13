@@ -443,9 +443,9 @@ describe("translation resources", () => {
     expect(en.workspace.tabs.explorer.files).toBe("Files");
     expect(en.branchSwitcher.uncommittedTitle).toBe("Uncommitted changes");
     expect(en.branchSwitcher.uncommittedMessage).toBe(
-      "You have uncommitted changes. Stash them before switching branches?",
+      "You have uncommitted changes. Stash them, switch branches, then restore them on the new branch?",
     );
-    expect(en.branchSwitcher.stashAndSwitch).toBe("Stash & Switch");
+    expect(en.branchSwitcher.stashAndSwitch).toBe("Stash, Switch & Pop");
     expect(en.branchSwitcher.failedToStash).toBe("Failed to stash changes");
     expect(en.branchSwitcher.failedToSwitch).toBe("Failed to switch branch");
     expect(en.workspaceSetup.errors.failedCreateWorktree).toBe("Failed to create worktree");

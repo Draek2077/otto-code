@@ -854,7 +854,7 @@ function FileGitToolbarGroup({
       ) : null}
       {onNavigateToFile ? (
         <ToolbarIconButton
-          label={t("workspace.fileActions.navigateToFile")}
+          label={t("workspace.fileExplorer.context.findInFiles")}
           testID="file-navigate-to-file"
           Icon={ThemedFolderOpen}
           onPress={onNavigateToFile}
@@ -862,7 +862,7 @@ function FileGitToolbarGroup({
       ) : null}
       {onViewChanges ? (
         <ToolbarIconButton
-          label={t("workspace.fileActions.navigateToChanges")}
+          label={t("workspace.git.diff.viewChanges")}
           testID="file-view-changes"
           Icon={ThemedSourceControl}
           onPress={onViewChanges}

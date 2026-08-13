@@ -2150,8 +2150,9 @@ export const en = {
     empty: "No branches found.",
     title: "Switch branch",
     uncommittedTitle: "Uncommitted changes",
-    uncommittedMessage: "You have uncommitted changes. Stash them before switching branches?",
-    stashAndSwitch: "Stash & Switch",
+    uncommittedMessage:
+      "You have uncommitted changes. Stash them, switch branches, then restore them on the new branch?",
+    stashAndSwitch: "Stash, Switch & Pop",
     failedToStash: "Failed to stash changes",
     failedToSwitch: "Failed to switch branch",
     restoreStashTitle: "Restore stashed changes?",
