@@ -1,6 +1,6 @@
 import type { DiffLine } from "@/utils/tool-call-parsers";
 import { getParserForFile } from "@otto-code/highlight";
-import type { SyntaxNode } from "@lezer/common";
+import type { SyntaxNode, Tree } from "@lezer/common";
 import type { ParsedDiffFile } from "@otto-code/protocol/messages";
 import { buildNumberedDiffHunks, type ReviewableDiffTarget } from "@/utils/diff-layout";
 
@@ -169,14 +169,16 @@ const WHITESPACE_SIGNIFICANT_EXTENSIONS = new Set([
   "shell",
 ]);
 
-function hasParserError(source: string, filePath: string): boolean {
+/** The parse tree for a snapshot, or null when the language or source is unusable. */
+function parseWithoutError(source: string, filePath: string): Tree | null {
   const parser = getParserForFile(filePath);
-  if (!parser) return true;
-  const cursor = parser.parse(source).cursor();
+  if (!parser) return null;
+  const tree = parser.parse(source);
+  const cursor = tree.cursor();
   do {
-    if (cursor.type.isError) return true;
+    if (cursor.type.isError) return null;
   } while (cursor.next());
-  return false;
+  return tree;
 }
 
 function lineStarts(source: string): readonly number[] {
@@ -200,19 +202,12 @@ function namedNodePath(node: SyntaxNode): readonly string[] {
   return path.toReversed().slice(-6);
 }
 
-/**
- * Builds source-line syntax context from a complete, parser-safe snapshot.
- * Patch hunks never go through this function: parser positions only mean
- * something against the original whole file.
- */
-export function buildStructuralSourceIndex(
-  source: string | null | undefined,
-  filePath: string | null | undefined,
+function computeStructuralSourceIndex(
+  source: string,
+  filePath: string,
 ): StructuralSourceIndex | null {
-  if (!source || !filePath || hasParserError(source, filePath)) return null;
-  const parser = getParserForFile(filePath);
-  if (!parser) return null;
-  const tree = parser.parse(source);
+  const tree = parseWithoutError(source, filePath);
+  if (!tree) return null;
   const starts = lineStarts(source);
   const contexts = new Map<number, readonly string[]>();
 
@@ -225,6 +220,45 @@ export function buildStructuralSourceIndex(
   });
 
   return { contexts };
+}
+
+interface StructuralSourceIndexEntry {
+  filePath: string;
+  source: string;
+  index: StructuralSourceIndex | null;
+}
+
+/**
+ * Parsing a whole file is the single most expensive step here, and the callers
+ * ask for the same two snapshots repeatedly: once per hunk for the render plan,
+ * and again for the availability check. Keeping the last few results makes those
+ * repeats free while staying trivially bounded - a viewer only ever needs the
+ * before and after side of the file on screen.
+ */
+const STRUCTURAL_SOURCE_INDEX_CACHE_LIMIT = 4;
+const structuralSourceIndexCache: StructuralSourceIndexEntry[] = [];
+
+/**
+ * Builds source-line syntax context from a complete, parser-safe snapshot.
+ * Patch hunks never go through this function: parser positions only mean
+ * something against the original whole file.
+ */
+export function buildStructuralSourceIndex(
+  source: string | null | undefined,
+  filePath: string | null | undefined,
+): StructuralSourceIndex | null {
+  if (!source || !filePath) return null;
+  const cached = structuralSourceIndexCache.find(
+    (entry) => entry.filePath === filePath && entry.source === source,
+  );
+  if (cached) return cached.index;
+  const index = computeStructuralSourceIndex(source, filePath);
+  structuralSourceIndexCache.unshift({ filePath, source, index });
+  structuralSourceIndexCache.length = Math.min(
+    structuralSourceIndexCache.length,
+    STRUCTURAL_SOURCE_INDEX_CACHE_LIMIT,
+  );
+  return index;
 }
 
 export function getStructuralDiffAvailability(document: DiffDocument): StructuralAvailability {
@@ -267,17 +301,17 @@ export function getStructuralDiffAvailability(document: DiffDocument): Structura
           "Structural view needs complete before and after source. Showing the complete Line diff.",
       };
     }
-    const cursor = parser.parse(source).cursor();
-    do {
-      if (cursor.type.isError) {
-        return {
-          available: false,
-          code: "invalid-source",
-          message:
-            "Structural view is unavailable because this source cannot be parsed safely. Showing the complete Line diff.",
-        };
-      }
-    } while (cursor.next());
+    // Goes through the shared index so this check and the render plan parse the
+    // file once between them. An empty snapshot has nothing to parse and nothing
+    // to reject: a newly added file has no before side.
+    if (source !== "" && buildStructuralSourceIndex(source, document.filePath) === null) {
+      return {
+        available: false,
+        code: "invalid-source",
+        message:
+          "Structural view is unavailable because this source cannot be parsed safely. Showing the complete Line diff.",
+      };
+    }
   }
   return { available: true };
 }
@@ -298,34 +332,21 @@ export function diffCode(line: DiffLine): string {
   return line.content;
 }
 
-function syntaxShape(line: DiffLine): string {
-  // This is intentionally a conservative structural heuristic, not a claim to
-  // parse every grammar.  It aligns the same syntactic neighbourhood despite
-  // whitespace/wrap churn and leaves unmatched rows visible on their own side.
-  return diffCode(line)
-    .replace(/\/\/.*$|#.*$/g, "")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/["'`]([^"'`\\]|\\.)*["'`]/g, "str")
-    .replace(/\b\d+(?:\.\d+)?\b/g, "num")
-    .replace(/\s+/g, "")
-    .replace(/[{}()[\],;:.]/g, "")
-    .toLowerCase();
+/**
+ * The lexical facts pairing needs from one line. Alignment compares every
+ * removal against every addition, so deriving these per comparison meant
+ * re-running the same regex passes O(removals x additions) times for values
+ * that only depend on the line. They are memoized per `DiffLine` instead.
+ */
+interface LineSignature {
+  shape: string;
+  tokens: readonly string[];
+  role: string | null;
 }
 
-function syntaxTokens(line: DiffLine): readonly string[] {
-  return (
-    diffCode(line)
-      .replace(/\/\/.*$|#.*$/g, "")
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/["'`]([^"'`\\]|\\.)*["'`]/g, " str ")
-      .replace(/\b\d+(?:\.\d+)?\b/g, " num ")
-      .toLowerCase()
-      .match(/[a-z_][a-z0-9_]*/g) ?? []
-  );
-}
+const lineSignatures = new WeakMap<DiffLine, LineSignature>();
 
-function structuralRole(line: DiffLine): string | null {
-  const code = diffCode(line).trim();
+function structuralRole(code: string): string | null {
   const markdownHeading = /^(#{1,6})\s/.exec(code);
   if (markdownHeading) return `markdown-heading:${markdownHeading[1]!.length}`;
   const markupTag = /^<([a-z][a-z0-9:-]*)\b/i.exec(code);
@@ -336,9 +357,34 @@ function structuralRole(line: DiffLine): string | null {
   return null;
 }
 
-function tokenSimilarity(left: DiffLine, right: DiffLine): number {
-  const leftTokens = syntaxTokens(left);
-  const rightTokens = syntaxTokens(right);
+function lineSignature(line: DiffLine): LineSignature {
+  const cached = lineSignatures.get(line);
+  if (cached) return cached;
+  const code = diffCode(line);
+  // This is intentionally a conservative structural heuristic, not a claim to
+  // parse every grammar.  It aligns the same syntactic neighbourhood despite
+  // whitespace/wrap churn and leaves unmatched rows visible on their own side.
+  const withoutComments = code.replace(/\/\/.*$|#.*$/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  const signature: LineSignature = {
+    shape: withoutComments
+      .replace(/["'`]([^"'`\\]|\\.)*["'`]/g, "str")
+      .replace(/\b\d+(?:\.\d+)?\b/g, "num")
+      .replace(/\s+/g, "")
+      .replace(/[{}()[\],;:.]/g, "")
+      .toLowerCase(),
+    tokens:
+      withoutComments
+        .replace(/["'`]([^"'`\\]|\\.)*["'`]/g, " str ")
+        .replace(/\b\d+(?:\.\d+)?\b/g, " num ")
+        .toLowerCase()
+        .match(/[a-z_][a-z0-9_]*/g) ?? [],
+    role: structuralRole(code.trim()),
+  };
+  lineSignatures.set(line, signature);
+  return signature;
+}
+
+function tokenSimilarity(leftTokens: readonly string[], rightTokens: readonly string[]): number {
   if (leftTokens.length === 0 || rightTokens.length === 0) return 0;
 
   const remaining = new Map<string, number>();
@@ -355,16 +401,18 @@ function tokenSimilarity(left: DiffLine, right: DiffLine): number {
   return shared / Math.max(leftTokens.length, rightTokens.length);
 }
 
-function similarity(left: DiffLine, right: DiffLine): number {
-  const a = syntaxShape(left);
-  const b = syntaxShape(right);
-  const leftRole = structuralRole(left);
-  const sameRole = leftRole !== null && leftRole === structuralRole(right);
+function similarity(left: LineSignature, right: LineSignature): number {
+  const a = left.shape;
+  const b = right.shape;
+  const sameRole = left.role !== null && left.role === right.role;
   if (!a || !b) return sameRole ? 0.6 : 0;
   if (a === b) return 1;
-  const common = [...a].filter((char, index) => b[index] === char).length;
+  let common = 0;
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] === b[index]) common += 1;
+  }
   const positionalSimilarity = common / Math.max(a.length, b.length);
-  const sharedTokenSimilarity = tokenSimilarity(left, right);
+  const sharedTokenSimilarity = tokenSimilarity(left.tokens, right.tokens);
   // Token overlap only raises confidence when most of the syntactic words
   // agree. That pairs a changed import source but does not collapse an old
   // CommonJS import into an unrelated ES-module import.
@@ -412,7 +460,7 @@ function pairingScore(
   addition: DiffLine,
   evidence: StructuralPairingEvidence | undefined,
 ): number {
-  const base = similarity(removal, addition);
+  const base = similarity(lineSignature(removal), lineSignature(addition));
   // Parser shape disambiguates already credible candidates. It must never
   // turn unrelated lines in the same function into a claimed replacement.
   return base < 0.35 ? base : base + parserContextSimilarity(removal, addition, evidence) * 0.12;
@@ -500,24 +548,40 @@ function canCollapseWhitespaceOnlyChanges(filePath: string | null | undefined): 
   return extension !== undefined && !WHITESPACE_SIGNIFICANT_EXTENSIONS.has(extension);
 }
 
+/**
+ * A move's removed side is hidden from the reviewer, so claiming one has to be
+ * unambiguous. Two guards keep that honest:
+ *
+ * - the line must be distinctive. Structural punctuation like `}` or `);` is
+ *   removed and added all over an ordinary diff, and treating those as moves
+ *   silently erased real deletions from the review;
+ * - it must appear exactly once on each side. With repeats there is no single
+ *   destination to send the reviewer to, so both sides stay visible.
+ */
+const MIN_MOVED_LINE_TOKENS = 2;
+
+function isDistinctiveMoveCandidate(code: string): boolean {
+  return (
+    code.trim().length > 0 &&
+    (code.match(/[A-Za-z_][A-Za-z0-9_]*/g)?.length ?? 0) >= MIN_MOVED_LINE_TOKENS
+  );
+}
+
 function movedLineCounts(lines: readonly DiffLine[]): Map<string, { from: number; to: number }> {
   const removals = new Map<string, number>();
   const additions = new Map<string, number>();
   for (const line of lines) {
     if (line.type !== "remove" && line.type !== "add") continue;
     const code = diffCode(line);
-    if (!code.trim()) continue;
+    if (!isDistinctiveMoveCandidate(code)) continue;
     const target = line.type === "remove" ? removals : additions;
     target.set(code, (target.get(code) ?? 0) + 1);
   }
 
   const shared = new Map<string, { from: number; to: number }>();
   for (const [code, removalCount] of removals) {
-    const additionCount = additions.get(code) ?? 0;
-    if (additionCount > 0) {
-      const count = Math.min(removalCount, additionCount);
-      shared.set(code, { from: count, to: count });
-    }
+    if (removalCount !== 1 || additions.get(code) !== 1) continue;
+    shared.set(code, { from: 1, to: 1 });
   }
   return shared;
 }

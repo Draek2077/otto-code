@@ -121,7 +121,10 @@ export function buildRefineDiff(
   proposal: string,
   contextLines: number = DEFAULT_REFINE_CONTEXT_LINES,
 ): RefineDiff {
-  const lines = buildLineDiff(base, proposal);
+  // Refine replays this diff back into file text, so the trailing newline has
+  // to survive the split: `applyRefineDecisions` rejoins with "\n", and the
+  // display-oriented default would silently drop the file's terminator.
+  const lines = buildLineDiff(base, proposal, { preserveTrailingNewline: true });
   return { lines, hunks: groupDiffHunks(lines, contextLines) };
 }
 

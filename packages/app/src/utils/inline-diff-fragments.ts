@@ -96,8 +96,12 @@ function commonSuffixLength(before: string, after: string, prefixLength: number)
 export function buildInlineDiffFragments(before: string, after: string): InlineDiffFragment[] {
   const prefixLength = commonPrefixLength(before, after);
   const suffixLength = commonSuffixLength(before, after, prefixLength);
-  const beforeChanged = before.slice(prefixLength, before.length - suffixLength || undefined);
-  const afterChanged = after.slice(prefixLength, after.length - suffixLength || undefined);
+  // `commonSuffixLength` never overlaps the prefix, so both end offsets are at
+  // or after `prefixLength`. A zero end offset means "nothing changed on this
+  // side" and must stay zero: coercing it to `undefined` sliced to the end of
+  // the string and emitted the whole line twice for a pure prefix insertion.
+  const beforeChanged = before.slice(prefixLength, before.length - suffixLength);
+  const afterChanged = after.slice(prefixLength, after.length - suffixLength);
   const fragments: InlineDiffFragment[] = [];
   const prefix = before.slice(0, prefixLength);
   const suffix = suffixLength === 0 ? "" : before.slice(before.length - suffixLength);

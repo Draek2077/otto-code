@@ -1,4 +1,4 @@
-import { page } from "vitest/browser";
+import { page } from "@vitest/browser/context";
 import { afterEach, describe, expect, it } from "vitest";
 import type { TerminalState } from "@otto-code/protocol/messages";
 import { encodeTerminalOutput, TerminalEmulatorRuntime } from "./terminal-emulator-runtime";

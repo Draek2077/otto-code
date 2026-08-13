@@ -4309,76 +4309,72 @@ export class Session {
     }
   }
 
-  private handleBrainJobsListRequest(requestId: string): void {
-    // Library downloads are daemon-owned CLI jobs. The Brain host has its own
-    // job lane for host-owned operations, but it cannot report progress for a
-    // download the daemon spawned. Prefer the local owner whenever it exists.
-    if (this.brainOpsManager) {
-      this.emit({
-        type: "brain.jobs.list.response",
-        payload: { jobs: this.brainOpsManager.jobs(), error: null, requestId },
-      });
-      return;
+  /**
+   * Brain work runs in two lanes and both are real at the same time. Library
+   * downloads and runtime installs are daemon-owned CLI jobs the Brain host
+   * cannot see; calibrate, sweep, and bench are host-owned jobs the daemon does
+   * not spawn. Preferring one owner made the other lane's jobs unreportable and
+   * uncancellable, so every reader merges them.
+   */
+  private async listBrainJobs(): Promise<{ jobs: BrainJob[]; error: string | null }> {
+    const localJobs = this.brainOpsManager?.jobs() ?? [];
+    if (!this.brainManager) {
+      return this.brainOpsManager
+        ? { jobs: localJobs, error: null }
+        : { jobs: [], error: BRAIN_OPS_UNAVAILABLE };
     }
-    if (this.brainManager) {
-      void this.brainManager
-        .hostJobs()
-        .then((data) =>
-          this.emit({
-            type: "brain.jobs.list.response",
-            payload: { jobs: parseBrainArray(data?.jobs, BrainJobSchema), error: null, requestId },
-          }),
-        )
-        .catch((error) =>
-          this.emit({
-            type: "brain.jobs.list.response",
-            payload: { jobs: [], error: getErrorMessage(error), requestId },
-          }),
-        );
-      return;
+    try {
+      const data = await this.brainManager.hostJobs();
+      return { jobs: [...localJobs, ...parseBrainArray(data?.jobs, BrainJobSchema)], error: null };
+    } catch (error) {
+      // An unreachable host must not hide in-flight daemon downloads. Report
+      // what we do know, and name the lane that could not be read.
+      return this.brainOpsManager
+        ? { jobs: localJobs, error: null }
+        : { jobs: [], error: getErrorMessage(error) };
     }
-    this.emit({
-      type: "brain.jobs.list.response",
-      payload: { jobs: [], error: BRAIN_OPS_UNAVAILABLE, requestId },
-    });
+  }
+
+  private async handleBrainJobsListRequest(requestId: string): Promise<void> {
+    const { jobs, error } = await this.listBrainJobs();
+    this.emit({ type: "brain.jobs.list.response", payload: { jobs, error, requestId } });
   }
 
   private async handleBrainJobsCancelRequest(jobId: string, requestId: string): Promise<void> {
-    // See handleBrainJobsListRequest: the same owner must receive Cancel.
-    if (this.brainOpsManager) {
+    // Route Cancel to the lane that actually owns this job id, rather than to
+    // whichever owner happens to exist.
+    const ownedLocally = this.brainOpsManager?.jobs().some((job) => job.id === jobId) === true;
+    if (ownedLocally && this.brainOpsManager) {
       try {
-        const jobs = await this.brainOpsManager.cancel(jobId);
-        this.emit({
-          type: "brain.jobs.cancel.response",
-          payload: { jobs, error: null, requestId },
-        });
+        await this.brainOpsManager.cancel(jobId);
       } catch (err) {
+        const { jobs } = await this.listBrainJobs();
         this.emit({
           type: "brain.jobs.cancel.response",
-          payload: { jobs: this.brainOpsManager.jobs(), error: getErrorMessage(err), requestId },
+          payload: { jobs, error: getErrorMessage(err), requestId },
         });
+        return;
       }
-      return;
-    }
-    if (this.brainManager) {
+    } else if (this.brainManager) {
       try {
-        const data = await this.brainManager.cancelHostJob(jobId);
-        this.emit({
-          type: "brain.jobs.cancel.response",
-          payload: { jobs: parseBrainArray(data?.jobs, BrainJobSchema), error: null, requestId },
-        });
+        await this.brainManager.cancelHostJob(jobId);
       } catch (error) {
+        const { jobs } = await this.listBrainJobs();
         this.emit({
           type: "brain.jobs.cancel.response",
-          payload: { jobs: [], error: getErrorMessage(error), requestId },
+          payload: { jobs, error: getErrorMessage(error), requestId },
         });
+        return;
       }
+    } else if (!this.brainOpsManager) {
+      this.emit({
+        type: "brain.jobs.cancel.response",
+        payload: { jobs: [], error: BRAIN_OPS_UNAVAILABLE, requestId },
+      });
       return;
     }
-    this.emit({
-      type: "brain.jobs.cancel.response",
-      payload: { jobs: [], error: BRAIN_OPS_UNAVAILABLE, requestId },
-    });
+    const { jobs, error } = await this.listBrainJobs();
+    this.emit({ type: "brain.jobs.cancel.response", payload: { jobs, error, requestId } });
   }
 
   // --- Brain Console: proxied management RPCs -------------------------------
@@ -5856,7 +5852,7 @@ export class Session {
         this.handleBrainBenchRequest(msg.model, msg.requestId);
         return true;
       case "brain.jobs.list.request":
-        this.handleBrainJobsListRequest(msg.requestId);
+        await this.handleBrainJobsListRequest(msg.requestId);
         return true;
       case "brain.jobs.cancel.request":
         await this.handleBrainJobsCancelRequest(msg.jobId, msg.requestId);

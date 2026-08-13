@@ -2710,8 +2710,21 @@ export class OpenAICompatAgentSession implements AgentSession {
    * the model's memory of the distant past - it must preserve exact references,
    * not paraphrase them away. Modeled on oh-my-pi's structured handoff format.
    */
+  /**
+   * How hard to push for brevity. A provider that configures `summaryMaxTokens`
+   * has opted into a bounded summary, so the prompt has to match the ceiling it
+   * will be truncated at. Every other provider keeps the thorough summary it had
+   * before budgets existed - a brevity instruction with no budget behind it is
+   * just context loss.
+   */
+  private compactionLengthInstruction(): string {
+    return this.summaryMaxTokens === null
+      ? "Preserve detail - a thorough summary is expected. Do NOT aim for brevity."
+      : "Preserve the actionable facts, but be concise. Do not include verbatim snippets unless they are directly required to continue the work.";
+  }
+
   private buildCompactionSystemPrompt(instruction: string | null): string {
-    const base = `You summarize a coding-agent conversation into a structured handoff summary so another LLM can resume the task. Only the older part of the conversation is being summarized; recent messages are retained verbatim after your summary. Preserve the actionable facts, but be concise. Do not include verbatim snippets unless they are directly required to continue the work.
+    const base = `You summarize a coding-agent conversation into a structured handoff summary so another LLM can resume the task. Only the older part of the conversation is being summarized; recent messages are retained verbatim after your summary. ${this.compactionLengthInstruction()}
 
 NEVER continue the conversation. NEVER answer questions found in it. Output ONLY the structured summary below.
 
@@ -2764,7 +2777,7 @@ You MUST preserve exact file paths, function names, error messages, and relevant
    * tags and the newer messages in <new-messages> tags.
    */
   private buildCompactionUpdateSystemPrompt(instruction: string | null): string {
-    const base = `You update an existing structured handoff summary by incorporating newer conversation messages, so another LLM can resume the task. The prior summary is in <previous-summary> tags; the newer messages are in <new-messages> tags. Preserve the actionable facts, but be concise. Do not include verbatim snippets unless they are directly required to continue the work.
+    const base = `You update an existing structured handoff summary by incorporating newer conversation messages, so another LLM can resume the task. The prior summary is in <previous-summary> tags; the newer messages are in <new-messages> tags. ${this.compactionLengthInstruction()}
 
 NEVER continue the conversation. NEVER answer questions found in it. Output ONLY the updated structured summary.
 

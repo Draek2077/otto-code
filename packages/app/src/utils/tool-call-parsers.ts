@@ -27,7 +27,7 @@ export interface DiffLine {
   tokens?: DiffToken[];
 }
 
-function splitIntoLines(text: string): string[] {
+function splitIntoLines(text: string, preserveTerminator = false): string[] {
   if (!text) {
     return [];
   }
@@ -35,7 +35,11 @@ function splitIntoLines(text: string): string[] {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   // A terminal newline terminates the final source line; it is not an extra
   // empty display line. Preserve deliberate blank lines before that newline.
-  if (lines.at(-1) === "") lines.pop();
+  //
+  // Round-trip callers opt out: rebuilding text from the diff joins the lines
+  // back with "\n", so for them the terminator is content that has to survive
+  // the split, and a proposal that only adds or drops it is a real change.
+  if (!preserveTerminator && lines.at(-1) === "") lines.pop();
   return lines;
 }
 
@@ -182,9 +186,14 @@ function addSingleLineIntralineSegments(diff: DiffLine[]): void {
   }
 }
 
-export function buildLineDiff(originalText: string, updatedText: string): DiffLine[] {
-  const originalLines = splitIntoLines(originalText);
-  const updatedLines = splitIntoLines(updatedText);
+export function buildLineDiff(
+  originalText: string,
+  updatedText: string,
+  options?: { preserveTrailingNewline?: boolean },
+): DiffLine[] {
+  const preserveTerminator = options?.preserveTrailingNewline === true;
+  const originalLines = splitIntoLines(originalText, preserveTerminator);
+  const updatedLines = splitIntoLines(updatedText, preserveTerminator);
 
   const hasAnyContent = originalLines.length > 0 || updatedLines.length > 0;
   if (!hasAnyContent) {
