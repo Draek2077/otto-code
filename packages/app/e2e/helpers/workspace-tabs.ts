@@ -17,8 +17,14 @@ function visibleTestId(page: Page, testId: string) {
   return page.getByTestId(testId).filter({ visible: true });
 }
 
+function visibleWorkspaceTabStrip(page: Page) {
+  return visibleTestId(page, "workspace-tabs-row")
+    .or(visibleTestId(page, "workspace-tabs-rail"))
+    .first();
+}
+
 export async function waitForWorkspaceTabsVisible(page: Page): Promise<void> {
-  await expect(visibleTestId(page, "workspace-tabs-row").first()).toBeVisible({
+  await expect(visibleWorkspaceTabStrip(page)).toBeVisible({
     timeout: 30_000,
   });
   // The inline new-agent tab was replaced by the always-present "+" tab menu;
@@ -93,7 +99,9 @@ export async function ensureWorkspaceAgentPaneVisible(page: Page): Promise<void>
 }
 
 export async function expectWorkspaceTabsAbsent(page: Page): Promise<void> {
-  await expect(page.getByTestId("workspace-tabs-row")).toHaveCount(0);
+  await expect(
+    page.getByTestId("workspace-tabs-row").or(page.getByTestId("workspace-tabs-rail")),
+  ).toHaveCount(0);
 }
 
 export async function expectNoTerminalTabs(page: Page): Promise<void> {

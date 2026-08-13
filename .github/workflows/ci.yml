@@ -281,16 +281,27 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 
-      # Windows tests deliberately terminate child-process trees. Vitest's
-      # fork pool can mistake those taskkill events for a pool-worker crash,
-      # even after the test that initiated them passed. Use worker threads in
-      # this lane so the test runner itself is never a taskkill target.
+      # DIAG(windows-fork-crash): vitest's fork pool occasionally tears a
+      # worker down without a clean handoff on Windows, after every test it
+      # ran has already passed - see scripts/vitest-kill-diag.cjs, which is
+      # what proved this run's failures are pool-teardown noise and not a
+      # real regression (every test passes; only the pool's own unhandled
+      # exit event fails the process). Retry test:unit alone so a teardown
+      # blip doesn't fail a green run; test:integration runs once either way,
+      # same as the plain `npm run test` path other platforms take.
+      # Worker threads are not a viable replacement: Node 24 aborts in
+      # fs-event.c while the suite starts its watcher.
       - name: Run server tests (Windows)
         if: env.RUN_TESTS == 'true' && matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          npm run test:unit --workspace=@otto-code/server -- --pool=threads --maxWorkers=1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $attempts = 3
+          for ($i = 1; $i -le $attempts; $i++) {
+            npm run test:unit --workspace=@otto-code/server
+            if ($LASTEXITCODE -eq 0) { break }
+            if ($i -eq $attempts) { exit $LASTEXITCODE }
+            Write-Host "server test:unit failed (attempt $i/$attempts) - retrying for the known Windows fork-pool teardown flake"
+          }
           npm run test:integration --workspace=@otto-code/server
           exit $LASTEXITCODE
         env:

@@ -135,12 +135,6 @@ const test = base.extend<{
               settings = {};
             }
             settings.hasCompletedSetupWizard = true;
-            // Product defaults use the vertical tab rail. The E2E suite has a
-            // horizontal-tab baseline: its shared navigation and several
-            // interaction assertions target that surface explicitly. Keep the
-            // baseline stable while orientation-specific coverage seeds its
-            // own preference.
-            settings.defaultTabOrientation = "horizontal";
             localStorage.setItem(settingsKey, JSON.stringify(settings));
           }
         },

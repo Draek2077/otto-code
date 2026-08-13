@@ -16,27 +16,33 @@ export async function gotoWorkspace(page: Page, workspaceId: string): Promise<vo
 // layout-reconcile effect, which is gated on route focus + store hydration
 // (see workspace-screen.tsx). Under CI load that effect can miss its first
 // window on a freshly seeded workspace, leaving `workspaceLayout` null so the
-// SplitContainer - and with it workspace-tabs-row - never mounts, and the
+// SplitContainer - and with it the tab strip - never mounts, and the
 // 30s wait times out. Reloading re-runs route-focus + reconcile and recovers
 // deterministically. In-app navigation (sidebar select) doesn't hit this, so
 // only the goto path needs the fallback.
 async function waitForTabBarAfterColdNav(page: Page): Promise<void> {
-  const tabsRow = page.getByTestId("workspace-tabs-row").filter({ visible: true }).first();
+  const tabStrip = visibleWorkspaceTabStrip(page);
   try {
-    await expect(tabsRow).toBeVisible({ timeout: 20_000 });
+    await expect(tabStrip).toBeVisible({ timeout: 20_000 });
   } catch {
     await page.reload();
     await waitForTabBar(page);
   }
 }
 
+function visibleWorkspaceTabStrip(page: Page) {
+  return page
+    .getByTestId("workspace-tabs-row")
+    .or(page.getByTestId("workspace-tabs-rail"))
+    .filter({ visible: true })
+    .first();
+}
+
 // ─── Tab bar queries ───────────────────────────────────────────────────────
 
 /** Wait for the workspace tab bar to be visible. */
 export async function waitForTabBar(page: Page): Promise<void> {
-  await expect(
-    page.getByTestId("workspace-tabs-row").filter({ visible: true }).first(),
-  ).toBeVisible({
+  await expect(visibleWorkspaceTabStrip(page)).toBeVisible({
     timeout: 30_000,
   });
 }
