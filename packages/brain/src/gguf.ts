@@ -219,6 +219,7 @@ interface GgufSummary {
   tensorCount: number;
   arch: string;
   name: string | null;
+  basename: string | null;
   sizeLabel: string | null;
   fileType: number | null;
   contextLength: number | null;
@@ -275,6 +276,7 @@ export function summarize(file: string): GgufSummary {
     tensorCount,
     arch,
     name: (meta["general.name"] as string | null) || null,
+    basename: (meta["general.basename"] as string | null) || null,
     sizeLabel: (meta["general.size_label"] as string | null) || null,
     fileType: (meta["general.file_type"] ?? null) as number | null,
     contextLength: (get("context_length") ?? null) as number | null,

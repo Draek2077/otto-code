@@ -8,6 +8,8 @@ export interface ModelMetadata {
   // gguf.summarize returns null (not undefined) for fields absent from a header,
   // so the numeric fields carry null; the VRAM math already guards with typeof.
   arch?: string | null;
+  name?: string | null;
+  basename?: string | null;
   contextLength?: number | null;
   blockCount?: number | null;
   headCount?: number | null;
@@ -86,7 +88,7 @@ export interface Model {
   catalogId?: string;
   /** Back-reference: the hfRepo of the reconciled catalog entry, if matched. */
   catalogHfRepo?: string;
-  /** Stable family identity supplied by the curated catalog for model iconography. */
+  /** Hosting-profile family from the catalog or normalized GGUF metadata. */
   family?: string;
   /** Present only when this catalog entry declares a component manifest. */
   components?: ModelComponent[];

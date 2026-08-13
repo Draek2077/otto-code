@@ -1,8 +1,9 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 
-import { enrichWithCatalog, matchCatalogEntry } from "./enrich.js";
+import { enrichWithCatalog, familyFromGgufMetadata, matchCatalogEntry } from "./enrich.js";
 import { CatalogSchema, type Catalog } from "../config/schema.js";
+import { hostingFamily } from "../config/hosting-profiles.js";
 import type { Model } from "../types.js";
 
 /** A minimal scanned model; id is the modelsDir-relative path scan.ts builds. */
@@ -48,6 +49,35 @@ test("attaches catalog coding metadata when a scanned path matches hfRepo", () =
   assert.equal(enriched.catalogId, "qwen3-coder-30b");
   assert.equal(enriched.catalogHfRepo, "unsloth/Qwen3-Coder-30B-GGUF");
   assert.equal(enriched.family, "qwen");
+});
+
+test("catalog family wins over conflicting GGUF metadata", () => {
+  const scanned = model("unsloth/Qwen3-Coder-30B-GGUF/Qwen3-Coder-30B-Q4_K_M.gguf", {
+    metadata: { arch: "llama" },
+  });
+  const [enriched] = enrichWithCatalog([scanned], catalog([CODER]));
+
+  assert.equal(enriched.family, "qwen");
+});
+
+test("normalizes a GGUF architecture into the existing hosting-profile family", () => {
+  const scanned = model("someone/Qwen3-GGUF/qwen3-Q4_K_M.gguf", {
+    metadata: { arch: "qwen3" },
+  });
+  const [enriched] = enrichWithCatalog([scanned], catalog([]));
+
+  assert.equal(familyFromGgufMetadata(scanned), "qwen");
+  assert.equal(enriched.family, "qwen");
+});
+
+test("an unclassified model remains in the generic hosting-profile bucket", () => {
+  const [enriched] = enrichWithCatalog(
+    [model("someone/random-GGUF/random-Q4_K_M.gguf")],
+    catalog([]),
+  );
+
+  assert.equal(enriched.family, undefined);
+  assert.equal(hostingFamily(enriched.family), "generic");
 });
 
 test("carries catalog reasoning efforts onto a scanned model", () => {

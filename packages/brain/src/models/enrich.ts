@@ -23,6 +23,49 @@ import path from "node:path";
 import type { Catalog, CatalogModel } from "../config/schema.js";
 import type { Model, ModelComponent } from "../types.js";
 
+/**
+ * Hosting-profile families deliberately use a small, curated vocabulary. It is
+ * a mix of publisher and model-line identities, so GGUF architecture names
+ * must be folded into the existing buckets rather than exposed directly.
+ */
+const FAMILY_BY_GGUF_IDENTIFIER: Record<string, string> = {
+  chatglm: "chatglm",
+  deepseek: "deepseek",
+  gemma: "gemma",
+  gptoss: "openai",
+  llama: "meta",
+  meta: "meta",
+  microsoft: "microsoft",
+  mistral: "mistral",
+  mixtral: "mistral",
+  nemotron: "nvidia",
+  nvidia: "nvidia",
+  openai: "openai",
+  phi: "microsoft",
+  qwen: "qwen",
+};
+
+/**
+ * Normalize a GGUF identity into the catalog's hosting-profile vocabulary.
+ * Architecture is a stable structural field; names are only fallbacks for
+ * headers whose architecture is absent or unrecognised.
+ */
+export function familyFromGgufMetadata(model: Model): string | undefined {
+  const metadata = model.metadata;
+  if (!metadata) return undefined;
+  for (const value of [metadata.arch, metadata.basename, metadata.name]) {
+    if (typeof value !== "string") continue;
+    const identifier = value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]/gu, "");
+    for (const [prefix, family] of Object.entries(FAMILY_BY_GGUF_IDENTIFIER)) {
+      if (identifier.startsWith(prefix)) return family;
+    }
+  }
+  return undefined;
+}
+
 /** Normalize a repo/id path: forward slashes, lowercased, trailing slashes trimmed. */
 function normalizePath(value: string): string {
   const normalized = value.replaceAll("\\", "/");
@@ -83,7 +126,11 @@ export function matchCatalogEntry(model: Model, catalog: Catalog): CatalogModel 
 export function enrichWithCatalog(models: Model[], catalog: Catalog): Model[] {
   return models.map((model) => {
     const entry = matchCatalogEntry(model, catalog);
-    if (!entry) return enrichDiscoveredProjector(model);
+    if (!entry) {
+      const enriched = enrichDiscoveredProjector(model);
+      const family = familyFromGgufMetadata(enriched);
+      return family ? { ...enriched, family } : enriched;
+    }
     const components = resolveComponents(model, entry);
     const projector = components?.find((component) => component.role === "vision_projector");
     return {
