@@ -8,7 +8,6 @@ import type { Command } from "commander";
 
 import { loadBrainConfig } from "../config/index.js";
 import {
-  downloadRepoFiles,
   listRepoQuants,
   managedModelsDir,
   repoOfModel,
@@ -19,6 +18,7 @@ import {
 import { formatBytes } from "../models/scan.js";
 import type { AnyCommandResult, OutputSchema } from "../output/index.js";
 import { CommandError } from "../output/types.js";
+import { downloadRepoFilesWithProgress } from "./repo-download.js";
 
 /** What is already on disk, so search + quant listings can mark installed rows. */
 function installedIndex(config: ReturnType<typeof loadBrainConfig>): {
@@ -194,24 +194,15 @@ export async function runAddCommand(
       (!options.primaryOnly && options.component === undefined));
   const files = [...choice.files, ...(includeProjector ? mmproj!.files : [])];
   const total = choice.sizeBytes + (includeProjector ? mmproj!.sizeBytes : 0);
-  let lastPct = -1;
-  const written = await downloadRepoFiles({
+  const written = await downloadRepoFilesWithProgress({
+    activityTarget: `${repo} (${choice.quant})`,
+    progressLabel: `${repo} ${choice.quant}`,
+    totalBytes: total,
     repo,
     files,
     destRoot: managedModelsDir(config),
     token,
-    onProgress: (p) => {
-      const pct = total ? Math.floor((p.receivedBytes / total) * 100) : 0;
-      // A download chunk can jump straight over a five-percent boundary.
-      // Report each new integer percent so the UI ring never stalls until
-      // completion simply because no chunk hit an exact multiple of five.
-      if (pct > lastPct) {
-        lastPct = pct;
-        process.stderr.write(`  ${repo} ${choice.quant}: ${pct}%\r`);
-      }
-    },
   });
-  process.stderr.write("\n");
   return {
     type: "single",
     data: {

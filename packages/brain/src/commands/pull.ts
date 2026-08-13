@@ -9,7 +9,6 @@ import type { Command } from "commander";
 import { loadBrainConfig, loadCatalog } from "../config/index.js";
 import type { CatalogModel } from "../config/schema.js";
 import {
-  downloadRepoFiles,
   bundleDownloadPlan,
   listRepoQuants,
   managedModelsDir,
@@ -20,6 +19,7 @@ import type { AnyCommandResult, OutputSchema } from "../output/index.js";
 import { CommandError } from "../output/types.js";
 import { formatBytes } from "../models/scan.js";
 import { withActivity } from "../service/activity.js";
+import { downloadRepoFilesWithProgress } from "./repo-download.js";
 
 export interface PullRow {
   model: string;
@@ -121,32 +121,16 @@ export async function runPullCommand(
       choice?.files,
       choice?.sizeBytes,
     );
-    let lastPct = -1;
-    const written = await withActivity("download", { target: model.name }, (activity) =>
-      downloadRepoFiles({
-        repo: plan.repo,
-        files: plan.files,
-        destRoot: managedModelsDir(config),
-        token,
-        onProgress: (progress) => {
-          activity.update(plan.totalBytes ? progress.receivedBytes / plan.totalBytes : null);
-          // The daemon owns the UI job record and only sees this child's
-          // stdout/stderr. Activity also feeds the host status, but emitting
-          // here is what keeps the Library's bundle progress ring live.
-          const pct = plan.totalBytes
-            ? Math.floor((progress.receivedBytes / plan.totalBytes) * 100)
-            : 0;
-          // Network chunks do not land exactly on 5% boundaries. Emit every
-          // new integer so the daemon receives continuous progress instead of
-          // often seeing only the initial and final updates.
-          if (pct > lastPct) {
-            lastPct = pct;
-            process.stderr.write(`  ${model.name}${choice ? ` ${choice.quant}` : ""}: ${pct}%\r`);
-          }
-        },
-      }),
-    );
-    process.stderr.write("\n");
+    const progressLabel = `${model.name}${choice ? ` ${choice.quant}` : ""}`;
+    const written = await downloadRepoFilesWithProgress({
+      activityTarget: model.name,
+      progressLabel,
+      totalBytes: plan.totalBytes,
+      repo: plan.repo,
+      files: plan.files,
+      destRoot: managedModelsDir(config),
+      token,
+    });
     return {
       type: "single",
       data: {
@@ -189,27 +173,15 @@ export async function runPullCommand(
     }
     const files = [...choice.files, ...(mmproj ? mmproj.files : [])];
     const total = choice.sizeBytes + (mmproj?.sizeBytes ?? 0);
-    let lastPct = -1;
-    const written = await withActivity(
-      "download",
-      { target: `${model.name} (${choice.quant})` },
-      (activity) =>
-        downloadRepoFiles({
-          repo: model.hfRepo,
-          files,
-          destRoot: managedModelsDir(config),
-          token,
-          onProgress: (p) => {
-            activity.update(total ? p.receivedBytes / total : null);
-            const pct = total ? Math.floor((p.receivedBytes / total) * 100) : 0;
-            if (pct > lastPct) {
-              lastPct = pct;
-              process.stderr.write(`  ${model.name} ${choice.quant}: ${pct}%\r`);
-            }
-          },
-        }),
-    );
-    process.stderr.write("\n");
+    const written = await downloadRepoFilesWithProgress({
+      activityTarget: `${model.name} (${choice.quant})`,
+      progressLabel: `${model.name} ${choice.quant}`,
+      totalBytes: total,
+      repo: model.hfRepo,
+      files,
+      destRoot: managedModelsDir(config),
+      token,
+    });
     return {
       type: "single",
       data: {
@@ -243,6 +215,7 @@ export async function runPullCommand(
       },
     }),
   );
+  process.stderr.write(`  ${model.name}: 100%\r`);
   process.stderr.write("\n");
 
   return {
