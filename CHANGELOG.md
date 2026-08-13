@@ -10,6 +10,7 @@
 
 ### Fixed
 
+- Brain hosting-profile family defaults now recognize compatible downloaded and LM Studio GGUF models outside the curated catalog
 - Opening a file with Vim or Neovim now keeps editing in its existing file tab instead of creating a workspace terminal tab
 
 ## 0.8.8 - 2026-08-11
