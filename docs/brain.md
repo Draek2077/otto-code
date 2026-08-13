@@ -15,10 +15,10 @@ Navigation: [Documentation index](README.md) · [Providers](providers.md) ·
 
 Brain work is split across two places in the app, and the split is deliberate.
 
-| Surface                     | Holds                                                                                                                                              |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Brain page** (`/brain`)   | Everything operational: live status, the model library, per-model hosting profiles, the VRAM budget, downloads, calibrate, sweep, benchmarks, logs |
-| **Settings → Host → Brain** | Setup only: local or remote mode, host and port, default model and lock, auth, TLS, sharing, remote configuration, and start/stop/restart          |
+| Surface                     | Holds                                                                                                                                                                 |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Brain page** (`/brain`)   | Everything operational: live status, the model library, model profiles and Prompt & template profiles, the VRAM budget, downloads, calibrate, sweep, benchmarks, logs |
+| **Settings → Host → Brain** | Setup only: local or remote mode, host and port, default model and lock, auth, TLS, sharing, remote configuration, and start/stop/restart                             |
 
 The rule is that **operations are work, not settings**. Downloading a model, calibrating VRAM and
 running a benchmark are long-running, progress-bearing and result-producing. They do not belong next
@@ -60,8 +60,8 @@ The brain serves its own management surface at `/__host/*`. Its header comment s
 | `GET /__host/models`                        | The joined model inventory plus disk usage                                  |
 | `GET /__host/model?id=`                     | One inventory row                                                           |
 | `GET /__host/model/fields?id=`              | The editable field descriptors                                              |
-| `GET`/`POST /__host/model/profile?id=`      | Read and write the eight hosting fields                                     |
-| `GET /__host/model/budget?id=&…`            | The VRAM budget for a hypothetical profile                                  |
+| `GET`/`POST /__host/model/profile?id=`      | Read and write a model profile                                              |
+| `GET /__host/model/budget?id=&…`            | The VRAM budget for a hypothetical model profile                            |
 | `POST /__host/model/load?id=`               | Load a model into the running brain                                         |
 | `POST /__host/model/unload`                 | Stop the resident model                                                     |
 | `DELETE /__host/model?id=`                  | Delete a model's files                                                      |
@@ -129,7 +129,7 @@ the same bounded log tail as `llama-server` output.
 
 llama.cpp applies context size and reasoning budget at launch. Calibration and sweep therefore
 transition that one resident supervisor between their measurement configurations, then restore the
-previous loaded model/profile. This is a controlled reload in one hosted lane, not a second server.
+previous loaded model and model profile. This is a controlled reload in one hosted lane, not a second server.
 Benchmark runs against the resident supervisor directly and leaves its selected model loaded.
 
 **HTTP proxy (`BrainManager`).** Forwards to the brain's `/__host/*`. `BrainManager` already resolves
@@ -137,7 +137,7 @@ its endpoint by mode, so the same call reaches a local child or a remote host wi
 either side.
 
 Everything added for the Brain page uses the proxy. That is the whole reason a remote brain gets the
-model inventory, the profile editor, the VRAM budget, load, unload, delete and logs at all, rather
+model inventory, the model-profile editor, the VRAM budget, load, unload, delete and logs at all, rather
 than being permanently limited to status and evals.
 
 **Host-owned jobs.** The daemon proxies start, list and cancel calls to the Brain host for local and
@@ -208,9 +208,9 @@ Deleting model files removes tens of gigabytes from someone else's disk. It does
 gate than editing their default model.
 
 The client reflects this: `capabilities.writable` is false when the far side has not opted in, and the
-profile editor renders read-only rather than offering a Save that would 403.
+model-profile editor renders read-only rather than offering a Save that would 403.
 
-## The hosting profile
+## Model profiles
 
 ### Model bundles
 
@@ -218,12 +218,12 @@ A catalog entry is a bundle only when it declares companion components. The
 primary GGUF remains required. Optional components, such as image
 understanding projectors and speculative drafters, are selected independently
 in the Library and are then enabled independently in the model profile. The
-profile stores stable component IDs only; the host derives every artifact path
+model profile stores stable component IDs only; the host derives every artifact path
 from its catalog manifest and local inventory.
 
 An unavailable component stays visibly unavailable and cannot be enabled. The
 host never downloads it during launch. Plain text-only models have no bundle
-controls and retain the ordinary profile flow.
+controls and retain the ordinary model-profile flow.
 
 Each enabled component is part of the launch argv, VRAM budget, and calibration
 identity. A main-model-only calibration is historical data, not an exact
@@ -232,17 +232,19 @@ still owns one llama.cpp process, so this delivery does not claim concurrent
 independent main models. A future process pool must reserve VRAM per process
 and may not assume weights are shared across processes.
 
-Each model carries a profile: the eight settings that decide how `llama-server` is launched for it.
+Each model carries a **Model profile**: its saved launch and VRAM settings. It is distinct from a
+**Prompt & template profile**, which supplies message formatting and a system-prompt addendum.
 
-| Field            | Effect                                                              |
-| ---------------- | ------------------------------------------------------------------- |
-| Context          | The window, bounded by the model's native limit and by VRAM         |
-| KV cache K, V    | Quantisation of the key and value caches; the main lever on KV size |
-| Flash attention  | Required for a quantised V cache                                    |
-| Vision           | Load the paired projector; only available when the model has one    |
-| Reasoning budget | The cap on thinking tokens                                          |
-| GPU layers       | How many layers go on the GPU; 999 means all                        |
-| Parallel slots   | Concurrent requests, which share one KV pool                        |
+| Field              | Effect                                                              |
+| ------------------ | ------------------------------------------------------------------- |
+| Context multiplier | YaRN extension factor: 1, 2, or 4 times the native context window   |
+| Context            | The window, bounded by the model's limit and by VRAM                |
+| KV cache K, V      | Quantisation of the key and value caches; the main lever on KV size |
+| Flash attention    | Required for a quantised V cache                                    |
+| Vision             | Load the paired projector; only available when the model has one    |
+| Reasoning budget   | The cap on thinking tokens                                          |
+| GPU layers         | How many layers go on the GPU; 999 means all                        |
+| Parallel slots     | Concurrent requests, which share one KV pool                        |
 
 **The ranges, the validator and the warnings live in exactly one module**,
 `packages/brain/src/config/profile-edit.ts`, and the client renders its controls from the descriptors
@@ -255,17 +257,71 @@ Three warnings are empirical and must survive edits:
   cache and the model never reaches ready. This one blocks a load rather than merely advising.
 - **An unrestricted reasoning budget (`-1`) is the failure this package exists to prevent.** Thinking
   models will spend an entire token allowance reasoning and return no content at all.
-- **Changing a cache type invalidates a measured calibration**, because KV bytes per token is a
-  function of the cache types.
+- **A changed VRAM input requires a new calibration.** See "The calibration verdict" below.
 
-Only those eight keys are honoured on a write. `modelPath`, `mmprojPath` and `modelId` are re-derived
+Only the supported model-profile keys are honoured on a write. `modelPath`, `mmprojPath` and `modelId` are re-derived
 from the model on every read, so accepting them would be a lie at best and a path traversal at worst;
 `extraArgs` is arbitrary process arguments and stays CLI-only.
+
+### Prompt & template profiles
+
+A **Prompt & template profile** is a named, Brain-owned record in one model-family bucket. It carries
+a complete llama.cpp-compatible Jinja chat template, optional template kwargs, and an optional
+system-prompt addendum. The Brain owns the record rather than the client, so local and remote clients
+manage the same library and a selected template is materialized only when the model loads.
+
+Each model profile chooses one of three modes:
+
+| Mode      | Effect                                                                                                                                                                         |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `inherit` | Use the default Prompt & template profile for the model's family. If that family has no default, no profile is selected and llama.cpp uses the template embedded in the model. |
+| `off`     | Always bypass Prompt & template profiles and use the template embedded in the model.                                                                                           |
+| `custom`  | Use one named Prompt & template profile from the model's family.                                                                                                               |
+
+Every family can name one default. Families come from the catalog when available, otherwise from GGUF
+metadata. A model with no family belongs to the shared `generic` bucket. A default set for `generic`
+therefore applies to every model that has no family, not to one otherwise unclassified model.
+
+The router injects a selected system-prompt addendum into the parsed completion request body. It does
+not splice it into the Jinja template. Template-side mutation of the messages list is not portable
+across minja and Jinja2, each family handles its system turn differently, and multimodal message
+content can be an array of parts rather than a string. Injection also preserves the agent's existing
+system prompt. See the related Brain decision record for the request-ordering details.
+
+The current protocol and persisted code identifiers retain the older `HostingProfile` name. They are
+not documentation terms. Any rename needs the separately chartered compatibility migration; it must
+remain additive until the protocol support window closes.
+
+### Context multiplier
+
+The **Context multiplier** is a YaRN RoPE extension factor of 1, 2, or 4. A value above 1 raises the
+model profile's usable context ceiling to its native window multiplied by that factor. The field is
+unavailable when the GGUF declares no native context window.
+
+For an extended model, Brain launches llama.cpp with `--rope-scaling yarn`, `--rope-scale`,
+`--yarn-orig-ctx`, and an `--override-kv <arch>.context_length` override using the selected context.
+The VRAM budget uses the same native-times-multiplier ceiling, so it never recommends more context
+than the selected extension permits.
+
+YaRN extrapolates beyond the native context. Recalibrate before relying on an extended model profile.
+
+### The calibration verdict
+
+`calibrationRequired` is a durable verdict on the saved model profile. It begins true and is cleared
+only by a successful calibration. A change to any VRAM-affecting input sets it true again:
+context multiplier, context size, KV cache K or V type, flash attention, GPU layers, parallel slots,
+vision, or enabled components.
+
+A measurement from the previous shape remains stored for comparison, but it is not used as the
+current VRAM budget while calibration is required. Brain uses the theoretical budget until a new
+calibration succeeds. This is distinct from the warning that a measurement exists for other cache
+types: that warning identifies why a cache-type-specific measurement is stale, while the calibration
+verdict says the saved model profile itself has not been measured in its current shape.
 
 ## The VRAM budget
 
 `weights + projector + KV + overhead` against usable VRAM, with a fit verdict. The client can ask for
-the budget of a **hypothetical** profile by passing the fields as query parameters, so the verdict
+the budget of a **hypothetical** model profile by passing the fields as query parameters, so the verdict
 updates as a control is scrubbed without persisting a value the user is dragging past.
 
 The KV figure comes from one of four places, and the UI says which:
@@ -281,29 +337,32 @@ The KV figure comes from one of four places, and the UI says which:
 overestimates badly** (roughly 4x on architectures that only keep a full cache on a subset of
 layers), so calibrating usually _unlocks_ context rather than taking it away.
 
+When a model profile requires calibration, Brain reports the theoretical budget even when a historical
+measurement for the old model profile exists. `stale` remains the separate cache-type warning described above.
+
 ## A benchmark records what it was measured with
 
 One JSON file per run under the brain's `results/`, and **every value the run was measured with goes
 in it**. A bad score is far more often a bad setup than a bad model, and the difference is only ever
 visible from the settings. None of it is recoverable after the fact, so it is written at save time.
 
-`schema: 2` is the record that carries this. Schema 1 kept six profile fields and no setup block, so
+`schema: 2` is the record that carries this. Schema 1 kept six model-profile fields and no setup block, so
 readers must treat everything below as absent on an older run rather than assuming it. Those runs are
 still perfectly good scores. They just cannot say what produced them.
 
-| Block     | Carries                                                                                                                                     |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `profile` | The whole hosting profile: context, KV cache types, flash attention, GPU layers, parallel slots, batch/ubatch, reasoning budget, extra args |
-| `setup`   | The **llama-server argv**, the VRAM fit (requested vs effective context, and why), the KV source, and predicted VRAM against observed       |
-| `suite`   | Which tasks graded it: standard or repo-mined, `--only`, concurrency, depths, and whether generated code was executed or only parsed        |
-| `model`   | Identity plus GGUF geometry: native context length, layer count, KV head count                                                              |
+| Block     | Carries                                                                                                                                   |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `profile` | The whole model profile: context, KV cache types, flash attention, GPU layers, parallel slots, batch/ubatch, reasoning budget, extra args |
+| `setup`   | The **llama-server argv**, the VRAM fit (requested vs effective context, and why), the KV source, and predicted VRAM against observed     |
+| `suite`   | Which tasks graded it: standard or repo-mined, `--only`, concurrency, depths, and whether generated code was executed or only parsed      |
+| `model`   | Identity plus GGUF geometry: native context length, layer count, KV head count                                                            |
 
 The argv is the one that matters most. Every other field is a convenience; that array is the only
 true statement of what ran, and it is what makes a run reproducible by hand.
 
 Two fields exist purely because they are otherwise unrecoverable:
 
-- **`setup.requestedContextSize`.** `fitToBudget` cuts a profile's context down to whatever fits the
+- **`setup.requestedContextSize`.** `fitToBudget` cuts a model profile's context down to whatever fits the
   GPU and runs anyway, which is right at load time and a silent lie afterwards. Without this, the
   record says a model scored 41% at 128k when it was really measured at 16k.
 - **`setup.kvSource`.** A context chosen off the theoretical formula is a different measurement from
@@ -326,13 +385,13 @@ Five tabs, on the `stats-screen.tsx` layout: a pinned header, a pinned toolbar h
 exactly one scroll region. A host picker appears only when more than one connected host has a brain.
 State is per-host and never merged: two brains are two machines with their own GPUs and model stores.
 
-| Tab            | Holds                                                                                                                   |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| **Overview**   | Status, lifecycle, installed runtime, VRAM, CPU/memory/GPU/slots, traffic counters including the reasoning-only warning |
-| **Models**     | The model table, and a detail panel with metadata, the profile editor, the live budget, load, calibrate, sweep, delete  |
-| **Library**    | The download catalog, Hugging Face search, and job progress                                                             |
-| **Benchmarks** | The leaderboard over the run list, and a detail pane that compares two runs; plus a way to run the suite                |
-| **Logs**       | The llama-server tail                                                                                                   |
+| Tab            | Holds                                                                                                                        |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| **Overview**   | Status, lifecycle, installed runtime, VRAM, CPU/memory/GPU/slots, traffic counters including the reasoning-only warning      |
+| **Models**     | The model table, and a detail panel with metadata, the model-profile editor, the live budget, load, calibrate, sweep, delete |
+| **Library**    | The download catalog, Hugging Face search, and job progress                                                                  |
+| **Benchmarks** | The leaderboard over the run list, and a detail pane that compares two runs; plus a way to run the suite                     |
+| **Logs**       | The llama-server tail                                                                                                        |
 
 The model table and the leaderboard are **tables, not cards**: their whole job is comparison between
 rows.
