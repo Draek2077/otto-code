@@ -4,10 +4,10 @@ kind: "reference"
 title: "Qwen Sharp chat templates"
 status: "proposed"
 tags: ["qwen", "openai-compatible-provider", "chat-template", "system-prompt"]
-reference_disposition: "read"
+reference_disposition: "adopted"
 source_url: "https://huggingface.co/peculiar-ragdoll/Qwen-Sharp-Chat-Templates"
 created_at: "2026-08-12T03:04:50.273Z"
-updated_at: "2026-08-12T03:04:50.273Z"
+updated_at: "2026-08-13T03:01:51.645Z"
 ---
 
 # Qwen Sharp chat templates
@@ -24,3 +24,7 @@ A Qwen 3.5/3.6 chat-template variant combines froggeric's fixed template with an
 - time: "2026-08-12T03:04:50.273Z"
   kind: "evidence"
   summary: "User shared Reddit thread https://www.reddit.com/r/LocalLLM/comments/1vju23x/ . The author identifies the portable change as a chat template with force-appended system prompt, while the model-card caveat recommends testing preserve_thinking=false for multi-turn agentic workloads."
+- time: "2026-08-13T03:01:51.645Z"
+  kind: "note"
+  summary: "User explicitly approved shipping the Qwen Sharp template as a Brain-provided Qwen-family hosting profile. The exact Apache-2.0 upstream template is vendored as a built-in preset and defaults preserve_thinking to false for agentic multi-turn use."
+  affects: ["qwen-sharp-chat-templates"]

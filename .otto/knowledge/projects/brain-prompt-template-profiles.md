@@ -5,11 +5,11 @@ title: "Brain prompt and chat-template profiles"
 status: "confirmed"
 tags: ["otto-brain", "llama-server", "model-settings", "qwen"]
 delivery_status: "in_build"
-progress_completed: 1
+progress_completed: 3
 progress_total: 4
 progress_unit: "delivery slices"
 created_at: "2026-08-12T03:08:05.054Z"
-updated_at: "2026-08-12T03:20:04.461Z"
+updated_at: "2026-08-13T07:36:59.189Z"
 ---
 
 # Brain prompt and chat-template profiles
@@ -70,3 +70,19 @@ A selected template is materialized as a Brain-owned file and passed to the acti
   kind: "note"
   summary: "Brain profile persistence now records reload-required state per resident model, returns it when model settings reopen, and clears it only after a successful model load. Hosting-profile storage and launcher materialization groundwork is also in place; UI and protocol surface remain."
   affects: ["brain-prompt-template-profiles"]
+- time: "2026-08-13T07:20:28.233Z"
+  kind: "evidence"
+  summary: "Repaired the shipped Qwen Sharp built-in hosting profile: the exact Apache-2.0 upstream template is vendored as Brain-owned base64 text, preserving `preserve_thinking: false`. Built-in product ids now replace stale records wholesale on load while unknown user-created ids survive. A fresh read keeps the seeded profile in memory without creating `profiles.json`; existing stores are written only when an upgrade changes the built-in, avoiding read-only CLI writes racing the running service snapshot. Targeted hosting-profile tests, Brain build, lint, typecheck, and formatting passed."
+  source: "Commit e6d4917b4; packages/brain/src/config/builtin-hosting-profiles.ts and store.ts"
+- time: "2026-08-13T07:27:18.799Z"
+  kind: "note"
+  summary: "Centralized hosting-profile materialization in Supervisor.start, wired local bench completions through the scheduler for system-addendum injection, and added focused launch-boundary coverage; Brain typecheck, lint, formatting, and targeted tests pass."
+  affects: ["brain-prompt-template-profiles"]
+- time: "2026-08-13T07:33:52.064Z"
+  kind: "note"
+  summary: "Committed GGUF metadata family derivation for uncurated models. Catalog families remain authoritative; Qwen architecture variants normalize into the existing qwen hosting-profile bucket. Focused enrichment tests and required lint, formatting, and typechecks pass."
+  affects: ["brain-prompt-template-profiles"]
+- time: "2026-08-13T07:36:59.189Z"
+  kind: "evidence"
+  summary: "Closed five Brain model-profile write-path validation and hygiene gaps: multiplier-only edits re-clamp context and correctly invalidate calibration only on an actual change; component minimum llama.cpp build requirements are enforced server-side and surfaced as unavailable inventory rows; hosting-profile update ids are collision-safe and product-owned presets are immutable; profile count is capped; deleting a profile removes its materialized template best-effort. Targeted Brain tests, formatting, lint, and typecheck passed; the commit hook also passed workspace typecheck."
+  source: "Commit 63c338c1e; packages/brain/src/config/profile-edit.ts, service/host-api.ts, config/hosting-profiles.ts"
