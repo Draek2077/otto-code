@@ -1,12 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.8.9 - 2026-08-13
 
 ### Added
 
 - Opt-in Vim keybindings in the File Editor, with modal feedback and rebindable Space-leader shortcuts
 - Choose Otto, Vim, Neovim, or a custom command as the desktop File editor
 - Read-only terminal compatibility checks for Vim, Neovim, tmux, Difftastic, and terminal behavior
+- Review code changes with Structural Diff, including moved code, token replacements, and formatting-only edits
+- Configure Brain prompt and template profiles for local models, including model-family defaults
+- Coordinate agent-team runs with one reliable completion handoff
 
 ### Fixed
 
@@ -19,6 +22,8 @@
 - Brain hosting-profile family defaults now recognize compatible downloaded and LM Studio GGUF models outside the curated catalog
 - Hardened Brain model-profile edits against unsafe template ids, stale context windows, incompatible runtime components, and orphaned materialized templates
 - Opening a file with Vim or Neovim now keeps editing in its existing file tab instead of creating a workspace terminal tab
+- Branch switching now carries uncommitted changes into the destination workspace
+- Structural diffs, Refine previews, and Brain job progress now remain stable through reloads and long-running operations
 
 ## 0.8.8 - 2026-08-11
 
