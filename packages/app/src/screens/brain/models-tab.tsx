@@ -11,7 +11,15 @@
  * name. A model you have measured is more useful than one you have not, and
  * alphabetical order buries it.
  */
-import { useCallback, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useQueryClient } from "@tanstack/react-query";
@@ -564,6 +572,19 @@ function LoadUnloadButton({
   );
 }
 
+function useCalibrationCompletion(
+  job: BrainJob | undefined,
+  onCalibrated: () => void,
+  onChanged: () => void,
+): void {
+  useEffect(() => {
+    if (job?.kind === "calibrate" && job.status === "succeeded") {
+      onCalibrated();
+      onChanged();
+    }
+  }, [job?.id, job?.kind, job?.status, onCalibrated, onChanged]);
+}
+
 function ModelActions({
   serverId,
   model,
@@ -572,8 +593,10 @@ function ModelActions({
   job,
   tuningBusy,
   requiresRestart,
+  calibrationRequired,
   onChanged,
   onReloaded,
+  onCalibrated,
   onJobStarted,
 }: {
   serverId: string;
@@ -587,9 +610,12 @@ function ModelActions({
   tuningBusy: boolean;
   /** True once an edit has been saved onto the loaded model without applying it. */
   requiresRestart: boolean;
+  /** The saved tuning profile changed after its last VRAM calibration. */
+  calibrationRequired: boolean;
   onChanged: () => void;
   /** Clears `requiresRestart` once the load call that applies it has landed. */
   onReloaded: () => void;
+  onCalibrated: () => void;
   onJobStarted: (job: BrainJob) => void;
 }) {
   const client = useHostRuntimeClient(serverId);
@@ -599,6 +625,8 @@ function ModelActions({
   const [renameOpen, setRenameOpen] = useState(false);
   const isLoaded = model.state === "loaded" || model.state === "loading";
   const jobRunning = job?.status === "running";
+
+  useCalibrationCompletion(job, onCalibrated, onChanged);
 
   const run = useCallback(
     async (action: ModelAction, call: () => Promise<unknown>, onSuccess?: () => void) => {
@@ -760,6 +788,13 @@ function ModelActions({
           testID="brain-model-delete"
         />
       </View>
+      {calibrationRequired ? (
+        <Alert
+          variant="warning"
+          title="Calibration needed"
+          description="This model has no current VRAM measurement. Calibrate to refresh the budget."
+        />
+      ) : null}
       <AdaptiveRenameModal
         visible={renameOpen}
         title="Rename model"
@@ -823,7 +858,11 @@ function ModelDetail({
   // verdict whenever this detail view is reopened, while a successful reload
   // clears it at the source.
   const [requiresRestart, setRequiresRestart] = useState(false);
+  const [calibrationRequired, setCalibrationRequired] = useState(
+    () => model.profile?.calibrationRequired ?? true,
+  );
   const handleReloaded = useCallback(() => setRequiresRestart(false), []);
+  const handleCalibrated = useCallback(() => setCalibrationRequired(false), []);
 
   return (
     <ScrollView style={styles.detail} contentContainerStyle={styles.detailContent}>
@@ -835,8 +874,10 @@ function ModelDetail({
         job={job}
         tuningBusy={tuningBusy}
         requiresRestart={requiresRestart}
+        calibrationRequired={calibrationRequired}
         onChanged={onChanged}
         onReloaded={handleReloaded}
+        onCalibrated={handleCalibrated}
         onJobStarted={onJobStarted}
       />
       <BrainProfileEditor
@@ -844,10 +885,12 @@ function ModelDetail({
         key={model.id}
         serverId={serverId}
         modelId={model.id}
+        family={model.family}
         components={model.components}
         canWrite={canWrite}
         onSaved={onChanged}
         onRequiresRestartChange={setRequiresRestart}
+        onCalibrationRequiredChange={setCalibrationRequired}
       />
     </ScrollView>
   );

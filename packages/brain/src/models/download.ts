@@ -149,6 +149,11 @@ async function streamRepoFile(
   mkdirSync(path.dirname(destPath), { recursive: true });
   if (existsSync(destPath)) {
     clearPartial(tmp);
+    // A bundle plan counts every selected artifact. An artifact that is
+    // already present is complete work, not zero work, otherwise the progress
+    // denominator includes it while the numerator never can.
+    received.bytes += statSync(destPath).size;
+    onProgress?.({ file: label, receivedBytes: received.bytes });
     return false;
   }
 

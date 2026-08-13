@@ -435,12 +435,21 @@ function proxyBuffered({
       }
     };
 
+    // Injected here, not at queue time: the scheduler may switch models between
+    // buffering and dispatch, and the addendum belongs to whichever model ends
+    // up resident, which is the one `supervisor.profile` now describes.
+    const outbound = injectSystemAddendum(
+      body,
+      supervisor.profile?.chatSystemAddendum ?? null,
+      completionShape(req.url),
+    );
+
     const headers: http.OutgoingHttpHeaders = {};
     for (const [name, value] of Object.entries(req.headers)) {
       if (!HOP_BY_HOP.has(name.toLowerCase())) headers[name] = value;
     }
     headers.host = `${supervisor.host}:${supervisor.internalPort}`;
-    headers["content-length"] = Buffer.byteLength(body);
+    headers["content-length"] = Buffer.byteLength(outbound);
 
     const started = Date.now();
     const upstream = http.request(
@@ -553,8 +562,81 @@ function proxyBuffered({
     // being dispatched to llama-server and is waiting for prompt processing or
     // its first output delta.
     reasoning?.begin(streamId);
-    upstream.end(body);
+    upstream.end(outbound);
   });
+}
+
+/** Which shape a completion path uses to carry its system turn. */
+export type CompletionShape = "anthropic" | "openai";
+
+export function completionShape(url: string | null | undefined): CompletionShape {
+  return /\/v1\/messages/.test(url ?? "") ? "anthropic" : "openai";
+}
+
+/** One text block, as both API shapes spell it inside a structured content array. */
+function textBlock(text: string): Record<string, unknown> {
+  return { type: "text", text };
+}
+
+/**
+ * Append the active hosting profile's system-prompt addendum to a buffered
+ * completion body.
+ *
+ * Appending rather than prepending or replacing is the whole point: the agent's
+ * own system prompt still leads, and the profile's instructions are read last.
+ * A body this cannot understand is forwarded untouched - a malformed or
+ * unfamiliar request must still reach llama-server and get llama-server's own
+ * error, not a 400 invented here.
+ *
+ * Cost is one extra parse/serialize per request, paid only by models whose
+ * profile actually sets an addendum.
+ */
+export function injectSystemAddendum(
+  body: Buffer,
+  addendum: string | null,
+  shape: CompletionShape,
+): Buffer {
+  if (!addendum) return body;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body.toString("utf8"));
+  } catch {
+    return body;
+  }
+  if (!isRecord(parsed)) return body;
+
+  if (shape === "anthropic") {
+    // Anthropic carries the system turn beside `messages`, never inside it.
+    const system = parsed.system;
+    if (system === undefined || system === null || system === "") parsed.system = addendum;
+    else if (typeof system === "string") parsed.system = `${system}\n\n${addendum}`;
+    else if (Array.isArray(system)) parsed.system = [...system, textBlock(addendum)];
+    else return body;
+    return Buffer.from(JSON.stringify(parsed), "utf8");
+  }
+
+  const messages = parsed.messages;
+  if (!Array.isArray(messages)) return body;
+  // `developer` is the newer OpenAI spelling of the same turn; either one is
+  // the message this addendum belongs on.
+  const index = messages.findIndex(
+    (message) => isRecord(message) && (message.role === "system" || message.role === "developer"),
+  );
+  if (index === -1) {
+    parsed.messages = [{ role: "system", content: addendum }, ...messages];
+    return Buffer.from(JSON.stringify(parsed), "utf8");
+  }
+  const existing = messages[index] as Record<string, unknown>;
+  const content = existing.content;
+  let merged: unknown;
+  if (content === undefined || content === null || content === "") merged = addendum;
+  else if (typeof content === "string") merged = `${content}\n\n${addendum}`;
+  else if (Array.isArray(content)) merged = [...content, textBlock(addendum)];
+  else return body;
+  parsed.messages = messages.map((message, at) =>
+    at === index ? { ...existing, content: merged } : message,
+  );
+  return Buffer.from(JSON.stringify(parsed), "utf8");
 }
 
 // Whether a completion may run: either a resolved model, or a status+message to

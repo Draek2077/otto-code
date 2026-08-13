@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { bundleDownloadPlan, pullModel } from "./download.js";
+import { bundleDownloadPlan, downloadRepoFiles, pullModel } from "./download.js";
 import type { CatalogModel } from "../config/schema.js";
 
 const originalFetch = globalThis.fetch;
@@ -152,6 +152,25 @@ test("keeps a short range response as a partial instead of publishing it", async
   assert.equal(await pullModel({ model: model(), destRoot: root }), destination);
   assert.equal(fs.readFileSync(destination, "utf8"), "helloworld");
   assert.ok(!fs.existsSync(`${partial}.json`));
+});
+
+test("counts an already-downloaded bundle artifact toward aggregate progress", async () => {
+  const existing = path.join(root, "author", "repo", "primary.gguf");
+  fs.mkdirSync(path.dirname(existing), { recursive: true });
+  fs.writeFileSync(existing, "old");
+  const progress: number[] = [];
+  const fetchMock = vi.fn(async () => new Response("new-data", { status: 200 }));
+  vi.stubGlobal("fetch", fetchMock);
+
+  await downloadRepoFiles({
+    repo: "author/repo",
+    files: ["primary.gguf", "projector.gguf"],
+    destRoot: root,
+    onProgress: (event) => progress.push(event.receivedBytes),
+  });
+
+  assert.deepEqual(progress, [3, 11]);
+  assert.equal(fetchMock.mock.calls.length, 1);
 });
 
 void originalFetch;

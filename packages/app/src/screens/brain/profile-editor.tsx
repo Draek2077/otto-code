@@ -19,24 +19,28 @@
  * while a control is still being scrubbed.
  */
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type {
   BrainBudget,
   BrainInventoryModel,
+  BrainHostingProfile,
   BrainProfile,
   BrainProfileField,
   BrainProfileWarning,
 } from "@otto-code/protocol/messages";
 import { Minus, Plus } from "@/components/icons/material-icons";
 import { Alert } from "@/components/ui/alert";
+import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
+import { Field, FormTextInput } from "@/components/ui/form-field";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Switch } from "@/components/ui/switch";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import type { Theme } from "@/styles/theme";
+import { confirmDialog } from "@/utils/confirm-dialog";
 import { calibrationLabel, formatGiB } from "./use-brain-data";
 
 const ThemedMinus = withUnistyles(Minus);
@@ -51,24 +55,44 @@ const plusIcon = <ThemedPlus uniProps={smallIcon} />;
 
 /** How long to wait after the last keystroke before re-pricing the budget. */
 const BUDGET_DEBOUNCE_MS = 250;
+const HOSTING_PROFILE_SHEET_HEADER = {
+  title: "Prompt & template profiles",
+  subtitle: "Stored on this Brain and applied on reload.",
+};
 
-type DraftValue = string | number | boolean;
+type DraftValue = string | number | boolean | null;
 type Draft = Record<string, DraftValue>;
 
 function readDraftValue(profile: BrainProfile | null, key: string): DraftValue | undefined {
   const value = (profile as Record<string, unknown> | null)?.[key];
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
     return value;
   }
   return undefined;
 }
 
+/**
+ * Profile keys the editor owns that the brain does not describe as a field.
+ *
+ * The prompt/template choice is made in its own dialog rather than by a
+ * descriptor-driven row, so it has no entry in `fields`. Seeding it separately
+ * is what makes the saved selection survive: a draft built from `fields` alone
+ * dropped both keys on load and again on every autosave reply, so the control
+ * read back as "Off" no matter what the brain had actually stored.
+ */
+const EXTRA_DRAFT_KEYS = ["hostingProfileMode", "hostingProfileId"] as const;
+
 function buildDraft(profile: BrainProfile | null, fields: BrainProfileField[]): Draft {
   const draft: Draft = {};
-  for (const field of fields) {
-    const value = readDraftValue(profile, field.key);
+  for (const key of [...fields.map((field) => field.key), ...EXTRA_DRAFT_KEYS]) {
+    const value = readDraftValue(profile, key);
     if (value !== undefined) {
-      draft[field.key] = value;
+      draft[key] = value;
     }
   }
   return draft;
@@ -78,9 +102,28 @@ function buildDraft(profile: BrainProfile | null, fields: BrainProfileField[]): 
 function draftToOverrides(draft: Draft): Record<string, string> {
   const overrides: Record<string, string> = {};
   for (const [key, value] of Object.entries(draft)) {
+    // The prompt/template choice costs no VRAM, so it has nothing to say to the
+    // budget preview and would only arrive there as the string "null".
+    if ((EXTRA_DRAFT_KEYS as readonly string[]).includes(key)) continue;
     overrides[key] = String(value);
   }
   return overrides;
+}
+
+/**
+ * The draft to send, with the prompt/template keys dropped unless this edit
+ * changed them.
+ *
+ * They live in the draft for display, but the brain validates a selection it is
+ * sent, so resending an unchanged one would make an unrelated field edit fail
+ * against a profile some other client had meanwhile deleted.
+ */
+function hostingKeysWhenChanged(draft: Draft, saved: Draft): Draft {
+  const patch: Draft = { ...draft };
+  for (const key of EXTRA_DRAFT_KEYS) {
+    if (patch[key] === saved[key]) delete patch[key];
+  }
+  return patch;
 }
 
 function draftsMatch(a: Draft, b: Draft): boolean {
@@ -91,6 +134,22 @@ function draftsMatch(a: Draft, b: Draft): boolean {
     }
   }
   return true;
+}
+
+function hostingProfileSummary(
+  mode: string,
+  profile: BrainHostingProfile | undefined,
+  familyDefault: BrainHostingProfile | undefined,
+): string {
+  if (mode === "inherit") {
+    return familyDefault
+      ? `System default (${familyDefault.name}) · applies next load`
+      : "System default · none set for this model family";
+  }
+  if (mode === "custom") {
+    return profile ? `${profile.name} · applies next load` : "Custom profile · no longer available";
+  }
+  return "Off · use the template embedded in the model";
 }
 
 function NumberField({
@@ -351,16 +410,22 @@ function BudgetPanel({
   );
 }
 
+// This screen coordinates independent model, component, budget, and hosting-profile state.
+// Keep the orchestration here so every persist path feeds the same saved draft.
+// oxlint-disable-next-line complexity
 export function BrainProfileEditor({
   serverId,
   modelId,
+  family,
   components,
   canWrite,
   onSaved,
   onRequiresRestartChange,
+  onCalibrationRequiredChange,
 }: {
   serverId: string;
   modelId: string;
+  family?: string | null;
   /** Bundle-only companion artifacts. Plain models omit this surface entirely. */
   components?: BrainInventoryModel["components"];
   /** False when the brain has not opted into remote configuration. */
@@ -368,6 +433,8 @@ export function BrainProfileEditor({
   onSaved: () => void;
   /** Whether the just-saved edit is sitting on the loaded model, unapplied. */
   onRequiresRestartChange: (requiresRestart: boolean) => void;
+  /** Whether this saved profile still needs a fresh VRAM calibration. */
+  onCalibrationRequiredChange: (required: boolean) => void;
 }) {
   const isCompact = useIsCompactFormFactor();
   const client = useHostRuntimeClient(serverId);
@@ -384,6 +451,16 @@ export function BrainProfileEditor({
   const [error, setError] = useState<string | null>(null);
   const [enabledComponents, setEnabledComponents] = useState<string[]>([]);
   const [savedComponents, setSavedComponents] = useState<string[]>([]);
+  const [hostingProfiles, setHostingProfiles] = useState<BrainHostingProfile[]>([]);
+  const [familyHostingProfileId, setFamilyHostingProfileId] = useState<string | null>(null);
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+  const [profileEditorOpen, setProfileEditorOpen] = useState(false);
+  const [editingHostingProfile, setEditingHostingProfile] = useState<BrainHostingProfile | null>(
+    null,
+  );
+  const [profileName, setProfileName] = useState("");
+  const [profilePrompt, setProfilePrompt] = useState("");
+  const [profileTemplate, setProfileTemplate] = useState("");
 
   // Load the profile and its descriptors whenever the selected model changes.
   useEffect(() => {
@@ -409,6 +486,9 @@ export function BrainProfileEditor({
         setWarnings(result.warnings);
         setCalibration(result.calibration?.state ?? null);
         onRequiresRestartChange(result.requiresRestart);
+        onCalibrationRequiredChange(result.profile?.calibrationRequired ?? true);
+        setHostingProfiles(result.hostingProfiles ?? []);
+        setFamilyHostingProfileId(result.familyHostingProfileId ?? null);
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : String(err));
@@ -422,7 +502,7 @@ export function BrainProfileEditor({
     return () => {
       cancelled = true;
     };
-  }, [client, modelId, onRequiresRestartChange]);
+  }, [client, modelId, onCalibrationRequiredChange, onRequiresRestartChange]);
 
   // Preview the VRAM budget for the draft, independent of saving it - this is
   // what answers "what happens if I keep this" while a control is still being
@@ -474,7 +554,7 @@ export function BrainProfileEditor({
         setError(null);
         try {
           const result = await client.brainModelProfileSet(modelId, {
-            ...draft,
+            ...hostingKeysWhenChanged(draft, saved),
             enabledComponents,
           });
           // Drop a reply that a newer edit has already superseded, or the
@@ -491,6 +571,8 @@ export function BrainProfileEditor({
           setSavedComponents(enabled);
           setWarnings(result.warnings);
           setCalibration(result.calibration?.state ?? null);
+          setHostingProfiles(result.hostingProfiles ?? []);
+          setFamilyHostingProfileId(result.familyHostingProfileId ?? null);
           setBudget(result.budget);
           setMaxContext(result.maxContextThatFits);
           // The brain clamps out-of-range values rather than refusing the
@@ -500,6 +582,7 @@ export function BrainProfileEditor({
             setError(result.adjustments.join("; "));
           }
           onRequiresRestartChange(result.requiresRestart);
+          onCalibrationRequiredChange(result.profile?.calibrationRequired ?? true);
           onSaved();
         } catch (err) {
           if (requestId === saveRequestRef.current) {
@@ -522,6 +605,7 @@ export function BrainProfileEditor({
     loading,
     modelId,
     onSaved,
+    onCalibrationRequiredChange,
     onRequiresRestartChange,
     saved,
     savedComponents,
@@ -532,7 +616,17 @@ export function BrainProfileEditor({
     const hasVisionComponent = components?.some(
       (component) => component.role === "vision_projector",
     );
-    return hasVisionComponent ? fields.filter((field) => field.key !== "vision") : fields;
+    const withoutLegacyVision = hasVisionComponent
+      ? fields.filter((field) => field.key !== "vision")
+      : fields;
+    // These two settings describe one decision. Keep the multiplier immediately
+    // ahead of its context size even if a future Brain adds descriptors before it.
+    return [...withoutLegacyVision].sort((a, b) => {
+      const order = ["contextMultiplier", "contextSize"];
+      const aIndex = order.indexOf(a.key);
+      const bIndex = order.indexOf(b.key);
+      return (aIndex === -1 ? order.length : aIndex) - (bIndex === -1 ? order.length : bIndex);
+    });
   }, [components, fields]);
   const hasLegacyVisionField = visibleFields.some((field) => field.key === "vision");
 
@@ -578,6 +672,217 @@ export function BrainProfileEditor({
     }
   }, [maxContext]);
 
+  const selectedHostingProfileId =
+    typeof (draft as Record<string, unknown>).hostingProfileId === "string"
+      ? ((draft as Record<string, string>).hostingProfileId ?? null)
+      : null;
+  const selectedHostingProfile = hostingProfiles.find(
+    (profile) => profile.id === selectedHostingProfileId,
+  );
+  const familyDefaultProfile = hostingProfiles.find(
+    (profile) => profile.id === familyHostingProfileId,
+  );
+  // Mirror the brain's authoritative selection into both drafts at once. Writing
+  // only `draft` would leave the autosave effect seeing a dirty profile and
+  // immediately re-saving what the server just told us.
+  const syncHostingSelection = useCallback((profile: BrainProfile | null | undefined) => {
+    const selection: Draft = {
+      hostingProfileId: profile?.hostingProfileId ?? null,
+      hostingProfileMode: profile?.hostingProfileMode ?? "inherit",
+    };
+    setDraft((current) => ({ ...current, ...selection }));
+    setSaved((current) => ({ ...current, ...selection }));
+  }, []);
+  const openNewHostingProfile = useCallback(() => {
+    setEditingHostingProfile(null);
+    setProfileName("");
+    setProfilePrompt("");
+    setProfileTemplate("");
+    setProfileEditorOpen(true);
+    setProfileDialogOpen(true);
+  }, []);
+  const openEditHostingProfile = useCallback((profile: BrainHostingProfile) => {
+    setEditingHostingProfile(profile);
+    setProfileName(profile.name);
+    setProfilePrompt(profile.systemPromptAddendum ?? "");
+    setProfileTemplate(profile.template ?? "");
+    setProfileEditorOpen(true);
+    setProfileDialogOpen(true);
+  }, []);
+  const saveHostingProfile = useCallback(() => {
+    if (!client || !modelId) return;
+    void (async () => {
+      try {
+        const result = await client.brainModelProfileSet(modelId, {
+          hostingProfile: {
+            id: editingHostingProfile?.id ?? "",
+            name: profileName,
+            // Must match what the brain files this model under. Reading it off
+            // the first listed profile instead would file a new profile under a
+            // sibling's family the moment `family` was not supplied.
+            family: family || "generic",
+            description: "",
+            template: profileTemplate.trim() || null,
+            systemPromptAddendum: profilePrompt.trim() || null,
+            templateKwargs: editingHostingProfile?.templateKwargs ?? {},
+          },
+        });
+        setHostingProfiles(result.hostingProfiles ?? []);
+        setFamilyHostingProfileId(result.familyHostingProfileId ?? null);
+        syncHostingSelection(result.profile);
+        // Saving a profile returns to the library it belongs to. A newly created
+        // one comes back already selected on this model, so the library shows it
+        // as Selected instead of making the user reopen Manage to find it.
+        setProfileEditorOpen(false);
+        onRequiresRestartChange(result.requiresRestart);
+        onCalibrationRequiredChange(result.profile?.calibrationRequired ?? true);
+        onSaved();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    })();
+  }, [
+    client,
+    editingHostingProfile,
+    family,
+    modelId,
+    onRequiresRestartChange,
+    onCalibrationRequiredChange,
+    onSaved,
+    syncHostingSelection,
+    profileName,
+    profilePrompt,
+    profileTemplate,
+  ]);
+  const deleteHostingProfile = useCallback(
+    (profile: BrainHostingProfile) => {
+      if (!client) return;
+      void (async () => {
+        const confirmed = await confirmDialog({
+          title: `Delete ${profile.name}?`,
+          message: "Models using this profile will switch to Off.",
+          confirmLabel: "Delete",
+          destructive: true,
+        });
+        if (!confirmed) return;
+        try {
+          const result = await client.brainModelProfileSet(modelId, {
+            deleteHostingProfileId: profile.id,
+          });
+          setHostingProfiles(result.hostingProfiles ?? []);
+          setFamilyHostingProfileId(result.familyHostingProfileId ?? null);
+          syncHostingSelection(result.profile);
+          onRequiresRestartChange(result.requiresRestart);
+          onCalibrationRequiredChange(result.profile?.calibrationRequired ?? true);
+          onSaved();
+          setProfileEditorOpen(false);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
+      })();
+    },
+    [
+      client,
+      modelId,
+      onCalibrationRequiredChange,
+      onRequiresRestartChange,
+      onSaved,
+      syncHostingSelection,
+    ],
+  );
+  /** `null` clears the family default, which is the only way back off it. */
+  const setFamilyDefault = useCallback(
+    (profileId: string | null) => {
+      if (!client) return;
+      void (async () => {
+        try {
+          const result = await client.brainModelProfileSet(modelId, {
+            familyHostingProfileId: profileId,
+          });
+          setHostingProfiles(result.hostingProfiles ?? []);
+          setFamilyHostingProfileId(result.familyHostingProfileId ?? null);
+          syncHostingSelection(result.profile);
+          onRequiresRestartChange(result.requiresRestart);
+          onSaved();
+        } catch (err) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
+      })();
+    },
+    [client, modelId, onRequiresRestartChange, onSaved, syncHostingSelection],
+  );
+  const selectedHostingProfileMode =
+    typeof (draft as Record<string, unknown>).hostingProfileMode === "string"
+      ? ((draft as Record<string, string>).hostingProfileMode ?? "inherit")
+      : "inherit";
+  const selectHostingProfileMode = useCallback(
+    (mode: "inherit" | "off" | "custom", profileId: string | null = null) => {
+      setDraft((current) => ({
+        ...current,
+        hostingProfileMode: mode,
+        hostingProfileId: profileId,
+      }));
+    },
+    [],
+  );
+  const profileDialogFooter = useMemo(
+    () => (
+      <View style={styles.profileFooter}>
+        {profileEditorOpen ? (
+          <>
+            {editingHostingProfile ? (
+              <Button
+                variant="destructive"
+                onPress={() => deleteHostingProfile(editingHostingProfile)}
+              >
+                Delete
+              </Button>
+            ) : null}
+            <Button variant="secondary" onPress={() => setProfileEditorOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="default"
+              onPress={saveHostingProfile}
+              disabled={!profileName.trim() || !profileTemplate.trim()}
+            >
+              Save profile
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button variant="secondary" onPress={() => setProfileDialogOpen(false)}>
+              Close
+            </Button>
+            <Button variant="default" onPress={openNewHostingProfile}>
+              New profile
+            </Button>
+          </>
+        )}
+      </View>
+    ),
+    [
+      deleteHostingProfile,
+      editingHostingProfile,
+      openNewHostingProfile,
+      profileEditorOpen,
+      profileName,
+      profileTemplate,
+      saveHostingProfile,
+    ],
+  );
+  const profileDialogHeader = useMemo(
+    () =>
+      profileEditorOpen
+        ? {
+            title: editingHostingProfile ? "Edit profile" : "New profile",
+            subtitle: "Applies when the model reloads.",
+            back: { onPress: () => setProfileEditorOpen(false), label: "Back to profiles" },
+          }
+        : HOSTING_PROFILE_SHEET_HEADER,
+    [editingHostingProfile, profileEditorOpen],
+  );
+
   if (loading) {
     return (
       <View style={styles.loading}>
@@ -597,11 +902,9 @@ export function BrainProfileEditor({
       ) : null}
 
       <View style={isCompact ? styles.gridCompact : styles.grid}>
+        <BudgetPanel budget={budget} calibration={calibration} />
         {visibleFields.map((field) => (
           <Fragment key={field.key}>
-            {field.key === "contextSize" ? (
-              <BudgetPanel budget={budget} calibration={calibration} />
-            ) : null}
             <FieldRow
               field={field}
               value={draft[field.key]}
@@ -617,11 +920,175 @@ export function BrainProfileEditor({
               : null}
           </Fragment>
         ))}
+        <View style={styles.fieldRow}>
+          <View style={styles.fieldLabelColumn}>
+            <Text style={styles.fieldLabel}>Prompt & template</Text>
+            <Text style={styles.fieldUnavailable}>
+              {hostingProfileSummary(
+                selectedHostingProfileMode,
+                selectedHostingProfile,
+                familyDefaultProfile,
+              )}
+            </Text>
+          </View>
+          <Button
+            variant="secondary"
+            size="sm"
+            onPress={() => setProfileDialogOpen(true)}
+            disabled={!canWrite}
+          >
+            Manage
+          </Button>
+        </View>
       </View>
 
       {blocking ? <Alert variant="error" description={blocking.message} /> : null}
 
       {saving ? <Text style={styles.savingHint}>Saving…</Text> : null}
+      <AdaptiveModalSheet
+        visible={profileDialogOpen}
+        onClose={() => {
+          setProfileDialogOpen(false);
+          setProfileEditorOpen(false);
+        }}
+        header={profileDialogHeader}
+        footer={profileDialogFooter}
+        desktopMaxWidth={640}
+      >
+        {error ? <Alert variant="error" description={error} /> : null}
+        {profileEditorOpen ? (
+          <View style={styles.profileEditor}>
+            <Field label="Profile name" hint="A short label visible to every model in this family.">
+              <FormTextInput
+                placeholder="For example: Coding with tools"
+                initialValue={profileName}
+                // Reset only when switching records. Including the live value
+                // remounted this controlled input after every character and
+                // made typing beyond one character impossible.
+                resetKey={`${editingHostingProfile?.id ?? "new"}:name`}
+                onChangeText={setProfileName}
+              />
+            </Field>
+            <Field
+              label="System-prompt addendum"
+              hint="Optional instructions appended to Otto's system prompt. Do not paste a full chat template here."
+            >
+              <FormTextInput
+                placeholder="For example: Be concise and preserve tool-call syntax."
+                multiline
+                initialValue={profilePrompt}
+                resetKey={`${editingHostingProfile?.id ?? "new"}:prompt`}
+                onChangeText={setProfilePrompt}
+                style={styles.profileTextArea}
+              />
+            </Field>
+            <Field
+              label="Jinja chat template"
+              hint="Required. Paste the complete llama.cpp-compatible Jinja template that formats messages for this model family."
+            >
+              <FormTextInput
+                placeholder="{% for message in messages %}…{% endfor %}"
+                multiline
+                initialValue={profileTemplate}
+                resetKey={`${editingHostingProfile?.id ?? "new"}:template`}
+                onChangeText={setProfileTemplate}
+                style={styles.profileTextArea}
+              />
+            </Field>
+          </View>
+        ) : (
+          <View style={styles.profileLibrary}>
+            <Text style={styles.profileIntro}>
+              Choose the formatting this model uses. Changes take effect the next time it loads.
+            </Text>
+            <Text style={styles.profileSectionLabel}>This model</Text>
+            <Pressable
+              style={[
+                styles.profileChoice,
+                selectedHostingProfileMode === "inherit" && styles.profileChoiceSelected,
+                !familyHostingProfileId && styles.profileChoiceDisabled,
+              ]}
+              disabled={!familyHostingProfileId}
+              onPress={() => selectHostingProfileMode("inherit")}
+            >
+              <View style={styles.profileChoiceCopy}>
+                <Text style={styles.profileChoiceTitle}>System default</Text>
+                <Text style={styles.profileChoiceHint}>
+                  {familyDefaultProfile
+                    ? `Use this family’s default profile (${familyDefaultProfile.name})`
+                    : "No default profile has been set for this family"}
+                </Text>
+              </View>
+              {selectedHostingProfileMode === "inherit" ? (
+                <Text style={styles.profileChoiceStatus}>Selected</Text>
+              ) : null}
+            </Pressable>
+            <Pressable
+              style={[
+                styles.profileChoice,
+                selectedHostingProfileMode === "off" && styles.profileChoiceSelected,
+              ]}
+              onPress={() => selectHostingProfileMode("off")}
+            >
+              <View style={styles.profileChoiceCopy}>
+                <Text style={styles.profileChoiceTitle}>Off</Text>
+                <Text style={styles.profileChoiceHint}>
+                  Use the template embedded in this model
+                </Text>
+              </View>
+              {selectedHostingProfileMode === "off" ? (
+                <Text style={styles.profileChoiceStatus}>Selected</Text>
+              ) : null}
+            </Pressable>
+            <Text style={styles.profileSectionLabel}>Custom profiles</Text>
+            {hostingProfiles.length === 0 ? (
+              <Text style={styles.profileEmpty}>No custom profiles for this model family yet.</Text>
+            ) : (
+              hostingProfiles.map((profile) => {
+                const isSelected =
+                  profile.id === selectedHostingProfileId &&
+                  selectedHostingProfileMode === "custom";
+                const isDefault = profile.id === familyHostingProfileId;
+                return (
+                  <View
+                    key={profile.id}
+                    style={[styles.profileChoice, isSelected && styles.profileChoiceSelected]}
+                  >
+                    <Pressable
+                      style={styles.profileChoiceCopy}
+                      onPress={() => selectHostingProfileMode("custom", profile.id)}
+                    >
+                      <Text style={styles.profileChoiceTitle}>{profile.name}</Text>
+                      <Text style={styles.profileChoiceHint}>
+                        {isDefault
+                          ? "System default for this family"
+                          : "Custom prompt and Jinja template"}
+                      </Text>
+                    </Pressable>
+                    <View style={styles.profileChoiceActions}>
+                      {isSelected ? <Text style={styles.profileChoiceStatus}>Selected</Text> : null}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onPress={() => openEditHostingProfile(profile)}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onPress={() => setFamilyDefault(isDefault ? null : profile.id)}
+                      >
+                        {isDefault ? "Clear default" : "Set default"}
+                      </Button>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        )}
+      </AdaptiveModalSheet>
     </View>
   );
 }
@@ -747,5 +1214,84 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
     textAlign: "right",
+  },
+  profileLibrary: {
+    gap: theme.spacing[3],
+  },
+  profileEditor: {
+    gap: theme.spacing[4],
+  },
+  profileIntro: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    lineHeight: Math.round(theme.fontSize.sm * 1.4),
+  },
+  profileSectionLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+    textTransform: "uppercase",
+  },
+  profileChoice: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[3],
+    minHeight: 64,
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+    borderWidth: 1,
+    borderColor: theme.colors.surface2,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.surface0,
+  },
+  profileChoiceSelected: {
+    borderColor: theme.colors.accent,
+    backgroundColor: theme.colors.surface2,
+  },
+  profileChoiceDisabled: {
+    opacity: theme.opacity[50],
+  },
+  profileChoiceCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: theme.spacing[1],
+  },
+  profileChoiceTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+  },
+  profileChoiceHint: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  profileChoiceStatus: {
+    color: theme.colors.accent,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+  },
+  profileChoiceActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+  },
+  profileEmpty: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    paddingVertical: theme.spacing[2],
+  },
+  profileFooter: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  profileTextArea: {
+    minHeight: 120,
+    textAlignVertical: "top",
+    fontFamily: theme.fontFamily.mono,
   },
 }));

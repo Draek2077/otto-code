@@ -26,6 +26,7 @@ import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import type { Theme } from "@/styles/theme";
 import { confirmDialog } from "@/utils/confirm-dialog";
+import { activeBrainQuantJob, selectInitialBrainQuant } from "./brain-quant-selection";
 
 // ---------------------------------------------------------------------------
 // Themed leaf icons (no useUnistyles: banned - see docs/unistyles.md)
@@ -654,7 +655,14 @@ function CatalogRow({
     if (!client) return;
     try {
       const inventory = await client.brainModelsInventory();
-      const installed = inventory.models.find((entry) => entry.id.startsWith(`${model.repo}/`));
+      // A companion belongs to the selected primary, even though a projector
+      // can be shared on disk by sibling quants in the same repository.
+      const installed =
+        inventory.models.find(
+          (entry) =>
+            entry.id.startsWith(`${model.repo}/`) &&
+            entry.quant?.toLowerCase() === bundleQuant.toLowerCase(),
+        ) ?? inventory.models.find((entry) => entry.id.startsWith(`${model.repo}/`));
       setBundleModelId(installed?.id ?? null);
       const available = new Set(
         installed?.components
@@ -669,7 +677,7 @@ function CatalogRow({
     } catch (error) {
       reportError("Unable to refresh bundle components", error);
     }
-  }, [client, model]);
+  }, [bundleQuant, client, model]);
   const openBundle = useCallback(() => {
     setBundleOpen(true);
     void refreshComponentAvailability();
@@ -1077,18 +1085,12 @@ function QuantPicker({
   const requestSeq = useRef(0);
   const observedRevision = useRef(modelRevision);
 
-  // Found by matching the job's target prefix rather than `selected`, so a
-  // pull started before this component last mounted (e.g. before a tab
-  // switch away and back) is still found here even though `selected` and
-  // `loaded` have reset to their initial values.
+  // Before selection, recover a repository pull after remount. Once a quant
+  // is selected, it alone owns this row's progress and cancel control: sibling
+  // quant pulls are allowed to run at the same time.
   const activeJob = useMemo(
-    () =>
-      jobs.find(
-        (job) =>
-          job.kind === "pull" &&
-          (jobTarget ? job.target === jobTarget : (job.target?.startsWith(`${repo}#`) ?? false)),
-      ),
-    [jobTarget, jobs, repo],
+    () => activeBrainQuantJob(jobs, repo, selected, jobTarget),
+    [jobTarget, jobs, repo, selected],
   );
   const downloadProgressIcon = useMemo(
     () =>
@@ -1147,11 +1149,15 @@ function QuantPicker({
     const activeQuant = jobTarget
       ? initialQuant
       : (activeJob?.target?.slice(repo.length + 1) ?? null);
-    const quant = activeJob
-      ? activeQuant
-      : (quants.find((candidate) => candidate.installed)?.quant ?? initialQuant);
-    if (quant) setSelected(quant);
-  }, [loaded, activeJob, initialQuant, jobTarget, quants, repo, selected]);
+    const quant = selectInitialBrainQuant(quants, initialQuant, activeJob ? activeQuant : null);
+    if (quant) {
+      setSelected(quant);
+      // Catalog bundle controls keep their own selected primary. Synchronize
+      // that state with this automatic installed-quant choice, not just with
+      // explicit dropdown clicks, so Options targets what the user sees.
+      onQuantChange?.(quant);
+    }
+  }, [loaded, activeJob, initialQuant, jobTarget, onQuantChange, quants, repo, selected]);
 
   const options = useMemo<SelectFieldOption<string>[]>(
     () =>

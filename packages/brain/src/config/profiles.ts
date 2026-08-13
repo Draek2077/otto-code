@@ -35,6 +35,7 @@ export function defaultProfile(model: Model | null, defaults?: ProfileDefaults):
     // let the VRAM budget pull it down.
     contextSize: Math.min(nativeContext, contextCap),
     contextMultiplier: 1,
+    calibrationRequired: true,
     cacheTypeK: defaults?.cacheTypeK ?? "q8_0",
     cacheTypeV: defaults?.cacheTypeV ?? "q8_0",
     flashAttention: defaults?.flashAttention ?? true, // required for a quantised V cache
@@ -56,8 +57,12 @@ export function defaultProfile(model: Model | null, defaults?: ProfileDefaults):
     ubatchSize: null,
     extraArgs: [],
     hostingProfileId: null,
+    // Inherit, not off: a new model in a family that has a default should use
+    // it. With no family default configured this resolves to nothing anyway.
+    hostingProfileMode: "inherit",
     chatTemplateFile: null,
     chatTemplateKwargs: {},
+    chatSystemAddendum: null,
   };
 }
 
@@ -91,6 +96,16 @@ export function forModel(store: ProfilesStore, model: Model, defaults?: ProfileD
   return {
     ...base,
     ...stored,
+    // COMPAT(hostingProfileMode): added in v0.8.8, remove after 2027-02-12.
+    // The first hosting-profile store only had an id, and a non-null id there
+    // was an explicit custom choice. Such a profile parses as `inherit` (the
+    // schema default), so promote it. Writers hold the inverse invariant - the
+    // id is nulled whenever the mode is not `custom` - so a stored id can only
+    // mean a legacy record, never a stale leftover of a newer explicit choice.
+    hostingProfileMode:
+      stored.hostingProfileId && stored.hostingProfileMode === "inherit"
+        ? "custom"
+        : stored.hostingProfileMode,
     enabledComponents,
     modelPath: model.modelPath,
     mmprojPath: mmproj?.path ?? (model.components ? null : model.mmprojPath),
@@ -214,5 +229,9 @@ export function putCalibration(
       writable: true,
     });
   }
+  // Calibration is a durable verdict about the persisted model profile, not a
+  // transient UI hint. Every completion path (CLI, TUI, and host job) shares
+  // this helper, so clearing it here keeps the state consistent everywhere.
+  put(store, model, { ...profile, calibrationRequired: false });
   return store;
 }

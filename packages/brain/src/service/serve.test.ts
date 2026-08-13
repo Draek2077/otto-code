@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { BrainConfigSchema, type BrainConfig } from "../config/schema.js";
+import { HOST_API_VERSION } from "./host-api.js";
 import { effectiveAuthToken, startService } from "./serve.js";
 
 // The bind guard must throw before any process is spawned; a truthy stub runtime
@@ -245,7 +246,7 @@ describe("the status event stream", () => {
     });
     try {
       await expect(getJson(listenPort(handle), "/__host/status")).resolves.toMatchObject({
-        apiVersion: 2,
+        apiVersion: HOST_API_VERSION,
         capabilities: { events: true, liveInference: true },
       });
     } finally {

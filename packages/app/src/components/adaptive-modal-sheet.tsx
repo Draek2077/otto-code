@@ -142,7 +142,20 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
   headerBackButton: {
+    minHeight: 40,
+    paddingHorizontal: theme.spacing[3],
     borderRadius: theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface2,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  headerBackLabel: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
   },
   headerLeadingSlot: {
     alignItems: "center",
@@ -156,6 +169,10 @@ const styles = StyleSheet.create((theme) => ({
   title: {
     fontSize: theme.fontSize.lg,
     fontWeight: theme.fontWeight.medium,
+  },
+  subtitle: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
   },
   headerActions: {
     flexDirection: "row",
@@ -428,12 +445,17 @@ export function SheetHeaderView({
             accessibilityLabel={back?.accessibilityLabel ?? back?.label ?? t("common.actions.back")}
             testID="sheet-header-back"
           >
-            {({ pressed }) => (
-              <ArrowLeft
-                size={theme.iconSize.md}
-                color={pressed ? theme.colors.foreground : theme.colors.foregroundMuted}
-              />
-            )}
+            {({ pressed }) => {
+              const color = pressed ? theme.colors.foreground : theme.colors.foregroundMuted;
+              return (
+                <>
+                  <ArrowLeft size={theme.iconSize.md} color={color} />
+                  {back?.label ? (
+                    <Text style={[styles.headerBackLabel, { color }]}>{back.label}</Text>
+                  ) : null}
+                </>
+              );
+            }}
           </Pressable>
         ) : null}
         {header.leading ? <View style={styles.headerLeadingSlot}>{header.leading}</View> : null}
@@ -441,7 +463,11 @@ export function SheetHeaderView({
           <Text style={titleStyle} numberOfLines={1}>
             {header.title}
           </Text>
-          {header.subtitle}
+          {typeof header.subtitle === "string" ? (
+            <Text style={styles.subtitle}>{header.subtitle}</Text>
+          ) : (
+            header.subtitle
+          )}
         </View>
         {header.actions ? <View style={styles.headerActions}>{header.actions}</View> : null}
         {showCloseButton ? (
@@ -497,12 +523,17 @@ export function InlineHeaderView({ header }: { header: SheetHeader }) {
               }
               testID="sheet-header-back"
             >
-              {({ pressed }) => (
-                <ArrowLeft
-                  size={16}
-                  color={pressed ? theme.colors.foreground : theme.colors.foregroundMuted}
-                />
-              )}
+              {({ pressed }) => {
+                const color = pressed ? theme.colors.foreground : theme.colors.foregroundMuted;
+                return (
+                  <>
+                    <ArrowLeft size={16} color={color} />
+                    {back?.label ? (
+                      <Text style={[styles.headerBackLabel, { color }]}>{back.label}</Text>
+                    ) : null}
+                  </>
+                );
+              }}
             </Pressable>
           ) : null}
           {header.leading ? <View style={styles.headerLeadingSlot}>{header.leading}</View> : null}

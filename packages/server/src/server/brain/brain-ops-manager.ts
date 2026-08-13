@@ -49,6 +49,24 @@ const MAX_JOB_LOG_CHARS = 4_000;
 const TERMINAL_JOB_RETAIN_MS = 3 * 60_000;
 const MAX_MESSAGE_CHARS = 200;
 
+/**
+ * Job output is human-readable and may be chunked arbitrarily. A progress
+ * indicator must never move backwards because an incidental percentage in a
+ * later status line is not a new byte measurement.
+ */
+export function advanceJobPercent(current: number | null, text: string): number | null {
+  let next = current;
+  for (const line of text.split(/[\r\n]+/u)) {
+    const pctMatch = /(\d{1,3})\s*%/u.exec(line);
+    if (!pctMatch) continue;
+    const pct = Number.parseInt(pctMatch[1], 10);
+    if (Number.isFinite(pct)) {
+      next = Math.max(next ?? 0, Math.max(0, Math.min(100, pct)));
+    }
+  }
+  return next;
+}
+
 export interface BrainOpsManagerOptions {
   logger: Logger;
   ottoHome: string;
@@ -462,18 +480,12 @@ export class BrainOpsManager {
       return;
     }
     job.errBuffer = appendTail(job.errBuffer, text);
+    job.percent = advanceJobPercent(job.percent, text);
     const lines = text
       .split(/[\r\n]+/u)
       .map((line) => line.trim())
       .filter(Boolean);
     for (const line of lines) {
-      const pctMatch = /(\d{1,3})\s*%/u.exec(line);
-      if (pctMatch) {
-        const pct = Number.parseInt(pctMatch[1], 10);
-        if (Number.isFinite(pct)) {
-          job.percent = Math.max(0, Math.min(100, pct));
-        }
-      }
       // `bench` prints "=".repeat(74) rules around each model's section
       // header - a divider carries no information on its own, so keeping it
       // out of `message` means the surrounding line (the model name, a phase,

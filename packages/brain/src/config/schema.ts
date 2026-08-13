@@ -30,15 +30,33 @@ export const ProfileSchema = z
     parallelSlots: z.number().default(1),
     /** RoPE extension factor; 1 keeps the GGUF-native context window. */
     contextMultiplier: z.number().default(1),
+    /** Cleared only by a successful calibration of this saved model profile. */
+    calibrationRequired: z.boolean().default(true),
     batchSize: z.number().nullable().default(null),
     ubatchSize: z.number().nullable().default(null),
     extraArgs: z.array(z.string()).default([]),
-    /** Null means use the model metadata's embedded template unchanged. */
+    /** The selected profile id when `hostingProfileMode` is `custom`. */
     hostingProfileId: z.string().nullable().default(null),
+    /**
+     * Whether this model inherits its family's profile, disables profiles, or
+     * selects one itself. `inherit` is the default because it is what a profile
+     * stored before this field existed meant: the family default applied to
+     * every model in the family that had not overridden it. Defaulting to `off`
+     * would silently drop that default on every profile written by an older
+     * Brain. With no family default set, `inherit` resolves to nothing, which
+     * is exactly what `off` does, so the safe default costs nothing.
+     */
+    hostingProfileMode: z.enum(["inherit", "off", "custom"]).default("inherit"),
     /** Derived at load time from the selected Brain-owned hosting profile. */
     chatTemplateFile: z.string().nullable().default(null),
     /** Derived at load time; passed directly to llama-server's Jinja engine. */
     chatTemplateKwargs: z.record(z.unknown()).default({}),
+    /**
+     * Derived at load time from the selected hosting profile's system-prompt
+     * addendum. The router injects it per request rather than the launcher
+     * baking it into a CLI flag; see `hosting-profiles.ts` for why.
+     */
+    chatSystemAddendum: z.string().nullable().default(null),
   })
   .passthrough();
 export type Profile = z.infer<typeof ProfileSchema>;

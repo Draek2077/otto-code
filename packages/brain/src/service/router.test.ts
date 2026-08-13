@@ -4,9 +4,11 @@ import assert from "node:assert/strict";
 import {
   analyse,
   Telemetry,
+  completionShape,
   describeModel,
   buildModelList,
   decideModelGate,
+  injectSystemAddendum,
   type TelemetryRecord,
 } from "./router.js";
 import type { Model } from "../types.js";
@@ -344,4 +346,115 @@ test("telemetry keeps only the most recent records", () => {
   assert.equal(t.records.length, 5);
   assert.equal((t.records[4] as NumberedRecord).n, 11);
   assert.equal(t.totals.requests, 12, "totals still count everything");
+});
+
+/** Round-trip helper: the injector takes and returns a serialized body. */
+function inject(
+  body: unknown,
+  addendum: string | null,
+  shape: "anthropic" | "openai",
+): Record<string, unknown> {
+  const out = injectSystemAddendum(Buffer.from(JSON.stringify(body), "utf8"), addendum, shape);
+  return JSON.parse(out.toString("utf8")) as Record<string, unknown>;
+}
+
+test("completion shape is read from the path, not the body", () => {
+  assert.equal(completionShape("/v1/messages"), "anthropic");
+  assert.equal(completionShape("/v1/chat/completions"), "openai");
+  assert.equal(completionShape(undefined), "openai");
+});
+
+test("appends the addendum after the agent's own OpenAI system message", () => {
+  const out = inject(
+    {
+      messages: [
+        { role: "system", content: "You are Otto." },
+        { role: "user", content: "hi" },
+      ],
+    },
+    "Be concise.",
+    "openai",
+  );
+  const messages = out.messages as { role: string; content: unknown }[];
+  assert.equal(messages.length, 2, "no message is added when one already carries the system turn");
+  assert.equal(messages[0].content, "You are Otto.\n\nBe concise.");
+  assert.equal(messages[1].content, "hi");
+});
+
+test("adds a leading system message when the OpenAI request has none", () => {
+  const out = inject({ messages: [{ role: "user", content: "hi" }] }, "Be concise.", "openai");
+  const messages = out.messages as { role: string; content: unknown }[];
+  assert.equal(messages.length, 2);
+  assert.deepEqual(messages[0], { role: "system", content: "Be concise." });
+});
+
+test("treats an OpenAI developer message as the system turn", () => {
+  const out = inject(
+    {
+      messages: [
+        { role: "developer", content: "rules" },
+        { role: "user", content: "hi" },
+      ],
+    },
+    "Be concise.",
+    "openai",
+  );
+  const messages = out.messages as { role: string; content: unknown }[];
+  assert.equal(messages.length, 2);
+  assert.equal(messages[0].content, "rules\n\nBe concise.");
+});
+
+test("appends a text block to structured multimodal system content", () => {
+  const out = inject(
+    { messages: [{ role: "system", content: [{ type: "text", text: "You are Otto." }] }] },
+    "Be concise.",
+    "openai",
+  );
+  const messages = out.messages as { content: unknown[] }[];
+  assert.deepEqual(messages[0].content, [
+    { type: "text", text: "You are Otto." },
+    { type: "text", text: "Be concise." },
+  ]);
+});
+
+test("uses Anthropic's top-level system field rather than the message list", () => {
+  const out = inject(
+    { system: "You are Otto.", messages: [{ role: "user", content: "hi" }] },
+    "Be concise.",
+    "anthropic",
+  );
+  assert.equal(out.system, "You are Otto.\n\nBe concise.");
+  assert.equal((out.messages as unknown[]).length, 1, "the message list is left alone");
+});
+
+test("sets Anthropic's system field when the request omits it", () => {
+  const out = inject({ messages: [{ role: "user", content: "hi" }] }, "Be concise.", "anthropic");
+  assert.equal(out.system, "Be concise.");
+});
+
+test("appends to an Anthropic structured system prompt", () => {
+  const out = inject(
+    { system: [{ type: "text", text: "You are Otto." }] },
+    "Be concise.",
+    "anthropic",
+  );
+  assert.deepEqual(out.system, [
+    { type: "text", text: "You are Otto." },
+    { type: "text", text: "Be concise." },
+  ]);
+});
+
+test("forwards the body untouched when there is nothing to inject", () => {
+  const body = Buffer.from(JSON.stringify({ messages: [] }), "utf8");
+  assert.equal(injectSystemAddendum(body, null, "openai"), body, "same buffer, no re-serialize");
+  assert.equal(injectSystemAddendum(body, "", "openai"), body);
+});
+
+test("forwards an unparseable or unfamiliar body untouched", () => {
+  // llama-server must get the chance to reject these itself, with its own error.
+  const garbage = Buffer.from("not json", "utf8");
+  assert.equal(injectSystemAddendum(garbage, "Be concise.", "openai"), garbage);
+
+  const noMessages = Buffer.from(JSON.stringify({ prompt: "hi" }), "utf8");
+  assert.equal(injectSystemAddendum(noMessages, "Be concise.", "openai"), noMessages);
 });
