@@ -68,6 +68,7 @@ import {
   resolveWorkspaceAccess,
 } from "../workspace-access.js";
 import { summarizeRunOutput } from "../../orchestration/run-engine.js";
+import { attachStartRunLifecycle } from "../../orchestration/start-run-lifecycle.js";
 import {
   type NodeOutputStore,
   compileOutputToolInputShape,
@@ -102,7 +103,11 @@ import {
   toScheduleSummary,
   waitForAgentWithTimeout,
 } from "../mcp-shared.js";
-import { sendPromptToAgent, setupFinishNotification } from "../agent-prompt.js";
+import {
+  formatSystemNotificationPrompt,
+  sendPromptToAgent,
+  setupFinishNotification,
+} from "../agent-prompt.js";
 import { respondToAgentPermission } from "../permission-response.js";
 import {
   archiveAgentCommand,
@@ -5860,6 +5865,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         const conductor = resolveCallerAgent();
         const cwd = resolveScopedCwd(undefined);
         const workspaceId = conductor?.workspaceId;
+        const runWorkerAgentIds = new Set<string>();
 
         const spawnPort: RunSpawnPort = {
           resolveRole: async (role) => {
@@ -5878,6 +5884,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
               cwd,
               ...(workspaceId ? { workspaceId } : {}),
             });
+            runWorkerAgentIds.add(agentId);
             return { agentId, personalityId: member.id };
           },
           awaitAgent: async ({ agentId, signal }) => {
@@ -5914,6 +5921,45 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           cwd,
           ...(workspaceId ? { workspaceId } : {}),
           ...(activeTeam ? { teamId: activeTeam.id, teamName: activeTeam.name } : {}),
+        });
+        // A start_run plan gathers its workers inside the daemon, rather than
+        // letting every worker notify the conductor. Restore one aggregate
+        // hand-back only if the original tool turn has gone away; the normal
+        // path receives the result below without an extra turn. This lifecycle
+        // applies only to AI-declared plans, not graph orchestration.
+        attachStartRunLifecycle({
+          runId: run.id,
+          settled,
+          ...(callerAgentId ? { conductorAgentId: callerAgentId } : {}),
+          workerAgentIds: runWorkerAgentIds,
+          port: {
+            conductorHasInFlightTurn: () =>
+              Boolean(callerAgentId && agentManager.hasInFlightRun(callerAgentId)),
+            notifyConductor: async (text) => {
+              if (!callerAgentId) {
+                return;
+              }
+              await sendPromptToAgent({
+                agentManager,
+                agentStorage,
+                agentId: callerAgentId,
+                prompt: formatSystemNotificationPrompt(text),
+                unarchive: false,
+                delivery: "queue",
+                source: "system",
+                logger: childLogger,
+              });
+            },
+            archiveWorker: async (agentId) => {
+              // A settled child stays live just long enough for the terminal Run
+              // to become durable, then leaves the conductor's completed list.
+              // It is safe for a user to have archived it first.
+              if (agentManager.getAgent(agentId)) {
+                await agentManager.archiveAgent(agentId);
+              }
+            },
+            logger: childLogger,
+          },
         });
         // Block until the run settles or parks at a gate, so the conductor comes
         // back with the actual deliverable to relay - not just a fire-and-forget id.
