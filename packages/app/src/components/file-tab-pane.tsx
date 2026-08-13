@@ -23,6 +23,7 @@ import {
   List,
   Save,
   Search,
+  Terminal,
   TriangleAlert,
   Undo2,
   WandStars,
@@ -56,6 +57,7 @@ import type {
   EditorPointerSelect,
   EditorScrollMetrics,
   EditorThemeSpec,
+  EditorVimMode,
 } from "@/editor/editor-contract";
 import { buildEditorThemeSpec } from "@/editor/editor-theme";
 import { resolveFindSeed } from "@/editor/find-seed";
@@ -91,6 +93,9 @@ import { RenameSymbolDialog } from "@/editor/rename/rename-symbol-dialog";
 import { EditorDiagnosticsPanel, useDismissibleProblems } from "@/editor/editor-diagnostics-panel";
 import { useGoToDefinition, type GoToDefinitionTarget } from "@/editor/use-go-to-definition";
 import { useTextEditorFeature } from "@/editor/use-text-editor-feature";
+import { useHostFeature } from "@/runtime/host-features";
+import { ExternalFileEditorPane } from "@/components/external-file-editor-pane";
+import type { FileEditorMode } from "@/editor/external-file-editor";
 import { revealFileInChanges, revealFileInFiles, useChangedFilePaths } from "@/git/changes-reveal";
 import { openFileHistoryTab } from "@/git/file-history/open-file-history-tab";
 import type { FileHistoryRange } from "@/git/file-history/use-file-history-data";
@@ -99,6 +104,8 @@ import { useToast } from "@/contexts/toast-context";
 import { openRefineTab } from "@/refine/open-refine-tab";
 import { isRefinableDocument } from "@/refine/refine-scope";
 import { useRefineFeature } from "@/refine/use-refine-feature";
+import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
+import { normalizeVimMappingSettings, type VimMappingAction } from "@/editor/vim-mappings";
 import {
   FilePreview,
   type FilePreviewFileInfo,
@@ -119,7 +126,7 @@ import {
   lineToTargetContentY,
   scrollFraction,
 } from "@/components/file-split-sync";
-import { defaultFileViewMode } from "@/components/file-pane-render-mode";
+import { defaultFileViewMode, renderedDocumentKind } from "@/components/file-pane-render-mode";
 import { ResizeHandle } from "@/components/resize-handle";
 import { usePaneContext } from "@/panels/pane-context";
 import { useFileViewMode, useFileViewStore, type FileViewMode } from "@/stores/file-view-store";
@@ -152,6 +159,7 @@ const warningIconColorMapping = (theme: Theme) => ({
   color: theme.colors.statusWarningStrong,
 });
 const ThemedSearch = withUnistyles(Search);
+const ThemedTerminal = withUnistyles(Terminal);
 const ThemedList = withUnistyles(List);
 const ThemedHistory = withUnistyles(History);
 const ThemedFolderOpen = withUnistyles(FolderOpen);
@@ -176,6 +184,10 @@ const ThemedFindInput = withUnistyles(TextInput, (theme) => ({
 /** The off switch and the column live in separate settings; the spec has one field. */
 function resolveRulerColumn(settings: AppSettings): number | null {
   return settings.rulerEnabled ? settings.rulerColumn : null;
+}
+
+function resolveVimKeybindings(settings: AppSettings): boolean {
+  return isWeb ? settings.vimKeybindings : false;
 }
 
 // `theme` is resolved by the withUnistyles mapping below, so the wrapped
@@ -1219,6 +1231,39 @@ function EditorFindStrip({
   );
 }
 
+function ExternalEditorToolbarButton({
+  buffer,
+  label,
+  onOpen,
+}: {
+  buffer: EditorBufferState;
+  label: string | null;
+  onOpen: (() => void) | null;
+}) {
+  const toast = useToast();
+  const handlePress = useCallback(() => {
+    if (!onOpen) {
+      return;
+    }
+    if (buffer.dirty || buffer.saving || buffer.conflict !== null || buffer.diskChange !== null) {
+      toast.error("Save or reload the Otto editor before opening the selected file editor.");
+      return;
+    }
+    onOpen();
+  }, [buffer, onOpen, toast]);
+  if (!label || !onOpen) {
+    return null;
+  }
+  return (
+    <ToolbarIconButton
+      label={label}
+      testID="file-editor-open-external"
+      Icon={ThemedTerminal}
+      onPress={handlePress}
+    />
+  );
+}
+
 function EditorModeView({
   serverId,
   workspaceId,
@@ -1236,6 +1281,8 @@ function EditorModeView({
   onNavigateToFile,
   onViewChanges,
   onRefine,
+  onOpenExternalEditor,
+  externalEditorLabel,
 }: {
   serverId: string;
   workspaceId: string;
@@ -1255,6 +1302,9 @@ function EditorModeView({
   onViewChanges: (() => void) | null;
   /** Opens the Refine job tab for this file; null when unavailable. */
   onRefine: (() => void) | null;
+  /** Starts the host-owned editor after the clean-buffer guard passes. */
+  onOpenExternalEditor: (() => void) | null;
+  externalEditorLabel: string | null;
 }) {
   const { t } = useTranslation();
   const path = location.path;
@@ -1275,6 +1325,8 @@ function EditorModeView({
   const [find, setFind] = useState<FindStripState>(INITIAL_FIND_STATE);
   const [matchInfo, setMatchInfo] = useState<EditorMatchInfo | null>(null);
   const [cursor, setCursor] = useState<EditorCursorPosition | null>(null);
+  const [vimMode, setVimMode] = useState<EditorVimMode | null>(null);
+  const [vimMappingPending, setVimMappingPending] = useState(false);
   const byteSize = useBufferByteSize(buffer);
 
   const wordWrap = useEditorPrefsStore((state) => state.wordWrap);
@@ -1295,6 +1347,17 @@ function EditorModeView({
   const editorKeyBindings = useEditorKeyBindings();
 
   const { settings } = useAppSettings();
+  // The active CM6 DOM editor is the only host in this slice that enables Vim.
+  // Native keeps its existing WebView contract until that bridge is explicitly
+  // extended and tested.
+  const vimKeybindings = resolveVimKeybindings(settings);
+  // Settings normally normalize during hydration. Normalize at this execution
+  // boundary as well so a live app with a pre-default empty mapping object
+  // cannot let Space+S fall through to Vim's substitute command.
+  const vimMappings = useMemo(
+    () => normalizeVimMappingSettings(settings.vimMappings),
+    [settings.vimMappings],
+  );
   const rulerColumn = resolveRulerColumn(settings);
 
   const applyFind = useCallback(
@@ -1633,6 +1696,44 @@ function EditorModeView({
   const handleFindReferencesShortcut = useCallback(() => findReferences?.(), [findReferences]);
   const handleRenameSymbolShortcut = useCallback(() => renameRequest?.(), [renameRequest]);
 
+  const handleVimAction = useCallback(
+    (action: VimMappingAction) => {
+      switch (action) {
+        case "save":
+          handleSavePress();
+          return;
+        case "find":
+          openFind();
+          return;
+        case "goToDefinition":
+          handleGoToDefinition();
+          return;
+        case "findReferences":
+          handleFindReferencesShortcut();
+          return;
+        case "renameSymbol":
+          handleRenameSymbolShortcut();
+          return;
+        case "openFileSearch":
+          keyboardActionDispatcher.dispatch({ id: "sidebar.open.search", scope: "sidebar" });
+          return;
+        case "openChanges":
+          keyboardActionDispatcher.dispatch({ id: "sidebar.open.changes", scope: "sidebar" });
+          return;
+        case "newTerminal":
+          keyboardActionDispatcher.dispatch({ id: "workspace.terminal.new", scope: "workspace" });
+          return;
+      }
+    },
+    [
+      handleFindReferencesShortcut,
+      handleGoToDefinition,
+      handleRenameSymbolShortcut,
+      handleSavePress,
+      openFind,
+    ],
+  );
+
   // Git investigation stays selection-aware from the toolbar rather than moving
   // into the right-click menu: selecting lines and pressing History is the same
   // gesture in one fewer step, and the sheet shows the scope with a way out.
@@ -1833,6 +1934,11 @@ function EditorModeView({
       onDocSync={onDocSync}
       onMatchInfo={setMatchInfo}
       onCursorMoved={setCursor}
+      vimKeybindings={vimKeybindings}
+      vimMappings={vimMappings}
+      onVimModeChanged={setVimMode}
+      onVimMappingPendingChanged={setVimMappingPending}
+      onVimAction={handleVimAction}
       keyBindings={editorKeyBindings}
       onSaveShortcut={handleSavePress}
       onFindShortcut={openFind}
@@ -1874,6 +1980,11 @@ function EditorModeView({
           onNavigateToFile={onNavigateToFile}
           onViewChanges={onViewChanges}
           showLeadingSeparator
+        />
+        <ExternalEditorToolbarButton
+          buffer={buffer}
+          label={externalEditorLabel}
+          onOpen={onOpenExternalEditor}
         />
         <FileAiToolbarGroup onRefine={onRefine} showLeadingSeparator />
         <FileExportToolbarGroup
@@ -1982,6 +2093,8 @@ function EditorModeView({
         eol={buffer.baseline.eol}
         isText
         cursor={cursor}
+        vimMode={vimMode}
+        vimMappingPending={vimMappingPending}
         diagnostics={diagnostics}
       />
 
@@ -2091,6 +2204,35 @@ function resolveEffectiveMode(input: {
   return input.mode;
 }
 
+function resolveExternalEditorLabel(mode: FileEditorMode): string | null {
+  switch (mode) {
+    case "vim":
+      return "Open in Vim";
+    case "neovim":
+      return "Open in Neovim";
+    case "custom":
+      return "Open in file editor";
+    case "off":
+      return null;
+  }
+}
+
+function isSelectedTerminalFileEditorAvailable(input: {
+  desktop: boolean;
+  compatibilityDiagnosticAvailable: boolean;
+  embeddedTerminalAvailable: boolean;
+  mode: FileEditorMode;
+  editorAllowed: boolean;
+}): boolean {
+  return (
+    input.desktop &&
+    input.compatibilityDiagnosticAvailable &&
+    input.embeddedTerminalAvailable &&
+    input.mode !== "off" &&
+    input.editorAllowed
+  );
+}
+
 export function FileTabPane({
   serverId,
   workspaceId,
@@ -2127,18 +2269,61 @@ export function FileTabPane({
   });
   const canEdit = useTextEditorFeature(serverId);
   const isCompact = useIsCompactFormFactor();
+  const { settings } = useAppSettings();
+  const externalEditorCapability = useHostFeature(serverId, "terminalCompatibilityDiagnostic");
+  const embeddedTerminalCapability = useHostFeature(serverId, "terminalEmbeddedPresentation");
+  const externalEditorDesktop = getIsElectron() && !isCompact;
+  const externalEditorLabel = resolveExternalEditorLabel(settings.fileEditorMode);
+  const [externalEditorActive, setExternalEditorActive] = useState(false);
+  const [externalEditorFailure, setExternalEditorFailure] = useState<string | null>(null);
   const [fileInfo, setFileInfo] = useState<FilePreviewFileInfo | null>(null);
   const controllerRef = useRef<EditorController | null>(null);
 
   // Until the first read reports back, trust the remembered mode: a file that
   // was in editor view last time is a text file until proven otherwise.
   const editorAllowed = canEdit && (fileInfo === null || fileInfo.kind === "text");
+  const externalEditorAvailable = isSelectedTerminalFileEditorAvailable({
+    desktop: externalEditorDesktop,
+    compatibilityDiagnosticAvailable: externalEditorCapability,
+    embeddedTerminalAvailable: embeddedTerminalCapability,
+    mode: settings.fileEditorMode,
+    editorAllowed,
+  });
   const splitAllowed = editorAllowed && isWeb && !isCompact;
   const effectiveMode = resolveEffectiveMode({
     mode,
     editorAllowed,
     splitAllowed,
   });
+
+  // Markdown and the other rendered document formats are still text files.
+  // When Vim/Neovim is the user's selected File editor, open those sources in
+  // the terminal too. Preview-first binary/media formats remain in preview.
+  const opensInSelectedFileEditor =
+    externalEditorAvailable &&
+    (defaultFileViewMode(location.path) === "editor" ||
+      renderedDocumentKind(location.path) !== null);
+
+  useEffect(() => {
+    setExternalEditorActive(opensInSelectedFileEditor);
+    setExternalEditorFailure(null);
+  }, [location.path, opensInSelectedFileEditor]);
+
+  const openExternalEditor = useCallback(() => {
+    if (!externalEditorAvailable) {
+      return;
+    }
+    setExternalEditorFailure(null);
+    setExternalEditorActive(true);
+  }, [externalEditorAvailable]);
+  const handleExternalEditorExit = useCallback((reason?: string) => {
+    setExternalEditorActive(false);
+    setExternalEditorFailure(reason ?? null);
+  }, []);
+  const handleExternalEditorFailure = useCallback((message: string) => {
+    setExternalEditorActive(false);
+    setExternalEditorFailure(message);
+  }, []);
 
   const otherProjectName = editGate.kind === "other-project" ? editGate.projectName : null;
 
@@ -2400,7 +2585,7 @@ export function FileTabPane({
     };
   }, [canWriteBinaryFiles, exportClient, location.path, readExportSource, t, toast, workspaceRoot]);
 
-  const content =
+  const standardContent =
     effectiveMode === "preview" ? (
       <PreviewOnlyView
         serverId={serverId}
@@ -2437,8 +2622,34 @@ export function FileTabPane({
         onNavigateToFile={onNavigateToFile}
         onViewChanges={onViewChanges}
         onRefine={onRefine}
+        onOpenExternalEditor={externalEditorAvailable ? openExternalEditor : null}
+        externalEditorLabel={externalEditorLabel}
       />
     );
+
+  const content = externalEditorActive ? (
+    <ExternalFileEditorPane
+      key={`${location.path}:${settings.fileEditorMode}`}
+      serverId={serverId}
+      workspaceId={workspaceId}
+      workspaceRoot={workspaceRoot}
+      path={location.path}
+      mode={settings.fileEditorMode as FileEditorMode}
+      customCommand={settings.fileEditorCustomCommand}
+      onExit={handleExternalEditorExit}
+      onLaunchFailure={handleExternalEditorFailure}
+    />
+  ) : (
+    <>
+      {externalEditorFailure ? (
+        <View style={styles.externalEditorFailure} testID="external-file-editor-failure">
+          <Text style={styles.externalEditorFailureTitle}>File editor was not opened</Text>
+          <Text style={styles.externalEditorFailureText}>{externalEditorFailure}</Text>
+        </View>
+      ) : null}
+      {standardContent}
+    </>
+  );
 
   if (editGate.kind === "free") {
     return content;
@@ -2616,6 +2827,23 @@ const styles = StyleSheet.create((theme) => {
       flex: 1,
       color: theme.colors.foreground,
       fontSize: theme.fontSize.sm,
+    },
+    externalEditorFailure: {
+      gap: theme.spacing[1],
+      paddingHorizontal: theme.spacing[2],
+      paddingVertical: theme.spacing[2],
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.statusDanger,
+      backgroundColor: theme.colors.statusDangerSurface,
+    },
+    externalEditorFailureTitle: {
+      color: theme.colors.statusDanger,
+      fontSize: theme.fontSize.sm,
+      fontWeight: "600",
+    },
+    externalEditorFailureText: {
+      color: theme.colors.foreground,
+      fontSize: theme.fontSize.xs,
     },
     editorHost: {
       flex: 1,

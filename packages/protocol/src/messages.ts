@@ -6931,6 +6931,8 @@ export const CreateTerminalRequestSchema = z.object({
   agentId: z.string().optional(),
   command: z.string().optional(),
   args: z.array(z.string()).optional(),
+  /** An embedded terminal renders inside another pane and never gets its own workspace tab. */
+  presentation: z.enum(["embedded"]).optional(),
   // Initial PTY size. Added in v0.1.107; the app no longer sends it (the estimate cache that fed
   // it was removed - the pane-focus resize claim sizes the PTY instead). Kept and honored
   // permanently: released v0.1.107 clients still send it, and programmatic callers may pass an
@@ -7042,6 +7044,11 @@ export const CaptureTerminalRequestSchema = z.object({
   start: z.number().int().optional(),
   end: z.number().int().optional(),
   stripAnsi: z.boolean().default(true),
+  requestId: z.string(),
+});
+
+export const TerminalCompatibilityDiagnosticRequestSchema = z.object({
+  type: z.literal("terminal.compatibility.diagnostic.request"),
   requestId: z.string(),
 });
 
@@ -7354,6 +7361,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   TerminalInputSchema,
   KillTerminalRequestSchema,
   CaptureTerminalRequestSchema,
+  TerminalCompatibilityDiagnosticRequestSchema,
   ChatCreateRequestSchema,
   ChatListRequestSchema,
   ChatInspectRequestSchema,
@@ -7576,6 +7584,9 @@ export const ServerInfoStatusPayloadSchema = z
         daemonStatusRpc: z.boolean().optional(),
         // COMPAT(terminalRestoreModes): added in v0.1.81, remove gate after 2026-11-23.
         "terminal-restore-modes": z.boolean().optional(),
+        // COMPAT(terminalCompatibilityDiagnostic): added in v0.8.9, remove gate after 2027-02-12.
+        terminalCompatibilityDiagnostic: z.boolean().optional(),
+        terminalEmbeddedPresentation: z.boolean().optional(),
         // COMPAT(terminalTitleSettings): added in v0.8.5, remove gate after 2027-02-07.
         terminalTitleSettings: z.boolean().optional(),
         // COMPAT(rewind): added in v0.1.X, drop the gate when floor >= v0.1.X.
@@ -11787,6 +11798,7 @@ const TerminalInfoSchema = z.object({
   workspaceId: z.string().optional(),
   title: z.string().optional(),
   activity: TerminalActivitySchema.nullable().optional(),
+  presentation: z.enum(["embedded"]).optional(),
 });
 
 export const TerminalCellSchema = z.object({
@@ -11899,6 +11911,42 @@ export const CaptureTerminalResponseSchema = z.object({
     requestId: z.string(),
   }),
 });
+
+export const TerminalCompatibilityDiagnosticStatusSchema = z.enum([
+  "pass",
+  "fail",
+  "warn",
+  "unknown",
+]);
+
+export const TerminalCompatibilityDiagnosticCheckSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  status: TerminalCompatibilityDiagnosticStatusSchema,
+  detail: z.string(),
+  evidence: z.string().optional(),
+});
+
+export const TerminalCompatibilityDiagnosticResponseSchema = z.object({
+  type: z.literal("terminal.compatibility.diagnostic.response"),
+  payload: z.object({
+    requestId: z.string(),
+    success: z.boolean(),
+    error: z.string().nullable(),
+    generatedAt: z.string(),
+    platform: z.string().optional(),
+    term: z.string().nullable().optional(),
+    termProgram: z.string().nullable().optional(),
+    checks: z.array(TerminalCompatibilityDiagnosticCheckSchema),
+  }),
+});
+
+export type TerminalCompatibilityDiagnosticStatus = z.infer<
+  typeof TerminalCompatibilityDiagnosticStatusSchema
+>;
+export type TerminalCompatibilityDiagnosticCheck = z.infer<
+  typeof TerminalCompatibilityDiagnosticCheckSchema
+>;
 
 export const TerminalStreamExitSchema = z.object({
   type: z.literal("terminal_stream_exit"),
@@ -12325,6 +12373,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SubscribeTerminalResponseSchema,
   KillTerminalResponseSchema,
   CaptureTerminalResponseSchema,
+  TerminalCompatibilityDiagnosticResponseSchema,
   TerminalStreamExitSchema,
   TerminalAttentionRequiredSchema,
   ChatCreateResponseSchema,
@@ -13211,7 +13260,13 @@ export type BrainLogsTailResponse = z.infer<typeof BrainLogsTailResponseSchema>;
 export type KillTerminalRequest = z.infer<typeof KillTerminalRequestSchema>;
 export type KillTerminalResponse = z.infer<typeof KillTerminalResponseSchema>;
 export type CaptureTerminalRequest = z.infer<typeof CaptureTerminalRequestSchema>;
+export type TerminalCompatibilityDiagnosticRequest = z.infer<
+  typeof TerminalCompatibilityDiagnosticRequestSchema
+>;
 export type CaptureTerminalResponse = z.infer<typeof CaptureTerminalResponseSchema>;
+export type TerminalCompatibilityDiagnosticResponse = z.infer<
+  typeof TerminalCompatibilityDiagnosticResponseSchema
+>;
 export type TerminalStreamExit = z.infer<typeof TerminalStreamExitSchema>;
 
 // ============================================================================

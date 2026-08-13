@@ -1,4 +1,5 @@
 import type { SyntaxColors } from "@otto-code/highlight";
+import type { VimMappingAction, VimMappingSettings } from "./vim-mappings";
 
 // Shared contract between the editor hosts (web DOM mount, native webview) and
 // the CM6 core. This module is bundled into the native webview HTML - keep it
@@ -186,6 +187,9 @@ export interface EditorSelection {
   /** True when nothing is selected (just a cursor). */
   isEmpty: boolean;
 }
+
+/** The modes reported by the in-app Vim emulation layer. */
+export type EditorVimMode = "NORMAL" | "INSERT" | "VISUAL" | "REPLACE";
 
 /** Snapshot of the editor viewport used by the split-view scroll sync. */
 export interface EditorScrollMetrics {
@@ -415,6 +419,12 @@ export interface CodeEditorProps {
   /** Soft-wrap long lines instead of scrolling horizontally; live-togglable. */
   wordWrap: boolean;
   /**
+   * Enable the constrained in-app Vim emulation. This is a web/Electron-only
+   * option for now; the native webview intentionally does not bridge it.
+   */
+  vimKeybindings?: boolean;
+  vimMappings?: VimMappingSettings;
+  /**
    * Hide markdown markers except on the line being edited. Ignored for files
    * that are not markdown: the decorations come from the markdown parse tree,
    * so there is nothing to hide in a `.ts` file and no need to gate the flag.
@@ -430,6 +440,10 @@ export interface CodeEditorProps {
   onMatchInfo?: (info: EditorMatchInfo | null) => void;
   /** Caret/selection moved; drives the status bar's Ln/Col readout. */
   onCursorMoved?: (position: EditorCursorPosition) => void;
+  /** Current in-app Vim mode, or null when the emulation is disabled. */
+  onVimModeChanged?: (mode: EditorVimMode | null) => void;
+  /** The in-progress local Vim leader sequence, or null when none is pending. */
+  onVimMappingPendingChanged?: (pending: boolean) => void;
   /**
    * Which key runs which of the callbacks below. Comes from the user's effective
    * shortcut registry (see editor/editor-key-bindings.ts), so a rebind in
@@ -461,6 +475,8 @@ export interface CodeEditorProps {
   onFindReferencesShortcut?: () => void;
   /** The `renameSymbol` binding fired; the host opens the rename dialog. */
   onRenameSymbolShortcut?: () => void;
+  /** A validated leader mapping fired in normal mode on this editor only. */
+  onVimAction?: (action: VimMappingAction) => void;
   /**
    * An image was pasted or dropped into a markdown document. The host writes it
    * into the workspace and inserts the link, because the editor cannot reach

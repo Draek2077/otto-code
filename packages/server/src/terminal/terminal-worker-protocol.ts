@@ -21,6 +21,7 @@ export interface WorkerTerminalInfo {
   titleMode?: "auto" | "default";
   titleIncludePaths?: boolean;
   activity: TerminalActivity | null;
+  presentation?: "embedded";
 }
 
 export interface WorkerCreateTerminalOptions {
@@ -36,6 +37,7 @@ export interface WorkerCreateTerminalOptions {
   cols?: number;
   activityToken?: string;
   activityUrl?: string | null;
+  presentation?: "embedded";
 }
 
 export interface WorkerKillAndWaitOptions {

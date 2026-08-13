@@ -109,6 +109,13 @@ export function useWorkspaceTerminals(input: UseWorkspaceTerminalsInput) {
   });
   const terminals = useMemo(() => query.data?.terminals ?? [], [query.data]);
   const liveTerminalIds = useMemo(() => terminals.map((terminal) => terminal.id), [terminals]);
+  const tabVisibleTerminalIds = useMemo(
+    () =>
+      terminals
+        .filter((terminal) => terminal.presentation !== "embedded")
+        .map((terminal) => terminal.id),
+    [terminals],
+  );
   // Shared with the sidebar tools cluster, which starts scripts for this same
   // workspace from outside this screen (see script-terminal-pending-store).
   const scriptPendingKey = useMemo(
@@ -124,8 +131,9 @@ export function useWorkspaceTerminals(input: UseWorkspaceTerminalsInput) {
   }, [dataUpdatedAt, liveTerminalIds, reconcilePendingScriptTerminals, scriptPendingKey]);
 
   const knownTerminalIds = useMemo(
-    () => collectKnownTerminalIds({ liveTerminalIds, pendingScriptTerminalIds }),
-    [liveTerminalIds, pendingScriptTerminalIds],
+    () =>
+      collectKnownTerminalIds({ liveTerminalIds: tabVisibleTerminalIds, pendingScriptTerminalIds }),
+    [pendingScriptTerminalIds, tabVisibleTerminalIds],
   );
   const scriptTerminalIds = useMemo(
     () => collectScriptTerminalIds({ pendingScriptTerminalIds, scripts: workspaceScripts }),

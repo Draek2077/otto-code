@@ -88,7 +88,7 @@ An unlisted page is an invisible page.
 
 | Page                                           | What's in it                                                                                                                                                                                            |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [text-editor.md](text-editor.md)               | IDE-grade text editing - daemon file RPCs, the CM6 editor, AI Refactor, the unified file tab, the File Editor shortcut scope                                                                            |
+| [text-editor.md](text-editor.md)               | IDE-grade text editing - daemon file RPCs, the CM6 editor, AI Refactor, the unified file tab, constrained Vim mappings, and desktop external editor sessions                                            |
 | [refine.md](refine.md)                         | The reviewed AI rewrite - the propose-then-accept invariant, the job tab, the document/reference working set, and **why it is prose-only**                                                              |
 | [file-mutations.md](file-mutations.md)         | Create/delete/rename - why delete is a permanent unlink and not the trash, the opt-in `recursive` and no-overwrite rules, and the parent-resolving path guard that never follows the final component    |
 | [code-intelligence.md](code-intelligence.md)   | The LSP client - go-to-definition, hover, references, rename, diagnostics; the pool's lifecycle obligation, the indexing-cost policy, language rows, why linters are language servers too               |
@@ -129,13 +129,14 @@ An unlisted page is an invisible page.
 
 ## Protocol, data and performance
 
-| Page                                               | What's in it                                                                                          |
-| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| [rpc-namespacing.md](rpc-namespacing.md)           | WebSocket RPC naming - dotted namespaces and `.request`/`.response` pairs                             |
-| [protocol-validation.md](protocol-validation.md)   | zod-aot generated inbound WebSocket validation, the patched compiler regressions, schema-purity rules |
-| [data-model.md](data-model.md)                     | File-based JSON persistence, Zod schemas, atomic writes, no migrations                                |
-| [terminal-performance.md](terminal-performance.md) | Terminal latency pipeline, coalescing and backpressure invariants, benchmark and perf-spec usage      |
-| [client-performance.md](client-performance.md)     | The app's self-measurement: frame timing, retained-state census, daemon-traffic accounting, the soak  |
+| Page                                                   | What's in it                                                                                          |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| [rpc-namespacing.md](rpc-namespacing.md)               | WebSocket RPC naming - dotted namespaces and `.request`/`.response` pairs                             |
+| [protocol-validation.md](protocol-validation.md)       | zod-aot generated inbound WebSocket validation, the patched compiler regressions, schema-purity rules |
+| [data-model.md](data-model.md)                         | File-based JSON persistence, Zod schemas, atomic writes, no migrations                                |
+| [terminal-performance.md](terminal-performance.md)     | Terminal latency pipeline, coalescing and backpressure invariants, benchmark and perf-spec usage      |
+| [terminal-compatibility.md](terminal-compatibility.md) | Read-only Vim/Neovim/tmux compatibility diagnostics and the conservative support matrix               |
+| [client-performance.md](client-performance.md)         | The app's self-measurement: frame timing, retained-state census, daemon-traffic accounting, the soak  |
 
 ## Testing
 

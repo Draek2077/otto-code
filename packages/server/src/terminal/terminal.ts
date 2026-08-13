@@ -81,6 +81,8 @@ export interface TerminalSession {
   name: string;
   cwd: string;
   workspaceId: string;
+  /** Embedded sessions belong to a host pane rather than a standalone workspace tab. */
+  presentation?: "embedded";
   send(msg: ClientMessage): void;
   subscribe(listener: (msg: ServerMessage) => void, options?: TerminalSubscribeOptions): () => void;
   onExit(listener: (info: TerminalExitInfo) => void): () => void;
@@ -134,6 +136,7 @@ export interface CreateTerminalOptions {
   titleIncludePaths?: boolean;
   command?: string;
   args?: string[];
+  presentation?: "embedded";
 }
 
 function toTerminalActivity(snapshot: {
@@ -840,6 +843,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   const {
     cwd,
     workspaceId,
+    presentation,
     shell,
     env = {},
     activityEnv = {},
@@ -1521,6 +1525,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     name,
     cwd,
     workspaceId,
+    ...(presentation ? { presentation } : {}),
     send,
     subscribe,
     onExit,

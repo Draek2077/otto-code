@@ -1861,6 +1861,10 @@ export class VoiceAssistantWebSocketServer {
         daemonStatusRpc: true,
         // COMPAT(terminalRestoreModes): added in v0.1.81, remove gate after 2026-11-23.
         "terminal-restore-modes": true,
+        // COMPAT(terminalCompatibilityDiagnostic): added in v0.8.9, remove gate after 2027-02-12.
+        terminalCompatibilityDiagnostic: true,
+        // COMPAT(terminalEmbeddedPresentation): added in v0.8.9, remove gate after 2027-02-12.
+        terminalEmbeddedPresentation: true,
         // COMPAT(terminalTitleSettings): added in v0.8.5, remove gate after 2027-02-07.
         terminalTitleSettings: true,
         // COMPAT(rewind): added in v0.1.X, drop the gate when floor >= v0.1.X.

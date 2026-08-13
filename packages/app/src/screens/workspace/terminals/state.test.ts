@@ -40,12 +40,12 @@ describe("workspace terminal state", () => {
       collectStandaloneTerminalIds({
         terminals: [
           listedTerminal("terminal-1"),
-          listedTerminal("terminal-2"),
+          { ...listedTerminal("terminal-2"), presentation: "embedded" },
           listedTerminal("script-live"),
         ],
         scriptTerminalIds: new Set(["terminal-1", "script-live"]),
       }),
-    ).toEqual(["terminal-2"]);
+    ).toEqual([]);
   });
 
   it("updates terminal cache entries for created and closed terminals", () => {

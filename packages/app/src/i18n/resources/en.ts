@@ -4016,7 +4016,7 @@ export const en = {
     editor: {
       title: "Editor",
       vimKeybindings: "Vim keybindings",
-      vimHint: "Applies to source files on web and desktop.",
+      vimHint: "Use Vim motions and modes in source files.",
     },
   },
   artifacts: {

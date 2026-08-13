@@ -9,19 +9,17 @@ import { installDaemonWebSocketGate } from "./helpers/daemon-websocket-gate";
 import { buildAssistantMarkdownScenarioPrompt } from "./helpers/mock-scenarios";
 import { openAgentRoute, seedMockAgentWorkspace } from "./helpers/mock-agent";
 import { seedWorkspace } from "./helpers/seed-client";
+import { injectDesktopBridge } from "./helpers/desktop-updates";
+import { seedAppSettings } from "./helpers/settings";
+import { getServerId } from "./helpers/server-id";
+import { openHomeWithProject } from "./helpers/workspace-setup";
+import { selectWorkspaceInSidebar } from "./helpers/sidebar";
 
-// This spec arrived with the Paseo v0.2.5 merge and was written against Paseo's
-// `file-pane/` surface. Otto replaced that surface with the unified file tab
-// (`components/file-tab-pane.tsx` + `components/file-view-mode-bar.tsx`), and
-// the merge brought `packages/app/src/file-pane/` in as DEAD CODE: nothing
-// outside that directory imports it, and none of its exports (FilePanelBar,
-// FileConflictAlert, useLiveFile) are referenced anywhere. Every testID this
-// spec reached for - file-source-editor, file-panel-bar, file-mode-source,
-// file-mode-preview, file-markdown-mode, file-conflict-alert - exists ONLY in
-// that unmounted tree, so all ten tests failed on the first selector that
-// touched it. That is a naming mismatch against a replaced surface, not a
-// regression: Otto's file editing works and is covered elsewhere (see the
-// per-test notes below).
+// This spec retains the active checks that are specific to the unified file tab:
+// opening an assistant file link at its referenced line and the live Vim mode
+// setting/editor path. The remaining Paseo-era cases are intentionally skipped
+// because they either assert unsupported semantics or cover gaps that have not
+// been migrated to the current editor surface.
 //
 // The first test is kept ALIVE and retargeted at Otto's surface, because it is
 // the one behaviour here that no other spec asserts: opening an assistant file
@@ -48,7 +46,7 @@ const BLUE_PIXEL = Buffer.from(
 );
 
 function editor(page: Page) {
-  return page.getByTestId("file-source-editor").filter({ visible: true }).locator(".cm-content");
+  return page.getByTestId("code-editor-surface").filter({ visible: true }).locator(".cm-content");
 }
 
 function hasHorizontalOverflow(element: HTMLElement): boolean {
@@ -171,9 +169,9 @@ test.describe("CodeMirror workspace file editing", () => {
     }
   });
 
-  // DEFERRED(paseoFilePane): `editor()` resolves file-source-editor, which only
-  // exists in the unmounted `src/file-pane/` tree. Otto's equivalent is
-  // `fileTabEditorContent()` (helpers/file-tab.ts). The pane-focus half is real
+  // DEFERRED(paseoFilePane): `editor()` used to resolve the Paseo-only
+  // file-source-editor test ID. Otto's equivalent is `fileTabEditorContent()`
+  // (helpers/file-tab.ts). The pane-focus half is real
   // Otto behaviour and Alt+Shift+W is a live binding
   // (workspace-tab-close-current-alt-shift-w-web in keyboard-shortcuts.ts), so
   // this one is portable - retarget the locator rather than deleting it. Check
@@ -409,14 +407,9 @@ test.describe("CodeMirror workspace file editing", () => {
     await expect(editor(page)).toContainText("const afterReconnect = 9;");
   });
 
-  // DEFERRED(paseoFilePane): this is a missing CAPABILITY, not a missing
-  // selector. BOM and line-separator preservation live in
-  // `src/file-pane/editor/model.ts` (FileLineSeparator, the dead tree); Otto's
-  // live editor has no BOM or CRLF handling anywhere - grep for `lineSeparator`
-  // or `BOM` outside src/file-pane and there are zero hits. So a Windows file
-  // edited in Otto is very likely rewritten LF and de-BOM'd. Worth confirming
-  // and filing as a product bug; this test is the ready-made regression proof
-  // once the capability exists.
+  // DEFERRED(paseoFilePane): CRLF preservation is implemented by the active
+  // editor/daemon path. BOM preservation is still a missing capability, so
+  // this test remains as the regression proof for that one gap.
   test.skip("preserves a UTF-8 BOM and uses the first line separator after saving", async ({
     page,
     withWorkspace,
@@ -438,48 +431,6 @@ test.describe("CodeMirror workspace file editing", () => {
       "utf8",
     ).toString("hex");
     await expect.poll(async () => (await readFile(sourcePath)).toString("hex")).toBe(expected);
-  });
-
-  // DEFERRED(paseoFilePane): already covered on Otto's surface -
-  // `editor-dirty-guard.spec.ts` asserts the dirty dot, the confirm-on-close
-  // prompt, and buffer survival across a tab switch. This version additionally
-  // wants file-conflict-alert (Otto: editor-conflict-banner) and
-  // `workspace-tab-modified-<tabId>`, which does not exist on Otto's tabs at
-  // all. Reviving this would duplicate a passing spec; prefer extending
-  // editor-dirty-guard.spec.ts if the conflict interaction needs coverage.
-  test.skip("warns before closing a panel with an unsaved draft", async ({
-    page,
-    withWorkspace,
-  }) => {
-    const workspace = await withWorkspace({ prefix: "file-editing-draft-" });
-    const sourcePath = path.join(workspace.repoPath, "draft.ts");
-    await writeFile(sourcePath, "const initial = 1;\n", "utf8");
-    await workspace.navigateTo();
-    await openWorkspaceFile(page, "draft.ts");
-
-    await replaceEditorText(page, "const local = 2;\n");
-    await writeFile(sourcePath, "const external = 3;\n", "utf8");
-    await expect(page.getByTestId("file-conflict-alert")).toBeVisible();
-    await expect(page.getByTestId("workspace-tab-modified-file_draft.ts")).toBeVisible();
-
-    let closePrompt = "";
-    page.once("dialog", async (dialog) => {
-      closePrompt = dialog.message();
-      await dialog.dismiss();
-    });
-    await page
-      .getByTestId("workspace-tab-file_draft.ts")
-      .filter({ visible: true })
-      .first()
-      .click({ button: "right" });
-    await page
-      .getByTestId("workspace-tab-context-file_draft.ts-close")
-      .filter({ visible: true })
-      .click();
-    expect(closePrompt).toContain("Closing it will discard the draft.");
-
-    await expect(page.getByTestId("file-source-editor")).toBeVisible();
-    await expect(page.getByTestId("workspace-tab-modified-file_draft.ts")).toBeVisible();
   });
 
   // DEFERRED(paseoFilePane): the mode-switching half is covered by
@@ -522,15 +473,7 @@ test.describe("CodeMirror workspace file editing", () => {
     await expect.poll(() => image.getAttribute("src")).not.toBe(initialSource);
   });
 
-  // DEFERRED(paseoFilePane): half real, half absent. The setting exists and
-  // persists - settings/editor renders a `vim-keybindings-toggle` switch
-  // labelled "Vim keybindings" (screens/settings/editor-section.tsx) - so the
-  // first block should pass. What is missing is the readout: "Vim mode NORMAL"
-  // and "Line 1, column 1" come from `panels.file.editor.vimMode` / `.cursor`,
-  // which only the dead `file-pane/bar.tsx` renders. Whether the toggle
-  // actually wires Vim into Otto's live CM6 editor is unverified and is the
-  // first thing to check - the setting may currently be inert.
-  test.skip("persists Vim keybindings and reports Vim mode with cursor position", async ({
+  test("persists Vim keybindings and reports Vim mode with cursor position", async ({
     page,
     withWorkspace,
   }) => {
@@ -538,13 +481,25 @@ test.describe("CodeMirror workspace file editing", () => {
     const workspace = await withWorkspace({ prefix: "file-editing-vim-" });
     await writeFile(path.join(workspace.repoPath, "vim.ts"), "const vim = true;\n", "utf8");
 
+    await page.goto("/settings/general");
+    const developerMode = page.getByRole("button", { name: "Developer", exact: true });
+    await expect(developerMode).toBeVisible();
+    await developerMode.click();
+    await expect(developerMode).toHaveAttribute("aria-selected", "true");
     await page.goto("/settings/editor");
     const toggle = page.getByRole("switch", { name: "Vim keybindings" });
     await expect(toggle).toBeVisible();
     await toggle.click();
     await expect(toggle).toBeChecked();
+    const findMapping = page.getByTestId("vim-mapping-find");
+    await expect(findMapping).toBeVisible();
+    await findMapping.getByRole("button", { name: "Rebind" }).click();
+    await page.keyboard.press("g");
+    await findMapping.getByRole("button", { name: "Done" }).click();
+    await expect(findMapping.getByTestId("vim-mapping-find-value")).toContainText("G");
     await page.reload();
     await expect(page.getByRole("switch", { name: "Vim keybindings" })).toBeChecked();
+    await expect(page.getByTestId("vim-mapping-find-value")).toContainText("G");
 
     await workspace.navigateTo();
     await openWorkspaceFile(page, "vim.ts");
@@ -555,5 +510,115 @@ test.describe("CodeMirror workspace file editing", () => {
     await expect(page.getByLabel("Vim mode INSERT")).toBeVisible();
     await editor(page).press("Escape");
     await expect(page.getByLabel("Vim mode NORMAL")).toBeVisible();
+    await editor(page).press("Space");
+    await editor(page).press("g");
+    await expect(page.getByTestId("editor-find-input")).toBeVisible();
+  });
+
+  test.describe("desktop terminal-backed file editor", () => {
+    test.skip(
+      process.env.E2E_DESKTOP_RUNTIME !== "1",
+      "requires the desktop Electron platform overlay",
+    );
+
+    test("gives the terminal ownership and reloads the standard editor after exit", async ({
+      page,
+    }) => {
+      test.setTimeout(120_000);
+      await injectDesktopBridge(page, {
+        serverId: getServerId(),
+        manageBuiltInDaemon: false,
+      });
+      await seedAppSettings(page, {
+        fileEditorMode: "custom",
+        fileEditorCustomCommand:
+          "node -e \"require('fs').appendFileSync('target.txt','\\nexternal')\"",
+      });
+      const workspace = await seedWorkspace({
+        repoPrefix: "external-editor-owner-",
+        repo: { files: [{ path: "target.txt", content: "original\n" }] },
+      });
+      try {
+        await openHomeWithProject(page, workspace.repoPath);
+        await selectWorkspaceInSidebar(page, workspace.workspaceId);
+        await openWorkspaceFile(page, "target.txt");
+        await expect(page.getByTestId("external-file-editor-pane")).toBeVisible({
+          timeout: 30_000,
+        });
+        await expect(page.getByTestId("code-editor-surface")).not.toBeVisible();
+        await expect(page.getByTestId("external-file-editor-pane")).not.toBeVisible({
+          timeout: 30_000,
+        });
+        await expect(page.getByTestId("code-editor-surface")).toContainText("external");
+      } finally {
+        await workspace.cleanup();
+      }
+    });
+
+    test("renders a clear launch failure for a missing host executable", async ({ page }) => {
+      await injectDesktopBridge(page, {
+        serverId: getServerId(),
+        manageBuiltInDaemon: false,
+      });
+      await seedAppSettings(page, {
+        fileEditorMode: "custom",
+        fileEditorCustomCommand: "otto-editor-does-not-exist-e2e",
+      });
+      const workspace = await seedWorkspace({
+        repoPrefix: "external-editor-missing-",
+        repo: { files: [{ path: "target.txt", content: "original\n" }] },
+      });
+      try {
+        await openHomeWithProject(page, workspace.repoPath);
+        await selectWorkspaceInSidebar(page, workspace.workspaceId);
+        await openWorkspaceFile(page, "target.txt");
+        await expect(page.getByTestId("external-file-editor-failure")).toContainText(
+          "File editor was not opened",
+          { timeout: 30_000 },
+        );
+        await expect(page.getByTestId("code-editor-surface")).toContainText("original");
+      } finally {
+        await workspace.cleanup();
+      }
+    });
+
+    test("keeps external ownership across a disk edit and daemon reconnect", async ({ page }) => {
+      test.setTimeout(120_000);
+      await injectDesktopBridge(page, {
+        serverId: getServerId(),
+        manageBuiltInDaemon: false,
+      });
+      await seedAppSettings(page, {
+        fileEditorMode: "custom",
+        fileEditorCustomCommand: 'node -e "setTimeout(() => {}, 6000)"',
+      });
+      const workspace = await seedWorkspace({
+        repoPrefix: "external-editor-reconnect-",
+        repo: { files: [{ path: "target.txt", content: "original\n" }] },
+      });
+      const gate = await installDaemonWebSocketGate(page);
+      try {
+        await openHomeWithProject(page, workspace.repoPath);
+        await selectWorkspaceInSidebar(page, workspace.workspaceId);
+        await openWorkspaceFile(page, "target.txt");
+        await expect(page.getByTestId("external-file-editor-pane")).toBeVisible({
+          timeout: 30_000,
+        });
+        await writeFile(path.join(workspace.repoPath, "target.txt"), "changed on disk\n", "utf8");
+        await expect(page.getByTestId("external-file-editor-file-changed")).toBeVisible({
+          timeout: 15_000,
+        });
+        await gate.drop();
+        gate.restore();
+        await expect(page.getByTestId("external-file-editor-pane")).toBeVisible();
+        await expect(page.getByTestId("external-file-editor-pane")).not.toBeVisible({
+          timeout: 30_000,
+        });
+        await expect(page.getByTestId("code-editor-surface")).toContainText("changed on disk");
+      } finally {
+        gate.restore();
+        await workspace.cleanup();
+      }
+    });
   });
 });

@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Opt-in Vim keybindings in the File Editor, with modal feedback and rebindable Space-leader shortcuts
+- Choose Otto, Vim, Neovim, or a custom command as the desktop File editor
+- Read-only terminal compatibility checks for Vim, Neovim, tmux, Difftastic, and terminal behavior
+
+### Fixed
+
+- Opening a file with Vim or Neovim now keeps editing in its existing file tab instead of creating a workspace terminal tab
+
 ## 0.8.8 - 2026-08-11
 
 ### Added

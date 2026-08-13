@@ -156,6 +156,36 @@ Three pieces, and each is load-bearing:
 2. **Specificity in the matcher.** `bindingSpecificity` ranks a binding that names the focused surface above one that applies everywhere, and `resolveInitialChordStep` / `resolveAdvancingChordStep` pick the most specific match rather than the first. Ties keep first-match-wins, so registry order still decides among equals.
 3. **The bridge.** `editor/editor-key-bindings.ts` turns the File Editor rows of the user's _effective_ bindings into a CM6 keymap (`Mod+S` → `Mod-s`), which `file-tab-pane` passes to the editor as `keyBindings`. The core mounts it in its own `Compartment` and exposes `setKeyBindings`, so a rebind lands on an editor that is already open.
 
+## Vim keybindings and Otto action mappings
+
+The existing **Vim keybindings** setting is off by default and enables a constrained in-app Vim
+emulation on the web/Electron File Editor. It is not a Vim or Neovim runtime and does not read
+`.vimrc`, Lua, plugins, or arbitrary commands.
+
+Phase 1B adds one device-local settings field:
+
+```ts
+vimMappings: {
+  leader: "Space",
+  mappings: Partial<Record<
+    "save" | "find" | "goToDefinition" | "findReferences" |
+    "renameSymbol" | "openFileSearch" | "openChanges" | "newTerminal",
+    string
+  >>
+}
+```
+
+Mapping values are one or two ASCII letters or numbers after the Space leader. Invalid actions,
+leaders, keys, and duplicate sequences are discarded during settings loading; the first action in
+the documented order keeps a duplicate. Mappings run only in Vim normal mode on the focused file
+editor. They route to existing editor callbacks or the keyboard action dispatcher, so LSP and
+developer-mode capability gates remain authoritative. No mapping claims modifier chords, terminal
+input, message input, browser shortcuts, or other editor surfaces.
+
+The supported actions are Save, Find, Go to definition, Find references, Rename symbol, File
+search, Changes, and New terminal. Code formatting, code actions, and agent chat are not exposed by
+this mapping surface until each has a stable, honest editor entry point.
+
 The rules that follow from that shape:
 
 - **An Otto shortcut that overlaps an editor one needs no guard.** Put the editor's version in the File Editor section and specificity does the rest. `codeEditor: false` existed only to hand `Mod+B` to the editor by hand and is **gone** - a hardcoded guard cannot follow a rebind, so rebinding Go to definition off `Mod+B` used to leave that combo dead in the editor. Reach for `editable: false` only for scopes with **no** editor binding to hand the combo to (`Mod+F` still carries it, to keep the file finder out of the composer and plain text fields).
@@ -422,6 +452,31 @@ Naming and path arithmetic are pure and unit-tested in `markdown/markdown-image-
 `relativeLinkPath` from link completion rather than restating it. The daemon never clobbers, so an
 occupied name comes back as `exists` and the client retries `x-2.png` - a drop can only ever add a
 file.
+
+## Terminal-backed Vim and Neovim sessions
+
+The desktop **File editor** preference chooses where source files open. It defaults to **Otto**,
+which uses Otto's built-in editor. Selecting Vim, Neovim, or a custom command opens source files
+directly in that real host executable inside the File Editor terminal. Vim and Neovim are offered
+only when the daemon host reports the matching executable as available through the existing terminal
+compatibility diagnostic; a custom command is still launched through the same host-owned terminal
+stack. Rendered text documents, including Markdown, open in the selected editor too; binary and
+media formats keep their normal preview behavior.
+
+The terminal is pane-owned: choosing Vim or Neovim replaces the file's content in the existing File
+tab and does not create a second workspace terminal tab.
+
+While a terminal-backed session is mounted, the terminal and selected file editor are authoritative. The
+CodeMirror editor, its document mirror, and Otto's autosave path are unmounted, so they cannot race
+the external process. The daemon continues watching the file and reports changed, deleted, and
+recreated states in the terminal-backed pane. Files, Changes, Git, and agent context continue to
+derive from daemon-owned disk state.
+
+Quitting the process or losing its terminal stream removes the dedicated session and returns to the
+standard Otto editor, which reads the file from disk. Otto never overwrites an external edit as part
+of this transition. Launch failures, missing executables, host disconnects, and deleted files remain
+visible as explicit state. Direct Neovim RPC embedding and Difftastic integration are separate
+future work.
 
 ## AI Refactor - the safe core
 

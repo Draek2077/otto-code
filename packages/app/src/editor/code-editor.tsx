@@ -72,6 +72,10 @@ export function CodeEditor(props: CodeEditorProps) {
       cleanDoc: callbacksRef.current.cleanDoc,
       theme: callbacksRef.current.theme,
       wordWrap: callbacksRef.current.wordWrap,
+      // Vim mode is currently an in-page web/Electron feature. The native
+      // host uses its separate WebView implementation and does not pass this.
+      vimKeybindings: callbacksRef.current.vimKeybindings,
+      vimMappings: callbacksRef.current.vimMappings,
       markdownLivePreview: callbacksRef.current.markdownLivePreview,
       // This host draws the overlay bar below, so the platform's own must never
       // paint - not even for the frame before the overlay takes over.
@@ -79,6 +83,9 @@ export function CodeEditor(props: CodeEditorProps) {
       onDirtyChanged: (dirty) => callbacksRef.current.onDirtyChanged?.(dirty),
       onMatchInfo: (info) => callbacksRef.current.onMatchInfo?.(info),
       onCursorMoved: (position) => callbacksRef.current.onCursorMoved?.(position),
+      onVimModeChanged: (mode) => callbacksRef.current.onVimModeChanged?.(mode),
+      onVimMappingPendingChanged: (pending) =>
+        callbacksRef.current.onVimMappingPendingChanged?.(pending),
       keyBindings: callbacksRef.current.keyBindings,
       onSaveShortcut: () => callbacksRef.current.onSaveShortcut?.(),
       onFindShortcut: () => callbacksRef.current.onFindShortcut?.(),
@@ -87,6 +94,7 @@ export function CodeEditor(props: CodeEditorProps) {
       onGoToDefinitionShortcut: () => callbacksRef.current.onGoToDefinitionShortcut?.(),
       onFindReferencesShortcut: () => callbacksRef.current.onFindReferencesShortcut?.(),
       onRenameSymbolShortcut: () => callbacksRef.current.onRenameSymbolShortcut?.(),
+      onVimAction: (action) => callbacksRef.current.onVimAction?.(action),
       onScrolled: (metrics) => callbacksRef.current.onScrolled?.(metrics),
       onPointerSelect: (select) => callbacksRef.current.onPointerSelect?.(select),
       // Same shape as the context menu below: no handler, no drop extension, so
@@ -199,6 +207,18 @@ export function CodeEditor(props: CodeEditorProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keyBindingsKey]);
+
+  useEffect(() => {
+    coreRef.current?.setVimKeybindings(props.vimKeybindings ?? false);
+  }, [props.vimKeybindings]);
+
+  const vimMappingsKey = JSON.stringify(props.vimMappings ?? null);
+  useEffect(() => {
+    if (props.vimMappings) {
+      coreRef.current?.setVimMappings(props.vimMappings);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vimMappingsKey]);
 
   // The store hands out a stable array while the set is unchanged, so this fires on a
   // real republish rather than on every keystroke that re-renders the pane.

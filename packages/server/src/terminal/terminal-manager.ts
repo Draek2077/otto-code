@@ -22,6 +22,7 @@ export interface TerminalListItem {
   workspaceId: string;
   title?: string;
   activity: TerminalActivity | null;
+  presentation?: "embedded";
 }
 
 export interface TerminalsChangedEvent {
@@ -69,6 +70,7 @@ export interface TerminalManager {
     cols?: number;
     activityToken?: string;
     activityUrl?: string | null;
+    presentation?: "embedded";
   }): Promise<TerminalSession>;
   registerCwdEnv(options: { cwd: string; env: Record<string, string> }): void;
   validateTerminalActivityToken(terminalId: string, token: string): "valid" | "unknown" | "invalid";
@@ -225,6 +227,7 @@ export function createTerminalManager(
       name: input.session.name,
       cwd: input.session.cwd,
       workspaceId: input.session.workspaceId,
+      ...(input.session.presentation ? { presentation: input.session.presentation } : {}),
       title: input.session.getTitle(),
       activity: input.session.getActivity(),
     };
@@ -329,6 +332,7 @@ export function createTerminalManager(
       cols?: number;
       activityToken?: string;
       activityUrl?: string | null;
+      presentation?: "embedded";
     }): Promise<TerminalSession> {
       assertAbsolutePath(options.cwd);
 
@@ -362,6 +366,7 @@ export function createTerminalManager(
             ...(options.titleIncludePaths ? { titleIncludePaths: true } : {}),
             ...(options.command ? { command: options.command } : {}),
             ...(options.args ? { args: options.args } : {}),
+            presentation: options.presentation,
             ...(options.rows !== undefined ? { rows: options.rows } : {}),
             ...(options.cols !== undefined ? { cols: options.cols } : {}),
             ...(mergedEnv ? { env: mergedEnv } : {}),

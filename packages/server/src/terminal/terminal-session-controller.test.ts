@@ -155,12 +155,14 @@ function listSession(input: {
   name: string;
   cwd: string;
   workspaceId?: string;
+  presentation?: "embedded";
 }): TerminalSession {
   return {
     id: input.id,
     name: input.name,
     cwd: input.cwd,
     workspaceId: input.workspaceId ?? "ws-test",
+    ...(input.presentation ? { presentation: input.presentation } : {}),
     send: vi.fn(),
     subscribe: () => vi.fn(),
     onExit: () => vi.fn(),
@@ -194,6 +196,7 @@ describe("terminal-session-controller legacy terminal creation", () => {
           name: options.name ?? "Terminal 1",
           cwd: options.cwd,
           workspaceId: options.workspaceId,
+          presentation: options.presentation,
         }),
     );
     const terminalManager: TerminalManager = {
@@ -232,6 +235,7 @@ describe("terminal-session-controller legacy terminal creation", () => {
       type: "create_terminal_request",
       cwd: terminalCwd,
       name: "App Shell",
+      presentation: "embedded",
       requestId: "req-1",
     });
 
@@ -240,6 +244,7 @@ describe("terminal-session-controller legacy terminal creation", () => {
         cwd: terminalCwd,
         workspaceId: "ws-app",
         name: "App Shell",
+        presentation: "embedded",
       }),
     );
     expect(outboundMessages).toEqual([
@@ -251,6 +256,7 @@ describe("terminal-session-controller legacy terminal creation", () => {
             name: "App Shell",
             cwd: terminalCwd,
             workspaceId: "ws-app",
+            presentation: "embedded",
             activity: null,
           },
           error: null,

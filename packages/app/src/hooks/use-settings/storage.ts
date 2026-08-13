@@ -15,6 +15,12 @@ import {
   type TextEffectThemeId,
 } from "@/styles/text-effects";
 import { DEFAULT_FONT_CONTRAST, type LightThemeName, type DarkThemeName } from "@/styles/theme";
+import {
+  DEFAULT_VIM_MAPPING_SETTINGS,
+  normalizeVimMappingSettings,
+  type VimMappingSettings,
+} from "@/editor/vim-mappings";
+import { FILE_EDITOR_MODES, type FileEditorMode } from "@/editor/external-file-editor";
 
 export const APP_SETTINGS_KEY = "@otto:app-settings";
 export const APP_SETTINGS_QUERY_KEY = ["app-settings"];
@@ -80,6 +86,7 @@ const VALID_DARK_THEMES = new Set<string>(DARK_THEME_NAMES);
 const VALID_COLOR_SCHEME_MODES = new Set<ColorSchemeMode>(["light", "dark", "system"]);
 const VALID_SERVICE_URL_BEHAVIORS = new Set<ServiceUrlBehavior>(["ask", "in-app", "external"]);
 const VALID_LINK_OPEN_BEHAVIORS = new Set<LinkOpenBehavior>(["in-app", "external"]);
+const VALID_FILE_EDITOR_MODES = new Set<FileEditorMode>(FILE_EDITOR_MODES);
 const VALID_WORKSPACE_TITLE_SOURCES = new Set<WorkspaceTitleSource>(["title", "branch"]);
 const VALID_WORKSPACE_TOOLS_PLACEMENTS = new Set<WorkspaceToolsPlacement>([
   "header",
@@ -524,6 +531,12 @@ export interface AppSettings {
   toolCallDetailLevel: ToolCallDetailLevel;
   /** Vim keybindings in the file editor. */
   vimKeybindings: boolean;
+  /** Constrained leader-only Otto action mappings for Vim keybindings. */
+  vimMappings: VimMappingSettings;
+  /** Desktop-only file editor. Otto keeps the standard built-in editor. */
+  fileEditorMode: FileEditorMode;
+  /** Direct argv-style command used when fileEditorMode is custom. */
+  fileEditorCustomCommand: string;
 }
 
 export type VisualizerRenderQuality = "performance" | "balanced" | "sharp" | "native";
@@ -661,6 +674,9 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   featureEnabled: {},
   toolCallDetailLevel: "detailed",
   vimKeybindings: false,
+  vimMappings: DEFAULT_VIM_MAPPING_SETTINGS,
+  fileEditorMode: "off",
+  fileEditorCustomCommand: "",
 };
 export const DEFAULT_APP_SETTINGS: Settings = {
   ...DEFAULT_CLIENT_SETTINGS,
@@ -1343,6 +1359,16 @@ function pickVisualizerPipSettings(stored: Partial<AppSettings>): Partial<AppSet
   }
   if (typeof stored.vimKeybindings === "boolean") {
     result.vimKeybindings = stored.vimKeybindings;
+  }
+  result.vimMappings = normalizeVimMappingSettings(stored.vimMappings);
+  if (
+    typeof stored.fileEditorMode === "string" &&
+    VALID_FILE_EDITOR_MODES.has(stored.fileEditorMode as FileEditorMode)
+  ) {
+    result.fileEditorMode = stored.fileEditorMode as FileEditorMode;
+  }
+  if (typeof stored.fileEditorCustomCommand === "string") {
+    result.fileEditorCustomCommand = stored.fileEditorCustomCommand;
   }
   if (
     typeof stored.toolCallDetailLevel === "string" &&

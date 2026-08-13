@@ -10,6 +10,7 @@ import type {
   SubscribeTerminalRequest,
   SubscribeTerminalsRequest,
   TerminalInput,
+  TerminalCompatibilityDiagnosticRequest,
   UnsubscribeTerminalRequest,
   UnsubscribeTerminalsRequest,
 } from "../server/messages.js";
@@ -35,6 +36,7 @@ import type { TerminalSession } from "./terminal.js";
 import type { TerminalManager, TerminalsChangedEvent } from "./terminal-manager.js";
 import type { TerminalActivity } from "@otto-code/protocol/terminal-activity";
 import { terminalSubscriptionKey } from "@otto-code/protocol/terminal-subscription-key";
+import { runTerminalCompatibilityDiagnostic } from "./terminal-compatibility-diagnostic.js";
 
 const MAX_TERMINAL_STREAM_SLOTS = 256;
 
@@ -105,6 +107,7 @@ type TerminalDispatchableMessage =
   | SubscribeTerminalRequest
   | UnsubscribeTerminalRequest
   | TerminalInput
+  | TerminalCompatibilityDiagnosticRequest
   | KillTerminalRequest
   | CaptureTerminalRequest
   | RenameTerminalRequest;
@@ -120,6 +123,7 @@ const TERMINAL_MESSAGE_TYPES: ReadonlySet<TerminalDispatchableMessage["type"]> =
   "kill_terminal_request",
   "capture_terminal_request",
   "terminal.rename.request",
+  "terminal.compatibility.diagnostic.request",
 ]);
 
 export class TerminalSessionController {
@@ -218,6 +222,8 @@ export class TerminalSessionController {
         return this.handleCaptureTerminalRequest(msg);
       case "terminal.rename.request":
         return this.handleRenameTerminalRequest(msg);
+      case "terminal.compatibility.diagnostic.request":
+        return this.handleCompatibilityDiagnosticRequest(msg);
       default:
         return undefined;
     }
@@ -336,13 +342,17 @@ export class TerminalSessionController {
   }
 
   private toTerminalInfo(
-    terminal: Pick<TerminalSession, "id" | "name" | "workspaceId" | "getTitle" | "getActivity">,
+    terminal: Pick<
+      TerminalSession,
+      "id" | "name" | "workspaceId" | "presentation" | "getTitle" | "getActivity"
+    >,
   ): {
     id: string;
     name: string;
     workspaceId: string;
     title?: string;
     activity: TerminalActivity | null;
+    presentation?: "embedded";
   } {
     const title = terminal.getTitle();
     const activity = terminal.getActivity();
@@ -350,6 +360,7 @@ export class TerminalSessionController {
       id: terminal.id,
       name: terminal.name,
       workspaceId: terminal.workspaceId,
+      ...(terminal.presentation ? { presentation: terminal.presentation } : {}),
       ...(title ? { title } : {}),
       activity,
     };
@@ -568,6 +579,7 @@ export class TerminalSessionController {
         args: msg.args ?? defaultTerminalCommand?.args,
         rows: msg.size?.rows,
         cols: msg.size?.cols,
+        presentation: msg.presentation,
       });
       this.ensureExitSubscription(session);
       this.emit({
@@ -578,6 +590,7 @@ export class TerminalSessionController {
             name: session.name,
             cwd: session.cwd,
             workspaceId: session.workspaceId,
+            ...(session.presentation ? { presentation: session.presentation } : {}),
             ...(session.getTitle() ? { title: session.getTitle() } : {}),
             activity: session.getActivity(),
           },
@@ -827,6 +840,34 @@ export class TerminalSessionController {
           lines: [],
           totalLines: 0,
           requestId: msg.requestId,
+        },
+      });
+    }
+  }
+
+  private async handleCompatibilityDiagnosticRequest(
+    msg: TerminalCompatibilityDiagnosticRequest,
+  ): Promise<void> {
+    try {
+      const payload = await runTerminalCompatibilityDiagnostic(
+        { terminalManager: this.terminalManager },
+        msg.requestId,
+      );
+      this.emit({
+        type: "terminal.compatibility.diagnostic.response",
+        payload,
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      this.sessionLogger.error({ err: error }, "Failed to run terminal compatibility diagnostic");
+      this.emit({
+        type: "terminal.compatibility.diagnostic.response",
+        payload: {
+          requestId: msg.requestId,
+          success: false,
+          error: detail,
+          generatedAt: new Date().toISOString(),
+          checks: [],
         },
       });
     }

@@ -69,6 +69,36 @@ describe("loadAppSettingsFromStorage", () => {
     expect(result.language).toBe("system");
   });
 
+  it("normalizes persisted Vim mappings and preserves the legacy Vim toggle", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({
+          vimKeybindings: true,
+          vimMappings: {
+            leader: "Space",
+            mappings: { goToDefinition: "d", find: "d", openChanges: "ch", unsupported: "x" },
+          },
+        }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.vimKeybindings).toBe(true);
+    expect(result.vimMappings).toEqual({
+      leader: "Space",
+      mappings: {
+        save: "s",
+        find: "d",
+        findReferences: "r",
+        renameSymbol: "n",
+        openFileSearch: "p",
+        openChanges: "ch",
+        newTerminal: "t",
+      },
+    });
+  });
+
   it("defaults workspace title source to title when storage is empty", async () => {
     const deps = makeDeps();
 

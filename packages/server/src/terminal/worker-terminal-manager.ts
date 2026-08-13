@@ -137,6 +137,7 @@ function cloneTerminalInfo(info: RequiredWorkerTerminalInfo): RequiredWorkerTerm
     name: info.name,
     cwd: info.cwd,
     workspaceId: info.workspaceId,
+    ...(info.presentation ? { presentation: info.presentation } : {}),
     ...(info.title ? { title: info.title } : {}),
     activity: info.activity,
   };
@@ -258,6 +259,9 @@ export function createWorkerTerminalManager(
       },
       get workspaceId() {
         return record.info.workspaceId;
+      },
+      get presentation() {
+        return record.info.presentation;
       },
       send(message: ClientMessage): void {
         if (message.type === "resize") {

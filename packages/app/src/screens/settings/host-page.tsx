@@ -85,6 +85,7 @@ import {
   useTodoRemindersFeature,
 } from "@/screens/settings/otto-tools-section";
 import { ConnectorsSection } from "@/screens/settings/connectors-section";
+import { TerminalCompatibilitySection } from "@/screens/settings/terminal-compatibility-section";
 import { CodeIntelligenceSection } from "./code-intelligence-section";
 import { StorageSection } from "./storage-section";
 import { restartDaemonFromSettings } from "./daemon-restart";
@@ -2101,6 +2102,7 @@ export function HostTerminalsPage({ serverId }: { serverId: string }) {
       <SettingsSection title="Terminal agents">
         <EnableTerminalAgentHooksCard serverId={serverId} />
       </SettingsSection>
+      <TerminalCompatibilitySection serverId={serverId} />
       <TerminalAppearanceSection serverId={serverId} />
       <WindowsTerminalShellSection serverId={serverId} />
       <TerminalProfilesSection serverId={serverId} />

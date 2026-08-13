@@ -55,7 +55,10 @@ export function collectStandaloneTerminalIds(input: {
   scriptTerminalIds: Set<string>;
 }): string[] {
   return input.terminals
-    .filter((terminal) => !input.scriptTerminalIds.has(terminal.id))
+    .filter(
+      (terminal) =>
+        !input.scriptTerminalIds.has(terminal.id) && terminal.presentation !== "embedded",
+    )
     .map((terminal) => terminal.id);
 }
 

@@ -48,6 +48,25 @@ test.describe("Settings host page", () => {
     await expectHostInjectMcpCard(page);
   });
 
+  test("terminal settings expose the read-only compatibility diagnostic", async ({ page }) => {
+    const serverId = getServerId();
+
+    await gotoAppShell(page);
+    await openSettings(page);
+    await openSettingsHost(page, serverId);
+    await openHostSection(page, serverId, "terminals");
+
+    const card = page.getByTestId("terminal-compatibility-card");
+    await expect(card).toBeVisible();
+    await page.getByTestId("terminal-compatibility-button").click();
+    await expect(page.getByTestId("terminal-diagnostic-sheet")).toBeVisible();
+    await expect(page.getByTestId("terminal-check-vim")).toBeVisible();
+    await expect(page.getByTestId("terminal-check-kitty-compatibility")).toContainText(
+      "Kitty compatibility",
+    );
+    await expect(page.getByTestId("terminal-diagnostic-sheet")).toContainText("UNKNOWN");
+  });
+
   test("providers section shows the providers card", async ({ page }) => {
     const serverId = getServerId();
 

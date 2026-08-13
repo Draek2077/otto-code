@@ -181,6 +181,7 @@ import type {
   HistoryAgentsStorageStatsResponse,
   KillTerminalResponse,
   CaptureTerminalResponse,
+  TerminalCompatibilityDiagnosticResponse,
   TerminalInput,
   SessionInboundMessage,
   SessionOutboundMessage,
@@ -833,6 +834,7 @@ type SubscribeTerminalPayload = SubscribeTerminalResponse["payload"];
 type CloseItemsPayload = CloseItemsResponse["payload"];
 type KillTerminalPayload = KillTerminalResponse["payload"];
 type CaptureTerminalPayload = CaptureTerminalResponse["payload"];
+type TerminalCompatibilityDiagnosticPayload = TerminalCompatibilityDiagnosticResponse["payload"];
 type ChatCreatePayload = Extract<
   SessionOutboundMessage,
   { type: "chat/create/response" }
@@ -7854,7 +7856,13 @@ export class DaemonClient {
     cwd: string,
     name?: string,
     requestId?: string,
-    options?: { agentId?: string; command?: string; args?: string[]; workspaceId?: string },
+    options?: {
+      agentId?: string;
+      command?: string;
+      args?: string[];
+      workspaceId?: string;
+      presentation?: "embedded";
+    },
   ): Promise<CreateTerminalPayload> {
     const resolvedRequestId = this.createRequestId(requestId);
     const message = SessionInboundMessageSchema.parse({
@@ -7864,6 +7872,7 @@ export class DaemonClient {
       agentId: options?.agentId,
       command: options?.command,
       args: options?.args,
+      presentation: options?.presentation,
       ...(options?.workspaceId !== undefined ? { workspaceId: options.workspaceId } : {}),
       requestId: resolvedRequestId,
     });
@@ -7990,6 +7999,19 @@ export class DaemonClient {
       message,
       responseType: "capture_terminal_response",
       options: { skipQueue: true },
+    });
+  }
+
+  async runTerminalCompatibilityDiagnostic(
+    requestId?: string,
+  ): Promise<TerminalCompatibilityDiagnosticPayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedSessionRequest({
+      requestId: resolvedRequestId,
+      message: {
+        type: "terminal.compatibility.diagnostic.request",
+      },
+      responseType: "terminal.compatibility.diagnostic.response",
     });
   }
 

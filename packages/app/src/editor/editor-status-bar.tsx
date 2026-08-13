@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { useTranslation } from "react-i18next";
 import { getLanguageDisplayName } from "@otto-code/highlight";
 import type { CodeDiagnostic, FileEol } from "@otto-code/protocol/messages";
 import {
@@ -16,7 +17,7 @@ import { isWeb } from "@/constants/platform";
 import { useIconSize, type Theme } from "@/styles/theme";
 import { formatFileSize, utf8ByteSize } from "@/utils/format-file-size";
 import type { EditorBufferState } from "./editor-buffer-state";
-import type { EditorCursorPosition } from "./editor-contract";
+import type { EditorCursorPosition, EditorVimMode } from "./editor-contract";
 
 // The strip along the bottom of the editor: what the file is on the left, how
 // it is encoded and where the caret sits on the right. Read-only - every item
@@ -80,6 +81,10 @@ interface EditorStatusBarProps {
   isText: boolean;
   /** Null in preview mode, and until the editor reports its first position. */
   cursor: EditorCursorPosition | null;
+  /** Current in-app Vim mode; omitted when Vim keybindings are disabled. */
+  vimMode?: EditorVimMode | null;
+  /** True after Space starts an in-app Vim leader sequence. */
+  vimMappingPending?: boolean;
   /**
    * Natural pixel size of a previewed image. Null for everything else - and for
    * an image whose container we could not measure, where an invented size would
@@ -174,9 +179,12 @@ export function EditorStatusBar({
   eol,
   isText,
   cursor,
+  vimMode,
+  vimMappingPending = false,
   imageDimensions,
   diagnostics,
 }: EditorStatusBarProps) {
+  const { t } = useTranslation();
   const iconSize = useIconSize();
   const language = useMemo(() => getLanguageDisplayName(path), [path]);
   const size = useMemo(() => formatFileSize({ size: byteSize }), [byteSize]);
@@ -230,8 +238,38 @@ export function EditorStatusBar({
             </Text>
           </View>
         ) : null}
+        {vimMode ? (
+          <View
+            style={styles.item}
+            accessibilityRole="text"
+            accessibilityLabel={t("panels.file.editor.vimMode", { mode: vimMode })}
+          >
+            <Text style={styles.numericText} numberOfLines={1}>
+              {vimMode}
+            </Text>
+          </View>
+        ) : null}
+        {vimMappingPending ? (
+          <View
+            style={styles.item}
+            accessibilityRole="text"
+            accessibilityLabel="Vim leader pending: press a shortcut key or Escape to cancel"
+            testID="vim-leader-pending"
+          >
+            <Text style={styles.numericText} numberOfLines={1}>
+              Space …
+            </Text>
+          </View>
+        ) : null}
         {cursor ? (
-          <View style={styles.item}>
+          <View
+            style={styles.item}
+            accessibilityRole="text"
+            accessibilityLabel={t("panels.file.editor.cursor", {
+              line: cursor.line,
+              column: cursor.column,
+            })}
+          >
             <ThemedTextSelectStart size={iconSize.xs} uniProps={mutedIconColor} />
             <Text style={styles.numericText} numberOfLines={1}>
               {formatCursor(cursor)}

@@ -20,7 +20,14 @@ import {
   SearchQuery,
   setSearchQuery,
 } from "@codemirror/search";
-import { Annotation, Compartment, EditorState, Text, type Extension } from "@codemirror/state";
+import {
+  Annotation,
+  Compartment,
+  EditorState,
+  Prec,
+  Text,
+  type Extension,
+} from "@codemirror/state";
 import {
   type BlockInfo,
   closeHoverTooltips,
@@ -36,6 +43,7 @@ import {
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import { getLanguageForFile, getParserForFile, highlightCode } from "@otto-code/highlight";
+import { getCM, Vim, vim, type CodeMirror } from "@replit/codemirror-vim";
 import {
   getMarkdownCommand,
   isMarkdownCommandName,
@@ -65,7 +73,14 @@ import {
   type EditorPointerSelect,
   type EditorScrollMetrics,
   type EditorThemeSpec,
+  type EditorVimMode,
 } from "./editor-contract";
+import {
+  DEFAULT_VIM_MAPPING_SETTINGS,
+  getVimMappingAction,
+  isVimMappingPrefix,
+  type VimMappingSettings,
+} from "./vim-mappings";
 import {
   createDiagnosticsExtension,
   diagnosticsAtPos,
@@ -98,10 +113,15 @@ export interface EditorCoreOptions {
   cleanDoc?: string;
   theme: EditorThemeSpec;
   wordWrap: boolean;
+  /** Web/Electron-only in-app Vim emulation. Native does not pass this option. */
+  vimKeybindings?: boolean;
+  vimMappings?: VimMappingSettings;
   markdownLivePreview?: boolean;
   onDirtyChanged?: (dirty: boolean) => void;
   onMatchInfo?: (info: EditorMatchInfo | null) => void;
   onCursorMoved?: (position: EditorCursorPosition) => void;
+  onVimModeChanged?: (mode: EditorVimMode | null) => void;
+  onVimMappingPendingChanged?: (pending: boolean) => void;
   /**
    * An image was pasted or dropped into a markdown document. Omitting it
    * registers no handler, which is how a host without the daemon's
@@ -127,6 +147,7 @@ export interface EditorCoreOptions {
   onGoToDefinitionShortcut?: () => void;
   onFindReferencesShortcut?: () => void;
   onRenameSymbolShortcut?: () => void;
+  onVimAction?: (action: import("./vim-mappings").VimMappingAction) => void;
   /** Fires on every doc change without content; callers pull getDoc as needed. */
   onDocChanged?: () => void;
   // Split-view scroll sync; both fire only for user-initiated interactions
@@ -189,6 +210,10 @@ export interface EditorCore {
   scrollToLineAtOffset(line: number, viewportOffsetY: number): void;
   setTheme(theme: EditorThemeSpec): void;
   setWordWrap(enabled: boolean): void;
+  /** Toggle in-app Vim without remounting the CM6 editor. */
+  setVimKeybindings(enabled: boolean): void;
+  /** Replace the validated leader mappings without remounting the editor. */
+  setVimMappings(settings: VimMappingSettings): void;
   /** Re-key the editor commands, so a rebind in Settings lands without a remount. */
   setKeyBindings(bindings: readonly EditorKeyBinding[]): void;
   /**
@@ -207,6 +232,19 @@ export interface EditorCore {
   /** Replace the whole problem set; see the contract's note on why it is never a delta. */
   setDiagnostics(diagnostics: readonly EditorDiagnostic[]): void;
   destroy(): void;
+}
+
+function normalizeVimMode(mode: string | undefined): EditorVimMode {
+  switch (mode) {
+    case "insert":
+      return "INSERT";
+    case "visual":
+      return "VISUAL";
+    case "replace":
+      return "REPLACE";
+    default:
+      return "NORMAL";
+  }
 }
 
 // Counting stops here so a pathological query on a huge file cannot stall the
@@ -971,15 +1009,185 @@ function buildShortcutKeymap(
   );
 }
 
+function matchesEditorKey(event: KeyboardEvent, keyName: string): boolean {
+  const parts = keyName.split("-");
+  const key = parts.pop();
+  if (!key) {
+    return false;
+  }
+  const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
+  const wantsMod = parts.includes("Mod");
+  const wantsCtrl = parts.includes("Ctrl") || (wantsMod && !isMac);
+  const wantsMeta = parts.includes("Meta") || (wantsMod && isMac);
+  if (
+    event.ctrlKey !== wantsCtrl ||
+    event.metaKey !== wantsMeta ||
+    event.altKey !== parts.includes("Alt") ||
+    event.shiftKey !== parts.includes("Shift")
+  ) {
+    return false;
+  }
+  return event.key.length === 1 && key.length === 1
+    ? event.key.toLowerCase() === key.toLowerCase()
+    : event.key === key;
+}
+
+/** Keep Otto's editor callbacks ahead of Vim's own keydown handler locally. */
+function buildVimOttoShortcutHandlers(
+  options: EditorCoreOptions,
+  bindings: readonly EditorKeyBinding[],
+  isFindActive: () => boolean,
+): Extension {
+  const handlers: Partial<Record<EditorKeyAction, (() => void) | undefined>> = {
+    save: options.onSaveShortcut,
+    find: options.onFindShortcut,
+    goToLine: options.onGoToLineShortcut,
+    goToDefinition: options.onGoToDefinitionShortcut,
+    findReferences: options.onFindReferencesShortcut,
+    renameSymbol: options.onRenameSymbolShortcut,
+  };
+  return Prec.highest(
+    EditorView.domEventHandlers({
+      keydown: (event, view) => {
+        if (event.key === "Escape" && isFindActive()) {
+          options.onCloseFindShortcut?.();
+          event.preventDefault();
+          return true;
+        }
+        for (const binding of bindings) {
+          if (!matchesEditorKey(event, binding.key)) {
+            continue;
+          }
+          if (isMarkdownCommandName(binding.action)) {
+            if (!isMarkdownPath(options.path)) {
+              continue;
+            }
+            if (!getMarkdownCommand(binding.action)(view)) {
+              continue;
+            }
+            event.preventDefault();
+            return true;
+          }
+          const handler = handlers[binding.action];
+          if (!handler) {
+            return false;
+          }
+          handler();
+          event.preventDefault();
+          return true;
+        }
+        return false;
+      },
+    }),
+  );
+}
+
+/**
+ * Local leader mappings. The CM6 Vim package has a process-global mapping API,
+ * so using it here would make one file tab's settings leak into every tab.
+ * Capture only plain normal-mode keys on this editor's DOM instead; the host
+ * callback then routes into the existing action/focus infrastructure.
+ */
+function buildVimMappings(
+  settings: VimMappingSettings,
+  onAction: ((action: import("./vim-mappings").VimMappingAction) => void) | undefined,
+  onPendingChanged: ((pending: boolean) => void) | undefined,
+): Extension {
+  if (!onAction || Object.keys(settings.mappings).length === 0) {
+    return [];
+  }
+  let pendingLeader = false;
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+
+  const clearPending = (): void => {
+    if (pendingLeader) {
+      onPendingChanged?.(false);
+    }
+    pendingLeader = false;
+    if (timeout !== null) {
+      clearTimeout(timeout);
+      timeout = null;
+    }
+  };
+  const replayLeader = (cm: CodeMirror): void => {
+    Vim.handleKey(cm, " ", "otto-vim-leader");
+  };
+  const armTimeout = (cm: CodeMirror): void => {
+    if (timeout !== null) {
+      clearTimeout(timeout);
+    }
+    timeout = setTimeout(() => {
+      timeout = null;
+      if (pendingLeader) {
+        pendingLeader = false;
+        replayLeader(cm);
+      }
+    }, 650);
+  };
+
+  return Prec.highest(
+    EditorView.domEventHandlers({
+      keydown: (event, view) => {
+        const cm = getCM(view);
+        const vimState = cm?.state.vim;
+        if (!cm || !vimState || vimState.insertMode || vimState.visualMode) {
+          clearPending();
+          return false;
+        }
+        const plainKey = event.key === " " || (/^[A-Za-z0-9]$/.test(event.key) && !event.shiftKey);
+        if (!plainKey || event.ctrlKey || event.metaKey || event.altKey) {
+          if (pendingLeader) {
+            clearPending();
+            replayLeader(cm);
+          }
+          return false;
+        }
+        if (!pendingLeader) {
+          if (event.key !== " " || !isVimMappingPrefix(settings, "")) {
+            return false;
+          }
+          pendingLeader = true;
+          onPendingChanged?.(true);
+          armTimeout(cm);
+          event.preventDefault();
+          return true;
+        }
+
+        const sequence = event.key;
+        const action = getVimMappingAction(settings, sequence);
+        if (action) {
+          clearPending();
+          onAction(action);
+          event.preventDefault();
+          return true;
+        }
+        if (isVimMappingPrefix(settings, sequence)) {
+          armTimeout(cm);
+          event.preventDefault();
+          return true;
+        }
+        clearPending();
+        replayLeader(cm);
+        return false;
+      },
+    }),
+  );
+}
+
 export function createEditorCore(options: EditorCoreOptions): EditorCore {
   const themeCompartment = new Compartment();
   const wrapCompartment = new Compartment();
+  const vimCompartment = new Compartment();
+  const vimShortcutCompartment = new Compartment();
+  const vimMappingCompartment = new Compartment();
   const keymapCompartment = new Compartment();
   // The hover tooltip builds its own DOM with inline syntax colours, so it needs the
   // spec at render time rather than at mount: a theme switch reconfigures the
   // compartment, and a tooltip opened afterwards must use the new colours.
   let activeTheme = options.theme;
   let findActive = false;
+  let vimKeybindings = Boolean(options.vimKeybindings);
+  let vimMappings = options.vimMappings ?? DEFAULT_VIM_MAPPING_SETTINGS;
 
   // Dirty is a COMPARISON against the saved text, not a latch on "an edit
   // happened". Any edit that leaves the document equal to that text is not a
@@ -1115,36 +1323,51 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
       search({
         createPanel: () => ({ dom: document.createElement("div") }),
       }),
-      // Otto's own editor commands, keyed by the user's shortcut registry.
-      // FIRST, so a command rebound onto a combo `defaultKeymap` also claims
-      // (Mod-l is select-line, say) still wins.
-      keymapCompartment.of(
-        buildShortcutKeymap(options, options.keyBindings ?? DEFAULT_EDITOR_KEY_BINDINGS),
+      // Vim must be mounted before the remaining keymaps so it owns modal
+      // editing keys. Its unrecognised keys fall through to Otto's existing
+      // shortcut keymap and then CodeMirror's ordinary bindings.
+      vimCompartment.of(options.vimKeybindings ? vim() : []),
+      vimShortcutCompartment.of(
+        options.vimKeybindings
+          ? buildVimOttoShortcutHandlers(
+              options,
+              options.keyBindings ?? DEFAULT_EDITOR_KEY_BINDINGS,
+              () => findActive,
+            )
+          : [],
       ),
-      keymap.of([
-        // Escape belongs to find while find is running: dismissing the strip
-        // (and with it every match highlight) has to work from the file
-        // contents, not only from the find box, because stepping through
-        // results is done with focus back in the text. Returning false when no
-        // query is active leaves Escape to defaultKeymap's simplifySelection.
-        //
-        // Stays hardcoded rather than joining the registry above precisely
-        // because of that condition: "Escape, but only while a query is running,
-        // and otherwise not mine" is not something a binding can say.
-        {
-          key: "Escape",
-          run: () => {
-            if (!findActive) {
-              return false;
-            }
-            options.onCloseFindShortcut?.();
-            return true;
+      vimMappingCompartment.of(
+        options.vimKeybindings
+          ? buildVimMappings(vimMappings, options.onVimAction, options.onVimMappingPendingChanged)
+          : [],
+      ),
+      // Otto's own editor commands, keyed by the user's shortcut registry.
+      // Highest precedence is intentional: Vim's default Ctrl-f page motion
+      // must not take the existing File Editor Find binding away.
+      keymapCompartment.of(
+        Prec.highest(
+          buildShortcutKeymap(options, options.keyBindings ?? DEFAULT_EDITOR_KEY_BINDINGS),
+        ),
+      ),
+      keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+      // Escape belongs to find while find is running: dismissing the strip
+      // (and with it every match highlight) has to work from the file
+      // contents, not only from the find box, even when Vim is enabled.
+      // Returning false while find is idle leaves Escape to Vim's mode change.
+      Prec.highest(
+        keymap.of([
+          {
+            key: "Escape",
+            run: () => {
+              if (!findActive) {
+                return false;
+              }
+              options.onCloseFindShortcut?.();
+              return true;
+            },
           },
-        },
-        ...defaultKeymap,
-        ...historyKeymap,
-        indentWithTab,
-      ]),
+        ]),
+      ),
       // Right-click is a "act on what I am pointing at" gesture, so the caret
       // moves to the click before the menu opens - unless the click landed
       // inside an existing selection, which the user is pointing at on purpose.
@@ -1258,6 +1481,29 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
 
   const view = new EditorView({ state, parent: options.parent });
   let destroyed = false;
+  let vimModeCleanup: (() => void) | null = null;
+
+  const attachVimMode = (enabled: boolean): void => {
+    vimModeCleanup?.();
+    vimModeCleanup = null;
+    if (!enabled) {
+      options.onVimModeChanged?.(null);
+      return;
+    }
+    const cm = getCM(view);
+    if (!cm) {
+      options.onVimModeChanged?.("NORMAL");
+      return;
+    }
+    const handleModeChange = (event: { mode?: string }): void => {
+      options.onVimModeChanged?.(normalizeVimMode(event.mode));
+    };
+    cm.on("vim-mode-change", handleModeChange);
+    vimModeCleanup = () => cm.off("vim-mode-change", handleModeChange);
+    options.onVimModeChanged?.(normalizeVimMode(cm.state.vim?.mode));
+  };
+
+  attachVimMode(vimKeybindings);
 
   // Reuse the document's own rope as the baseline in the ordinary case (nothing
   // recovered, so the two are the same text) - see the `cleanDoc` note above.
@@ -1497,9 +1743,59 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
         effects: wrapCompartment.reconfigure(enabled ? EditorView.lineWrapping : []),
       });
     },
+    setVimKeybindings: (enabled) => {
+      vimKeybindings = enabled;
+      if (!enabled) {
+        options.onVimMappingPendingChanged?.(false);
+      }
+      view.dispatch({
+        effects: [
+          vimCompartment.reconfigure(enabled ? vim() : []),
+          vimShortcutCompartment.reconfigure(
+            enabled
+              ? buildVimOttoShortcutHandlers(
+                  options,
+                  options.keyBindings ?? DEFAULT_EDITOR_KEY_BINDINGS,
+                  () => findActive,
+                )
+              : [],
+          ),
+          vimMappingCompartment.reconfigure(
+            enabled
+              ? buildVimMappings(
+                  vimMappings,
+                  options.onVimAction,
+                  options.onVimMappingPendingChanged,
+                )
+              : [],
+          ),
+        ],
+      });
+      attachVimMode(enabled);
+    },
+    setVimMappings: (settings) => {
+      vimMappings = settings;
+      options.onVimMappingPendingChanged?.(false);
+      if (vimKeybindings) {
+        view.dispatch({
+          effects: vimMappingCompartment.reconfigure(
+            buildVimMappings(vimMappings, options.onVimAction, options.onVimMappingPendingChanged),
+          ),
+        });
+      }
+    },
     setKeyBindings: (bindings) => {
       view.dispatch({
-        effects: keymapCompartment.reconfigure(buildShortcutKeymap(options, bindings)),
+        effects: [
+          keymapCompartment.reconfigure(buildShortcutKeymap(options, bindings)),
+          ...(vimKeybindings
+            ? [
+                vimShortcutCompartment.reconfigure(
+                  buildVimOttoShortcutHandlers(options, bindings, () => findActive),
+                ),
+              ]
+            : []),
+        ],
       });
     },
     setMarkdownLivePreview: (enabled) => {
@@ -1521,6 +1817,8 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
     },
     destroy: () => {
       destroyed = true;
+      vimModeCleanup?.();
+      vimModeCleanup = null;
       if (scrollFrame !== null) {
         cancelAnimationFrame(scrollFrame);
         scrollFrame = null;
