@@ -97,7 +97,7 @@ someone to run it by hand.
 | Chat auto-title (writer ladder pinned to mock; explicit title never overwritten)   | ✅     | `chat-auto-title.spec.ts`                    | T1   | -   |
 | Chat file links open in side pane, never displace chat                             | ✅     | `chat-file-link-side-open.spec.ts`           | T1   | -   |
 | Chat markdown rendering (headings, lists, inline code, 12px spacing rhythm)        | ✅     | `chat-markdown-rendering.spec.ts`            | T1   | -   |
-| Detached reader position survives an agent turn completing                         | ✅     | `_scratch-turn-completion-scroll.spec.ts`    | T1   | -   |
+| Detached reader position survives an agent turn completing                         | ✅     | `turn-completion-scroll.spec.ts`             | T1   | -   |
 | Streaming reveal (typewriter) + live turn token counters                           | ❌     | assert counters tick during mock stream      | T1   | P2  |
 | Rate-limit warning strip in composer (allowed/warning/rejected states)             | ✅     | `rate-limit-warning-strip.spec.ts`           | T1   | -   |
 | Friendly tool display names (canonical map + MCP humanizer)                        | ✅     | `tool-display-names.spec.ts`                 | T1   | -   |

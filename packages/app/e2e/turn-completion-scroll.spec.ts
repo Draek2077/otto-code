@@ -12,7 +12,7 @@ async function disableActionGrouping(page: import("@playwright/test").Page): Pro
   await seedAppSettings(page, { groupConsecutiveActions: false });
 }
 
-test.describe("scratch: turn completion scroll", () => {
+test.describe("turn completion scroll", () => {
   test("detached reader survives turn completion without jumping to top", async ({ page }) => {
     test.setTimeout(60_000);
     await disableActionGrouping(page);

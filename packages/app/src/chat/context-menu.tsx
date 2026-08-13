@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { View } from "react-native";
+import { StyleSheet } from "react-native-unistyles";
 import { isNative } from "@/constants/platform";
 import {
   ContextMenu,
@@ -99,6 +100,13 @@ export const ChatContextMenu = forwardRef<
     <ChatContextMenuTargetContext.Provider value={contextValue}>
       <ContextMenu anchor={anchor} open={open} onOpenChange={handleOpenChange}>
         <View
+          // The transcript below this is a bounded scroll region, so this
+          // wrapper has to pass the parent's height straight through. Without
+          // `flex: 1` it sizes to its content, the scroll container grows to
+          // the full transcript height, and nothing can ever overflow: the
+          // chat renders but cannot be scrolled and "scroll to bottom" is a
+          // no-op. The element it replaced carried this flex itself.
+          style={styles.fill}
           testID={testID}
           // @ts-expect-error - onContextMenu is web-only and not in RN types.
           onContextMenu={isNative ? undefined : handleBackgroundContextMenu}
@@ -111,4 +119,10 @@ export const ChatContextMenu = forwardRef<
       </ContextMenu>
     </ChatContextMenuTargetContext.Provider>
   );
+});
+
+const styles = StyleSheet.create({
+  fill: {
+    flex: 1,
+  },
 });
