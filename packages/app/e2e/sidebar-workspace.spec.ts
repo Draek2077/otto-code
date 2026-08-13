@@ -183,7 +183,7 @@ test.describe("Half-screen desktop layout", () => {
     await gotoAppShell(page);
 
     const openToggle = page.getByTestId("menu-button");
-    const openBounds = await openToggle.locator("svg").first().boundingBox();
+    const openBounds = await openToggle.boundingBox();
     expect(openBounds).not.toBeNull();
     expect(openBounds?.x).toBeGreaterThan(12);
 
@@ -191,7 +191,7 @@ test.describe("Half-screen desktop layout", () => {
     await expect(page.getByTestId("sidebar-global-new-workspace")).not.toBeVisible();
 
     const closedToggle = page.getByTestId("menu-button");
-    const closedBounds = await closedToggle.locator("svg").first().boundingBox();
+    const closedBounds = await closedToggle.boundingBox();
     expect(closedBounds).not.toBeNull();
     expect(closedBounds?.x).toBeCloseTo(12, 0);
     expect(closedBounds?.y).toBe(openBounds?.y);
@@ -223,11 +223,7 @@ test.describe("Half-screen desktop layout", () => {
       await expect(page.getByTestId("sidebar-global-new-workspace")).not.toBeVisible();
 
       const centerBounds = await page.getByTestId("workspace-tabs-row").first().boundingBox();
-      const headerGlyphBounds = await page
-        .getByTestId("menu-button")
-        .locator("svg")
-        .first()
-        .boundingBox();
+      const headerGlyphBounds = await page.getByTestId("menu-button").boundingBox();
       const tabGlyphBounds = await page
         .locator('[data-testid^="workspace-tab-"]')
         .first()
