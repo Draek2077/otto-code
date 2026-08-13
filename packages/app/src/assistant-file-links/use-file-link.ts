@@ -18,6 +18,7 @@ import {
 
 export interface UseFileLinkResult {
   target: InlinePathTarget | null;
+  resolve: () => Promise<InlinePathTarget | null>;
   onHoverIn: () => void;
   onPress: () => void;
   onAuxPress: () => void;
@@ -117,6 +118,30 @@ export function useFileLink(source: AssistantFileLinkSource): UseFileLinkResult 
     });
   });
 
+  const resolve = useStableEvent(async (): Promise<InlinePathTarget | null> => {
+    if (resolution.kind === "resolved") {
+      return resolution.value.kind === "file" ? resolution.value.target : null;
+    }
+
+    try {
+      return await queryClient.fetchQuery({
+        queryKey,
+        queryFn: () =>
+          fetchDaemonResolution({
+            ambiguousQuery: resolution.ambiguousQuery,
+            token: resolution.token,
+            target: resolution.target,
+            workspaceRoot,
+            getDirectorySuggestions: context.getDirectorySuggestions,
+          }),
+        retry: 0,
+        staleTime: Infinity,
+      });
+    } catch {
+      return null;
+    }
+  });
+
   // A file opened from chat should never take over the chat's own pane - only
   // another chat tab does that. A plain click opens the document to the side (a
   // pane to the right of the chat, splitting one if needed); a modified click is
@@ -136,8 +161,8 @@ export function useFileLink(source: AssistantFileLinkSource): UseFileLinkResult 
   }, [query.data, resolution]);
 
   return useMemo(
-    () => ({ target, onHoverIn, onPress, onAuxPress, open }),
-    [target, onHoverIn, onPress, onAuxPress, open],
+    () => ({ target, resolve, onHoverIn, onPress, onAuxPress, open }),
+    [target, resolve, onHoverIn, onPress, onAuxPress, open],
   );
 }
 

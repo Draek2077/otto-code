@@ -198,7 +198,8 @@ function coerceEventPoint(event: unknown): { pageX: number; pageY: number } | nu
   return null;
 }
 
-function hasWebTextSelection(): boolean {
+/** Whether the browser currently owns a non-empty text selection. */
+export function hasWebTextSelection(): boolean {
   if (typeof window === "undefined") {
     return false;
   }

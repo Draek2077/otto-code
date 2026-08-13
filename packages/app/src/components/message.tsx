@@ -148,6 +148,7 @@ import {
   AttachmentThumbnail,
 } from "@/components/attachment-pill";
 import { AttachmentLightbox } from "@/components/attachment-lightbox";
+import { ChatImageContextMenuTarget } from "@/chat/image-context-menu";
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { isWeb, isNative } from "@/constants/platform";
 import type { AgentCapabilityFlags } from "@otto-code/protocol/agent-types";
@@ -450,13 +451,16 @@ interface UserMessageImagePillProps {
 }
 
 function UserMessageImagePill({ image, onOpen, accessibilityLabel }: UserMessageImagePillProps) {
+  const previewUrl = useAttachmentPreviewUrl(image);
   const handlePress = useCallback(() => {
     onOpen(image);
   }, [onOpen, image]);
   return (
-    <AttachmentFrame onPress={handlePress} accessibilityLabel={accessibilityLabel}>
-      <AttachmentThumbnail metadata={image} />
-    </AttachmentFrame>
+    <ChatImageContextMenuTarget attachment={image} previewUrl={previewUrl}>
+      <AttachmentFrame onPress={handlePress} accessibilityLabel={accessibilityLabel}>
+        <AttachmentThumbnail metadata={image} />
+      </AttachmentFrame>
+    </ChatImageContextMenuTarget>
   );
 }
 
@@ -846,6 +850,7 @@ const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedIm
   source,
   workspaceRoot,
   serverId,
+  attachment,
 }: {
   uri: string;
   alt?: string;
@@ -853,6 +858,7 @@ const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedIm
   source: string;
   workspaceRoot?: string;
   serverId?: string;
+  attachment?: UserMessageImageAttachment | null;
 }) {
   const cachedMetadata = useMemo(
     () => getAssistantImageMetadata({ source, workspaceRoot, serverId }),
@@ -967,7 +973,7 @@ const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedIm
     );
   }
 
-  return (
+  const image = (
     <View style={frameStyle}>
       <View style={surfaceStyle}>
         <Image
@@ -979,6 +985,13 @@ const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedIm
         />
       </View>
     </View>
+  );
+  return attachment ? (
+    <ChatImageContextMenuTarget attachment={attachment} previewUrl={uri}>
+      {image}
+    </ChatImageContextMenuTarget>
+  ) : (
+    image
   );
 });
 
@@ -1088,6 +1101,7 @@ function AssistantMarkdownImage({
         source={source}
         workspaceRoot={workspaceRoot}
         serverId={serverId}
+        attachment={query.data ?? dataImageQuery.data}
       />
     );
   }

@@ -272,6 +272,29 @@ describe("useFileLink", () => {
     expect(getDirectorySuggestions).toHaveBeenCalledTimes(1);
   });
 
+  it("resolves a filename when a context menu needs its project actions", async () => {
+    const getDirectorySuggestions = vi.fn(async () =>
+      resolvedSuggestions([{ path: "docs/dumm.md", kind: "file" }]),
+    );
+    const openedFiles: OpenedFile[] = [];
+    const { result } = renderHook(() => useFileLink(SOURCE), {
+      wrapper: createWrapper({ client: { getDirectorySuggestions }, openedFiles }),
+    });
+
+    let target: InlinePathTarget | null = null;
+    await act(async () => {
+      target = await result.current.resolve();
+    });
+
+    expect(target).toEqual({
+      raw: "dumm.md",
+      path: "/Users/test/project/docs/dumm.md",
+      lineStart: undefined,
+      lineEnd: undefined,
+    });
+    expect(getDirectorySuggestions).toHaveBeenCalledTimes(1);
+  });
+
   it("does not open a stale result after the workspace changes", async () => {
     const deferred = createDeferred<DirectorySuggestionResult>();
     const getDirectorySuggestions = vi.fn(() => deferred.promise);

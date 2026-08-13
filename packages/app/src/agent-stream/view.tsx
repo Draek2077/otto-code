@@ -102,6 +102,7 @@ import {
 import {
   createWorkspaceFileTabTarget,
   normalizeWorkspaceFileLocation,
+  resolveWorkspaceFilePaths,
   type OpenFileDisposition,
   type WorkspaceFileOpenRequest,
 } from "@/workspace/file-open";
@@ -123,6 +124,7 @@ import type { WorkspaceComposerAttachment } from "@/attachments/types";
 import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import { toErrorMessage } from "@/utils/error-messages";
 import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
+import { revealDirectoryInFiles, revealFileInFiles } from "@/git/changes-reveal";
 
 function renderLiveAuxiliaryNode(input: {
   pendingPermissions: ReactNode;
@@ -624,6 +626,60 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     const handleToolCallOpenFile = useStableEvent((filePath: string) => {
       handleInlinePathPress({ raw: filePath, path: filePath }, "main");
+    });
+
+    const handleNavigateToInlineFile = useStableEvent((target: InlinePathTarget) => {
+      const normalized = normalizeInlinePathTarget(target.path, agent.cwd);
+      if (!normalized?.file) {
+        return;
+      }
+      const resolvedPath = resolveWorkspaceFilePaths({ path: normalized.file, workspaceRoot });
+      if (!resolvedPath?.relativePath) {
+        return;
+      }
+      revealFileInFiles({
+        serverId: resolvedServerId,
+        cwd: workspaceRoot,
+        path: resolvedPath.relativePath,
+        isGit: agent.projectPlacement?.checkout?.isGit ?? false,
+      });
+      openFileExplorerForCheckout({
+        isCompact: isMobile,
+        checkout: {
+          serverId: resolvedServerId,
+          cwd: workspaceRoot,
+          isGit: agent.projectPlacement?.checkout?.isGit ?? false,
+        },
+      });
+    });
+
+    const handleNavigateToInlineFolder = useStableEvent((target: InlinePathTarget) => {
+      const normalized = normalizeInlinePathTarget(target.path, agent.cwd);
+      const path = normalized?.file ?? normalized?.directory;
+      if (!path) {
+        return;
+      }
+      const resolvedPath = resolveWorkspaceFilePaths({ path, workspaceRoot });
+      if (!resolvedPath?.relativePath) {
+        return;
+      }
+      const folderPath = normalized?.file
+        ? resolvedPath.relativePath.split("/").slice(0, -1).join("/") || "."
+        : resolvedPath.relativePath;
+      revealDirectoryInFiles({
+        serverId: resolvedServerId,
+        cwd: workspaceRoot,
+        path: folderPath,
+        isGit: agent.projectPlacement?.checkout?.isGit ?? false,
+      });
+      openFileExplorerForCheckout({
+        isCompact: isMobile,
+        checkout: {
+          serverId: resolvedServerId,
+          cwd: workspaceRoot,
+          isGit: agent.projectPlacement?.checkout?.isGit ?? false,
+        },
+      });
     });
 
     const handleForkAssistantTurn: AssistantTurnForkHandler = useStableEvent(
@@ -1350,6 +1406,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           serverId={resolvedServerId}
           workspaceRoot={workspaceRoot}
           onOpenWorkspaceFile={handleInlinePathPress}
+          onNavigateToWorkspaceFile={handleNavigateToInlineFile}
+          onNavigateToWorkspaceFolder={handleNavigateToInlineFolder}
           toast={toast}
         >
           <WidgetChatProvider serverId={resolvedServerId} agentId={agentId}>

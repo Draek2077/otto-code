@@ -131,9 +131,9 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
-  ContextMenuTrigger,
   contextMenuAnchorFromEvent,
 } from "@/components/ui/context-menu";
+import { ChatContextMenu, type ChatContextMenuHandle } from "@/chat/context-menu";
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
 import { derivePendingPermissionKey, normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { applyLegacyDaemonWorkspaceOwnership } from "@/workspace/legacy-daemon-workspaces";
@@ -1411,17 +1411,10 @@ const AgentStreamSection = memo(function AgentStreamSection({
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
 }) {
   const { t } = useTranslation();
-  const [isChatContextMenuOpen, setIsChatContextMenuOpen] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [exportMenuAnchor, setExportMenuAnchor] = useState<{ x: number; y: number } | null>(null);
   const exportMenuItemRef = useRef<View>(null);
-  const handleChatContextMenuOpenChange = useCallback((open: boolean) => {
-    setIsChatContextMenuOpen(open);
-    if (!open) {
-      setIsExportMenuOpen(false);
-      setExportMenuAnchor(null);
-    }
-  }, []);
+  const chatContextMenuRef = useRef<ChatContextMenuHandle>(null);
   // While this panel slot is hidden, the selector returns the frozen tail
   // reference instead of the live one, so background agents' 48ms stream
   // flushes never re-render this section at all (the store notification sees
@@ -1512,7 +1505,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
   const handleExportMenuOpenChange = useCallback((open: boolean) => {
     setIsExportMenuOpen(open);
     if (!open) {
-      setIsChatContextMenuOpen(false);
+      chatContextMenuRef.current?.close();
     }
   }, []);
   const exportMenuChevron = useMemo(
@@ -1541,40 +1534,36 @@ const AgentStreamSection = memo(function AgentStreamSection({
       onOpenWorkspaceFile={onOpenWorkspaceFile}
     />
   );
+  const chatFallbackContextMenu = (
+    <>
+      <ContextMenuItem
+        closeOnSelect={false}
+        itemRef={exportMenuItemRef}
+        onSelect={openExportMenu}
+        testID="agent-chat-export-menu"
+        trailing={exportMenuChevron}
+      >
+        Export
+      </ContextMenuItem>
+      <ContextMenuSeparator />
+      <ContextMenuItem onSelect={expandAll} testID="agent-chat-expand-all">
+        {t("message.expandCollapse.expandAll")}
+      </ContextMenuItem>
+      <ContextMenuItem onSelect={collapseAll} testID="agent-chat-collapse-all">
+        {t("message.expandCollapse.collapseAll")}
+      </ContextMenuItem>
+    </>
+  );
 
   return (
-    <ContextMenu open={isChatContextMenuOpen} onOpenChange={handleChatContextMenuOpenChange}>
-      {isWeb ? (
-        <ContextMenuTrigger
-          preserveTextSelection
-          style={styles.chatContextTrigger}
-          testID="agent-chat-background"
-        >
-          {streamView}
-        </ContextMenuTrigger>
-      ) : (
-        <View style={styles.chatContextTrigger} testID="agent-chat-background">
-          {streamView}
-        </View>
-      )}
-      <ContextMenuContent side="bottom" align="start" testID="agent-chat-context-menu">
-        <ContextMenuItem
-          closeOnSelect={false}
-          itemRef={exportMenuItemRef}
-          onSelect={openExportMenu}
-          testID="agent-chat-export-menu"
-          trailing={exportMenuChevron}
-        >
-          Export
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem onSelect={expandAll} testID="agent-chat-expand-all">
-          {t("message.expandCollapse.expandAll")}
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={collapseAll} testID="agent-chat-collapse-all">
-          {t("message.expandCollapse.collapseAll")}
-        </ContextMenuItem>
-      </ContextMenuContent>
+    <>
+      <ChatContextMenu
+        ref={chatContextMenuRef}
+        fallbackContent={chatFallbackContextMenu}
+        testID="agent-chat-background"
+      >
+        <View style={styles.chatContextTrigger}>{streamView}</View>
+      </ChatContextMenu>
       <ContextMenu
         anchor={exportMenuAnchor}
         open={isExportMenuOpen}
@@ -1595,7 +1584,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
-    </ContextMenu>
+    </>
   );
 });
 
