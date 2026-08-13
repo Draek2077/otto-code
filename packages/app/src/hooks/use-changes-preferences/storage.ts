@@ -11,6 +11,7 @@ export const LEGACY_WRAP_LINES_STORAGE_KEY = "diff-wrap-lines";
 export const CHANGES_PREFERENCES_QUERY_KEY = ["changes-preferences"];
 
 const changesPreferencesSchema = z.object({
+  presentation: z.enum(["line", "structural"]).optional(),
   layout: z.enum(["unified", "split"]).optional(),
   viewMode: z.enum(["flat", "tree"]).optional(),
   wrapLines: z.boolean().optional(),
@@ -20,6 +21,8 @@ const changesPreferencesSchema = z.object({
 });
 
 export interface ChangesPreferences {
+  /** Persisted default. Per-review selection remains local to its surface. */
+  presentation: "line" | "structural";
   layout: "unified" | "split";
   viewMode: "flat" | "tree";
   wrapLines: boolean;
@@ -29,6 +32,7 @@ export interface ChangesPreferences {
 }
 
 export const DEFAULT_CHANGES_PREFERENCES: ChangesPreferences = {
+  presentation: "line",
   layout: "unified",
   viewMode: "flat",
   wrapLines: false,

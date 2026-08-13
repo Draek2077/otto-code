@@ -27,6 +27,7 @@ describe("loadChangesPreferencesFromStorage", () => {
     const result = await loadChangesPreferencesFromStorage(storage);
 
     expect(result).toEqual({
+      presentation: "line",
       layout: "unified",
       viewMode: "flat",
       wrapLines: true,
@@ -51,6 +52,7 @@ describe("loadChangesPreferencesFromStorage", () => {
     const result = await loadChangesPreferencesFromStorage(storage);
 
     expect(result).toEqual({
+      presentation: "line",
       layout: "split",
       viewMode: "tree",
       hideWhitespace: true,
