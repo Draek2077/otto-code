@@ -297,17 +297,26 @@ export function DropdownMenu({
   return <DropdownMenuContext.Provider value={value}>{children}</DropdownMenuContext.Provider>;
 }
 
-interface TriggerState {
+export interface DropdownMenuTriggerState {
   pressed: boolean;
   hovered: boolean;
   open: boolean;
+  focused?: boolean;
 }
-type TriggerStyleProp = StyleProp<ViewStyle> | ((state: TriggerState) => StyleProp<ViewStyle>);
+type TriggerStyleProp =
+  | StyleProp<ViewStyle>
+  | ((state: DropdownMenuTriggerState) => StyleProp<ViewStyle>);
 
 export interface DropdownMenuTriggerProps extends Omit<PressableProps, "style" | "children"> {
   style?: TriggerStyleProp;
-  children: ReactNode | ((state: TriggerState) => ReactNode);
+  children: ReactNode | ((state: DropdownMenuTriggerState) => ReactNode);
   triggerRef?: Ref<View | null>;
+  /**
+   * Use when a parent frame owns the trigger's border and radius. That frame
+   * must render the focus border itself, so the generic inner outline would be
+   * both clipped and geometrically wrong.
+   */
+  suppressFocusOutline?: boolean;
   /**
    * Plain function component, not forwardRef - React 19 delivers a JSX `ref=`
    * attribute here as a normal prop. Must be merged into `handleRef` below or
@@ -333,9 +342,13 @@ export function DropdownMenuTrigger({
   style,
   triggerRef,
   ref,
+  suppressFocusOutline = false,
+  onFocus,
+  onBlur,
   ...props
 }: DropdownMenuTriggerProps): ReactElement {
   const ctx = useDropdownMenuContext("DropdownMenuTrigger");
+  const [focused, setFocused] = useState(false);
 
   const handlePress = useCallback(() => {
     if (disabled) return;
@@ -353,20 +366,41 @@ export function DropdownMenuTrigger({
 
   const pressableStyle = useCallback(
     ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => {
+      const state: DropdownMenuTriggerState = { pressed, hovered, open: ctx.open, focused };
       if (typeof style === "function") {
-        return style({ pressed, hovered, open: ctx.open });
+        return [
+          style(state),
+          focused && styles.triggerFocused,
+          suppressFocusOutline && styles.triggerBase,
+        ];
       }
-      return style;
+      return [style, focused && styles.triggerFocused, suppressFocusOutline && styles.triggerBase];
     },
-    [style, ctx.open],
+    [style, ctx.open, focused, suppressFocusOutline],
   );
 
   const renderChildren = useCallback(
     ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => {
-      const state: TriggerState = { pressed, hovered, open: ctx.open };
+      const state: DropdownMenuTriggerState = { pressed, hovered, open: ctx.open, focused };
       return typeof children === "function" ? children(state) : children;
     },
-    [children, ctx.open],
+    [children, ctx.open, focused],
+  );
+
+  const handleFocus = useCallback<NonNullable<PressableProps["onFocus"]>>(
+    (event) => {
+      setFocused(true);
+      onFocus?.(event);
+    },
+    [onFocus],
+  );
+
+  const handleBlur = useCallback<NonNullable<PressableProps["onBlur"]>>(
+    (event) => {
+      setFocused(false);
+      onBlur?.(event);
+    },
+    [onBlur],
   );
 
   return (
@@ -376,6 +410,8 @@ export function DropdownMenuTrigger({
       collapsable={false}
       disabled={disabled}
       onPress={handlePress}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
       style={pressableStyle}
     >
       {renderChildren}
@@ -908,6 +944,18 @@ export function DropdownMenuItem({
 }
 
 const styles = StyleSheet.create((theme) => ({
+  // A trigger that already owns a 1px border uses it as the focus indicator.
+  // Bare icon triggers continue to receive the shared in-bounds outline from
+  // index.html, so this never adds border geometry during focus.
+  triggerFocused: {
+    borderColor: theme.colors.accent,
+  },
+  // A trigger often sits inside an outer frame that owns its border and
+  // radius. Suppress the browser outline here so focus styling can be painted
+  // on that frame rather than as a clipped, square inner ring.
+  triggerBase: {
+    outlineWidth: 0,
+  },
   overlay: {
     flex: 1,
   },

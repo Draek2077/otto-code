@@ -863,14 +863,6 @@ export function WorkspaceScriptsButton({
 
   const isFillSplit = Boolean(fill) && presentation === "split";
   const rowStyle = useMemo(() => [styles.row, isFillSplit && styles.fillItem], [isFillSplit]);
-  const frameStyle = useMemo(
-    () => [
-      presentation === "ghost" ? styles.ghostButtonFrame : styles.splitButton,
-      isFillSplit && styles.fillItem,
-    ],
-    [isFillSplit, presentation],
-  );
-
   const triggerStyle = useCallback(
     ({
       hovered,
@@ -881,7 +873,7 @@ export function WorkspaceScriptsButton({
       pressed: boolean;
       open: boolean;
     }) => [
-      presentation === "ghost" ? styles.ghostButton : styles.splitButtonPrimary,
+      presentation === "ghost" ? styles.ghostButton : styles.splitButton,
       isFillSplit && styles.fillItem,
       (hovered || pressed || triggerOpen) &&
         (presentation === "ghost" ? styles.ghostButtonHovered : styles.splitButtonPrimaryHovered),
@@ -1027,11 +1019,7 @@ export function WorkspaceScriptsButton({
     return menu;
   }
 
-  return (
-    <View style={rowStyle}>
-      <View style={frameStyle}>{menu}</View>
-    </View>
-  );
+  return <View style={rowStyle}>{menu}</View>;
 }
 
 const styles = StyleSheet.create((theme) => ({
@@ -1056,10 +1044,12 @@ const styles = StyleSheet.create((theme) => ({
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.borderAccent,
     overflow: "hidden",
-  },
-  ghostButtonFrame: {
-    flexDirection: "row",
-    alignItems: "stretch",
+    // This used to live on the inner trigger while the parent owned the
+    // border. The trigger owns both now, so it must retain the same content
+    // inset and therefore the exact previous control size.
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[1],
+    justifyContent: "center",
   },
   // Mirrors the header toggle/menu chrome (`headerIconSlotStyle.slot`) instead of
   // a separately-sized fixed box, so the mobile Play trigger matches the Explorer
@@ -1077,11 +1067,6 @@ const styles = StyleSheet.create((theme) => ({
   // header row as the toggles it borrows its chrome from.
   ghostButtonHovered: {
     backgroundColor: theme.colors.surfaceToggleHover,
-  },
-  splitButtonPrimary: {
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[1],
-    justifyContent: "center",
   },
   splitButtonPrimaryHovered: {
     backgroundColor: theme.colors.surfaceToggleHover,

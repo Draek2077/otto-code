@@ -122,20 +122,14 @@
          clicks and looks out of place against our themed surfaces. Keep a
          themed ring for keyboard users via :focus-visible. This is the
          pre-mount shell ring; once React themes the app the live accent takes
-         over. Accent is theme-chosen now, so mirror the System pair's two
-         defaults: Daylight's deep yellow on light, Twilight's pale blue on
-         dark. */
+         over. The CSS variable follows the active Unistyles theme; the gold
+         fallback is only for the instant before that theme is available. */
       *:focus {
         outline: none;
       }
       *:focus-visible {
-        outline: 2px solid #c69700;
-        outline-offset: 2px;
-      }
-      @media (prefers-color-scheme: dark) {
-        *:focus-visible {
-          outline-color: #5aa0ee;
-        }
+        outline: 1px solid var(--colors-accent, #c69700);
+        outline-offset: -1px;
       }
     </style>
   </head>

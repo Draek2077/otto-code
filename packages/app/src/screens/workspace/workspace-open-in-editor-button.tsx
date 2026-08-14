@@ -1,23 +1,17 @@
 import { type ReactElement, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { ForgeBrandIcon } from "@/git/forge-icon";
-import {
-  ActivityIndicator,
-  Pressable,
-  Text,
-  View,
-  type PressableStateCallbackType,
-} from "react-native";
+import { ActivityIndicator, Text, View, type PressableStateCallbackType } from "react-native";
 import { useMutation } from "@tanstack/react-query";
 import { Check, ChevronDown } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { EditorAppIcon } from "@/components/icons/editor-app-icons";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  SplitButton,
+  SplitButtonMenuTrigger,
+  SplitButtonPrimary,
+} from "@/components/ui/split-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/contexts/toast-context";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
@@ -179,11 +173,6 @@ export function WorkspaceOpenInEditorButton({
   );
 
   const rowStyle = useMemo(() => [styles.row, Boolean(fill) && styles.fillItem], [fill]);
-  const splitButtonStyle = useMemo(
-    () => [styles.splitButton, Boolean(fill) && styles.fillItem],
-    [fill],
-  );
-
   const primaryPressableStyle = useCallback(
     ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.splitButtonPrimary,
@@ -223,10 +212,10 @@ export function WorkspaceOpenInEditorButton({
 
   return (
     <View style={rowStyle}>
-      <View style={splitButtonStyle}>
+      <SplitButton hasMenu={targets.length > 1} style={Boolean(fill) && styles.fillItem}>
         <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
           <TooltipTrigger asChild>
-            <Pressable
+            <SplitButtonPrimary
               testID="workspace-open-in-editor-primary"
               style={primaryPressableStyle}
               onPress={handlePrimaryPress}
@@ -250,7 +239,7 @@ export function WorkspaceOpenInEditorButton({
                   )}
                 </View>
               )}
-            </Pressable>
+            </SplitButtonPrimary>
           </TooltipTrigger>
           <TooltipContent side={tooltipSide} align="center" offset={8}>
             <Text style={styles.tooltipText}>{primaryTooltipLabel}</Text>
@@ -260,14 +249,14 @@ export function WorkspaceOpenInEditorButton({
           <DropdownMenu>
             <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
               <TooltipTrigger asChild>
-                <DropdownMenuTrigger
+                <SplitButtonMenuTrigger
                   testID="workspace-open-in-editor-caret"
                   style={caretTriggerStyle}
                   accessibilityRole="button"
                   accessibilityLabel={t("workspace.git.openInEditor.chooseEditor")}
                 >
                   <ThemedChevronDown size={16} uniProps={mutedColorMapping} />
-                </DropdownMenuTrigger>
+                </SplitButtonMenuTrigger>
               </TooltipTrigger>
               <TooltipContent side={tooltipSide} align="center" offset={8}>
                 <Text style={styles.tooltipText}>
@@ -292,7 +281,7 @@ export function WorkspaceOpenInEditorButton({
             </DropdownMenuContent>
           </DropdownMenu>
         ) : null}
-      </View>
+      </SplitButton>
     </View>
   );
 }
@@ -311,14 +300,6 @@ const styles = StyleSheet.create((theme) => ({
     // Cap the stretched sidebar-tools variant so a wide sidebar doesn't
     // produce oversized buttons; the row centers the capped buttons instead.
     maxWidth: 150,
-  },
-  splitButton: {
-    flexDirection: "row",
-    alignItems: "stretch",
-    borderRadius: theme.borderRadius.md,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.borderAccent,
-    overflow: "hidden",
   },
   splitButtonPrimary: {
     paddingLeft: theme.spacing[3],
@@ -368,8 +349,6 @@ const styles = StyleSheet.create((theme) => ({
     width: 28,
     alignItems: "center",
     justifyContent: "center",
-    borderLeftWidth: theme.borderWidth[1],
-    borderLeftColor: theme.colors.borderAccent,
   },
   splitButtonCaretHovered: {
     backgroundColor: theme.colors.surfaceHover,

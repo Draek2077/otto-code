@@ -1,6 +1,6 @@
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useCallback, useMemo } from "react";
-import { View, Text, Pressable, type PressableStateCallbackType } from "react-native";
+import { View, Text, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { ChevronDown, Info, MoreVertical } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
@@ -11,6 +11,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  SplitButton,
+  SplitButtonMenuTrigger,
+  SplitButtonPrimary,
+} from "@/components/ui/split-button";
 import { Shortcut } from "@/components/ui/shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
@@ -129,11 +134,6 @@ export function GitActionsSplitButton({
   );
 
   const rowStyle = useMemo(() => [styles.row, Boolean(fill) && styles.fillItem], [fill]);
-  const splitButtonStyle = useMemo(
-    () => [styles.splitButton, Boolean(fill) && styles.fillItem],
-    [fill],
-  );
-
   const primaryDisabled = gitActions.primary?.disabled;
   const primaryPressableStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
@@ -170,10 +170,13 @@ export function GitActionsSplitButton({
   return (
     <View style={rowStyle}>
       {gitActions.primary ? (
-        <View style={splitButtonStyle}>
+        <SplitButton
+          hasMenu={gitActions.secondary.length > 0}
+          style={Boolean(fill) && styles.fillItem}
+        >
           <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
             <TooltipTrigger asChild>
-              <Pressable
+              <SplitButtonPrimary
                 testID="changes-primary-cta"
                 style={primaryPressableStyle}
                 onPress={handlePrimaryPress}
@@ -197,7 +200,7 @@ export function GitActionsSplitButton({
                     )}
                   </View>
                 )}
-              </Pressable>
+              </SplitButtonPrimary>
             </TooltipTrigger>
             <TooltipContent side={tooltipSide} align="center" offset={8}>
               <Text style={styles.tooltipText}>{getActionDisplayLabel(gitActions.primary)}</Text>
@@ -207,14 +210,14 @@ export function GitActionsSplitButton({
             <DropdownMenu>
               <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
                 <TooltipTrigger asChild>
-                  <DropdownMenuTrigger
+                  <SplitButtonMenuTrigger
                     testID="changes-primary-cta-caret"
                     style={caretTriggerStyle}
                     accessibilityRole="button"
                     accessibilityLabel={t("workspace.git.actions.moreOptions")}
                   >
                     <ChevronDown size={iconSize.md} color={theme.colors.foregroundMuted} />
-                  </DropdownMenuTrigger>
+                  </SplitButtonMenuTrigger>
                 </TooltipTrigger>
                 <TooltipContent side={tooltipSide} align="center" offset={8}>
                   <Text style={styles.tooltipText}>{t("workspace.git.actions.moreOptions")}</Text>
@@ -240,7 +243,7 @@ export function GitActionsSplitButton({
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
-        </View>
+        </SplitButton>
       ) : null}
       {gitActions.menu.length > 0 ? (
         <DropdownMenu>
@@ -283,14 +286,6 @@ const styles = StyleSheet.create((theme) => ({
     // Cap the stretched sidebar-tools variant so a wide sidebar doesn't
     // produce oversized buttons; the row centers the capped buttons instead.
     maxWidth: 150,
-  },
-  splitButton: {
-    flexDirection: "row",
-    alignItems: "stretch",
-    borderRadius: theme.borderRadius.md,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.borderAccent,
-    overflow: "hidden",
   },
   splitButtonPrimary: {
     paddingHorizontal: theme.spacing[3],
@@ -344,8 +339,6 @@ const styles = StyleSheet.create((theme) => ({
     width: compactUp(28, 1.5),
     alignItems: "center",
     justifyContent: "center",
-    borderLeftWidth: theme.borderWidth[1],
-    borderLeftColor: theme.colors.borderAccent,
   },
   iconButton: {
     width: compactUp(32, 1.5),

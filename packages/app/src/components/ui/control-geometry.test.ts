@@ -55,11 +55,7 @@ describe("control geometry", () => {
       borderColor: "#2F3534",
     });
     expect(geometry.controlActive).toEqual({
-      borderColor: "#2F3534",
-      outlineColor: "#20744A",
-      outlineOffset: 1,
-      outlineStyle: "solid",
-      outlineWidth: 2,
+      borderColor: "#20744A",
     });
   });
 

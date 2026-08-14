@@ -1,5 +1,5 @@
 import { useCallback, type ReactElement } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Text } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
   ChevronDown,
@@ -17,8 +17,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  SplitButton,
+  SplitButtonMenuTrigger,
+  SplitButtonPrimary,
+} from "@/components/ui/split-button";
 import type { Theme } from "@/styles/theme";
 import type { TasksSuggestedStartMode } from "@otto-code/protocol/messages";
 import type { SuggestedTaskActions } from "./use-suggested-task-actions";
@@ -127,8 +131,8 @@ export function SplitStartButton({
   }, [dismissTasks, taskIds]);
 
   return (
-    <View style={styles.splitButton}>
-      <Pressable
+    <SplitButton style={styles.splitButton}>
+      <SplitButtonPrimary
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
         testID={`${testIdBase}-primary`}
@@ -150,9 +154,9 @@ export function SplitStartButton({
             </Text>
           </>
         )}
-      </Pressable>
+      </SplitButtonPrimary>
       <DropdownMenu>
-        <DropdownMenuTrigger
+        <SplitButtonMenuTrigger
           accessibilityRole="button"
           accessibilityLabel={`More start options: ${accessibilityLabel}`}
           testID={`${testIdBase}-caret`}
@@ -175,7 +179,7 @@ export function SplitStartButton({
               }
             />
           )}
-        </DropdownMenuTrigger>
+        </SplitButtonMenuTrigger>
         <DropdownMenuContent align="end" width={240} testID={`${testIdBase}-menu`}>
           {secondaryModes.map((mode) => (
             <StartMenuItem
@@ -200,7 +204,7 @@ export function SplitStartButton({
           ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
-    </View>
+    </SplitButton>
   );
 }
 
@@ -293,17 +297,11 @@ function caretStyle({
 
 const styles = StyleSheet.create((theme) => ({
   splitButton: {
-    flexDirection: "row",
-    alignItems: "stretch",
     flexShrink: 0,
     // Opaque, deliberately un-tinted: the button has to separate from the
     // washed row behind it, and a wash on a wash would erase it. Its accent
     // chrome is what makes it read as the action inside a blue card.
     backgroundColor: theme.colors.surface2,
-    borderRadius: theme.borderRadius.md,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.borderAccent,
-    overflow: "hidden",
   },
   primary: {
     flexDirection: "row",
@@ -334,15 +332,11 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: theme.spacing[1],
-    borderLeftWidth: theme.borderWidth[1],
-    borderLeftColor: theme.colors.borderAccent,
   },
   caretActive: {
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: theme.spacing[1],
-    borderLeftWidth: theme.borderWidth[1],
-    borderLeftColor: theme.colors.borderAccent,
     backgroundColor: theme.colors.surface3,
   },
   headerDismiss: {
