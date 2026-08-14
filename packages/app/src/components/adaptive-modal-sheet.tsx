@@ -205,6 +205,17 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
   },
+  inlineHeaderBackButton: {
+    minHeight: 28,
+    paddingHorizontal: theme.spacing[1],
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface2,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
   inlineSearchRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -517,7 +528,7 @@ export function InlineHeaderView({ header }: { header: SheetHeader }) {
             <Pressable
               onPress={handleBackPress}
               hitSlop={8}
-              style={styles.headerBackButton}
+              style={styles.inlineHeaderBackButton}
               accessibilityRole="button"
               accessibilityLabel={
                 back?.accessibilityLabel ?? back?.label ?? t("common.actions.back")
