@@ -246,6 +246,16 @@ export const FIELDS: Field[] = [
       p.reasoningBudget === -1 ? "unrestricted budget can consume every token on thinking" : null,
   },
   {
+    key: "preserveReasoning",
+    label: "Preserve reasoning",
+    kind: "toggle",
+    format: (p) =>
+      p.preserveReasoning
+        ? `${style.brightGreen}on${style.reset}`
+        : `${style.yellow}off${style.reset}`,
+    enabled: (ctx) => Boolean(ctx.model?.reasoningPreservation?.templateArgument),
+  },
+  {
     key: "gpuLayers",
     label: "GPU layers",
     kind: "number",

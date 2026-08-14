@@ -2602,6 +2602,7 @@ export const BrainProfileSchema = z
     vision: z.boolean().default(false),
     enabledComponents: z.array(z.string()).optional(),
     reasoningBudget: z.number().default(0),
+    preserveReasoning: z.boolean().optional(),
     parallelSlots: z.number().default(1),
     contextMultiplier: z.number().default(1),
     calibrationRequired: z.boolean().default(true),

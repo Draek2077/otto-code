@@ -8,6 +8,7 @@ import {
   describeModel,
   buildModelList,
   decideModelGate,
+  applyModelReasoningTemplate,
   injectSystemAddendum,
   type TelemetryRecord,
 } from "./router.js";
@@ -109,7 +110,7 @@ test("describeModel reports the friendly name, not the file path", () => {
   assert.equal(entry.loaded_context_length, 32768);
 });
 
-test("describeModel reports catalog reasoning efforts", () => {
+test("describeModel reports catalog reasoning efforts and their native default", () => {
   const entry = describeModel({
     id: "gpt-oss-20b.gguf",
     displayName: "gpt-oss-20B",
@@ -118,8 +119,10 @@ test("describeModel reports catalog reasoning efforts", () => {
     mmprojPath: null,
     metadata: {},
     reasoningEfforts: ["low", "medium", "high"],
+    reasoningEffortDefault: "medium",
   } as unknown as Model);
   assert.deepEqual(entry.reasoning_efforts, ["low", "medium", "high"]);
+  assert.equal(entry.reasoning_effort_default, "medium");
 });
 
 test("describeModel reports the per-request window when slots split the context", () => {
@@ -357,6 +360,43 @@ function inject(
   const out = injectSystemAddendum(Buffer.from(JSON.stringify(body), "utf8"), addendum, shape);
   return JSON.parse(out.toString("utf8")) as Record<string, unknown>;
 }
+
+test("maps a native model's effort choices onto its template arguments", () => {
+  const model = {
+    id: "qwen3.8",
+    displayName: "Qwen3.8",
+    modelPath: "/models/qwen.gguf",
+    mmprojPath: null,
+    mmprojBytes: 0,
+    quant: "Q4_K_M",
+    sizeBytes: 0,
+    features: { mtp: false, imatrix: false, distilled: false },
+    metadata: null,
+    reasoningEfforts: ["low", "medium", "xhigh"],
+    reasoningTemplate: {
+      enableThinkingArgument: "enable_thinking",
+      effortArgument: "reasoning_effort",
+    },
+  } satisfies Model;
+
+  const high = applyModelReasoningTemplate(
+    Buffer.from(JSON.stringify({ model: model.id, reasoning_effort: "xhigh" })),
+    model,
+  );
+  assert.deepEqual(JSON.parse(high.toString("utf8")), {
+    model: model.id,
+    chat_template_kwargs: { enable_thinking: true, reasoning_effort: "xhigh" },
+  });
+
+  const off = applyModelReasoningTemplate(
+    Buffer.from(JSON.stringify({ model: model.id, reasoning_effort: "off" })),
+    model,
+  );
+  assert.deepEqual(JSON.parse(off.toString("utf8")), {
+    model: model.id,
+    chat_template_kwargs: { enable_thinking: false },
+  });
+});
 
 test("completion shape is read from the path, not the body", () => {
   assert.equal(completionShape("/v1/messages"), "anthropic");

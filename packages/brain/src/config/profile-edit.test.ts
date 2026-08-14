@@ -115,6 +115,19 @@ describe("profileFieldDescriptors", () => {
     const field = profileFieldDescriptors(makeModel()).find((f) => f.key === "contextSize");
     expect(field?.max).toBe(32768);
   });
+
+  it("offers preserve reasoning only when the model template declares it", () => {
+    const model = makeModel({
+      reasoningPreservation: { templateArgument: "preserve_thinking", default: true },
+    });
+    expect(
+      profileFieldDescriptors(model).find((field) => field.key === "preserveReasoning"),
+    ).toEqual(expect.objectContaining({ kind: "toggle", available: true }));
+    expect(defaultProfile(model).preserveReasoning).toBe(true);
+    expect(
+      profileFieldDescriptors(makeModel()).some((field) => field.key === "preserveReasoning"),
+    ).toBe(false);
+  });
 });
 
 describe("sanitizeProfilePatch", () => {
@@ -129,6 +142,24 @@ describe("sanitizeProfilePatch", () => {
     expect(profile.cacheTypeK).toBe("q4_0");
     expect(profile.parallelSlots).toBe(4);
     expect(adjustments).toEqual([]);
+  });
+
+  it("persists preserve reasoning only for a supporting template", () => {
+    const model = makeModel({
+      reasoningPreservation: { templateArgument: "preserve_thinking" },
+    });
+    const enabled = sanitizeProfilePatch(makeProfile(model), { preserveReasoning: true }, model);
+    expect(enabled.profile.preserveReasoning).toBe(true);
+    expect(enabled.adjustments).toEqual([]);
+
+    const unsupported = sanitizeProfilePatch(
+      makeProfile(makeModel()),
+      { preserveReasoning: true },
+      makeModel(),
+    );
+    expect(unsupported.adjustments).toEqual([
+      "preserveReasoning ignored: this model does not support it",
+    ]);
   });
 
   it("clamps a context above the model's native window and reports it", () => {

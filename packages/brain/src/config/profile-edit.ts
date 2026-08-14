@@ -159,6 +159,15 @@ export function profileFieldDescriptors(
     },
   ];
 
+  if (model?.reasoningPreservation?.templateArgument) {
+    fields.splice(7, 0, {
+      key: "preserveReasoning",
+      label: "Preserve reasoning",
+      kind: "toggle",
+      available: true,
+    });
+  }
+
   // Bundle models expose the projector in the component section below. Keep
   // the legacy profile field for hand-scanned single-file models, but do not
   // render two controls that write the same vision setting for bundles.
@@ -412,6 +421,17 @@ export function sanitizeProfilePatch(
     const value = rounded < -1 ? -1 : rounded;
     if (value !== rounded) adjustments.push(`reasoningBudget clamped to ${value}`);
     next.reasoningBudget = value;
+  }
+
+  if ("preserveReasoning" in p) {
+    if (typeof p.preserveReasoning !== "boolean") {
+      throw new Error("preserveReasoning must be a boolean");
+    }
+    if (!model?.reasoningPreservation?.templateArgument) {
+      adjustments.push("preserveReasoning ignored: this model does not support it");
+    } else {
+      next.preserveReasoning = p.preserveReasoning;
+    }
   }
 
   // Vision is only real when the model actually has a projector paired with it.

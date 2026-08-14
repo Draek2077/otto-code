@@ -1,6 +1,13 @@
 import type { AgentFeature, AgentFeatureSelect, AgentSelectOption } from "../agent-sdk-types.js";
 
-export const OPENAI_COMPAT_REASONING_EFFORTS = ["off", "on", "low", "medium", "high"] as const;
+export const OPENAI_COMPAT_REASONING_EFFORTS = [
+  "off",
+  "on",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+] as const;
 
 export type OpenAICompatReasoningEffort = (typeof OPENAI_COMPAT_REASONING_EFFORTS)[number];
 

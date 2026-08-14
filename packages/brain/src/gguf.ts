@@ -237,6 +237,27 @@ interface GgufSummary {
   isProjector: boolean;
   /** Chat template exposes a thinking/reasoning channel. */
   reasoning: boolean;
+  /** Native preservation argument, normalized by model enrichment when present. */
+  reasoningPreservationArgument?: "preserve_thinking" | "preserve_reasoning";
+}
+
+/** Read model-specific template spellings without leaking them into the UI contract. */
+export function detectTemplateReasoningCapabilities(chatTemplate: string): {
+  reasoning: boolean;
+  reasoningPreservationArgument?: "preserve_thinking" | "preserve_reasoning";
+} {
+  const reasoningPreservationArgument = /\bpreserve_thinking\b/iu.test(chatTemplate)
+    ? "preserve_thinking"
+    : /\bpreserve_reasoning\b/iu.test(chatTemplate)
+      ? "preserve_reasoning"
+      : undefined;
+  return {
+    reasoning: Boolean(
+      reasoningPreservationArgument ||
+      /<think>|<\/think>|reasoning_content|enable_thinking/iu.test(chatTemplate),
+    ),
+    ...(reasoningPreservationArgument ? { reasoningPreservationArgument } : {}),
+  };
 }
 
 /**
@@ -267,7 +288,7 @@ export function summarize(file: string): GgufSummary {
     typeof meta["tokenizer.chat_template"] === "string"
       ? (meta["tokenizer.chat_template"] as string)
       : "";
-  const reasoning = /<think>|<\/think>|reasoning_content|enable_thinking/i.test(chatTemplate);
+  const reasoningCapabilities = detectTemplateReasoningCapabilities(chatTemplate);
 
   return {
     file,
@@ -292,6 +313,6 @@ export function summarize(file: string): GgufSummary {
     expertCount: (get("expert_count") ?? null) as number | null,
     eosTokenId: (meta["tokenizer.ggml.eos_token_id"] ?? null) as number | null,
     isProjector: Boolean(meta["clip.has_vision_encoder"] || arch === "clip"),
-    reasoning,
+    ...reasoningCapabilities,
   };
 }

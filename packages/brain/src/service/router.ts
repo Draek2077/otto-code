@@ -227,6 +227,8 @@ export interface ModelEntry {
   reasoning: boolean;
   /** Optional per-model values accepted by the OpenAI-compatible endpoint. */
   reasoning_efforts?: string[];
+  /** Optional model-native default among `reasoning_efforts`. */
+  reasoning_effort_default?: string;
   loaded_context_length?: number;
 }
 
@@ -285,6 +287,10 @@ export function describeModel(
     reasoningEfforts.every((value): value is string => typeof value === "string")
   ) {
     entry.reasoning_efforts = reasoningEfforts;
+  }
+  const reasoningEffortDefault = md["reasoning_effort_default"] ?? model.reasoningEffortDefault;
+  if (typeof reasoningEffortDefault === "string") {
+    entry.reasoning_effort_default = reasoningEffortDefault;
   }
   if (state === "loaded" && profile && profile.contextSize) {
     // llama-server splits -c across --parallel slots, so the window a single
@@ -395,6 +401,7 @@ const reasoningTracker = new ReasoningTracker();
 
 interface ProxyBufferedOptions {
   agent: http.Agent;
+  model: Model;
   supervisor: Supervisor;
   telemetry: Telemetry;
   logger?: Logger | null;
@@ -406,6 +413,51 @@ interface ProxyBufferedOptions {
 }
 
 /**
+ * Map an OpenAI-compatible effort request onto a model's own chat-template
+ * arguments. llama.cpp does not know every model's dialect: Qwen3.8 calls the
+ * controls `enable_thinking` and `reasoning_effort`, for example. Only catalog
+ * entries that declare these names are rewritten, so generic models and GPT-OSS
+ * keep their existing server-native request handling.
+ */
+export function applyModelReasoningTemplate(body: Buffer, model: Model): Buffer {
+  const template = model.reasoningTemplate;
+  const advertised = model.reasoningEfforts;
+  if (!template || !Array.isArray(advertised)) return body;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body.toString("utf8"));
+  } catch {
+    return body;
+  }
+  if (!isRecord(parsed) || typeof parsed.reasoning_effort !== "string") return body;
+
+  const requested = parsed.reasoning_effort.toLowerCase();
+  const knownEfforts = new Set(advertised.map((value) => value.toLowerCase()));
+  const isDisabled = requested === "off" || requested === "none";
+  const isEnabled = requested === "on" || knownEfforts.has(requested);
+  if (!isDisabled && !isEnabled) return body;
+
+  const suppliedKwargs = parsed.chat_template_kwargs;
+  if (suppliedKwargs !== undefined && !isRecord(suppliedKwargs)) return body;
+  const templateKwargs: Record<string, unknown> = { ...suppliedKwargs };
+  templateKwargs[template.enableThinkingArgument] = !isDisabled;
+  if (knownEfforts.has(requested)) {
+    templateKwargs[template.effortArgument] = requested;
+  } else {
+    // The generic On selection means the model's native default, not a stale
+    // explicit effort that happened to be supplied by a previous client.
+    delete templateKwargs[template.effortArgument];
+  }
+
+  const { reasoning_effort: _reasoningEffort, ...withoutReasoningEffort } = parsed;
+  return Buffer.from(
+    JSON.stringify({ ...withoutReasoningEffort, chat_template_kwargs: templateKwargs }),
+    "utf8",
+  );
+}
+
+/**
  * Forward a buffered completion body to the resident llama-server and stream the
  * reply back, teeing non-streaming bodies for classification. Resolves once the
  * client response is fully concluded (it owns the response in every outcome,
@@ -413,6 +465,7 @@ interface ProxyBufferedOptions {
  */
 function proxyBuffered({
   agent,
+  model,
   supervisor,
   telemetry,
   logger,
@@ -438,11 +491,12 @@ function proxyBuffered({
     // Injected here, not at queue time: the scheduler may switch models between
     // buffering and dispatch, and the addendum belongs to whichever model ends
     // up resident, which is the one `supervisor.profile` now describes.
-    const outbound = injectSystemAddendum(
+    const withSystemAddendum = injectSystemAddendum(
       body,
       supervisor.profile?.chatSystemAddendum ?? null,
       completionShape(req.url),
     );
+    const outbound = applyModelReasoningTemplate(withSystemAddendum, model);
 
     const headers: http.OutgoingHttpHeaders = {};
     for (const [name, value] of Object.entries(req.headers)) {
@@ -743,6 +797,7 @@ function scheduleCompletion({
       .submit(model, () =>
         proxyBuffered({
           agent,
+          model,
           supervisor,
           telemetry,
           logger,

@@ -976,6 +976,26 @@ function parseModelReasoningEfforts(json: unknown): Map<string, OpenAICompatReas
   return efforts;
 }
 
+function parseModelReasoningEffortDefaults(
+  json: unknown,
+): Map<string, OpenAICompatReasoningEffort> {
+  const defaults = new Map<string, OpenAICompatReasoningEffort>();
+  if (!json || typeof json !== "object") return defaults;
+  const data = (json as Record<string, unknown>).data;
+  if (!Array.isArray(data)) return defaults;
+  const accepted = new Set(OPENAI_COMPAT_REASONING_EFFORTS);
+  for (const entry of data) {
+    if (!entry || typeof entry !== "object") continue;
+    const record = entry as Record<string, unknown>;
+    if (typeof record.id !== "string") continue;
+    const raw = record.reasoning_effort_default ?? record.default_reasoning_effort;
+    if (typeof raw !== "string") continue;
+    const normalized = raw.toLowerCase() as OpenAICompatReasoningEffort;
+    if (accepted.has(normalized)) defaults.set(record.id, normalized);
+  }
+  return defaults;
+}
+
 function buildReasoningRequestField(
   mode: "levels" | "toggle",
   effort: OpenAICompatReasoningEffort,
@@ -991,12 +1011,13 @@ function buildReasoningRequestField(
 
 function buildAdvertisedThinkingOptions(
   advertised: readonly OpenAICompatReasoningEffort[],
+  advertisedDefault?: OpenAICompatReasoningEffort,
 ): readonly NonNullable<AgentModelDefinition["thinkingOptions"]>[number][] {
   const values = [...new Set(advertised)];
-  let defaultId = "off";
-  if (values.includes("medium")) {
+  let defaultId = values.includes(advertisedDefault ?? "off") ? advertisedDefault! : "off";
+  if (defaultId === "off" && values.includes("medium")) {
     defaultId = "medium";
-  } else if (values.includes("on")) {
+  } else if (defaultId === "off" && values.includes("on")) {
     defaultId = "on";
   }
   const options: AgentSelectOption[] = [
@@ -1011,9 +1032,12 @@ function buildAdvertisedThinkingOptions(
   }
   for (const value of values) {
     if (value === "off") continue;
+    let label = value[0]!.toUpperCase() + value.slice(1);
+    if (value === "on") label = "On";
+    else if (value === "xhigh") label = "XHigh";
     const option: AgentSelectOption = {
       id: value,
-      label: value === "on" ? "On" : value[0]!.toUpperCase() + value.slice(1),
+      label,
     };
     if (value === defaultId) option.isDefault = true;
     options.push(option);
@@ -1342,6 +1366,7 @@ export class OpenAICompatAgentClient implements AgentClient {
     const contextLengths = parseModelContextLengths(listing);
     const reasoningCapabilities = parseModelReasoningCapabilities(listing);
     const advertisedReasoningEfforts = parseModelReasoningEfforts(listing);
+    const advertisedReasoningDefaults = parseModelReasoningEffortDefaults(listing);
     const models: AgentModelDefinition[] = modelIds.map((id, index) => {
       let thinkingOptions:
         | readonly NonNullable<AgentModelDefinition["thinkingOptions"]>[number][]
@@ -1349,7 +1374,10 @@ export class OpenAICompatAgentClient implements AgentClient {
       if (this.reasoningEffortMode === "toggle") {
         const advertised = advertisedReasoningEfforts.get(id);
         if (advertised) {
-          thinkingOptions = buildAdvertisedThinkingOptions(advertised);
+          thinkingOptions = buildAdvertisedThinkingOptions(
+            advertised,
+            advertisedReasoningDefaults.get(id),
+          );
         } else {
           thinkingOptions =
             reasoningCapabilities.get(id) === false

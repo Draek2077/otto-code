@@ -90,10 +90,30 @@ test("carries catalog reasoning efforts onto a scanned model", () => {
         id: "gpt-oss-20b",
         hfRepo: "openai/gpt-oss-20b-GGUF",
         reasoningEfforts: ["low", "medium", "high"],
+        reasoningEffortDefault: "medium",
+        reasoningTemplate: {
+          enableThinkingArgument: "enable_thinking",
+          effortArgument: "reasoning_effort",
+        },
+        reasoningPreservation: { templateArgument: "preserve_thinking", default: true },
       },
     ]),
   );
   assert.deepEqual(enriched.reasoningEfforts, ["low", "medium", "high"]);
+  assert.equal(enriched.reasoningEffortDefault, "medium");
+  assert.equal(enriched.reasoningPreservation?.templateArgument, "preserve_thinking");
+});
+
+test("discovers either preservation spelling from an uncatalogued GGUF template", () => {
+  const [enriched] = enrichWithCatalog(
+    [
+      model("someone/reasoner/model.gguf", {
+        metadata: { reasoningPreservationArgument: "preserve_reasoning" },
+      }),
+    ],
+    catalog([]),
+  );
+  assert.deepEqual(enriched.reasoningPreservation, { templateArgument: "preserve_reasoning" });
 });
 
 test("matching is case-insensitive on the repo path", () => {

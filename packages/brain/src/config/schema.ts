@@ -8,6 +8,30 @@ import { z } from "zod";
 
 export const DEFAULT_REASONING_MESSAGE = "Enough analysis. Write the complete answer now.";
 
+const TemplateArgumentSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u);
+
+/**
+ * Model-native names for reasoning controls exposed by its chat template.
+ * These are catalog metadata, not caller-provided flags: the host owns the
+ * translation from the OpenAI-compatible request into template arguments.
+ */
+export const ReasoningTemplateSchema = z
+  .object({
+    enableThinkingArgument: TemplateArgumentSchema,
+    effortArgument: TemplateArgumentSchema,
+  })
+  .strict();
+export type ReasoningTemplate = z.infer<typeof ReasoningTemplateSchema>;
+
+/** A template's native spelling for Brain's provider-neutral preservation setting. */
+export const ReasoningPreservationSchema = z
+  .object({
+    templateArgument: TemplateArgumentSchema,
+    default: z.boolean().optional(),
+  })
+  .strict();
+export type ReasoningPreservation = z.infer<typeof ReasoningPreservationSchema>;
+
 // --------------------------------------------------------------- profiles store
 
 export const ProfileSchema = z
@@ -27,6 +51,8 @@ export const ProfileSchema = z
     vision: z.boolean().default(false),
     reasoningBudget: z.number().default(1536),
     reasoningBudgetMessage: z.string().default(DEFAULT_REASONING_MESSAGE),
+    /** Optional for old stored profiles; model defaults are resolved by forModel(). */
+    preserveReasoning: z.boolean().optional(),
     parallelSlots: z.number().default(1),
     /** RoPE extension factor; 1 keeps the GGUF-native context window. */
     contextMultiplier: z.number().default(1),
@@ -265,6 +291,9 @@ export const CatalogModelSchema = z
     vision: z.boolean().optional(),
     thinking: z.boolean().optional(),
     reasoningEfforts: z.array(z.string()).optional(),
+    reasoningEffortDefault: z.string().optional(),
+    reasoningTemplate: ReasoningTemplateSchema.optional(),
+    reasoningPreservation: ReasoningPreservationSchema.optional(),
     contextMax: z.number().optional(),
     useCases: z.array(z.string()).optional(),
     tier: z.string().optional(),

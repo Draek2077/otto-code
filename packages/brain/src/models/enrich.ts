@@ -129,7 +129,13 @@ export function enrichWithCatalog(models: Model[], catalog: Catalog): Model[] {
     if (!entry) {
       const enriched = enrichDiscoveredProjector(model);
       const family = familyFromGgufMetadata(enriched);
-      return family ? { ...enriched, family } : enriched;
+      const reasoningPreservation = detectedReasoningPreservation(enriched);
+      if (!family && !reasoningPreservation) return enriched;
+      return {
+        ...enriched,
+        ...(family ? { family } : {}),
+        ...(reasoningPreservation ? { reasoningPreservation } : {}),
+      };
     }
     const components = resolveComponents(model, entry);
     const projector = components?.find((component) => component.role === "vision_projector");
@@ -147,9 +153,20 @@ export function enrichWithCatalog(models: Model[], catalog: Catalog): Model[] {
       tier: entry.tier,
       thinking: entry.thinking,
       reasoningEfforts: entry.reasoningEfforts,
+      reasoningEffortDefault: entry.reasoningEffortDefault,
+      reasoningTemplate: entry.reasoningTemplate,
+      reasoningPreservation: entry.reasoningPreservation ?? detectedReasoningPreservation(model),
       contextMax: entry.contextMax,
     };
   });
+}
+
+/** Map the two known template spellings to one model capability. */
+function detectedReasoningPreservation(model: Model): Model["reasoningPreservation"] {
+  const templateArgument = model.metadata?.reasoningPreservationArgument;
+  return templateArgument === "preserve_thinking" || templateArgument === "preserve_reasoning"
+    ? { templateArgument }
+    : undefined;
 }
 
 /** Promote a scanner-paired projector in an arbitrary Hugging Face repository

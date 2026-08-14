@@ -106,9 +106,15 @@ export function buildArgs(
   if (profile.ubatchSize) args.push("-ub", String(profile.ubatchSize));
   if (profile.chatTemplateFile) {
     args.push("--chat-template-file", profile.chatTemplateFile);
-    if (Object.keys(profile.chatTemplateKwargs ?? {}).length > 0) {
-      args.push("--chat-template-kwargs", JSON.stringify(profile.chatTemplateKwargs));
-    }
+  }
+  const templateKwargs = { ...profile.chatTemplateKwargs };
+  const preservation = model?.reasoningPreservation;
+  if (preservation?.templateArgument) {
+    templateKwargs[preservation.templateArgument] =
+      profile.preserveReasoning ?? preservation.default ?? false;
+  }
+  if (Object.keys(templateKwargs).length > 0) {
+    args.push("--chat-template-kwargs", JSON.stringify(templateKwargs));
   }
   if (profile.extraArgs && profile.extraArgs.length) args.push(...profile.extraArgs);
 

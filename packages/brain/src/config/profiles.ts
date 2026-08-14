@@ -52,6 +52,7 @@ export function defaultProfile(model: Model | null, defaults?: ProfileDefaults):
       : Boolean(model?.mmprojPath),
     reasoningBudget: defaults?.reasoningBudget ?? 1536,
     reasoningBudgetMessage: DEFAULT_REASONING_MESSAGE,
+    preserveReasoning: model?.reasoningPreservation?.default ?? false,
     parallelSlots: defaults?.parallelSlots ?? 1, // one agent at a time: max context per request
     batchSize: null,
     ubatchSize: null,
@@ -96,6 +97,9 @@ export function forModel(store: ProfilesStore, model: Model, defaults?: ProfileD
   return {
     ...base,
     ...stored,
+    // `preserveReasoning` was optional in the store so adding the Qwen default
+    // does not rewrite existing profiles as false merely because they predate it.
+    preserveReasoning: stored.preserveReasoning ?? base.preserveReasoning,
     // COMPAT(hostingProfileMode): added in v0.8.8, remove after 2027-02-12.
     // The first hosting-profile store only had an id, and a non-null id there
     // was an explicit custom choice. Such a profile parses as `inherit` (the

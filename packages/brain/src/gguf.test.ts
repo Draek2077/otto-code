@@ -65,6 +65,21 @@ test("a non-GGUF file is rejected clearly", () => {
   }
 });
 
+test("normalizes both template preservation spellings into one capability", () => {
+  assert.deepEqual(
+    gguf.detectTemplateReasoningCapabilities(
+      "{% if preserve_thinking %}{{ reasoning }}{% endif %}",
+    ),
+    { reasoning: true, reasoningPreservationArgument: "preserve_thinking" },
+  );
+  assert.deepEqual(
+    gguf.detectTemplateReasoningCapabilities(
+      "{% if preserve_reasoning %}{{ reasoning }}{% endif %}",
+    ),
+    { reasoning: true, reasoningPreservationArgument: "preserve_reasoning" },
+  );
+});
+
 (skip ? test.skip : test)("the catalog pairs vision projectors with their model", () => {
   const catalog = models.scan({ withMetadata: false });
   assert.ok(catalog.length > 0);

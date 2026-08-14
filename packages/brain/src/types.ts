@@ -24,6 +24,8 @@ export interface ModelMetadata {
    * flags a reasoning model - works for any local model, catalog or not.
    */
   reasoning?: boolean;
+  /** Native template key detected from `preserve_thinking` or `preserve_reasoning`. */
+  reasoningPreservationArgument?: string;
   [key: string]: unknown;
 }
 
@@ -31,6 +33,18 @@ export interface ModelFeatures {
   mtp: boolean;
   imatrix: boolean;
   distilled: boolean;
+}
+
+/** Catalog-declared native chat-template argument names for reasoning controls. */
+export interface ReasoningTemplate {
+  enableThinkingArgument: string;
+  effortArgument: string;
+}
+
+/** The native argument behind Brain's provider-neutral Preserve reasoning setting. */
+export interface ReasoningPreservation {
+  templateArgument: string;
+  default?: boolean;
 }
 
 export type ModelComponentRole = "vision_projector" | "speculative_drafter";
@@ -82,6 +96,12 @@ export interface Model {
   thinking?: boolean;
   /** Per-request reasoning levels accepted by the model's OpenAI-compatible API. */
   reasoningEfforts?: string[];
+  /** The model-native default among `reasoningEfforts`, when one is declared. */
+  reasoningEffortDefault?: string;
+  /** Template argument names needed to apply this model's reasoning controls. */
+  reasoningTemplate?: ReasoningTemplate;
+  /** Native template argument used by the model-profile Preserve reasoning setting. */
+  reasoningPreservation?: ReasoningPreservation;
   /** The catalog's advertised max context, if known. */
   contextMax?: number;
   /** Back-reference: the id of the reconciled catalog entry, if matched. */

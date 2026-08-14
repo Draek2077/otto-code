@@ -308,11 +308,12 @@ describe("OPENAI_COMPAT_MODES unattended resolution", () => {
 });
 
 describe("OpenAICompatAgentClient", () => {
-  test("Brain preserves Off and forwards advertised graduated levels", async () => {
+  test("Brain preserves Off and forwards Qwen's advertised native effort levels", async () => {
     const endpoint = await startEndpoint({
       modelFields: {
         reasoning: true,
-        reasoning_efforts: ["low", "medium", "high"],
+        reasoning_efforts: ["low", "medium", "xhigh"],
+        reasoning_effort_default: "xhigh",
       },
     });
     const client = createClient(endpoint.baseUrl, "toggle");
@@ -322,17 +323,18 @@ describe("OpenAICompatAgentClient", () => {
       "off",
       "low",
       "medium",
-      "high",
+      "xhigh",
     ]);
+    expect(catalog.models[0]?.defaultThinkingOptionId).toBe("xhigh");
 
     const session = await client.createSession({
       provider: "lmstudio",
       cwd: process.cwd(),
       model: "test-model-a",
-      thinkingOptionId: "high",
+      thinkingOptionId: "xhigh",
     });
     await session.run("Say hello");
-    expect(endpoint.completionBodies[0]?.reasoning_effort).toBe("high");
+    expect(endpoint.completionBodies[0]?.reasoning_effort).toBe("xhigh");
   });
 
   test("discovers models from GET /v1/models with the first as default", async () => {
