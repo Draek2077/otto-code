@@ -1021,6 +1021,7 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
         onOpenChange={setIsOpen}
         anchorRef={anchorRef}
         renderOption={renderTabOption}
+        mobileScrollToValueOnOpen
       />
     </View>
   );

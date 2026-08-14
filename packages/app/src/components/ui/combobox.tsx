@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { ReactElement, ReactNode } from "react";
+import type { ElementRef, ReactElement, ReactNode } from "react";
 import {
   View,
   Text,
@@ -72,6 +72,7 @@ import {
   useWebOverlayRegistration,
 } from "@/lib/overlay-root";
 import { buildDesktopFrameStyle } from "./combobox-frame-style";
+import { getCenteredOptionScrollOffset } from "./combobox-scroll";
 
 export { buildDesktopFrameStyle } from "./combobox-frame-style";
 
@@ -132,6 +133,8 @@ export interface ComboboxProps {
   footer?: ReactNode;
   /** When true, selecting an option does not close the picker (multi-select mode). */
   keepOpenOnSelect?: boolean;
+  /** When the mobile sheet opens, centers the selected option in its scroll viewport. */
+  mobileScrollToValueOnOpen?: boolean;
   anchorRef: React.RefObject<View | null>;
   children?: ReactNode;
 }
@@ -375,23 +378,37 @@ interface OptionRowProps {
   active: boolean;
   onSelect: (id: string) => void;
   renderOption: RenderOptionFn | undefined;
+  onSelectedOptionLayout?: (event: LayoutChangeEvent) => void;
 }
 
-function OptionRow({ option, selected, active, onSelect, renderOption }: OptionRowProps) {
+function OptionRow({
+  option,
+  selected,
+  active,
+  onSelect,
+  renderOption,
+  onSelectedOptionLayout,
+}: OptionRowProps) {
   const handlePress = useCallback(() => onSelect(option.id), [onSelect, option.id]);
   if (renderOption) {
-    return <View>{renderOption({ option, selected, active, onPress: handlePress })}</View>;
+    return (
+      <View onLayout={selected ? onSelectedOptionLayout : undefined}>
+        {renderOption({ option, selected, active, onPress: handlePress })}
+      </View>
+    );
   }
   return (
-    <ComboboxItem
-      label={option.label}
-      description={option.description}
-      kind={option.kind}
-      selected={selected}
-      active={active}
-      disabled={option.disabled}
-      onPress={handlePress}
-    />
+    <View onLayout={selected ? onSelectedOptionLayout : undefined}>
+      <ComboboxItem
+        label={option.label}
+        description={option.description}
+        kind={option.kind}
+        selected={selected}
+        active={active}
+        disabled={option.disabled}
+        onPress={handlePress}
+      />
+    </View>
   );
 }
 
@@ -402,6 +419,7 @@ interface OptionsListProps {
   emptyText: string;
   onSelect: (id: string) => void;
   renderOption: RenderOptionFn | undefined;
+  onSelectedOptionLayout?: (event: LayoutChangeEvent) => void;
 }
 
 function OptionsList({
@@ -411,6 +429,7 @@ function OptionsList({
   emptyText,
   onSelect,
   renderOption,
+  onSelectedOptionLayout,
 }: OptionsListProps): ReactElement {
   if (options.length === 0) {
     return <ComboboxEmpty>{emptyText}</ComboboxEmpty>;
@@ -425,6 +444,7 @@ function OptionsList({
           active={index === activeIndex}
           onSelect={onSelect}
           renderOption={renderOption}
+          onSelectedOptionLayout={onSelectedOptionLayout}
         />
       ))}
     </>
@@ -985,9 +1005,55 @@ interface MobileBodyProps {
   renderOption: RenderOptionFn | undefined;
   children: ReactNode;
   safeAreaBottom: number;
+  isOpen: boolean;
+  scrollToSelectedOptionOnOpen: boolean;
 }
 
 function MobileComboboxBody(props: MobileBodyProps): ReactElement {
+  const scrollRef = useRef<ElementRef<typeof BottomSheetScrollView>>(null);
+  const [selectedOptionLayout, setSelectedOptionLayout] = useState<{
+    top: number;
+    height: number;
+  } | null>(null);
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
+  const hasScrolledToSelectedOption = useRef(false);
+
+  const handleSelectedOptionLayout = useCallback((event: LayoutChangeEvent) => {
+    const { height, y } = event.nativeEvent.layout;
+    setSelectedOptionLayout({ top: y, height });
+  }, []);
+  const handleScrollViewportLayout = useCallback((event: LayoutChangeEvent) => {
+    setViewportHeight(event.nativeEvent.layout.height);
+  }, []);
+
+  useEffect(() => {
+    if (!props.isOpen) {
+      hasScrolledToSelectedOption.current = false;
+      return;
+    }
+    if (
+      !props.scrollToSelectedOptionOnOpen ||
+      hasScrolledToSelectedOption.current ||
+      !selectedOptionLayout ||
+      !viewportHeight
+    ) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      scrollRef.current?.scrollTo({
+        y: getCenteredOptionScrollOffset({
+          optionTop: selectedOptionLayout.top,
+          optionHeight: selectedOptionLayout.height,
+          viewportHeight,
+        }),
+        animated: false,
+      });
+      hasScrolledToSelectedOption.current = true;
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [props.isOpen, props.scrollToSelectedOptionOnOpen, selectedOptionLayout, viewportHeight]);
+
   const renderBackdrop = useCallback(
     (backdropProps: React.ComponentProps<typeof BottomSheetBackdrop>) => (
       <BottomSheetBackdrop
@@ -1019,6 +1085,7 @@ function MobileComboboxBody(props: MobileBodyProps): ReactElement {
       emptyText={props.emptyText}
       onSelect={props.handleSelect}
       renderOption={props.renderOption}
+      onSelectedOptionLayout={handleSelectedOptionLayout}
     />
   );
 
@@ -1066,6 +1133,7 @@ function MobileComboboxBody(props: MobileBodyProps): ReactElement {
           body
         ) : (
           <BottomSheetScrollView
+            ref={scrollRef}
             style={styles.mobileSheetBody}
             contentContainerStyle={[
               styles.comboboxScrollContent,
@@ -1073,6 +1141,7 @@ function MobileComboboxBody(props: MobileBodyProps): ReactElement {
             ]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
+            onLayout={handleScrollViewportLayout}
           >
             {body}
           </BottomSheetScrollView>
@@ -1327,6 +1396,7 @@ export function Combobox({
   stickyHeader,
   footer,
   keepOpenOnSelect = false,
+  mobileScrollToValueOnOpen = false,
   anchorRef,
   children,
 }: ComboboxProps): ReactElement | null {
@@ -1625,6 +1695,8 @@ export function Combobox({
         handleSelect={handleSelect}
         renderOption={renderOption}
         safeAreaBottom={safeAreaInsets.bottom}
+        isOpen={isOpen}
+        scrollToSelectedOptionOnOpen={mobileScrollToValueOnOpen}
       >
         {children}
       </MobileComboboxBody>
