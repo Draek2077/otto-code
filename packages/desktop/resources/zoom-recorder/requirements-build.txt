@@ -1,0 +1,10 @@
+# Frozen Otto Zoom Recorder helper. Build natively per target architecture.
+onnx-asr[cpu,hub]==0.12.0
+PyInstaller==6.21.0
+
+# Windows-only audio capture dependencies. pip ignores them on Linux.
+comtypes==1.4.16; sys_platform == "win32"
+process-audio-capture==1.0.0; sys_platform == "win32"
+psutil==7.2.2; sys_platform == "win32"
+pycaw==20251023; sys_platform == "win32"
+sounddevice==0.5.5; sys_platform == "win32"

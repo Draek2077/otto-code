@@ -126,11 +126,9 @@ describe("quit-lifecycle", () => {
     expect(closeTransportSessions).toHaveBeenCalledTimes(1);
     expect(app.exit).not.toHaveBeenCalled();
 
-    // confirmQuitIfNeeded resolves asynchronously, so stopDesktopManagedDaemonIfNeeded
-    // (and thus resolveStopDecision) isn't invoked until its microtask runs.
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(resolveStopDecision).not.toBeNull();
+    // Confirmation and host-local teardown resolve asynchronously, so the daemon
+    // stop decision is not invoked until their microtasks have completed.
+    await vi.waitFor(() => expect(resolveStopDecision).not.toBeNull());
 
     resolveStopDecision?.();
     await vi.waitFor(() => expect(app.exit).toHaveBeenCalledWith(0));
@@ -141,6 +139,30 @@ describe("quit-lifecycle", () => {
     expect(secondPreventDefault).not.toHaveBeenCalled();
     expect(closeTransportSessions).toHaveBeenCalledTimes(2);
     expect(app.exit).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops host-local features before stopping the daemon", async () => {
+    const app = { exit: vi.fn() };
+    const shutdownDesktopFeatures = vi.fn(async () => undefined);
+    const stopDesktopManagedDaemonIfNeeded = vi.fn(async () => false);
+    const { handleBeforeQuit } = createQuitLifecycle({
+      ...NO_UPDATE,
+      app,
+      closeTransportSessions: vi.fn(),
+      confirmQuitIfNeeded: vi.fn(async () => true),
+      shutdownDesktopFeatures,
+      stopDesktopManagedDaemonIfNeeded,
+      onStopError: vi.fn(),
+    });
+
+    handleBeforeQuit({ preventDefault: vi.fn() });
+
+    await vi.waitFor(() => expect(app.exit).toHaveBeenCalledWith(0));
+    expect(shutdownDesktopFeatures).toHaveBeenCalledTimes(1);
+    expect(stopDesktopManagedDaemonIfNeeded).toHaveBeenCalledTimes(1);
+    expect(shutdownDesktopFeatures.mock.invocationCallOrder[0]).toBeLessThan(
+      stopDesktopManagedDaemonIfNeeded.mock.invocationCallOrder[0],
+    );
   });
 
   it("aborts the quit when the renderer confirmation is declined", async () => {

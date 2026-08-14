@@ -122,6 +122,10 @@ packages/protocol/src/generated/validation/*.aot.ts
 
 /artifacts
 packages/desktop/.cache/
+# Native PyInstaller work tree and local virtual environment for the bundled
+# Zoom Recorder helper. Release artifacts themselves live under its ignored
+# `resources/zoom-recorder/bin/` directory.
+packages/desktop/.build/
 packages/desktop/src-tauri/resources/managed-runtime/
 app.json
 

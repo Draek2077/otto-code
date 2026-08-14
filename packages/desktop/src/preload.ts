@@ -19,6 +19,7 @@ interface AttachedBrowserRegistration {
 
 contextBridge.exposeInMainWorld("ottoDesktop", {
   platform: process.platform,
+  arch: process.arch,
   invoke: (command: string, args?: Record<string, unknown>) =>
     ipcRenderer.invoke("otto:invoke", command, args),
   getPendingOpenProject: () =>
@@ -110,6 +111,24 @@ contextBridge.exposeInMainWorld("ottoDesktop", {
       ipcRenderer.invoke("otto:wake-word:start", input),
     audio: (pcm: string) => ipcRenderer.invoke("otto:wake-word:audio", { pcm }),
     stop: () => ipcRenderer.invoke("otto:wake-word:stop"),
+  },
+  zoomRecorder: {
+    status: () => ipcRenderer.invoke("otto:zoom-recorder:status"),
+    enable: () => ipcRenderer.invoke("otto:zoom-recorder:enable"),
+    disable: () => ipcRenderer.invoke("otto:zoom-recorder:disable"),
+    takeOver: () => ipcRenderer.invoke("otto:zoom-recorder:take-over"),
+    deleteModel: () => ipcRenderer.invoke("otto:zoom-recorder:delete-model"),
+    listPendingTranscripts: () => ipcRenderer.invoke("otto:zoom-recorder:list-pending-transcripts"),
+    acknowledgeTranscript: (token: string) =>
+      ipcRenderer.invoke("otto:zoom-recorder:acknowledge-transcript", token),
+  },
+  meetingTranscripts: {
+    listLocal: () => ipcRenderer.invoke("otto:meeting-transcripts:local:list"),
+    createLocal: (input: Record<string, unknown>) =>
+      ipcRenderer.invoke("otto:meeting-transcripts:local:create", input),
+    updateLocal: (input: Record<string, unknown>) =>
+      ipcRenderer.invoke("otto:meeting-transcripts:local:update", input),
+    deleteLocal: (id: string) => ipcRenderer.invoke("otto:meeting-transcripts:local:delete", id),
   },
   webUtils: {
     getPathForFile: (file: File) => webUtils.getPathForFile(file),

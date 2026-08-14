@@ -73,6 +73,7 @@ fileAssociations:
   - { ext: heic, name: Otto, role: Editor }
   - { ext: heif, name: Otto, role: Editor }
 afterPack: ./scripts/after-pack.js
+beforePack: ./scripts/before-pack.js
 afterSign: ./scripts/after-sign.js
 directories:
   output: release
@@ -86,6 +87,10 @@ files:
 asarUnpack:
   - dist/daemon/node-entrypoint-runner.js
   - node_modules/@otto-code/server/dist/server/terminal/shell-integration/**/*
+  # The daemon owns connector credentials. Keep the keyring bridge and its
+  # platform-specific N-API binary outside app.asar so Node can load it.
+  - node_modules/@napi-rs/keyring/**/*
+  - node_modules/@napi-rs/keyring-*/**/*
 extraResources:
   - from: ../app/dist
     to: app-dist
@@ -154,6 +159,8 @@ linux:
       # managers do not consistently show non-default directory handlers.
       MimeType: inode/directory;
   extraResources:
+    - from: resources/zoom-recorder/bin/${arch}
+      to: zoom-recorder
     - from: bin/otto
       to: bin/otto
     # AppArmor profile installed to /etc/apparmor.d/otto by after-install.sh so
@@ -182,6 +189,8 @@ win:
   artifactName: "Otto-Setup-${version}-${arch}.${ext}"
   icon: assets/icon.ico
   extraResources:
+    - from: resources/zoom-recorder/bin/${arch}
+      to: zoom-recorder
     - from: bin/otto.cmd
       to: bin/otto.cmd
   target:

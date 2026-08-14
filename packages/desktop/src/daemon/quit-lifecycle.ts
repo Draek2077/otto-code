@@ -96,10 +96,12 @@ export function createQuitLifecycle({
   closeTransportSessions,
   confirmQuitIfNeeded,
   stopDesktopManagedDaemonIfNeeded,
+  shutdownDesktopFeatures = async () => undefined,
   installAppUpdateOnQuit,
   createUpdateDeadlineSignal,
   deferDaemonStopUntilUpdateHandoff = false,
   onStopError,
+  onShutdownError = () => undefined,
   onUpdateError,
 }: {
   app: BeforeQuitApp;
@@ -109,12 +111,17 @@ export function createQuitLifecycle({
   // confirmed.
   confirmQuitIfNeeded: () => Promise<boolean>;
   stopDesktopManagedDaemonIfNeeded: () => Promise<boolean>;
+  // Host-local feature cleanup is distinct from daemon shutdown. It must be
+  // bounded by its implementation: Electron's before-quit event cannot await
+  // a listener that was merely fire-and-forget.
+  shutdownDesktopFeatures?: () => Promise<void>;
   // Resolves true once a downloaded update has been revalidated and handed to
   // the installer, which re-fires the quit itself.
   installAppUpdateOnQuit: (signal: AbortSignal) => Promise<boolean>;
   createUpdateDeadlineSignal: () => AbortSignal;
   deferDaemonStopUntilUpdateHandoff?: boolean;
   onStopError: (error: unknown) => void;
+  onShutdownError?: (error: unknown) => void;
   onUpdateError: (error: unknown) => void;
 }): QuitLifecycle {
   // We always preventDefault on first quit so we can run the async stop
@@ -151,6 +158,12 @@ export function createQuitLifecycle({
         quitting = false;
         unmarkAppQuitting();
         return;
+      }
+
+      try {
+        await shutdownDesktopFeatures();
+      } catch (error) {
+        onShutdownError(error);
       }
 
       const signal = createUpdateDeadlineSignal();

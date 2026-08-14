@@ -141,6 +141,27 @@ describe("desktop packaging", () => {
     );
   });
 
+  it("builds and bundles the native Zoom Recorder helper only on supported x64 release targets", () => {
+    const config = readFileSync(join(packageRoot, "electron-builder.yml"), "utf8");
+    const beforePack = readFileSync(join(packageRoot, "scripts", "before-pack.js"), "utf8");
+    const buildRuntime = readFileSync(
+      join(packageRoot, "scripts", "build-zoom-recorder-runtime.py"),
+      "utf8",
+    );
+
+    expect(config).toContain("beforePack: ./scripts/before-pack.js");
+    expect(config).toContain("from: resources/zoom-recorder/bin/${arch}");
+    expect(config).toContain("to: zoom-recorder");
+    expect(beforePack).toContain('new Set(["linux", "win"])');
+    expect(beforePack).toContain("context.arch !== Arch.x64");
+    expect(beforePack).toContain('"build-zoom-recorder-runtime.py"');
+    expect(beforePack).toContain('"bin",\n    "x64"');
+    expect(buildRuntime).toContain('OUTPUT_ROOT = HELPER_ROOT / "bin" / "x64"');
+    expect(buildRuntime).toContain('system not in {"Linux", "Windows"}');
+    expect(buildRuntime).toContain("smoke_test(executable)");
+    expect(buildRuntime).toContain('("--version",), ("status",)');
+  });
+
   it("excludes package debug/source files from the packaged app", () => {
     const config = readFileSync(join(packageRoot, "electron-builder.yml"), "utf8");
 

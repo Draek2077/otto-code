@@ -150,6 +150,10 @@ import { BrowserKeyboard } from "./features/browser-keyboard/index.js";
 import { createTrustedOttoOriginPolicy, isTrustedMainWindowSender } from "./trusted-main-window.js";
 import { registerWakeWordHandlers } from "./features/wake-word.js";
 import {
+  registerZoomRecorderHandlers,
+  shutdownZoomRecorderForQuit,
+} from "./features/zoom-recorder.js";
+import {
   getCachedMinimizeOnCloseSetting,
   refreshTrayVisibility,
   setCachedMinimizeOnCloseSetting,
@@ -1526,6 +1530,9 @@ async function bootstrap(): Promise<void> {
   registerOpenerHandlers();
   registerEditorTargetHandlers();
   registerWakeWordHandlers();
+  registerZoomRecorderHandlers({
+    isTrustedSender: (sender) => isTrustedMainWindowSender(sender, trustedOttoOriginPolicy),
+  });
   registerBrowserAutomationIpc();
 
   // In-app "Open in new window": opens a window that lands on the given project
@@ -1679,6 +1686,7 @@ const quitLifecycle = createQuitLifecycle({
   app,
   closeTransportSessions: closeAllTransportSessions,
   confirmQuitIfNeeded,
+  shutdownDesktopFeatures: shutdownZoomRecorderForQuit,
   stopDesktopManagedDaemonIfNeeded: () =>
     stopDesktopManagedDaemonOnQuitIfNeeded({
       settingsStore: getDesktopSettingsStore(),
@@ -1698,6 +1706,9 @@ const quitLifecycle = createQuitLifecycle({
   deferDaemonStopUntilUpdateHandoff: process.platform === "linux" && !process.env.APPIMAGE,
   onStopError: (error) => {
     log.error("[desktop daemon] failed to stop managed daemon on quit", error);
+  },
+  onShutdownError: (error) => {
+    log.error("[zoom-recorder] failed to stop recorder on quit", error);
   },
   onUpdateError: (error) => {
     log.error("[auto-updater] failed to validate downloaded update on quit", error);

@@ -1,0 +1,4 @@
+/bin/*
+!/bin/arm64/
+!/bin/arm64/.gitkeep
+__pycache__/
