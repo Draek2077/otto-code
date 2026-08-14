@@ -46,6 +46,7 @@ import { ProviderSettingsHost } from "@/components/provider-settings-host";
 import { RootErrorBoundary } from "@/components/root-error-boundary";
 import { WorkspaceSetupDialog } from "@/components/workspace-setup-dialog";
 import { WorkspaceShortcutTargetsSubscriber } from "@/components/workspace-shortcut-targets-subscriber";
+import { WorkspacePinShortcutHandler } from "@/components/workspace-pin-shortcut-handler";
 import { ClientResourceBar } from "@/components/client-resource-bar";
 import { resolveClientResourceBarPlacement } from "@/components/client-resource-bar-placement";
 import { FloatingPanelPortalHost } from "@/components/ui/floating-panel-portal";
@@ -594,6 +595,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       <HostChooserModal />
       <ProviderSettingsHost />
       <WorkspaceSetupDialog />
+      <WorkspacePinShortcutHandler />
       <KeyboardShortcutsDialog />
       <ConfirmDialogHost />
       <QuitConfirmListener />
