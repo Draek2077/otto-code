@@ -107,6 +107,20 @@ describe("loadAppSettingsFromStorage", () => {
     expect(result.workspaceTitleSource).toBe("title");
   });
 
+  it("shows workspace tools in the sidebar for new installs while preserving a saved header choice", async () => {
+    const defaults = await loadAppSettingsFromStorage(makeDeps());
+    expect(defaults.workspaceToolsPlacement).toBe("workspaceList");
+
+    const existingInstall = await loadAppSettingsFromStorage(
+      makeDeps({
+        storage: createInMemoryKeyValueStorage({
+          [APP_SETTINGS_KEY]: JSON.stringify({ workspaceToolsPlacement: "header" }),
+        }),
+      }),
+    );
+    expect(existingInstall.workspaceToolsPlacement).toBe("header");
+  });
+
   it("loads configured terminal scrollback lines from app settings", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({

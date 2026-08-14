@@ -628,7 +628,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   previewServerCloseBehavior: "keep-running",
   previewAutoStartOnRestore: false,
   compactSidebarTopSpacing: false,
-  workspaceToolsPlacement: "header",
+  workspaceToolsPlacement: "workspaceList",
   workspaceChangeIndicator: "uncommitted",
   teamSwitcherPlacement: "sidebar",
   defaultTabOrientation: "vertical",
