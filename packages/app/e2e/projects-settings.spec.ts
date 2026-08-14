@@ -150,16 +150,16 @@ async function addProjectFromSidebar(page: Page, projectPath: string): Promise<s
   return testId!.replace("sidebar-project-row-", "");
 }
 
-async function openProjectSettingsFromSidebar(page: Page, projectId: string): Promise<void> {
-  const projectRow = page.getByTestId(`sidebar-project-row-${projectId}`);
+async function openProjectSettingsFromSidebar(page: Page, projectKey: string): Promise<void> {
+  const projectRow = page.getByTestId(`sidebar-project-row-${projectKey}`);
   await expect(projectRow).toBeVisible({ timeout: 30_000 });
   await projectRow.hover();
 
-  const kebab = page.getByTestId(`sidebar-project-kebab-${projectId}`);
+  const kebab = page.getByTestId(`sidebar-project-kebab-${projectKey}`);
   await expect(kebab).toBeVisible({ timeout: 10_000 });
   await kebab.click();
 
-  const openSettingsItem = page.getByTestId(`sidebar-project-menu-open-settings-${projectId}`);
+  const openSettingsItem = page.getByTestId(`sidebar-project-menu-open-settings-${projectKey}`);
   await expect(openSettingsItem).toBeVisible({ timeout: 10_000 });
   await openSettingsItem.click();
 }
@@ -198,8 +198,13 @@ test.describe("Projects settings", () => {
     try {
       await gotoAppShell(page);
 
-      projectId = await addProjectFromSidebar(page, repo.path);
-      await openProjectSettingsFromSidebar(page, projectId);
+      const projectKey = await addProjectFromSidebar(page, repo.path);
+      const registeredProject = (await client.listProjects()).projects.find(
+        (project) => project.projectRootPath === repo.path,
+      );
+      expect(registeredProject).toBeDefined();
+      projectId = registeredProject!.projectId;
+      await openProjectSettingsFromSidebar(page, projectKey);
 
       await expectProjectSettingsFormVisible(page);
       await expect(page.getByTestId("project-settings-back-button")).not.toBeVisible();
