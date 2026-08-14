@@ -57,7 +57,7 @@ test.describe("Workspace agent title handoff", () => {
     try {
       await page.goto(buildHostWorkspaceRoute(getServerId(), workspace.workspaceId));
       await waitForWorkspaceTabsVisible(page);
-      await page.getByTestId("workspace-new-agent-tab-inline").click();
+      await clickNewChat(page);
       await expectComposerVisible(page);
 
       const prompt = "Keep the optimistic agent pane visible during handoff";

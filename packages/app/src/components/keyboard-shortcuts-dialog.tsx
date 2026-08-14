@@ -105,12 +105,6 @@ export function KeyboardShortcutsDialog() {
     if (!open) setQuery("");
   }, [open]);
 
-  useEffect(() => {
-    if (!open || !isWeb) return;
-    const timer = setTimeout(() => searchInputRef.current?.focus(), 50);
-    return () => clearTimeout(timer);
-  }, [open]);
-
   // Matching runs against the RESOLVED chord rather than the row's default keys,
   // so a remapped shortcut is findable by what the user actually presses.
   const filteredSections = useMemo(() => {
@@ -135,8 +129,22 @@ export function KeyboardShortcutsDialog() {
 
   useEffect(() => {
     if (!open || !isWeb) return;
-    const timer = setTimeout(() => searchInputRef.current?.focus(), 0);
-    return () => clearTimeout(timer);
+    // React Native Web's TextInput ref does not consistently forward focus into
+    // a newly mounted modal portal. Focus the ref first, then the actual input
+    // after the portal has painted so the overlay, not the model selector below
+    // it, owns keyboard input.
+    const focusSearch = () => {
+      searchInputRef.current?.focus();
+      document
+        .querySelector<HTMLInputElement>('[data-testid="keyboard-shortcuts-search"]')
+        ?.focus();
+    };
+    const frame = requestAnimationFrame(() => requestAnimationFrame(focusSearch));
+    const timer = setTimeout(focusSearch, 100);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timer);
+    };
   }, [open]);
 
   return (
