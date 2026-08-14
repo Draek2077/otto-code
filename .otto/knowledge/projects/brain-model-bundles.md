@@ -9,7 +9,7 @@ progress_completed: 4
 progress_total: 6
 progress_unit: "phases"
 created_at: "2026-08-11T06:54:59.270Z"
-updated_at: "2026-08-11T21:16:19.452Z"
+updated_at: "2026-08-14T15:34:52.135Z"
 ---
 
 # Brain model bundles
@@ -110,3 +110,8 @@ Otto Brain treats a multi-artifact local model as one selectable bundle. Users e
   summary: "The Models tab now applies a shared normalized-artifact dedupe guard before sorting inventory rows. When duplicate representations of the same GGUF arrive during bundle enrichment or refresh, it keeps the richer projector-capable row and suppresses the duplicate. The Library's installed-artifact filter uses the same helper; its focused regression test covers case- and separator-insensitive identity."
   source: "User-reported Models-tab regression and implementation, 2026-08-11."
   affects: ["brain-library-installed-models-exclude-catalog-artifacts"]
+- time: "2026-08-14T15:34:52.135Z"
+  kind: "evidence"
+  summary: "While a selected Brain bundle quant is downloading, enabling additional Bundle options must not interrupt or cancel the active transfer. The new artifacts join that bundle's download queue, and the Library progress ring reports byte-weighted aggregate progress across the primary quant and every queued companion artifact."
+  source: "User requirement, 2026-08-14"
+  affects: ["brain-bundle-download-progress-ring"]

@@ -210,3 +210,42 @@ test("bundle plan downloads only the explicitly selected companion files", () =>
   assert.deepEqual(plan.files, ["model.gguf", "draft.gguf"]);
   assert.equal(plan.totalBytes, 110);
 });
+
+test("component-only bundle plans do not repeat already-complete required files", () => {
+  const plan = bundleDownloadPlan(
+    {
+      ...model(),
+      approxWeightsBytes: 100,
+      components: [
+        {
+          id: "required-projector",
+          label: "Image understanding",
+          description: "Reads images",
+          role: "vision_projector",
+          file: "mmproj.gguf",
+          bytes: 20,
+          required: true,
+          defaultDownload: true,
+          defaultLoad: true,
+        },
+        {
+          id: "speculative-drafter",
+          label: "Faster drafting",
+          description: "Accelerates generation",
+          role: "speculative_drafter",
+          file: "draft.gguf",
+          bytes: 10,
+          required: false,
+          defaultDownload: false,
+          defaultLoad: true,
+        },
+      ],
+    },
+    ["speculative-drafter"],
+    [],
+    0,
+    false,
+  );
+  assert.deepEqual(plan.files, ["draft.gguf"]);
+  assert.equal(plan.totalBytes, 10);
+});

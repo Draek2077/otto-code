@@ -67,6 +67,20 @@ export function advanceJobPercent(current: number | null, text: string): number 
   return next;
 }
 
+/** Byte-weighted progress for the primary plus every queued bundle artifact. */
+export function aggregatePullPercent(
+  completedBytes: number,
+  totalBytes: number | null,
+  currentBytes: number | null,
+  currentPercent: number | null,
+): number | null {
+  if (totalBytes === null || totalBytes <= 0) return currentPercent;
+  const progressed =
+    completedBytes +
+    (currentPercent === null || currentBytes === null ? 0 : (currentBytes * currentPercent) / 100);
+  return Math.max(0, Math.min(100, Math.floor((progressed / totalBytes) * 100)));
+}
+
 export interface BrainOpsManagerOptions {
   logger: Logger;
   ottoHome: string;
@@ -92,6 +106,25 @@ interface JobState {
   errBuffer: string;
   /** The JSON result written by successful runtime installs. */
   outBuffer: string;
+  /** Present only for a bundle pull that may gain queued companion files. */
+  pull?: PullState;
+}
+
+interface PullTask {
+  args: string[];
+  components: string[];
+  /** Bytes newly contributed by this task, when the UI knows the manifest size. */
+  expectedBytes: number | null;
+}
+
+interface PullState {
+  quant: string | null;
+  components: Set<string>;
+  totalBytes: number | null;
+  completedBytes: number;
+  current: PullTask;
+  queue: PullTask[];
+  currentPercent: number | null;
 }
 
 export class BrainOpsManager {
@@ -183,33 +216,55 @@ export class BrainOpsManager {
   // --- Jobs ----------------------------------------------------------------
 
   /** Download a catalog model. */
-  pullModel(model: string, components: string[] = [], quant?: string): BrainJob {
+  pullModel(
+    model: string,
+    components: string[] = [],
+    quant?: string,
+    expectedBytes?: number,
+  ): BrainJob {
     if (!model.trim()) {
       throw new Error("A model is required.");
     }
-    return this.startJob({
+    const args = [
+      "pull",
+      ...(quant ? ["--quant", optionValue("quant", quant)] : []),
+      ...components.flatMap((component) => ["--component", optionValue("component", component)]),
+      "--json",
+      "--",
+      model,
+    ];
+    return this.startOrAppendPull({
       kind: "pull",
       target: model,
       label: `Download ${model}`,
-      args: [
+      args,
+      queuedArgs: (newComponents) => [
         "pull",
         ...(quant ? ["--quant", optionValue("quant", quant)] : []),
-        ...components.flatMap((component) => ["--component", optionValue("component", component)]),
+        "--components-only",
+        ...newComponents.flatMap((component) => [
+          "--component",
+          optionValue("component", component),
+        ]),
         "--json",
         "--",
         model,
       ],
+      quant: quant ?? null,
+      components,
+      expectedBytes: expectedBytes ?? null,
     });
   }
 
   /** Download a chosen quant of an arbitrary HF repo (a `pull` job). */
-  addModel(repo: string, quant: string, components?: string[]): BrainJob {
+  addModel(repo: string, quant: string, components?: string[], expectedBytes?: number): BrainJob {
     // An empty quant makes the CLI list quants instead of downloading, so the job
     // would report success while writing nothing - reject it up front.
     if (!repo.trim() || !quant.trim()) {
       throw new Error("A repo and a quant are required.");
     }
-    return this.startJob({
+    const selectedComponents = components ?? [];
+    return this.startOrAppendPull({
       kind: "pull",
       target: `${repo}#${quant}`,
       label: `Add ${repo} (${quant})`,
@@ -218,7 +273,7 @@ export class BrainOpsManager {
         "--quant",
         optionValue("quant", quant),
         ...(components === undefined ? [] : ["--primary-only"]),
-        ...(components ?? []).flatMap((component) => [
+        ...selectedComponents.flatMap((component) => [
           "--component",
           optionValue("component", component),
         ]),
@@ -226,6 +281,22 @@ export class BrainOpsManager {
         "--",
         repo,
       ],
+      queuedArgs: (newComponents) => [
+        "add",
+        "--quant",
+        optionValue("quant", quant),
+        "--components-only",
+        ...newComponents.flatMap((component) => [
+          "--component",
+          optionValue("component", component),
+        ]),
+        "--json",
+        "--",
+        repo,
+      ],
+      quant,
+      components: selectedComponents,
+      expectedBytes: expectedBytes ?? null,
     });
   }
 
@@ -334,12 +405,15 @@ export class BrainOpsManager {
 
   // --- Internals -----------------------------------------------------------
 
-  private startJob(spec: {
-    kind: BrainJobKind;
-    target: string | null;
-    label: string;
-    args: string[];
-  }): BrainJob {
+  private startJob(
+    spec: {
+      kind: BrainJobKind;
+      target: string | null;
+      label: string;
+      args: string[];
+    },
+    pull?: PullState,
+  ): BrainJob {
     const active = [...this.jobsById.values()].find((job) => job.status === "running");
     const isDownload = spec.kind === "pull";
     const activeNonDownload = [...this.jobsById.values()].find(
@@ -366,15 +440,87 @@ export class BrainOpsManager {
       child: null,
       errBuffer: "",
       outBuffer: "",
+      ...(pull ? { pull } : {}),
     };
     this.jobsById.set(job.id, job);
 
+    this.spawnJobChild(job, spec.args);
+    return toWire(job);
+  }
+
+  /**
+   * A bundle is one user-visible job. Once its primary transfer is underway,
+   * later bundle choices become component-only child transfers behind it. This
+   * leaves the active network stream alone and gives the ring one aggregate
+   * byte budget instead of a collection of competing progress indicators.
+   */
+  private startOrAppendPull(spec: {
+    kind: "pull";
+    target: string;
+    label: string;
+    args: string[];
+    queuedArgs: (components: string[]) => string[];
+    quant: string | null;
+    components: string[];
+    expectedBytes: number | null;
+  }): BrainJob {
+    const existing = [...this.jobsById.values()].find(
+      (job) =>
+        job.kind === "pull" &&
+        job.status === "running" &&
+        job.target === spec.target &&
+        job.pull?.quant === spec.quant,
+    );
+    if (!existing?.pull) {
+      return this.startJob(spec, {
+        quant: spec.quant,
+        components: new Set(spec.components),
+        totalBytes: spec.expectedBytes,
+        completedBytes: 0,
+        current: {
+          args: spec.args,
+          components: spec.components,
+          expectedBytes: spec.expectedBytes,
+        },
+        queue: [],
+        currentPercent: null,
+      });
+    }
+
+    const newComponents = spec.components.filter(
+      (component) => !existing.pull!.components.has(component),
+    );
+    if (newComponents.length === 0) return toWire(existing);
+
+    for (const component of newComponents) existing.pull.components.add(component);
+    const previousTotal = existing.pull.totalBytes;
+    if (spec.expectedBytes !== null) {
+      existing.pull.totalBytes = Math.max(previousTotal ?? 0, spec.expectedBytes);
+    }
+    const addedBytes =
+      previousTotal !== null && existing.pull.totalBytes !== null
+        ? Math.max(0, existing.pull.totalBytes - previousTotal)
+        : null;
+    existing.pull.queue.push({
+      args: spec.queuedArgs(newComponents),
+      components: newComponents,
+      expectedBytes: addedBytes,
+    });
+    this.updatePullPercent(existing);
+    this.logger.info(
+      { jobId: existing.id, target: existing.target, components: newComponents },
+      "queued bundle components behind active download",
+    );
+    return toWire(existing);
+  }
+
+  private spawnJobChild(job: JobState, args: string[]): void {
     let child: ChildProcess;
     try {
-      child = this.spawnBrain(spec.args);
+      child = this.spawnBrain(args);
     } catch (error) {
       this.settle(job, "failed", null, getMessage(error));
-      return toWire(job);
+      return;
     }
     job.child = child;
 
@@ -392,7 +538,6 @@ export class BrainOpsManager {
     });
 
     this.logger.info({ jobId: job.id, kind: job.kind }, "started brain op");
-    return toWire(job);
   }
 
   private async handleExit(
@@ -409,6 +554,19 @@ export class BrainOpsManager {
       return;
     }
     if (code === 0) {
+      if (job.kind === "pull" && job.pull) {
+        const completed = job.pull.current;
+        job.pull.completedBytes += completed.expectedBytes ?? 0;
+        const next = job.pull.queue.shift();
+        if (next) {
+          job.pull.current = next;
+          job.pull.currentPercent = null;
+          job.message = `Queued ${next.components.join(", ")}…`;
+          this.updatePullPercent(job);
+          this.spawnJobChild(job, next.args);
+          return;
+        }
+      }
       if (job.kind === "runtime-install") {
         const runtime = parseInstalledRuntime(job.outBuffer);
         if (runtime) {
@@ -480,7 +638,12 @@ export class BrainOpsManager {
       return;
     }
     job.errBuffer = appendTail(job.errBuffer, text);
-    job.percent = advanceJobPercent(job.percent, text);
+    if (job.pull) {
+      job.pull.currentPercent = advanceJobPercent(job.pull.currentPercent, text);
+      this.updatePullPercent(job);
+    } else {
+      job.percent = advanceJobPercent(job.percent, text);
+    }
     const lines = text
       .split(/[\r\n]+/u)
       .map((line) => line.trim())
@@ -495,6 +658,17 @@ export class BrainOpsManager {
       }
       job.message = truncateMessage(line);
     }
+  }
+
+  private updatePullPercent(job: JobState): void {
+    const pull = job.pull;
+    if (!pull) return;
+    job.percent = aggregatePullPercent(
+      pull.completedBytes,
+      pull.totalBytes,
+      pull.current.expectedBytes,
+      pull.currentPercent,
+    );
   }
 
   private pruneTerminalJobs(): void {

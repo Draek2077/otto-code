@@ -259,6 +259,7 @@ export function bundleDownloadPlan(
   componentIds: string[] = [],
   primaryFiles?: string[],
   primaryBytes?: number,
+  includeRequired = true,
 ): {
   repo: string;
   files: string[];
@@ -269,7 +270,7 @@ export function bundleDownloadPlan(
   const unknown = componentIds.filter((id) => !known.has(id));
   if (unknown.length) throw new Error(`unknown bundle components: ${unknown.join(", ")}`);
   const components = (model.components ?? []).filter(
-    (component) => component.required || selected.has(component.id),
+    (component) => (includeRequired && component.required) || selected.has(component.id),
   );
   const foreign = components.find(
     (component) => (component.hfRepo ?? model.hfRepo) !== model.hfRepo,

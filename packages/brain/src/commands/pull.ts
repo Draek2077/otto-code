@@ -75,13 +75,18 @@ function findCatalogModel(models: CatalogModel[], needle: string): CatalogModel 
 }
 
 export function addPullOptions(cmd: Command): Command {
-  return cmd
-    .description("Download a model from the catalog")
-    .argument("<model>", "catalog id or name fragment")
-    .option("--file <name.gguf>", "explicit GGUF file name in the repo")
-    .option("--quant <label>", "download a specific quantization (e.g. Q5_K_M)")
-    .option("--component <id...>", "download optional bundle component ids")
-    .option("--list-quants", "list the quantizations the repo offers and exit");
+  return (
+    cmd
+      .description("Download a model from the catalog")
+      .argument("<model>", "catalog id or name fragment")
+      .option("--file <name.gguf>", "explicit GGUF file name in the repo")
+      .option("--quant <label>", "download a specific quantization (e.g. Q5_K_M)")
+      .option("--component <id...>", "download optional bundle component ids")
+      // The daemon uses this for a bundle job that gained companions after its
+      // primary transfer began. It is deliberately not a normal user action.
+      .option("--components-only", "download selected bundle components without the primary quant")
+      .option("--list-quants", "list the quantizations the repo offers and exit")
+  );
 }
 
 export interface PullOptionsInput {
@@ -89,6 +94,7 @@ export interface PullOptionsInput {
   quant?: string;
   listQuants?: boolean;
   component?: string[];
+  componentsOnly?: boolean;
 }
 
 export async function runPullCommand(
@@ -115,11 +121,18 @@ export async function runPullCommand(
         message: `${model.hfRepo} has no ${options.quant}`,
       });
     }
+    if (options.componentsOnly && (options.component?.length ?? 0) === 0) {
+      throw new CommandError({
+        code: "NO_COMPONENT",
+        message: "--components-only requires at least one bundle component",
+      });
+    }
     const plan = bundleDownloadPlan(
       model,
       options.component ?? [],
-      choice?.files,
-      choice?.sizeBytes,
+      options.componentsOnly ? [] : choice?.files,
+      options.componentsOnly ? 0 : choice?.sizeBytes,
+      !options.componentsOnly,
     );
     const progressLabel = `${model.name}${choice ? ` ${choice.quant}` : ""}`;
     const written = await downloadRepoFilesWithProgress({

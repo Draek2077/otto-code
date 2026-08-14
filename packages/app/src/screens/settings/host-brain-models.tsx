@@ -629,12 +629,12 @@ function CatalogRow({
   busy: boolean;
   jobs: BrainJob[];
   /** One-click download at the catalog's default quant (no repo to browse). */
-  onDownload: (id: string, components?: string[], quant?: string) => void;
+  onDownload: (id: string, components?: string[], quant?: string, expectedBytes?: number) => void;
   onDownloadQuant: (repo: string, quant: string) => void;
   onCancel: (jobId: string) => void;
   showBorder: boolean;
 }) {
-  const components = model.components ?? [];
+  const components = useMemo(() => model.components ?? [], [model.components]);
   const isBundle = components.length > 0;
   const [bundleOpen, setBundleOpen] = useState(false);
   const [selectedComponents, setSelectedComponents] = useState<string[]>(() =>
@@ -643,12 +643,20 @@ function CatalogRow({
       .map((component) => component.id),
   );
   const [bundleQuant, setBundleQuant] = useState(model.quant);
+  const [bundleQuantBytes, setBundleQuantBytes] = useState(model.sizeBytes ?? 0);
   const [bundleModelId, setBundleModelId] = useState<string | null>(null);
   const client = useHostRuntimeClient(serverId);
   const hasRepo = Boolean(model.repo.trim());
   const handleDownload = useCallback(
-    (quant: string) => onDownload(model.id, selectedComponents, quant),
-    [model.id, onDownload, selectedComponents],
+    (quant: string, quantBytes: number) => {
+      setBundleQuantBytes(quantBytes);
+      const componentBytes = selectedComponents.reduce(
+        (sum, id) => sum + (components.find((component) => component.id === id)?.bytes ?? 0),
+        0,
+      );
+      onDownload(model.id, selectedComponents, quant, quantBytes + componentBytes);
+    },
+    [components, model.id, onDownload, selectedComponents],
   );
   const handleDefaultDownload = useCallback(() => onDownload(model.id), [model.id, onDownload]);
   const refreshComponentAvailability = useCallback(async () => {
@@ -693,18 +701,20 @@ function CatalogRow({
         : selectedComponents.filter((id) => id !== componentId);
       setSelectedComponents(nextComponents);
       if (enabled) {
-        // The switch is the user's install action. The selected primary and
-        // every checked companion form one job; existing files are skipped.
-        onDownload(model.id, nextComponents, bundleQuant);
+        // The daemon keeps one logical bundle job per quant. This extends its
+        // queue without touching the active transfer, and its supplied total
+        // makes the ring span the primary plus every selected companion.
+        const componentBytes = nextComponents.reduce(
+          (sum, id) => sum + (components.find((component) => component.id === id)?.bytes ?? 0),
+          0,
+        );
+        onDownload(model.id, nextComponents, bundleQuant, bundleQuantBytes + componentBytes);
         return;
       }
-      // The checkmark is an immediate desired-state control. Undoing it while
-      // its artifact is still transferring cancels that one bundle job rather
-      // than trapping the user behind a disabled switch.
-      if (directJob?.status === "running") {
-        onCancel(directJob.id);
-        return;
-      }
+      // Do not let an options edit cancel a primary or another queued component.
+      // A running artifact finishes as part of the bundle job; its switch is
+      // temporarily locked below rather than making cancel the hidden action.
+      if (directJob?.status === "running") return;
       if (!client) return;
       void client
         .brainModelComponentDelete(bundleModelId ?? model.id, componentId)
@@ -713,11 +723,12 @@ function CatalogRow({
     },
     [
       bundleQuant,
+      bundleQuantBytes,
+      components,
       client,
       bundleModelId,
       directJob,
       model.id,
-      onCancel,
       onDownload,
       refreshComponentAvailability,
       selectedComponents,
@@ -763,7 +774,10 @@ function CatalogRow({
           initialQuant={model.quant}
           initialModelId={bundleModelId}
           jobTarget={model.id}
-          onQuantChange={setBundleQuant}
+          onQuantChange={(quant, bytes) => {
+            setBundleQuant(quant);
+            setBundleQuantBytes(bytes);
+          }}
           showProgressRing
           showDetectedBundleOptions={false}
         />
@@ -881,7 +895,7 @@ function CatalogRow({
                 </View>
                 <Switch
                   value={selected}
-                  disabled={component.required}
+                  disabled={component.required || (selected && directJob?.status === "running")}
                   onValueChange={(value) => handleComponentChange(component.id, value)}
                 />
               </View>
@@ -912,10 +926,10 @@ export function CatalogList({
 }) {
   const client = useHostRuntimeClient(serverId);
   const handleDownload = useCallback(
-    (id: string, components?: string[], quant?: string) => {
+    (id: string, components?: string[], quant?: string, expectedBytes?: number) => {
       if (!client) return;
       void client
-        .brainModelsPull(id, components, quant)
+        .brainModelsPull(id, components, quant, expectedBytes)
         .then(onStarted)
         .catch((error) => reportError("Unable to start the download", error));
     },
@@ -1051,9 +1065,9 @@ function QuantPicker({
   repo: string;
   busy: boolean;
   jobs: BrainJob[];
-  onDownload: (repo: string, quant: string, components?: string[]) => void;
+  onDownload: (repo: string, quant: string, components?: string[], expectedBytes?: number) => void;
   /** Bundles keep this quant picker but attach the checked companion files. */
-  onBundleDownload?: (quant: string) => void;
+  onBundleDownload?: (quant: string, quantBytes: number) => void;
   onCancel: (jobId: string) => void;
   initialQuant?: string | null;
   /** The inventory id for a pinned installed quant. */
@@ -1061,7 +1075,7 @@ function QuantPicker({
   /** Bundle pulls use their catalog id rather than repo#quant as the job target. */
   jobTarget?: string | null;
   /** Keep a bundle option sheet bound to the quant selected on this row. */
-  onQuantChange?: (quant: string) => void;
+  onQuantChange?: (quant: string, sizeBytes: number) => void;
   /** Bundle rows use a compact progress ring alongside their action button. */
   showProgressRing?: boolean;
   /** Discovery owns the projector sheet. Catalog rows already render their own bundle control. */
@@ -1155,7 +1169,7 @@ function QuantPicker({
       // Catalog bundle controls keep their own selected primary. Synchronize
       // that state with this automatic installed-quant choice, not just with
       // explicit dropdown clicks, so Options targets what the user sees.
-      onQuantChange?.(quant);
+      onQuantChange?.(quant, quants.find((row) => row.quant === quant)?.sizeBytes ?? 0);
     }
   }, [loaded, activeJob, initialQuant, jobTarget, onQuantChange, quants, repo, selected]);
 
@@ -1187,28 +1201,31 @@ function QuantPicker({
   const handleChange = useCallback(
     (value: string) => {
       setSelected(value);
-      onQuantChange?.(value);
+      onQuantChange?.(value, quants.find((row) => row.quant === value)?.sizeBytes ?? 0);
     },
-    [onQuantChange],
+    [onQuantChange, quants],
   );
   const handleDownload = useCallback(() => {
     if (!selected) return;
-    if (onBundleDownload) onBundleDownload(selected);
-    else onDownload(repo, selected, []);
-  }, [onBundleDownload, onDownload, repo, selected]);
+    if (onBundleDownload) onBundleDownload(selected, selectedQuant?.sizeBytes ?? 0);
+    else onDownload(repo, selected, [], selectedQuant?.sizeBytes ?? 0);
+  }, [onBundleDownload, onDownload, repo, selected, selectedQuant?.sizeBytes]);
   const handleDiscoveredProjectorChange = useCallback(
     (enabled: boolean) => {
       if (!selected || !projector) return;
       if (enabled) {
         setProjectorPending(true);
-        onDownload(repo, selected, ["vision-projector"]);
+        onDownload(
+          repo,
+          selected,
+          ["vision-projector"],
+          (selectedQuant?.sizeBytes ?? 0) + projector.sizeBytes,
+        );
         return;
       }
       setProjectorPending(false);
-      if (activeJob?.status === "running") {
-        onCancel(activeJob.id);
-        return;
-      }
+      // A bundle options edit must never stop the selected quant transfer.
+      if (activeJob?.status === "running") return;
       if (!client || !selectedModelId) return;
       void client
         .brainModelComponentDelete(selectedModelId, "vision-projector")
@@ -1219,12 +1236,12 @@ function QuantPicker({
       activeJob,
       client,
       handleLoad,
-      onCancel,
       onDownload,
       projector,
       repo,
       selected,
       selectedModelId,
+      selectedQuant?.sizeBytes,
     ],
   );
   const handleCancel = useCallback(() => {
@@ -1393,6 +1410,10 @@ function QuantPicker({
               </View>
               <Switch
                 value={(projector.installed ?? false) || projectorPending}
+                disabled={
+                  ((projector.installed ?? false) || projectorPending) &&
+                  activeJob?.status === "running"
+                }
                 onValueChange={handleDiscoveredProjectorChange}
               />
             </View>
@@ -1417,7 +1438,7 @@ function SearchResultRow({
   showBorder: boolean;
   busy: boolean;
   jobs: BrainJob[];
-  onDownload: (repo: string, quant: string, components?: string[]) => void;
+  onDownload: (repo: string, quant: string, components?: string[], expectedBytes?: number) => void;
   onCancel: (jobId: string) => void;
 }) {
   const rowStyle = useMemo(
@@ -1470,7 +1491,7 @@ function PinnedModelRow({
   showBorder: boolean;
   busy: boolean;
   jobs: BrainJob[];
-  onDownload: (repo: string, quant: string, components?: string[]) => void;
+  onDownload: (repo: string, quant: string, components?: string[], expectedBytes?: number) => void;
   onCancel: (jobId: string) => void;
 }) {
   const rowStyle = useMemo(
@@ -1566,10 +1587,10 @@ export function HuggingFaceSearch({
   }, []);
 
   const handleDownload = useCallback(
-    (repo: string, quant: string, components?: string[]) => {
+    (repo: string, quant: string, components?: string[], expectedBytes?: number) => {
       if (!client) return;
       void client
-        .brainModelsAdd(repo, quant, components)
+        .brainModelsAdd(repo, quant, components, undefined, expectedBytes)
         .then(onStarted)
         .catch((error) => reportError("Unable to start the download", error));
     },
@@ -1648,10 +1669,10 @@ export function DownloadedHuggingFaceModels({
 }) {
   const client = useHostRuntimeClient(serverId);
   const handleDownload = useCallback(
-    (repo: string, quant: string, components?: string[]) => {
+    (repo: string, quant: string, components?: string[], expectedBytes?: number) => {
       if (!client) return;
       void client
-        .brainModelsAdd(repo, quant, components)
+        .brainModelsAdd(repo, quant, components, undefined, expectedBytes)
         .then(onStarted)
         .catch((error) => reportError("Unable to start the download", error));
     },

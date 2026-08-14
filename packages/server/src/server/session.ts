@@ -4125,19 +4125,25 @@ export class Session {
     model: string,
     components: string[] | undefined,
     quant: string | undefined,
+    expectedBytes: number | undefined,
     requestId: string,
   ): void {
     if (
       this.startRemoteBrainJob(
         "pull",
-        { model, ...(components ? { components } : {}), ...(quant ? { quant } : {}) },
+        {
+          model,
+          ...(components ? { components } : {}),
+          ...(quant ? { quant } : {}),
+          ...(expectedBytes !== undefined ? { expectedBytes } : {}),
+        },
         requestId,
         "brain.models.pull.response",
       )
     )
       return;
     this.startBrainJob(requestId, "brain.models.pull.response", (ops) =>
-      ops.pullModel(model, components, quant),
+      ops.pullModel(model, components, quant, expectedBytes),
     );
   }
 
@@ -4145,19 +4151,20 @@ export class Session {
     repo: string,
     quant: string,
     components: string[] | undefined,
+    expectedBytes: number | undefined,
     requestId: string,
   ): void {
     if (
       this.startRemoteBrainJob(
         "add",
-        { repo, quant, components },
+        { repo, quant, components, ...(expectedBytes !== undefined ? { expectedBytes } : {}) },
         requestId,
         "brain.models.add.response",
       )
     )
       return;
     this.startBrainJob(requestId, "brain.models.add.response", (ops) =>
-      ops.addModel(repo, quant, components),
+      ops.addModel(repo, quant, components, expectedBytes),
     );
   }
 
@@ -5825,7 +5832,13 @@ export class Session {
         await this.handleBrainRuntimeListRequest(msg.requestId);
         return true;
       case "brain.models.pull.request":
-        this.handleBrainModelsPullRequest(msg.model, msg.components, msg.quant, msg.requestId);
+        this.handleBrainModelsPullRequest(
+          msg.model,
+          msg.components,
+          msg.quant,
+          msg.expectedBytes,
+          msg.requestId,
+        );
         return true;
       case "brain.hf.search.request":
         await this.handleBrainHfSearchRequest(msg.query, msg.limit, msg.requestId);
@@ -5834,7 +5847,13 @@ export class Session {
         await this.handleBrainHfQuantsRequest(msg.repo, msg.requestId);
         return true;
       case "brain.models.add.request":
-        this.handleBrainModelsAddRequest(msg.repo, msg.quant, msg.components, msg.requestId);
+        this.handleBrainModelsAddRequest(
+          msg.repo,
+          msg.quant,
+          msg.components,
+          msg.expectedBytes,
+          msg.requestId,
+        );
         return true;
       case "brain.runtime.install.request":
         this.handleBrainRuntimeInstallRequest(msg.build, msg.requestId);

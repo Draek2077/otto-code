@@ -7023,6 +7023,7 @@ export class DaemonClient {
     model: string,
     componentsOrRequestId?: string[] | string,
     quantOrRequestId?: string,
+    expectedBytes?: number,
   ): Promise<BrainJob> {
     const components = Array.isArray(componentsOrRequestId) ? componentsOrRequestId : undefined;
     const quant = Array.isArray(componentsOrRequestId) ? quantOrRequestId : undefined;
@@ -7035,6 +7036,7 @@ export class DaemonClient {
         model,
         ...(components ? { components } : {}),
         ...(quant ? { quant } : {}),
+        ...(expectedBytes !== undefined ? { expectedBytes } : {}),
       },
       responseType: "brain.models.pull.response",
     });
@@ -7074,10 +7076,17 @@ export class DaemonClient {
     quant: string,
     components?: string[],
     requestId?: string,
+    expectedBytes?: number,
   ): Promise<BrainJob> {
     const payload = await this.sendCorrelatedSessionRequest({
       requestId,
-      message: { type: "brain.models.add.request", repo, quant, components },
+      message: {
+        type: "brain.models.add.request",
+        repo,
+        quant,
+        components,
+        ...(expectedBytes !== undefined ? { expectedBytes } : {}),
+      },
       responseType: "brain.models.add.response",
     });
     return unwrapBrainJob(payload);

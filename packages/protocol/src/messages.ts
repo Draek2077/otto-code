@@ -2364,6 +2364,9 @@ export const BrainModelsPullRequestSchema = z.object({
   quant: z.string().optional(),
   // COMPAT(brainModelBundles): added in v0.8.7, drop the gate when floor >= v0.8.7.
   components: z.array(z.string()).optional(),
+  // COMPAT(brainBundleDownloadQueue): added in v0.8.8, drop the gate when floor >= v0.8.8.
+  // Advisory aggregate byte budget for one selected quant plus its components.
+  expectedBytes: z.number().nonnegative().optional(),
   requestId: z.string(),
 });
 export const BrainModelsPullResponseSchema = z.object({
@@ -2537,6 +2540,8 @@ export const BrainModelsAddRequestSchema = z.object({
   quant: z.string(),
   // COMPAT(brainDiscoveredBundleComponents): added in v0.8.7, remove after 2027-02-11.
   components: z.array(z.string()).optional(),
+  // COMPAT(brainBundleDownloadQueue): added in v0.8.8, drop the gate when floor >= v0.8.8.
+  expectedBytes: z.number().nonnegative().optional(),
   requestId: z.string(),
 });
 export const BrainModelsAddResponseSchema = z.object({

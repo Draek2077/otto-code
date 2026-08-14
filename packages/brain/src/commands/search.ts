@@ -133,12 +133,19 @@ export function addAddOptions(cmd: Command): Command {
     .option("--quant <label>", "quantization to download (e.g. Q5_K_M)")
     .option("--component <id...>", "download optional discovered component ids")
     .option("--primary-only", "download only the selected primary quant")
+    .option("--components-only", "download selected bundle components without the primary quant")
     .option("--list-quants", "list the quantizations the repo offers and exit");
 }
 
 export async function runAddCommand(
   repo: string,
-  options: { quant?: string; listQuants?: boolean; component?: string[]; primaryOnly?: boolean },
+  options: {
+    quant?: string;
+    listQuants?: boolean;
+    component?: string[];
+    primaryOnly?: boolean;
+    componentsOnly?: boolean;
+  },
   _command: Command,
 ): Promise<AnyCommandResult<AddRow>> {
   const config = loadBrainConfig();
@@ -192,8 +199,18 @@ export async function runAddCommand(
     Boolean(mmproj) &&
     (requested.has("vision-projector") ||
       (!options.primaryOnly && options.component === undefined));
-  const files = [...choice.files, ...(includeProjector ? mmproj!.files : [])];
-  const total = choice.sizeBytes + (includeProjector ? mmproj!.sizeBytes : 0);
+  if (options.componentsOnly && !includeProjector) {
+    throw new CommandError({
+      code: "NO_COMPONENT",
+      message: "--components-only requires a selected bundle component",
+    });
+  }
+  const files = [
+    ...(options.componentsOnly ? [] : choice.files),
+    ...(includeProjector ? mmproj!.files : []),
+  ];
+  const total =
+    (options.componentsOnly ? 0 : choice.sizeBytes) + (includeProjector ? mmproj!.sizeBytes : 0);
   const written = await downloadRepoFilesWithProgress({
     activityTarget: `${repo} (${choice.quant})`,
     progressLabel: `${repo} ${choice.quant}`,
