@@ -5,7 +5,7 @@ title: "Brain catalog uses plain model names and user-facing descriptions"
 status: "confirmed"
 tags: ["brain", "model-catalog", "ux", "copy"]
 created_at: "2026-08-11T06:03:06.282Z"
-updated_at: "2026-08-11T06:49:20.179Z"
+updated_at: "2026-08-14T15:19:23.938Z"
 ---
 
 # Brain catalog uses plain model names and user-facing descriptions
@@ -13,6 +13,8 @@ updated_at: "2026-08-11T06:49:20.179Z"
 <!-- compiled_truth -->
 
 The Brain download catalog presents each model with a readable display name, a title-cased category, concise capability metadata, and plain prose describing what the model is good at. Descriptions must not prescribe Otto commands, discuss quantization or VRAM headroom, include source-selection trivia, or use em dashes. The model identifier and download source remain technical implementation metadata and are not changed merely to improve display copy.
+
+Catalog fallback artifacts use `Q4_K_M` whenever the source repository offers that quantization. A model whose source does not offer `Q4_K_M` retains the closest appropriate source format. The fallback never overrides the user’s quant selection in the Brain Library.
 
 On wide panes, every section of the Brain Library tab respects the user’s selected chat width, matching the Metrics usage-and-cost ledger: it caps at the configured width and centers itself. It remains full width on smaller panes.
 
@@ -42,3 +44,11 @@ Otto-curated catalog records are authoritative by their stable download ID. On c
   kind: "decision"
   summary: "User clarification, 2026-08-11: the selected-width treatment applies to every Library tab section, not only the curated catalog card."
   source: "User clarification, 2026-08-11."
+- time: "2026-08-14T15:08:16.625Z"
+  kind: "evidence"
+  summary: "Added `unsloth/Qwen3.8-27B-GGUF` to the official Brain catalog alongside Qwen3.6 27B. The verified Q5_K_M artifact is 19,834,054,624 bytes, with a 262,144-token context window and optional `mmproj-F16.gguf` image-understanding component. Catalog source and candidate-model documentation now match; targeted catalog test, Brain typecheck, package lint, and formatting passed."
+  source: "User direction and Hugging Face repository audit, 2026-08-14."
+- time: "2026-08-14T15:19:23.938Z"
+  kind: "decision"
+  summary: "The user established the quant-selection policy for catalog fallback artifacts."
+  source: "User direction, 2026-08-14."

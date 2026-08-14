@@ -74,4 +74,16 @@ describe("loadCatalog", () => {
 
     expect(muse?.quant).toBe("Q4_K_XL");
   });
+
+  it("defaults to Q4_K_M unless the source format requires another quant", () => {
+    const catalog = loadCatalog(testPaths());
+    const nonQ4Defaults = catalog.models
+      .filter((model) => model.quant !== "Q4_K_M")
+      .map((model) => [model.name, model.quant]);
+
+    expect(nonQ4Defaults).toEqual([
+      ["Muse Glimmer 30B", "Q4_K_XL"],
+      ["gpt-oss 20B", "MXFP4"],
+    ]);
+  });
 });

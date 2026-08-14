@@ -23,16 +23,17 @@
       "status": "candidate"
     },
     {
-      "id": "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-Q5_K_M.gguf",
+      "id": "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
       "replaces": [
-        "Qwen/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-Q5_K_M.gguf"
+        "Qwen/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-Q5_K_M.gguf",
+        "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-Q5_K_M.gguf"
       ],
       "name": "Qwen3 Coder 30B A3B",
       "family": "qwen",
       "publisher": "Qwen",
       "hfRepo": "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF",
-      "quant": "Q5_K_M",
-      "approxWeightsBytes": 22548578304,
+      "quant": "Q4_K_M",
+      "approxWeightsBytes": 18556689568,
       "params": "30B MoE (~3B active)",
       "moe": true,
       "vision": false,
@@ -44,13 +45,14 @@
       "status": "candidate"
     },
     {
-      "id": "Qwen/Qwen3-32B-GGUF/Qwen3-32B-Q5_K_M.gguf",
+      "id": "Qwen/Qwen3-32B-GGUF/Qwen3-32B-Q4_K_M.gguf",
+      "replaces": ["Qwen/Qwen3-32B-GGUF/Qwen3-32B-Q5_K_M.gguf"],
       "name": "Qwen3 32B",
       "family": "qwen",
       "publisher": "Qwen",
       "hfRepo": "Qwen/Qwen3-32B-GGUF",
-      "quant": "Q5_K_M",
-      "approxWeightsBytes": 24696061952,
+      "quant": "Q4_K_M",
+      "approxWeightsBytes": 19762149024,
       "params": "32B dense",
       "moe": false,
       "vision": false,
@@ -62,13 +64,14 @@
       "status": "candidate"
     },
     {
-      "id": "Qwen/Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q5_K_M.gguf",
+      "id": "Qwen/Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf",
+      "replaces": ["Qwen/Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q5_K_M.gguf"],
       "name": "Qwen3 30B A3B",
       "family": "qwen",
       "publisher": "Qwen",
       "hfRepo": "Qwen/Qwen3-30B-A3B-GGUF",
-      "quant": "Q5_K_M",
-      "approxWeightsBytes": 23300000000,
+      "quant": "Q4_K_M",
+      "approxWeightsBytes": 18556685824,
       "params": "30B MoE (~3B active)",
       "moe": true,
       "vision": false,
@@ -80,14 +83,46 @@
       "status": "candidate"
     },
     {
-      "id": "unsloth/Qwen3.6-27B-MTP-GGUF/Qwen3.6-27B-Q5_K_M.gguf",
+      "id": "unsloth/Qwen3.6-27B-MTP-GGUF/Qwen3.6-27B-Q4_K_M.gguf",
+      "replaces": ["unsloth/Qwen3.6-27B-MTP-GGUF/Qwen3.6-27B-Q5_K_M.gguf"],
       "name": "Qwen3.6 27B",
       "family": "qwen",
       "publisher": "unsloth",
       "hfRepo": "unsloth/Qwen3.6-27B-MTP-GGUF",
-      "quant": "Q5_K_M",
-      "approxWeightsBytes": 19834053760,
+      "quant": "Q4_K_M",
+      "approxWeightsBytes": 17106773120,
       "params": "27B dense (MTP)",
+      "moe": false,
+      "vision": true,
+      "thinking": true,
+      "contextMax": 262144,
+      "useCases": ["coding", "reasoning", "prose", "analysis", "vision"],
+      "tier": "All-rounder",
+      "why": "A modern vision-capable all-rounder for code, reasoning, writing, and image-aware tasks. It is a strong default for varied work.",
+      "components": [
+        {
+          "id": "vision-projector",
+          "label": "Image understanding",
+          "description": "Lets this model read images and screenshots.",
+          "role": "vision_projector",
+          "file": "mmproj-F16.gguf",
+          "required": false,
+          "defaultDownload": false,
+          "defaultLoad": true
+        }
+      ],
+      "status": "candidate"
+    },
+    {
+      "id": "unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q4_K_M.gguf",
+      "replaces": ["unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q5_K_M.gguf"],
+      "name": "Qwen3.8 27B",
+      "family": "qwen",
+      "publisher": "unsloth",
+      "hfRepo": "unsloth/Qwen3.8-27B-GGUF",
+      "quant": "Q4_K_M",
+      "approxWeightsBytes": 17106773984,
+      "params": "27B dense",
       "moe": false,
       "vision": true,
       "thinking": true,
@@ -214,13 +249,16 @@
       "status": "candidate"
     },
     {
-      "id": "bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF/mistralai_Mistral-Small-3.2-24B-Instruct-2506-Q6_K.gguf",
+      "id": "bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF/mistralai_Mistral-Small-3.2-24B-Instruct-2506-Q4_K_M.gguf",
+      "replaces": [
+        "bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF/mistralai_Mistral-Small-3.2-24B-Instruct-2506-Q6_K.gguf"
+      ],
       "name": "Mistral Small 3.2 24B",
       "family": "mistral",
       "publisher": "bartowski",
       "hfRepo": "bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF",
-      "quant": "Q6_K",
-      "approxWeightsBytes": 20723000000,
+      "quant": "Q4_K_M",
+      "approxWeightsBytes": 14333915264,
       "params": "24B dense",
       "moe": false,
       "vision": true,
@@ -244,13 +282,16 @@
       "status": "candidate"
     },
     {
-      "id": "bartowski/deepreinforce-ai_Ornith-1.0-35B-GGUF/deepreinforce-ai_Ornith-1.0-35B-Q4_K_S.gguf",
+      "id": "bartowski/deepreinforce-ai_Ornith-1.0-35B-GGUF/deepreinforce-ai_Ornith-1.0-35B-Q4_K_M.gguf",
+      "replaces": [
+        "bartowski/deepreinforce-ai_Ornith-1.0-35B-GGUF/deepreinforce-ai_Ornith-1.0-35B-Q4_K_S.gguf"
+      ],
       "name": "Ornith 1.0 35B",
       "family": "qwen",
       "publisher": "bartowski",
       "hfRepo": "bartowski/deepreinforce-ai_Ornith-1.0-35B-GGUF",
-      "quant": "Q4_K_S",
-      "approxWeightsBytes": 20592728128,
+      "quant": "Q4_K_M",
+      "approxWeightsBytes": 21391448128,
       "params": "35B MoE (~3B active)",
       "moe": true,
       "vision": true,
@@ -310,13 +351,14 @@
       "status": "candidate"
     },
     {
-      "id": "bartowski/Codestral-22B-v0.1-GGUF/Codestral-22B-v0.1-Q6_K.gguf",
+      "id": "bartowski/Codestral-22B-v0.1-GGUF/Codestral-22B-v0.1-Q4_K_M.gguf",
+      "replaces": ["bartowski/Codestral-22B-v0.1-GGUF/Codestral-22B-v0.1-Q6_K.gguf"],
       "name": "Codestral 22B",
       "family": "mistral",
       "publisher": "bartowski",
       "hfRepo": "bartowski/Codestral-22B-v0.1-GGUF",
-      "quant": "Q6_K",
-      "approxWeightsBytes": 19650000000,
+      "quant": "Q4_K_M",
+      "approxWeightsBytes": 13341237600,
       "params": "22B dense",
       "moe": false,
       "vision": false,
@@ -364,13 +406,14 @@
       "status": "candidate"
     },
     {
-      "id": "bartowski/phi-4-GGUF/phi-4-Q8_0.gguf",
+      "id": "bartowski/phi-4-GGUF/phi-4-Q4_K_M.gguf",
+      "replaces": ["bartowski/phi-4-GGUF/phi-4-Q8_0.gguf"],
       "name": "Phi-4 14B",
       "family": "microsoft",
       "publisher": "bartowski",
       "hfRepo": "bartowski/phi-4-GGUF",
-      "quant": "Q8_0",
-      "approxWeightsBytes": 16750000000,
+      "quant": "Q4_K_M",
+      "approxWeightsBytes": 9053114816,
       "params": "14B dense",
       "moe": false,
       "vision": false,
@@ -382,13 +425,14 @@
       "status": "candidate"
     },
     {
-      "id": "sabafallah/DeepSeek-OCR-2-GGUF/deepseek-ocr-2-q8_0.gguf",
+      "id": "sabafallah/DeepSeek-OCR-2-GGUF/deepseek-ocr-2-Q4_K_M.gguf",
+      "replaces": ["sabafallah/DeepSeek-OCR-2-GGUF/deepseek-ocr-2-q8_0.gguf"],
       "name": "DeepSeek OCR 2",
       "family": "deepseek",
       "publisher": "sabafallah",
       "hfRepo": "sabafallah/DeepSeek-OCR-2-GGUF",
-      "quant": "Q8_0",
-      "approxWeightsBytes": 3126139808,
+      "quant": "Q4_K_M",
+      "approxWeightsBytes": 1950326688,
       "params": "3.4B dense",
       "moe": false,
       "vision": true,
