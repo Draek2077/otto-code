@@ -2215,8 +2215,8 @@ function ProjectBlock({
     }
   }
 
-  return (
-    <View style={styles.projectBlock}>
+  const content = (
+    <>
       <ProjectHeaderRow
         project={project}
         displayName={displayName}
@@ -2241,8 +2241,18 @@ function ProjectBlock({
       />
 
       {projectChildren}
-    </View>
+    </>
   );
+
+  if (platformIsWeb) {
+    return (
+      <div role="group" aria-label={displayName}>
+        <View style={styles.projectBlock}>{content}</View>
+      </div>
+    );
+  }
+
+  return <View style={styles.projectBlock}>{content}</View>;
 }
 
 type ProjectBlockProps = Parameters<typeof ProjectBlock>[0];
