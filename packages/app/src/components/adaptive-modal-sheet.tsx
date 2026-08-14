@@ -26,6 +26,7 @@ import {
   OverlayLayerProvider,
   OVERLAY_Z,
   useCurrentOverlayLayer,
+  useWebOverlayRegistration,
 } from "../lib/overlay-root";
 import {
   BottomSheetBackdrop,
@@ -685,6 +686,20 @@ export function AdaptiveModalSheet({
   // BELOW this sheet's z-index and rendering invisibly behind the card.
   const ambientOverlayLayer = useCurrentOverlayLayer();
   const modalOverlayLayer = ambientOverlayLayer + OVERLAY_Z.modal;
+  const handleWebOverlayKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return false;
+      event.preventDefault();
+      onClose();
+      return true;
+    },
+    [onClose],
+  );
+  const setWebOverlayScope = useWebOverlayRegistration({
+    active: isWeb && !isMobile && visible,
+    layer: modalOverlayLayer,
+    onKeyDown: handleWebOverlayKeyDown,
+  });
   const desktopScrollRef = useRef<ScrollView>(null);
   const desktopScrollRegion = useSheetScrollRegion(desktopScrollRef, {
     surface: "surface1",
@@ -973,7 +988,9 @@ export function AdaptiveModalSheet({
           style={ABSOLUTE_FILL_STYLE}
           onPress={onClose}
         />
-        <View style={desktopCardStyle}>{cardInner}</View>
+        <View ref={setWebOverlayScope} style={desktopCardStyle}>
+          {cardInner}
+        </View>
       </View>
     </OverlayLayerProvider>
   );
