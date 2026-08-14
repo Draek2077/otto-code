@@ -1755,7 +1755,7 @@ function remoteErrorDetail(data: string, status: number): string {
   return `the remote brain returned ${status}`;
 }
 
-function structuralSignature(brain: MutableBrainConfig): string {
+export function structuralSignature(brain: MutableBrainConfig): string {
   return JSON.stringify({
     listen: brain.listen,
     tls: brain.tls,
@@ -1763,6 +1763,10 @@ function structuralSignature(brain: MutableBrainConfig): string {
     authToken: brain.authToken,
     defaultModel: brain.defaultModel,
     lockModel: brain.lockModel,
+    // llama-server resolves its executable from this at launch. Leaving it out
+    // lets the config point at one runtime while the still-running host locks
+    // another, making a later cleanup fail on Windows.
+    runtime: brain.runtime,
   });
 }
 

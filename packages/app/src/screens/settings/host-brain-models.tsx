@@ -33,6 +33,7 @@ import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import type { Theme } from "@/styles/theme";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { activeBrainQuantJob, selectInitialBrainQuant } from "./brain-quant-selection";
+import { describeRuntimeRemovalError } from "./brain-runtime-removal";
 
 // ---------------------------------------------------------------------------
 // Themed leaf icons (no useUnistyles: banned - see docs/unistyles.md)
@@ -394,8 +395,10 @@ export function RuntimeManagerSheet({
   );
   const removableRuntimes = useMemo(
     () =>
-      runtimes.filter((runtime) => runtime.source === "managed" && runtime.dir !== selectedRuntime),
-    [runtimes, selectedRuntime],
+      runtimes.filter(
+        (runtime) => runtime.source === "managed" && runtime.dir !== activeRuntime?.dir,
+      ),
+    [activeRuntime?.dir, runtimes],
   );
   const removableRuntimeOptions = useMemo<SelectFieldOption<string>[]>(
     () =>
@@ -407,13 +410,58 @@ export function RuntimeManagerSheet({
     [removableRuntimes],
   );
   const [removeName, setRemoveName] = useState("");
+  const selectedRemovalRuntime = useMemo(
+    () => removableRuntimes.find((runtime) => runtime.label === removeName) ?? null,
+    [removableRuntimes, removeName],
+  );
+  const [removalJobId, setRemovalJobId] = useState<string | null>(null);
+  const [removalError, setRemovalError] = useState<string | null>(null);
+  const removalJob = useMemo(
+    () => (removalJobId ? (jobs.find((candidate) => candidate.id === removalJobId) ?? null) : null),
+    [jobs, removalJobId],
+  );
+  useEffect(() => {
+    if (!removalJob || removalJob.status === "running") return;
+    if (removalJob.status === "succeeded") {
+      setRemoveName("");
+      setRemovalError(null);
+    } else {
+      setRemovalError(
+        describeRuntimeRemovalError(
+          removalJob.error ?? removalJob.message ?? "The runtime removal did not complete.",
+        ),
+      );
+    }
+    setRemovalJobId(null);
+  }, [removalJob]);
+  // A model pull operates only on the model store, so it is safe to remove an
+  // unused runtime while it runs. Every other Brain operation can execute the
+  // runtime, and the daemon serializes it with removal.
+  const removalBlockingJob = useMemo(
+    () =>
+      jobs.find((operation) => operation.status === "running" && operation.kind !== "pull") ?? null,
+    [jobs],
+  );
   const handleRemoveRuntime = useCallback(() => {
-    if (!client || !removeName) return;
-    void client
-      .brainRuntimeRemove(removeName)
-      .then(onStarted)
-      .catch((error) => reportError("Unable to remove the runtime", error));
-  }, [client, onStarted, removeName]);
+    if (!client || !selectedRemovalRuntime) return;
+    void (async () => {
+      const confirmed = await confirmDialog({
+        title: `Remove ${formatBrainRuntime(selectedRemovalRuntime)}?`,
+        message: "This removes the downloaded runtime files from disk. It cannot be undone.",
+        confirmLabel: "Remove",
+        destructive: true,
+      });
+      if (!confirmed) return;
+      try {
+        setRemovalError(null);
+        const started = await client.brainRuntimeRemove(selectedRemovalRuntime.label);
+        setRemovalJobId(started.id);
+        onStarted(started);
+      } catch (error) {
+        setRemovalError(describeRuntimeRemovalError(error));
+      }
+    })();
+  }, [client, onStarted, selectedRemovalRuntime]);
   const handleInstall = useCallback(
     (requestedBuild: string | null = null) => {
       if (!client) return;
@@ -587,27 +635,38 @@ export function RuntimeManagerSheet({
                 />
               ) : null}
               {removableRuntimes.length > 0 ? (
-                <View style={styles.specificBuildRow}>
-                  <SelectField
-                    field={false}
-                    label="Remove an installed build"
-                    size="sm"
-                    value={removeName}
-                    options={removableRuntimeOptions}
-                    onChange={setRemoveName}
-                    selectedDisplay={removableBuildDisplay}
-                    placeholder="Choose a build to remove"
-                    emptyText="No removable builds are available."
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onPress={handleRemoveRuntime}
-                    disabled={!removeName || busy}
-                  >
-                    Remove
-                  </Button>
-                </View>
+                <>
+                  <View style={styles.specificBuildRow}>
+                    <SelectField
+                      field={false}
+                      label="Remove an installed build"
+                      size="sm"
+                      value={removeName}
+                      options={removableRuntimeOptions}
+                      onChange={(value) => {
+                        setRemoveName(value);
+                        setRemovalError(null);
+                      }}
+                      selectedDisplay={removableBuildDisplay}
+                      placeholder="Choose a build to remove"
+                      emptyText="No removable builds are available."
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onPress={handleRemoveRuntime}
+                      disabled={!client || !selectedRemovalRuntime || removalBlockingJob !== null}
+                    >
+                      {removalBlockingJob?.kind === "runtime-remove" ? "Removing..." : "Remove"}
+                    </Button>
+                  </View>
+                  {removalBlockingJob && selectedRemovalRuntime ? (
+                    <Text style={styles.managerHint}>
+                      Finish {removalBlockingJob.label} before removing a runtime
+                    </Text>
+                  ) : null}
+                  {removalError ? <Text style={styles.jobError}>{removalError}</Text> : null}
+                </>
               ) : null}
             </>
           )}

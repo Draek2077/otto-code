@@ -11,7 +11,7 @@ import { DEFAULT_MUTABLE_BRAIN_CONFIG } from "@otto-code/protocol/messages";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import type { ManagedProcessRegistry } from "../managed-processes/managed-processes.js";
-import { BrainManager } from "./brain-manager.js";
+import { BrainManager, structuralSignature } from "./brain-manager.js";
 
 // A long-lived (100-year) self-signed keypair generated once with the same
 // `selfsigned` options the brain's CertManager uses (CN otto-brain-test, SANs
@@ -151,6 +151,21 @@ function remoteConfig(overrides: Partial<MutableBrainConfig["remote"]>): Mutable
     remote: { ...DEFAULT_MUTABLE_BRAIN_CONFIG.remote, ...overrides },
   };
 }
+
+describe("structuralSignature", () => {
+  test("changes when the selected runtime changes", () => {
+    const automatic: MutableBrainConfig = {
+      ...DEFAULT_MUTABLE_BRAIN_CONFIG,
+      runtime: { source: "auto", path: null },
+    };
+    const managed: MutableBrainConfig = {
+      ...automatic,
+      runtime: { source: "managed", path: "C:\\otto-brain\\runtimes\\cuda-12-4" },
+    };
+
+    expect(structuralSignature(managed)).not.toBe(structuralSignature(automatic));
+  });
+});
 
 describe("BrainManager remote TLS trust", () => {
   let ottoHome: string;
