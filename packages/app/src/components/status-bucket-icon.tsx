@@ -1,21 +1,17 @@
 import type { ReactElement } from "react";
 import { withUnistyles } from "react-native-unistyles";
-import {
-  CircleAlertFilled,
-  CircleHelpFilled,
-  CircleNotificationsFilled,
-} from "@/components/icons/material-icons";
+import { Error, Siren, SirenQuestion } from "@/components/icons/material-icons";
 import type { Theme } from "@/styles/theme";
 
 /**
  * The single source of truth for "this agent/workspace needs you" glyphs.
  * Every surface that renders an actionable status bucket (sidebar workspace
- * rows, the sidebar status list, workspace tabs) draws the same filled-circle
- * badge from here so a given state always shows the same icon and color:
+ * rows, the sidebar status list, workspace tabs) draws the same semantic
+ * glyph from here so a given state always shows the same icon and color:
  *
- * - needs_input → question mark, amber
- * - failed      → exclamation mark, red
- * - attention   → bell, green
+ * - needs_input → siren with a question mark, amber
+ * - failed      → error, red
+ * - attention   → siren, green
  *
  * Running (loader) and done (empty/check) are surface-specific and stay with
  * their render sites.
@@ -32,9 +28,9 @@ const amberColorMapping = (theme: Theme) => ({ color: theme.colors.palette.amber
 const redColorMapping = (theme: Theme) => ({ color: theme.colors.palette.red[500] });
 const greenColorMapping = (theme: Theme) => ({ color: theme.colors.palette.green[500] });
 
-const ThemedCircleHelpFilled = withUnistyles(CircleHelpFilled);
-const ThemedCircleAlertFilled = withUnistyles(CircleAlertFilled);
-const ThemedCircleNotificationsFilled = withUnistyles(CircleNotificationsFilled);
+const ThemedSirenQuestion = withUnistyles(SirenQuestion);
+const ThemedError = withUnistyles(Error);
+const ThemedSiren = withUnistyles(Siren);
 
 export function StatusBucketIcon({
   bucket,
@@ -45,10 +41,10 @@ export function StatusBucketIcon({
 }): ReactElement {
   switch (bucket) {
     case "needs_input":
-      return <ThemedCircleHelpFilled size={size} uniProps={amberColorMapping} />;
+      return <ThemedSirenQuestion size={size} uniProps={amberColorMapping} />;
     case "failed":
-      return <ThemedCircleAlertFilled size={size} uniProps={redColorMapping} />;
+      return <ThemedError size={size} uniProps={redColorMapping} />;
     case "attention":
-      return <ThemedCircleNotificationsFilled size={size} uniProps={greenColorMapping} />;
+      return <ThemedSiren size={size} uniProps={greenColorMapping} />;
   }
 }
