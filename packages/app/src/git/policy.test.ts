@@ -70,6 +70,7 @@ function createInput(
     pullRequestMergeable: "UNKNOWN",
     mergeCapability: deriveMergeCapability(pullRequestGithub),
     hasRemote: false,
+    gitFetchEnabled: false,
     isOttoOwnedWorktree: false,
     isOnBaseBranch: true,
     hasUncommittedChanges: false,
@@ -98,6 +99,11 @@ function createInput(
         handler: () => undefined,
       },
       "pull-and-push": {
+        disabled: false,
+        status: "idle",
+        handler: () => undefined,
+      },
+      fetch: {
         disabled: false,
         status: "idle",
         handler: () => undefined,
@@ -177,6 +183,17 @@ describe("git-actions-policy", () => {
       "pull-and-push",
       "archive-workspace",
     ]);
+  });
+
+  it("adds Fetch to the Git tools when the host supports it", () => {
+    const actions = buildGitActions(createInput({ hasRemote: true, gitFetchEnabled: true }));
+
+    expect(actions.secondary.map((action) => action.id)).toContain("fetch");
+    expect(actions.secondary.find((action) => action.id === "fetch")).toMatchObject({
+      label: "Fetch",
+      pendingLabel: "Fetching...",
+      successLabel: "Fetched",
+    });
   });
 
   it("prioritizes pull when the branch is behind origin", () => {

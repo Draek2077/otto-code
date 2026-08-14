@@ -73,6 +73,8 @@ export function createNoopWorkspaceGitService(
     resolveDefaultBranch: async () => "main",
     resolveRepoRemoteUrl: async () => null,
     refresh: async () => {},
+    fetch: async () => {},
+    setFetchPolicy: () => {},
     requestWorkingTreeWatch: async () => ({
       repoRoot: null,
       unsubscribe: () => {},

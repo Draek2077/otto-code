@@ -11,6 +11,7 @@ export type GitActionId =
   | "pull"
   | "push"
   | "pull-and-push"
+  | "fetch"
   | "pr"
   | "merge-pr-squash"
   | "merge-pr-merge"
@@ -68,6 +69,7 @@ export interface BuildGitActionsInput {
   pullRequestMergeable: PullRequestMergeable;
   mergeCapability: MergeCapability | null;
   hasRemote: boolean;
+  gitFetchEnabled: boolean;
   isOttoOwnedWorktree: boolean;
   isOnBaseBranch: boolean;
   hasUncommittedChanges: boolean;
@@ -250,6 +252,19 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
     handler: input.runtime["pull-and-push"].handler,
   });
 
+  allActions.set("fetch", {
+    id: "fetch",
+    label: i18n.t("workspace.git.actions.fetch.label"),
+    pendingLabel: i18n.t("workspace.git.actions.fetch.pending"),
+    successLabel: i18n.t("workspace.git.actions.fetch.success"),
+    disabled: input.runtime.fetch.disabled,
+    status: input.runtime.fetch.status,
+    unavailableMessage: undefined,
+    icon: input.runtime.fetch.icon,
+    startsGroup: true,
+    handler: input.runtime.fetch.handler,
+  });
+
   for (const model of PULL_REQUEST_ACTION_MODELS) {
     allActions.set(model.id, model.build(input));
   }
@@ -299,7 +314,10 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
   const primaryActionId = getPrimaryActionId(input);
   const primary = primaryActionId ? (allActions.get(primaryActionId) ?? null) : null;
 
-  const secondaryIds = [...REMOTE_ACTION_IDS];
+  const secondaryIds = [
+    ...(input.gitFetchEnabled && input.hasRemote ? (["fetch"] as const) : []),
+    ...REMOTE_ACTION_IDS,
+  ];
   if (!input.isOnBaseBranch) {
     secondaryIds.push(...getFeatureActionIds(input));
   }

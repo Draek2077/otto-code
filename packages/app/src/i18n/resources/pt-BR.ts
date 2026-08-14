@@ -1117,6 +1117,12 @@ export const ptBR: TranslationResources = {
           description:
             "Executa git pull e depois git push para sincronizar esta branch com o remoto",
         },
+        fetch: {
+          label: "Fetch",
+          pending: "Fetching...",
+          success: "Fetched",
+          description: "Fetch remote changes",
+        },
         viewPr: "Ver PR",
         viewPrDescription: "Abre o pull request desta branch no navegador",
         createPr: {
@@ -1239,6 +1245,7 @@ export const ptBR: TranslationResources = {
           failedPull: "Falha ao fazer pull",
           failedPush: "Falha ao fazer push",
           failedPullAndPush: "Falha ao fazer pull e push",
+          failedFetch: "Failed to fetch",
           failedCreatePr: "Falha ao criar PR",
           failedMergePr: "Falha ao fazer merge da PR",
           failedEnableAutoMerge: "Falha ao ativar merge automático",

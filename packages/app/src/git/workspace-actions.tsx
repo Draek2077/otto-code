@@ -41,6 +41,7 @@ const ICONS = {
   pull: <ThemedDownload size={16} uniProps={mutedColorMapping} />,
   push: <ThemedUpload size={16} uniProps={mutedColorMapping} />,
   pullAndPush: <ThemedArrowDownUp size={16} uniProps={mutedColorMapping} />,
+  fetch: <ThemedRefreshCcw size={16} uniProps={mutedColorMapping} />,
   viewPr: (provider: GitHostingProviderId) => (
     <ThemedGitHostingIcon provider={provider} size={16} uniProps={mutedColorMapping} />
   ),

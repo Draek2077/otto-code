@@ -904,8 +904,8 @@ export const en = {
       tabLabel: "Visualizer",
       subtitle: "Agent orchestration graph",
       placeholder: "The Visualizer is coming soon.",
-      openAction: "Open Visualizer",
-      closeAction: "Close Visualizer",
+      openAction: "Open visualizer",
+      closeAction: "Close visualizer",
       loadFailedTitle: "The Visualizer couldn't start",
       loadFailedBody:
         "The graph view never finished loading on this machine. This can happen when the app is running without GPU acceleration - the desktop log records the details. Close and reopen the tab to retry.",
@@ -1128,6 +1128,13 @@ export const en = {
           success: "Pulled and pushed",
           description: "Run git pull, then git push, to sync this branch with its remote",
         },
+        fetch: {
+          label: "Fetch",
+          pending: "Fetching...",
+          success: "Fetched",
+          description:
+            "Fetch remote changes and prune removed remote branches without changing this branch",
+        },
         viewPr: "View PR",
         viewPrDescription: "Open this branch's pull request in the browser",
         createPr: {
@@ -1244,6 +1251,7 @@ export const en = {
           failedPull: "Failed to pull",
           failedPush: "Failed to push",
           failedPullAndPush: "Failed to pull and push",
+          failedFetch: "Failed to fetch",
           failedCreatePr: "Failed to create PR",
           failedMergePr: "Failed to merge PR",
           failedEnableAutoMerge: "Failed to enable auto-merge",

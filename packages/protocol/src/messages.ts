@@ -745,6 +745,26 @@ export const DEFAULT_MUTABLE_BRAIN_CONFIG = {
   },
 };
 
+export const GIT_FETCH_INTERVAL_SECONDS = [60, 180, 300, 600, 900, 1_800, 3_600] as const;
+
+export const MutableGitFetchConfigSchema = z.object({
+  enabled: z.boolean(),
+  intervalSeconds: z.union([
+    z.literal(60),
+    z.literal(180),
+    z.literal(300),
+    z.literal(600),
+    z.literal(900),
+    z.literal(1_800),
+    z.literal(3_600),
+  ]),
+});
+
+export const DEFAULT_MUTABLE_GIT_FETCH_CONFIG = {
+  enabled: true,
+  intervalSeconds: 180,
+};
+
 export const MutableDaemonConfigSchema = z
   .object({
     mcp: z
@@ -776,6 +796,9 @@ export const MutableDaemonConfigSchema = z
       preferWriterPersonalities: false,
     }),
     autoArchiveAfterMerge: z.boolean().default(false),
+    // Host-owned because the daemon runs the network operation for every connected client.
+    // COMPAT(gitFetchControl): added in v0.8.12, drop the gate when daemon floor >= v0.8.12.
+    gitFetch: MutableGitFetchConfigSchema.optional(),
     // Drop the "Merge into <base>" action from the client's source-control menu
     // (and stop promoting it to the primary CTA) for a pull-request-only
     // workflow. Host-level so the whole team's clients share one policy.
@@ -867,6 +890,8 @@ export const MutableDaemonConfigPatchSchema = z
     removeProviders: z.array(z.string().min(1)).optional(),
     metadataGeneration: MutableMetadataGenerationConfigSchema.partial().optional(),
     autoArchiveAfterMerge: z.boolean().optional(),
+    // Gated by server_info.features.gitFetchControl; patches deep-merge.
+    gitFetch: MutableGitFetchConfigSchema.partial().optional(),
     // Gated by server_info features.hideMergeIntoBaseSetting.
     hideMergeIntoBaseAction: z.boolean().optional(),
     // Gated by server_info features.attachmentStorage.
@@ -5653,6 +5678,12 @@ export const CheckoutRefreshRequestSchema = z.object({
   requestId: z.string(),
 });
 
+export const CheckoutGitFetchRequestSchema = z.object({
+  type: z.literal("checkout.git.fetch.request"),
+  cwd: z.string(),
+  requestId: z.string(),
+});
+
 export const CheckoutPrCreateRequestSchema = z.object({
   type: z.literal("checkout_pr_create_request"),
   cwd: z.string(),
@@ -7297,6 +7328,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutPullRequestSchema,
   CheckoutPushRequestSchema,
   CheckoutRefreshRequestSchema,
+  CheckoutGitFetchRequestSchema,
   CheckoutPrCreateRequestSchema,
   CheckoutPrMergeRequestSchema,
   CheckoutForgeSetAutoMergeRequestSchema,
@@ -7628,6 +7660,8 @@ export const ServerInfoStatusPayloadSchema = z
         rewind: z.boolean().optional(),
         // COMPAT(checkoutRefresh): added in v0.1.86, remove gate after 2026-11-29.
         checkoutRefresh: z.boolean().optional(),
+        // COMPAT(gitFetchControl): added in v0.8.12, remove gate after 2027-02-14.
+        gitFetchControl: z.boolean().optional(),
         // COMPAT(workspaceMultiplicity): added in v0.1.97, drop the gate when floor >= v0.1.97
         workspaceMultiplicity: z.boolean().optional(),
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.
@@ -10260,6 +10294,16 @@ export const CheckoutRefreshResponseSchema = z.object({
   }),
 });
 
+export const CheckoutGitFetchResponseSchema = z.object({
+  type: z.literal("checkout.git.fetch.response"),
+  payload: z.object({
+    cwd: z.string(),
+    success: z.boolean(),
+    error: CheckoutErrorSchema.nullable(),
+    requestId: z.string(),
+  }),
+});
+
 export const CheckoutPrCreateResponseSchema = z.object({
   type: z.literal("checkout_pr_create_response"),
   payload: z.object({
@@ -12303,6 +12347,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutPullResponseSchema,
   CheckoutPushResponseSchema,
   CheckoutRefreshResponseSchema,
+  CheckoutGitFetchResponseSchema,
   CheckoutPrCreateResponseSchema,
   CheckoutPrMergeResponseSchema,
   CheckoutForgeSetAutoMergeResponseSchema,
@@ -12935,6 +12980,8 @@ export type CheckoutPushRequest = z.infer<typeof CheckoutPushRequestSchema>;
 export type CheckoutPushResponse = z.infer<typeof CheckoutPushResponseSchema>;
 export type CheckoutRefreshRequest = z.infer<typeof CheckoutRefreshRequestSchema>;
 export type CheckoutRefreshResponse = z.infer<typeof CheckoutRefreshResponseSchema>;
+export type CheckoutGitFetchRequest = z.infer<typeof CheckoutGitFetchRequestSchema>;
+export type CheckoutGitFetchResponse = z.infer<typeof CheckoutGitFetchResponseSchema>;
 export type CheckoutCommitFile = z.infer<typeof CheckoutCommitFileSchema>;
 export type CheckoutCommit = z.infer<typeof CheckoutCommitSchema>;
 export type CheckoutCommitsListRequest = z.infer<typeof CheckoutCommitsListRequestSchema>;

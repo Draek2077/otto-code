@@ -48,7 +48,6 @@ import { deriveProjectSlug } from "./workspace-git-metadata.js";
 import { checkoutLiteFromGitSnapshot } from "./workspace-registry-model.js";
 
 const WORKSPACE_GIT_WATCH_DEBOUNCE_MS = 1_000;
-const BACKGROUND_GIT_FETCH_INTERVAL_MS = 180_000;
 export const WORKSPACE_GIT_SELF_HEAL_INTERVAL_MS = 60_000;
 const FORGE_PR_STATUS_POLL_FAST_INTERVAL_MS = 20_000;
 const FORGE_PR_STATUS_POLL_SLOW_INTERVAL_MS = 120_000;
@@ -190,6 +189,8 @@ export interface WorkspaceGitService {
   resolveDefaultBranch(cwdOrRepoRoot: string, options?: WorkspaceGitReadOptions): Promise<string>;
   resolveRepoRemoteUrl(cwd: string, options?: WorkspaceGitReadOptions): Promise<string | null>;
   refresh(cwd: string, options?: { priority?: "normal" | "high" }): Promise<void>;
+  fetch(cwd: string): Promise<void>;
+  setFetchPolicy(policy: WorkspaceGitFetchPolicy): void;
   requestWorkingTreeWatch(
     cwd: string,
     onChange: () => void,
@@ -221,6 +222,11 @@ export interface WorkspaceGitServiceMetrics {
   workspaceRefreshQueuedCount: number;
   fetchInFlightCount: number;
   snapshotUpdatedListenerCount: number;
+}
+
+export interface WorkspaceGitFetchPolicy {
+  enabled: boolean;
+  intervalSeconds: 60 | 180 | 300 | 600 | 900 | 1_800 | 3_600;
 }
 
 /**
@@ -370,6 +376,7 @@ interface WorkspaceGitServiceOptions {
   logger: pino.Logger;
   ottoHome: string;
   worktreesRoot?: string;
+  fetchPolicy?: WorkspaceGitFetchPolicy;
   deps?: Partial<WorkspaceGitServiceDependencies>;
 }
 
@@ -421,7 +428,7 @@ interface RepoGitTarget {
   cwd: string;
   workspaceKeys: Set<string>;
   intervalId: NodeJS.Timeout | null;
-  fetchInFlight: boolean;
+  fetchPromise: Promise<void> | null;
 }
 
 interface WorkingTreeWatchTarget {
@@ -526,6 +533,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   private readonly snapshotUpdatedListeners = new Set<WorkspaceGitSnapshotUpdatedListener>();
   private readonly workspaceTargets = new Map<string, WorkspaceGitTarget>();
   private readonly repoTargets = new Map<string, RepoGitTarget>();
+  private fetchPolicy: WorkspaceGitFetchPolicy;
   /** Resolved cwd of the workspace the client is in; see `setActiveWorkspace`. */
   private activeWorkspaceCwd: string | null = null;
   private readonly workingTreeWatchTargets = new Map<string, WorkingTreeWatchTarget>();
@@ -567,6 +575,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     this.logger = options.logger.child({ module: "workspace-git-service" });
     this.ottoHome = options.ottoHome;
     this.worktreesRoot = options.worktreesRoot;
+    this.fetchPolicy = options.fetchPolicy ?? { enabled: true, intervalSeconds: 180 };
     this.deps = resolveWorkspaceGitServiceDeps(options.deps);
     this.forgeResolver = createForgeResolver({
       createService: (forge) => this.deps.forgeOverrides?.[forge] ?? createForgeService(forge),
@@ -631,7 +640,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     }
     for (const target of this.repoTargets.values()) {
       repositoryWorkspaceLinkCount += target.workspaceKeys.size;
-      if (target.fetchInFlight) {
+      if (target.fetchPromise) {
         fetchInFlightCount += 1;
       }
     }
@@ -679,6 +688,38 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     }
 
     return this.requestWorkspaceSnapshot(target, request);
+  }
+
+  async fetch(cwd: string): Promise<void> {
+    const normalizedCwd = resolve(cwd);
+    await this.getSnapshot(normalizedCwd, { force: true, reason: "manual-fetch-preflight" });
+    const workspaceTarget = this.ensureWorkspaceTarget(normalizedCwd);
+    if (!workspaceTarget.repoGitRoot && workspaceTarget.latestFacts?.isGit) {
+      const gitDir = workspaceTarget.latestFacts.absoluteGitDir;
+      if (gitDir) {
+        workspaceTarget.repoGitRoot =
+          workspaceTarget.latestFacts.gitCommonDir ??
+          (await this.resolveWorkspaceGitRefsRoot(gitDir));
+      }
+    }
+    const repoTarget = await this.ensureRepoTarget(workspaceTarget, { allowUnobserved: true });
+    if (!repoTarget) {
+      throw new Error("This workspace does not have an origin remote to fetch.");
+    }
+    await this.fetchRepo(repoTarget);
+  }
+
+  setFetchPolicy(policy: WorkspaceGitFetchPolicy): void {
+    this.fetchPolicy = policy;
+    for (const repoTarget of this.repoTargets.values()) {
+      this.stopRepoFetchTimer(repoTarget);
+      if (
+        this.fetchPolicy.enabled &&
+        [...repoTarget.workspaceKeys].some((key) => key === this.activeWorkspaceCwd)
+      ) {
+        this.startRepoFetchTimer(repoTarget);
+      }
+    }
   }
 
   async getCheckout(cwd: string): Promise<ProjectCheckoutLitePayload> {
@@ -1436,16 +1477,20 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     }
   }
 
-  private async ensureRepoTarget(workspaceTarget: WorkspaceGitTarget): Promise<void> {
+  private async ensureRepoTarget(
+    workspaceTarget: WorkspaceGitTarget,
+    options?: { allowUnobserved?: boolean },
+  ): Promise<RepoGitTarget | null> {
     const repoGitRoot = workspaceTarget.repoGitRoot;
-    if (!repoGitRoot || !this.isActiveObservedWorkspaceTarget(workspaceTarget)) {
-      return;
+    const isObserved = this.isActiveObservedWorkspaceTarget(workspaceTarget);
+    if (!repoGitRoot || (!isObserved && !options?.allowUnobserved)) {
+      return null;
     }
 
     const existingTarget = this.repoTargets.get(repoGitRoot);
     if (existingTarget) {
       existingTarget.workspaceKeys.add(workspaceTarget.cwd);
-      return;
+      return existingTarget;
     }
 
     const facts = workspaceTarget.latestFacts;
@@ -1453,17 +1498,17 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       facts?.isGit === true
         ? facts.remoteUrl !== null
         : await this.deps.hasOriginRemote(workspaceTarget.cwd);
-    if (!this.isActiveObservedWorkspaceTarget(workspaceTarget)) {
-      return;
+    if (!this.isActiveObservedWorkspaceTarget(workspaceTarget) && !options?.allowUnobserved) {
+      return null;
     }
     if (!hasOrigin) {
-      return;
+      return null;
     }
 
     const targetAfterProbe = this.repoTargets.get(repoGitRoot);
     if (targetAfterProbe) {
       targetAfterProbe.workspaceKeys.add(workspaceTarget.cwd);
-      return;
+      return targetAfterProbe;
     }
 
     const repoTarget: RepoGitTarget = {
@@ -1471,25 +1516,26 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       cwd: workspaceTarget.cwd,
       workspaceKeys: new Set([workspaceTarget.cwd]),
       intervalId: null,
-      fetchInFlight: false,
+      fetchPromise: null,
     };
     this.repoTargets.set(repoGitRoot, repoTarget);
     // A background `git fetch` is the most expensive periodic thing here - it is network
     // I/O, not just process spawning - so it is the last thing that should run for a repo
     // the user is not in. Both the timer and the immediate first fetch are gated.
-    if (this.isActiveWorkspaceTarget(workspaceTarget)) {
+    if (this.fetchPolicy.enabled && this.isActiveWorkspaceTarget(workspaceTarget)) {
       this.startRepoFetchTimer(repoTarget);
-      void this.runRepoFetch(repoTarget);
+      this.runBackgroundRepoFetch(repoTarget);
     }
+    return repoTarget;
   }
 
   private startRepoFetchTimer(target: RepoGitTarget): void {
-    if (target.intervalId) {
+    if (target.intervalId || !this.fetchPolicy.enabled) {
       return;
     }
     target.intervalId = setInterval(() => {
-      void this.runRepoFetch(target);
-    }, BACKGROUND_GIT_FETCH_INTERVAL_MS);
+      this.runBackgroundRepoFetch(target);
+    }, this.fetchPolicy.intervalSeconds * 1_000);
   }
 
   private stopRepoFetchTimer(target: RepoGitTarget): void {
@@ -1546,7 +1592,9 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
         (key) => key === this.activeWorkspaceCwd,
       );
       if (holdsActive) {
-        this.startRepoFetchTimer(repoTarget);
+        if (this.fetchPolicy.enabled) {
+          this.startRepoFetchTimer(repoTarget);
+        }
       } else {
         this.stopRepoFetchTimer(repoTarget);
       }
@@ -2553,42 +2601,51 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     }
   }
 
-  private async runRepoFetch(target: RepoGitTarget): Promise<void> {
-    if (target.fetchInFlight) {
-      return;
-    }
-
-    target.fetchInFlight = true;
-    this.logger.debug(
-      { repoGitRoot: target.repoGitRoot, cwd: target.cwd },
-      "Running background git fetch",
-    );
-
-    try {
-      await this.deps.runGitFetch(target.cwd);
-    } catch (error) {
+  private runBackgroundRepoFetch(target: RepoGitTarget): void {
+    void this.fetchRepo(target).catch((error) => {
       this.logger.warn(
         { err: error, repoGitRoot: target.repoGitRoot, cwd: target.cwd },
         "Background git fetch failed",
       );
-    } finally {
-      target.fetchInFlight = false;
-      await Promise.all(
-        Array.from(target.workspaceKeys, async (workspaceKey) => {
-          const workspaceTarget = this.workspaceTargets.get(workspaceKey);
-          if (!workspaceTarget) {
-            return;
-          }
-          await this.refreshWorkspaceTarget(workspaceTarget, {
-            force: false,
-            includeForge: false,
-            reason: "repo-fetch",
-            notify: true,
-            changeSignal: true,
-          });
-        }),
-      );
+    });
+  }
+
+  private fetchRepo(target: RepoGitTarget): Promise<void> {
+    if (target.fetchPromise) {
+      return target.fetchPromise;
     }
+
+    const promise = (async () => {
+      this.logger.debug({ repoGitRoot: target.repoGitRoot, cwd: target.cwd }, "Running git fetch");
+      try {
+        await this.deps.runGitFetch(target.cwd);
+      } finally {
+        await Promise.all(
+          Array.from(target.workspaceKeys, async (workspaceKey) => {
+            const workspaceTarget = this.workspaceTargets.get(workspaceKey);
+            if (!workspaceTarget) {
+              return;
+            }
+            await this.refreshWorkspaceTarget(workspaceTarget, {
+              force: false,
+              includeForge: false,
+              reason: "repo-fetch",
+              notify: true,
+              changeSignal: true,
+            });
+          }),
+        );
+      }
+    })();
+    target.fetchPromise = promise;
+    void promise
+      .finally(() => {
+        if (target.fetchPromise === promise) {
+          target.fetchPromise = null;
+        }
+      })
+      .catch(() => {});
+    return promise;
   }
 
   private removeWorkspaceListener(cwd: string, listener: WorkspaceGitListener): void {

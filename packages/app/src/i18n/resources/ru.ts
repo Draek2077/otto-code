@@ -1118,6 +1118,12 @@ export const ru: TranslationResources = {
           description:
             "Выполняет git pull, затем git push, синхронизируя ветку с удалённым репозиторием",
         },
+        fetch: {
+          label: "Fetch",
+          pending: "Fetching...",
+          success: "Fetched",
+          description: "Fetch remote changes",
+        },
         viewPr: "Посмотреть PR",
         viewPrDescription: "Открывает pull request этой ветки в браузере",
         createPr: {
@@ -1236,6 +1242,7 @@ export const ru: TranslationResources = {
           failedPull: "Не удалось вытащить",
           failedPush: "Не удалось нажать",
           failedPullAndPush: "Не удалось тянуть и толкать",
+          failedFetch: "Failed to fetch",
           failedCreatePr: "Не удалось создать PR.",
           failedMergePr: "Не удалось объединить PR.",
           failedEnableAutoMerge: "Не удалось включить автоматическое объединение",

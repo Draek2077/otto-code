@@ -1118,6 +1118,12 @@ export const es: TranslationResources = {
           success: "Tirado y empujado",
           description: "Ejecuta git pull y luego git push para sincronizar esta rama con su remoto",
         },
+        fetch: {
+          label: "Fetch",
+          pending: "Fetching...",
+          success: "Fetched",
+          description: "Fetch remote changes",
+        },
         viewPr: "Ver PR",
         viewPrDescription: "Abre el pull request de esta rama en el navegador",
         createPr: {
@@ -1247,6 +1253,7 @@ export const es: TranslationResources = {
           failedPull: "No se pudo tirar",
           failedPush: "No se pudo empujar",
           failedPullAndPush: "No se pudo tirar y empujar",
+          failedFetch: "Failed to fetch",
           failedCreatePr: "No se pudo crear PR",
           failedMergePr: "No se pudo fusionar PR",
           failedEnableAutoMerge: "No se pudo habilitar la combinación automática",

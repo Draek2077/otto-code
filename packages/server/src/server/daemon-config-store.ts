@@ -644,6 +644,7 @@ function buildPersistedDaemonSection(
       ...readAgentBehaviors(mutable),
     },
     autoArchiveAfterMerge: mutable.autoArchiveAfterMerge,
+    ...(mutable.gitFetch ? { gitFetch: mutable.gitFetch } : {}),
     hideMergeIntoBaseAction: mutable.hideMergeIntoBaseAction,
     attachmentImageMaxAgeDays: mutable.attachmentImageMaxAgeDays,
     attachmentImageMaxTotalMb: mutable.attachmentImageMaxTotalMb,

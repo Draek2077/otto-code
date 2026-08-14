@@ -1121,6 +1121,12 @@ export const fr: TranslationResources = {
           description:
             "Exécute git pull, puis git push, pour synchroniser cette branche avec son dépôt distant",
         },
+        fetch: {
+          label: "Fetch",
+          pending: "Fetching...",
+          success: "Fetched",
+          description: "Fetch remote changes",
+        },
         viewPr: "Voir PR",
         viewPrDescription: "Ouvre la pull request de cette branche dans le navigateur",
         createPr: {
@@ -1252,6 +1258,7 @@ export const fr: TranslationResources = {
           failedPull: "Échec de l'extraction",
           failedPush: "Échec de la poussée",
           failedPullAndPush: "Impossible de tirer et de pousser",
+          failedFetch: "Failed to fetch",
           failedCreatePr: "Échec de la création de PR",
           failedMergePr: "Échec de la fusion de PR",
           failedEnableAutoMerge: "Échec de l'activation de la fusion automatique",

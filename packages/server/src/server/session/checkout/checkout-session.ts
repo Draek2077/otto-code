@@ -5,6 +5,7 @@ import type {
   BranchSuggestionsRequest,
   CheckoutGitCommitError,
   CheckoutGitFileError,
+  CheckoutGitFetchRequest,
   CheckoutRefreshRequest,
   CheckoutRenameBranchRequest,
   CheckoutStatusRequest,
@@ -417,6 +418,25 @@ export class CheckoutSession {
           error: toCheckoutError(error),
           requestId,
         },
+      });
+    }
+  }
+
+  async handleFetchRequest(msg: CheckoutGitFetchRequest): Promise<void> {
+    const { cwd, requestId } = msg;
+    const resolvedCwd = expandTilde(cwd);
+
+    try {
+      await this.workspaceGitService.fetch(resolvedCwd);
+      this.checkoutDiffManager.scheduleRefreshForCwd(resolvedCwd);
+      this.host.emit({
+        type: "checkout.git.fetch.response",
+        payload: { cwd, success: true, error: null, requestId },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "checkout.git.fetch.response",
+        payload: { cwd, success: false, error: toCheckoutError(error), requestId },
       });
     }
   }

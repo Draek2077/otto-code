@@ -465,6 +465,7 @@ export function HostWorkspacesPage({ serverId }: { serverId: string }) {
         <>
           <SettingsSection title={t("settings.hostSections.workspaces")}>
             <AutoArchiveMergedWorkspacesCard serverId={serverId} />
+            <GitFetchCard serverId={serverId} />
             <HideMergeIntoBaseActionCard serverId={serverId} />
           </SettingsSection>
           {isDeveloperMode ? (
@@ -1183,6 +1184,101 @@ function AutoArchiveMergedWorkspacesCard({ serverId }: { serverId: string }) {
           testID="host-page-auto-archive-merged-workspaces-switch"
         />
       </View>
+    </View>
+  );
+}
+
+const GIT_FETCH_INTERVAL_OPTIONS = [
+  { id: "one", value: 60, label: "Every minute" },
+  { id: "three", value: 180, label: "Every 3 minutes" },
+  { id: "five", value: 300, label: "Every 5 minutes" },
+  { id: "ten", value: 600, label: "Every 10 minutes" },
+  { id: "fifteen", value: 900, label: "Every 15 minutes" },
+  { id: "thirty", value: 1_800, label: "Every 30 minutes" },
+  { id: "sixty", value: 3_600, label: "Every hour" },
+] as const satisfies SelectFieldOption<60 | 180 | 300 | 600 | 900 | 1_800 | 3_600>[];
+
+const DEFAULT_GIT_FETCH_CONFIG = { enabled: true, intervalSeconds: 180 } as const;
+
+function GitFetchCard({ serverId }: { serverId: string }) {
+  const isConnected = useHostRuntimeIsConnected(serverId);
+  const { config, patchConfig } = useDaemonConfig(serverId);
+  // COMPAT(gitFetchControl): added in v0.8.12, drop the gate when daemon floor >= v0.8.12.
+  const isSupported = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.gitFetchControl === true,
+  );
+  const gitFetch = config?.gitFetch ?? DEFAULT_GIT_FETCH_CONFIG;
+
+  const patchGitFetch = useCallback(
+    (patch: Partial<typeof gitFetch>) => {
+      void patchConfig({ gitFetch: patch }).catch((error) => {
+        console.error("[HostPage] Failed to update Git fetch settings", error);
+        Alert.alert(
+          "Unable to update Git fetch settings",
+          error instanceof Error ? error.message : String(error),
+        );
+      });
+    },
+    [patchConfig],
+  );
+  const handleAutomaticFetchChange = useCallback(
+    (enabled: boolean) => patchGitFetch({ enabled }),
+    [patchGitFetch],
+  );
+  const handleFetchIntervalChange = useCallback(
+    (intervalSeconds: 60 | 180 | 300 | 600 | 900 | 1_800 | 3_600) =>
+      patchGitFetch({ intervalSeconds }),
+    [patchGitFetch],
+  );
+  const selectedFetchInterval = useMemo(
+    () => ({
+      label:
+        GIT_FETCH_INTERVAL_OPTIONS.find((option) => option.value === gitFetch.intervalSeconds)
+          ?.label ?? "Every 3 minutes",
+    }),
+    [gitFetch.intervalSeconds],
+  );
+
+  if (!isConnected || !isSupported) return null;
+
+  return (
+    <View style={settingsStyles.card} testID="host-page-git-fetch-card">
+      <View style={settingsStyles.rowResponsive}>
+        <View style={settingsStyles.rowContent}>
+          <Text style={settingsStyles.rowTitle}>Fetch active workspaces automatically</Text>
+          <Text style={settingsStyles.rowHint}>
+            Fetch origin and prune removed remote branches while a workspace is active
+          </Text>
+        </View>
+        <Switch
+          value={gitFetch.enabled}
+          onValueChange={handleAutomaticFetchChange}
+          accessibilityLabel="Fetch active workspaces automatically"
+          testID="host-page-git-fetch-switch"
+        />
+      </View>
+      {gitFetch.enabled ? (
+        <View style={settingsStyles.rowResponsive}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>Fetch interval</Text>
+            <Text style={settingsStyles.rowHint}>
+              Choose how often Otto checks active repositories.
+            </Text>
+          </View>
+          <SelectField<60 | 180 | 300 | 600 | 900 | 1_800 | 3_600>
+            field={false}
+            size="sm"
+            label="Fetch interval"
+            value={gitFetch.intervalSeconds}
+            selectedDisplay={selectedFetchInterval}
+            options={GIT_FETCH_INTERVAL_OPTIONS}
+            onChange={handleFetchIntervalChange}
+            placeholder="Every 3 minutes"
+            emptyText="No fetch intervals available."
+            triggerTestID="host-page-git-fetch-interval"
+          />
+        </View>
+      ) : null}
     </View>
   );
 }

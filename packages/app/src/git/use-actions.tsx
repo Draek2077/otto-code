@@ -177,6 +177,7 @@ interface UseGitActionsInput {
     pull: ReactElement;
     push: ReactElement;
     pullAndPush: ReactElement;
+    fetch: ReactElement;
     // PR-hosting actions carry the provider mark (GitHub/Bitbucket), so they
     // render per-provider - the hook resolves them with the workspace's
     // detected git hosting provider.
@@ -402,6 +403,9 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   const pullAndPushStatus = useCheckoutGitActionsStore((s) =>
     s.getStatus({ serverId, cwd, actionId: "pull-and-push" }),
   );
+  const fetchStatus = useCheckoutGitActionsStore((s) =>
+    s.getStatus({ serverId, cwd, actionId: "fetch" }),
+  );
   const prCreateStatus = useCheckoutGitActionsStore((s) =>
     s.getStatus({ serverId, cwd, actionId: "create-pr" }),
   );
@@ -448,6 +452,11 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   const runPull = useCheckoutGitActionsStore((s) => s.pull);
   const runPush = useCheckoutGitActionsStore((s) => s.push);
   const runPullAndPush = useCheckoutGitActionsStore((s) => s.pullAndPush);
+  const runFetch = useCheckoutGitActionsStore((s) => s.fetch);
+  // COMPAT(gitFetchControl): added in v0.8.12, drop the gate when daemon floor >= v0.8.12.
+  const gitFetchEnabled = useSessionStore(
+    (s) => s.sessions[serverId]?.serverInfo?.features?.gitFetchControl === true,
+  );
   const runCreatePr = useCheckoutGitActionsStore((s) => s.createPr);
   const runMergePr = useCheckoutGitActionsStore((s) => s.mergePr);
   const runEnablePrAutoMerge = useCheckoutGitActionsStore((s) => s.enablePrAutoMerge);
@@ -556,6 +565,17 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
         toastActionError(err, t("workspace.git.actions.toasts.failedPullAndPush"));
       });
   }, [cwd, runPullAndPush, serverId, t, toastActionError, toastActionSuccess]);
+
+  const handleFetch = useCallback(() => {
+    void runFetch({ serverId, cwd })
+      .then(() => {
+        toastActionSuccess(t("workspace.git.actions.fetch.success"));
+        return;
+      })
+      .catch((err) => {
+        toastActionError(err, t("workspace.git.actions.toasts.failedFetch"));
+      });
+  }, [cwd, runFetch, serverId, t, toastActionError, toastActionSuccess]);
 
   const handleCreatePr = useCallback(() => {
     void persistShipDefault("pr");
@@ -724,6 +744,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       mergeCapability: deriveMergeCapability(prStatus?.forgeSpecific, prStatus?.github),
       hostingProvider,
       hasRemote,
+      gitFetchEnabled,
       isOttoOwnedWorktree,
       isOnBaseBranch,
       hasUncommittedChanges,
@@ -760,6 +781,12 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
           status: pullAndPushStatus,
           icon: icons.pullAndPush,
           handler: handlePullAndPush,
+        },
+        fetch: {
+          disabled: isActionDisabled(actionsDisabled, fetchStatus),
+          status: fetchStatus,
+          icon: icons.fetch,
+          handler: handleFetch,
         },
         pr: {
           disabled: isActionDisabled(actionsDisabled, prCreateStatus),
@@ -832,6 +859,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   }, [
     isGit,
     hasRemote,
+    gitFetchEnabled,
     hasPullRequest,
     prStatus?.url,
     prStatus?.state,
@@ -859,6 +887,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     pullStatus,
     pushStatus,
     pullAndPushStatus,
+    fetchStatus,
     prCreateStatus,
     mergePrStatuses.squash,
     mergePrStatuses.merge,
@@ -875,6 +904,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     handlePull,
     handlePush,
     handlePullAndPush,
+    handleFetch,
     handlePrAction,
     handleMergePr,
     handleEnablePrAutoMerge,
@@ -957,6 +987,13 @@ function getTranslatedGitActionLabels(
         pendingLabel: t("workspace.git.actions.pullAndPush.pending"),
         successLabel: t("workspace.git.actions.pullAndPush.success"),
         description: t("workspace.git.actions.pullAndPush.description"),
+      };
+    case "fetch":
+      return {
+        label: t("workspace.git.actions.fetch.label"),
+        pendingLabel: t("workspace.git.actions.fetch.pending"),
+        successLabel: t("workspace.git.actions.fetch.success"),
+        description: t("workspace.git.actions.fetch.description"),
       };
     case "pr":
       return hasPullRequest

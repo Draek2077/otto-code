@@ -3457,6 +3457,8 @@ export class Session {
         return this.checkoutSession.handleCheckoutPushRequest(msg);
       case "checkout.refresh.request":
         return this.checkoutSession.handleRefreshRequest(msg);
+      case "checkout.git.fetch.request":
+        return this.checkoutSession.handleFetchRequest(msg);
       case "checkout_pr_create_request":
         return this.checkoutSession.handleCheckoutPrCreateRequest(msg);
       case "checkout_pr_merge_request":

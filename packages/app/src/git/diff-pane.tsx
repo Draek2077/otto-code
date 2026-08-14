@@ -3135,6 +3135,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
       pullAndPush: (
         <ThemedArrowDownUp size={actionIconSize} uniProps={foregroundMutedIconColorMapping} />
       ),
+      fetch: <ThemedRefreshCcw size={actionIconSize} uniProps={foregroundMutedIconColorMapping} />,
       viewPr: (provider: GitHostingProviderId) => (
         <ThemedGitHostingIcon
           provider={provider}

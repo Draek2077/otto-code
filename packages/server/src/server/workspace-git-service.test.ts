@@ -12,6 +12,7 @@ import type {
 } from "../utils/checkout-git.js";
 import {
   WorkspaceGitServiceImpl,
+  type WorkspaceGitFetchPolicy,
   type WorkspaceGitRuntimeSnapshot,
 } from "./workspace-git-service.js";
 import { isPlatform } from "../test-utils/platform.js";
@@ -290,6 +291,7 @@ interface CreateServiceTestOptions {
   readdir?: ReturnType<typeof vi.fn>;
   watch?: ReturnType<typeof vi.fn>;
   now?: () => Date;
+  fetchPolicy?: WorkspaceGitFetchPolicy;
 }
 
 function buildDefaultTestServiceDeps() {
@@ -324,10 +326,11 @@ function buildDefaultTestServiceDeps() {
 }
 
 function createService(options?: CreateServiceTestOptions) {
-  const { github, forgeOverrides, ...rest } = options ?? {};
+  const { github, forgeOverrides, fetchPolicy, ...rest } = options ?? {};
   return new WorkspaceGitServiceImpl({
     logger: createLogger() as unknown as pino.Logger,
     ottoHome: "/tmp/otto-test",
+    ...(fetchPolicy ? { fetchPolicy } : {}),
     deps: {
       ...buildDefaultTestServiceDeps(),
       ...rest,
@@ -863,6 +866,45 @@ describe("WorkspaceGitServiceImpl", () => {
 
     first.unsubscribe();
     second.unsubscribe();
+    service.dispose();
+  });
+
+  test("manual fetch joins an in-flight background fetch for the same repository", async () => {
+    const deferredFetch = createDeferred<void>();
+    const runGitFetch = vi.fn(async () => await deferredFetch.promise);
+    const service = createService({ runGitFetch });
+
+    service.setActiveWorkspace(REPO_CWD);
+    const subscription = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
+    await vi.waitFor(() => expect(runGitFetch).toHaveBeenCalledTimes(1));
+
+    const manualFetch = service.fetch(REPO_CWD);
+    await flushPromises();
+    expect(runGitFetch).toHaveBeenCalledTimes(1);
+
+    deferredFetch.resolve();
+    await expect(manualFetch).resolves.toBeUndefined();
+
+    subscription.unsubscribe();
+    service.dispose();
+  });
+
+  test("disabled automatic fetch keeps manual fetch available", async () => {
+    const runGitFetch = vi.fn(async () => {});
+    const service = createService({
+      fetchPolicy: { enabled: false, intervalSeconds: 180 },
+      runGitFetch,
+    });
+
+    service.setActiveWorkspace(REPO_CWD);
+    const subscription = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
+    await flushPromises();
+    expect(runGitFetch).not.toHaveBeenCalled();
+
+    await service.fetch(REPO_CWD);
+    expect(runGitFetch).toHaveBeenCalledTimes(1);
+
+    subscription.unsubscribe();
     service.dispose();
   });
 

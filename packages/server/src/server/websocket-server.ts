@@ -271,6 +271,8 @@ function createFallbackWorkspaceGitService(): WorkspaceGitService {
     resolveDefaultBranch: async () => "main",
     resolveRepoRemoteUrl: async () => null,
     refresh: async () => {},
+    fetch: async () => {},
+    setFetchPolicy: () => {},
     requestWorkingTreeWatch: async () => ({
       repoRoot: null,
       unsubscribe: () => {},
@@ -1871,6 +1873,8 @@ export class VoiceAssistantWebSocketServer {
         rewind: true,
         // COMPAT(checkoutRefresh): added in v0.1.86, remove gate after 2026-11-29.
         checkoutRefresh: true,
+        // COMPAT(gitFetchControl): added in v0.8.12, remove gate after 2027-02-14.
+        gitFetchControl: true,
         // COMPAT(workspaceMultiplicity): added in v0.1.97, drop the gate when floor >= v0.1.97
         workspaceMultiplicity: true,
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.

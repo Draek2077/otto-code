@@ -127,10 +127,11 @@ Merge and pull targets deliberately do not use this. `resolveMostAheadBaseRef` (
 `mergeFromBase`) always wants the freshest ref, because merging into a stale one silently drops
 the other side's commits.
 
-**Known gap:** if `origin/<name>` does not exist at all - never fetched, or a `remote.origin.fetch`
-refspec that excludes it - there is only one candidate and merge-base math cannot help. A stale
-base ref that nobody updates stays stale. Auto-fetching on workspace open is the obvious fix and
-is deliberately not built: it puts network traffic on a read-only view.
+If `origin/<name>` does not exist at all - never fetched, or a `remote.origin.fetch` refspec that
+excludes it - there is only one candidate and merge-base math cannot help. Otto can fetch active
+workspaces in the background, but that is a Host setting rather than a read-path side effect:
+**Settings → Host → Workspaces → Fetch active workspaces automatically** controls whether it runs
+and how often. **Fetch** in the workspace Git tools runs `git fetch origin --prune` on demand.
 
 ## Base override (stacked branches)
 

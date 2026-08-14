@@ -1116,6 +1116,12 @@ export const ja: TranslationResources = {
           description:
             "git pull を実行してから git push を実行し、このブランチをリモートと同期します",
         },
+        fetch: {
+          label: "Fetch",
+          pending: "Fetching...",
+          success: "Fetched",
+          description: "Fetch remote changes",
+        },
         viewPr: "PRを表示",
         viewPrDescription: "このブランチのプルリクエストをブラウザーで開きます",
         createPr: {
@@ -1228,6 +1234,7 @@ export const ja: TranslationResources = {
           failedPull: "プルに失敗しました",
           failedPush: "プッシュに失敗しました",
           failedPullAndPush: "プル＆プッシュに失敗しました",
+          failedFetch: "Failed to fetch",
           failedCreatePr: "PRの作成に失敗しました",
           failedMergePr: "PRのマージに失敗しました",
           failedEnableAutoMerge: "自動マージの有効化に失敗しました",

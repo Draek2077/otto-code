@@ -1094,6 +1094,12 @@ export const zhCN: TranslationResources = {
           success: "已 pull 并 push",
           description: "先运行 git pull，再运行 git push，使当前分支与远程同步",
         },
+        fetch: {
+          label: "Fetch",
+          pending: "Fetching...",
+          success: "Fetched",
+          description: "Fetch remote changes",
+        },
         viewPr: "查看 PR",
         viewPrDescription: "在浏览器中打开此分支的 pull request",
         createPr: {
@@ -1189,6 +1195,7 @@ export const zhCN: TranslationResources = {
           failedPull: "Pull 失败",
           failedPush: "Push 失败",
           failedPullAndPush: "Pull 并 push 失败",
+          failedFetch: "Failed to fetch",
           failedCreatePr: "创建 PR 失败",
           failedMergePr: "Merge PR 失败",
           failedEnableAutoMerge: "启用 auto-merge 失败",

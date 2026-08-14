@@ -391,6 +391,23 @@ export const PersistedConfigSchema = z
           .passthrough()
           .optional(),
         autoArchiveAfterMerge: z.boolean().optional(),
+        gitFetch: z
+          .object({
+            enabled: z.boolean().optional(),
+            intervalSeconds: z
+              .union([
+                z.literal(60),
+                z.literal(180),
+                z.literal(300),
+                z.literal(600),
+                z.literal(900),
+                z.literal(1_800),
+                z.literal(3_600),
+              ])
+              .optional(),
+          })
+          .passthrough()
+          .optional(),
         hideMergeIntoBaseAction: z.boolean().optional(),
         // Retention for the materialized image store; see
         // docs/attachment-lifecycle.md. Absent reads as the shipped defaults.

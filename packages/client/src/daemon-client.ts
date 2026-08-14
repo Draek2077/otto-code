@@ -82,6 +82,7 @@ import type {
   CheckoutPullResponse,
   CheckoutPushResponse,
   CheckoutRefreshResponse,
+  CheckoutGitFetchResponse,
   CheckoutPrCreateResponse,
   CheckoutPrMergeResponse,
   CheckoutPrMergeMethod,
@@ -491,6 +492,7 @@ type CheckoutMergeFromBasePayload = CheckoutMergeFromBaseResponse["payload"];
 type CheckoutPullPayload = CheckoutPullResponse["payload"];
 type CheckoutPushPayload = CheckoutPushResponse["payload"];
 type CheckoutRefreshPayload = CheckoutRefreshResponse["payload"];
+type CheckoutGitFetchPayload = CheckoutGitFetchResponse["payload"];
 type CheckoutPrCreatePayload = CheckoutPrCreateResponse["payload"];
 type CheckoutPrMergePayload = CheckoutPrMergeResponse["payload"];
 type CheckoutGithubSetAutoMergePayload = CheckoutGithubSetAutoMergeResponse["payload"];
@@ -5088,6 +5090,17 @@ export class DaemonClient {
         cwd,
       },
       responseType: "checkout.refresh.response",
+    });
+  }
+
+  async checkoutGitFetch(cwd: string, requestId?: string): Promise<CheckoutGitFetchPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "checkout.git.fetch.request",
+        cwd,
+      },
+      responseType: "checkout.git.fetch.response",
     });
   }
 

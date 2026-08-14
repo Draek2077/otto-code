@@ -812,6 +812,15 @@ function buildInitialBrainConfig(persistedConfig: PersistedConfig): MutableDaemo
   return MutableBrainConfigSchema.parse(persistedBrain);
 }
 
+function buildInitialGitFetchConfig(
+  persistedConfig: PersistedConfig,
+): NonNullable<MutableDaemonConfig["gitFetch"]> {
+  return {
+    enabled: persistedConfig.daemon?.gitFetch?.enabled ?? true,
+    intervalSeconds: persistedConfig.daemon?.gitFetch?.intervalSeconds ?? 180,
+  };
+}
+
 type MutableSavedProviderEndpoint = MutableDaemonConfig["savedProviderEndpoints"][number];
 
 function withSavedEndpointApiKey(
@@ -857,6 +866,7 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
     providers,
     metadataGeneration: buildInitialMetadataGeneration(config),
     autoArchiveAfterMerge: config.autoArchiveAfterMerge ?? false,
+    gitFetch: buildInitialGitFetchConfig(persistedConfig),
     // Host-level client git-action policy; only the app consumes it, so it
     // rides the daemon config round-trip without a field on OttoDaemonConfig.
     hideMergeIntoBaseAction: persistedConfig.daemon?.hideMergeIntoBaseAction ?? false,
@@ -1284,6 +1294,7 @@ export async function createOttoDaemon(
     logger,
     ottoHome: config.ottoHome,
     worktreesRoot: config.worktreesRoot,
+    fetchPolicy: daemonConfigStore.get().gitFetch ?? { enabled: true, intervalSeconds: 180 },
     deps: {
       forgeOverrides: { github, "bitbucket-cloud": bitbucketCloud },
       resolveHostingForCwd: async (cwd) => {
@@ -1295,6 +1306,11 @@ export async function createOttoDaemon(
         };
       },
     },
+  });
+  daemonConfigStore.onFieldChange("gitFetch", (value) => {
+    workspaceGitService.setFetchPolicy(
+      value as { enabled: boolean; intervalSeconds: 60 | 180 | 300 | 600 | 900 | 1_800 | 3_600 },
+    );
   });
 
   const workspaceProvisioning = createWorkspaceProvisioningService({

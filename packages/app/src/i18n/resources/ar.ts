@@ -1104,6 +1104,12 @@ export const ar: TranslationResources = {
           success: "سحبت ودفعت",
           description: "ينفّذ git pull ثم git push لمزامنة هذا الفرع مع الريموت",
         },
+        fetch: {
+          label: "Fetch",
+          pending: "Fetching...",
+          success: "Fetched",
+          description: "Fetch remote changes",
+        },
         viewPr: "عرض PR",
         viewPrDescription: "يفتح pull request الخاص بهذا الفرع في المتصفح",
         createPr: {
@@ -1203,6 +1209,7 @@ export const ar: TranslationResources = {
           failedPull: "فشل في السحب",
           failedPush: "فشل في الدفع",
           failedPullAndPush: "فشل في السحب والدفع",
+          failedFetch: "Failed to fetch",
           failedCreatePr: "فشل في إنشاء PR",
           failedMergePr: "فشل دمج PR",
           failedEnableAutoMerge: "فشل في تمكين الدمج التلقائي",
