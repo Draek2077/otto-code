@@ -3200,7 +3200,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
   },
   tabLabelAccent: {
-    color: theme.colors.accentBright,
+    color: theme.colors.accent,
   },
   tabLabelOnBlack: {
     color: ON_BLACK_FOREGROUND,

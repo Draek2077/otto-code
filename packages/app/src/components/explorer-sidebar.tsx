@@ -550,7 +550,7 @@ function ExplorerSidebarContent({
                 onTabPress={onTabPress}
                 testID={def.testID}
               >
-                {def.renderIcon(active ? theme.colors.foreground : theme.colors.foregroundMuted)}
+                {def.renderIcon(active ? theme.colors.accent : theme.colors.foregroundMuted)}
               </ExplorerTabButton>
             );
           })}
@@ -751,7 +751,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
   },
   tabTextActive: {
-    color: theme.colors.foreground,
+    color: theme.colors.accent,
   },
   tabTextMuted: {
     opacity: 0.8,
