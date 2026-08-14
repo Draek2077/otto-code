@@ -85,10 +85,13 @@ export function loadCatalog(paths: BrainPaths = resolveBrainPaths()): Catalog {
     const legacy = readJson(path.join(packageRoot(), "config", "downloads.json"), CatalogSchema);
     if (!legacy) return current;
     const seedIds = new Set(legacy.models.map((model) => model.id));
-    // A source repository can change while the underlying curated model stays
-    // the same. Those retired ids are product-owned too: drop them rather than
-    // displaying an obsolete duplicate beside its canonical replacement.
-    const retiredSeedIds = new Set(legacy.models.flatMap((model) => model.replaces ?? []));
+    // Curated models can be replaced or intentionally removed from the
+    // shortlist. Both kinds of retired ids stay product-owned so they do not
+    // survive a seed refresh as accidental "user-added" catalog rows.
+    const retiredSeedIds = new Set([
+      ...legacy.retiredModelIds,
+      ...legacy.models.flatMap((model) => model.replaces ?? []),
+    ]);
     const userModels = current.models.filter(
       (model) => !seedIds.has(model.id) && !retiredSeedIds.has(model.id),
     );

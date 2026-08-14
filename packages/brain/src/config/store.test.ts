@@ -55,16 +55,30 @@ describe("loadCatalog", () => {
       hfRepo: "Qwen/retired-model",
       quant: "Q5_K_M",
     };
+    const removedCuratedModel = {
+      id: seeded.retiredModelIds[0] ?? "",
+      name: "Removed Otto model",
+      hfRepo: "Qwen/removed-model",
+      quant: "Q4_K_M",
+    };
     writeFileSync(
       paths.catalogFile,
-      `${JSON.stringify({ version: 1, models: [oldCurated, userModel, retiredModel] }, null, 2)}\n`,
+      `${JSON.stringify(
+        { version: 1, models: [oldCurated, userModel, retiredModel, removedCuratedModel] },
+        null,
+        2,
+      )}\n`,
     );
 
     const catalog = loadCatalog(paths);
 
     expect(catalog.models.find((model) => model.id === curated.id)).toEqual(curated);
-    expect(catalog.models.find((model) => model.id === userModel.id)).toEqual(userModel);
+    expect(catalog.models.find((model) => model.id === userModel.id)).toEqual({
+      ...userModel,
+      favorite: false,
+    });
     expect(catalog.models.find((model) => model.id === retiredModel.id)).toBeUndefined();
+    expect(catalog.models.find((model) => model.id === removedCuratedModel.id)).toBeUndefined();
     expect(JSON.parse(readFileSync(paths.catalogFile, "utf8")).models).toEqual(catalog.models);
   });
 
@@ -73,6 +87,43 @@ describe("loadCatalog", () => {
     const muse = catalog.models.find((model) => model.name === "Muse Glimmer 30B");
 
     expect(muse?.quant).toBe("Q4_K_XL");
+  });
+
+  it("marks only the curated favorite models for a premium Library badge", () => {
+    const catalog = loadCatalog(testPaths());
+
+    expect(catalog.models.filter((model) => model.favorite).map((model) => model.name)).toEqual([
+      "Qwen3.8 27B",
+      "Muse Glimmer 30B",
+    ]);
+    expect(
+      catalog.models.filter((model) => model.name.startsWith("Qwen")).map((model) => model.name),
+    ).toEqual(["Qwen3 Coder 30B A3B", "Qwen3.8 27B"]);
+  });
+
+  it("includes Gemma 4 E4B with its exact optional vision projector", () => {
+    const catalog = loadCatalog(testPaths());
+    const gemma = catalog.models.find((model) => model.name === "Gemma 4 E4B");
+
+    expect(gemma).toMatchObject({
+      hfRepo: "unsloth/gemma-4-E4B-it-GGUF",
+      quant: "Q4_K_M",
+      approxWeightsBytes: 4977171584,
+      contextMax: 131072,
+      vision: true,
+      thinking: true,
+    });
+    expect(gemma?.components).toEqual([
+      expect.objectContaining({
+        id: "vision-projector",
+        file: "mmproj-F16.gguf",
+        bytes: 990372672,
+      }),
+    ]);
+    expect(catalog.models.find((model) => model.name === "Gemma 3 27B")).toBeUndefined();
+    expect(catalog.retiredModelIds).toContain(
+      "lmstudio-community/gemma-3-27b-it-GGUF/gemma-3-27b-it-Q4_K_M.gguf",
+    );
   });
 
   it("defaults to Q4_K_M unless the source format requires another quant", () => {

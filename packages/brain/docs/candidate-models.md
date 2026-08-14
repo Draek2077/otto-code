@@ -27,24 +27,23 @@ their GGUF filenames.
 
 | Model                 | Optional components                                                                               |
 | --------------------- | ------------------------------------------------------------------------------------------------- |
-| Qwen3.6 27B           | Image understanding (`mmproj-F16.gguf`)                                                           |
 | Qwen3.8 27B           | Image understanding (`mmproj-F16.gguf`)                                                           |
 | Muse Glimmer 30B      | Image understanding (`mmproj-Muse-Glimmer-30B-Q8_0.gguf`), faster drafting (`dflash-kquant.gguf`) |
-| Gemma 3 27B           | Image understanding (`mmproj-model-f16.gguf`)                                                     |
 | Gemma 4 31B           | Image understanding (`mmproj-gemma-4-31B-it-BF16.gguf`)                                           |
+| Gemma 4 E4B           | Image understanding (`mmproj-F16.gguf`)                                                           |
 | Mistral Small 3.2 24B | Image understanding (`mmproj-mistralai_Mistral-Small-3.2-24B-Instruct-2506-bf16.gguf`)            |
 | Ornith 1.0 35B        | Image understanding (`mmproj-deepreinforce-ai_Ornith-1.0-35B-bf16.gguf`)                          |
 | DeepSeek OCR 2        | Document understanding (`mmproj-deepseek-ocr-2-q8_0.gguf`)                                        |
 
 ## All-rounders (coding + prose + analysis)
 
+Muse Glimmer 30B and Qwen3.8 27B are catalog favorites and carry a gold premium badge in the Brain Library.
+
 | Model                                    | Quant   | ~VRAM | Notes                                                                                                      |
 | ---------------------------------------- | ------- | ----- | ---------------------------------------------------------------------------------------------------------- |
-| **Qwen3.6 27B**                          | Q4_K_M  | ~16GB | Vision-capable all-rounder for code, reasoning, writing, and image-aware tasks.                            |
 | **Qwen3.8 27B**                          | Q4_K_M  | ~16GB | Vision-capable all-rounder for code, reasoning, writing, and image-aware tasks.                            |
 | **Muse Glimmer 30B**                     | Q4_K_XL | ~15GB | Vision-capable agentic model for coding, tool use, multi-step reasoning, and recovery from failed actions. |
-| **Qwen3 32B**                            | Q4_K_M  | ~19GB | Thoughtful generalist for reasoning, programming, structured writing, and analysis.                        |
-| **Qwen3 30B A3B** (MoE)                  | Q4_K_M  | ~18GB | Responsive all-purpose choice for everyday programming, reasoning, writing, and analysis.                  |
+| **Gemma 4 E4B**                          | Q4_K_M  | ~5GB  | Compact multimodal choice for coding, reasoning, writing, and image-aware tasks.                           |
 | **GLM-4.7 Flash** (MoE)                  | Q4_K_M  | ~17GB | Fast all-rounder for coding, reasoning, tool use, and interactive artifacts.                               |
 | **NVIDIA Nemotron 3 Nano 30B A3B** (MoE) | Q4_K_M  | ~23GB | Reasoning-focused choice for analysis, long inputs, and tool use.                                          |
 | **gpt-oss 20B** (MoE)                    | MXFP4   | ~11GB | Compact open-weight model with reliable tool calls, coding ability, and structured output.                 |
@@ -53,19 +52,17 @@ their GGUF filenames.
 
 ## Coding & artifact/widget specialists
 
-| Model                         | Quant  | ~VRAM | Notes                                                                                       |
-| ----------------------------- | ------ | ----- | ------------------------------------------------------------------------------------------- |
-| **Qwen 2.5 Coder 32B**        | Q4_K_M | ~20GB | Capable coding model for applications, self-contained HTML and React artifacts, and charts. |
-| **Qwen3 Coder 30B A3B** (MoE) | Q4_K_M | ~18GB | Fast coding-focused model for tools, widgets, and iterative UI work.                        |
-| **GLM-4 32B**                 | Q4_K_M | ~20GB | Coding specialist for single-file web apps, interactive widgets, and front-end prototypes.  |
-| **Codestral 22B**             | Q4_K_M | ~13GB | Fast fill-in-the-middle model for editor-style code completion and targeted edits.          |
+| Model                         | Quant  | ~VRAM | Notes                                                                                      |
+| ----------------------------- | ------ | ----- | ------------------------------------------------------------------------------------------ |
+| **Qwen3 Coder 30B A3B** (MoE) | Q4_K_M | ~18GB | Fast coding-focused model for tools, widgets, and iterative UI work.                       |
+| **GLM-4 32B**                 | Q4_K_M | ~20GB | Coding specialist for single-file web apps, interactive widgets, and front-end prototypes. |
+| **Codestral 22B**             | Q4_K_M | ~13GB | Fast fill-in-the-middle model for editor-style code completion and targeted edits.         |
 
 ## Prose / analysis leaning
 
 | Model           | Quant  | ~VRAM | Notes                                                                            |
 | --------------- | ------ | ----- | -------------------------------------------------------------------------------- |
 | **Gemma 4 31B** | Q4_K_M | ~17GB | Vision-capable choice for polished prose, document analysis, and reading images. |
-| **Gemma 3 27B** | Q4_K_M | ~17GB | Strong choice for marketing and financial writing, analysis, and document work.  |
 | **Phi-4 14B**   | Q4_K_M | ~9GB  | Compact model with strong structured reasoning and analysis for its size.        |
 
 ## Document ingestion companion
@@ -77,7 +74,7 @@ their GGUF filenames.
 ## Suggested first three to test
 
 1. **Muse Glimmer 30B** for vision-capable coding and local agent workflows
-2. **Qwen3.6 27B** for vision-capable general work
+2. **Qwen3.8 27B** for vision-capable general work
 3. **GLM-4.7 Flash** for fast coding and tool use
 
 ## Workflow per model, after download

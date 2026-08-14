@@ -253,6 +253,8 @@ export const CatalogModelSchema = z
     name: z.string(),
     /** Stable UI family identity. Otto clients resolve this to a monochrome glyph. */
     family: z.string().optional(),
+    /** Otto-curated favorite shown as a gold premium badge in the Brain Library. */
+    favorite: z.boolean().default(false),
     publisher: z.string().optional(),
     hfRepo: z.string(),
     quant: z.string(),
@@ -298,6 +300,8 @@ export const CatalogSchema = z
     note: z.string().optional(),
     vramBudgetBytes: z.number().optional(),
     systemRamBytes: z.number().optional(),
+    /** Retired curated ids that no longer belong to any canonical catalog entry. */
+    retiredModelIds: z.array(z.string()).default([]),
     models: z.array(CatalogModelSchema).default([]),
   })
   .passthrough();

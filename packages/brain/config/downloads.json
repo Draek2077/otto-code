@@ -3,25 +3,17 @@
   "note": "Curated download catalog for a 12-32GB-VRAM home-hardware box, aimed at coding + generative work (logic, financial/marketing prose, analysis, documents, and code-driven charts/widgets/artifacts). One canonical entry per distinct model (dense and MoE both) - quant/imatrix/distill/MTP re-quant variants are intentionally excluded; search Hugging Face directly for those. Source of truth for docs/candidate-models.md. approxWeightsBytes is the on-disk GGUF size at the listed quant (raw bytes, GiB-based, approximate); real KV/context fit must still be measured with `npm run calibrate`. Repos/files verified against public GGUF releases as of 2026-07; confirm the exact file before downloading.",
   "vramBudgetBytes": 34359738368,
   "systemRamBytes": 68719476736,
+  "retiredModelIds": [
+    "bartowski/Qwen2.5-Coder-32B-Instruct-GGUF/Qwen2.5-Coder-32B-Instruct-Q4_K_M.gguf",
+    "Qwen/Qwen3-32B-GGUF/Qwen3-32B-Q4_K_M.gguf",
+    "Qwen/Qwen3-32B-GGUF/Qwen3-32B-Q5_K_M.gguf",
+    "Qwen/Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf",
+    "Qwen/Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q5_K_M.gguf",
+    "unsloth/Qwen3.6-27B-MTP-GGUF/Qwen3.6-27B-Q4_K_M.gguf",
+    "unsloth/Qwen3.6-27B-MTP-GGUF/Qwen3.6-27B-Q5_K_M.gguf",
+    "lmstudio-community/gemma-3-27b-it-GGUF/gemma-3-27b-it-Q4_K_M.gguf"
+  ],
   "models": [
-    {
-      "id": "bartowski/Qwen2.5-Coder-32B-Instruct-GGUF/Qwen2.5-Coder-32B-Instruct-Q4_K_M.gguf",
-      "name": "Qwen 2.5 Coder 32B",
-      "family": "qwen",
-      "publisher": "bartowski",
-      "hfRepo": "bartowski/Qwen2.5-Coder-32B-Instruct-GGUF",
-      "quant": "Q4_K_M",
-      "approxWeightsBytes": 21474836480,
-      "params": "32B dense",
-      "moe": false,
-      "vision": false,
-      "thinking": false,
-      "contextMax": 131072,
-      "useCases": ["coding", "artifacts", "widgets", "charts"],
-      "tier": "Coding specialist",
-      "why": "A capable coding model for building applications, self-contained HTML and React artifacts, and chart code. Choose it when code generation is the main task.",
-      "status": "candidate"
-    },
     {
       "id": "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
       "replaces": [
@@ -45,79 +37,11 @@
       "status": "candidate"
     },
     {
-      "id": "Qwen/Qwen3-32B-GGUF/Qwen3-32B-Q4_K_M.gguf",
-      "replaces": ["Qwen/Qwen3-32B-GGUF/Qwen3-32B-Q5_K_M.gguf"],
-      "name": "Qwen3 32B",
-      "family": "qwen",
-      "publisher": "Qwen",
-      "hfRepo": "Qwen/Qwen3-32B-GGUF",
-      "quant": "Q4_K_M",
-      "approxWeightsBytes": 19762149024,
-      "params": "32B dense",
-      "moe": false,
-      "vision": false,
-      "thinking": true,
-      "contextMax": 131072,
-      "useCases": ["coding", "reasoning", "prose", "analysis"],
-      "tier": "All-rounder",
-      "why": "A well-rounded model for reasoning, programming, structured writing, and analysis. Choose it for tasks that benefit from a thoughtful generalist.",
-      "status": "candidate"
-    },
-    {
-      "id": "Qwen/Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf",
-      "replaces": ["Qwen/Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q5_K_M.gguf"],
-      "name": "Qwen3 30B A3B",
-      "family": "qwen",
-      "publisher": "Qwen",
-      "hfRepo": "Qwen/Qwen3-30B-A3B-GGUF",
-      "quant": "Q4_K_M",
-      "approxWeightsBytes": 18556685824,
-      "params": "30B MoE (~3B active)",
-      "moe": true,
-      "vision": false,
-      "thinking": true,
-      "contextMax": 262144,
-      "useCases": ["coding", "reasoning", "prose", "analysis"],
-      "tier": "All-rounder",
-      "why": "A responsive all-purpose model for everyday programming, reasoning, writing, and analysis. It is a good fit when speed matters.",
-      "status": "candidate"
-    },
-    {
-      "id": "unsloth/Qwen3.6-27B-MTP-GGUF/Qwen3.6-27B-Q4_K_M.gguf",
-      "replaces": ["unsloth/Qwen3.6-27B-MTP-GGUF/Qwen3.6-27B-Q5_K_M.gguf"],
-      "name": "Qwen3.6 27B",
-      "family": "qwen",
-      "publisher": "unsloth",
-      "hfRepo": "unsloth/Qwen3.6-27B-MTP-GGUF",
-      "quant": "Q4_K_M",
-      "approxWeightsBytes": 17106773120,
-      "params": "27B dense (MTP)",
-      "moe": false,
-      "vision": true,
-      "thinking": true,
-      "contextMax": 262144,
-      "useCases": ["coding", "reasoning", "prose", "analysis", "vision"],
-      "tier": "All-rounder",
-      "why": "A modern vision-capable all-rounder for code, reasoning, writing, and image-aware tasks. It is a strong default for varied work.",
-      "components": [
-        {
-          "id": "vision-projector",
-          "label": "Image understanding",
-          "description": "Lets this model read images and screenshots.",
-          "role": "vision_projector",
-          "file": "mmproj-F16.gguf",
-          "required": false,
-          "defaultDownload": false,
-          "defaultLoad": true
-        }
-      ],
-      "status": "candidate"
-    },
-    {
       "id": "unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q4_K_M.gguf",
       "replaces": ["unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q5_K_M.gguf"],
       "name": "Qwen3.8 27B",
       "family": "qwen",
+      "favorite": true,
       "publisher": "unsloth",
       "hfRepo": "unsloth/Qwen3.8-27B-GGUF",
       "quant": "Q4_K_M",
@@ -126,6 +50,16 @@
       "moe": false,
       "vision": true,
       "thinking": true,
+      "reasoningEfforts": ["low", "medium", "xhigh"],
+      "reasoningEffortDefault": "xhigh",
+      "reasoningTemplate": {
+        "enableThinkingArgument": "enable_thinking",
+        "effortArgument": "reasoning_effort"
+      },
+      "reasoningPreservation": {
+        "templateArgument": "preserve_thinking",
+        "default": true
+      },
       "contextMax": 262144,
       "useCases": ["coding", "reasoning", "prose", "analysis", "vision"],
       "tier": "All-rounder",
@@ -148,6 +82,7 @@
       "id": "unsloth/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-UD-Q4_K_XL.gguf",
       "name": "Muse Glimmer 30B",
       "family": "meta",
+      "favorite": true,
       "publisher": "Unsloth",
       "hfRepo": "unsloth/Muse-Glimmer-30B-GGUF",
       "quant": "Q4_K_XL",
@@ -189,36 +124,6 @@
       "status": "candidate"
     },
     {
-      "id": "lmstudio-community/gemma-3-27b-it-GGUF/gemma-3-27b-it-Q4_K_M.gguf",
-      "name": "Gemma 3 27B",
-      "family": "gemma",
-      "publisher": "lmstudio-community",
-      "hfRepo": "lmstudio-community/gemma-3-27b-it-GGUF",
-      "quant": "Q4_K_M",
-      "approxWeightsBytes": 18253611008,
-      "params": "27B dense",
-      "moe": false,
-      "vision": true,
-      "thinking": false,
-      "contextMax": 131072,
-      "useCases": ["prose", "analysis", "documents", "vision"],
-      "tier": "Writing and analysis",
-      "why": "A strong choice for polished marketing and financial writing, analysis, and document work. It can also read charts and images.",
-      "components": [
-        {
-          "id": "vision-projector",
-          "label": "Image understanding",
-          "description": "Lets this model read images and documents.",
-          "role": "vision_projector",
-          "file": "mmproj-model-f16.gguf",
-          "required": false,
-          "defaultDownload": false,
-          "defaultLoad": true
-        }
-      ],
-      "status": "candidate"
-    },
-    {
       "id": "lmstudio-community/gemma-4-31B-it-GGUF/gemma-4-31B-it-Q4_K_M.gguf",
       "name": "Gemma 4 31B",
       "family": "gemma",
@@ -241,6 +146,37 @@
           "description": "Lets this model read images and documents.",
           "role": "vision_projector",
           "file": "mmproj-gemma-4-31B-it-BF16.gguf",
+          "required": false,
+          "defaultDownload": false,
+          "defaultLoad": true
+        }
+      ],
+      "status": "candidate"
+    },
+    {
+      "id": "unsloth/gemma-4-E4B-it-GGUF/gemma-4-E4B-it-Q4_K_M.gguf",
+      "name": "Gemma 4 E4B",
+      "family": "gemma",
+      "publisher": "Unsloth",
+      "hfRepo": "unsloth/gemma-4-E4B-it-GGUF",
+      "quant": "Q4_K_M",
+      "approxWeightsBytes": 4977171584,
+      "params": "4.5B effective (8B total)",
+      "moe": false,
+      "vision": true,
+      "thinking": true,
+      "contextMax": 131072,
+      "useCases": ["coding", "reasoning", "prose", "analysis", "vision"],
+      "tier": "Compact all-rounder",
+      "why": "A compact multimodal model for coding, reasoning, writing, and image-aware tasks. Choose it when you want a capable local model with a smaller download.",
+      "components": [
+        {
+          "id": "vision-projector",
+          "label": "Image understanding",
+          "description": "Lets this model read images and screenshots.",
+          "role": "vision_projector",
+          "file": "mmproj-F16.gguf",
+          "bytes": 990372672,
           "required": false,
           "defaultDownload": false,
           "defaultLoad": true

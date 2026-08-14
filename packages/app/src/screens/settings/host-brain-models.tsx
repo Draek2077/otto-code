@@ -12,7 +12,13 @@ import type {
   BrainRepoQuant,
   BrainRuntime,
 } from "@otto-code/protocol/messages";
-import { CircleCheck, Download, HardDrive, Settings2 } from "@/components/icons/material-icons";
+import {
+  CircleCheck,
+  Download,
+  HardDrive,
+  Medal,
+  Settings2,
+} from "@/components/icons/material-icons";
 import { BrainModelFamilyIcon } from "@/components/brain/brain-model-family-icon";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -37,6 +43,7 @@ const ThemedDownload = withUnistyles(Download);
 const ThemedHardDrive = withUnistyles(HardDrive);
 const ThemedCircleCheck = withUnistyles(CircleCheck);
 const ThemedBundleOptions = withUnistyles(Settings2);
+const ThemedFavorite = withUnistyles(Medal);
 const ThemedBrainModelFamilyIcon = withUnistyles(BrainModelFamilyIcon, (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
@@ -48,6 +55,10 @@ const foregroundIcon = (theme: Theme) => ({
 const successIcon = (theme: Theme) => ({
   color: theme.colors.palette.green[400],
   size: theme.iconSize.sm,
+});
+const favoriteIcon = (theme: Theme) => ({
+  color: theme.colors.palette.amber[500],
+  size: 14,
 });
 
 const downloadIcon = <ThemedDownload uniProps={foregroundIcon} />;
@@ -856,6 +867,7 @@ function CatalogRow({
           <Text style={[settingsStyles.rowTitle, styles.modelTitle]} numberOfLines={1}>
             {model.name}
           </Text>
+          {model.favorite ? <ThemedFavorite uniProps={favoriteIcon} /> : null}
         </View>
         {trailing}
       </View>

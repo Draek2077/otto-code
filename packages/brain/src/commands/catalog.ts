@@ -18,6 +18,7 @@ export interface CatalogRow {
   id: string;
   name: string;
   family: string | null;
+  favorite: boolean;
   installed: boolean;
   publisher: string;
   repo: string;
@@ -72,6 +73,7 @@ export async function runCatalogCommand(
     id: model.id,
     name: model.name,
     family: model.family ?? null,
+    favorite: model.favorite,
     installed: installedCatalogIds.has(model.id),
     publisher: model.publisher ?? "",
     repo: model.hfRepo,

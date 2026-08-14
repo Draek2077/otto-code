@@ -2241,6 +2241,7 @@ export const BrainCatalogModelSchema = z
     id: z.string(),
     name: z.string().default(""),
     family: z.string().nullable().optional(),
+    favorite: z.boolean().default(false),
     installed: z.boolean().default(false),
     publisher: z.string().default(""),
     repo: z.string().default(""),
