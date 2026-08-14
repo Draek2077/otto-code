@@ -126,6 +126,14 @@ describe("loadCatalog", () => {
     );
   });
 
+  it("gives every curated bundle component a byte budget for download progress", () => {
+    const catalog = loadCatalog(testPaths());
+    const components = catalog.models.flatMap((model) => model.components ?? []);
+
+    expect(components).not.toHaveLength(0);
+    expect(components.every((component) => (component.bytes ?? 0) > 0)).toBe(true);
+  });
+
   it("defaults to Q4_K_M unless the source format requires another quant", () => {
     const catalog = loadCatalog(testPaths());
     const nonQ4Defaults = catalog.models

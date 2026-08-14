@@ -148,7 +148,13 @@ export interface HostJob {
 }
 
 export interface HostJobRunner {
-  start: (kind: HostJob["kind"], target: string | null, args: string[]) => HostJob;
+  start: (
+    kind: HostJob["kind"],
+    target: string | null,
+    args: string[],
+    /** A bundle entry owns its companion-artifact queue, not the whole host. */
+    pull?: { entryKey: string; components: string[] },
+  ) => HostJob;
   list: () => HostJob[];
   cancel: (jobId: string) => Promise<HostJob[]>;
   query: (args: string[]) => Promise<unknown>;
@@ -984,7 +990,11 @@ export function createHostApi(deps: HostApiDeps): HostApi {
       string,
       {
         kind: Exclude<HostJob["kind"], "bench">;
-        makeArgs: (body: Record<string, unknown>) => { target: string | null; args: string[] };
+        makeArgs: (body: Record<string, unknown>) => {
+          target: string | null;
+          args: string[];
+          pull?: { entryKey: string; components: string[] };
+        };
       }
     > = {
       "/__host/jobs/pull": {
@@ -1012,6 +1022,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
               "--",
               model,
             ],
+            pull: { entryKey: model, components: components ?? [] },
           };
         },
       },
@@ -1040,6 +1051,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
               "--",
               repo,
             ],
+            pull: { entryKey: `${repo}#${quant}`, components: components ?? [] },
           };
         },
       },
@@ -1111,7 +1123,9 @@ export function createHostApi(deps: HostApiDeps): HostApi {
         }
         try {
           const spec = start.makeArgs(result.body as Record<string, unknown>);
-          sendJson(res, { job: deps.jobs?.start(start.kind, spec.target, spec.args) ?? null });
+          sendJson(res, {
+            job: deps.jobs?.start(start.kind, spec.target, spec.args, spec.pull) ?? null,
+          });
         } catch (error) {
           sendError(res, 400, errorMessage(error));
         }

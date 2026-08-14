@@ -71,6 +71,7 @@
           "description": "Lets this model read images and screenshots.",
           "role": "vision_projector",
           "file": "mmproj-F16.gguf",
+          "bytes": 927607488,
           "required": false,
           "defaultDownload": false,
           "defaultLoad": true
@@ -146,6 +147,7 @@
           "description": "Lets this model read images and documents.",
           "role": "vision_projector",
           "file": "mmproj-gemma-4-31B-it-BF16.gguf",
+          "bytes": 1200725984,
           "required": false,
           "defaultDownload": false,
           "defaultLoad": true
@@ -210,6 +212,7 @@
           "description": "Lets this model read images and documents.",
           "role": "vision_projector",
           "file": "mmproj-mistralai_Mistral-Small-3.2-24B-Instruct-2506-bf16.gguf",
+          "bytes": 887647040,
           "required": false,
           "defaultDownload": false,
           "defaultLoad": true
@@ -243,6 +246,7 @@
           "description": "Lets this model read images and screenshots.",
           "role": "vision_projector",
           "file": "mmproj-deepreinforce-ai_Ornith-1.0-35B-bf16.gguf",
+          "bytes": 902822240,
           "required": false,
           "defaultDownload": false,
           "defaultLoad": true
@@ -384,6 +388,7 @@
           "description": "Lets this model read document images.",
           "role": "vision_projector",
           "file": "mmproj-deepseek-ocr-2-q8_0.gguf",
+          "bytes": 512537792,
           "required": false,
           "defaultDownload": false,
           "defaultLoad": true

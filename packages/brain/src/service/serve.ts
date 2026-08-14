@@ -94,21 +94,82 @@ type ResidentJobRunner = (
   signal: AbortSignal,
 ) => Promise<void>;
 
+type ServiceJob = HostJob & {
+  child: ChildProcess | null;
+  controller: AbortController | null;
+  pull?: {
+    entryKey: string;
+    components: Set<string>;
+    queue: { args: string[]; components: string[] }[];
+  };
+};
+
+/** Model pulls only write the model store, so independent entries can transfer together. */
+export function canRunAlongsideModelPull(kind: HostJob["kind"]): boolean {
+  return kind === "pull" || kind === "runtime-remove";
+}
+
+export function componentOnlyArgs(args: string[], components: string[]): string[] {
+  const separator = args.lastIndexOf("--");
+  const beforeTarget = separator === -1 ? args : args.slice(0, separator);
+  const target = separator === -1 ? [] : args.slice(separator);
+  const base: string[] = [];
+  for (let index = 0; index < beforeTarget.length; index += 1) {
+    const arg = beforeTarget[index];
+    if (arg === "--primary-only") continue;
+    if (arg === "--component") {
+      index += 1;
+      continue;
+    }
+    base.push(arg);
+  }
+  return [
+    ...base,
+    "--components-only",
+    ...components.flatMap((component) => ["--component", component]),
+    ...target,
+  ];
+}
+
 class ServiceJobRunner implements HostJobRunner {
-  private readonly jobs = new Map<
-    string,
-    HostJob & { child: ChildProcess | null; controller: AbortController | null }
-  >();
+  private readonly jobs = new Map<string, ServiceJob>();
 
   constructor(
     private readonly onPullCompleted: () => void,
     private readonly runResidentJob: ResidentJobRunner,
   ) {}
 
-  start(kind: HostJob["kind"], target: string | null, args: string[]): HostJob {
+  start(
+    kind: HostJob["kind"],
+    target: string | null,
+    args: string[],
+    pull?: { entryKey: string; components: string[] },
+  ): HostJob {
+    if (kind === "pull" && pull) {
+      const existing = [...this.jobs.values()].find(
+        (job) =>
+          job.kind === "pull" && job.status === "running" && job.pull?.entryKey === pull.entryKey,
+      );
+      if (existing?.pull) {
+        const components = pull.components.filter(
+          (component) => !existing.pull!.components.has(component),
+        );
+        if (components.length > 0) {
+          for (const component of components) existing.pull.components.add(component);
+          existing.pull.queue.push({ args: componentOnlyArgs(args, components), components });
+          existing.message = `Queued ${components.join(", ")}…`;
+        }
+        return this.publicJob(existing);
+      }
+    }
+
     const running = [...this.jobs.values()].find((job) => job.status === "running");
-    if (running) throw new Error(`Another operation is already running (${running.label}).`);
-    const job: HostJob & { child: ChildProcess | null; controller: AbortController | null } = {
+    const activeNonDownload = [...this.jobs.values()].find(
+      (job) => job.status === "running" && job.kind !== "pull",
+    );
+    const conflict = canRunAlongsideModelPull(kind) ? activeNonDownload : running;
+    if (conflict) throw new Error(`Another operation is already running (${conflict.label}).`);
+    const job: ServiceJob = {
       id: `brainjob_${randomUUID()}`,
       kind,
       label:
@@ -126,6 +187,15 @@ class ServiceJobRunner implements HostJobRunner {
       finishedAt: null,
       child: null,
       controller: null,
+      ...(kind === "pull" && pull
+        ? {
+            pull: {
+              entryKey: pull.entryKey,
+              components: new Set(pull.components),
+              queue: [],
+            },
+          }
+        : {}),
     };
     this.jobs.set(job.id, job);
 
@@ -156,6 +226,11 @@ class ServiceJobRunner implements HostJobRunner {
     // Reusing that entry point keeps its config/path resolution on this host.
     const entry = process.argv[1];
     if (!entry) throw new Error("The brain service has no CLI entry point.");
+    this.startChild(job, args, entry);
+    return this.publicJob(job);
+  }
+
+  private startChild(job: ServiceJob, args: string[], entry: string): void {
     const child = spawn(process.execPath, [entry, ...args], {
       cwd: process.cwd(),
       env: process.env,
@@ -168,7 +243,16 @@ class ServiceJobRunner implements HostJobRunner {
     child.once("error", (error) => this.finish(job, "failed", error.message));
     child.once("close", (code) => {
       if (job.status !== "running") return;
-      if (code === 0 && kind === "pull") {
+      job.child = null;
+      if (code === 0 && job.kind === "pull" && job.pull) {
+        const next = job.pull.queue.shift();
+        if (next) {
+          job.message = `Queued ${next.components.join(", ")}…`;
+          this.startChild(job, next.args, entry);
+          return;
+        }
+      }
+      if (code === 0 && job.kind === "pull") {
         try {
           // Downloads happen in a child process, but inventory is served from
           // this process's in-memory scan. Reconcile before reporting success
@@ -189,7 +273,6 @@ class ServiceJobRunner implements HostJobRunner {
         code === 0 ? null : (job.message ?? `Exited with code ${code}.`),
       );
     });
-    return this.publicJob(job);
   }
 
   async query(args: string[]): Promise<unknown> {
@@ -250,10 +333,7 @@ class ServiceJobRunner implements HostJobRunner {
     return this.list();
   }
 
-  private ingestOutput(
-    job: HostJob & { child: ChildProcess | null; controller: AbortController | null },
-    chunk: string,
-  ): void {
+  private ingestOutput(job: ServiceJob, chunk: string): void {
     for (const line of chunk
       .split(/[\r\n]+/u)
       .map((value) => value.trim())
@@ -266,11 +346,7 @@ class ServiceJobRunner implements HostJobRunner {
     }
   }
 
-  private finish(
-    job: HostJob & { child: ChildProcess | null; controller: AbortController | null },
-    status: HostJob["status"],
-    error: string | null,
-  ): void {
+  private finish(job: ServiceJob, status: HostJob["status"], error: string | null): void {
     if (job.status !== "running") return;
     job.child = null;
     job.controller = null;
@@ -283,8 +359,9 @@ class ServiceJobRunner implements HostJobRunner {
   private publicJob({
     child: _child,
     controller: _controller,
+    pull: _pull,
     ...job
-  }: HostJob & { child: ChildProcess | null; controller: AbortController | null }): HostJob {
+  }: ServiceJob): HostJob {
     return job;
   }
 }

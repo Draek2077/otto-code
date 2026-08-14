@@ -6,7 +6,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { BrainConfigSchema, type BrainConfig } from "../config/schema.js";
 import { HOST_API_VERSION } from "./host-api.js";
-import { effectiveAuthToken, startService } from "./serve.js";
+import {
+  canRunAlongsideModelPull,
+  componentOnlyArgs,
+  effectiveAuthToken,
+  startService,
+} from "./serve.js";
 
 // The bind guard must throw before any process is spawned; a truthy stub runtime
 // is all resolveRuntime needs to provide for that path.
@@ -28,6 +33,45 @@ function makeTmp(): string {
 
 afterEach(() => {
   for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+describe("remote Brain model downloads", () => {
+  it("allows independent model entries to download together", () => {
+    expect(canRunAlongsideModelPull("pull")).toBe(true);
+  });
+
+  it("keeps runtime-consuming work serialized with model downloads", () => {
+    expect(canRunAlongsideModelPull("runtime-install")).toBe(false);
+    expect(canRunAlongsideModelPull("calibrate")).toBe(false);
+  });
+
+  it("queues only new companion artifacts behind an entry's current transfer", () => {
+    expect(
+      componentOnlyArgs(
+        [
+          "pull",
+          "--quant",
+          "Q4_K_M",
+          "--component",
+          "vision-projector",
+          "--json",
+          "--",
+          "catalog-entry",
+        ],
+        ["drafter"],
+      ),
+    ).toEqual([
+      "pull",
+      "--quant",
+      "Q4_K_M",
+      "--json",
+      "--components-only",
+      "--component",
+      "drafter",
+      "--",
+      "catalog-entry",
+    ]);
+  });
 });
 
 function configWith(overrides: {

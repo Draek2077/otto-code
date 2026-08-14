@@ -9,7 +9,7 @@ progress_completed: 4
 progress_total: 6
 progress_unit: "phases"
 created_at: "2026-08-11T06:54:59.270Z"
-updated_at: "2026-08-14T15:34:52.135Z"
+updated_at: "2026-08-14T19:53:01.577Z"
 ---
 
 # Brain model bundles
@@ -115,3 +115,11 @@ Otto Brain treats a multi-artifact local model as one selectable bundle. Users e
   summary: "While a selected Brain bundle quant is downloading, enabling additional Bundle options must not interrupt or cancel the active transfer. The new artifacts join that bundle's download queue, and the Library progress ring reports byte-weighted aggregate progress across the primary quant and every queued companion artifact."
   source: "User requirement, 2026-08-14"
   affects: ["brain-bundle-download-progress-ring"]
+- time: "2026-08-14T19:41:43.106Z"
+  kind: "evidence"
+  summary: "Remote Brain must preserve the Library's concurrent-download contract: a second model entry can start its own pull while another is active, while additional bundle components queue only behind the active transfer for that same entry. Implemented in the resident host job runner and host-job API, with focused service coverage."
+  source: "User requirement and implementation, 2026-08-14"
+- time: "2026-08-14T19:53:01.577Z"
+  kind: "evidence"
+  summary: "Bundle progress requires a known byte total. Catalog verification filled the missing projector sizes for Qwen3.8 27B (927,607,488), Gemma 4 31B (1,200,725,984), Mistral Small 3.2 24B (887,647,040), Ornith 1.0 35B (902,822,240), and DeepSeek OCR 2 (512,537,792), allowing their combined primary-plus-component download rings to report live progress."
+  source: "User report and Hugging Face repository metadata, 2026-08-14"
