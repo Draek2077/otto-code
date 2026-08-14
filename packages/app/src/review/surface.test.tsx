@@ -61,6 +61,7 @@ vi.mock("react-native", async (importOriginal) => {
       accessibilityLabel,
       children,
       onPress,
+      onPressIn,
       ...props
     }: {
       accessibilityLabel?: string;
@@ -68,6 +69,7 @@ vi.mock("react-native", async (importOriginal) => {
         | React.ReactNode
         | ((state: { hovered: boolean; pressed: boolean }) => React.ReactNode);
       onPress?: () => void;
+      onPressIn?: (event: React.MouseEvent<HTMLButtonElement>) => void;
       [key: string]: unknown;
     }) => {
       if (accessibilityLabel) {
@@ -81,6 +83,7 @@ vi.mock("react-native", async (importOriginal) => {
           "aria-label": accessibilityLabel,
           "data-testid": typeof props.testID === "string" ? props.testID : undefined,
           disabled: props.disabled === true,
+          onMouseDown: onPressIn,
           onClick: onPress,
           type: "button",
         },
@@ -405,6 +408,22 @@ describe("InlineReviewEditor", () => {
 
     fireEvent.click(getByTestId("editor-cancel"));
     expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("saves on the first click while the editor owns focus", () => {
+    const onSave = vi.fn();
+    const { getByTestId } = render(
+      <InlineReviewEditor initialBody="ready" onCancel={vi.fn()} onSave={onSave} testID="editor" />,
+    );
+    const input = getByTestId("editor-input");
+    const save = getByTestId("editor-save");
+
+    fireEvent.focus(input);
+    expect(fireEvent.mouseDown(save)).toBe(false);
+    fireEvent.click(save);
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave).toHaveBeenCalledWith("ready");
   });
 
   it("handles Escape cancel and Mod+Enter save from the focused textarea", () => {

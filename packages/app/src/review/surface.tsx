@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Pencil, Plus, Trash2 } from "@/components/icons/material-icons";
 import {
   Pressable,
+  type GestureResponderEvent,
   type PressableStateCallbackType,
   Text,
   TextInput,
@@ -569,6 +570,18 @@ export function InlineReviewEditor({
     focus.restore();
   }, [focus]);
   const handleSave = useCallback(() => onSave(trimmedBody), [onSave, trimmedBody]);
+  const handleSavePressIn = useCallback(
+    (event: GestureResponderEvent) => {
+      // A web button takes focus on pointer-down, before its click handler runs. That
+      // blurs the editor and restores the workspace pane, which can consume the first
+      // Save click. The button does not need focus to receive the click, so retain the
+      // editor focus until onPress submits the comment.
+      if (isWeb && isFocused) {
+        event.preventDefault();
+      }
+    },
+    [isFocused],
+  );
   const cancelShortcut = useMemo(
     () => (showKeyboardHints ? <Shortcut keys={REVIEW_CANCEL_SHORTCUT_KEYS} /> : null),
     [showKeyboardHints],
@@ -649,6 +662,7 @@ export function InlineReviewEditor({
           testID={testID ? `${testID}-save` : undefined}
           hitSlop={SMALL_ACTION_HIT_SLOP}
           disabled={!canSave}
+          onPressIn={handleSavePressIn}
           onPress={handleSave}
           variant="default"
           size="xs"
