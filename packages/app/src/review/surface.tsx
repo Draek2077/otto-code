@@ -532,7 +532,18 @@ export function getInlineReviewThreadViewportStyle({
   if (!pinToViewport || !isWeb) {
     return widthStyle;
   }
-  const stickyStyle = { position: "sticky", left: viewportLeft } as unknown as ViewStyle;
+  // The thread container is normally `flex: 1`, which stretches it to the full
+  // width of the code content. A sticky element only pins within the slack left
+  // by its own sizing, so once the container is as wide as the widest row there
+  // is no slack and the card slides off with the code. Hold the pinned container
+  // to its explicit viewport width so `left` actually has room to pin.
+  const stickyStyle = {
+    position: "sticky",
+    left: viewportLeft,
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: "auto",
+  } as unknown as ViewStyle;
   return [stickyStyle, widthStyle];
 }
 

@@ -288,7 +288,16 @@ describe("git diff inline review helpers", () => {
         viewportWidth: 320,
         pinToViewport: true,
       }),
-    ).toEqual([{ position: "sticky", left: 0 }, inlineUnistylesStyle({ width: 320 })]);
+    ).toEqual([
+      {
+        position: "sticky",
+        left: 0,
+        flexGrow: 0,
+        flexShrink: 0,
+        flexBasis: "auto",
+      },
+      inlineUnistylesStyle({ width: 320 }),
+    ]);
   });
 
   it("pins a review thread after its visible number gutter", () => {
@@ -298,7 +307,16 @@ describe("git diff inline review helpers", () => {
         viewportLeft: 48,
         pinToViewport: true,
       }),
-    ).toEqual([{ position: "sticky", left: 48 }, inlineUnistylesStyle({ width: 272 })]);
+    ).toEqual([
+      {
+        position: "sticky",
+        left: 48,
+        flexGrow: 0,
+        flexShrink: 0,
+        flexBasis: "auto",
+      },
+      inlineUnistylesStyle({ width: 272 }),
+    ]);
   });
 
   it("keeps the gutter add-comment target accessible and clicking opens the editor", () => {
