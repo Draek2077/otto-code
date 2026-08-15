@@ -374,30 +374,37 @@ function BudgetPanel({
     );
   }
 
-  const utilization = Math.max(0, Math.min(1, budget.utilization));
-  const overBy = budget.totalBytes - budget.usableBytes;
+  // The track scales to the WHOLE allocation, not just the usable VRAM. When
+  // the total exceeds VRAM, the bar grows past its 100% line and the excess is
+  // a third, purple segment: that is the cache spilling into system RAM.
+  const spillBytes = Math.max(0, budget.totalBytes - budget.usableBytes);
+  const onGpuBytes = Math.min(budget.totalBytes, budget.usableBytes);
+  const scaleTotal = Math.max(budget.totalBytes, budget.usableBytes);
+  const onGpuPct = scaleTotal > 0 ? (onGpuBytes / scaleTotal) * 100 : 0;
+  const spillPct = scaleTotal > 0 ? (spillBytes / scaleTotal) * 100 : 0;
 
   return (
     <View style={styles.budget}>
       <View style={styles.meterTrack}>
-        <View
-          style={[
-            styles.meterFill,
-            !budget.fits && styles.meterFillDanger,
-            { width: `${utilization * 100}%` as const },
-          ]}
-        />
+        <View style={[styles.meterFill, { width: `${onGpuPct}%` as const }]} />
+        {spillPct > 0 ? (
+          <View
+            style={[styles.meterFill, styles.meterFillSpill, { width: `${spillPct}%` as const }]}
+          />
+        ) : null}
       </View>
       <Text style={budget.fits ? styles.budgetVerdictGood : styles.budgetVerdictBad}>
         {budget.fits
           ? `Fits entirely on the GPU, ${formatGiB(budget.headroomBytes)} to spare`
-          : `Exceeds VRAM by ${formatGiB(overBy)}`}
+          : `${formatGiB(onGpuBytes)} on the GPU, ${formatGiB(spillBytes)} spills to RAM`}
       </Text>
       <Text style={styles.budgetBreakdown}>
         {`weights ${formatGiB(budget.weightsBytes)}`}
         {budget.mmprojBytes > 0 ? ` + projector ${formatGiB(budget.mmprojBytes)}` : ""}
         {` + KV ${formatGiB(budget.kvBytes)} + overhead ${formatGiB(budget.overheadBytes)}`}
-        {` = ${formatGiB(budget.totalBytes)} of ${formatGiB(budget.usableBytes)} usable`}
+        {` = ${formatGiB(budget.totalBytes)}`}
+        {` of ${formatGiB(budget.usableBytes)} usable`}
+        {!budget.fits ? ` · ${formatGiB(spillBytes)} over` : ""}
       </Text>
       {/* Where the KV figure came from decides how much to trust the verdict.
           The theoretical formula overestimates badly on architectures that only
@@ -1190,13 +1197,16 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface3,
     overflow: "hidden",
   },
+  // The track clips both ends (overflow hidden + full radius), so the fill
+  // segments stay square at their seam - a rounded fill here would pinch a gap
+  // where the on-GPU and spill segments meet.
   meterFill: {
     height: "100%",
-    borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.accentBright,
   },
-  meterFillDanger: {
-    backgroundColor: theme.colors.palette.red[500],
+  // The purple tail is the cache that does not fit in VRAM and spills to RAM.
+  meterFillSpill: {
+    backgroundColor: theme.colors.palette.purple[500],
   },
   budgetVerdictGood: {
     fontSize: theme.fontSize.sm,

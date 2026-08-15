@@ -66,6 +66,13 @@ export async function runCalibrateCommand(
   const model = pickModel(catalog, options.model ?? store.lastModelId ?? undefined);
   const profile = forModel(store, model, config.defaults);
 
+  // A measurement from the previous run is the best prior on bytes/token for
+  // this exact profile shape. The sample cap uses it so the high sample never
+  // lands at a context that would spill the KV cache to CPU and bias the new
+  // slope low. Inherited family calibrations are excluded: they were measured
+  // on another file and are not a trustworthy budget input here.
+  const prior = getCalibration(store, model, profile);
+
   // Announced so the Brain rail can show the host as busy: a calibrate loads the
   // model at several context sizes and will make anything else queue behind it.
   const measurement = await withActivity("calibrate", { target: model.displayName }, () =>
@@ -73,12 +80,17 @@ export async function runCalibrateCommand(
       runtime,
       model,
       profile,
+      priorCalibration: prior && !prior.inherited ? prior : null,
       onProgress: (p) => {
         if (p.phase === "loading")
           process.stderr.write(`  loading at ${p.contextSize?.toLocaleString()} ctx…\n`);
         if (p.phase === "measured")
           process.stderr.write(`    used ${vram.formatGiB(p.deltaBytes ?? 0)}\n`);
         if (p.phase === "skip") process.stderr.write(`  skipped ${p.contextSize}: ${p.reason}\n`);
+        if (p.phase === "failed")
+          process.stderr.write(
+            `  failed at ${p.contextSize?.toLocaleString()}: ${p.error ?? p.reason}\n`,
+          );
       },
     }),
   );
