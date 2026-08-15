@@ -1010,11 +1010,11 @@ export const en = {
         closeTabsRightTitle: "Close tabs to the right?",
         closeOtherTabsTitle: "Close other tabs?",
         bulk: {
-          all: "This will archive {{agents}} chat(s), close {{terminals}} terminal(s), and close {{tabs}} tab(s). Any running process or external file editor in them will be stopped immediately.",
+          all: "This will archive {{agents}} chat(s), close {{terminals}} terminal(s), and close {{tabs}} tab(s). Any running process or external file editor in those terminals and tabs will be stopped immediately.",
           agentsAndTerminals:
             "This will archive {{agents}} chat(s) and close {{terminals}} terminal(s). Any running process in a closed terminal will be stopped immediately.",
           terminalsAndTabs:
-            "This will close {{terminals}} terminal(s) and close {{tabs}} tab(s). Any running process or external file editor in them will be stopped immediately.",
+            "This will close {{terminals}} terminal(s) and close {{tabs}} tab(s). Any running process or external file editor in those terminals and tabs will be stopped immediately.",
           agentsAndTabs:
             "This will archive {{agents}} chat(s) and close {{tabs}} tab(s). Any external file editor in a closed tab will be stopped immediately.",
           terminals:
@@ -2689,6 +2689,12 @@ export const en = {
       title: "Discard changes?",
       message: "This file has unsaved changes. Close it and discard them?",
       confirm: "Discard",
+    },
+    externalEditorDialog: {
+      title: "Close the running file editor?",
+      message:
+        "Closing this tab stops the external file editor. Unsaved changes inside Vim or Neovim may be lost.",
+      confirm: "Close and stop editor",
     },
   },
   fileFinder: {

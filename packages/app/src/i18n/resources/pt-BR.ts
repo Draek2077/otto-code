@@ -998,15 +998,16 @@ export const ptBR: TranslationResources = {
         closeTabsRightTitle: "Fechar abas à direita?",
         closeOtherTabsTitle: "Fechar outras abas?",
         bulk: {
-          all: "Isso vai arquivar {{agents}} agente(s), fechar {{terminals}} terminal(ais) e fechar {{tabs}} aba(s). Qualquer processo em execução em um terminal fechado será interrompido imediatamente.",
+          all: "Isso vai arquivar {{agents}} agente(s), fechar {{terminals}} terminal(ais) e fechar {{tabs}} aba(s). Qualquer processo em execução ou editor de arquivos externo nesses terminais e abas será interrompido imediatamente.",
           agentsAndTerminals:
             "Isso vai arquivar {{agents}} agente(s) e fechar {{terminals}} terminal(ais). Qualquer processo em execução em um terminal fechado será interrompido imediatamente.",
           terminalsAndTabs:
-            "Isso vai fechar {{terminals}} terminal(ais) e fechar {{tabs}} aba(s). Qualquer processo em execução em um terminal fechado será interrompido imediatamente.",
-          agentsAndTabs: "Isso vai arquivar {{agents}} agente(s) e fechar {{tabs}} aba(s).",
+            "Isso vai fechar {{terminals}} terminal(ais) e fechar {{tabs}} aba(s). Qualquer processo em execução ou editor de arquivos externo nesses terminais e abas será interrompido imediatamente.",
+          agentsAndTabs:
+            "Isso vai arquivar {{agents}} agente(s) e fechar {{tabs}} aba(s). Qualquer editor de arquivos externo em uma aba fechada será interrompido imediatamente.",
           terminals:
             "Isso vai fechar {{terminals}} terminal(ais). Qualquer processo em execução em um terminal fechado será interrompido imediatamente.",
-          tabs: "Isso vai fechar {{tabs}} aba(s).",
+          tabs: "Isso vai fechar {{tabs}} aba(s). Qualquer editor de arquivos externo em uma aba fechada será interrompido imediatamente.",
           agents: "Isso vai arquivar {{agents}} agente(s).",
         },
         unsavedTitle: "Alterações não salvas",
@@ -2647,6 +2648,12 @@ export const ptBR: TranslationResources = {
       title: "Descartar as alterações?",
       message: "Este arquivo tem alterações não salvas. Fechar e descartá-las?",
       confirm: "Descartar",
+    },
+    externalEditorDialog: {
+      title: "Fechar o editor de arquivos em execução?",
+      message:
+        "Fechar esta aba interrompe o editor de arquivos externo. Alterações não salvas dentro do Vim ou Neovim podem ser perdidas.",
+      confirm: "Fechar e interromper o editor",
     },
   },
   fileFinder: {

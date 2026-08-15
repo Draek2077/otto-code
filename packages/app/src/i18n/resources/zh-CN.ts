@@ -978,15 +978,16 @@ export const zhCN: TranslationResources = {
         closeTabsRightTitle: "关闭右侧标签？",
         closeOtherTabsTitle: "关闭其他标签？",
         bulk: {
-          all: "这会归档 {{agents}} 个 Agent，关闭 {{terminals}} 个 Terminal，并关闭 {{tabs}} 个标签。已关闭 Terminal 中任何正在运行的进程都会立即停止。",
+          all: "这会归档 {{agents}} 个 Agent，关闭 {{terminals}} 个 Terminal，并关闭 {{tabs}} 个标签。这些 Terminal 和标签中任何正在运行的进程或外部文件编辑器都会立即停止。",
           agentsAndTerminals:
             "这会归档 {{agents}} 个 Agent，并关闭 {{terminals}} 个 Terminal。已关闭 Terminal 中任何正在运行的进程都会立即停止。",
           terminalsAndTabs:
-            "这会关闭 {{terminals}} 个 Terminal，并关闭 {{tabs}} 个标签。已关闭 Terminal 中任何正在运行的进程都会立即停止。",
-          agentsAndTabs: "这会归档 {{agents}} 个 Agent，并关闭 {{tabs}} 个标签。",
+            "这会关闭 {{terminals}} 个 Terminal，并关闭 {{tabs}} 个标签。这些 Terminal 和标签中任何正在运行的进程或外部文件编辑器都会立即停止。",
+          agentsAndTabs:
+            "这会归档 {{agents}} 个 Agent，并关闭 {{tabs}} 个标签。已关闭标签中的外部文件编辑器会立即停止。",
           terminals:
             "这会关闭 {{terminals}} 个 Terminal。已关闭 Terminal 中任何正在运行的进程都会立即停止。",
-          tabs: "这会关闭 {{tabs}} 个标签。",
+          tabs: "这会关闭 {{tabs}} 个标签。已关闭标签中的外部文件编辑器会立即停止。",
           agents: "这会归档 {{agents}} 个 Agent。",
         },
         unsavedTitle: "未保存的更改",
@@ -2566,6 +2567,11 @@ export const zhCN: TranslationResources = {
       title: "放弃更改？",
       message: "此文件有未保存的更改。关闭并放弃这些更改？",
       confirm: "放弃",
+    },
+    externalEditorDialog: {
+      title: "关闭正在运行的文件编辑器？",
+      message: "关闭此标签将停止外部文件编辑器。Vim 或 Neovim 中未保存的更改可能会丢失。",
+      confirm: "关闭并停止编辑器",
     },
   },
   fileFinder: {

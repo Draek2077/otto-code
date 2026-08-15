@@ -999,15 +999,16 @@ export const fr: TranslationResources = {
         closeTabsRightTitle: "Fermer les onglets à droite?",
         closeOtherTabsTitle: "Fermer les autres onglets?",
         bulk: {
-          all: "Cela archivera les agents{{agents}}, fermera les terminaux{{terminals}}et fermera les onglets{{tabs}}. Tout processus en cours d’exécution dans un terminal fermé sera immédiatement arrêté.",
+          all: "Cela archivera les agents{{agents}}, fermera les terminaux{{terminals}}et fermera les onglets{{tabs}}. Tout processus en cours d’exécution ou éditeur de fichiers externe dans ces terminaux et ces onglets sera immédiatement arrêté.",
           agentsAndTerminals:
             "Cela archivera les agents{{agents}}et fermera les terminaux{{terminals}}. Tout processus en cours d’exécution dans un terminal fermé sera immédiatement arrêté.",
           terminalsAndTabs:
-            "Cela fermera le(s) terminal(s){{terminals}}et fermera le(s) onglet(s){{tabs}}. Tout processus en cours d’exécution dans un terminal fermé sera immédiatement arrêté.",
-          agentsAndTabs: "Cela archivera les agents{{agents}}et fermera les onglets{{tabs}}.",
+            "Cela fermera le(s) terminal(s){{terminals}}et fermera le(s) onglet(s){{tabs}}. Tout processus en cours d’exécution ou éditeur de fichiers externe dans ces terminaux et ces onglets sera immédiatement arrêté.",
+          agentsAndTabs:
+            "Cela archivera les agents{{agents}}et fermera les onglets{{tabs}}. Tout éditeur de fichiers externe dans un onglet fermé sera immédiatement arrêté.",
           terminals:
             "Cela fermera le(s) terminal(s){{terminals}}. Tout processus en cours d’exécution dans un terminal fermé sera immédiatement arrêté.",
-          tabs: "Cela fermera les onglets{{tabs}}.",
+          tabs: "Cela fermera les onglets{{tabs}}. Tout éditeur de fichiers externe dans un onglet fermé sera immédiatement arrêté.",
           agents: "Cela archivera les agents{{agents}}.",
         },
         unsavedTitle: "Modifications non enregistrées",
@@ -2676,6 +2677,12 @@ export const fr: TranslationResources = {
       message:
         "Ce fichier contient des modifications non enregistrées. Le fermer et les abandonner ?",
       confirm: "Abandonner",
+    },
+    externalEditorDialog: {
+      title: "Fermer l’éditeur de fichiers en cours d’exécution ?",
+      message:
+        "Fermer cet onglet arrête l’éditeur de fichiers externe. Les modifications non enregistrées dans Vim ou Neovim peuvent être perdues.",
+      confirm: "Fermer et arrêter l’éditeur",
     },
   },
   fileFinder: {
