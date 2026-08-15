@@ -23,7 +23,7 @@ import {
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useQueryClient } from "@tanstack/react-query";
-import type { BrainInventoryModel, BrainJob } from "@otto-code/protocol/messages";
+import type { BrainHostStatus, BrainInventoryModel, BrainJob } from "@otto-code/protocol/messages";
 import {
   Brain,
   Eye,
@@ -67,6 +67,7 @@ import {
   formatScore,
   scoreBand,
   useBrainInventory,
+  useBrainStatus,
 } from "./use-brain-data";
 
 const ThemedPlay = withUnistyles(Play);
@@ -130,6 +131,10 @@ const reasoningIconMapping = (theme: Theme) => ({
   color: theme.colors.terminal.green,
   size: theme.iconSize.xs,
 });
+const activeIconMapping = (theme: Theme) => ({
+  color: theme.colors.palette.green[400],
+  size: theme.iconSize.xs,
+});
 
 // Shared between the pinned header and every row. One source, or they drift.
 // The four right-hand columns are pinned to an exact pixel width
@@ -182,6 +187,55 @@ function sortModels(models: BrainInventoryModel[]): BrainInventoryModel[] {
   });
 }
 
+function lifecycleStateForModel(
+  model: BrainInventoryModel,
+  status: BrainHostStatus | undefined,
+): BrainInventoryModel["state"] | null {
+  if (status?.modelId !== model.id) return null;
+  if (status.state === "starting") return "loading";
+  if (status.state === "stopping") return "unloading";
+  if (status.state === "ready") return "loaded";
+  // A model id can outlive its child briefly while Supervisor reports stopped
+  // between the old model's unload and the next model's load. Do not revive a
+  // cached inventory dot in that gap: the live lifecycle is authoritative.
+  return "not-loaded";
+}
+
+function queuedModelIds(status: BrainHostStatus | undefined): Record<string, unknown> {
+  const waiting = status?.scheduler?.waitingModelIds;
+  return typeof waiting === "object" && waiting !== null
+    ? (waiting as Record<string, unknown>)
+    : {};
+}
+
+function hasActiveInference(
+  model: BrainInventoryModel,
+  status: BrainHostStatus | undefined,
+): boolean {
+  return (
+    status?.modelId === model.id &&
+    typeof status.inference?.activeRequests === "number" &&
+    status.inference.activeRequests > 0
+  );
+}
+
+function displayModelState(
+  model: BrainInventoryModel,
+  status: BrainHostStatus | undefined,
+  job: BrainJob | undefined,
+  waitingModelIds: Record<string, unknown>,
+): BrainInventoryModel["state"] {
+  const lifecycle = lifecycleStateForModel(model, status);
+  if (job?.queuePosition) return "queued";
+  if (job?.status === "running") {
+    return lifecycle === "loading" || lifecycle === "unloading" ? lifecycle : "active";
+  }
+  const waiting = waitingModelIds[model.id];
+  if (typeof waiting === "number" && waiting > 0) return "queued";
+  if (hasActiveInference(model, status)) return "active";
+  return lifecycle ?? model.state;
+}
+
 function ScoreText({ overall }: { overall: number | null | undefined }) {
   const band = scoreBand(overall);
   const style = useMemo(
@@ -231,6 +285,16 @@ function CapabilityIcons({ model }: { model: BrainInventoryModel }) {
       ) : null}
     </View>
   );
+}
+
+/** The row marker is state, not decoration: dots only mean resident-and-ready. */
+function ModelStateMarker({ state }: { state: string }) {
+  if (state === "loaded") return <View style={styles.loadedDot} />;
+  if (state === "active") return <ThemedPlay uniProps={activeIconMapping} />;
+  if (state === "loading" || state === "unloading" || state === "queued") {
+    return <ThemedSpinner size={10} />;
+  }
+  return null;
 }
 
 /** A compact action whose visible label lives in its desktop tooltip. */
@@ -310,6 +374,9 @@ function ModelDetailHeader({
       </View>
       {model.state === "loaded" ? <StatusBadge label="Loaded" variant="success" /> : null}
       {model.state === "loading" ? <StatusBadge label="Loading" variant="warning" /> : null}
+      {model.state === "unloading" ? <StatusBadge label="Unloading" variant="warning" /> : null}
+      {model.state === "active" ? <StatusBadge label="Active" variant="success" /> : null}
+      {model.state === "queued" ? <StatusBadge label="Queued" variant="warning" /> : null}
     </View>
   );
 }
@@ -363,7 +430,7 @@ function ModelRow({
     >
       <View style={styles.cellName}>
         <View style={styles.nameRow}>
-          {model.state === "loaded" ? <View style={styles.loadedDot} /> : null}
+          <ModelStateMarker state={model.state} />
           <ThemedBrainModelFamilyIcon family={model.family} size={16} />
           <Text style={styles.nameText} numberOfLines={1}>
             {model.displayName}
@@ -522,8 +589,8 @@ function LoadUnloadButton({
   onLoad: () => void;
   onUnload: () => void;
 }) {
-  const isLoaded = model.state === "loaded" || model.state === "loading";
-  const disabled = !canWrite || pending !== null;
+  const isLoaded = ["loaded", "loading", "unloading", "active"].includes(model.state);
+  const disabled = !canWrite || pending !== null || model.state === "queued";
 
   if (isLoaded && requiresRestart) {
     return (
@@ -602,7 +669,7 @@ function ModelActions({
   serverId: string;
   model: BrainInventoryModel;
   canWrite: boolean;
-  /** Calibrate and sweep are local jobs over the local model store. */
+  /** The host owns calibration and sweep jobs for its local model store. */
   canRunJobs: boolean;
   /** The most recent calibrate/sweep job for this model, if any. */
   job: BrainJob | undefined;
@@ -623,7 +690,7 @@ function ModelActions({
   const [pending, setPending] = useState<ModelAction | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
-  const isLoaded = model.state === "loaded" || model.state === "loading";
+  const isLoaded = ["loaded", "loading", "unloading", "active"].includes(model.state);
   const jobRunning = job?.status === "running";
 
   useCalibrationCompletion(job, onCalibrated, onChanged);
@@ -906,7 +973,7 @@ export function BrainModelsTab({
   isConnected: boolean;
   /** False when the brain has not opted into remote configuration. */
   canWrite: boolean;
-  /** Calibrate and sweep shell out to the CLI, so they are local-brain only. */
+  /** The selected Brain host must advertise calibration and sweep jobs. */
   canRunJobs: boolean;
 }) {
   const modelsSplitRatio = useBrainLayoutStore((state) => state.modelsSplitRatio);
@@ -915,6 +982,7 @@ export function BrainModelsTab({
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const query = useBrainInventory(serverId, isConnected);
+  const statusQuery = useBrainStatus(serverId, { enabled: isConnected });
 
   // Calibrate/sweep run as brain jobs, same as a model download - polled here so
   // progress survives navigating away and back (the job itself keeps running on
@@ -957,10 +1025,17 @@ export function BrainModelsTab({
     [queryClient, serverId],
   );
 
-  const models = useMemo(
-    () => sortModels(uniqueBrainInventoryModels(query.data?.models ?? [])),
-    [query.data],
-  );
+  const models = useMemo(() => {
+    const status = statusQuery.data;
+    const waitingModelIds = queuedModelIds(status);
+    return sortModels(
+      uniqueBrainInventoryModels(query.data?.models ?? []).map((model) => {
+        const operation = jobByModelName.get(model.displayName);
+        const state = displayModelState(model, status, operation, waitingModelIds);
+        return state === model.state ? model : Object.assign({}, model, { state });
+      }),
+    );
+  }, [jobByModelName, query.data, statusQuery.data]);
   const disk = query.data?.disk ?? null;
 
   const selected = useMemo(

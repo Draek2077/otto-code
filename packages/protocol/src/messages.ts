@@ -2316,6 +2316,8 @@ export const BrainJobSchema = z
     // The subject id (catalog id, model name, or build tag) this job acts on.
     target: z.string().nullable().default(null),
     status: BrainJobStatusSchema.default("running"),
+    /** Null once admitted; a positive value means this operation is pending. */
+    queuePosition: z.number().int().positive().nullable().optional(),
     percent: z.number().nullable().default(null),
     // The latest progress line (e.g. "extracting…", "budget 512: done").
     message: z.string().nullable().default(null),
