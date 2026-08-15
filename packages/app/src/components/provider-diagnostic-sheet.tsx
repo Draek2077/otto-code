@@ -60,12 +60,15 @@ import {
 } from "@/utils/saved-provider-endpoints";
 import type { ProviderProfileModel } from "@otto-code/protocol/provider-config";
 import {
+  ACTION_BREAKER_DEFAULT_THRESHOLD,
   COMPACTION_THRESHOLD_PERCENTS,
   MAX_TOOL_ROUNDS_DEFAULT,
   OTTO_TOOL_GROUPS,
   type OttoToolGroup,
 } from "@otto-code/protocol/provider-config";
 import { Switch } from "@/components/ui/switch";
+import { NumberStepperField } from "@/components/ui/number-stepper-field";
+import { Field } from "@/components/ui/form-field";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SelectField, type SelectFieldOption } from "@/components/ui/select-field";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
@@ -479,7 +482,8 @@ type ProviderSheetFeature =
   | "artifactsToolGroup"
   | "modelTierOverrides"
   | "savedProviderEndpoints"
-  | "openaiCompatMaxToolRounds";
+  | "openaiCompatMaxToolRounds"
+  | "openaiCompatActionBreaker";
 
 /** Read one daemon capability gate off the connected host's server_info. */
 function useProviderSheetFeature(serverId: string, feature: ProviderSheetFeature): boolean {
@@ -863,6 +867,22 @@ function readProviderMaxToolRounds(entry: Record<string, unknown> | null): numbe
     : MAX_TOOL_ROUNDS_DEFAULT;
 }
 
+function readProviderActionBreaker(entry: Record<string, unknown> | null): {
+  enabled: boolean;
+  threshold: number;
+} {
+  const raw = entry?.["actionBreaker"];
+  const breaker =
+    raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null;
+  return {
+    enabled: breaker?.["enabled"] === true,
+    threshold:
+      typeof breaker?.["threshold"] === "number"
+        ? breaker.threshold
+        : ACTION_BREAKER_DEFAULT_THRESHOLD,
+  };
+}
+
 /**
  * Agent-behavior defaults for daemon-hosted providers (openai-compatible):
  * the default Auto-compact level applied to new chats, whether each chat shows
@@ -872,12 +892,14 @@ function ProviderAgentsSection({
   provider,
   configEntry,
   supportsMaxToolRounds,
+  supportsActionBreaker,
   patchConfig,
   refresh,
 }: {
   provider: string;
   configEntry: Record<string, unknown> | null;
   supportsMaxToolRounds: boolean;
+  supportsActionBreaker: boolean;
   patchConfig: (patch: MutableDaemonConfigPatch) => Promise<unknown>;
   refresh: (providers?: AgentProvider[]) => Promise<void>;
 }) {
@@ -978,6 +1000,53 @@ function ProviderAgentsSection({
     [patchConfig, provider, refresh, t],
   );
 
+  const actionBreaker = readProviderActionBreaker(configEntry);
+
+  const handleActionBreakerEnabledChange = useCallback(
+    (next: boolean) => {
+      setSaving(true);
+      setError(null);
+      void patchConfig({
+        providers: {
+          [provider]: { actionBreaker: { enabled: next, threshold: actionBreaker.threshold } },
+        },
+      })
+        .then(() => refresh([provider]))
+        .catch((err) => {
+          setError(err instanceof Error ? err.message : t("settings.providers.agents.saveFailed"));
+        })
+        .finally(() => setSaving(false));
+    },
+    [patchConfig, provider, refresh, t, actionBreaker.threshold],
+  );
+
+  const handleActionBreakerThresholdChange = useCallback(
+    (next: number) => {
+      setSaving(true);
+      setError(null);
+      void patchConfig({
+        providers: {
+          [provider]: { actionBreaker: { enabled: actionBreaker.enabled, threshold: next } },
+        },
+      })
+        .then(() => refresh([provider]))
+        .catch((err) => {
+          setError(err instanceof Error ? err.message : t("settings.providers.agents.saveFailed"));
+        })
+        .finally(() => setSaving(false));
+    },
+    [patchConfig, provider, refresh, t, actionBreaker.enabled],
+  );
+
+  // NumberStepperField owns its text, so a blank or garbage entry reads as the
+  // default rather than 0 (which is below the breaker's minimum).
+  const handleActionBreakerThresholdText = useCallback(
+    (text: string) => {
+      handleActionBreakerThresholdChange(Number(text) || ACTION_BREAKER_DEFAULT_THRESHOLD);
+    },
+    [handleActionBreakerThresholdChange],
+  );
+
   return (
     <View style={sheetStyles.section}>
       <View style={sheetStyles.connectionCard}>
@@ -1030,6 +1099,48 @@ function ProviderAgentsSection({
           ) : (
             <Text style={sheetStyles.mutedText}>
               {t("settings.providers.agents.maxToolRoundsRequiresUpdate")}
+            </Text>
+          )}
+          {supportsActionBreaker ? (
+            <>
+              <View style={sheetStyles.toolGroupRow}>
+                <View style={sheetStyles.switchLabelGroup}>
+                  <Text style={sheetStyles.formLabel}>
+                    {t("settings.providers.agents.actionBreakerLabel")}
+                  </Text>
+                  <Text style={sheetStyles.mutedText}>
+                    {t("settings.providers.agents.actionBreakerHint")}
+                  </Text>
+                </View>
+                <Switch
+                  value={actionBreaker.enabled}
+                  onValueChange={handleActionBreakerEnabledChange}
+                  disabled={saving}
+                  testID="provider-action-breaker-enabled"
+                />
+              </View>
+              {actionBreaker.enabled ? (
+                <Field
+                  label={t("settings.providers.agents.actionBreakerThresholdLabel")}
+                  hint={t("settings.providers.agents.actionBreakerThresholdHint")}
+                >
+                  <NumberStepperField
+                    size="sm"
+                    testID="provider-action-breaker-threshold"
+                    accessibilityLabel={t("settings.providers.agents.actionBreakerThresholdLabel")}
+                    value={String(actionBreaker.threshold)}
+                    onChangeText={handleActionBreakerThresholdText}
+                    min={2}
+                    max={100}
+                    decrementLabel={t("settings.providers.agents.actionBreakerThresholdDecrease")}
+                    incrementLabel={t("settings.providers.agents.actionBreakerThresholdIncrease")}
+                  />
+                </Field>
+              ) : null}
+            </>
+          ) : (
+            <Text style={sheetStyles.mutedText}>
+              {t("settings.providers.agents.actionBreakerRequiresUpdate")}
             </Text>
           )}
           {error ? <Text style={sheetStyles.errorText}>{error}</Text> : null}
@@ -1653,6 +1764,7 @@ export function ProviderDiagnosticSheet({
   const supportsSavedEndpoints = useProviderSheetFeature(serverId, "savedProviderEndpoints");
   // COMPAT(openaiCompatMaxToolRounds): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
   const supportsMaxToolRounds = useProviderSheetFeature(serverId, "openaiCompatMaxToolRounds");
+  const supportsActionBreaker = useProviderSheetFeature(serverId, "openaiCompatActionBreaker");
   const savedEndpoints = useMemo(
     () => config?.savedProviderEndpoints ?? EMPTY_SAVED_ENDPOINTS,
     [config?.savedProviderEndpoints],
@@ -1881,6 +1993,7 @@ export function ProviderDiagnosticSheet({
               provider={provider}
               configEntry={providerConfigEntry}
               supportsMaxToolRounds={supportsMaxToolRounds}
+              supportsActionBreaker={supportsActionBreaker}
               patchConfig={patchConfig}
               refresh={refresh}
             />

@@ -50,7 +50,11 @@ import {
   MAX_TOOL_ROUNDS_DEFAULT,
   MAX_TOOL_ROUNDS_MIN,
   MAX_TOOL_ROUNDS_MAX,
+  ACTION_BREAKER_DEFAULT_THRESHOLD,
+  ACTION_BREAKER_MIN_THRESHOLD,
+  ACTION_BREAKER_MAX_THRESHOLD,
   type OttoToolGroup,
+  type ProviderActionBreakerConfig,
 } from "@otto-code/protocol/provider-config";
 import {
   buildOpenAICompatFeatures,
@@ -112,6 +116,26 @@ function resolveMaxToolRounds(value: number | null | undefined): number {
   }
   const rounded = Math.round(value);
   return Math.min(MAX_TOOL_ROUNDS_MAX, Math.max(MAX_TOOL_ROUNDS_MIN, rounded));
+}
+
+/**
+ * Resolve the action circuit-breaker threshold from provider config. Omitted
+ * or out-of-range values clamp into [MIN, MAX] so a hand-edited config can't
+ * disable the guard (threshold 1 would block on the first failure; a huge
+ * value would let a runaway loop run essentially unbounded).
+ */
+function resolveActionBreakerThreshold(value: number | null | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return ACTION_BREAKER_DEFAULT_THRESHOLD;
+  }
+  const rounded = Math.round(value);
+  return Math.min(ACTION_BREAKER_MAX_THRESHOLD, Math.max(ACTION_BREAKER_MIN_THRESHOLD, rounded));
+}
+
+/** Split a breaker key ("name|argsJson") back into its two parts. */
+function splitBreakerKey(key: string): [string, string] {
+  const sep = key.indexOf("|");
+  return sep === -1 ? [key, ""] : [key.slice(0, sep), key.slice(sep + 1)];
 }
 
 /**
@@ -439,10 +463,17 @@ type ChatMessage =
   | { role: "assistant"; content: string; tool_calls?: ToolCallPayload[]; reasoning?: string }
   | { role: "tool"; content: string; tool_call_id: string; images?: PromptImage[] };
 
-/** A tool call's reply: text always, plus any images to feed back as vision parts. */
+/**
+ * A tool call's reply: text always, plus any images to feed back as vision
+ * parts. `isError` mirrors the timeline status (failed vs completed) and is the
+ * authoritative failure signal for the action circuit breaker - the text alone
+ * is not, because builtin tool errors are bare message strings with no "Error:"
+ * prefix.
+ */
 interface ToolCallOutcome {
   text: string;
   images?: PromptImage[];
+  isError?: boolean;
 }
 
 /** Mirror of the opencode provider's parser: `/name rest` → command + args. */
@@ -599,6 +630,13 @@ export interface OpenAICompatAgentClientOptions {
   reasoningEffortMode?: "levels" | "toggle";
   /** Max tool rounds per turn; undefined/null = the built-in default. */
   maxToolRounds?: number | null;
+  /**
+   * Action circuit-breaker for the daemon-owned tool loop. When enabled, an
+   * action (tool + exact arguments) that fails `threshold` times in a row is
+   * blocked for the rest of the turn and a repair prompt is sent to the model.
+   * undefined/null/disabled = the historical execute-everything behavior.
+   */
+  actionBreaker?: ProviderActionBreakerConfig | null;
   managedProcesses?: ManagedProcessRegistry | null;
   /**
    * Endpoint source for providers the daemon configures itself (otto-brain),
@@ -1306,6 +1344,7 @@ export class OpenAICompatAgentClient implements AgentClient {
   private readonly mcpToolPermissions: McpToolPermissionMode;
   private readonly compaction: ProviderCompactionConfig | null;
   private readonly maxToolRounds: number | null;
+  private readonly actionBreaker: ProviderActionBreakerConfig | null;
   private readonly managedProcesses: ManagedProcessRegistry | null;
   private readonly endpointResolver: (() => ResolvedEndpoint) | null;
   private readonly reasoningEffortMode: "levels" | "toggle";
@@ -1321,6 +1360,7 @@ export class OpenAICompatAgentClient implements AgentClient {
     this.mcpToolPermissions = options.mcpToolPermissions ?? "always-ask";
     this.compaction = options.compaction ?? null;
     this.maxToolRounds = options.maxToolRounds ?? null;
+    this.actionBreaker = options.actionBreaker ?? null;
     this.managedProcesses = options.managedProcesses ?? null;
     this.endpointResolver = options.resolveEndpoint ?? null;
     this.reasoningEffortMode = options.reasoningEffortMode ?? "levels";
@@ -1552,6 +1592,7 @@ export class OpenAICompatAgentClient implements AgentClient {
       compaction: this.compaction,
       reasoningEffortMode: this.reasoningEffortMode,
       maxToolRounds: this.maxToolRounds,
+      actionBreaker: this.actionBreaker,
       managedProcesses: this.managedProcesses,
     });
   }
@@ -1587,6 +1628,7 @@ export class OpenAICompatAgentClient implements AgentClient {
       compaction: this.compaction,
       reasoningEffortMode: this.reasoningEffortMode,
       maxToolRounds: this.maxToolRounds,
+      actionBreaker: this.actionBreaker,
       managedProcesses: this.managedProcesses,
     });
   }
@@ -1793,6 +1835,10 @@ export class OpenAICompatAgentSession implements AgentSession {
   private summaryMaxTokens: number | null;
   /** Resolved max model→tool→model rounds per turn (default or provider override). */
   private maxToolRounds: number;
+  /** Whether the action circuit breaker is active for this session. */
+  private actionBreakerEnabled: boolean;
+  /** Consecutive identical failures before the breaker trips a key. */
+  private actionBreakerThreshold: number;
   private activeTurn: ActiveTurn | null = null;
   /** Resolved context window for the active model; null until (or unless) discovered. */
   private contextWindowMaxTokens: number | null = null;
@@ -1828,6 +1874,7 @@ export class OpenAICompatAgentSession implements AgentSession {
     compaction?: ProviderCompactionConfig | null;
     reasoningEffortMode?: "levels" | "toggle";
     maxToolRounds?: number | null;
+    actionBreaker?: ProviderActionBreakerConfig | null;
     managedProcesses?: ManagedProcessRegistry | null;
     /** See OpenAICompatAgentClientOptions.resolveEndpoint. */
     resolveEndpoint?: () => ResolvedEndpoint;
@@ -1901,6 +1948,8 @@ export class OpenAICompatAgentSession implements AgentSession {
     this.keepRecentTokens = resolveKeepRecentTokens(options.compaction);
     this.summaryMaxTokens = resolveSummaryMaxTokens(options.compaction);
     this.maxToolRounds = resolveMaxToolRounds(options.maxToolRounds);
+    this.actionBreakerEnabled = options.actionBreaker?.enabled === true;
+    this.actionBreakerThreshold = resolveActionBreakerThreshold(options.actionBreaker?.threshold);
 
     // The system message is always rebuilt so cwd/mode/config changes take
     // effect on resume; restored copies of it are dropped first.
@@ -2075,6 +2124,74 @@ export class OpenAICompatAgentSession implements AgentSession {
     }
     this.maxToolRounds = next;
     return true;
+  }
+
+  /**
+   * Live re-apply of the provider-level action circuit-breaker settings so a
+   * settings edit reaches running chats without a restart. The tool loop reads
+   * both fields per call, so a turn already mid-loop picks up the new state
+   * immediately (enabling the breaker stops a runaway loop sooner; disabling
+   * it returns to the historical execute-everything behavior).
+   */
+  applyActionBreaker(config: ProviderActionBreakerConfig | null): boolean {
+    const nextEnabled = config?.enabled === true;
+    const nextThreshold = resolveActionBreakerThreshold(config?.threshold);
+    if (
+      nextEnabled === this.actionBreakerEnabled &&
+      nextThreshold === this.actionBreakerThreshold
+    ) {
+      return false;
+    }
+    this.actionBreakerEnabled = nextEnabled;
+    this.actionBreakerThreshold = nextThreshold;
+    return true;
+  }
+
+  /**
+   * Short stub result for a call the circuit breaker blocked this turn. It
+   * must be self-contained - the model sees it as the tool's reply and needs
+   * enough to know the action was not taken and why, without re-reading the
+   * real error (which the repair prompt already carries).
+   */
+  private buildBlockedResultText(name: string, threshold: number): string {
+    return (
+      `Action ${name} was blocked by the circuit breaker (${threshold} consecutive failures). ` +
+      `It was not executed. Do not call the same action with the same arguments again.`
+    );
+  }
+
+  /**
+   * The repair prompt sent to the model when a key trips the breaker. It is a
+   * user message that follows the round's tool results (wire-valid) and carries
+   * the real error from the last failed attempt so the fix is specific, not
+   * generic. `name` is the tool name; `argsJson` the exact arguments that kept
+   * failing; `lastError` the model-readable failure text.
+   */
+  private buildRepairPrompt(name: string, argsJson: string, lastError: string): string {
+    const parts = [
+      `Circuit breaker: the action ${name} has failed ${this.actionBreakerThreshold} times in a row ` +
+        `with the same arguments, and further identical calls are now blocked for this turn. ` +
+        `Repeating it will not help.`,
+      ``,
+      `The arguments it was called with:`,
+      `  ${argsJson.trim() || "{}"}`,
+      ``,
+    ];
+    if (lastError.trim()) {
+      parts.push(`The last error was:`);
+      parts.push(
+        ...lastError
+          .split("\n")
+          .map((line) => `  ${line}`)
+          .slice(0, 20),
+      );
+      parts.push(``);
+    }
+    parts.push(
+      `Fix the approach: correct the arguments and try again, call a different tool, or answer ` +
+        `without the action. Do not call ${name} again with the same arguments.`,
+    );
+    return parts.join("\n");
   }
 
   private buildSystemPrompt(config: AgentSessionConfig): string {
@@ -3064,6 +3181,19 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     // context ring (agent.lastUsage is replaced wholesale, and the ring
     // needs both bounds). Cached per model, so this is one probe per session.
     await this.resolveContextWindowMaxTokens();
+
+    // Action circuit-breaker state, scoped to this turn. `consecutiveFailures`
+    // counts back-to-back failures per (tool name + exact arguments) key; a
+    // success clears its key. Once a key reaches the threshold it stays
+    // tripped for the whole turn: every further identical call is stubbed
+    // with a short "blocked" result instead of executed, and a single repair
+    // prompt is sent to the model (recorded in `repairPromptSent` so a
+    // stubborn re-emission gets cheap stubs, not a prompt storm). This is
+    // what collapses the 2,912-call browser_navigate({}) incident into 5 real
+    // failures plus a bounded tail of stubs.
+    const consecutiveFailures = new Map<string, number>();
+    const repairPromptSent = new Set<string>();
+
     for (let round = 0; round < this.maxToolRounds; round += 1) {
       // Round 0 was already checked at turn start; re-check between tool
       // rounds so a long tool loop compacts mid-turn instead of overflowing.
@@ -3109,14 +3239,51 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
         if (turn.abort.signal.aborted) {
           throw new Error("Interrupted");
         }
+
+        const breakerKey = this.actionBreakerEnabled ? `${call.name}|${call.argumentsJson}` : null;
+
+        if (
+          breakerKey !== null &&
+          (consecutiveFailures.get(breakerKey) ?? 0) >= this.actionBreakerThreshold
+        ) {
+          // Already tripped this turn: stub with a short blocked result so
+          // the wire stays valid (every tool_call needs a result) without
+          // executing the action or feeding a fresh error into context. The
+          // full repair prompt already rode back on the threshold-th failure's
+          // stub; repeats only need the reminder.
+          const [name] = splitBreakerKey(breakerKey);
+          this.emitToolItem(
+            turn,
+            call,
+            "failed",
+            buildCompatToolPreviewDetail(call.name, {}, this.cwd),
+            `Blocked by circuit breaker (${this.actionBreakerThreshold} consecutive failures)`,
+          );
+          this.messages.push({
+            role: "tool",
+            content: this.buildBlockedResultText(name, this.actionBreakerThreshold),
+            tool_call_id: call.id,
+          });
+          continue;
+        }
+
         const resultOutcome = await this.executeToolCall(turn, call);
+        const pushed =
+          breakerKey === null
+            ? resultOutcome
+            : this.recordActionBreakerOutcome(
+                turn,
+                breakerKey,
+                resultOutcome,
+                consecutiveFailures,
+                repairPromptSent,
+              );
+
         this.messages.push({
           role: "tool",
-          content: resultOutcome.text,
+          content: pushed.text,
           tool_call_id: call.id,
-          ...(resultOutcome.images && resultOutcome.images.length > 0
-            ? { images: resultOutcome.images }
-            : {}),
+          ...(pushed.images && pushed.images.length > 0 ? { images: pushed.images } : {}),
         });
       }
       if (turn.abort.signal.aborted) {
@@ -3132,6 +3299,47 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
         message: `Stopped after ${this.maxToolRounds} tool rounds without a final answer.`,
       },
     });
+  }
+
+  /**
+   * Fold one executed tool result into the turn's action circuit-breaker state.
+   * A failure increments its (tool name + exact arguments) failure count; on the
+   * threshold-th consecutive failure the model-facing result is replaced with
+   * the repair prompt so the model gets the real error AND the fix in the exact
+   * slot where its Nth broken call landed (the timeline already recorded the
+   * real failure via emitToolCall inside executeToolCall; later identical calls
+   * hit the "already tripped" branch and get the short reminder). A success
+   * clears the count. Returns the tool result to push - the repair prompt or
+   * the original.
+   */
+  private recordActionBreakerOutcome(
+    turn: ActiveTurn,
+    breakerKey: string,
+    resultOutcome: ToolCallOutcome,
+    consecutiveFailures: Map<string, number>,
+    repairPromptSent: Set<string>,
+  ): ToolCallOutcome {
+    if (resultOutcome.isError !== true) {
+      consecutiveFailures.delete(breakerKey);
+      return resultOutcome;
+    }
+    const count = (consecutiveFailures.get(breakerKey) ?? 0) + 1;
+    consecutiveFailures.set(breakerKey, count);
+    if (count < this.actionBreakerThreshold || repairPromptSent.has(breakerKey)) {
+      return resultOutcome;
+    }
+    repairPromptSent.add(breakerKey);
+    const [name, argsJson] = splitBreakerKey(breakerKey);
+    this.emit({
+      type: "timeline",
+      provider: this.provider,
+      turnId: turn.turnId,
+      item: {
+        type: "error",
+        message: `Circuit breaker tripped: ${name} failed ${this.actionBreakerThreshold} times in a row. Further identical calls are blocked and a repair prompt was sent to the model.`,
+      },
+    });
+    return { text: this.buildRepairPrompt(name, argsJson, resultOutcome.text) };
   }
 
   private parseToolCallArgs(
@@ -3162,7 +3370,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     const spec = findCompatToolSpec(call.name);
     const parsed = this.parseToolCallArgs(turn, call);
     if ("error" in parsed) {
-      return { text: parsed.error };
+      return { text: parsed.error, isError: true };
     }
     const args = parsed.args;
 
@@ -3180,14 +3388,17 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       // never collide with (or shadow) builtins or Otto tools.
       const mcpBinding = this.mcpManager?.resolveTool(call.name);
       if (mcpBinding) {
-        return { text: await this.executeMcpToolCall(turn, call, args, mcpBinding) };
+        return this.executeMcpToolCall(turn, call, args, mcpBinding);
       }
     }
 
     const previewDetail = buildCompatToolPreviewDetail(call.name, args, this.cwd);
     if (!spec || !this.availableToolSpecs().some((candidate) => candidate.name === spec.name)) {
       this.emitToolItem(turn, call, "failed", previewDetail, `Tool ${call.name} is not available`);
-      return { text: `Error: tool ${call.name} is not available in the current mode` };
+      return {
+        text: `Error: tool ${call.name} is not available in the current mode`,
+        isError: true,
+      };
     }
 
     if (this.toolNeedsApproval(spec, args)) {
@@ -3199,7 +3410,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       // emitted, so the daemon's unattended deny-responder stays the backstop.
       if (this.modeId === "dontAsk") {
         this.emitToolItem(turn, call, "failed", previewDetail, DONT_ASK_DENIAL_NOTE);
-        return { text: dontAskDenialText(spec.name) };
+        return { text: dontAskDenialText(spec.name), isError: true };
       }
       const response = await this.requestPermission(turn, {
         name: spec.name,
@@ -3218,6 +3429,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
           text: message
             ? `The user declined this tool call: ${message}`
             : "The user declined this tool call.",
+          isError: true,
         };
       }
     }
@@ -3231,7 +3443,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     });
     if (turn.abort.signal.aborted) {
       this.emitToolItem(turn, call, "canceled", outcome.detail, null);
-      return { text: outcome.output };
+      return { text: outcome.output, isError: outcome.isError };
     }
     this.emitToolItem(
       turn,
@@ -3240,7 +3452,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       outcome.detail,
       outcome.isError ? outcome.output : null,
     );
-    return { text: outcome.output };
+    return { text: outcome.output, isError: outcome.isError };
   }
 
   /**
@@ -3266,17 +3478,17 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     call: AccumulatedToolCall,
     args: Record<string, unknown>,
     binding: McpToolBinding,
-  ): Promise<string> {
+  ): Promise<ToolCallOutcome> {
     const manager = this.mcpManager;
     if (!manager) {
-      return `Error: tool ${call.name} is not available`;
+      return { text: `Error: tool ${call.name} is not available`, isError: true };
     }
     const detail: ToolCallDetail = { type: "unknown", input: args, output: null };
     if (this.mcpToolNeedsApproval(binding)) {
       // See executeToolCall: dontAsk denies instead of prompting.
       if (this.modeId === "dontAsk") {
         this.emitToolItem(turn, call, "failed", detail, DONT_ASK_DENIAL_NOTE);
-        return dontAskDenialText(call.name);
+        return { text: dontAskDenialText(call.name), isError: true };
       }
       const response = await this.requestPermission(turn, {
         name: binding.modelName,
@@ -3291,9 +3503,12 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
           turn.abort.abort();
         }
         const message = response.message?.trim();
-        return message
-          ? `The user declined this tool call: ${message}`
-          : "The user declined this tool call.";
+        return {
+          text: message
+            ? `The user declined this tool call: ${message}`
+            : "The user declined this tool call.",
+          isError: true,
+        };
       }
     }
 
@@ -3301,7 +3516,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     const outcome = await manager.callTool(binding, args, { signal: turn.abort.signal });
     if (turn.abort.signal.aborted) {
       this.emitToolItem(turn, call, "canceled", { ...detail, output: outcome.output }, null);
-      return outcome.output;
+      return { text: outcome.output, isError: outcome.isError };
     }
     this.emitToolItem(
       turn,
@@ -3310,7 +3525,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       { ...detail, output: outcome.output },
       outcome.isError ? outcome.output : null,
     );
-    return outcome.output;
+    return { text: outcome.output, isError: outcome.isError };
   }
 
   /**
@@ -3338,7 +3553,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
   ): Promise<ToolCallOutcome> {
     const catalog = this.ottoTools;
     if (!catalog) {
-      return { text: `Error: tool ${call.name} is not available` };
+      return { text: `Error: tool ${call.name} is not available`, isError: true };
     }
     const detail: ToolCallDetail = { type: "unknown", input: args, output: null };
     // preview_start keeps its "interact" auto-approval in acceptEdits only
@@ -3354,7 +3569,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       // See executeToolCall: dontAsk denies instead of prompting.
       if (this.modeId === "dontAsk") {
         this.emitToolItem(turn, call, "failed", detail, DONT_ASK_DENIAL_NOTE);
-        return { text: dontAskDenialText(tool.name) };
+        return { text: dontAskDenialText(tool.name), isError: true };
       }
       const response = await this.requestPermission(turn, {
         name: tool.name,
@@ -3373,6 +3588,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
           text: message
             ? `The user declined this tool call: ${message}`
             : "The user declined this tool call.",
+          isError: true,
         };
       }
       // The user saw the resolved command and allowed it - stop prompting for
@@ -3386,7 +3602,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       const images = ottoResultImages(result);
       if (turn.abort.signal.aborted) {
         this.emitToolItem(turn, call, "canceled", { type: "unknown", input: args, output }, null);
-        return { text: output };
+        return { text: output, isError: result.isError === true };
       }
       this.emitToolItem(
         turn,
@@ -3395,7 +3611,8 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
         { type: "unknown", input: args, output },
         result.isError ? output : null,
       );
-      return await this.buildOttoToolOutcome(output, images);
+      const outcome = await this.buildOttoToolOutcome(output, images);
+      return { ...outcome, isError: result.isError === true };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.emitToolItem(
@@ -3405,7 +3622,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
         { type: "unknown", input: args, output: null },
         message,
       );
-      return { text: `Error: ${message}` };
+      return { text: `Error: ${message}`, isError: true };
     }
   }
 

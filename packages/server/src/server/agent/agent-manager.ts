@@ -21,7 +21,10 @@ import {
   type AgentLifetimeUsage,
   type TurnUsageWatermark,
 } from "./turn-usage.js";
-import type { ProviderCompactionConfig } from "@otto-code/protocol/provider-config";
+import type {
+  ProviderActionBreakerConfig,
+  ProviderCompactionConfig,
+} from "@otto-code/protocol/provider-config";
 import type { Logger } from "pino";
 import { z } from "zod";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
@@ -380,6 +383,12 @@ interface ProviderEnabledFlag {
    * null = resolved as unset (built-in default).
    */
   maxToolRounds?: number | null;
+  /**
+   * Provider-level action circuit-breaker config for daemon-hosted providers.
+   * Undefined = caller didn't resolve it (leave live sessions untouched);
+   * null = resolved as unset (disabled).
+   */
+  actionBreaker?: ProviderActionBreakerConfig | null;
 }
 type ProviderEnabledMap = Partial<Record<AgentProvider, ProviderEnabledFlag>>;
 type ProviderClientMap = Partial<Record<AgentProvider, AgentClient>>;
@@ -1503,22 +1512,37 @@ export class AgentManager {
       }
     }
     // Live sessions absorb provider-level compaction edits (default level,
-    // hidden selector) and the max-tool-rounds override so open chats reflect
-    // settings changes immediately.
+    // hidden selector), the max-tool-rounds override, and the action circuit
+    // breaker so open chats reflect settings changes immediately.
     for (const agent of this.agents.values()) {
-      const definition = input.providerDefinitions[agent.provider];
-      if (!definition) continue;
-      let changed = false;
-      if (agent.session?.applyCompactionConfig && definition.compaction !== undefined) {
-        changed = agent.session.applyCompactionConfig(definition.compaction) || changed;
-      }
-      if (agent.session?.applyMaxToolRounds && definition.maxToolRounds !== undefined) {
-        changed = agent.session.applyMaxToolRounds(definition.maxToolRounds) || changed;
-      }
-      if (changed) {
+      if (this.applyProviderDefinition(agent, input.providerDefinitions)) {
         this.emitState(agent);
       }
     }
+  }
+
+  /**
+   * Push the updated provider-level settings onto one agent's live session.
+   * Returns true when any of the session's effective settings changed, so the
+   * caller knows to re-emit agent state.
+   */
+  private applyProviderDefinition(
+    agent: LiveManagedAgent,
+    providerDefinitions: ProviderEnabledMap,
+  ): boolean {
+    const definition = providerDefinitions[agent.provider];
+    if (!definition) return false;
+    let changed = false;
+    if (agent.session?.applyCompactionConfig && definition.compaction !== undefined) {
+      changed = agent.session.applyCompactionConfig(definition.compaction) || changed;
+    }
+    if (agent.session?.applyMaxToolRounds && definition.maxToolRounds !== undefined) {
+      changed = agent.session.applyMaxToolRounds(definition.maxToolRounds) || changed;
+    }
+    if (agent.session?.applyActionBreaker && definition.actionBreaker !== undefined) {
+      changed = agent.session.applyActionBreaker(definition.actionBreaker) || changed;
+    }
+    return changed;
   }
 
   getRegisteredProviderIds(): AgentProvider[] {

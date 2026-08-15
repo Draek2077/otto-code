@@ -3841,11 +3841,20 @@ export const en = {
         showSelectorLabel: "Show auto-compact in chats",
         showSelectorDescription:
           "When off, chats hide the Auto-compact selector and always use the default above.",
-        maxToolRoundsLabel: "Max tool rounds per turn",
+        maxToolRoundsLabel: "Max tool-call rounds per turn",
         maxToolRoundsHint:
-          "The turn stops with an error after this many tool rounds without a final answer - a safety valve against runaway loops.",
+          "How many times the model may call tools, see the results, and call tools again before the turn ends. This counts rounds, not the number of tool calls within a single round.",
         maxToolRoundsValue: "{{rounds}} rounds",
-        maxToolRoundsRequiresUpdate: "Update the host to configure max tool rounds.",
+        maxToolRoundsRequiresUpdate: "Update the host to configure max tool-call rounds.",
+        actionBreakerLabel: "Action circuit breaker",
+        actionBreakerHint:
+          "When a tool action keeps failing the same way, stop repeating it and ask the model to fix its approach instead.",
+        actionBreakerThresholdLabel: "Failures before it trips",
+        actionBreakerThresholdHint:
+          "How many consecutive identical failures of one action (same tool, same arguments) trigger the breaker.",
+        actionBreakerThresholdDecrease: "Fewer failures",
+        actionBreakerThresholdIncrease: "More failures",
+        actionBreakerRequiresUpdate: "Update the host to configure the action circuit breaker.",
         saveFailed: "Failed to save agent settings",
       },
       connection: {

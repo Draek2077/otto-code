@@ -24,6 +24,7 @@ import type {
 } from "./provider-launch-config.js";
 import type {
   ConnectorConfig,
+  ProviderActionBreakerConfig,
   ProviderCompactionConfig,
 } from "@otto-code/protocol/provider-config";
 import type { ModelTier } from "@otto-code/protocol/agent-types";
@@ -222,6 +223,12 @@ export interface AgentManagerProviderState {
          * without a restart. null = resolved as unset (built-in default).
          */
         maxToolRounds: number | null;
+        /**
+         * Provider-level action circuit-breaker config for daemon-hosted
+         * providers (openai-compat). Forwarded so live sessions absorb settings
+         * edits without a restart. null = resolved as unset (disabled).
+         */
+        actionBreaker: ProviderActionBreakerConfig | null;
       }
     >
   >;
@@ -386,6 +393,7 @@ export class ProviderSnapshotManager {
         derivedFromProviderId: definition.derivedFromProviderId,
         compaction: this.providerOverrides?.[provider]?.compaction ?? null,
         maxToolRounds: this.providerOverrides?.[provider]?.maxToolRounds ?? null,
+        actionBreaker: this.providerOverrides?.[provider]?.actionBreaker ?? null,
       };
       if (definition.enabled) {
         clients[provider] = this.ensureClient(provider, definition);

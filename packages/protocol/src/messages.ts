@@ -8453,6 +8453,13 @@ export const ServerInfoStatusPayloadSchema = z
         // old daemon (which silently ignores the field and keeps the fixed 50-round
         // cap) shows "Update the host" instead of a knob that does nothing.
         openaiCompatMaxToolRounds: z.boolean().optional(),
+        // COMPAT(openaiCompatActionBreaker): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
+        // Set when the daemon honors the provider-level `actionBreaker` config for
+        // openai-compat agents (stops a repeatedly-failing identical action and
+        // sends the model a repair prompt). The client gates the Agents-tab control
+        // on this so an old daemon (which ignores the field) shows "Update the
+        // host" instead of a switch that does nothing.
+        openaiCompatActionBreaker: z.boolean().optional(),
         // COMPAT(mcpToolGroups): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
         // Set when the daemon honors `mcp.toolGroups` - per-group gating of the
         // Otto tool catalog on the MCP (Claude) path. Old daemons register every

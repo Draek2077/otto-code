@@ -3874,12 +3874,21 @@ export const ptBR: TranslationResources = {
         showSelectorLabel: "Mostrar autocompactação nos chats",
         showSelectorDescription:
           "Quando desativado, os chats ocultam o seletor de autocompactação e sempre usam o padrão acima.",
-        maxToolRoundsLabel: "Máximo de rodadas de ferramentas por turno",
+        maxToolRoundsLabel: "Máximo de rodadas de chamadas de ferramentas por turno",
         maxToolRoundsHint:
-          "O turno para com erro após esse número de rodadas de ferramentas sem uma resposta final - uma válvula de segurança contra loops descontrolados.",
+          "Quantas vezes o modelo pode chamar ferramentas, ver os resultados e chamá-las de novo antes de o turno terminar. Isso conta rodadas, não o número de chamadas de ferramentas dentro de uma única rodada.",
         maxToolRoundsValue: "{{rounds}} rodadas",
         maxToolRoundsRequiresUpdate:
-          "Atualize o host para configurar o máximo de rodadas de ferramentas.",
+          "Atualize o host para configurar o máximo de rodadas de chamadas de ferramentas.",
+        actionBreakerLabel: "Disjuntor de ação",
+        actionBreakerHint:
+          "Quando uma ação de ferramenta continua falhando da mesma forma, para de repeti-la e pede ao modelo para corrigir sua abordagem.",
+        actionBreakerThresholdLabel: "Falhas antes de acionar",
+        actionBreakerThresholdHint:
+          "Quantas falhas idênticas consecutivas de uma ação (mesma ferramenta, mesmos argumentos) acionam o disjuntor.",
+        actionBreakerThresholdDecrease: "Menos falhas",
+        actionBreakerThresholdIncrease: "Mais falhas",
+        actionBreakerRequiresUpdate: "Atualize o host para configurar o disjuntor de ação.",
         saveFailed: "Falha ao salvar as configurações de agentes",
       },
       connection: {

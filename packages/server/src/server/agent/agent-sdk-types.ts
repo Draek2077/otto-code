@@ -5,7 +5,10 @@ import type {
   AgentContextUsage,
   AgentRateLimitInfo,
 } from "@otto-code/protocol/messages";
-import type { ProviderCompactionConfig } from "@otto-code/protocol/provider-config";
+import type {
+  ProviderActionBreakerConfig,
+  ProviderCompactionConfig,
+} from "@otto-code/protocol/provider-config";
 import type { OttoToolCatalog } from "./tools/types.js";
 // Type-only import - erased at compile time, so the resolver ⇄ config-types
 // cycle never exists at runtime.
@@ -1008,6 +1011,14 @@ export interface AgentSession {
    * bound changed so the manager knows to re-emit agent state.
    */
   applyMaxToolRounds?(maxToolRounds: number | null): boolean;
+  /**
+   * Apply the updated provider-level action circuit-breaker settings to a live
+   * session (providers whose tool loop the daemon owns). The breaker stops a
+   * repeatedly-failing identical action and sends the model a repair prompt
+   * instead of re-executing it. Returns true when the effective settings
+   * changed so the manager knows to re-emit agent state.
+   */
+  applyActionBreaker?(config: ProviderActionBreakerConfig | null): boolean;
   revertConversation?(input: { messageId: string }): Promise<void>;
   revertFiles?(input: { messageId: string }): Promise<void>;
   revertBoth?(input: { messageId: string }): Promise<void>;

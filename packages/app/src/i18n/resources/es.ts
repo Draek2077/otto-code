@@ -3895,12 +3895,21 @@ export const es: TranslationResources = {
         showSelectorLabel: "Mostrar autocompactación en los chats",
         showSelectorDescription:
           "Si está desactivado, los chats ocultan el selector de autocompactación y siempre usan el valor predeterminado anterior.",
-        maxToolRoundsLabel: "Máximo de rondas de herramientas por turno",
+        maxToolRoundsLabel: "Máximo de rondas de llamadas a herramientas por turno",
         maxToolRoundsHint:
-          "El turno se detiene con un error tras esta cantidad de rondas de herramientas sin una respuesta final: una válvula de seguridad contra bucles descontrolados.",
+          "Cuántas veces el modelo puede llamar a herramientas, ver los resultados y llamarlas de nuevo antes de que termine el turno. Cuenta rondas, no el número de llamadas dentro de una sola ronda.",
         maxToolRoundsValue: "{{rounds}} rondas",
         maxToolRoundsRequiresUpdate:
-          "Actualiza el host para configurar el máximo de rondas de herramientas.",
+          "Actualiza el host para configurar el máximo de rondas de llamadas a herramientas.",
+        actionBreakerLabel: "Fusible de acciones",
+        actionBreakerHint:
+          "Cuando una acción de una herramienta sigue fallando de la misma forma, deja de repetirla y pide al modelo que corrija su enfoque en su lugar.",
+        actionBreakerThresholdLabel: "Fallos antes de dispararse",
+        actionBreakerThresholdHint:
+          "Cuántos fallos idénticos consecutivos de una acción (misma herramienta, mismos argumentos) activan el fusible.",
+        actionBreakerThresholdDecrease: "Menos fallos",
+        actionBreakerThresholdIncrease: "Más fallos",
+        actionBreakerRequiresUpdate: "Actualiza el host para configurar el fusible de acciones.",
         saveFailed: "Error al guardar la configuración de agentes",
       },
       connection: {

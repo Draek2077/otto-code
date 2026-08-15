@@ -973,6 +973,63 @@ async function startTwoToolCallEndpoint(): Promise<TestEndpoint & { requests: Re
 }
 
 /**
+ * Fake server that streams `callsPerRound` identical grep_search calls (each
+ * with an invalid regex, so every one fails deterministically) on every
+ * completion round and never a final answer. Replicates the 2,912-call
+ * browser_navigate({}) incident shape - a model degenerating into emitting the
+ * same broken action over and over - so the action circuit breaker can be
+ * proven to collapse it.
+ */
+async function startRepeatedFailingToolEndpoint(
+  callsPerRound: number,
+): Promise<TestEndpoint & { requests: RecordedRequest[] }> {
+  const requests: RecordedRequest[] = [];
+  const server = createServer((req, res) => {
+    if (req.method === "GET" && req.url === "/v1/models") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ data: [{ id: "test-model-a" }] }));
+      return;
+    }
+    if (req.method === "POST" && req.url === "/v1/chat/completions") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", () => {
+        requests.push(JSON.parse(body) as RecordedRequest);
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        const toolCalls = Array.from({ length: callsPerRound }, (_, i) => ({
+          index: i,
+          id: `call_${requests.length}_${i}`,
+          // The same broken call every round: an invalid regex, so
+          // grep_search always returns an error outcome.
+          function: {
+            name: "grep_search",
+            arguments: JSON.stringify({ pattern: "[" }),
+          },
+        }));
+        res.write(
+          sseChunk({
+            choices: [{ delta: { tool_calls: toolCalls }, finish_reason: "tool_calls" }],
+          }),
+        );
+        res.write("data: [DONE]\n\n");
+        res.end();
+      });
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  servers.push(server);
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const { port } = server.address() as AddressInfo;
+  return { server, baseUrl: `http://127.0.0.1:${port}`, requests };
+}
+
+/**
  * Fake server that streams a fresh list_dir tool call on every completion
  * round and never a final answer - the only thing that can end the turn is
  * the max-tool-rounds safety valve.
@@ -1755,6 +1812,132 @@ describe("OpenAICompatAgentSession tool loop", () => {
       event.type === "timeline" && event.item.type === "error" ? [event.item.message] : [],
     );
     expect(errorItems).toEqual(["Stopped after 1 tool rounds without a final answer."]);
+    await session.close();
+  });
+
+  test("the action circuit breaker stops a repeated failing action and repairs", async () => {
+    // The model emits 20 identical broken grep_search calls every round. With
+    // the breaker at threshold 5, only 5 of the first round's calls may be
+    // executed (they fail); the rest of round 1 and all of rounds 2-3 are
+    // stubbed, and a repair prompt rides back on the 5th failure.
+    const endpoint = await startRepeatedFailingToolEndpoint(20);
+    const client = new OpenAICompatAgentClient({
+      providerId: "lmstudio",
+      label: "LM Studio",
+      env: { OPENAI_BASE_URL: endpoint.baseUrl },
+      maxToolRounds: 3,
+      actionBreaker: { enabled: true, threshold: 5 },
+    });
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: await makeTempCwd(),
+      model: "test-model-a",
+      modeId: "bypassPermissions",
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.run("Keep searching");
+    await session.close();
+
+    // Three model rounds still ran (the breaker repairs, it does not end the
+    // turn) - the turn ends on the max-rounds valve like any other runaway.
+    expect(endpoint.requests).toHaveLength(3);
+
+    // Round 1's tool results land in round 2's request (they are pushed to the
+    // conversation after round 1 executes, then sent back to the model). So
+    // inspect requests[1].messages for the first round's 20 results.
+    const toolResults = (endpoint.requests[1]?.messages ?? [])
+      .filter((message) => message.role === "tool")
+      .map((message) => String(message.content));
+    const repairCount = toolResults.filter((text) => text.includes("Circuit breaker: the action"));
+    const blockedCount = toolResults.filter((text) =>
+      text.includes("blocked by the circuit breaker"),
+    );
+    // Round 1: 20 calls → 4 real failures + the 5th failure replaced by the
+    // repair prompt + 15 blocked stubs (calls 6-20, key already tripped).
+    expect(repairCount).toHaveLength(1);
+    expect(blockedCount).toHaveLength(15);
+
+    // The timeline surfaced exactly one tripped action, and the stubs were
+    // recorded as failed tool calls in the UI.
+    const errorItems = events.flatMap((event) =>
+      event.type === "timeline" && event.item.type === "error" ? [event.item.message] : [],
+    );
+    const tripped = errorItems.filter((message) => message.startsWith("Circuit breaker tripped"));
+    expect(tripped).toHaveLength(1);
+    expect(tripped[0]).toContain("grep_search failed 5 times in a row");
+    const failedToolItems = events.filter(
+      (event) =>
+        event.type === "timeline" &&
+        event.item.type === "tool_call" &&
+        event.item.status === "failed" &&
+        event.item.name === "grep_search",
+    );
+    // 20 (round 1) + 20 (round 2) + 20 (round 3) = 60 failed tool_call rows.
+    expect(failedToolItems).toHaveLength(60);
+  });
+
+  test("the action circuit breaker is inert when disabled", async () => {
+    // Same degenerate model, breaker off: every call is executed and fails,
+    // no repair prompt, no blocked stub - the historical execute-everything
+    // behavior. This is the regression guard for the opt-in.
+    const endpoint = await startRepeatedFailingToolEndpoint(20);
+    const client = new OpenAICompatAgentClient({
+      providerId: "lmstudio",
+      label: "LM Studio",
+      env: { OPENAI_BASE_URL: endpoint.baseUrl },
+      maxToolRounds: 2,
+      actionBreaker: { enabled: false },
+    });
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: await makeTempCwd(),
+      model: "test-model-a",
+      modeId: "bypassPermissions",
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.run("Keep searching");
+    await session.close();
+
+    const toolResults = (endpoint.requests[0]?.messages ?? [])
+      .filter((message) => message.role === "tool")
+      .map((message) => String(message.content));
+    expect(toolResults.filter((text) => text.includes("Circuit breaker: the action")).length).toBe(
+      0,
+    );
+    expect(
+      toolResults.filter((text) => text.includes("blocked by the circuit breaker")).length,
+    ).toBe(0);
+    const errorItems = events.flatMap((event) =>
+      event.type === "timeline" && event.item.type === "error" ? [event.item.message] : [],
+    );
+    expect(
+      errorItems.filter((message) => message.startsWith("Circuit breaker tripped")),
+    ).toHaveLength(0);
+  });
+
+  test("applyActionBreaker live-updates the breaker and clamps the threshold", async () => {
+    const endpoint = await startEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: await makeTempCwd(),
+      model: "test-model-a",
+      modeId: "bypassPermissions",
+    });
+
+    // Off by default; enabling with a valid threshold reports a change.
+    expect(session.applyActionBreaker?.({ enabled: false })).toBe(false);
+    expect(session.applyActionBreaker?.({ enabled: true, threshold: 5 })).toBe(true);
+    // Re-applying the same effective settings is a no-op.
+    expect(session.applyActionBreaker?.({ enabled: true, threshold: 5 })).toBe(false);
+    // 1 is below the schema minimum and clamps to 2 - a real change.
+    expect(session.applyActionBreaker?.({ enabled: true, threshold: 1 })).toBe(true);
+    // Disabling again is another change.
+    expect(session.applyActionBreaker?.({ enabled: false })).toBe(true);
     await session.close();
   });
 });

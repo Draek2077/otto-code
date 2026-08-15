@@ -3909,12 +3909,22 @@ export const fr: TranslationResources = {
         showSelectorLabel: "Afficher l'auto-compactage dans les discussions",
         showSelectorDescription:
           "Si désactivé, les discussions masquent le sélecteur d'auto-compactage et utilisent toujours la valeur par défaut ci-dessus.",
-        maxToolRoundsLabel: "Nombre maximal de tours d'outils par échange",
+        maxToolRoundsLabel: "Nombre maximal de tours d'appels d'outils par échange",
         maxToolRoundsHint:
-          "L'échange s'arrête sur une erreur après ce nombre de tours d'outils sans réponse finale - une soupape de sécurité contre les boucles incontrôlées.",
+          "Le nombre de fois où le modèle peut appeler des outils, voir les résultats, puis rappeler des outils avant la fin de l'échange. Ce sont les tours qui sont comptés, pas le nombre d'appels dans un seul tour.",
         maxToolRoundsValue: "{{rounds}} tours",
         maxToolRoundsRequiresUpdate:
-          "Mettez à jour l'hôte pour configurer le nombre maximal de tours d'outils.",
+          "Mettez à jour l'hôte pour configurer le nombre maximal de tours d'appels d'outils.",
+        actionBreakerLabel: "Disjoncteur d'actions",
+        actionBreakerHint:
+          "Quand une action d'outil échoue de la même façon à plusieurs reprises, cessez de la répéter et demandez au modèle de corriger son approche.",
+        actionBreakerThresholdLabel: "Échecs avant déclenchement",
+        actionBreakerThresholdHint:
+          "Le nombre d'échecs identiques consécutifs d'une même action (même outil, mêmes arguments) qui déclenche le disjoncteur.",
+        actionBreakerThresholdDecrease: "Moins d'échecs",
+        actionBreakerThresholdIncrease: "Plus d'échecs",
+        actionBreakerRequiresUpdate:
+          "Mettez à jour l'hôte pour configurer le disjoncteur d'actions.",
         saveFailed: "Échec de l'enregistrement des paramètres des agents",
       },
       connection: {

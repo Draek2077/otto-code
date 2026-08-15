@@ -3756,11 +3756,20 @@ export const zhCN: TranslationResources = {
         compactionAtPercent: "达到 {{percent}}% 时",
         showSelectorLabel: "在聊天中显示自动压缩",
         showSelectorDescription: "关闭后，聊天将隐藏自动压缩选择器并始终使用上面的默认值。",
-        maxToolRoundsLabel: "每轮对话的最大工具调用轮数",
+        maxToolRoundsLabel: "每轮对话的最大工具调用回合数",
         maxToolRoundsHint:
-          "在达到该轮数仍未给出最终答案时，本轮会以错误终止-这是防止失控循环的安全阀。",
+          "模型在回合结束前可以调用工具、查看结果并再次调用工具的次数。这里统计的是回合数，而不是单个回合内的工具调用次数。",
         maxToolRoundsValue: "{{rounds}} 轮",
-        maxToolRoundsRequiresUpdate: "更新主机后即可配置最大工具调用轮数。",
+        maxToolRoundsRequiresUpdate: "更新主机后即可配置最大工具调用回合数。",
+        actionBreakerLabel: "动作熔断器",
+        actionBreakerHint:
+          "当某个工具动作反复以相同的方式失败时，停止重复该动作，改为让模型修正其做法。",
+        actionBreakerThresholdLabel: "熔断前的失败次数",
+        actionBreakerThresholdHint:
+          "同一动作（同一工具、同一参数）连续出现多少次相同失败才会触发熔断器。",
+        actionBreakerThresholdDecrease: "更少的失败次数",
+        actionBreakerThresholdIncrease: "更多的失败次数",
+        actionBreakerRequiresUpdate: "更新主机后即可配置动作熔断器。",
         saveFailed: "保存代理设置失败",
       },
       connection: {

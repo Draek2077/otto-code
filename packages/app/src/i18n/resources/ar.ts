@@ -3802,11 +3802,20 @@ export const ar: TranslationResources = {
         showSelectorLabel: "إظهار الضغط التلقائي في المحادثات",
         showSelectorDescription:
           "عند الإيقاف، تُخفي المحادثات محدد الضغط التلقائي وتستخدم دائمًا الإعداد الافتراضي أعلاه.",
-        maxToolRoundsLabel: "أقصى عدد لجولات الأدوات في الدور الواحد",
+        maxToolRoundsLabel: "أقصى عدد لجولات استدعاء الأدوات في الدور الواحد",
         maxToolRoundsHint:
-          "يتوقف الدور بخطأ بعد هذا العدد من جولات الأدوات دون إجابة نهائية - صمّام أمان ضد الحلقات الجامحة.",
+          "العدد الذي يمكن للنموذج أن يستدعي الأدوات ثم يرى النتائج ثم يستدعيها مجددًا قبل انتهاء الدور. يُحتسب على أساس الجولات وليس على عدد استدعاءات الأدوات داخل الجولة الواحدة.",
         maxToolRoundsValue: "{{rounds}} جولة",
-        maxToolRoundsRequiresUpdate: "حدّث المضيف لضبط أقصى عدد لجولات الأدوات.",
+        maxToolRoundsRequiresUpdate: "حدّث المضيف لضبط أقصى عدد لجولات استدعاء الأدوات.",
+        actionBreakerLabel: "مقطّع دائرة الإجراء",
+        actionBreakerHint:
+          "عندما يستمر إجراء أداة في الفشل بالطريقة نفسها، أوقف التكرار واطلب من النموذج إصلاح نهجه بدلًا من ذلك.",
+        actionBreakerThresholdLabel: "عدد الإخفاقات قبل القَطع",
+        actionBreakerThresholdHint:
+          "كم إخفاقًا متتاليًا مطابقًا لنفس الإجراء (نفس الأداة ونفس الحُجج) يُشغّل المقطّع.",
+        actionBreakerThresholdDecrease: "إخفاقات أقل",
+        actionBreakerThresholdIncrease: "إخفاقات أكثر",
+        actionBreakerRequiresUpdate: "حدّث المضيف لضبط مقطّع دائرة الإجراء.",
         saveFailed: "فشل حفظ إعدادات الوكلاء",
       },
       connection: {

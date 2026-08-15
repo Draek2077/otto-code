@@ -3855,11 +3855,22 @@ export const ja: TranslationResources = {
         showSelectorLabel: "チャットに自動圧縮を表示",
         showSelectorDescription:
           "オフにすると、チャットでは自動圧縮のセレクターが非表示になり、常に上記のデフォルトが使用されます。",
-        maxToolRoundsLabel: "1 ターンあたりのツール実行回数の上限",
+        maxToolRoundsLabel: "1 ターンあたりのツール呼び出しラウンドの上限",
         maxToolRoundsHint:
-          "最終回答がないままこの回数だけツールを実行すると、ターンはエラーで停止します。暴走ループに対する安全弁です。",
+          "モデルがターン終了前にツールを呼び出し、結果を確認し、再び呼び出せる回数です。ラウンド数を数え、1 ラウンド内のツール呼び出し数を数えません。",
         maxToolRoundsValue: "{{rounds}} 回",
-        maxToolRoundsRequiresUpdate: "ツール実行回数の上限を設定するにはホストを更新してください。",
+        maxToolRoundsRequiresUpdate:
+          "ツール呼び出しラウンドの上限を設定するにはホストを更新してください。",
+        actionBreakerLabel: "アクションサーキットブレーカー",
+        actionBreakerHint:
+          "ツールアクションが同じ方法で何度も失敗するときは、繰り返しを止め、モデルにアプローチの修正を求めます。",
+        actionBreakerThresholdLabel: "トリップまでの失敗回数",
+        actionBreakerThresholdHint:
+          "同じアクション（同じツール、同じ引数）の同じ失敗が連続して何回起きるとブレーカーが作動するか。",
+        actionBreakerThresholdDecrease: "失敗回数を減らす",
+        actionBreakerThresholdIncrease: "失敗回数を増やす",
+        actionBreakerRequiresUpdate:
+          "アクションサーキットブレーカーを設定するにはホストを更新してください。",
         saveFailed: "エージェント設定の保存に失敗しました",
       },
       connection: {

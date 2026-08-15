@@ -240,6 +240,22 @@ export const MAX_TOOL_ROUNDS_MIN = 1;
 export const MAX_TOOL_ROUNDS_MAX = 1000;
 
 /**
+ * Action circuit-breaker for daemon-hosted tool loops (openai-compat /
+ * Otto Brain). When enabled, an action (tool name + exact arguments) that
+ * fails this many times in a row stops being executed: the rest of the
+ * round's identical calls are dropped, and a repair prompt is sent to the
+ * model explaining what failed and how to change course. Small local models
+ * can degenerate into emitting the same broken action hundreds of times per
+ * round (the 2,912-call browser_navigate({}) incident); without the breaker
+ * each identical failure is appended to the conversation verbatim until the
+ * context window is blown and the turn dies. Defaults are safe for every
+ * model; bounds keep the setting a guard rail, not an off switch.
+ */
+export const ACTION_BREAKER_DEFAULT_THRESHOLD = 5;
+export const ACTION_BREAKER_MIN_THRESHOLD = 2;
+export const ACTION_BREAKER_MAX_THRESHOLD = 100;
+
+/**
  * Compaction tuning for providers whose conversation the daemon owns
  * (openai-compat). These set the provider-level defaults; the per-agent
  * "Auto-compact" feature select overrides them at runtime.
@@ -264,6 +280,31 @@ export const ProviderCompactionConfigSchema = z.object({
 });
 
 export type ProviderCompactionConfig = z.infer<typeof ProviderCompactionConfigSchema>;
+
+/**
+ * Action circuit-breaker tuning for daemon-hosted tool loops (openai-compat /
+ * Otto Brain). When enabled, an action that fails `threshold` times in a row
+ * (same tool name + same arguments) stops being executed for the rest of the
+ * round, and the model receives a repair prompt instead of a dead-end error.
+ * Omitted or `enabled: false` keeps the historical behavior: every tool call
+ * the model emits is executed, failures and all.
+ */
+export const ProviderActionBreakerConfigSchema = z.object({
+  /** false (default) disables the breaker; true enables it. */
+  enabled: z.boolean().optional(),
+  /**
+   * Consecutive identical failures before the breaker trips.
+   * Default ACTION_BREAKER_DEFAULT_THRESHOLD (5), clamped to [MIN, MAX].
+   */
+  threshold: z
+    .number()
+    .int()
+    .min(ACTION_BREAKER_MIN_THRESHOLD)
+    .max(ACTION_BREAKER_MAX_THRESHOLD)
+    .optional(),
+});
+
+export type ProviderActionBreakerConfig = z.infer<typeof ProviderActionBreakerConfigSchema>;
 
 export const ProviderOverrideSchema = z.object({
   extends: z.string().optional(),
@@ -297,6 +338,12 @@ export const ProviderOverrideSchema = z.object({
    * (openai-compat). Omitted = the built-in default (MAX_TOOL_ROUNDS_DEFAULT).
    */
   maxToolRounds: z.number().int().min(MAX_TOOL_ROUNDS_MIN).max(MAX_TOOL_ROUNDS_MAX).optional(),
+  /**
+   * Action circuit-breaker for daemon-hosted tool loops (openai-compat /
+   * Otto Brain). Stops a repeatedly-failing identical action and repairs
+   * instead of re-executing it. Omitted = disabled (historical behavior).
+   */
+  actionBreaker: ProviderActionBreakerConfigSchema.optional(),
   enabled: z.boolean().optional(),
   order: z.number().optional(),
 });
