@@ -3103,15 +3103,18 @@ function WorkspaceTeamChatButton({
           setChatConnectionLabel(
             (presence.enabled ?? nextStatus !== "offline") ? "Connected" : "Disabled",
           );
-          setPresenceError(
+          const presenceUpdateError =
             presence.pendingStatus ||
-              nextStatus === "offline" ||
-              !isChatEnabled ||
-              resolvedStatus === nextStatus
+            nextStatus === "offline" ||
+            !isChatEnabled ||
+            resolvedStatus === nextStatus
               ? null
-              : "The service did not apply that status update. Your current status is unchanged.",
-          );
-          setPresencePickerOpen(false);
+              : "The service did not apply that status update. Your current status is unchanged.";
+          setPresenceError(presenceUpdateError);
+          // On success the status has landed; close the whole Chat popup so
+          // the updated title-bar state is what the user sees. On failure the
+          // popup stays open so the error callout is readable.
+          if (!presenceUpdateError) setMenuOpen(false);
         } catch (error) {
           const availableAt = statusChangeAvailableAtFromError(error);
           if (availableAt) {
