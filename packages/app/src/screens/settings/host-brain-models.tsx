@@ -30,10 +30,12 @@ import { settingsStyles } from "@/styles/settings";
 import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
+import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
+import { getDesktopHost } from "@/desktop/host";
 import type { Theme } from "@/styles/theme";
 import { alertDialog, confirmDialog } from "@/utils/confirm-dialog";
 import { activeBrainQuantJob, selectInitialBrainQuant } from "./brain-quant-selection";
-import { describeRuntimeRemovalError } from "./brain-runtime-removal";
+import { describeRuntimeRemovalError, isRuntimeRemovalAccessDenied } from "./brain-runtime-removal";
 
 // ---------------------------------------------------------------------------
 // Themed leaf icons (no useUnistyles: banned - see docs/unistyles.md)
@@ -370,7 +372,9 @@ export function RuntimeManagerSheet({
   onStarted: (job: BrainJob) => void;
 }) {
   const client = useHostRuntimeClient(serverId);
+  const queryClient = useQueryClient();
   const { config, patchConfig } = useDaemonConfig(serverId);
+  const isLocalDaemon = useIsLocalDaemon(serverId);
   const [build, setBuild] = useState("");
   const [showSpecificBuild, setShowSpecificBuild] = useState(false);
   const selectedRuntime = config?.brain?.runtime?.path ?? "auto";
@@ -423,6 +427,8 @@ export function RuntimeManagerSheet({
   );
   const [removalJobId, setRemovalJobId] = useState<string | null>(null);
   const [removalError, setRemovalError] = useState<string | null>(null);
+  const [removalNeedsElevation, setRemovalNeedsElevation] = useState(false);
+  const [elevatingRemoval, setElevatingRemoval] = useState(false);
   const removalJob = useMemo(
     () => (removalJobId ? (jobs.find((candidate) => candidate.id === removalJobId) ?? null) : null),
     [jobs, removalJobId],
@@ -432,12 +438,12 @@ export function RuntimeManagerSheet({
     if (removalJob.status === "succeeded") {
       setRemoveName("");
       setRemovalError(null);
+      setRemovalNeedsElevation(false);
     } else {
-      setRemovalError(
-        describeRuntimeRemovalError(
-          removalJob.error ?? removalJob.message ?? "The runtime removal did not complete.",
-        ),
-      );
+      const error =
+        removalJob.error ?? removalJob.message ?? "The runtime removal did not complete.";
+      setRemovalError(describeRuntimeRemovalError(error));
+      setRemovalNeedsElevation(isRuntimeRemovalAccessDenied(error));
     }
     setRemovalJobId(null);
   }, [removalJob]);
@@ -461,14 +467,50 @@ export function RuntimeManagerSheet({
       if (!confirmed) return;
       try {
         setRemovalError(null);
+        setRemovalNeedsElevation(false);
         const started = await client.brainRuntimeRemove(selectedRemovalRuntime.label);
         setRemovalJobId(started.id);
         onStarted(started);
       } catch (error) {
         setRemovalError(describeRuntimeRemovalError(error));
+        setRemovalNeedsElevation(isRuntimeRemovalAccessDenied(error));
       }
     })();
   }, [client, onStarted, selectedRemovalRuntime]);
+  const canElevateRemoval =
+    isLocalDaemon &&
+    getDesktopHost()?.platform === "win32" &&
+    typeof getDesktopHost()?.invoke === "function";
+  const handleElevatedRuntimeRemoval = useCallback(() => {
+    if (!selectedRemovalRuntime) return;
+    const desktop = getDesktopHost();
+    const invoke = desktop?.invoke;
+    if (!invoke) return;
+    void (async () => {
+      const confirmed = await confirmDialog({
+        title: `Remove ${formatBrainRuntime(selectedRemovalRuntime)} as administrator?`,
+        message:
+          "Windows will ask for administrator permission to remove this runtime's downloaded files. This cannot be undone.",
+        confirmLabel: "Request permission",
+        destructive: true,
+      });
+      if (!confirmed) return;
+      try {
+        setElevatingRemoval(true);
+        await invoke("remove_managed_runtime_with_elevation", {
+          name: selectedRemovalRuntime.label,
+        });
+        setRemoveName("");
+        setRemovalError(null);
+        setRemovalNeedsElevation(false);
+        await queryClient.invalidateQueries({ queryKey: ["brain-runtimes", serverId] });
+      } catch (error) {
+        setRemovalError(describeRuntimeRemovalError(error));
+      } finally {
+        setElevatingRemoval(false);
+      }
+    })();
+  }, [queryClient, selectedRemovalRuntime, serverId]);
   const handleInstall = useCallback(
     (requestedBuild: string | null = null) => {
       if (!client) return;
@@ -653,6 +695,7 @@ export function RuntimeManagerSheet({
                       onChange={(value) => {
                         setRemoveName(value);
                         setRemovalError(null);
+                        setRemovalNeedsElevation(false);
                       }}
                       selectedDisplay={removableBuildDisplay}
                       placeholder="Choose a build to remove"
@@ -662,7 +705,12 @@ export function RuntimeManagerSheet({
                       variant="outline"
                       size="sm"
                       onPress={handleRemoveRuntime}
-                      disabled={!client || !selectedRemovalRuntime || removalBlockingJob !== null}
+                      disabled={
+                        !client ||
+                        !selectedRemovalRuntime ||
+                        removalBlockingJob !== null ||
+                        elevatingRemoval
+                      }
                     >
                       {removalBlockingJob?.kind === "runtime-remove" ? "Removing..." : "Remove"}
                     </Button>
@@ -673,6 +721,17 @@ export function RuntimeManagerSheet({
                     </Text>
                   ) : null}
                   {removalError ? <Text style={styles.jobError}>{removalError}</Text> : null}
+                  {removalNeedsElevation && canElevateRemoval && selectedRemovalRuntime ? (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onPress={handleElevatedRuntimeRemoval}
+                      loading={elevatingRemoval}
+                      disabled={elevatingRemoval || removalBlockingJob !== null}
+                    >
+                      Remove with administrator permission
+                    </Button>
+                  ) : null}
                 </>
               ) : null}
             </>

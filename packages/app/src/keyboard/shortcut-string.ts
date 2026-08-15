@@ -206,6 +206,30 @@ export function chordStringToShortcutKeys(s: string): ShortcutKey[][] {
   return s.split(" ").map(comboStringToShortcutKeys);
 }
 
+/**
+ * Converts the parsed form used by the matching engine into the display form
+ * shared by inline shortcut badges and contextual shortcut discovery.
+ */
+export function keyComboToShortcutKeys(combo: KeyCombo): ShortcutKey[] {
+  const keys: ShortcutKey[] = [];
+  if (combo.mod) keys.push("mod");
+  if (combo.ctrl) keys.push("ctrl");
+  if (combo.alt) keys.push("alt");
+  if (combo.shift) keys.push("shift");
+  if (combo.meta) keys.push("meta");
+
+  if (combo.code === "Digit") {
+    keys.push("1-9");
+    return keys;
+  }
+
+  const humanKey = combo.shift && combo.shiftedKey ? combo.shiftedKey : CODE_TO_KEY[combo.code];
+  if (humanKey) {
+    keys.push(humanKey);
+  }
+  return keys;
+}
+
 export function heldModifiersFromEvent(event: KeyboardEvent): string | null {
   const parts: string[] = [];
   if (event.ctrlKey) parts.push("Ctrl");

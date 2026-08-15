@@ -7,6 +7,7 @@ import { useRouter } from "expo-router";
 import { FolderOpen, Inbox, Plug, Smartphone } from "@/components/icons/material-icons";
 import { OttoLogoWink } from "@/components/icons/otto-logo";
 import { CommunityLinks } from "@/components/community-links";
+import { ShortcutDiscoveryHint } from "@/components/shortcut-discovery-overlay";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { useHostChooser } from "@/hosts/host-chooser";
@@ -27,6 +28,7 @@ import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { isWeb } from "@/constants/platform";
 import { useOpenProject } from "@/hooks/use-open-project";
 import type { Href } from "expo-router";
+import type { KeyboardActionId } from "@/keyboard/actions";
 
 interface HomeQuote {
   text: string;
@@ -142,6 +144,7 @@ export function OpenProjectScreen() {
                 onPress={openProjectPicker}
                 testID="open-project-submit"
                 anchorRef={addProjectAnchorRef}
+                shortcutDiscoveryAction="agent.new"
                 accent
               />
               <HomeTile
@@ -198,6 +201,8 @@ interface HomeTileProps {
   onPress: () => void;
   testID?: string;
   anchorRef?: Ref<View>;
+  /** Registered action revealed directly on this home-screen tile. */
+  shortcutDiscoveryAction?: KeyboardActionId;
   accent?: boolean;
 }
 
@@ -211,6 +216,7 @@ function HomeTile({
   onPress,
   testID,
   anchorRef,
+  shortcutDiscoveryAction,
   accent,
 }: HomeTileProps) {
   // useUnistyles is acceptable here: leaf component, off the hot path (home screen renders once).
@@ -251,6 +257,12 @@ function HomeTile({
         <Text style={styles.tileTitle}>{title}</Text>
         <Text style={styles.tileDescription}>{description}</Text>
       </View>
+      {shortcutDiscoveryAction ? (
+        <ShortcutDiscoveryHint
+          action={shortcutDiscoveryAction}
+          style={styles.shortcutDiscoveryHint}
+        />
+      ) : null}
     </Pressable>
   );
 }
@@ -313,6 +325,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[3],
   },
   tile: {
+    position: "relative",
     width: { xs: "100%", md: 220 },
     minHeight: { xs: 0, md: 132 },
     padding: theme.spacing[4],
@@ -321,6 +334,12 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.xl,
     gap: theme.spacing[3],
+  },
+  shortcutDiscoveryHint: {
+    position: "absolute",
+    top: theme.spacing[2],
+    right: theme.spacing[2],
+    zIndex: 1,
   },
   tileHovered: {
     backgroundColor: theme.colors.surface2,

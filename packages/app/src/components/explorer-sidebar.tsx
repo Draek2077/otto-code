@@ -13,6 +13,7 @@ import Animated, { useSharedValue, runOnJS } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { DocumentSearch, Files, X } from "@/components/icons/material-icons";
+import { ShortcutDiscoveryHint } from "@/components/shortcut-discovery-overlay";
 import { SourceControlPanelIcon } from "@/components/icons/source-control-panel-icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTranslation } from "react-i18next";
@@ -51,6 +52,7 @@ import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import { isWeb } from "@/constants/platform";
 import { buildWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
 import { useIconSize } from "@/styles/theme";
+import type { KeyboardActionId } from "@/keyboard/actions";
 
 const MIN_CHAT_WIDTH = 400;
 // Files / Search / Changes / PR pill height, trimmed 2px below what
@@ -312,6 +314,8 @@ interface ExplorerTabButtonProps {
   /** Accessible name; rendered as text unless `display` is "icon", then shown as a tooltip below. */
   label: string;
   display?: ExplorerTabDisplay;
+  shortcutDiscoveryAction?: KeyboardActionId;
+  shortcutDiscoveryVisible: boolean;
   onTabPress: (tab: ExplorerTab) => void;
   testID: string;
   children?: React.ReactNode;
@@ -322,6 +326,8 @@ function ExplorerTabButton({
   active,
   label,
   display = "icon-label",
+  shortcutDiscoveryAction,
+  shortcutDiscoveryVisible,
   onTabPress,
   testID,
   children,
@@ -348,6 +354,13 @@ function ExplorerTabButton({
     >
       {display === "label" ? null : children}
       {display === "icon" ? null : <Text style={tabTextStyle}>{label}</Text>}
+      {shortcutDiscoveryAction ? (
+        <ShortcutDiscoveryHint
+          action={shortcutDiscoveryAction}
+          enabled={shortcutDiscoveryVisible}
+          style={styles.shortcutDiscoveryHint}
+        />
+      ) : null}
     </Pressable>
   );
   if (display !== "icon") {
@@ -389,6 +402,7 @@ interface ExplorerTabDef {
   tab: ExplorerTab;
   label: string;
   testID: string;
+  shortcutDiscoveryAction?: KeyboardActionId;
   /** The PR tab keeps icon+label (it carries the PR number); others collapse by tier. */
   alwaysLabeled?: boolean;
   renderIcon: (color: string) => React.ReactNode;
@@ -488,6 +502,7 @@ function ExplorerSidebarContent({
       tab: "changes",
       label: t("workspace.tabs.explorer.changes"),
       testID: "explorer-tab-changes",
+      shortcutDiscoveryAction: "sidebar.open.changes",
       renderIcon: (color) => <SourceControlPanelIcon size={iconSize.sm} color={color} />,
     });
   }
@@ -495,6 +510,7 @@ function ExplorerSidebarContent({
     tab: "files",
     label: t("workspace.tabs.explorer.files"),
     testID: "explorer-tab-files",
+    shortcutDiscoveryAction: "sidebar.open.files",
     renderIcon: (color) => <Files size={iconSize.sm} color={color} />,
   });
   if (isDeveloperMode && hasProjectSearch) {
@@ -502,6 +518,7 @@ function ExplorerSidebarContent({
       tab: "search",
       label: t("workspace.tabs.explorer.search"),
       testID: "explorer-tab-search",
+      shortcutDiscoveryAction: "sidebar.open.search",
       renderIcon: (color) => <DocumentSearch size={iconSize.sm} color={color} />,
     });
   }
@@ -547,6 +564,8 @@ function ExplorerSidebarContent({
                 active={active}
                 label={def.label}
                 display={def.alwaysLabeled ? "icon-label" : tabDisplay}
+                shortcutDiscoveryAction={def.shortcutDiscoveryAction}
+                shortcutDiscoveryVisible={isOpen}
                 onTabPress={onTabPress}
                 testID={def.testID}
               >
@@ -726,6 +745,7 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0,
   },
   tab: {
+    position: "relative",
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
@@ -735,6 +755,12 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: TAB_VERTICAL_PADDING,
     paddingHorizontal: theme.spacing[3],
     borderRadius: theme.borderRadius.md,
+  },
+  shortcutDiscoveryHint: {
+    position: "absolute",
+    top: -theme.spacing[2],
+    right: -theme.spacing[2],
+    zIndex: 1,
   },
   tabActive: {
     backgroundColor: theme.colors.surfaceToggleSelected,

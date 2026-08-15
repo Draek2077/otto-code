@@ -121,6 +121,59 @@ describe("loadAppSettingsFromStorage", () => {
     expect(existingInstall.workspaceToolsPlacement).toBe("header");
   });
 
+  it("keeps Zoom Recorder disabled until the Desktop user explicitly enables it", async () => {
+    const defaults = await loadAppSettingsFromStorage(makeDeps());
+    expect(defaults.zoomRecorderEnabled).toBe(false);
+    expect(defaults.meetingTranscriptDeliveryPolicy).toBe("require_secure_connection");
+
+    const configured = await loadAppSettingsFromStorage(
+      makeDeps({
+        storage: createInMemoryKeyValueStorage({
+          [APP_SETTINGS_KEY]: JSON.stringify({ zoomRecorderEnabled: true }),
+        }),
+      }),
+    );
+    expect(configured.zoomRecorderEnabled).toBe(true);
+  });
+
+  it("persists a paused Zoom Recorder without disabling its library", async () => {
+    const configured = await loadAppSettingsFromStorage(
+      makeDeps({
+        storage: createInMemoryKeyValueStorage({
+          [APP_SETTINGS_KEY]: JSON.stringify({
+            zoomRecorderEnabled: true,
+            zoomRecorderPaused: true,
+          }),
+        }),
+      }),
+    );
+
+    expect(configured.zoomRecorderEnabled).toBe(true);
+    expect(configured.zoomRecorderPaused).toBe(true);
+  });
+
+  it("persists only recognized transcript delivery policies", async () => {
+    const configured = await loadAppSettingsFromStorage(
+      makeDeps({
+        storage: createInMemoryKeyValueStorage({
+          [APP_SETTINGS_KEY]: JSON.stringify({
+            meetingTranscriptDeliveryPolicy: "local_only",
+          }),
+        }),
+      }),
+    );
+    expect(configured.meetingTranscriptDeliveryPolicy).toBe("local_only");
+
+    const invalid = await loadAppSettingsFromStorage(
+      makeDeps({
+        storage: createInMemoryKeyValueStorage({
+          [APP_SETTINGS_KEY]: JSON.stringify({ meetingTranscriptDeliveryPolicy: "plaintext" }),
+        }),
+      }),
+    );
+    expect(invalid.meetingTranscriptDeliveryPolicy).toBe("require_secure_connection");
+  });
+
   it("loads configured terminal scrollback lines from app settings", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({
@@ -143,6 +196,31 @@ describe("loadAppSettingsFromStorage", () => {
     const result = await loadAppSettingsFromStorage(deps);
 
     expect(result.workspaceTitleSource).toBe("branch");
+  });
+
+  it("defaults shortcut overlays to Full and accepts only the four supported modes", async () => {
+    const defaults = await loadAppSettingsFromStorage(makeDeps());
+    expect(defaults.shortcutOverlayMode).toBe("full");
+
+    for (const shortcutOverlayMode of ["off", "workspaces", "on-screen", "full"] as const) {
+      const result = await loadAppSettingsFromStorage(
+        makeDeps({
+          storage: createInMemoryKeyValueStorage({
+            [APP_SETTINGS_KEY]: JSON.stringify({ shortcutOverlayMode }),
+          }),
+        }),
+      );
+      expect(result.shortcutOverlayMode).toBe(shortcutOverlayMode);
+    }
+
+    const invalid = await loadAppSettingsFromStorage(
+      makeDeps({
+        storage: createInMemoryKeyValueStorage({
+          [APP_SETTINGS_KEY]: JSON.stringify({ shortcutOverlayMode: "everywhere" }),
+        }),
+      }),
+    );
+    expect(invalid.shortcutOverlayMode).toBe("full");
   });
 
   it("retains the enabled all-pages resource footer from its pre-release key", async () => {

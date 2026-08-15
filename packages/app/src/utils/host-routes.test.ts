@@ -9,6 +9,7 @@ import {
   resolveKnownHostRoute,
   buildSessionsRoute,
   buildSettingsAddHostRoute,
+  buildSettingsSectionRoute,
   buildProjectSettingsRoute,
   buildProjectsSettingsRoute,
   decodeFilePathFromPathSegment,
@@ -187,6 +188,12 @@ describe("workspace route parsing", () => {
 });
 
 describe("projects settings routes", () => {
+  it("binds a global settings section to an explicit host when requested", () => {
+    expect(buildSettingsSectionRoute("integrations", "host a")).toBe(
+      "/settings/integrations?host=host%20a",
+    );
+  });
+
   it("buildSettingsAddHostRoute opens settings with the add-host flag", () => {
     expect(buildSettingsAddHostRoute()).toBe("/settings/general?addHost=1");
   });

@@ -9,7 +9,7 @@ progress_completed: 4
 progress_total: 6
 progress_unit: "phases"
 created_at: "2026-08-11T06:54:59.270Z"
-updated_at: "2026-08-14T19:53:01.577Z"
+updated_at: "2026-08-15T04:31:21.580Z"
 ---
 
 # Brain model bundles
@@ -123,3 +123,11 @@ Otto Brain treats a multi-artifact local model as one selectable bundle. Users e
   kind: "evidence"
   summary: "Bundle progress requires a known byte total. Catalog verification filled the missing projector sizes for Qwen3.8 27B (927,607,488), Gemma 4 31B (1,200,725,984), Mistral Small 3.2 24B (887,647,040), Ornith 1.0 35B (902,822,240), and DeepSeek OCR 2 (512,537,792), allowing their combined primary-plus-component download rings to report live progress."
   source: "User report and Hugging Face repository metadata, 2026-08-14"
+- time: "2026-08-15T03:47:39.167Z"
+  kind: "evidence"
+  summary: "Library Delete was silently ineffective in the Electron renderer when its target quant was loaded: the host correctly refused deletion until unload, but the Library routed the failure through React Native `Alert`, which is a no-op on Electron/web. The Library now uses the globally mounted in-app alert dialog so failed deletion and other model mutations visibly explain the blocker."
+  source: "User report and live dev-host inspection, 2026-08-14"
+- time: "2026-08-15T04:31:21.580Z"
+  kind: "evidence"
+  summary: "The Brain host now filters exact catalog-declared bundle component artifacts from the scanned inventory before enrichment and host/UI exposure. This prevents Muse Glimmer's optional `dflash-kquant.gguf` drafter from appearing as an independently selectable Models row, while keeping the primary model visible. Focused model-enrichment regression coverage verifies case- and separator-insensitive component identity."
+  source: "User-reported Models-tab regression and implementation, 2026-08-14"

@@ -1,7 +1,12 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 
-import { enrichWithCatalog, familyFromGgufMetadata, matchCatalogEntry } from "./enrich.js";
+import {
+  enrichWithCatalog,
+  excludeCatalogComponentArtifacts,
+  familyFromGgufMetadata,
+  matchCatalogEntry,
+} from "./enrich.js";
 import { CatalogSchema, type Catalog } from "../config/schema.js";
 import { hostingFamily } from "../config/hosting-profiles.js";
 import type { Model } from "../types.js";
@@ -178,4 +183,28 @@ test("falls back to quant match when no exact file name is given", () => {
   const q8 = { ...CODER, id: "coder-q8", quant: "Q8_0", quantFile: undefined };
   const scanned = model("unsloth/Qwen3-Coder-30B-GGUF/coder-Q8_0.gguf", { quant: "Q8_0" });
   assert.equal(matchCatalogEntry(scanned, catalog([q4, q8]))?.id, "coder-q8");
+});
+
+test("excludes declared bundle components while retaining their primary model", () => {
+  const muse = {
+    ...CODER,
+    id: "muse-glimmer-30b",
+    hfRepo: "unsloth/Muse-Glimmer-30B-GGUF",
+    quantFile: "Muse-Glimmer-30B-UD-Q4_K_XL.gguf",
+    components: [
+      {
+        id: "drafter",
+        label: "DFlash drafter",
+        description: "Speeds up generation",
+        role: "speculative_drafter" as const,
+        file: "dflash-kquant.gguf",
+      },
+    ],
+  };
+  const primary = model("UNSLOTH/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-UD-Q4_K_XL.gguf");
+  const component = model("unsloth\\Muse-Glimmer-30B-GGUF\\dflash-kquant.gguf");
+
+  assert.deepEqual(excludeCatalogComponentArtifacts([primary, component], catalog([muse])), [
+    primary,
+  ]);
 });

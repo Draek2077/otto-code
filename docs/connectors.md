@@ -171,6 +171,46 @@ The same provider class serves both paths, distinguished by whether an
   token transparently, and **throws** if the server demands a full re-login. An
   agent mid-turn must never pop a browser nobody asked for.
 
+### Browser authorization lifecycle
+
+Browser sign-in is daemon-owned infrastructure, not a connector-specific UI
+pattern. New native integration drivers register with
+`IntegrationBrowserAuthorizationService` and Settings starts them through the
+provider-neutral `integrations.authorization.start_browser.request` RPC. The
+driver owns vendor protocol details (OAuth shape, PKCE, redirect URI, and
+account lookup); the shared layer owns attempt replacement and the safe client
+boundary.
+
+### Scope contract
+
+Every OAuth integration maintains three adjacent declarations: the vendor
+portal's approved scope inventory, the scopes Otto requests for the current
+release, and the scope required by each REST operation actually called. The
+test contract requires every active operation to be both portal-approved and
+requested by OAuth.
+
+Vendor portals do not expose a safe general-purpose API for Otto to inspect an
+app's private configuration at runtime. Changing scopes is therefore a
+deliberate release operation: update the portal, update the approved inventory
+and operation map in code, then require the user to authorize again. A scope
+that is merely approved for future work is not requested until its capability
+is implemented.
+
+`BrowserAuthorizationAttemptManager` treats a second sign-in as an intentional
+replacement: it closes only Otto's earlier callback listener and discards its
+in-memory verifier. It never closes a browser, browser tab, or vendor session.
+A callback from an earlier attempt is rejected without cancelling the current
+one. A persisted `authorizing` connection state is not proof that a browser is
+still open, so a fresh Settings page must allow the user to start a replacement
+attempt.
+
+The established connector OAuth broker follows the same stale-callback rule.
+Its redirect listener can choose an ephemeral port when the server supports a
+dynamic redirect URI. A provider with a registered fixed redirect URI, such as
+the current Zoom public-client proof, must instead report a local listener
+collision clearly; it cannot silently switch ports until that provider's app
+registration permits the alternate URI.
+
 `resolveEnabledConnectors` attaches a provider only for connectors that hold
 tokens, so unauthenticated servers stay on the plain no-auth path.
 

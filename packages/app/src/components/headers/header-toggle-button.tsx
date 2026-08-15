@@ -1,8 +1,10 @@
 import { useCallback, type ReactElement, type ReactNode, type Ref } from "react";
 import { Text, View, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
+import { ShortcutDiscoveryHint } from "@/components/shortcut-discovery-overlay";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
+import type { KeyboardActionId } from "@/keyboard/actions";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { isWeb } from "@/constants/platform";
 
@@ -25,6 +27,8 @@ interface HeaderToggleButtonProps extends Omit<PressableProps, "style" | "onPres
   // same way the sidebar's Settings button marks the surface you are already on.
   // An enabled feature should read as enabled without needing a hover to prove it.
   active?: boolean;
+  /** The registered shortcut action revealed directly over this header trigger. */
+  shortcutDiscoveryAction?: KeyboardActionId;
   // Composed onto the underlying trigger Pressable (e.g. a tutorial anchor).
   anchorRef?: Ref<View>;
   children: ReactNode | ((state: HeaderToggleButtonState) => ReactNode);
@@ -39,6 +43,7 @@ export function HeaderToggleButton({
   style,
   disabled,
   active = false,
+  shortcutDiscoveryAction,
   anchorRef,
   children,
   ...props
@@ -73,10 +78,31 @@ export function HeaderToggleButton({
         onPress={onPress}
         style={combinedStyle}
       >
-        {typeof children === "function"
-          ? (state: { pressed: boolean; hovered?: boolean }) =>
-              children({ hovered: Boolean(state.hovered), pressed: state.pressed })
-          : children}
+        {typeof children === "function" ? (
+          (state: { pressed: boolean; hovered?: boolean }) => (
+            <>
+              {children({ hovered: Boolean(state.hovered), pressed: state.pressed })}
+              {shortcutDiscoveryAction ? (
+                <ShortcutDiscoveryHint
+                  action={shortcutDiscoveryAction}
+                  enabled={!disabled}
+                  style={styles.shortcutDiscoveryHint}
+                />
+              ) : null}
+            </>
+          )
+        ) : (
+          <>
+            {children}
+            {shortcutDiscoveryAction ? (
+              <ShortcutDiscoveryHint
+                action={shortcutDiscoveryAction}
+                enabled={!disabled}
+                style={styles.shortcutDiscoveryHint}
+              />
+            ) : null}
+          </>
+        )}
       </TooltipTrigger>
       <TooltipContent testID={tooltipTestID} side={tooltipSide} align="center" offset={8}>
         <View style={styles.tooltipRow}>
@@ -90,6 +116,7 @@ export function HeaderToggleButton({
 
 export const headerIconSlotStyle = StyleSheet.create((theme) => ({
   slot: {
+    position: "relative",
     padding: {
       xs: theme.spacing[3],
       md: theme.spacing[2],
@@ -134,4 +161,10 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.popoverForeground,
   },
   shortcut: {},
+  shortcutDiscoveryHint: {
+    position: "absolute",
+    top: -theme.spacing[2],
+    right: -theme.spacing[2],
+    zIndex: 1,
+  },
 }));

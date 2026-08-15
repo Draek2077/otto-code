@@ -9,6 +9,7 @@ import { agentCommandsQueryRoot } from "@/hooks/agent-commands-query";
 import { reconcileCheckoutStatusWithUncommittedDiff } from "@/git/checkout-status-cache";
 import { orderCheckoutDiffFiles } from "@/git/diff-order";
 import { applyBrainStatusChanged, invalidateBrainStatusAfterReconnect } from "@/data/brain-status";
+import { applyBrainLogLineAdded, invalidateBrainLogsAfterReconnect } from "@/data/brain-logs";
 import { daemonConfigQueryKey } from "@/data/daemon-config";
 import { providersSnapshotQueryKey, providersSnapshotQueryRoot } from "@/data/providers-snapshot";
 import { applyRunUpdate, applyRunsCleared } from "@/data/runs";
@@ -120,6 +121,10 @@ const RECONNECT_REPAIR_POLICIES: ReconnectRepairPolicy[] = [
   {
     domain: "brainStatus",
     invalidate: invalidateBrainStatusAfterReconnect,
+  },
+  {
+    domain: "brainLogs",
+    invalidate: invalidateBrainLogsAfterReconnect,
   },
   {
     domain: "checkoutDiff",
@@ -353,6 +358,7 @@ export function mountServerDataPushRouter(input: PushRouterInput): () => void {
       serverId: input.serverId,
       message,
     });
+    applyBrainLogLineAdded({ queryClient: input.queryClient, serverId: input.serverId, message });
   });
   const unsubscribeCheckoutDiffUpdate = input.client.on("checkout_diff_update", (message) => {
     applyCheckoutDiffUpdate({

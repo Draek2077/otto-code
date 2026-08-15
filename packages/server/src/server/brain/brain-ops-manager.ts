@@ -81,6 +81,13 @@ export function aggregatePullPercent(
   return Math.max(0, Math.min(100, Math.floor((progressed / totalBytes) * 100)));
 }
 
+/** A pull only changes the model store, so it can run beside removal of an
+ * unused runtime. Other operations may execute the runtime and must remain
+ * serialized with it. */
+export function canRunAlongsideModelPull(kind: BrainJobKind): boolean {
+  return kind === "pull" || kind === "runtime-remove";
+}
+
 export interface BrainOpsManagerOptions {
   logger: Logger;
   ottoHome: string;
@@ -415,11 +422,11 @@ export class BrainOpsManager {
     pull?: PullState,
   ): BrainJob {
     const active = [...this.jobsById.values()].find((job) => job.status === "running");
-    const isDownload = spec.kind === "pull";
+    const canRunAlongsidePull = canRunAlongsideModelPull(spec.kind);
     const activeNonDownload = [...this.jobsById.values()].find(
       (job) => job.status === "running" && job.kind !== "pull",
     );
-    const conflict = isDownload ? activeNonDownload : active;
+    const conflict = canRunAlongsidePull ? activeNonDownload : active;
     if (conflict) {
       throw new Error(
         `Another operation is already running (${conflict.label}). Wait for it to finish or cancel it first.`,

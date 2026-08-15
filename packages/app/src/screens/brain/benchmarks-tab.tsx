@@ -20,9 +20,10 @@
  * `evals.latest` is the most recent run per model+config, tasks and all, so a
  * "run" in this file is always one configuration's newest measurement.
  *
- * Running the suite still goes through the job RPCs (`brain.bench`), which shell
- * out to the CLI, because a benchmark is a long local job over the local model
- * store. Only the reads moved to the proxied management API.
+ * Running the suite goes through the host-owned `brain.bench` job RPC. The
+ * Brain service queues it with API inference and performs the model swap on the
+ * machine that owns the model store and GPU. Only the reads use the proxied
+ * management API directly.
  */
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { Pressable, ScrollView, Text, View, type StyleProp, type TextStyle } from "react-native";

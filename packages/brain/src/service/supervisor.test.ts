@@ -31,3 +31,15 @@ test("Supervisor is the mandatory hosting-profile launch boundary", () => {
   const bench = readFileSync(path.resolve(serviceDir, "../commands/bench.ts"), "utf8");
   assert.match(bench, /loadModel: async \(target\)/);
 });
+
+test("Supervisor keeps one Brain-session log across every managed launch", () => {
+  const supervisor = readFileSync(path.join(serviceDir, "supervisor.ts"), "utf8");
+  // A service owns a Supervisor for its lifetime. Replacing a model or cycling
+  // it during a resident operation must not create a second log session.
+  assert.equal((supervisor.match(/this\.logLines = \[\]/g) ?? []).length, 1);
+  assert.doesNotMatch(supervisor, /preserveLogs/);
+
+  for (const source of ["serve.ts", "../ops/calibrate.ts", "../ops/sweep.ts"]) {
+    assert.doesNotMatch(readFileSync(path.resolve(serviceDir, source), "utf8"), /preserveLogs/);
+  }
+});

@@ -61,6 +61,7 @@ import {
   type VisualizerNodeShape,
   type VisualizerContextDisplay,
   type WorkspaceTitleSource,
+  type ShortcutOverlayMode,
   type WorkspaceToolsPlacement,
 } from "./storage";
 import { collectAppSettingsUpdates } from "./update-routing";
@@ -117,6 +118,7 @@ export type {
   VisualizerNodeShape,
   VisualizerContextDisplay,
   WorkspaceTitleSource,
+  ShortcutOverlayMode,
   WorkspaceToolsPlacement,
 };
 

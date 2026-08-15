@@ -566,7 +566,14 @@ export function buildSettingsRoute() {
   return "/settings" as const;
 }
 
-export function buildSettingsSectionRoute(section: SettingsSectionSlug) {
+export function buildSettingsSectionRoute(
+  section: SettingsSectionSlug,
+  preferredHostServerId?: string,
+) {
+  const preferredHost = trimNonEmpty(preferredHostServerId ?? "");
+  if (preferredHost) {
+    return `/settings/${section}?host=${encodeURIComponent(preferredHost)}` as const;
+  }
   return `/settings/${section}` as const;
 }
 

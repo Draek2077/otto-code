@@ -11,7 +11,6 @@ import {
   type KeyboardShortcutInput,
   resolveKeyboardShortcut,
   buildEffectiveBindings,
-  getWorkspaceIndexJumpModifierKey,
 } from "@/keyboard/keyboard-shortcuts";
 import { resolveKeyboardFocusScope } from "@/keyboard/focus-scope";
 import {
@@ -101,18 +100,13 @@ export function useKeyboardShortcuts({
     if (isNative) return;
     if (isMobile) return;
 
-    // Only the modifier that actually performs the workspace-index jump on this
-    // runtime should reveal the sidebar number badges (Alt on web, Cmd on
-    // desktop Mac, Ctrl on desktop non-Mac). The store ORs altDown/cmdOrCtrlDown
-    // to drive badge visibility, so we set the flag matching this runtime.
-    const badgeModifierKey = getWorkspaceIndexJumpModifierKey({ isMac, isDesktop: isDesktopApp });
-    const setBadgeModifierDown = (down: boolean) => {
-      const state = useKeyboardShortcutsStore.getState();
-      if (isDesktopApp) {
-        state.setCmdOrCtrlDown(down);
-      } else {
-        state.setAltDown(down);
-      }
+    const syncShortcutDiscoveryModifiers = (event: KeyboardEvent) => {
+      useKeyboardShortcutsStore.getState().setShortcutDiscoveryModifiers({
+        alt: event.altKey,
+        ctrl: event.ctrlKey,
+        meta: event.metaKey,
+        shift: event.shiftKey,
+      });
     };
 
     const shouldHandle = () => {
@@ -296,16 +290,7 @@ export function useKeyboardShortcuts({
         return;
       }
 
-      const key = event.key ?? "";
-      if (key === badgeModifierKey && !event.shiftKey) {
-        setBadgeModifierDown(true);
-      }
-      if (key === "Shift") {
-        const state = useKeyboardShortcutsStore.getState();
-        if (state.altDown || state.cmdOrCtrlDown) {
-          state.resetModifiers();
-        }
-      }
+      syncShortcutDiscoveryModifiers(event);
 
       const focusScope = resolveKeyboardFocusScope({
         target: event.target,
@@ -319,10 +304,7 @@ export function useKeyboardShortcuts({
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
-      const key = event.key ?? "";
-      if (key === badgeModifierKey) {
-        setBadgeModifierDown(false);
-      }
+      syncShortcutDiscoveryModifiers(event);
     };
 
     const handleBlurOrHide = () => {

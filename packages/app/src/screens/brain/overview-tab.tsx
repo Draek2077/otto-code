@@ -563,10 +563,12 @@ function RuntimePanel({
   serverId,
   isConnected,
   canInstall,
+  fillHeight,
 }: {
   serverId: string;
   isConnected: boolean;
   canInstall: boolean;
+  fillHeight?: boolean;
 }) {
   const queryClient = useQueryClient();
   const runtimesQuery = useBrainRuntimes(serverId, isConnected);
@@ -612,7 +614,7 @@ function RuntimePanel({
 
   return (
     <>
-      <View style={styles.hero}>
+      <View style={[styles.hero, fillHeight && styles.fillHeight]}>
         <View style={styles.heroText}>
           <View style={styles.heroTitleRow}>
             <Text style={styles.heroTitle} numberOfLines={1}>
@@ -731,6 +733,7 @@ export function BrainOverviewTab({
               serverId={serverId}
               isConnected={isConnected}
               canInstall={canInstallRuntime}
+              fillHeight={!stackTopSections}
             />
           </View>
         ) : null}
@@ -762,7 +765,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   topSections: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "stretch",
     gap: theme.spacing[4],
   },
   topSectionsStacked: {

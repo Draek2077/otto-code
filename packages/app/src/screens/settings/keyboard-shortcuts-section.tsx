@@ -6,7 +6,9 @@ import { StyleSheet } from "react-native-unistyles";
 import { settingsStyles } from "@/styles/settings";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { Button } from "@/components/ui/button";
+import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { Shortcut } from "@/components/ui/shortcut";
+import { useAppSettings, type AppSettings } from "@/hooks/use-settings";
 import { useKeyboardShortcutOverrides } from "@/hooks/use-keyboard-shortcut-overrides";
 import {
   buildKeyboardShortcutHelpSections,
@@ -26,6 +28,41 @@ import { isNative } from "@/constants/platform";
 import { getDesktopHost } from "@/desktop/host";
 
 const EMPTY_CAPTURED_COMBOS: string[] = [];
+
+const SHORTCUT_OVERLAY_OPTIONS: SegmentedControlOption<AppSettings["shortcutOverlayMode"]>[] = [
+  { value: "off", label: "Off", testID: "shortcut-overlay-mode-off" },
+  { value: "workspaces", label: "Workspaces", testID: "shortcut-overlay-mode-workspaces" },
+  { value: "on-screen", label: "On-Screen", testID: "shortcut-overlay-mode-on-screen" },
+  { value: "full", label: "Full", testID: "shortcut-overlay-mode-full" },
+];
+
+function ShortcutOverlayModeRow({
+  value,
+  onChange,
+}: {
+  value: AppSettings["shortcutOverlayMode"];
+  onChange: (value: AppSettings["shortcutOverlayMode"]) => void;
+}) {
+  return (
+    <View style={settingsStyles.rowResponsive}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>Shortcut overlays</Text>
+        <Text style={settingsStyles.rowHint}>
+          Choose what appears while holding shortcut keys. Full adds unanchored commands in the
+          center of the view.
+        </Text>
+      </View>
+      <SegmentedControl
+        size="sm"
+        wrap
+        value={value}
+        onValueChange={onChange}
+        options={SHORTCUT_OVERLAY_OPTIONS}
+        testID="settings-shortcut-overlay-mode"
+      />
+    </View>
+  );
+}
 
 function ShortcutSequence({
   chord,
@@ -169,6 +206,7 @@ export function KeyboardShortcutsSection() {
   const [heldModifiers, setHeldModifiers] = useState<string | null>(null);
   const { overrides, hasOverrides, setOverride, removeOverride, resetAll } =
     useKeyboardShortcutOverrides();
+  const { settings, updateSettings } = useAppSettings();
   const setCapturingShortcut = useKeyboardShortcutsStore((s) => s.setCapturingShortcut);
   const capturing = useKeyboardShortcutsStore((s) => s.capturingShortcut);
 
@@ -260,6 +298,12 @@ export function KeyboardShortcutsSection() {
     (bindingId: string) => void removeOverride(bindingId),
     [removeOverride],
   );
+  const handleShortcutOverlayModeChange = useCallback(
+    (shortcutOverlayMode: AppSettings["shortcutOverlayMode"]) => {
+      void updateSettings({ shortcutOverlayMode });
+    },
+    [updateSettings],
+  );
 
   if (isNative) {
     return (
@@ -279,6 +323,15 @@ export function KeyboardShortcutsSection() {
 
   return (
     <>
+      {/* i18n: English-only pending a translation pass (contextual shortcuts). */}
+      <SettingsSection title="Shortcut overlays">
+        <View style={settingsStyles.card}>
+          <ShortcutOverlayModeRow
+            value={settings.shortcutOverlayMode}
+            onChange={handleShortcutOverlayModeChange}
+          />
+        </View>
+      </SettingsSection>
       {sections.map(function (section, sectionIndex) {
         return (
           <SettingsSection

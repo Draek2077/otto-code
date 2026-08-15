@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
+import { ShortcutDiscoveryHint } from "@/components/shortcut-discovery-overlay";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ResolvedPin } from "@/workspace-pins/launch";
 
@@ -8,12 +9,46 @@ function pinButtonStyle({ hovered, pressed }: PressableStateCallbackType & { hov
   return [styles.pinButton, (Boolean(hovered) || pressed) && styles.pinButtonHovered];
 }
 
+function PinnedTargetShortcutHint({
+  launcher,
+  enabled,
+}: {
+  launcher: ResolvedPin;
+  enabled: boolean;
+}) {
+  switch (launcher.target.kind) {
+    case "draft":
+      return (
+        <ShortcutDiscoveryHint
+          action="workspace.tab.new"
+          enabled={enabled}
+          style={styles.shortcutDiscoveryHint}
+        />
+      );
+    case "terminal":
+      return (
+        <ShortcutDiscoveryHint
+          action="workspace.terminal.new"
+          enabled={enabled}
+          style={styles.shortcutDiscoveryHint}
+        />
+      );
+    default:
+      return null;
+  }
+}
+
 interface PinnedTargetsRowProps {
   launchers: ResolvedPin[];
   testIdPrefix: string;
+  shortcutDiscoveryVisible?: boolean;
 }
 
-export function PinnedTargetsRow({ launchers, testIdPrefix }: PinnedTargetsRowProps): ReactElement {
+export function PinnedTargetsRow({
+  launchers,
+  testIdPrefix,
+  shortcutDiscoveryVisible = true,
+}: PinnedTargetsRowProps): ReactElement {
   return (
     <View style={styles.row}>
       {launchers.map((launcher) => (
@@ -25,7 +60,10 @@ export function PinnedTargetsRow({ launchers, testIdPrefix }: PinnedTargetsRowPr
             accessibilityLabel={launcher.label}
             style={pinButtonStyle}
           >
-            {launcher.icon}
+            <View style={styles.shortcutDiscoveryAnchor}>
+              {launcher.icon}
+              <PinnedTargetShortcutHint launcher={launcher} enabled={shortcutDiscoveryVisible} />
+            </View>
           </TooltipTrigger>
           <TooltipContent side="bottom" align="center" offset={8}>
             <Text style={styles.tooltipText}>{launcher.label}</Text>
@@ -50,6 +88,18 @@ const styles = StyleSheet.create((theme) => ({
   },
   pinButtonHovered: {
     backgroundColor: theme.colors.surfaceHover,
+  },
+  shortcutDiscoveryAnchor: {
+    position: "relative",
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  shortcutDiscoveryHint: {
+    position: "absolute",
+    top: -theme.spacing[2],
+    right: -theme.spacing[2],
   },
   tooltipText: {
     color: theme.colors.foreground,

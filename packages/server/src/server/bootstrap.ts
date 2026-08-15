@@ -1,4 +1,15 @@
 import express from "express";
+import { CommunicationsService } from "./communications/communications-service.js";
+import {
+  getZoomTeamChatAuthorizationMethods,
+  ZoomTeamChatProvider,
+} from "./communications/zoom-team-chat-provider.js";
+import { ZoomTeamChatManagedAuthorizationBroker } from "./communications/zoom-team-chat-managed-authorization.js";
+import { createDaemonCredentialVault } from "./integration-authorization/credential-vault.js";
+import { IntegrationAuthorizationCatalog } from "./integration-authorization/integration-authorization-catalog.js";
+import { IntegrationBrowserAuthorizationService } from "./integration-authorization/browser-authorization-service.js";
+import { FileBackedIntegrationAuthorizationRegistry } from "./integration-authorization/integration-authorization-registry.js";
+import { IntegrationAuthorizationService } from "./integration-authorization/integration-authorization-service.js";
 import { createServer as createHTTPServer, type IncomingMessage, type ServerResponse } from "http";
 import { constants, existsSync, unlinkSync } from "fs";
 import { open } from "fs/promises";
@@ -2258,6 +2269,30 @@ export async function createOttoDaemon(
               );
             }
 
+            const integrationAuthorizationRegistry = new FileBackedIntegrationAuthorizationRegistry(
+              path.join(config.ottoHome, "integration-authorizations.json"),
+              logger,
+            );
+            const integrationAuthorization = new IntegrationAuthorizationService({
+              hostId: serverId,
+              registry: integrationAuthorizationRegistry,
+              vault: await createDaemonCredentialVault(),
+            });
+            await integrationAuthorization.initialize();
+
+            const integrationAuthorizationCatalog = new IntegrationAuthorizationCatalog();
+            integrationAuthorizationCatalog.registerMethods(getZoomTeamChatAuthorizationMethods());
+            const zoomTeamChatAuthorization = new ZoomTeamChatManagedAuthorizationBroker(
+              integrationAuthorization,
+            );
+            const integrationBrowserAuthorization = new IntegrationBrowserAuthorizationService();
+            integrationBrowserAuthorization.register(zoomTeamChatAuthorization);
+
+            const communicationsService = new CommunicationsService();
+            communicationsService.registerProvider(
+              new ZoomTeamChatProvider(integrationAuthorization),
+            );
+
             wsServer = new VoiceAssistantWebSocketServer(
               httpServer,
               logger,
@@ -2340,6 +2375,11 @@ export async function createOttoDaemon(
               // unavailable". Anything appended below must be added here too.
               hubRelationships,
               connectorOAuthBroker,
+              communicationsService,
+              integrationAuthorization,
+              integrationAuthorizationCatalog,
+              integrationBrowserAuthorization,
+              zoomTeamChatAuthorization,
             );
             await hubRelationships.start();
 

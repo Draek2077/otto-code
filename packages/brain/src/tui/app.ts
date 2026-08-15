@@ -1412,11 +1412,16 @@ export class App {
     if (!model || !profile) return;
     return this.guard("calibration", async () => {
       await this.supervisor.stop();
+      this.supervisor.recordLog(`operation calibrate: ${model.displayName}`);
       const measurement = await calibrate({
         runtime: this.runtime,
         model,
         profile,
+        supervisor: this.supervisor,
         onProgress: (p) => {
+          this.supervisor.recordLog(
+            `operation calibrate: ${p.phase} ${p.contextSize.toLocaleString()}${p.reason ? `: ${p.reason}` : ""}${p.error ? `: ${p.error}` : ""}`,
+          );
           if (p.phase === "loading")
             this.setStatus(
               `calibrating: loading at ${p.contextSize.toLocaleString()} ctx…`,
@@ -1462,6 +1467,7 @@ export class App {
           : measuredMsg,
         "good",
       );
+      this.supervisor.recordLog(`operation calibrate: saved measurement for ${model.displayName}`);
     });
   }
 
@@ -1471,11 +1477,16 @@ export class App {
     if (!model || !profile) return;
     return this.guard("sweep", async () => {
       await this.supervisor.stop();
+      this.supervisor.recordLog(`operation sweep: ${model.displayName}`);
       const result = await sweep({
         runtime: this.runtime,
         model,
         profile,
+        supervisor: this.supervisor,
         onProgress: (p) => {
+          this.supervisor.recordLog(
+            `operation sweep: budget ${p.budget} ${p.phase}${p.error ? `: ${p.error}` : ""}`,
+          );
           if (p.phase === "loading")
             this.setStatus(`sweep: loading with budget ${p.budget}…`, "info");
           if (p.phase === "generating")
@@ -1493,6 +1504,7 @@ export class App {
         profile.reasoningBudget = result.recommended;
         this.persist();
         this.setStatus(`sweep complete - reasoning budget set to ${result.recommended}`, "good");
+        this.supervisor.recordLog(`operation sweep: saved budget ${result.recommended}`);
       } else {
         this.setStatus("sweep produced no usable result", "warn");
       }
@@ -1925,7 +1937,7 @@ export class App {
     const status = this.statusPanel(cols - 2);
     const footer = this.keybindings(cols - 1);
     const title = truncate(
-      `${style.brightCyan}llama-server log${style.reset}  ` +
+      `${style.brightCyan}Brain log${style.reset}  ` +
         `${style.grey}${s.state}${logs.length ? ` · ${logs.length} lines` : ""} · esc or l to go back${style.reset}`,
       cols - 1,
     );
@@ -1937,7 +1949,7 @@ export class App {
     const body: string[] = [];
     if (logs.length === 0) {
       body.push(
-        `${style.grey}no logs yet - start a model with s to see llama-server output${style.reset}`,
+        `${style.grey}no logs yet - start a model or operation to see Brain output${style.reset}`,
       );
     } else {
       for (const line of logs.slice(Math.max(0, logs.length - bodyRows)))
@@ -2269,7 +2281,7 @@ export class App {
     item("u", "reset the selected model's name to its default (asks to confirm)");
     section("Views");
     item("b", "benchmark mode - rank models, run the coding suite");
-    item("l", "view the live llama-server log");
+    item("l", "view the live Brain log");
     item("/", "filter the model list (Enter apply, Esc clear)");
     item("r", "rescan the models folder");
     item("?", "this help");

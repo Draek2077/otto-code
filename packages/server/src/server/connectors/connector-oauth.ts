@@ -462,7 +462,9 @@ export class ConnectorOAuthBroker {
     // CSRF: a code arriving with the wrong state is not ours to exchange.
     if (returnedState !== flow.state) {
       this.respond(res, 400, "Sign-in failed", "The sign-in response did not match this request.");
-      this.finish(connectorId, { ok: false, error: "Authorization state mismatch." });
+      // A stale or unsolicited browser callback must not tear down the valid
+      // attempt that still owns this listener. The user can continue the
+      // current sign-in or deliberately choose Connect again to replace it.
       return;
     }
     if (!code) {

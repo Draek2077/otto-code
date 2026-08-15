@@ -29,6 +29,7 @@ import { Combobox, ComboboxItem } from "@/components/ui/combobox";
 import type { ComboboxOption as ComboboxOptionType, ComboboxProps } from "@/components/ui/combobox";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ShortcutDiscoveryHint } from "@/components/shortcut-discovery-overlay";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { SidebarMenuToggle } from "@/components/headers/menu-header";
 import { ScreenHeader } from "@/components/headers/screen-header";
@@ -310,23 +311,30 @@ function ProjectPickerTrigger({
           accessibilityRole="button"
           accessibilityLabel="Workspace project"
         >
-          <View style={styles.badgeIconBox}>
-            {projectKey ? (
-              <ProjectIconView
-                iconDataUri={iconDataUri}
-                initial={placeholderInitial}
-                projectKey={projectKey}
-                imageStyle={styles.projectIcon}
-                fallbackStyle={styles.projectIconFallback}
-                textStyle={styles.projectIconFallbackText}
-              />
-            ) : (
-              <Folder size={iconSize} color={iconColor} />
-            )}
+          <View style={styles.projectPickerShortcutDiscoveryAnchor}>
+            <View style={styles.badgeIconBox}>
+              {projectKey ? (
+                <ProjectIconView
+                  iconDataUri={iconDataUri}
+                  initial={placeholderInitial}
+                  projectKey={projectKey}
+                  imageStyle={styles.projectIcon}
+                  fallbackStyle={styles.projectIconFallback}
+                  textStyle={styles.projectIconFallbackText}
+                />
+              ) : (
+                <Folder size={iconSize} color={iconColor} />
+              )}
+            </View>
+            <Text style={styles.badgeText} numberOfLines={1}>
+              {label}
+            </Text>
+            <ShortcutDiscoveryHint
+              action="workspace.project.pick"
+              enabled={!disabled}
+              style={styles.projectPickerShortcutDiscoveryHint}
+            />
           </View>
-          <Text style={styles.badgeText} numberOfLines={1}>
-            {label}
-          </Text>
         </ComboboxTrigger>
       </TooltipTrigger>
       <TooltipContent side="top" align="center" offset={8}>
@@ -2568,6 +2576,20 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.sm,
     alignItems: "center",
     justifyContent: "center",
+  },
+  projectPickerShortcutDiscoveryAnchor: {
+    position: "relative",
+    minWidth: 0,
+    flexShrink: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
+  projectPickerShortcutDiscoveryHint: {
+    position: "absolute",
+    top: -theme.spacing[2],
+    right: -theme.spacing[2],
+    zIndex: 1,
   },
   projectIconFallbackText: {
     // Single uppercase initial inside an iconSize.md (16px) square - below the

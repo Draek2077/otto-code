@@ -226,6 +226,19 @@ import type {
   ConnectorsListToolsResponse,
   ConnectorsOauthAuthorizeResponse,
   ConnectorsOauthDisconnectResponse,
+  CommunicationsGetOverviewResponse,
+  CommunicationsInboxGetHomeResponse,
+  CommunicationsInboxSearchResponse,
+  CommunicationsInboxSetFavoriteResponse,
+  CommunicationsInboxGetPresenceResponse,
+  CommunicationsInboxGetMessagesResponse,
+  CommunicationsInboxSetPresenceResponse,
+  CommunicationsInboxSetEnabledResponse,
+  CommunicationsInboxSendMessageResponse,
+  IntegrationsAuthorizationGetOverviewResponse,
+  IntegrationsAuthorizationGetMethodsResponse,
+  IntegrationsAuthorizationStartBrowserResponse,
+  IntegrationsZoomStartAuthorizationResponse,
   CueMoment,
   MutableDaemonConfig,
   MutableDaemonConfigPatch,
@@ -6871,6 +6884,246 @@ export class DaemonClient {
   }
 
   /**
+   * Read the daemon-owned, provider-neutral communications inbox projection.
+   * Requires server_info.features.communications; callers own that one gate.
+   */
+  async communicationsGetOverview(
+    requestId?: string,
+  ): Promise<CommunicationsGetOverviewResponse["payload"]["overview"]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "communications.get_overview.request" },
+      responseType: "communications.get_overview.response",
+    });
+    return payload.overview;
+  }
+
+  async communicationsInboxGetHome(
+    providerId: string,
+    requestId?: string,
+  ): Promise<CommunicationsInboxGetHomeResponse["payload"]["home"]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "communications.inbox.get_home.request", providerId },
+      responseType: "communications.inbox.get_home.response",
+    });
+    return payload.home;
+  }
+
+  async communicationsInboxSearch(
+    input: { providerId: string; query: string },
+    requestId?: string,
+  ): Promise<CommunicationsInboxSearchResponse["payload"]["results"]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "communications.inbox.search.request", ...input },
+      responseType: "communications.inbox.search.response",
+    });
+    return payload.results;
+  }
+
+  async communicationsInboxSetFavorite(
+    input: { providerId: string; conversationId: string; favorite: boolean },
+    requestId?: string,
+  ): Promise<CommunicationsInboxSetFavoriteResponse["payload"]["home"]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "communications.inbox.set_favorite.request", ...input },
+      responseType: "communications.inbox.set_favorite.response",
+    });
+    return payload.home;
+  }
+
+  async communicationsInboxGetPresence(
+    providerId: string,
+    requestId?: string,
+  ): Promise<CommunicationsInboxGetPresenceResponse["payload"]["presence"]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "communications.inbox.get_presence.request", providerId },
+      responseType: "communications.inbox.get_presence.response",
+    });
+    return payload.presence;
+  }
+
+  async communicationsInboxSetPresence(
+    input: {
+      providerId: string;
+      status: "available" | "busy" | "do_not_disturb" | "away" | "out_of_office" | "unknown";
+    },
+    requestId?: string,
+  ): Promise<CommunicationsInboxSetPresenceResponse["payload"]["presence"]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "communications.inbox.set_presence.request", ...input },
+      responseType: "communications.inbox.set_presence.response",
+    });
+    return payload.presence;
+  }
+
+  async communicationsInboxSetEnabled(
+    input: { providerId: string; enabled: boolean },
+    requestId?: string,
+  ): Promise<CommunicationsInboxSetEnabledResponse["payload"]["presence"]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "communications.inbox.set_enabled.request", ...input },
+      responseType: "communications.inbox.set_enabled.response",
+    });
+    return payload.presence;
+  }
+
+  async communicationsInboxGetMessages(
+    input: { providerId: string; conversationId: string },
+    requestId?: string,
+  ): Promise<CommunicationsInboxGetMessagesResponse["payload"]["messages"]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "communications.inbox.get_messages.request", ...input },
+      responseType: "communications.inbox.get_messages.response",
+    });
+    return payload.messages;
+  }
+
+  async communicationsInboxSendMessage(
+    input: { providerId: string; conversationId: string; text: string },
+    requestId?: string,
+  ): Promise<CommunicationsInboxSendMessageResponse["payload"]["message"]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "communications.inbox.send_message.request", ...input },
+      responseType: "communications.inbox.send_message.response",
+    });
+    return payload.message;
+  }
+
+  /**
+   * Daemon-owned meeting transcript library. Requires
+   * `server_info.features.meetingTranscripts`; callers own that capability gate.
+   */
+  async meetingsTranscriptsList(
+    requestId?: string,
+  ): Promise<
+    Extract<
+      SessionOutboundMessage,
+      { type: "meetings.transcripts.list.response" }
+    >["payload"]["records"]
+  > {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "meetings.transcripts.list.request" },
+      responseType: "meetings.transcripts.list.response",
+    });
+    return payload.records;
+  }
+
+  async meetingsTranscriptsCreate(
+    input: { provider: string; title: string; content: string; occurredAt?: string },
+    requestId?: string,
+  ): Promise<
+    Extract<
+      SessionOutboundMessage,
+      { type: "meetings.transcripts.create.response" }
+    >["payload"]["record"]
+  > {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "meetings.transcripts.create.request", ...input },
+      responseType: "meetings.transcripts.create.response",
+    });
+    return payload.record;
+  }
+
+  async meetingsTranscriptsUpdate(
+    input: { id: string; title?: string; content?: string },
+    requestId?: string,
+  ): Promise<
+    Extract<
+      SessionOutboundMessage,
+      { type: "meetings.transcripts.update.response" }
+    >["payload"]["record"]
+  > {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "meetings.transcripts.update.request", ...input },
+      responseType: "meetings.transcripts.update.response",
+    });
+    return payload.record;
+  }
+
+  async meetingsTranscriptsDelete(id: string, requestId?: string): Promise<boolean> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "meetings.transcripts.delete.request", id },
+      responseType: "meetings.transcripts.delete.response",
+    });
+    return payload.deleted;
+  }
+
+  /**
+   * Read daemon-owned connection metadata for reusable integration settings.
+   * Requires server_info.features.integrationAuthorization; callers own that
+   * one capability gate.
+   */
+  async integrationsAuthorizationGetOverview(
+    requestId?: string,
+  ): Promise<IntegrationsAuthorizationGetOverviewResponse["payload"]["overview"]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "integrations.authorization.get_overview.request" },
+      responseType: "integrations.authorization.get_overview.response",
+    });
+    return payload.overview;
+  }
+
+  /**
+   * List the daemon's nonsecret authorization choices for an integration.
+   * Requires server_info.features.integrationAuthorization; callers own that
+   * one capability gate.
+   */
+  async integrationsAuthorizationGetMethods(
+    integrationId?: string,
+    requestId?: string,
+  ): Promise<IntegrationsAuthorizationGetMethodsResponse["payload"]["methods"]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "integrations.authorization.get_methods.request",
+        ...(integrationId ? { integrationId } : {}),
+      },
+      responseType: "integrations.authorization.get_methods.response",
+    });
+    return payload.methods;
+  }
+
+  /**
+   * Starts a daemon-owned browser sign-in through a registered integration
+   * driver. Requires server_info.features.integrationAuthorizationBrowserFlow;
+   * callers own that one capability gate.
+   */
+  async integrationsAuthorizationStartBrowser(
+    input: { integrationId: string; connectionId: string },
+    requestId?: string,
+  ): Promise<IntegrationsAuthorizationStartBrowserResponse["payload"]> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "integrations.authorization.start_browser.request", ...input },
+      responseType: "integrations.authorization.start_browser.response",
+    });
+  }
+
+  /** Starts the daemon-owned Zoom Team Chat browser sign-in. */
+  async integrationsZoomStartAuthorization(
+    requestId?: string,
+  ): Promise<IntegrationsZoomStartAuthorizationResponse["payload"]> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "integrations.zoom.start_authorization.request" },
+      responseType: "integrations.zoom.start_authorization.response",
+    });
+  }
+
+  /**
    * The brain's status. Pass `resources` only from a surface that renders the
    * live CPU/RAM/GPU numbers: it costs an `nvidia-smi` spawn on the brain, and
    * this call is also the liveness poll.
@@ -8537,6 +8790,7 @@ export class DaemonClient {
             // The daemon gates project.updated.notification on this (session.ts),
             // so dropping it silently kills cross-session project renames.
             [CLIENT_CAPS.projectUpdates]: true,
+            [CLIENT_CAPS.communicationsPresenceUpdates]: true,
             ...this.config.capabilities,
           },
           ...(this.config.appVersion ? { appVersion: this.config.appVersion } : {}),

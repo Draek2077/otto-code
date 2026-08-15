@@ -5,12 +5,42 @@ import { getWakeWordIconKind } from "./wake-word-icon";
 import { getWakeWordSettingsRoute } from "./wake-word-navigation";
 
 describe("getWakeWordLabel", () => {
-  it("uses the concise workspace icon labels", () => {
-    expect(getWakeWordLabel("error")).toBe("Hey Otto - error");
-    expect(getWakeWordLabel("listening")).toBe("Hey Otto - detecting");
-    expect(getWakeWordLabel("disabled")).toBe("Hey Otto - disabled");
-    expect(getWakeWordLabel("recording")).toBe("Hey Otto - recording");
-    expect(getWakeWordLabel("processing")).toBe("Hey Otto - processing");
+  it("uses the title-bar status-label format", () => {
+    expect(
+      getWakeWordLabel({
+        detectorState: "disabled",
+        displayedState: "listening",
+        listeningPaused: false,
+      }),
+    ).toBe("Hey Otto: Enabled");
+    expect(
+      getWakeWordLabel({
+        detectorState: "listening",
+        displayedState: "listening",
+        listeningPaused: false,
+      }),
+    ).toBe("Hey Otto: Detecting");
+    expect(
+      getWakeWordLabel({
+        detectorState: "listening",
+        displayedState: "disabled",
+        listeningPaused: true,
+      }),
+    ).toBe("Hey Otto: Disabled");
+    expect(
+      getWakeWordLabel({
+        detectorState: "recording",
+        displayedState: "recording",
+        listeningPaused: false,
+      }),
+    ).toBe("Hey Otto: Recording");
+    expect(
+      getWakeWordLabel({
+        detectorState: "processing",
+        displayedState: "processing",
+        listeningPaused: false,
+      }),
+    ).toBe("Hey Otto: Processing");
   });
 });
 

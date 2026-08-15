@@ -36,6 +36,10 @@ import { WorktreeSetupCalloutSource } from "@/components/worktree-setup-callout-
 import { DownloadToast } from "@/components/download-toast";
 import { QuittingOverlay } from "@/components/quitting-overlay";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
+import {
+  ShortcutDiscoveryOverlay,
+  ShortcutDiscoveryProvider,
+} from "@/components/shortcut-discovery-overlay";
 import { ConfirmDialogHost } from "@/components/confirm-dialog-host";
 import { TutorialController } from "@/tutorial/controller";
 import { QuitConfirmListener } from "@/desktop/components/quit-confirm-listener";
@@ -138,6 +142,7 @@ import {
 } from "@/utils/os-notifications";
 import { AgentVoiceCuesHost } from "@/voice/agent-voice-cues-host";
 import { AutoSpeechHost } from "@/voice/auto-speech-host";
+import { ZoomRecorderHost } from "@/desktop/zoom-recorder-host";
 
 polyfillCrypto();
 
@@ -597,6 +602,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       <WorkspaceSetupDialog />
       <WorkspacePinShortcutHandler />
       <KeyboardShortcutsDialog />
+      <ShortcutDiscoveryOverlay />
       <ConfirmDialogHost />
       <QuitConfirmListener />
       <QuittingOverlay />
@@ -615,15 +621,17 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   // composer - not just above <CommandCenter /> itself.
   return (
     <CommandCenterProvider>
-      <View style={layoutStyles.appShell}>
-        {content}
-        {resolveClientResourceBarPlacement(
-          settings.clientResourceBarAllPages,
-          settings.resourceMonitorEnabled,
-        ) === "app-shell" ? (
-          <ClientResourceBar />
-        ) : null}
-      </View>
+      <ShortcutDiscoveryProvider>
+        <View style={layoutStyles.appShell}>
+          {content}
+          {resolveClientResourceBarPlacement(
+            settings.clientResourceBarAllPages,
+            settings.resourceMonitorEnabled,
+          ) === "app-shell" ? (
+            <ClientResourceBar />
+          ) : null}
+        </View>
+      </ShortcutDiscoveryProvider>
     </CommandCenterProvider>
   );
 }
@@ -750,6 +758,7 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
           for the same two reasons as the cues: the shared audio engine resolves
           inside VoiceProvider, and a route change must not cut a queue short. */}
       <AutoSpeechHost />
+      <ZoomRecorderHost />
       {/* Headless: binds the resource monitor started above the router to the
           `resourceMonitorEnabled` setting, so the telemetry can be turned off. */}
       <ResourceMonitorHost />

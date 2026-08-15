@@ -2354,9 +2354,31 @@ function SettingsSidebar({
 export interface SettingsScreenProps {
   view: SettingsView;
   openAddHostIntent?: string | null;
+  preferredHostServerId?: string | null;
 }
 
-export default function SettingsScreen({ view, openAddHostIntent = null }: SettingsScreenProps) {
+function DesktopIntegrationsContent(props: {
+  isDesktopApp: boolean;
+  serverId: string | null;
+  localServerId: string | null;
+}) {
+  const { isDesktopApp, serverId, localServerId } = props;
+  if (!isDesktopApp) {
+    return null;
+  }
+  return (
+    <IntegrationsSection
+      serverId={serverId}
+      isLocalDaemon={serverId !== null && serverId === localServerId}
+    />
+  );
+}
+
+export default function SettingsScreen({
+  view,
+  openAddHostIntent = null,
+  preferredHostServerId = null,
+}: SettingsScreenProps) {
   const router = useRouter();
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -2389,7 +2411,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   const localServerId = useLocalDaemonServerId();
   const sortedHosts = useSortedHosts(hosts, localServerId);
   const [selectedSettingsHostServerId, setSelectedSettingsHostServerId] = useState<string | null>(
-    view.kind === "host" ? view.serverId : null,
+    view.kind === "host" ? view.serverId : preferredHostServerId,
   );
   const knownSelectedSettingsHostServerId = useMemo(() => {
     if (!selectedSettingsHostServerId) {
@@ -2415,8 +2437,12 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   useEffect(() => {
     if (view.kind === "host") {
       setSelectedSettingsHostServerId(view.serverId);
+      return;
     }
-  }, [view]);
+    if (preferredHostServerId) {
+      setSelectedSettingsHostServerId(preferredHostServerId);
+    }
+  }, [preferredHostServerId, view]);
 
   // Remember the current sub-page so re-opening Settings returns here instead of
   // resetting to General (see the /settings redirect in app/settings/index.tsx).
@@ -2890,7 +2916,13 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
         case "shortcuts":
           return isDesktopApp ? <KeyboardShortcutsSection /> : null;
         case "integrations":
-          return isDesktopApp ? <IntegrationsSection /> : null;
+          return (
+            <DesktopIntegrationsContent
+              isDesktopApp={isDesktopApp}
+              serverId={activeHostServerId}
+              localServerId={knownLocalServerId}
+            />
+          );
         case "permissions":
           return isDesktopApp ? <DesktopPermissionsSection /> : null;
         case "diagnostics":

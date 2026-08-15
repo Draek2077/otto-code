@@ -1967,6 +1967,7 @@ function EditorModeView({
           disabled={!buffer.dirty || buffer.saving || buffer.conflict !== null}
           loading={buffer.saving}
           shortcut={shortcutHints.save}
+          shortcutDiscoveryAction="editor.save"
         />
         <ToolbarIconButton
           label={t("editor.revert")}
@@ -2012,6 +2013,7 @@ function EditorModeView({
           onPress={find.open ? closeFind : openFind}
           selected={find.open}
           shortcut={shortcutHints.find}
+          shortcutDiscoveryAction="editor.find"
         />
         <View style={styles.toolbarSpacer} />
         {/* Word wrap is a view setting, so it lives with the view-mode bar. */}

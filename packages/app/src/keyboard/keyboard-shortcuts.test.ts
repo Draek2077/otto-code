@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   buildKeyboardShortcutHelpSections,
+  buildShortcutDiscoveryEntries,
   buildEffectiveBindings,
   getBindingIdForAction,
   getWorkspaceIndexJumpModifierKey,
@@ -930,6 +931,160 @@ describe("keyboard-shortcut help sections", () => {
     expect(
       getBindingIdForAction("message-input-queue", { isMac: true, isDesktop: true }),
     ).toBeNull();
+  });
+});
+
+describe("contextual shortcut discovery", () => {
+  it("uses the focused editor binding rather than an app-wide binding on the same held prefix", () => {
+    const entries = buildShortcutDiscoveryEntries({
+      bindings: buildEffectiveBindings({}),
+      context: shortcutContext({ isMac: false, focusScope: "code-editor" }),
+      heldModifiers: { alt: false, ctrl: true, meta: false, shift: false },
+    });
+
+    const modB = entries.find((entry) => entry.remainingKeys.includes("B"));
+    expect(modB?.action).toBe("editor.goToDefinition");
+    expect(modB?.label).toBe("Go to definition");
+  });
+
+  it("narrows a modifier-plus-shift chord to the final key once Shift is held", () => {
+    const entries = buildShortcutDiscoveryEntries({
+      bindings: buildEffectiveBindings({}),
+      context: shortcutContext({ isMac: false }),
+      heldModifiers: { alt: false, ctrl: true, meta: false, shift: true },
+    });
+
+    const newTerminal = entries.find((entry) => entry.label === "New terminal");
+    expect(newTerminal?.remainingKeys).toEqual(["T"]);
+    expect(newTerminal?.chord).toEqual([["ctrl", "shift", "T"]]);
+  });
+
+  it("reveals Shift-only commands when Shift is the first held modifier", () => {
+    const entries = buildShortcutDiscoveryEntries({
+      bindings: buildEffectiveBindings({}),
+      context: shortcutContext({ isMac: false, focusScope: "message-input" }),
+      heldModifiers: { alt: false, ctrl: false, meta: false, shift: true },
+    });
+
+    expect(
+      entries.find((entry) => entry.bindingId === "message-input-mode-cycle-shift-tab")
+        ?.remainingKeys,
+    ).toEqual(["Tab"]);
+  });
+
+  it("progressively reveals the focused Voice Mode command by its concrete binding", () => {
+    const options = {
+      bindings: buildEffectiveBindings({}),
+      context: shortcutContext({ isMac: false, focusScope: "message-input" }),
+    };
+
+    const firstPass = buildShortcutDiscoveryEntries({
+      ...options,
+      heldModifiers: { alt: false, ctrl: true, meta: false, shift: false },
+    });
+    const secondPass = buildShortcutDiscoveryEntries({
+      ...options,
+      heldModifiers: { alt: false, ctrl: true, meta: false, shift: true },
+    });
+
+    expect(
+      firstPass.find(
+        (entry) => entry.bindingId === "message-input-voice-toggle-ctrl-shift-d-non-mac",
+      )?.remainingKeys,
+    ).toEqual(["shift", "D"]);
+    expect(
+      secondPass.find(
+        (entry) => entry.bindingId === "message-input-voice-toggle-ctrl-shift-d-non-mac",
+      )?.remainingKeys,
+    ).toEqual(["D"]);
+  });
+
+  it("keeps the focused Dictation command distinct from Voice Mode", () => {
+    const entries = buildShortcutDiscoveryEntries({
+      bindings: buildEffectiveBindings({}),
+      context: shortcutContext({ isMac: false, focusScope: "message-input" }),
+      heldModifiers: { alt: false, ctrl: true, meta: false, shift: false },
+    });
+
+    expect(
+      entries.find((entry) => entry.bindingId === "message-input-dictation-toggle-ctrl-d-non-mac")
+        ?.remainingKeys,
+    ).toEqual(["D"]);
+    expect(
+      entries.find((entry) => entry.bindingId === "message-input-voice-toggle-ctrl-shift-d-non-mac")
+        ?.remainingKeys,
+    ).toEqual(["shift", "D"]);
+  });
+
+  it("keeps the message-input focus binding available for its input revealer", () => {
+    const entries = buildShortcutDiscoveryEntries({
+      bindings: buildEffectiveBindings({}),
+      context: shortcutContext({ isMac: false, focusScope: "other" }),
+      heldModifiers: { alt: false, ctrl: true, meta: false, shift: false },
+    });
+
+    expect(
+      entries.find((entry) => entry.bindingId === "message-input-focus-ctrl-l-non-mac")
+        ?.remainingKeys,
+    ).toEqual(["L"]);
+  });
+
+  it("reveals the New Workspace project picker from its Ctrl/Cmd prefix", () => {
+    const entries = buildShortcutDiscoveryEntries({
+      bindings: buildEffectiveBindings({}),
+      context: shortcutContext({ isMac: false }),
+      heldModifiers: { alt: false, ctrl: true, meta: false, shift: false },
+    });
+
+    expect(
+      entries.find((entry) => entry.bindingId === "workspace-project-pick-ctrl-p-non-mac")
+        ?.remainingKeys,
+    ).toEqual(["P"]);
+  });
+
+  it("reveals Open Project from its Ctrl/Cmd prefix", () => {
+    const entries = buildShortcutDiscoveryEntries({
+      bindings: buildEffectiveBindings({}),
+      context: shortcutContext({ isMac: false }),
+      heldModifiers: { alt: false, ctrl: true, meta: false, shift: false },
+    });
+
+    expect(
+      entries.find((entry) => entry.bindingId === "agent-new-ctrl-shift-o-non-mac")?.remainingKeys,
+    ).toEqual(["O"]);
+  });
+
+  it("uses Alt as the held prefix for web workspace navigation", () => {
+    const entries = buildShortcutDiscoveryEntries({
+      bindings: buildEffectiveBindings({}),
+      context: shortcutContext({ isDesktop: false }),
+      heldModifiers: { alt: true, ctrl: false, meta: false, shift: false },
+    });
+
+    expect(entries.some((entry) => entry.action === "workspace.navigate.index")).toBe(true);
+  });
+
+  it("progressively reveals web tab index navigation after Alt then Shift", () => {
+    const options = {
+      bindings: buildEffectiveBindings({}),
+      context: shortcutContext({ isDesktop: false }),
+    };
+
+    const firstPass = buildShortcutDiscoveryEntries({
+      ...options,
+      heldModifiers: { alt: true, ctrl: false, meta: false, shift: false },
+    });
+    const secondPass = buildShortcutDiscoveryEntries({
+      ...options,
+      heldModifiers: { alt: true, ctrl: false, meta: false, shift: true },
+    });
+
+    expect(
+      firstPass.find((entry) => entry.action === "workspace.tab.navigate.index")?.remainingKeys,
+    ).toEqual(["shift", "1-9"]);
+    expect(
+      secondPass.find((entry) => entry.action === "workspace.tab.navigate.index")?.remainingKeys,
+    ).toEqual(["1-9"]);
   });
 });
 

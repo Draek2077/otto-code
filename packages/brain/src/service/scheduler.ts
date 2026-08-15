@@ -46,10 +46,24 @@ export interface SchedulerOptions {
   onChange?: (() => void) | null;
 }
 
-/** A queued completion request bound to a resolved catalog model. */
+/** Work kinds sharing the single resident model. Operations own a full turn. */
+export type SchedulerJobKind = "completion" | "calibrate" | "sweep" | "benchmark";
+
+export interface SchedulerSubmitOptions {
+  kind?: SchedulerJobKind;
+  /** An operation never shares its model turn with inference. */
+  exclusive?: boolean;
+  /** Called exactly when this request becomes the active turn. */
+  onStart?: (() => void) | null;
+}
+
+/** A queued request or host operation bound to a resolved catalog model. */
 export interface QueuedJob {
   modelId: string;
   model: Model;
+  kind: SchedulerJobKind;
+  exclusive: boolean;
+  onStart: (() => void) | null;
   run: () => Promise<unknown>;
   resolve: (value: unknown) => void;
   reject: (error: unknown) => void;
@@ -58,7 +72,10 @@ export interface QueuedJob {
 export interface SchedulerStats {
   queued: number;
   waiting: Record<string, number>;
+  /** Stable ids for host surfaces. Display names are not scheduler keys. */
+  waitingModelIds: Record<string, number>;
   lastTurn: string | null;
+  active: { modelId: string; kind: Exclude<SchedulerJobKind, "completion"> } | null;
 }
 
 export class Scheduler {
@@ -67,6 +84,7 @@ export class Scheduler {
   logger: ((message: string) => void) | null; // optional (message: string) => void
   queue: QueuedJob[]; // { modelId, model, run, resolve, reject }
   lastTurnId: string | null;
+  activeJob: QueuedJob | null;
   pumping: boolean;
   onChange: (() => void) | null;
 
@@ -76,6 +94,7 @@ export class Scheduler {
     this.logger = logger; // optional (message: string) => void
     this.queue = []; // { modelId, model, run, resolve, reject }
     this.lastTurnId = null;
+    this.activeJob = null;
     this.pumping = false;
     this.onChange = onChange;
   }
@@ -107,12 +126,34 @@ export class Scheduler {
    * Pumping is deferred a microtask so a burst of requests submitted together
    * share one turn rather than the first one snapshotting a turn by itself.
    */
-  submit(model: Model, run: () => Promise<unknown>): Promise<unknown> {
+  submit(
+    model: Model,
+    run: () => Promise<unknown>,
+    {
+      kind = "completion",
+      exclusive = kind !== "completion",
+      onStart = null,
+    }: SchedulerSubmitOptions = {},
+  ): Promise<unknown> {
     return new Promise((resolve, reject) => {
-      this.queue.push({ modelId: model.id, model, run, resolve, reject });
+      this.queue.push({ modelId: model.id, model, kind, exclusive, onStart, run, resolve, reject });
       this.#announce();
       queueMicrotask(() => this.pump());
     });
+  }
+
+  /** An exclusive operation is a hard boundary inside its model's request queue. */
+  #takeTurn(turnId: string): QueuedJob[] {
+    const selected = new Set<QueuedJob>();
+    for (const job of this.queue) {
+      if (job.modelId !== turnId) continue;
+      if (job.exclusive) {
+        if (selected.size === 0) selected.add(job);
+        break;
+      }
+      selected.add(job);
+    }
+    return this.#take((job) => selected.has(job));
   }
 
   #take(pred: (job: QueuedJob) => boolean): QueuedJob[] {
@@ -126,7 +167,22 @@ export class Scheduler {
 
   /** Serve one model's snapshot with bounded concurrency. */
   async #serveTurn(turnId: string): Promise<void> {
-    const jobs = this.#take((j) => j.modelId === turnId);
+    const jobs = this.#takeTurn(turnId);
+    if (jobs.length === 1 && jobs[0].exclusive) {
+      const job = jobs[0];
+      this.activeJob = job;
+      this.#announce();
+      try {
+        job.onStart?.();
+        job.resolve(await job.run());
+      } catch (error) {
+        job.reject(error);
+      } finally {
+        this.activeJob = null;
+        this.#announce();
+      }
+      return;
+    }
     let next = 0;
     const worker = async (): Promise<void> => {
       while (next < jobs.length) {
@@ -178,10 +234,22 @@ export class Scheduler {
   /** Queue snapshot for the status endpoint / UI. */
   stats(): SchedulerStats {
     const waiting: Record<string, number> = {};
+    const waitingModelIds: Record<string, number> = {};
     for (const job of this.queue) {
       const name = job.model.displayName;
       waiting[name] = (waiting[name] || 0) + 1;
+      waitingModelIds[job.modelId] = (waitingModelIds[job.modelId] || 0) + 1;
     }
-    return { queued: this.queue.length, waiting, lastTurn: this.lastTurnId };
+    const active =
+      this.activeJob && this.activeJob.kind !== "completion"
+        ? { modelId: this.activeJob.modelId, kind: this.activeJob.kind }
+        : null;
+    return {
+      queued: this.queue.length,
+      waiting,
+      waitingModelIds,
+      lastTurn: this.lastTurnId,
+      active,
+    };
   }
 }

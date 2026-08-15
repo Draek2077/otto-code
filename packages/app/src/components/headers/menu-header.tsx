@@ -77,6 +77,7 @@ export function SidebarMenuToggle({
       tooltipLabel={t("shell.menu.toggleSidebar")}
       tooltipKeys={toggleShortcutKeys}
       tooltipSide={tooltipSide}
+      shortcutDiscoveryAction="sidebar.toggle.left"
       testID={testID}
       nativeID={nativeID}
       style={style}

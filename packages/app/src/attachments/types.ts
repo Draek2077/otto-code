@@ -90,6 +90,15 @@ export interface ChatHistoryContextAttachment {
   };
 }
 
+/** A daemon-retained meeting transcript selected as context for the current chat. */
+export interface MeetingTranscriptContextAttachment {
+  kind: "meeting_transcript";
+  id: string;
+  title: string;
+  content: string;
+  occurredAt: string;
+}
+
 export const NEW_WORKSPACE_PICKER_ATTACHMENT_OWNER = "new-workspace-picker";
 
 export type WorkspaceFileSelection =
@@ -141,6 +150,7 @@ export type WorkspaceComposerAttachment =
     }
   | PullRequestContextAttachment
   | ChatHistoryContextAttachment
+  | MeetingTranscriptContextAttachment
   | FileContextAttachment
   | {
       kind: "review";

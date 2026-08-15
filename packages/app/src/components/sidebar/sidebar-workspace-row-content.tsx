@@ -8,6 +8,7 @@ import { StatusBucketIcon, isAttentionStatusBucket } from "@/components/status-b
 import { GitHostingIcon } from "@/components/icons/git-hosting-icon";
 import { WorkspaceHoverCard } from "@/components/workspace-hover-card";
 import { ThemedBlobLoader } from "@/components/blob-loader";
+import { ShortcutDiscoveryBadge } from "@/components/shortcut-discovery-badge";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative as platformIsNative } from "@/constants/platform";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
@@ -278,24 +279,6 @@ export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     flexShrink: 0,
   },
-  shortcutBadge: {
-    minWidth: 18,
-    height: 18,
-    paddingHorizontal: theme.spacing[1],
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: theme.borderRadius.sm,
-    borderWidth: 1,
-    borderColor: theme.colors.surface2,
-    backgroundColor: theme.colors.surface0,
-    flexShrink: 0,
-  },
-  shortcutBadgeText: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
-    lineHeight: 14,
-  },
   hidden: { opacity: 0 },
   /**
    * Hover-revealed controls painted over the workspace row's right edge. They
@@ -341,11 +324,7 @@ export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
 }));
 
 export function SidebarWorkspaceShortcutBadge({ number }: { number: number }) {
-  return (
-    <View style={sidebarWorkspaceRowStyles.shortcutBadge}>
-      <Text style={sidebarWorkspaceRowStyles.shortcutBadgeText}>{number}</Text>
-    </View>
-  );
+  return <ShortcutDiscoveryBadge label={String(number)} />;
 }
 
 export function SidebarWorkspaceTrailingActionSlot({

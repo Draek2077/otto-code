@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { applyHostingProfilePatch, buildInventoryRow } from "./host-api.js";
 import type { Supervisor } from "./supervisor.js";
+import type { Scheduler } from "./scheduler.js";
 import { forModel } from "../config/profiles.js";
 import { ProfilesStoreSchema, type ProfilesStore } from "../config/schema.js";
 import type { RankedModel } from "../ops/results.js";
@@ -52,6 +53,7 @@ function build(params: {
   gpu?: GpuInfo | null;
   ranking?: RankedModel[];
   supervisor?: Supervisor;
+  scheduler?: Scheduler | null;
   runtimeBuild?: number | null;
 }) {
   const model = params.model ?? makeModel();
@@ -62,11 +64,42 @@ function build(params: {
     gpu: params.gpu === undefined ? GPU : params.gpu,
     ranking: params.ranking ?? [],
     supervisor: params.supervisor ?? fakeSupervisor("stopped", null),
+    scheduler: params.scheduler,
     runtimeBuild: params.runtimeBuild,
   });
 }
 
 describe("buildInventoryRow", () => {
+  it("reports loading, unloading, active, and queued model lifecycle states", () => {
+    const model = makeModel();
+    expect(build({ model, supervisor: fakeSupervisor("starting", model) }).state).toBe("loading");
+    expect(build({ model, supervisor: fakeSupervisor("stopping", model) }).state).toBe("unloading");
+
+    const active = {
+      stats: () => ({
+        queued: 0,
+        waiting: {},
+        waitingModelIds: {},
+        lastTurn: model.id,
+        active: { modelId: model.id, kind: "benchmark" as const },
+      }),
+    } as unknown as Scheduler;
+    expect(
+      build({ model, supervisor: fakeSupervisor("ready", model), scheduler: active }).state,
+    ).toBe("active");
+
+    const queued = {
+      stats: () => ({
+        queued: 1,
+        waiting: { [model.displayName]: 1 },
+        waitingModelIds: { [model.id]: 1 },
+        lastTurn: null,
+        active: null,
+      }),
+    } as unknown as Scheduler;
+    expect(build({ model, scheduler: queued }).state).toBe("queued");
+  });
+
   it("carries the scan row and the GGUF metadata the Models tab shows", () => {
     const row = build({});
     expect(row.id).toBe("vendor/model-Q5_K_M.gguf");

@@ -119,6 +119,22 @@ export function matchCatalogEntry(model: Model, catalog: Catalog): CatalogModel 
 }
 
 /**
+ * Bundle components are supporting artifacts, not independently selectable
+ * models. The disk scanner sees every GGUF, so remove an exact manifest match
+ * before the host exposes the inventory to the CLI or desktop client.
+ */
+export function excludeCatalogComponentArtifacts(models: Model[], catalog: Catalog): Model[] {
+  const componentIds = new Set(
+    catalog.models.flatMap((entry) =>
+      (entry.components ?? []).map((component) =>
+        normalizePath(`${component.hfRepo ?? entry.hfRepo}/${component.file}`),
+      ),
+    ),
+  );
+  return models.filter((model) => !componentIds.has(normalizePath(model.id)));
+}
+
+/**
  * Return copies of the models with catalog coding metadata attached where a match
  * exists; models with no match (and every model when the catalog is empty) pass
  * through untouched. Never throws.

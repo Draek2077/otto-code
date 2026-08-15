@@ -37,6 +37,9 @@ export type ServiceUrlBehavior = "ask" | "in-app" | "external";
 // utils/open-link.ts.
 export type LinkOpenBehavior = "in-app" | "external";
 export type WorkspaceTitleSource = "title" | "branch";
+// Controls how much of the held-modifier shortcut discovery UI is rendered.
+// Device-local presentation only; it does not change which shortcuts execute.
+export type ShortcutOverlayMode = "off" | "workspaces" | "on-screen" | "full";
 export type PreviewServerCloseBehavior = "keep-running" | "stop-on-close";
 export type WorkspaceToolsPlacement = "header" | "workspaceList";
 // The workspace-row +/− indicator is a device-local viewing preference. The
@@ -50,6 +53,10 @@ export type TeamSwitcherPlacement = "sidebar" | "titlebar";
 // `SplitPane` overrides this for panes that explicitly set it.
 export type TabOrientation = "horizontal" | "vertical";
 export type ColorSchemeMode = "light" | "dark" | "system";
+export type MeetingTranscriptDeliveryPolicy =
+  | "local_only"
+  | "require_secure_connection"
+  | "current_connection";
 export type ChatTimestampDisplay = "absolute" | "relative";
 // Device-local display depth chosen in the setup wizard's first step. Presentation
 // only - never synced to the daemon. See projects/first-time-wizard/interface-modes.md.
@@ -88,6 +95,12 @@ const VALID_SERVICE_URL_BEHAVIORS = new Set<ServiceUrlBehavior>(["ask", "in-app"
 const VALID_LINK_OPEN_BEHAVIORS = new Set<LinkOpenBehavior>(["in-app", "external"]);
 const VALID_FILE_EDITOR_MODES = new Set<FileEditorMode>(FILE_EDITOR_MODES);
 const VALID_WORKSPACE_TITLE_SOURCES = new Set<WorkspaceTitleSource>(["title", "branch"]);
+const VALID_SHORTCUT_OVERLAY_MODES = new Set<ShortcutOverlayMode>([
+  "off",
+  "workspaces",
+  "on-screen",
+  "full",
+]);
 const VALID_WORKSPACE_TOOLS_PLACEMENTS = new Set<WorkspaceToolsPlacement>([
   "header",
   "workspaceList",
@@ -220,6 +233,7 @@ export interface AppSettings {
   rulerEnabled: boolean;
   rulerColumn: number; // clamped character column, default 120
   workspaceTitleSource: WorkspaceTitleSource;
+  shortcutOverlayMode: ShortcutOverlayMode;
   autoExpandReasoning: boolean;
   // Repeating cue tone while voice mode waits for the agent's reply.
   // Device-local: gates playback on this device only.
@@ -257,6 +271,18 @@ export interface AppSettings {
   // configured and its toolbar button visible, while disabling the feature in
   // Settings removes the button and prevents detector startup. Device-local.
   wakeWordListeningPaused: boolean;
+  // Enables the desktop-local meeting transcription integration. This belongs to the
+  // physical Otto Desktop host, not a daemon: the capture process can only see
+  // Zoom and its audio devices on this machine. Disabled by default so Otto
+  // never starts recorder setup or model downloads without explicit intent.
+  zoomRecorderEnabled: boolean;
+  // Pausing keeps the recorder configured and its titlebar library reachable,
+  // but stops the local capture helper until the user resumes it.
+  zoomRecorderPaused: boolean;
+  // Determines where finalized meeting transcripts are retained. This is
+  // deliberately device-local: capture happens on this desktop and users can
+  // choose a stricter policy than the host they are currently connected to.
+  meetingTranscriptDeliveryPolicy: MeetingTranscriptDeliveryPolicy;
   wakeWordPhrase: string;
   wakeWordSensitivity: number;
   wakeWordSilenceTimeoutMs: number;
@@ -612,6 +638,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   rulerEnabled: true,
   rulerColumn: DEFAULT_RULER_COLUMN,
   workspaceTitleSource: "title",
+  shortcutOverlayMode: "full",
   autoExpandReasoning: false,
   voiceThinkingTone: true,
   agentVoiceCues: true,
@@ -619,6 +646,9 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   agentVoiceCuesMuted: false,
   wakeWordEnabled: false,
   wakeWordListeningPaused: false,
+  zoomRecorderEnabled: false,
+  zoomRecorderPaused: false,
+  meetingTranscriptDeliveryPolicy: "require_secure_connection",
   wakeWordPhrase: "Hey Otto",
   wakeWordSensitivity: 0.7,
   wakeWordSilenceTimeoutMs: 1100,
@@ -1040,6 +1070,24 @@ function pickAgentVoiceCueSettings(stored: Partial<AppSettings>): Partial<AppSet
   return result;
 }
 
+function pickZoomRecorderSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
+  const result: Partial<AppSettings> = {};
+  if (typeof stored.zoomRecorderEnabled === "boolean") {
+    result.zoomRecorderEnabled = stored.zoomRecorderEnabled;
+  }
+  if (typeof stored.zoomRecorderPaused === "boolean") {
+    result.zoomRecorderPaused = stored.zoomRecorderPaused;
+  }
+  if (
+    stored.meetingTranscriptDeliveryPolicy === "local_only" ||
+    stored.meetingTranscriptDeliveryPolicy === "require_secure_connection" ||
+    stored.meetingTranscriptDeliveryPolicy === "current_connection"
+  ) {
+    result.meetingTranscriptDeliveryPolicy = stored.meetingTranscriptDeliveryPolicy;
+  }
+  return result;
+}
+
 // Spoken-reply volume. Its own picker rather than a line in the cue picker
 // above: they are separate channels, and the cue picker carries a dated COMPAT
 // fallback this has no part in.
@@ -1144,6 +1192,16 @@ function pickWorkspaceLayoutSettings(stored: Partial<AppSettings>): Partial<AppS
     result.chatTimestampDisplay = stored.chatTimestampDisplay as ChatTimestampDisplay;
   }
   return result;
+}
+
+function pickShortcutOverlaySettings(stored: Partial<AppSettings>): Partial<AppSettings> {
+  if (
+    typeof stored.shortcutOverlayMode === "string" &&
+    VALID_SHORTCUT_OVERLAY_MODES.has(stored.shortcutOverlayMode as ShortcutOverlayMode)
+  ) {
+    return { shortcutOverlayMode: stored.shortcutOverlayMode as ShortcutOverlayMode };
+  }
+  return {};
 }
 
 // Onboarding + interface-depth fields, kept out of pickWorkspaceLayoutSettings to
@@ -1426,6 +1484,7 @@ function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
     ...pickThemeAndBehaviorSettings(stored),
     ...pickFontSettings(stored),
     ...pickWorkspaceLayoutSettings(stored),
+    ...pickShortcutOverlaySettings(stored),
     ...pickTextEffectSettings(stored),
     ...pickChatCodeSettings(stored),
     ...pickTabLayoutSettings(stored),
@@ -1433,6 +1492,7 @@ function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
     ...pickPreviewSettings(stored),
     ...pickVisualizerSettings(stored),
     ...pickAgentVoiceCueSettings(stored),
+    ...pickZoomRecorderSettings(stored),
     ...pickVoicePlaybackSettings(stored),
     ...pickAgentAutoSpeechSettings(stored),
     ...pickFeatureFlagSettings(stored),

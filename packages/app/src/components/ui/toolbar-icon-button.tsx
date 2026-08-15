@@ -2,9 +2,11 @@ import { useCallback, useMemo, type ComponentType } from "react";
 import { Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { ShortcutDiscoveryHint } from "@/components/shortcut-discovery-overlay";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Shortcut } from "@/components/ui/shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { KeyboardActionId } from "@/keyboard/actions";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import type { Theme } from "@/styles/theme";
 
@@ -60,6 +62,7 @@ export function ToolbarIconButton({
   loading = false,
   tone = "default",
   shortcut,
+  shortcutDiscoveryAction,
   testID,
 }: {
   label: string;
@@ -79,6 +82,8 @@ export function ToolbarIconButton({
    * and printing only its first step would misname the key.
    */
   shortcut?: ShortcutKey[][];
+  /** The registered action revealed directly over this toolbar trigger. */
+  shortcutDiscoveryAction?: KeyboardActionId;
   testID?: string;
 }) {
   const buttonStyle = useCallback(
@@ -105,11 +110,20 @@ export function ToolbarIconButton({
         disabled={disabled || loading}
         style={buttonStyle}
       >
-        {loading ? (
-          <ThemedLoadingSpinner size={glyphSize} uniProps={iconMapping} />
-        ) : (
-          <Icon size={glyphSize} uniProps={iconMapping} />
-        )}
+        <View style={styles.shortcutDiscoveryAnchor}>
+          {loading ? (
+            <ThemedLoadingSpinner size={glyphSize} uniProps={iconMapping} />
+          ) : (
+            <Icon size={glyphSize} uniProps={iconMapping} />
+          )}
+          {shortcutDiscoveryAction ? (
+            <ShortcutDiscoveryHint
+              action={shortcutDiscoveryAction}
+              enabled={!disabled && !loading}
+              style={styles.shortcutDiscoveryHint}
+            />
+          ) : null}
+        </View>
       </TooltipTrigger>
       <TooltipContent side="bottom" align="center" offset={8}>
         <View style={styles.tooltipRow}>
@@ -165,6 +179,16 @@ const styles = StyleSheet.create((theme: Theme) => ({
   // needing a separate color token.
   iconButtonDisabled: {
     opacity: 0.4,
+  },
+  shortcutDiscoveryAnchor: {
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  shortcutDiscoveryHint: {
+    position: "absolute",
+    top: -theme.spacing[2],
+    right: -theme.spacing[2],
   },
   tooltipRow: {
     flexDirection: "row",

@@ -3,7 +3,7 @@ import { Pressable, Text, View, type PressableStateCallbackType } from "react-na
 import { useQueryClient } from "@tanstack/react-query";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import { GitMerge } from "@/components/icons/material-icons";
+import { ChevronDown, GitMerge } from "@/components/icons/material-icons";
 import { Combobox, ComboboxItem, type ComboboxProps } from "@/components/ui/combobox";
 import { useFetchQuery } from "@/data/query";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -52,6 +52,7 @@ const REDETECT_BASE_OPTION_ID = "\0otto:redetect-base";
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 const ThemedGitMerge = withUnistyles(GitMerge);
+const ThemedChevronDown = withUnistyles(ChevronDown);
 
 interface DiffBaseSwitcherProps {
   /**
@@ -220,10 +221,10 @@ export function DiffBaseSwitcher({
   const triggerStyle = useCallback(
     ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.trigger,
-      canEdit && !isSaving && (Boolean(hovered) || pressed) && styles.triggerHovered,
+      canEdit && !isSaving && (Boolean(hovered) || pressed || isOpen) && styles.triggerHovered,
       isSaving && styles.triggerDisabled,
     ],
-    [canEdit, isSaving],
+    [canEdit, isOpen, isSaving],
   );
 
   const renderBranchOption = useCallback<NonNullable<ComboboxProps["renderOption"]>>(
@@ -265,6 +266,7 @@ export function DiffBaseSwitcher({
       <Text style={styles.label} numberOfLines={1}>
         {label}
       </Text>
+      <ThemedChevronDown size={iconSize.xs} uniProps={mutedColorMapping} />
     </Pressable>
   );
 
@@ -320,7 +322,8 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
   },
   triggerHovered: {
-    backgroundColor: theme.colors.surface2,
+    // Match the committed/uncommitted dropdown beside it.
+    backgroundColor: theme.colors.surfaceHover,
   },
   triggerDisabled: {
     opacity: 0.6,

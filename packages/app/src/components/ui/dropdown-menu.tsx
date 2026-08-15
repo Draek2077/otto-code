@@ -977,7 +977,7 @@ const styles = StyleSheet.create((theme) => ({
   labelContainer: {
     paddingHorizontal: theme.spacing[3],
     paddingTop: theme.spacing[2],
-    paddingBottom: theme.spacing[1],
+    paddingBottom: theme.spacing[2],
   },
   labelText: {
     // Explicit compact bump (not left to the ambient theme-patch scale).

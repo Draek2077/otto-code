@@ -7,6 +7,7 @@ import {
   GitPullRequest,
   MessageSquareCode,
   MousePointer2,
+  SpeakerNotes,
 } from "@/components/icons/material-icons";
 import { withUnistyles } from "react-native-unistyles";
 import type { AgentAttachment } from "@otto-code/protocol/messages";
@@ -130,6 +131,13 @@ export function getWorkspaceAttachmentPillContent(
       subtitle: getTextAttachmentSubtitle(attachment.attachment, t),
     };
   }
+  if (attachment.kind === "meeting_transcript") {
+    return {
+      icon: attachmentMeetingNotesIcon,
+      title: attachment.title,
+      subtitle: "Meeting notes",
+    };
+  }
   if (attachment.kind === "file_context") {
     const isDirectory = attachment.entryKind === "directory";
     const fileName = attachment.path.split("/").findLast(Boolean) ?? attachment.path;
@@ -161,6 +169,7 @@ const ThemedAttachmentGitPullRequest = withUnistyles(GitPullRequest);
 const ThemedAttachmentCircleDot = withUnistyles(CircleDot);
 const ThemedAttachmentMessageSquareCode = withUnistyles(MessageSquareCode);
 const ThemedAttachmentMousePointer = withUnistyles(MousePointer2);
+const ThemedAttachmentSpeakerNotes = withUnistyles(SpeakerNotes);
 
 // `size` is folded into uniProps (not a static prop) so it repaints from the live,
 // compact-doubled `theme.iconSize` the same way `color` already does. Safe here even
@@ -184,4 +193,7 @@ const attachmentFileIcon = <ThemedAttachmentFileText uniProps={iconForegroundMut
 const attachmentFolderIcon = <ThemedAttachmentFolder uniProps={iconForegroundMutedMapping} />;
 const attachmentBrowserIcon = (
   <ThemedAttachmentMousePointer uniProps={iconForegroundMutedMapping} />
+);
+const attachmentMeetingNotesIcon = (
+  <ThemedAttachmentSpeakerNotes uniProps={iconForegroundMutedMapping} />
 );

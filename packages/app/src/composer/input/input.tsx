@@ -55,6 +55,7 @@ import type { ImageAttachment, MessagePayload } from "@/composer/types";
 import { focusWithRetries } from "@/utils/web-focus";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
+import { ShortcutDiscoveryHint } from "@/components/shortcut-discovery-overlay";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -65,6 +66,7 @@ import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-moda
 import { useDismissKeyboardOnOpen } from "@/components/ui/keyboard-dismiss";
 import { useWebElementScrollbar } from "@/components/use-web-scrollbar";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
+import { useShowShortcutDiscovery } from "@/hooks/use-show-shortcut-badges";
 import { useIosHardwareKeyboardSubmit } from "@/hooks/use-ios-hardware-keyboard-submit";
 import { formatShortcut } from "@/utils/format-shortcut";
 import { mergeRefs } from "@/utils/merge-refs";
@@ -792,7 +794,17 @@ function FocusHint({
   focusInputKeys: ShortcutChord | null | undefined;
   label: string;
 }) {
+  const shortcutDiscoveryVisible = useShowShortcutDiscovery();
   if (!visible || !focusInputKeys || !label.trim()) return null;
+  if (shortcutDiscoveryVisible) {
+    return (
+      <ShortcutDiscoveryHint
+        action="message-input.action"
+        bindingIds={["message-input-focus-cmd-l-mac", "message-input-focus-ctrl-l-non-mac"]}
+        style={styles.focusHintDiscovery}
+      />
+    );
+  }
   return (
     <Text style={styles.focusHintText} pointerEvents="none">
       {label}
@@ -831,7 +843,21 @@ function VoiceButtonTooltip({
         accessibilityLabel={voiceButtonAccessibilityLabel}
         style={voiceButtonStyle}
       >
-        {renderVoiceButtonIcon}
+        {({ hovered }) => (
+          <View style={styles.shortcutDiscoveryAnchor}>
+            {renderVoiceButtonIcon({ hovered })}
+            {!isRealtimeVoiceForCurrentAgent ? (
+              <ShortcutDiscoveryHint
+                action="message-input.action"
+                bindingIds={[
+                  "message-input-dictation-toggle-cmd-d-mac",
+                  "message-input-dictation-toggle-ctrl-d-non-mac",
+                ]}
+                style={styles.dictationShortcutDiscoveryHint}
+              />
+            ) : null}
+          </View>
+        )}
       </TooltipTrigger>
       <TooltipContent side="top" align="center" offset={8}>
         <VoiceTooltipBody voiceTooltipText={voiceTooltipText} shortcut={shortcut} />
@@ -2169,6 +2195,24 @@ const styles = StyleSheet.create((theme: Theme) => ({
   textInputScrollWrapper: {
     position: "relative",
   },
+  shortcutDiscoveryAnchor: {
+    position: "relative",
+  },
+  shortcutDiscoveryHint: {
+    position: "absolute",
+    top: -theme.spacing[2],
+    right: -theme.spacing[2],
+    zIndex: 1,
+  },
+  // Dictation and Live Mode sit next to one another in the composer toolbar.
+  // Place Dictation's badge below its trigger while Live Mode remains above,
+  // so Ctrl/Cmd+D and Ctrl/Cmd+Shift+D can never cover each other.
+  dictationShortcutDiscoveryHint: {
+    position: "absolute",
+    top: theme.spacing[3],
+    right: -theme.spacing[2],
+    zIndex: 1,
+  },
   focusHintText: {
     position: "absolute",
     top: 0,
@@ -2179,6 +2223,12 @@ const styles = StyleSheet.create((theme: Theme) => ({
     lineHeight: theme.fontSize.base * 1.4,
     color: theme.colors.foregroundMuted,
     opacity: 0.5,
+  },
+  focusHintDiscovery: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    zIndex: 1,
   },
   textInput: {
     width: "100%",

@@ -115,6 +115,67 @@ test("alternates turns so a steady stream of A does not starve B", async () => {
   assert.deepEqual(switches, ["b", "a"], "switched to B, then back to A");
 });
 
+test("an exclusive operation waits behind inference, swaps models, then yields to the next turn", async () => {
+  const { supervisor, switches, loadModel } = harness(A);
+  const sched = new Scheduler({ supervisor, loadModel });
+  const order: string[] = [];
+  let releaseA!: () => void;
+  const firstA = new Promise<void>((resolve) => {
+    releaseA = resolve;
+  });
+
+  const request = sched.submit(A, () => {
+    order.push("api A1");
+    return firstA;
+  });
+  await tick();
+  const calibrate = sched.submit(
+    B,
+    () => {
+      order.push(`calibrate ${supervisor.model?.id}`);
+      return Promise.resolve();
+    },
+    { kind: "calibrate" },
+  );
+  const nextRequest = sched.submit(A, () => {
+    order.push(`api A2 ${supervisor.model?.id}`);
+    return Promise.resolve();
+  });
+
+  releaseA();
+  await Promise.all([request, calibrate, nextRequest]);
+
+  assert.deepEqual(order, ["api A1", "calibrate b", "api A2 a"]);
+  assert.deepEqual(switches, ["b", "a"]);
+});
+
+test("an operation is a hard queue boundary for later requests to its own model", async () => {
+  const { supervisor, loadModel } = harness(A);
+  const sched = new Scheduler({ supervisor, loadModel });
+  const order: string[] = [];
+
+  await Promise.all([
+    sched.submit(A, () => {
+      order.push("api before");
+      return Promise.resolve();
+    }),
+    sched.submit(
+      A,
+      () => {
+        order.push("sweep");
+        return Promise.resolve();
+      },
+      { kind: "sweep" },
+    ),
+    sched.submit(A, () => {
+      order.push("api after");
+      return Promise.resolve();
+    }),
+  ]);
+
+  assert.deepEqual(order, ["api before", "sweep", "api after"]);
+});
+
 test("a model that fails to load rejects only its own jobs", async () => {
   const supervisor = { state: "stopped", model: null } as unknown as SchedulerSupervisor;
   const switches: string[] = [];

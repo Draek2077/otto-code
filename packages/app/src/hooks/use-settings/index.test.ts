@@ -27,6 +27,12 @@ describe("collectAppSettingsUpdates", () => {
     });
   });
 
+  it("routes shortcut overlay mode to app settings", () => {
+    expect(collectAppSettingsUpdates({ shortcutOverlayMode: "on-screen" })).toEqual({
+      shortcutOverlayMode: "on-screen",
+    });
+  });
+
   it("keeps routing the neighbouring appearance fields", () => {
     expect(
       collectAppSettingsUpdates({ autoExpandReasoning: true, toolCallDetailLevel: "overview" }),
@@ -54,6 +60,12 @@ describe("collectAppSettingsUpdates", () => {
     ).toEqual({
       wakeWordEnabled: true,
       wakeWordListeningPaused: true,
+    });
+  });
+
+  it("routes the meeting transcript delivery policy to app settings", () => {
+    expect(collectAppSettingsUpdates({ meetingTranscriptDeliveryPolicy: "local_only" })).toEqual({
+      meetingTranscriptDeliveryPolicy: "local_only",
     });
   });
 

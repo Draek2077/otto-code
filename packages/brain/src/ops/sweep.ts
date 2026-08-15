@@ -209,11 +209,7 @@ export async function sweep({
     const supervisor = optionsSupervisor ?? new Supervisor({ runtime, internalPort });
     onProgress({ phase: "loading", budget });
     try {
-      await supervisor.start(
-        model,
-        { ...profile, reasoningBudget: budget },
-        { preserveLogs: Boolean(optionsSupervisor) },
-      );
+      await supervisor.start(model, { ...profile, reasoningBudget: budget });
       onProgress({ phase: "generating", budget });
       const trial = await runTrial({ supervisor, maxTokens, temperature });
       results.push({ budget, ...trial, error: null });

@@ -61,6 +61,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Shortcut } from "@/components/ui/shortcut";
+import { ShortcutDiscoveryHint } from "@/components/shortcut-discovery-overlay";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useNonClientHover } from "@/hooks/use-non-client-hover";
@@ -1189,6 +1190,7 @@ function WorkspaceToolsStrip({
   onSplitDown,
   splitRightKeys,
   splitDownKeys,
+  shortcutDiscoveryVisible,
 }: {
   isDeveloperMode: boolean;
   visibleLaunchers: ResolvedPin[];
@@ -1205,12 +1207,17 @@ function WorkspaceToolsStrip({
   onSplitDown: () => void;
   splitRightKeys: ShortcutKey[][] | null;
   splitDownKeys: ShortcutKey[][] | null;
+  shortcutDiscoveryVisible: boolean;
 }) {
   const { t } = useTranslation();
   return (
     <>
       {isDeveloperMode ? (
-        <PinnedTargetsRow launchers={visibleLaunchers} testIdPrefix="workspace-pinned-target" />
+        <PinnedTargetsRow
+          launchers={visibleLaunchers}
+          testIdPrefix="workspace-pinned-target"
+          shortcutDiscoveryVisible={shortcutDiscoveryVisible}
+        />
       ) : null}
       {showPreviewInline && isDeveloperMode ? (
         <WorkspacePreviewButton controller={previewController} />
@@ -1226,17 +1233,21 @@ function WorkspaceToolsStrip({
       {isDeveloperMode && showSplitRightInline ? (
         <SplitActionButton
           icon="split-right"
+          action="workspace.pane.split.right"
           onPress={onSplitRight}
           label={t("workspace.tabs.actions.splitRight")}
           shortcutKeys={splitRightKeys}
+          shortcutDiscoveryVisible={shortcutDiscoveryVisible}
         />
       ) : null}
       {isDeveloperMode && showSplitDownInline ? (
         <SplitActionButton
           icon="split-down"
+          action="workspace.pane.split.down"
           onPress={onSplitDown}
           label={t("workspace.tabs.actions.splitDown")}
           shortcutKeys={splitDownKeys}
+          shortcutDiscoveryVisible={shortcutDiscoveryVisible}
         />
       ) : null}
     </>
@@ -1401,6 +1412,7 @@ export function WorkspaceTabRowExtras({
           onSplitDown={onSplitDown}
           splitRightKeys={splitRightKeys}
           splitDownKeys={splitDownKeys}
+          shortcutDiscoveryVisible={toolsRevealed}
         />
       </View>
       {previewButtonAbsent && isDeveloperMode ? (
@@ -1569,10 +1581,19 @@ interface SplitActionButtonProps {
   onPress: () => void;
   label: string;
   shortcutKeys: ShortcutKey[][] | null;
+  shortcutDiscoveryVisible: boolean;
+  action: "workspace.pane.split.right" | "workspace.pane.split.down";
   icon: "split-right" | "split-down";
 }
 
-function SplitActionButton({ onPress, label, shortcutKeys, icon }: SplitActionButtonProps) {
+function SplitActionButton({
+  onPress,
+  label,
+  shortcutKeys,
+  shortcutDiscoveryVisible,
+  action,
+  icon,
+}: SplitActionButtonProps) {
   return (
     <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
       <TooltipTrigger
@@ -1581,11 +1602,18 @@ function SplitActionButton({ onPress, label, shortcutKeys, icon }: SplitActionBu
         accessibilityLabel={label}
         style={newTabActionButtonStyle}
       >
-        {icon === "split-right" ? (
-          <ThemedColumns2 size={14} uniProps={mutedColorMapping} />
-        ) : (
-          <ThemedRows2 size={14} uniProps={mutedColorMapping} />
-        )}
+        <View style={styles.shortcutDiscoveryAnchor}>
+          {icon === "split-right" ? (
+            <ThemedColumns2 size={14} uniProps={mutedColorMapping} />
+          ) : (
+            <ThemedRows2 size={14} uniProps={mutedColorMapping} />
+          )}
+          <ShortcutDiscoveryHint
+            action={action}
+            enabled={shortcutDiscoveryVisible}
+            style={styles.shortcutDiscoveryHint}
+          />
+        </View>
       </TooltipTrigger>
       <TooltipContent side="bottom" align="center" offset={8}>
         <View style={styles.newTabTooltipRow}>
@@ -1807,11 +1835,93 @@ function isActiveTerminalTab(tab: WorkspaceTabDescriptor, isActive: boolean) {
   return isActive && tab.target.kind === "terminal";
 }
 
+function TabShortcutDiscoveryHint({
+  isFocused,
+  shortcutIndex,
+}: {
+  isFocused: boolean;
+  shortcutIndex: number | null;
+}) {
+  if (!isFocused || shortcutIndex === null) {
+    return null;
+  }
+
+  return (
+    <ShortcutDiscoveryHint
+      action="workspace.tab.navigate.index"
+      digit={shortcutIndex}
+      style={styles.tabShortcutDiscoveryHint}
+    />
+  );
+}
+
+function TabCloseShortcutDiscoveryHint({
+  isActive,
+  isFocused,
+}: {
+  isActive: boolean;
+  isFocused: boolean;
+}) {
+  if (!isActive || !isFocused) {
+    return null;
+  }
+
+  return (
+    <ShortcutDiscoveryHint
+      action="workspace.tab.close.current"
+      style={styles.tabCloseShortcutDiscoveryHint}
+    />
+  );
+}
+
+function TabCloseButtonContents({
+  isActive,
+  isFocused,
+  isClosingTab,
+  onBlack,
+  isCloseEmphasized,
+}: {
+  isActive: boolean;
+  isFocused: boolean;
+  isClosingTab: boolean;
+  onBlack: boolean;
+  isCloseEmphasized: boolean;
+}) {
+  let icon: React.ReactNode;
+  if (onBlack) {
+    icon = isClosingTab ? (
+      <LoadingSpinner size={12} />
+    ) : (
+      <X size={12} color={isCloseEmphasized ? ON_BLACK_FOREGROUND : ON_BLACK_MUTED} />
+    );
+  } else {
+    icon = isClosingTab ? (
+      <ThemedActivityIndicator
+        size={12}
+        uniProps={isCloseEmphasized ? foregroundColorMapping : mutedColorMapping}
+      />
+    ) : (
+      <ThemedX
+        size={12}
+        uniProps={isCloseEmphasized ? foregroundColorMapping : mutedColorMapping}
+      />
+    );
+  }
+
+  return (
+    <View style={styles.tabCloseButtonContents}>
+      {icon}
+      <TabCloseShortcutDiscoveryHint isActive={isActive} isFocused={isFocused} />
+    </View>
+  );
+}
+
 function TabChip({
   tab,
   isActive,
   isDragging,
   isFocused,
+  shortcutIndex,
   resolvedTabWidth,
   showLabel,
   showCloseButton,
@@ -1830,6 +1940,7 @@ function TabChip({
   isActive: boolean;
   isDragging: boolean;
   isFocused: boolean;
+  shortcutIndex: number | null;
   resolvedTabWidth: ResolvedTabWidth;
   showLabel: boolean;
   showCloseButton: boolean;
@@ -1998,6 +2109,7 @@ function TabChip({
                 tabLabelSkeletonStyle={tabLabelSkeletonStyle}
                 tabLabelStyle={tabLabelStyle}
               />
+              <TabShortcutDiscoveryHint isFocused={isFocused} shortcutIndex={shortcutIndex} />
 
               {showCloseButton ? (
                 <Pressable
@@ -2012,23 +2124,13 @@ function TabChip({
                 >
                   {({ hovered: closeHovered, pressed }) => {
                     const isCloseEmphasized = Boolean(closeHovered) || pressed;
-                    if (onBlack) {
-                      const onBlackColor = isCloseEmphasized ? ON_BLACK_FOREGROUND : ON_BLACK_MUTED;
-                      return isClosingTab ? (
-                        <LoadingSpinner size={12} />
-                      ) : (
-                        <X size={12} color={onBlackColor} />
-                      );
-                    }
-                    return isClosingTab ? (
-                      <ThemedActivityIndicator
-                        size={12}
-                        uniProps={isCloseEmphasized ? foregroundColorMapping : mutedColorMapping}
-                      />
-                    ) : (
-                      <ThemedX
-                        size={12}
-                        uniProps={isCloseEmphasized ? foregroundColorMapping : mutedColorMapping}
+                    return (
+                      <TabCloseButtonContents
+                        isActive={isActive}
+                        isFocused={isFocused}
+                        isClosingTab={isClosingTab}
+                        onBlack={onBlack}
+                        isCloseEmphasized={isCloseEmphasized}
                       />
                     );
                   }}
@@ -2788,6 +2890,7 @@ export function ResolvedDesktopTabChip({
               isActive={item.isActive}
               isDragging={isDragging}
               isFocused={isFocused}
+              shortcutIndex={isFocused && index < 9 ? index + 1 : null}
               resolvedTabWidth={resolvedTabWidth}
               showLabel={showLabel}
               showCloseButton={showCloseButton}
@@ -2896,6 +2999,7 @@ const styles = StyleSheet.create((theme) => ({
   // Chip is 1px shorter than the row minus its top inset so its bottom edge
   // lands exactly on the container edge, covering the hairline when active.
   tab: {
+    position: "relative",
     height: WORKSPACE_SECONDARY_HEADER_HEIGHT - theme.spacing[1],
     // Kept in sync with TAB_HORIZONTAL_PADDING (workspace-tab-layout.ts) so
     // the width math matches what the chip actually renders.
@@ -2914,6 +3018,12 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[1],
     userSelect: "none",
+  },
+  tabShortcutDiscoveryHint: {
+    position: "absolute",
+    top: -theme.spacing[2],
+    right: -theme.spacing[1],
+    zIndex: 1,
   },
   // Vertical-rail chrome: the horizontal chip's chrome turned 90° counter-
   // clockwise while keeping the wide shape. The opening moves from the bottom
@@ -3213,6 +3323,19 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
   },
+  tabCloseButtonContents: {
+    position: "relative",
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tabCloseShortcutDiscoveryHint: {
+    position: "absolute",
+    top: -theme.spacing[2],
+    right: -theme.spacing[2],
+    zIndex: 1,
+  },
   tabCloseButtonShown: {
     opacity: 1,
   },
@@ -3234,6 +3357,18 @@ const styles = StyleSheet.create((theme) => ({
   },
   newTabActionButtonHovered: {
     backgroundColor: theme.colors.surfaceHover,
+  },
+  shortcutDiscoveryAnchor: {
+    position: "relative",
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  shortcutDiscoveryHint: {
+    position: "absolute",
+    top: -theme.spacing[2],
+    right: -theme.spacing[2],
   },
   // The tab-overflow control: wider than the square action buttons because it
   // pairs the ellipsis icon with the hidden-tab count. alignSelf centers it in

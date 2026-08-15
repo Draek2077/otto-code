@@ -77,6 +77,19 @@ function chatHistoryAttachment(id: string, text = "Previous chat."): WorkspaceCo
   };
 }
 
+function meetingTranscriptAttachment(
+  id: string,
+  content = "Meeting transcript.",
+): WorkspaceComposerAttachment {
+  return {
+    kind: "meeting_transcript",
+    id,
+    title: "Meeting notes · August 13",
+    content,
+    occurredAt: "2026-08-13T12:00:00.000Z",
+  };
+}
+
 describe("workspace attachments store", () => {
   it("scopes workspace attachments by server and workspace before cwd fallback", () => {
     expect(
@@ -145,6 +158,13 @@ describe("workspace attachments store", () => {
   it("dedupes repeated chat history attachments by id", () => {
     const original = chatHistoryAttachment("chat_history:draft-1", "Original chat.");
     const replacement = chatHistoryAttachment("chat_history:draft-1", "Updated chat.");
+
+    expect(appendWorkspaceAttachment([original], replacement)).toEqual([replacement]);
+  });
+
+  it("dedupes repeated meeting transcripts by id", () => {
+    const original = meetingTranscriptAttachment("meeting-1", "Original transcript.");
+    const replacement = meetingTranscriptAttachment("meeting-1", "Edited transcript.");
 
     expect(appendWorkspaceAttachment([original], replacement)).toEqual([replacement]);
   });

@@ -64,10 +64,10 @@ export type HostRuntimeConnectionStatus = "idle" | "connecting" | "online" | "of
 export type HostRegistryStatus = "loading" | "ready";
 
 export type ActiveConnection =
-  | { type: "directTcp"; endpoint: string; display: string }
-  | { type: "directSocket"; endpoint: string; display: "socket" }
-  | { type: "directPipe"; endpoint: string; display: "pipe" }
-  | { type: "relay"; endpoint: string; display: "relay" };
+  | { type: "directTcp"; endpoint: string; display: string; encrypted?: boolean }
+  | { type: "directSocket"; endpoint: string; display: "socket"; encrypted?: true }
+  | { type: "directPipe"; endpoint: string; display: "pipe"; encrypted?: true }
+  | { type: "relay"; endpoint: string; display: "relay"; encrypted?: boolean };
 
 export type HostRuntimeAgentDirectoryStatus =
   | "idle"
@@ -188,6 +188,7 @@ function toActiveConnection(connection: HostConnection): ActiveConnection {
       type: "directSocket",
       endpoint: connection.path,
       display: "socket",
+      encrypted: true,
     };
   }
   if (connection.type === "directPipe") {
@@ -195,6 +196,7 @@ function toActiveConnection(connection: HostConnection): ActiveConnection {
       type: "directPipe",
       endpoint: connection.path,
       display: "pipe",
+      encrypted: true,
     };
   }
   if (connection.type === "directTcp") {
@@ -202,12 +204,14 @@ function toActiveConnection(connection: HostConnection): ActiveConnection {
       type: "directTcp",
       endpoint: connection.endpoint,
       display: connection.endpoint,
+      encrypted: connection.useTls === true,
     };
   }
   return {
     type: "relay",
     endpoint: connection.relayEndpoint,
     display: "relay",
+    encrypted: connection.useTls ?? shouldUseTlsForDefaultHostedRelay(connection.relayEndpoint),
   };
 }
 

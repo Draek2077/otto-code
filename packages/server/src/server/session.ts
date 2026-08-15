@@ -67,6 +67,15 @@ import { redactDaemonConfigForClient } from "./daemon-config-store.js";
 import type { DaemonConfigStore } from "./daemon-config-store.js";
 import { listConnectorTools } from "./connectors/connector-tools.js";
 import type { ConnectorOAuthBroker } from "./connectors/connector-oauth.js";
+import { CommunicationsService } from "./communications/communications-service.js";
+import {
+  ZoomTeamChatAuthorizationUnavailableError,
+  ZoomTeamChatManagedAuthorizationBroker,
+} from "./communications/zoom-team-chat-managed-authorization.js";
+import { IntegrationAuthorizationCatalog } from "./integration-authorization/integration-authorization-catalog.js";
+import { IntegrationBrowserAuthorizationService } from "./integration-authorization/browser-authorization-service.js";
+import { IntegrationAuthorizationService } from "./integration-authorization/integration-authorization-service.js";
+import { MeetingTranscriptStore } from "./meetings/transcript-store.js";
 import type { ConnectorsOauthAuthorizeResponse } from "@otto-code/protocol/messages";
 import { getErrorMessage, getErrorMessageOr } from "@otto-code/protocol/error-utils";
 import { getAgentStatusPriority } from "@otto-code/protocol/agent-state-bucket";
@@ -650,6 +659,16 @@ export interface SessionOptions {
   // Optional so the many test harnesses need not build one; when absent the
   // connector OAuth RPCs answer with a clear "not available on this host".
   connectorOAuthBroker?: ConnectorOAuthBroker | null;
+  /** Daemon-global provider registry, shared by every connected frontend. */
+  communicationsService?: CommunicationsService;
+  /** Daemon-owned connection metadata and secure credential-vault boundary. */
+  integrationAuthorization?: IntegrationAuthorizationService | null;
+  /** Daemon-owned, nonsecret authorization methods available to settings. */
+  integrationAuthorizationCatalog?: IntegrationAuthorizationCatalog;
+  /** Daemon-owned provider-neutral browser sign-in drivers. */
+  integrationBrowserAuthorization?: IntegrationBrowserAuthorizationService | null;
+  /** Managed Zoom PKCE flow, configured only on daemon hosts with HTTPS callback support. */
+  zoomTeamChatAuthorization?: ZoomTeamChatManagedAuthorizationBroker | null;
   mcpBaseUrl?: string | null;
   stt: Resolvable<SpeechToTextProvider | null>;
   sttLanguage?: string;
@@ -917,6 +936,12 @@ export class Session {
   private readonly workspaceRecovery: WorkspaceRecoveryService;
   private readonly daemonConfigStore: DaemonConfigStore;
   private readonly connectorOAuthBroker: ConnectorOAuthBroker | null;
+  private readonly communicationsService: CommunicationsService;
+  private readonly integrationAuthorization: IntegrationAuthorizationService | null;
+  private readonly integrationAuthorizationCatalog: IntegrationAuthorizationCatalog;
+  private readonly integrationBrowserAuthorization: IntegrationBrowserAuthorizationService | null;
+  private readonly zoomTeamChatAuthorization: ZoomTeamChatManagedAuthorizationBroker | null;
+  private readonly meetingTranscripts: MeetingTranscriptStore;
   private readonly getSpeechSettingsOptions: (() => SpeechSettingsOptions) | null;
   private readonly previewTts:
     | ((params: {
@@ -942,6 +967,7 @@ export class Session {
   private readonly refineGenerator: RefineGenerator;
   private readonly pushTokenStore: PushTokenStore;
   private unsubscribeAgentEvents: (() => void) | null = null;
+  private unsubscribeCommunicationsPresenceChanges: (() => void) | null = null;
   private unsubscribeProjectMutations: (() => void) | null = null;
   private unsubscribeWorkspaceMutations: (() => void) | null = null;
   private registryMutationQueue: Promise<void> = Promise.resolve();
@@ -1034,6 +1060,11 @@ export class Session {
       agentAutoTitle,
       daemonConfigStore,
       connectorOAuthBroker,
+      communicationsService,
+      integrationAuthorization,
+      integrationAuthorizationCatalog,
+      integrationBrowserAuthorization,
+      zoomTeamChatAuthorization,
       stt,
       sttLanguage,
       tts,
@@ -1072,6 +1103,13 @@ export class Session {
     this.getPersonalityStats = defaults.getPersonalityStats;
     this.personalityMemory = personalityMemory;
     this.projectKnowledge = projectKnowledge;
+    this.communicationsService = communicationsService ?? new CommunicationsService();
+    this.integrationAuthorization = integrationAuthorization ?? null;
+    this.integrationAuthorizationCatalog =
+      integrationAuthorizationCatalog ?? new IntegrationAuthorizationCatalog();
+    this.integrationBrowserAuthorization = coalesceToNull(integrationBrowserAuthorization);
+    this.zoomTeamChatAuthorization = coalesceToNull(zoomTeamChatAuthorization);
+    this.meetingTranscripts = new MeetingTranscriptStore(ottoHome);
     this.scopes = [...scopes];
     this.appVersion = defaults.appVersion;
     this.clientCapabilities = parseClientCapabilities(clientCapabilities);
@@ -1081,6 +1119,16 @@ export class Session {
     this.onMessageToSource = defaults.onMessageToSource;
     this.onBinaryMessage = defaults.onBinaryMessage;
     this.onBinaryMessageToSource = defaults.onBinaryMessageToSource;
+    this.unsubscribeCommunicationsPresenceChanges =
+      this.communicationsService.subscribePresenceChanges((presence) => {
+        if (this.isCleanedUp || !this.supports(CLIENT_CAPS.communicationsPresenceUpdates)) {
+          return;
+        }
+        this.emit({
+          type: "communications.inbox.presence.changed.notification",
+          payload: { presence },
+        });
+      });
     this.getTransportBufferedAmount = defaults.getTransportBufferedAmount;
     this.onLifecycleIntent = defaults.onLifecycleIntent;
     this.onWorkspaceRecovered = defaults.onWorkspaceRecovered;
@@ -2457,6 +2505,9 @@ export class Session {
       this.dispatchHubExecutionMessage(msg) ??
       this.dispatchAgentLifecycleMessage(msg) ??
       this.dispatchAgentConfigMessage(msg) ??
+      this.dispatchMeetingsMessage(msg) ??
+      this.dispatchCommunicationsMessage(msg) ??
+      this.dispatchIntegrationAuthorizationMessage(msg) ??
       this.dispatchSpeechMessage(msg) ??
       this.dispatchVisualizerMessage(msg)
     );
@@ -3177,6 +3228,338 @@ export class Session {
         return this.projectConfigSession.handleWriteProjectConfigRequest(msg);
       default:
         return this.dispatchDaemonConfigMessage(msg);
+    }
+  }
+
+  private dispatchMeetingsMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "meetings.transcripts.list.request":
+        return this.handleMeetingsTranscriptsList(msg.requestId);
+      case "meetings.transcripts.create.request":
+        return this.handleMeetingsTranscriptsCreate(msg);
+      case "meetings.transcripts.update.request":
+        return this.handleMeetingsTranscriptsUpdate(msg);
+      case "meetings.transcripts.delete.request":
+        return this.handleMeetingsTranscriptsDelete(msg.requestId, msg.id);
+      default:
+        return undefined;
+    }
+  }
+
+  private async handleMeetingsTranscriptsList(requestId: string): Promise<void> {
+    this.emit({
+      type: "meetings.transcripts.list.response",
+      payload: { requestId, records: await this.meetingTranscripts.list() },
+    });
+  }
+
+  private async handleMeetingsTranscriptsCreate(
+    msg: Extract<SessionInboundMessage, { type: "meetings.transcripts.create.request" }>,
+  ): Promise<void> {
+    const record = await this.meetingTranscripts.create(msg);
+    this.emit({
+      type: "meetings.transcripts.create.response",
+      payload: { requestId: msg.requestId, record },
+    });
+  }
+
+  private async handleMeetingsTranscriptsUpdate(
+    msg: Extract<SessionInboundMessage, { type: "meetings.transcripts.update.request" }>,
+  ): Promise<void> {
+    const record = await this.meetingTranscripts.update(msg.id, {
+      ...(msg.title === undefined ? {} : { title: msg.title }),
+      ...(msg.content === undefined ? {} : { content: msg.content }),
+    });
+    this.emit({
+      type: "meetings.transcripts.update.response",
+      payload: { requestId: msg.requestId, record },
+    });
+  }
+
+  private async handleMeetingsTranscriptsDelete(requestId: string, id: string): Promise<void> {
+    this.emit({
+      type: "meetings.transcripts.delete.response",
+      payload: { requestId, deleted: await this.meetingTranscripts.delete(id) },
+    });
+  }
+
+  private dispatchCommunicationsMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "communications.get_overview.request":
+        return this.handleCommunicationsGetOverviewRequest(msg.requestId);
+      case "communications.inbox.get_home.request":
+        return this.handleCommunicationsInboxGetHomeRequest(msg.requestId, msg.providerId);
+      case "communications.inbox.search.request":
+        return this.handleCommunicationsInboxSearchRequest(
+          msg.requestId,
+          msg.providerId,
+          msg.query,
+        );
+      case "communications.inbox.set_favorite.request":
+        return this.handleCommunicationsInboxSetFavoriteRequest(
+          msg.requestId,
+          msg.providerId,
+          msg.conversationId,
+          msg.favorite,
+        );
+      case "communications.inbox.get_presence.request":
+        return this.handleCommunicationsInboxGetPresenceRequest(msg.requestId, msg.providerId);
+      case "communications.inbox.set_presence.request":
+        return this.handleCommunicationsInboxSetPresenceRequest(
+          msg.requestId,
+          msg.providerId,
+          msg.status,
+        );
+      case "communications.inbox.set_enabled.request":
+        return this.handleCommunicationsInboxSetEnabledRequest(
+          msg.requestId,
+          msg.providerId,
+          msg.enabled,
+        );
+      case "communications.inbox.get_messages.request":
+        return this.handleCommunicationsInboxGetMessagesRequest(
+          msg.requestId,
+          msg.providerId,
+          msg.conversationId,
+        );
+      case "communications.inbox.send_message.request":
+        return this.handleCommunicationsInboxSendMessageRequest(
+          msg.requestId,
+          msg.providerId,
+          msg.conversationId,
+          msg.text,
+        );
+      default:
+        return undefined;
+    }
+  }
+
+  private async handleCommunicationsGetOverviewRequest(requestId: string): Promise<void> {
+    const overview = await this.communicationsService.getOverview();
+    this.emit({
+      type: "communications.get_overview.response",
+      payload: { overview, requestId },
+    });
+  }
+
+  private async handleCommunicationsInboxGetHomeRequest(
+    requestId: string,
+    providerId: string,
+  ): Promise<void> {
+    const home = await this.communicationsService.getHome(providerId);
+    this.emit({
+      type: "communications.inbox.get_home.response",
+      payload: { home, requestId },
+    });
+  }
+
+  private async handleCommunicationsInboxSearchRequest(
+    requestId: string,
+    providerId: string,
+    query: string,
+  ): Promise<void> {
+    const results = await this.communicationsService.searchDestinations({ providerId, query });
+    this.emit({
+      type: "communications.inbox.search.response",
+      payload: { results, requestId },
+    });
+  }
+
+  private async handleCommunicationsInboxSetFavoriteRequest(
+    requestId: string,
+    providerId: string,
+    conversationId: string,
+    favorite: boolean,
+  ): Promise<void> {
+    const home = await this.communicationsService.setFavorite({
+      providerId,
+      conversationId,
+      favorite,
+    });
+    this.emit({
+      type: "communications.inbox.set_favorite.response",
+      payload: { home, requestId },
+    });
+  }
+
+  private async handleCommunicationsInboxGetPresenceRequest(
+    requestId: string,
+    providerId: string,
+  ): Promise<void> {
+    const presence = await this.communicationsService.getPresence(providerId);
+    this.emit({
+      type: "communications.inbox.get_presence.response",
+      payload: { presence, requestId },
+    });
+  }
+
+  private async handleCommunicationsInboxSetPresenceRequest(
+    requestId: string,
+    providerId: string,
+    status: "available" | "busy" | "do_not_disturb" | "away" | "out_of_office" | "unknown",
+  ): Promise<void> {
+    const presence = await this.communicationsService.setPresence({ providerId, status });
+    this.emit({
+      type: "communications.inbox.set_presence.response",
+      payload: { presence, requestId },
+    });
+  }
+
+  private async handleCommunicationsInboxSetEnabledRequest(
+    requestId: string,
+    providerId: string,
+    enabled: boolean,
+  ): Promise<void> {
+    const presence = await this.communicationsService.setEnabled({ providerId, enabled });
+    this.emit({
+      type: "communications.inbox.set_enabled.response",
+      payload: { presence, requestId },
+    });
+  }
+
+  private async handleCommunicationsInboxGetMessagesRequest(
+    requestId: string,
+    providerId: string,
+    conversationId: string,
+  ): Promise<void> {
+    const messages = await this.communicationsService.getMessages({ providerId, conversationId });
+    this.emit({
+      type: "communications.inbox.get_messages.response",
+      payload: { messages, requestId },
+    });
+  }
+
+  private async handleCommunicationsInboxSendMessageRequest(
+    requestId: string,
+    providerId: string,
+    conversationId: string,
+    text: string,
+  ): Promise<void> {
+    const message = await this.communicationsService.sendMessage({
+      providerId,
+      conversationId,
+      text,
+    });
+    this.emit({
+      type: "communications.inbox.send_message.response",
+      payload: { message, requestId },
+    });
+  }
+
+  private dispatchIntegrationAuthorizationMessage(
+    msg: SessionInboundMessage,
+  ): Promise<void> | undefined {
+    switch (msg.type) {
+      case "integrations.authorization.get_overview.request":
+        return this.handleIntegrationAuthorizationGetOverviewRequest(msg.requestId);
+      case "integrations.authorization.get_methods.request":
+        return this.handleIntegrationAuthorizationGetMethodsRequest(
+          msg.requestId,
+          msg.integrationId,
+        );
+      case "integrations.authorization.start_browser.request":
+        return this.handleIntegrationAuthorizationStartBrowserRequest(
+          msg.requestId,
+          msg.integrationId,
+          msg.connectionId,
+        );
+      case "integrations.zoom.start_authorization.request":
+        return this.handleZoomTeamChatStartAuthorizationRequest(msg.requestId);
+      default:
+        return undefined;
+    }
+  }
+
+  private async handleIntegrationAuthorizationGetOverviewRequest(requestId: string): Promise<void> {
+    if (!this.integrationAuthorization) return;
+    const overview = await this.integrationAuthorization.getOverview();
+    this.emit({
+      type: "integrations.authorization.get_overview.response",
+      payload: { overview, requestId },
+    });
+  }
+
+  private async handleIntegrationAuthorizationGetMethodsRequest(
+    requestId: string,
+    integrationId?: string,
+  ): Promise<void> {
+    if (!this.integrationAuthorization) return;
+    this.emit({
+      type: "integrations.authorization.get_methods.response",
+      payload: {
+        methods: this.integrationAuthorizationCatalog.listMethods(integrationId),
+        requestId,
+      },
+    });
+  }
+
+  private async handleIntegrationAuthorizationStartBrowserRequest(
+    requestId: string,
+    integrationId: string,
+    connectionId: string,
+  ): Promise<void> {
+    if (!this.integrationBrowserAuthorization) {
+      this.emit({
+        type: "integrations.authorization.start_browser.response",
+        payload: {
+          authorizationUrl: null,
+          error: "Browser sign-in is not configured on this host.",
+          requestId,
+        },
+      });
+      return;
+    }
+    try {
+      const { authorizationUrl } = await this.integrationBrowserAuthorization.start({
+        integrationId,
+        connectionId,
+      });
+      this.emit({
+        type: "integrations.authorization.start_browser.response",
+        payload: { authorizationUrl, error: null, requestId },
+      });
+    } catch (error) {
+      this.emit({
+        type: "integrations.authorization.start_browser.response",
+        payload: {
+          authorizationUrl: null,
+          error: error instanceof Error ? error.message : "Unable to start browser sign-in.",
+          requestId,
+        },
+      });
+    }
+  }
+
+  private async handleZoomTeamChatStartAuthorizationRequest(requestId: string): Promise<void> {
+    if (!this.zoomTeamChatAuthorization) {
+      this.emit({
+        type: "integrations.zoom.start_authorization.response",
+        payload: {
+          authorizationUrl: null,
+          error: "Zoom Team Chat sign-in is not configured on this host.",
+          requestId,
+        },
+      });
+      return;
+    }
+    try {
+      const { authorizationUrl } = await this.zoomTeamChatAuthorization.start();
+      this.emit({
+        type: "integrations.zoom.start_authorization.response",
+        payload: { authorizationUrl, error: null, requestId },
+      });
+    } catch (error) {
+      this.emit({
+        type: "integrations.zoom.start_authorization.response",
+        payload: {
+          authorizationUrl: null,
+          error:
+            error instanceof ZoomTeamChatAuthorizationUnavailableError
+              ? error.message
+              : "Unable to start Zoom Team Chat sign-in.",
+          requestId,
+        },
+      });
     }
   }
 
@@ -12135,6 +12518,8 @@ export class Session {
       this.unsubscribeAgentEvents();
       this.unsubscribeAgentEvents = null;
     }
+    this.unsubscribeCommunicationsPresenceChanges?.();
+    this.unsubscribeCommunicationsPresenceChanges = null;
     this.unsubscribeProjectMutations?.();
     this.unsubscribeProjectMutations = null;
     this.unsubscribeWorkspaceMutations?.();

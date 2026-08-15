@@ -15,6 +15,7 @@ import { confirmDialog } from "@/utils/confirm-dialog";
 import { useWorkspaceAttachmentsStore } from "@/attachments/workspace-attachments-store";
 import { getDesktopHost, type DesktopLocalMeetingTranscript } from "@/desktop/host";
 import { useZoomRecorderStatus } from "@/desktop/use-zoom-recorder-status";
+import { ICON_SIZE } from "@/styles/theme";
 
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedMessageSquarePlus = withUnistyles(MessageSquarePlus);
@@ -279,6 +280,7 @@ export function MeetingTranscriptLibrary({
               variant={recorderConflict ? "default" : "outline"}
               size="xs"
               leftIcon={recorderActionIcon}
+              iconSize={ICON_SIZE.sm}
               textStyle={styles.recorderToggleText}
               onPress={recorderConflict ? takeOverRecorder : togglePaused}
             >
@@ -422,7 +424,7 @@ function MeetingTranscriptRow({
 const styles = StyleSheet.create((theme) => ({
   popup: {
     gap: 0,
-    paddingVertical: theme.spacing[2],
+    paddingTop: theme.spacing[2],
   },
   popupHeader: {
     flexDirection: "row",
@@ -438,6 +440,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   recorderToggleText: {
     fontSize: theme.fontSize.sm,
+    lineHeight: theme.fontSize.sm,
   },
   list: { paddingTop: theme.spacing[1] },
   row: {

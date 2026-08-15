@@ -40,6 +40,7 @@ import {
 import { SidebarActiveTeamSwitchers } from "@/components/active-team-switcher";
 import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/sidebar-display-preferences-menu";
 import { Shortcut } from "@/components/ui/shortcut";
+import { ShortcutDiscoveryHint } from "@/components/shortcut-discovery-overlay";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
@@ -1044,12 +1045,15 @@ function WorkspacesSectionHeader({
               onPress={onAddProject}
             >
               {({ hovered, pressed }) => (
-                <FolderPlus
-                  size={iconSize.sm}
-                  color={
-                    hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
-                  }
-                />
+                <View style={styles.workspacesHeaderShortcutAnchor}>
+                  <FolderPlus
+                    size={iconSize.sm}
+                    color={
+                      hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
+                    }
+                  />
+                  <ShortcutDiscoveryHint action="agent.new" style={styles.shortcutDiscoveryHint} />
+                </View>
               )}
             </Pressable>
           </TooltipTrigger>
@@ -1067,12 +1071,18 @@ function WorkspacesSectionHeader({
               onPress={handleSearchPress}
             >
               {({ hovered, pressed }) => (
-                <Search
-                  size={iconSize.sm}
-                  color={
-                    hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
-                  }
-                />
+                <View style={styles.workspacesHeaderShortcutAnchor}>
+                  <Search
+                    size={iconSize.sm}
+                    color={
+                      hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
+                    }
+                  />
+                  <ShortcutDiscoveryHint
+                    action="command-center.toggle"
+                    style={styles.shortcutDiscoveryHint}
+                  />
+                </View>
               )}
             </Pressable>
           </TooltipTrigger>
@@ -1158,6 +1168,18 @@ const styles = StyleSheet.create((theme) => ({
   },
   workspacesHeaderIconButtonHovered: {
     backgroundColor: theme.colors.surfaceSidebarHover,
+  },
+  workspacesHeaderShortcutAnchor: {
+    position: "relative",
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  shortcutDiscoveryHint: {
+    position: "absolute",
+    top: -theme.spacing[2],
+    right: -theme.spacing[2],
   },
   sidebarContent: {
     flex: 1,

@@ -8,6 +8,7 @@
  */
 import { useMemo } from "react";
 import { brainStatusQueryKey, PUSHED_BRAIN_STATUS_STALE_MS } from "@/data/brain-status";
+import { brainLogsQueryKey } from "@/data/brain-logs";
 import { useFetchQuery } from "@/data/query";
 import type { BrainCapabilities, BrainHostStatus } from "@otto-code/protocol/messages";
 import { useHostFeature } from "@/runtime/host-features";
@@ -27,9 +28,7 @@ export function brainInventoryQueryKey(serverId: string) {
   return ["brain-console-inventory", serverId] as const;
 }
 
-export function brainLogsQueryKey(serverId: string) {
-  return ["brain-console-logs", serverId] as const;
-}
+export { brainLogsQueryKey };
 
 /**
  * The brain's status, optionally with live resource telemetry.
@@ -83,12 +82,13 @@ export function useBrainInventory(serverId: string, enabled: boolean) {
 
 export function useBrainLogs(serverId: string, enabled: boolean) {
   const client = useHostRuntimeClient(serverId);
+  const pushed = useHostFeature(serverId, "brainLogPush");
   return useFetchQuery({
     queryKey: brainLogsQueryKey(serverId),
     enabled: enabled && Boolean(client),
     dataShape: "value",
-    staleTimeMs: LOGS_POLL_MS,
-    refetchInterval: LOGS_POLL_MS,
+    staleTimeMs: pushed ? PUSHED_BRAIN_STATUS_STALE_MS : LOGS_POLL_MS,
+    refetchInterval: pushed ? false : LOGS_POLL_MS,
     queryFn: async () => {
       if (!client) {
         throw new Error("This host is not connected.");

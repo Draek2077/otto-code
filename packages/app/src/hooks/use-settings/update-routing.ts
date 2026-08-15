@@ -25,6 +25,7 @@ const APP_SETTINGS_UPDATE_KEYS = [
   "rulerEnabled",
   "rulerColumn",
   "workspaceTitleSource",
+  "shortcutOverlayMode",
   "autoExpandReasoning",
   "chatMetricsBar",
   "wrapCodeLines",
@@ -42,6 +43,9 @@ const APP_SETTINGS_UPDATE_KEYS = [
   "wakeWordSensitivity",
   "wakeWordSilenceTimeoutMs",
   "wakeWordAutoSend",
+  "zoomRecorderEnabled",
+  "zoomRecorderPaused",
+  "meetingTranscriptDeliveryPolicy",
 ] as const satisfies readonly (keyof AppSettings)[];
 
 export function collectAppSettingsUpdates(updates: Partial<Settings>): Partial<AppSettings> {

@@ -1,5 +1,5 @@
 import { execFile, type ChildProcess } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import http from "node:http";
 import https from "node:https";
 import { createRequire } from "node:module";
@@ -48,6 +48,8 @@ const STOP_GRACEFUL_TIMEOUT_MS = 5_000;
 const STOP_FORCE_TIMEOUT_MS = 2_000;
 const MAX_LOG_LINES = 2_000;
 const MAX_LOG_LINE_CHARS = 1_000;
+const BRAIN_RUN_LOG_SUFFIX = "-brain.log";
+const BRAIN_SESSION_LOG_LINE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\s/u;
 /** Crash-restart policy: at most this many respawns inside the window before giving up. */
 const MAX_FAST_RESTARTS = 3;
 const RESTART_WINDOW_MS = 60_000;
@@ -87,6 +89,8 @@ export interface BrainManagerOptions {
    * come from.
    */
   onStatusChanged?: (status: BrainHostStatus) => void;
+  /** Called for each completed Brain-session log line from the host SSE stream. */
+  onLogLine?: (line: string) => void;
   /**
    * Called when `supportsStatusEvents()` flips, so the daemon can re-broadcast
    * `server_info`. Availability is not a fixed daemon capability: it depends on
@@ -186,6 +190,7 @@ export class BrainManager {
   private readonly ottoHome: string;
   private readonly onReachabilityChanged: (() => void) | null;
   private onStatusChanged: ((status: BrainHostStatus) => void) | null;
+  private onLogLine: ((line: string) => void) | null;
   private onStatusEventSupportChanged: (() => void) | null;
 
   private child: ChildProcess | null = null;
@@ -210,6 +215,8 @@ export class BrainManager {
     trust: { kind: "loopback-child" },
   };
   private readonly log: string[] = [];
+  /** PID encoded in the latest local Brain service session-log filename. */
+  private sessionLogPid: number | null = null;
   private restartCount = 0;
   private restartWindowStart = 0;
   /** Connection-pooling dispatcher for the otto-brain provider; see resolveProviderDispatcher. */
@@ -224,6 +231,7 @@ export class BrainManager {
   private eventRetryDelayMs = EVENT_RECONNECT_MIN_MS;
   /** Whether the currently selected brain advertises and serves the event stream. */
   private eventsSupported = false;
+  private logEventsSupported = false;
   /** Serialized last published snapshot, so an identical one is not re-broadcast. */
   private lastPublishedStatus: string | null = null;
   private reconcilePending = false;
@@ -235,6 +243,7 @@ export class BrainManager {
     this.ottoHome = options.ottoHome;
     this.onReachabilityChanged = options.onReachabilityChanged ?? null;
     this.onStatusChanged = options.onStatusChanged ?? null;
+    this.onLogLine = options.onLogLine ?? null;
     this.onStatusEventSupportChanged = options.onStatusEventSupportChanged ?? null;
   }
 
@@ -246,9 +255,11 @@ export class BrainManager {
    */
   setStatusListeners(listeners: {
     onStatusChanged: (status: BrainHostStatus) => void;
+    onLogLine?: (line: string) => void;
     onStatusEventSupportChanged: () => void;
   }): void {
     this.onStatusChanged = listeners.onStatusChanged;
+    this.onLogLine = listeners.onLogLine ?? null;
     this.onStatusEventSupportChanged = listeners.onStatusEventSupportChanged;
     this.requestStatusStreamReconcile();
   }
@@ -261,6 +272,11 @@ export class BrainManager {
    */
   supportsStatusEvents(): boolean {
     return this.eventsSupported;
+  }
+
+  /** Whether the selected Brain can push individual log lines through its SSE stream. */
+  supportsLogEvents(): boolean {
+    return this.logEventsSupported;
   }
 
   /**
@@ -645,6 +661,7 @@ export class BrainManager {
       // first attempt rather than inheriting the last outage's backoff.
       this.eventRetryDelayMs = EVENT_RECONNECT_MIN_MS;
       this.setEventsSupported(false);
+      this.setLogEventsSupported(false);
       this.publishStatus(await this.statusSafely());
       return;
     }
@@ -657,6 +674,7 @@ export class BrainManager {
 
     const supported = status.reachable === true && status.capabilities?.events === true;
     this.setEventsSupported(supported);
+    this.setLogEventsSupported(supported && status.capabilities?.logEvents === true);
     if (!supported) {
       // Either the brain is too old for events (nothing to retry - the client's
       // compatibility poll covers it, and a version change arrives as a restart)
@@ -715,6 +733,7 @@ export class BrainManager {
             "otto-brain refused the status event stream",
           );
           this.setEventsSupported(false);
+          this.setLogEventsSupported(false);
           return;
         }
         // A stream that opened is a healthy endpoint; the next drop starts its
@@ -789,9 +808,19 @@ export class BrainManager {
         data.push(value);
       }
     }
-    if (event !== "status" || data.length === 0) {
+    if (data.length === 0) {
       return;
     }
+    if (event === "log") {
+      try {
+        const parsed = JSON.parse(data.join("\n"));
+        if (isRecord(parsed) && typeof parsed.line === "string") this.onLogLine?.(parsed.line);
+      } catch {
+        this.logger.warn("otto-brain event stream sent an unparseable log line");
+      }
+      return;
+    }
+    if (event !== "status") return;
     let parsed: unknown;
     try {
       parsed = JSON.parse(data.join("\n"));
@@ -835,6 +864,16 @@ export class BrainManager {
       this.onStatusEventSupportChanged?.();
     } catch (error) {
       this.logger.warn({ err: error }, "Brain status-event support listener failed");
+    }
+  }
+
+  private setLogEventsSupported(supported: boolean): void {
+    if (supported === this.logEventsSupported) return;
+    this.logEventsSupported = supported;
+    try {
+      this.onStatusEventSupportChanged?.();
+    } catch (error) {
+      this.logger.warn({ err: error }, "Brain log-event support listener failed");
     }
   }
 
@@ -1094,8 +1133,16 @@ export class BrainManager {
     );
   }
 
-  /** Tail the brain's llama-server log. */
+  /** Tail the current Brain service log. */
   async hostLogs(limit?: number | null): Promise<Record<string, unknown> | null> {
+    // A pre-bind failure has already created and finalized its session log, but
+    // no host API exists to serve it. The daemon owns that foreground child and
+    // its OTTO_HOME, so it can keep the Logs surface pointed at the same file
+    // rather than falling back to the old outer `otto-brain.log`.
+    if (!this.isReachable()) {
+      const terminalLog = this.localTerminalSessionLog(limit);
+      if (terminalLog) return terminalLog;
+    }
     this.requireReachable();
     const query = limit && limit > 0 ? `?limit=${Math.floor(limit)}` : "";
     return this.requestHostJson("GET", `/__host/logs${query}`);
@@ -1187,13 +1234,32 @@ export class BrainManager {
     this.child = child;
     this.desiredModel = model;
 
-    const capture = (chunk: Buffer) => this.appendLog(chunk.toString("utf8"));
-    child.stdout?.on("data", capture);
-    child.stderr?.on("data", capture);
+    this.sessionLogPid = child.pid ?? null;
+    let stdoutRemainder = "";
+    let stderrRemainder = "";
+    const capture = (stream: "stdout" | "stderr", chunk: Buffer) => {
+      const text = chunk.toString("utf8");
+      this.appendLog(text);
+      const pending = stream === "stdout" ? stdoutRemainder : stderrRemainder;
+      const parts = `${pending}${text}`.split(/\r?\n/u);
+      const remainder = parts.pop() ?? "";
+      if (stream === "stdout") stdoutRemainder = remainder;
+      else stderrRemainder = remainder;
+      for (const line of parts) this.forwardChildSessionLogLine(line);
+    };
+    const flushCapture = () => {
+      this.forwardChildSessionLogLine(stdoutRemainder);
+      this.forwardChildSessionLogLine(stderrRemainder);
+      stdoutRemainder = "";
+      stderrRemainder = "";
+    };
+    child.stdout?.on("data", (chunk: Buffer) => capture("stdout", chunk));
+    child.stderr?.on("data", (chunk: Buffer) => capture("stderr", chunk));
     child.on("error", (error) => {
       this.appendLog(`[spawn error] ${error.message}\n`);
     });
     child.on("exit", (code, signal) => {
+      flushCapture();
       this.handleChildExit(child, code, signal);
     });
 
@@ -1598,6 +1664,47 @@ export class BrainManager {
 
   private lastLogLine(): string | null {
     return this.log.length > 0 ? this.log[this.log.length - 1] : null;
+  }
+
+  /**
+   * Relay durable session entries written before `/__host/events` can exist.
+   * Once the host's SSE stream is live it is the sole source, preventing every
+   * normal lifecycle line from being sent twice.
+   */
+  private forwardChildSessionLogLine(rawLine: string): void {
+    const line = rawLine.trim();
+    if (!BRAIN_SESSION_LOG_LINE.test(line) || this.supportsLogEvents()) return;
+    try {
+      this.onLogLine?.(line);
+    } catch (error) {
+      this.logger.warn({ err: error }, "Brain child log listener failed");
+    }
+  }
+
+  /** Read the latest local child session after a terminal startup outcome. */
+  private localTerminalSessionLog(limit?: number | null): Record<string, unknown> | null {
+    if (this.mode === "remote" || this.sessionLogPid === null) return null;
+    const logsDir = path.join(this.ottoHome, "otto-brain", "logs");
+    const suffix = `-${this.sessionLogPid}${BRAIN_RUN_LOG_SUFFIX}`;
+    let file: string | null = null;
+    try {
+      file = readdirSync(logsDir).find((entry) => entry.endsWith(suffix)) ?? null;
+    } catch {
+      return null;
+    }
+    if (!file) return null;
+    try {
+      const lines = readFileSync(path.join(logsDir, file), "utf8").split(/\r?\n/u).filter(Boolean);
+      const count = limit && limit > 0 ? Math.floor(limit) : lines.length;
+      return {
+        lines: lines.slice(-count),
+        total: lines.length,
+        state: this.wantRunning ? "failed" : "stopped",
+        command: null,
+      };
+    } catch {
+      return null;
+    }
   }
 
   private appendLog(text: string): void {

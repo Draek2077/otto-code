@@ -20,6 +20,10 @@ export const CLIENT_CAPS = {
   providerSubagents: "provider_subagents",
   // COMPAT(projectUpdates): added in v0.1.109, remove gate after 2027-01-15.
   projectUpdates: "project_updates",
+  // COMPAT(communicationsPresenceUpdates): added in v0.8.12, remove gate after
+  // 2027-02-14. Older clients do not know the presence-change notification, so
+  // the daemon sends it only after this capability is advertised.
+  communicationsPresenceUpdates: "communications_presence_updates",
   browserHost: "browser_host",
 } as const;
 

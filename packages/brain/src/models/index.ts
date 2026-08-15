@@ -5,7 +5,7 @@ import { CatalogSchema } from "../config/schema.js";
 import { loadCatalog } from "../config/store.js";
 import type { Model } from "../types.js";
 import { resolveModelsDirs } from "./dirs.js";
-import { enrichWithCatalog } from "./enrich.js";
+import { enrichWithCatalog, excludeCatalogComponentArtifacts } from "./enrich.js";
 import { loadRenameMap } from "./rename-map.js";
 import { scan } from "./scan.js";
 
@@ -20,7 +20,11 @@ export {
   type PullProgress,
   type DownloadFilesOptions,
 } from "./download.js";
-export { matchCatalogEntry, enrichWithCatalog } from "./enrich.js";
+export {
+  matchCatalogEntry,
+  enrichWithCatalog,
+  excludeCatalogComponentArtifacts,
+} from "./enrich.js";
 export {
   resolveHfToken,
   listRepoQuants,
@@ -68,7 +72,8 @@ export function scanModels(
       all.push(model);
     }
   }
-  const enriched = enrichWithCatalog(all, loadCatalogSafe(env));
+  const catalog = loadCatalogSafe(env);
+  const enriched = enrichWithCatalog(excludeCatalogComponentArtifacts(all, catalog), catalog);
   const renameMap = loadRenameMap(resolveBrainPaths(env));
   for (const model of enriched) {
     if (renameMap[model.id]) {

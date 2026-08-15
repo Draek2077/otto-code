@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -109,6 +109,8 @@ interface EventStream {
   next(): Promise<Record<string, unknown>>;
   /** Snapshots already delivered. */
   readonly received: Record<string, unknown>[];
+  /** Durable session lines delivered through the same SSE connection. */
+  readonly logs: string[];
   /** Resolves once the server ends the response. */
   readonly ended: Promise<void>;
   close(): void;
@@ -121,6 +123,7 @@ interface EventStream {
 function openEventStream(port: number, token?: string): Promise<EventStream> {
   return new Promise((resolve, reject) => {
     const received: Record<string, unknown>[] = [];
+    const logs: string[] = [];
     let cursor = 0;
     const waiters: (() => void)[] = [];
     let endStream: () => void = () => {};
@@ -149,6 +152,13 @@ function openEventStream(port: number, token?: string): Promise<EventStream> {
             const frame = buffer.slice(0, boundary);
             buffer = buffer.slice(boundary + 2);
             boundary = buffer.indexOf("\n\n");
+            if (frame.startsWith("event: log")) {
+              const data = frame.split("\n").find((line) => line.startsWith("data: "));
+              if (!data) continue;
+              const payload = JSON.parse(data.slice(6)) as { line?: unknown };
+              if (typeof payload.line === "string") logs.push(payload.line);
+              continue;
+            }
             if (!frame.startsWith("event: status")) continue;
             const data = frame.split("\n").find((line) => line.startsWith("data: "));
             if (!data) continue;
@@ -162,6 +172,7 @@ function openEventStream(port: number, token?: string): Promise<EventStream> {
         res.on("close", endStream);
         resolve({
           received,
+          logs,
           ended,
           next: () =>
             new Promise((resolveNext, rejectNext) => {
@@ -278,6 +289,31 @@ describe("startService bind guard", () => {
     });
     await handle.stop();
   });
+
+  it("records a listener collision in the service session log", async () => {
+    const blocker = http.createServer();
+    await new Promise<void>((resolve) => blocker.listen(0, "127.0.0.1", resolve));
+    const address = blocker.address();
+    if (!address || typeof address === "string") throw new Error("expected a TCP listener");
+    const home = makeTmp();
+    try {
+      await expect(
+        startService({
+          config: configWith({ listen: { host: "127.0.0.1", port: address.port } }),
+          env: { OTTO_HOME: home },
+        }),
+      ).rejects.toThrow(/EADDRINUSE/u);
+
+      const logsDir = path.join(home, "otto-brain", "logs");
+      const logFile = readdirSync(logsDir).find((entry) => entry.endsWith("-brain.log"));
+      expect(logFile).toBeDefined();
+      const lines = readFileSync(path.join(logsDir, logFile!), "utf8");
+      expect(lines).toContain("Brain service started");
+      expect(lines).toMatch(/FATAL Brain service startup failed:.*EADDRINUSE/u);
+    } finally {
+      await new Promise<void>((resolve) => blocker.close(() => resolve()));
+    }
+  });
 });
 
 describe("the status event stream", () => {
@@ -377,5 +413,19 @@ describe("the status event stream", () => {
     // would hang here rather than fail.
     await handle.stop();
     await expect(stream.ended).resolves.toBeUndefined();
+  });
+
+  it("publishes the terminal lifecycle outcome before closing the event stream", async () => {
+    const handle = await startService({
+      config: configWith({ listen: { host: "127.0.0.1", port: 0 } }),
+      env: env(),
+    });
+    const stream = await openEventStream(listenPort(handle));
+    await stream.next();
+    await handle.stop();
+    await expect(stream.ended).resolves.toBeUndefined();
+    expect(stream.logs).toEqual(
+      expect.arrayContaining([expect.stringContaining("Brain service stopped")]),
+    );
   });
 });

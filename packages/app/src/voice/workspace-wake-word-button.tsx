@@ -69,7 +69,11 @@ export function WorkspaceWakeWordButton() {
     hasDictationTab: true,
   });
   const displayedState = getWakeWordToolbarDisplayState({ listeningPaused, detectorState });
-  const label = getWakeWordLabel(displayedState);
+  const label = getWakeWordLabel({
+    detectorState,
+    displayedState,
+    listeningPaused,
+  });
   const onPress = useCallback(() => {
     void updateSettings({ wakeWordListeningPaused: !listeningPaused });
   }, [listeningPaused, updateSettings]);

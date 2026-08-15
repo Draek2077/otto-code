@@ -354,6 +354,16 @@ jobs:
       - name: Install JS dependencies
         run: node scripts/npm-retry.mjs ci
 
+      - name: Setup Python for Zoom Recorder
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: packages/desktop/resources/zoom-recorder/requirements-build.txt
+
+      - name: Install Zoom Recorder build dependencies
+        run: python -m pip install -r packages/desktop/resources/zoom-recorder/requirements-build.txt
+
       - name: Set desktop package version from tag
         shell: bash
         run: |
@@ -448,6 +458,16 @@ jobs:
 
       - name: Install JS dependencies
         run: node scripts/npm-retry.mjs ci
+
+      - name: Setup Python for Zoom Recorder
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: packages/desktop/resources/zoom-recorder/requirements-build.txt
+
+      - name: Install Zoom Recorder build dependencies
+        run: python -m pip install -r packages/desktop/resources/zoom-recorder/requirements-build.txt
 
       - name: Set desktop package version from tag
         shell: bash

@@ -26,6 +26,7 @@ export function isWorkspaceAttachment(
     attachment?.kind === "review" ||
     attachment?.kind === "browser_element" ||
     attachment?.kind === "chat_history" ||
+    attachment?.kind === "meeting_transcript" ||
     attachment?.kind === "file_context" ||
     isPullRequestContextAttachment(attachment)
   );
@@ -39,6 +40,7 @@ export function userAttachmentsOnly(
       attachment.kind !== "review" &&
       attachment.kind !== "browser_element" &&
       attachment.kind !== "chat_history" &&
+      attachment.kind !== "meeting_transcript" &&
       attachment.kind !== "file_context" &&
       !isPullRequestContextAttachment(attachment),
   );
@@ -65,6 +67,19 @@ export function workspaceAttachmentToSubmitAttachment(
   }
   if (attachment.kind === "chat_history") {
     return attachment.attachment;
+  }
+  if (attachment.kind === "meeting_transcript") {
+    return {
+      type: "text",
+      mimeType: "text/plain",
+      title: attachment.title,
+      text: [
+        "Meeting transcript attached as context by the user.",
+        `Meeting time: ${attachment.occurredAt}`,
+        "",
+        attachment.content,
+      ].join("\n"),
+    };
   }
   if (attachment.kind === "file_context") {
     if (attachment.entryKind === "directory") {

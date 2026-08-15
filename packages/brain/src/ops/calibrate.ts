@@ -87,11 +87,7 @@ export async function calibrate({
 
     const baseline = await usedBytes();
     try {
-      await supervisor.start(
-        model,
-        { ...profile, contextSize },
-        { preserveLogs: Boolean(optionsSupervisor) },
-      );
+      await supervisor.start(model, { ...profile, contextSize });
       const used = supervisor.vramAtReadyBytes ?? (await usedBytes());
       const delta = Number(used) - Number(supervisor.vramBaselineBytes ?? baseline);
       points.push({ contextSize, deltaBytes: delta, loadSeconds: supervisor.loadSeconds });

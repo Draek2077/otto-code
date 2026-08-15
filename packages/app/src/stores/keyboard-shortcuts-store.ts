@@ -3,12 +3,25 @@ import type { SidebarShortcutWorkspaceTarget } from "@/utils/sidebar-shortcuts";
 
 const SHORTCUT_BADGE_DELAY_MS = 150;
 
+export interface ShortcutDiscoveryModifiers {
+  alt: boolean;
+  ctrl: boolean;
+  meta: boolean;
+  shift: boolean;
+}
+
+const EMPTY_SHORTCUT_DISCOVERY_MODIFIERS: ShortcutDiscoveryModifiers = {
+  alt: false,
+  ctrl: false,
+  meta: false,
+  shift: false,
+};
+
 interface KeyboardShortcutsState {
   commandCenterOpen: boolean;
   shortcutsDialogOpen: boolean;
   capturingShortcut: boolean;
-  altDown: boolean;
-  cmdOrCtrlDown: boolean;
+  shortcutDiscoveryModifiers: ShortcutDiscoveryModifiers;
   showShortcutBadges: boolean;
   /** Sidebar-visible workspace targets (up to 9), in top-to-bottom visual order. */
   sidebarShortcutWorkspaceTargets: SidebarShortcutWorkspaceTarget[];
@@ -16,8 +29,7 @@ interface KeyboardShortcutsState {
   setCommandCenterOpen: (open: boolean) => void;
   setShortcutsDialogOpen: (open: boolean) => void;
   setCapturingShortcut: (capturing: boolean) => void;
-  setAltDown: (down: boolean) => void;
-  setCmdOrCtrlDown: (down: boolean) => void;
+  setShortcutDiscoveryModifiers: (modifiers: ShortcutDiscoveryModifiers) => void;
   setSidebarShortcutWorkspaceTargets: (targets: SidebarShortcutWorkspaceTarget[]) => void;
   resetModifiers: () => void;
 }
@@ -28,8 +40,12 @@ function updateBadgeTimer(
   set: (partial: Partial<KeyboardShortcutsState>) => void,
   get: () => KeyboardShortcutsState,
 ) {
-  const { altDown, cmdOrCtrlDown } = get();
-  const modifierDown = altDown || cmdOrCtrlDown;
+  const { shortcutDiscoveryModifiers } = get();
+  const modifierDown =
+    shortcutDiscoveryModifiers.alt ||
+    shortcutDiscoveryModifiers.ctrl ||
+    shortcutDiscoveryModifiers.meta ||
+    shortcutDiscoveryModifiers.shift;
 
   if (badgeTimer) {
     clearTimeout(badgeTimer);
@@ -49,26 +65,21 @@ export const useKeyboardShortcutsStore = create<KeyboardShortcutsState>((set, ge
   commandCenterOpen: false,
   shortcutsDialogOpen: false,
   capturingShortcut: false,
-  altDown: false,
-  cmdOrCtrlDown: false,
+  shortcutDiscoveryModifiers: EMPTY_SHORTCUT_DISCOVERY_MODIFIERS,
   showShortcutBadges: false,
   sidebarShortcutWorkspaceTargets: [],
 
   setCommandCenterOpen: (open) => set({ commandCenterOpen: open }),
   setShortcutsDialogOpen: (open) => set({ shortcutsDialogOpen: open }),
   setCapturingShortcut: (capturing) => set({ capturingShortcut: capturing }),
-  setAltDown: (down) => {
-    set({ altDown: down });
-    updateBadgeTimer(set, get);
-  },
-  setCmdOrCtrlDown: (down) => {
-    set({ cmdOrCtrlDown: down });
+  setShortcutDiscoveryModifiers: (modifiers) => {
+    set({ shortcutDiscoveryModifiers: modifiers });
     updateBadgeTimer(set, get);
   },
   setSidebarShortcutWorkspaceTargets: (targets) =>
     set({ sidebarShortcutWorkspaceTargets: targets }),
   resetModifiers: () => {
-    set({ altDown: false, cmdOrCtrlDown: false });
+    set({ shortcutDiscoveryModifiers: EMPTY_SHORTCUT_DISCOVERY_MODIFIERS });
     updateBadgeTimer(set, get);
   },
 }));

@@ -25,6 +25,8 @@ import {
   FormatAlignCenter,
 } from "@/components/icons/material-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ShortcutDiscoveryHint } from "@/components/shortcut-discovery-overlay";
+import type { KeyboardActionId } from "@/keyboard/actions";
 import { compactUp, useIconSize, type Theme } from "@/styles/theme";
 import type { MarkdownCommandName } from "../editor-contract";
 import { isMarkdownPath } from "./markdown-path";
@@ -192,6 +194,18 @@ const TOOLBAR_GROUPS: ToolbarGroup[] = [
   },
 ];
 
+const MARKDOWN_SHORTCUT_ACTIONS: Partial<Record<MarkdownCommandName, KeyboardActionId>> = {
+  markdownBold: "editor.markdown.bold",
+  markdownItalic: "editor.markdown.italic",
+  markdownStrikethrough: "editor.markdown.strikethrough",
+  markdownCode: "editor.markdown.code",
+  markdownBulletList: "editor.markdown.bulletList",
+  markdownOrderedList: "editor.markdown.orderedList",
+  markdownTaskList: "editor.markdown.taskList",
+  markdownBlockquote: "editor.markdown.blockquote",
+  markdownLink: "editor.markdown.link",
+};
+
 const iconColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 function ToolbarButton({
@@ -217,6 +231,7 @@ function ToolbarButton({
     ],
     [],
   );
+  const shortcutDiscoveryAction = MARKDOWN_SHORTCUT_ACTIONS[command];
   return (
     <Tooltip delayDuration={300}>
       <TooltipTrigger
@@ -226,7 +241,15 @@ function ToolbarButton({
         onPress={handlePress}
         style={buttonStyle}
       >
-        <Icon size={iconSize} uniProps={iconColorMapping} />
+        <View style={styles.shortcutDiscoveryAnchor}>
+          <Icon size={iconSize} uniProps={iconColorMapping} />
+          {shortcutDiscoveryAction ? (
+            <ShortcutDiscoveryHint
+              action={shortcutDiscoveryAction}
+              style={styles.shortcutDiscoveryHint}
+            />
+          ) : null}
+        </View>
       </TooltipTrigger>
       <TooltipContent side="bottom" align="center" offset={8}>
         <Text style={styles.tooltipText}>{label}</Text>
@@ -331,6 +354,16 @@ const styles = StyleSheet.create((theme) => ({
   },
   buttonHovered: {
     backgroundColor: theme.colors.surfaceHover,
+  },
+  shortcutDiscoveryAnchor: {
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  shortcutDiscoveryHint: {
+    position: "absolute",
+    top: -theme.spacing[2],
+    right: -theme.spacing[2],
   },
   tooltipText: {
     color: theme.colors.foreground,

@@ -74,6 +74,7 @@ import { useVoiceOptional } from "@/contexts/voice-context";
 import { useToast } from "@/contexts/toast-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
+import { ShortcutDiscoveryHint } from "@/components/shortcut-discovery-overlay";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { AutocompletePopover } from "@/components/ui/autocomplete-popover";
 import { useAgentAutocomplete } from "@/hooks/use-agent-autocomplete";
@@ -1101,7 +1102,19 @@ function ComposerVoiceModeButton({
         accessibilityRole="button"
         style={realtimeVoiceButtonStyle}
       >
-        {renderTriggerContent}
+        {({ hovered, pressed }) => (
+          <View style={styles.shortcutDiscoveryAnchor}>
+            {renderTriggerContent({ hovered, pressed })}
+            <ShortcutDiscoveryHint
+              action="message-input.action"
+              bindingIds={[
+                "message-input-voice-toggle-cmd-shift-d-mac",
+                "message-input-voice-toggle-ctrl-shift-d-non-mac",
+              ]}
+              style={styles.shortcutDiscoveryHint}
+            />
+          </View>
+        )}
       </TooltipTrigger>
       <TooltipContent side="top" align="center" offset={8}>
         <View style={styles.tooltipRow}>
@@ -2629,6 +2642,15 @@ const styles = StyleSheet.create((theme: Theme) => ({
     backgroundColor: theme.colors.surface2,
     alignItems: "center",
     justifyContent: "center",
+  },
+  shortcutDiscoveryAnchor: {
+    position: "relative",
+  },
+  shortcutDiscoveryHint: {
+    position: "absolute",
+    top: -theme.spacing[2],
+    right: -theme.spacing[2],
+    zIndex: 1,
   },
   realtimeVoiceButtonActive: {
     backgroundColor: theme.colors.palette.green[600],

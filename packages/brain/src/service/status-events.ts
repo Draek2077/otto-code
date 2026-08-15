@@ -28,6 +28,7 @@
 export type BrainStatusSnapshot = Record<string, unknown>;
 
 export type BrainStatusListener = (snapshot: BrainStatusSnapshot) => void;
+export type BrainLogListener = (line: string) => void;
 
 /**
  * How often the publisher resamples while at least one listener is attached.
@@ -249,5 +250,29 @@ export class BrainStatusPublisher {
     if (!this.#timer) return;
     clearInterval(this.#timer);
     this.#timer = null;
+  }
+}
+
+/**
+ * Pushes every completed Brain log line immediately. Unlike status snapshots,
+ * log lines are an ordered append-only stream, so coalescing would lose the
+ * exact evidence the Logs tab exists to show.
+ */
+export class BrainLogPublisher {
+  readonly #listeners = new Set<BrainLogListener>();
+
+  subscribe(listener: BrainLogListener): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
+  }
+
+  publish(line: string): void {
+    for (const listener of this.#listeners) {
+      try {
+        listener(line);
+      } catch {
+        // One dead client must not interrupt the service log.
+      }
+    }
   }
 }

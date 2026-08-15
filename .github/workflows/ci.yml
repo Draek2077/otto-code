@@ -349,6 +349,18 @@ jobs:
       - name: Install dependencies with retry
         if: env.RUN_TESTS == 'true'
         run: node scripts/npm-retry.mjs ci
+
+      - name: Setup Python for Linux recorder packaging
+        if: env.RUN_TESTS == 'true' && matrix.os == 'ubuntu-latest'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: packages/desktop/resources/zoom-recorder/requirements-build.txt
+
+      - name: Install Zoom Recorder build dependencies
+        if: env.RUN_TESTS == 'true' && matrix.os == 'ubuntu-latest'
+        run: python -m pip install -r packages/desktop/resources/zoom-recorder/requirements-build.txt
       - name: Build server stack
         if: env.RUN_TESTS == 'true'
         run: npm run build:server

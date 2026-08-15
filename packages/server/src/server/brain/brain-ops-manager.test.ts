@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { advanceJobPercent, aggregatePullPercent } from "./brain-ops-manager.js";
+import {
+  advanceJobPercent,
+  aggregatePullPercent,
+  canRunAlongsideModelPull,
+} from "./brain-ops-manager.js";
 
 describe("advanceJobPercent", () => {
   it("keeps download progress monotonic when later output contains a lower percentage", () => {
@@ -21,5 +25,16 @@ describe("aggregatePullPercent", () => {
 
   it("continues from completed primary bytes through a queued companion", () => {
     expect(aggregatePullPercent(10, 12, 2, 50)).toBe(91);
+  });
+});
+
+describe("canRunAlongsideModelPull", () => {
+  it("allows removal of an unused runtime while model files download", () => {
+    expect(canRunAlongsideModelPull("runtime-remove")).toBe(true);
+  });
+
+  it("keeps runtime-consuming operations serialized with model downloads", () => {
+    expect(canRunAlongsideModelPull("runtime-install")).toBe(false);
+    expect(canRunAlongsideModelPull("calibrate")).toBe(false);
   });
 });

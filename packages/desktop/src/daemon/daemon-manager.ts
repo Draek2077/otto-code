@@ -55,6 +55,7 @@ import {
 import { isRunningUnderARM64Translation } from "../system/arm64-translation.js";
 import { getDesktopAppLogs } from "../diagnostics/app-logs.js";
 import { tailFile } from "../diagnostics/tail-file.js";
+import { removeManagedRuntimeWithElevation } from "../features/elevated-runtime-removal.js";
 
 const DAEMON_LOG_FILENAME = "daemon.log";
 const PERFORMANCE_CAPTURES_DIRECTORY = "performance-captures";
@@ -263,6 +264,14 @@ function toTrimmedString(value: unknown): string | null {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function requireManagedRuntimeName(args: Record<string, unknown> | undefined): string {
+  const name = toTrimmedString(args?.name);
+  if (!name) {
+    throw new Error("A managed runtime name is required.");
+  }
+  return name;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -632,6 +641,11 @@ export function createDaemonCommandHandlers(options?: {
     desktop_app_logs: () => getDesktopAppLogs(),
     write_performance_capture: (args) => writePerformanceCapture(args),
     desktop_daemon_pairing: () => getDaemonPairing(),
+    remove_managed_runtime_with_elevation: (args) =>
+      removeManagedRuntimeWithElevation({
+        ottoHome: getOttoHome(),
+        runtimeName: requireManagedRuntimeName(args),
+      }),
     desktop_get_system_idle_time: () => powerMonitor.getSystemIdleTime() * 1000,
     cli_daemon_status: () => getCliDaemonStatus(),
     write_attachment_base64: (args) => writeAttachmentBase64(args ?? {}),
