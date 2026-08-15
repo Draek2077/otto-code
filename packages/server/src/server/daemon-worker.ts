@@ -154,7 +154,10 @@ async function main() {
         `${signal} received, shutting down gracefully...`,
       );
 
-      shutdownPromise = (async () => {
+      shutdownPromise = (async (): Promise<number> => {
+        // Backstop for the rare case where cleanup never returns. unref()'d so
+        // it alone never keeps the event loop alive; the normal path below exits
+        // synchronously long before this fires.
         const forceExit = setTimeout(() => {
           logger.warn(
             { signal, reason, ...getProcessDiagnostics() },
@@ -162,21 +165,34 @@ async function main() {
           );
           process.exit(1);
         }, 10000);
+        forceExit.unref();
 
         try {
           if (!daemon) {
             logger.error("Shutdown requested before daemon initialization completed");
             clearTimeout(forceExit);
-            return 1;
+            // Exit synchronously: don't wait for the event loop to drain. The
+            // daemon has never started, so there is nothing left to flush, and
+            // returning would defer process.exit() to a .then() microtask that
+            // on Windows can lag behind the TCP port closing, leaving the
+            // process alive well past the CLI's "unreachable" verdict.
+            process.exit(1);
           }
           await daemon.stop();
           clearTimeout(forceExit);
           logger.info("Server closed");
-          return options?.successExitCode ?? 0;
+          // Exit synchronously the moment cleanup finishes. The shutdown path
+          // closes the HTTP server (so the CLI sees the port drop and reports
+          // "stopped") and then relies on process.exit() to actually terminate.
+          // Returning here and waiting for installExitHook's .then() callback
+          // to fire process.exit() inserts an extra event-loop tick. On Windows
+          // that tick can be delayed long enough that the process outlives the
+          // CLI's stop result, so we commit the exit on this tick instead.
+          process.exit(options?.successExitCode ?? 0);
         } catch (err) {
           clearTimeout(forceExit);
           logger.error({ err }, "Shutdown failed");
-          return 1;
+          process.exit(1);
         }
       })();
     } else {
