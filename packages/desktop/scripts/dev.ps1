@@ -2,7 +2,6 @@ $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $DesktopDir = (Resolve-Path "$ScriptDir\..").Path
-$AppDir = (Resolve-Path "$DesktopDir\..\app").Path
 $RootDir = (Resolve-Path "$DesktopDir\..\..").Path
 $env:PATH = "$RootDir\node_modules\.bin;$env:PATH"
 
@@ -81,16 +80,15 @@ Write-Host @"
 ======================================================
 "@
 
-# Bump Metro's Node heap to 8 GB. Long edit-while-live sessions grow Metro's
-# in-memory module graph + transform cache until it walks into V8's ~4 GB default
-# old-space ceiling and dies with "Ineffective mark-compacts near heap limit"
-# (exit 134). Scoped to the Expo/Metro process only - Electron keeps its default.
-$MetroNodeOptions = if ($env:NODE_OPTIONS) { "$($env:NODE_OPTIONS) --max-old-space-size=8192" } else { "--max-old-space-size=8192" }
-
-# Launch Metro + Electron together, kill both on exit
-concurrently `
-    --kill-others `
-    --names "metro,electron" `
-    --prefix-colors "magenta,cyan" `
-    "cd `"$AppDir`" && cross-env OTTO_WEB_PLATFORM=electron NODE_OPTIONS=`"$MetroNodeOptions`" npx expo start --port $($env:EXPO_PORT)" `
-    "npx wait-on tcp:$($env:EXPO_PORT) && npx electron `"$DesktopDir`""
+# Launch Metro + Electron together, kill both on exit. Same runner as
+# scripts/dev.sh - it owns the Metro heap bump, the port wait, and the teardown.
+#
+# This must NOT go back to building shell command strings for `concurrently`.
+# Windows PowerShell 5.1 passes arguments to a native command by wrapping them in
+# quotes without escaping the quotes already inside, so a command string carrying
+# a quoted path came back out of CommandLineToArgvW split at the first space in
+# that path: `cd C:\Users\Philippe` and `Durand\...\app && ...` arrived as two
+# separate commands, and concurrently ran four of them. Any checkout whose path
+# contains a space hit it. dev-runner.mjs passes the directory as a spawn `cwd`
+# option, so no shell ever parses it.
+node (Join-Path $ScriptDir "dev-runner.mjs")
