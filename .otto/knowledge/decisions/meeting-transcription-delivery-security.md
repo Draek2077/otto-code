@@ -5,14 +5,14 @@ title: "Meeting transcription delivery security is user-selectable"
 status: "confirmed"
 tags: ["meeting-transcription", "security", "privacy"]
 created_at: "2026-08-14T01:03:25.523Z"
-updated_at: "2026-08-14T02:06:13.009Z"
+updated_at: "2026-08-15T07:00:03.420Z"
 ---
 
 # Meeting transcription delivery security is user-selectable
 
 <!-- compiled_truth -->
 
-Meeting transcription uses a provider-neutral delivery policy selected by the user: keep transcripts on this desktop only, require an encrypted remote Otto connection before delivery, or use the current Otto connection. Secure remote delivery is the default. When remote delivery is not permitted or not currently secure, finalized text is retained locally by Otto and the transient recorder audio is discarded.
+Meeting transcription uses a provider-neutral delivery policy selected by the user: **Desktop only**, **TLS/WSS**, or **Use current**. **TLS/WSS** requires an encrypted remote Otto connection before delivery; **Desktop only** keeps transcripts on the current computer; **Use current** delivers through the active Otto connection. Secure remote delivery is the default. When remote delivery is not permitted or not currently secure, finalized text is retained locally by Otto and the transient recorder audio is discarded.
 
 ## Timeline
 
@@ -35,3 +35,7 @@ Meeting transcription uses a provider-neutral delivery policy selected by the us
   kind: "evidence"
   summary: "A read-only five-second probe against the running Windows Zoom processes detected both processes and their inactive capture/render streams, reporting `app_present=yes` and `in_call=no` (2026-08-13). This confirms the packaged helper can discover the installed Zoom client without creating a recording."
   source: "Windows Zoom probe"
+- time: "2026-08-15T07:00:03.420Z"
+  kind: "decision"
+  summary: "User specified the concise Integration settings labels on 2026-08-15."
+  source: "User request"

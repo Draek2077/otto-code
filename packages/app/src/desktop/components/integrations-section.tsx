@@ -318,7 +318,7 @@ export function IntegrationsSection(props: { serverId: string | null; isLocalDae
                     size="sm"
                     onPress={useLocalMeetingTranscriptDelivery}
                   >
-                    This desktop only
+                    Desktop only
                   </Button>
                   <Button
                     variant={
@@ -329,7 +329,7 @@ export function IntegrationsSection(props: { serverId: string | null; isLocalDae
                     size="sm"
                     onPress={requireSecureMeetingTranscriptDelivery}
                   >
-                    Require TLS/WSS
+                    TLS/WSS
                   </Button>
                   <Button
                     variant={
@@ -340,7 +340,7 @@ export function IntegrationsSection(props: { serverId: string | null; isLocalDae
                     size="sm"
                     onPress={useCurrentMeetingTranscriptConnection}
                   >
-                    Use current connection
+                    Use current
                   </Button>
                 </View>
               </View>
@@ -355,7 +355,7 @@ export function IntegrationsSection(props: { serverId: string | null; isLocalDae
                   ) : null}
                   {zoomRecorderStatus.modelBytes > 0 || zoomRecorderStatus.modelReady ? (
                     <Button
-                      variant="outline"
+                      variant="destructive"
                       size="sm"
                       onPress={onDeleteZoomRecorderModel}
                       disabled={isChangingZoomRecorder}
