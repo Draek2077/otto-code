@@ -2072,6 +2072,10 @@ export class VoiceAssistantWebSocketServer {
         communicationsInboxSearch: true,
         // COMPAT(communicationsFavorites): added in v0.8.14, remove gate after 2027-02-15.
         communicationsFavorites: true,
+        // COMPAT(communicationsRooms): added in v0.8.15, remove gate after 2027-02-15.
+        communicationsRooms: true,
+        // COMPAT(communicationsRoomNotifications): added in v0.8.15, remove gate after 2027-02-15.
+        communicationsRoomNotifications: true,
         // COMPAT(communicationsPresence): added in v0.8.12, remove gate after 2027-02-14.
         communicationsPresence: true,
         // COMPAT(communicationsChatAvailability): added in v0.8.12, remove gate after 2027-02-14.

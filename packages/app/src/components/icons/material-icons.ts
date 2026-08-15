@@ -18,6 +18,21 @@ function createMaterialSymbolIcon(name: keyof typeof MATERIAL_SYMBOL_SVGS): Icon
   return MaterialSymbolIcon;
 }
 
+// The `chat` / `mark_unread_chat_alt` pair draws optically high in its box
+// across the whole Material Symbols set (not something specific to this
+// project), so nudge just these two down rather than re-cropping every icon's
+// generated viewBox.
+function createVerticallyNudgedMaterialSymbolIcon(
+  name: keyof typeof MATERIAL_SYMBOL_SVGS,
+  offsetY: number,
+): IconComponent {
+  const Icon = createMaterialSymbolIcon(name);
+  const NudgedIcon: IconComponent = ({ size, color, style }) =>
+    createElement(Icon, { size, color, style: [{ transform: [{ translateY: offsetY }] }, style] });
+  NudgedIcon.displayName = `NudgedMaterialSymbolIcon(${name})`;
+  return NudgedIcon;
+}
+
 function createScaledBrainIcon(name: keyof typeof MATERIAL_SYMBOL_SVGS): IconComponent {
   return withBrainGlyphScale(createMaterialSymbolIcon(name), name);
 }
@@ -79,7 +94,7 @@ export const CheckCircle = createMaterialSymbolIcon("CheckCircle");
 export const CheckCircle2 = createMaterialSymbolIcon("CheckCircle2");
 export const Checklist = createMaterialSymbolIcon("Checklist");
 export const CheckSquare = createMaterialSymbolIcon("CheckSquare");
-export const Chat = createMaterialSymbolIcon("Chat");
+export const Chat = createVerticallyNudgedMaterialSymbolIcon("Chat", 1);
 export const ChatBubble = createMaterialSymbolIcon("ChatBubble");
 export const ChatBubbleOff = createMaterialSymbolIcon("ChatBubbleOff");
 export const ChevronDown = createMaterialSymbolIcon("ChevronDown");
@@ -181,6 +196,7 @@ export const ListTodo = createMaterialSymbolIcon("ListTodo");
 export const LocalPolice = createMaterialSymbolIcon("LocalPolice");
 export const MailReceived = createMaterialSymbolIcon("MailReceived");
 export const MarkChatUnread = createMaterialSymbolIcon("MarkChatUnread");
+export const MarkUnreadChatAlt = createVerticallyNudgedMaterialSymbolIcon("MarkUnreadChatAlt", 1);
 export const Maximize = createMaterialSymbolIcon("Maximize");
 // Material's `workspace_premium`, filled. The outline weight and `military_tech`
 // (the literal ribbon medal) both collapse into an unreadable smudge at the

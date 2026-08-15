@@ -9,7 +9,7 @@ progress_completed: 2
 progress_total: 7
 progress_unit: "implementation slices"
 created_at: "2026-08-13T23:03:27.629Z"
-updated_at: "2026-08-14T00:26:52.011Z"
+updated_at: "2026-08-15T07:54:30.538Z"
 ---
 
 # Provider-neutral communications hub
@@ -68,3 +68,13 @@ Do not commit to production UI until Zoom app distribution/review, public-client
   kind: "note"
   summary: "Added the Zoom Team Chat REST adapter as a daemon-only proof-provider boundary. It uses an injected access-token supplier, bounds list pages to 50, requires exactly one conversation target for reads and sends, and deliberately omits provider error response bodies from errors. It is not yet attached to fetching, persistence, or UI."
   affects: ["provider-neutral-communications-hub"]
+- time: "2026-08-15T07:52:17.175Z"
+  kind: "evidence"
+  summary: "Focused Communications Room parity audit, 2026-08-15: verified the shared room renderer is used by the title-bar popup and the distinct `communicationsRoom` workspace tab, with no model, agent, tool, metrics, transcript, or queue controls. The popup keeps root Home mounted behind child room navigation, uses the expanded 720×680 room geometry, and the room’s retained scroll state follows the documented reader-ownership rule. Added targeted coverage for workspace room identity, explicit incoming-only playback (unknown authorship stays silent), and reaction translation boundaries. `zoom-team-chat-client.test.ts` proves a display glyph `👍` becomes Zoom’s `U+1F44D` request identifier; `zoom-team-chat-provider.test.ts` proves renderer-facing reactions are converted back to `👍`. Targeted app tests: 30 passing. Targeted protocol/server tests: 58 passing. Scoped lint and app/server typechecks passed. Remaining verified gap is tracked separately in proposed [[communications-nested-reply-action-gap]]: nested replies currently lack their own Reply action."
+  source: "Focused implementation audit, 2026-08-15"
+  affects: ["communications-conversation-tabs-are-distinct-from-ai-chats","communications-nested-reply-action-gap"]
+- time: "2026-08-15T07:54:30.538Z"
+  kind: "evidence"
+  summary: "Final verification after formatting the settled shared room files: targeted app Communications tests passed (6 files, 31 tests); targeted protocol/server Communications tests passed (4 files, 58 tests). Scoped `npm run lint` reported 0 warnings/errors and `@otto-code/app` plus `@otto-code/server` typechecks passed. The explicit incoming-only regression now verifies that a message with absent `isFromCurrentUser` does not expose playback. This evidence does not resolve the separately proposed [[communications-nested-reply-action-gap]]."
+  source: "Final focused verification, 2026-08-15"
+  affects: ["communications-conversation-tabs-are-distinct-from-ai-chats","communications-nested-reply-action-gap"]

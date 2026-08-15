@@ -280,6 +280,8 @@ export const MATERIAL_SYMBOL_SVGS: Record<string, string> = {
     '<svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 -960 960 960"><path d="M180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h600q24 0 42 18t18 42v600q0 24-18 42t-42 18H180Zm0-60h600v-136H634q-26 40-67.5 61.5T480-233q-45 0-86.5-21.5T326-316H180v136Zm374-136.5q33-23.5 56-59.5h170v-404H180v404h170q23 36 56.25 59.5 33.24 23.5 74 23.5Q521-293 554-316.5ZM480-422 327-575l43-43 80 80v-189h60v189l80-80 43 43-153 153ZM180-180h600-600Z"/></svg>',
   MarkChatUnread:
     '<svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 -960 960 960"><path d="M80-80v-740q0-24 18-42t42-18h437q-4 14-6 29.5t-1 30.5H140v600l74-80h606v-349q16.79-5 31.4-13.5Q866-671 880-682v382q0 24-18 42t-42 18H240L80-80Zm60-740v520-520Zm542 68.88q-32-32.12-32-78T682.12-907q32.12-32 78-32T838-906.88q32 32.12 32 78T837.88-751q-32.12 32-78 32T682-751.12Z"/></svg>',
+  MarkUnreadChatAlt:
+    '<svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 -960 960 960"><path d="M240-399h313v-60H240v60Zm0-130h480v-60H240v60Zm0-130h435q-21-11-38.5-26T605-719H240v60ZM80-80v-740q0-24 18-42t42-18h437q-4 14-6 29.5t-1 30.5H140v600l74-80h606v-349q16.79-5 31.4-13.5Q866-671 880-682v382q0 24-18 42t-42 18H240L80-80Zm60-740v520-520Zm542 68.88q-32-32.12-32-78T682.12-907q32.12-32 78-32T838-906.88q32 32.12 32 78T837.88-751q-32.12 32-78 32T682-751.12Z"/></svg>',
   Maximize:
     '<svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 -960 960 960"><path d="M160-780v-60h640v60H160Z"/></svg>',
   Medal:

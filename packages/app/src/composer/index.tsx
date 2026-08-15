@@ -30,12 +30,10 @@ import {
   Paperclip,
   UploadFile,
 } from "@/components/icons/material-icons";
-import Animated from "react-native-reanimated";
 import {
   getWorkspaceFileAttachmentKey,
   getWorkspaceFileAttachmentSubtitle,
 } from "@/attachments/workspace-file";
-import { FOOTER_HEIGHT } from "@/constants/layout";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
 import {
   AgentControls,
@@ -89,7 +87,6 @@ import {
   persistAttachmentFromFileUri,
 } from "@/attachments/service";
 import { resolveAgentControlsMode } from "@/composer/agent-controls/mode";
-import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 import { dispatchComposerKeyboardAction } from "@/composer/keyboard-actions";
@@ -124,6 +121,8 @@ import { useForgeSearchQuery } from "@/git/use-forge-search-query";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { useComposerGithubAutoAttach } from "./github/auto-attach";
 import { resolveClientSlashCommand, type ClientSlashCommand } from "@/client-slash-commands";
+import { ComposerFrame } from "@/composer/composer-frame";
+import { focusMessageInputWithPlatformStrategy } from "@/composer/message-input-keyboard";
 
 type QueuedMessage = ComposerQueueItem;
 
@@ -499,23 +498,6 @@ function attemptStartRealtimeVoice(args: AttemptStartRealtimeVoiceArgs): void {
     if (message && message.trim().length > 0) {
       toastErrorRef.current(message);
     }
-  });
-}
-
-function focusMessageInputWithPlatformStrategy(messageInputRef: {
-  current: MessageInputRef | null;
-}): void {
-  if (isNative) {
-    messageInputRef.current?.focus();
-    return;
-  }
-  focusWithRetries({
-    focus: () => messageInputRef.current?.focus(),
-    isFocused: () => {
-      const el = messageInputRef.current?.getNativeElement?.() ?? null;
-      const active = typeof document !== "undefined" ? document.activeElement : null;
-      return Boolean(el) && active === el;
-    },
   });
 }
 
@@ -1772,11 +1754,6 @@ export function Composer({
     handle: handleKeyboardAction,
   });
 
-  const { style: keyboardAnimatedStyle } = useKeyboardShiftStyle({
-    mode: "translate",
-    enabled: !externalKeyboardShift,
-  });
-
   const isVoiceModeForAgent = resolveIsVoiceModeForAgent(voice, serverId, agentId);
 
   const handleToggleRealtimeVoice = useCallback(() => {
@@ -2353,15 +2330,6 @@ export function Composer({
     [githubSearchItems, selectedAttachments, handleToggleGithubItem],
   );
 
-  const composerContainerStyle = useMemo(
-    () => [styles.container, keyboardAnimatedStyle],
-    [keyboardAnimatedStyle],
-  );
-  const inputAreaContainerStyle = useMemo(
-    () => [styles.inputAreaContainer, isComposerLocked && styles.inputAreaLocked],
-    [isComposerLocked],
-  );
-
   const attachmentTray = useMemo(
     () =>
       renderAttachmentTray({
@@ -2433,144 +2401,121 @@ export function Composer({
     ? t("composer.folder.searching")
     : t("composer.folder.noResults");
   const autocompleteVisible = autocomplete.isVisible && isPaneFocused;
+  const renderAttachmentLightbox = useCallback(
+    () => <AttachmentLightbox metadata={lightboxMetadata} onClose={handleLightboxClose} />,
+    [handleLightboxClose, lightboxMetadata],
+  );
 
   return (
     <ComposerKeyboardScopeProvider isActiveComposer={isPaneFocused}>
-      <Animated.View style={composerContainerStyle}>
-        <AttachmentLightbox metadata={lightboxMetadata} onClose={handleLightboxClose} />
-        {/* Input area */}
-        <View style={inputAreaContainerStyle}>
-          <ChatWidthBounds style={styles.inputAreaContent}>
-            {queueList}
-            {sendErrorNode}
+      <ComposerFrame
+        externalKeyboardShift={externalKeyboardShift}
+        footer={renderComposerFooter(footer, null)}
+        isLocked={isComposerLocked}
+        renderOverlay={renderAttachmentLightbox}
+      >
+        {queueList}
+        {sendErrorNode}
 
-            <View ref={messageInputContainerRef} style={styles.messageInputContainer}>
-              <AutocompletePopover
-                visible={autocompleteVisible}
-                anchorRef={messageInputContainerRef}
-                options={autocomplete.options}
-                selectedIndex={autocomplete.selectedIndex}
-                onSelect={autocomplete.onSelectOption}
-                isLoading={autocomplete.isLoading}
-                errorMessage={autocomplete.errorMessage}
-                loadingText={autocomplete.loadingText}
-                emptyText={autocomplete.emptyText}
-              />
+        <View ref={messageInputContainerRef} style={styles.messageInputContainer}>
+          <AutocompletePopover
+            visible={autocompleteVisible}
+            anchorRef={messageInputContainerRef}
+            options={autocomplete.options}
+            selectedIndex={autocomplete.selectedIndex}
+            onSelect={autocomplete.onSelectOption}
+            isLoading={autocomplete.isLoading}
+            errorMessage={autocomplete.errorMessage}
+            loadingText={autocomplete.loadingText}
+            emptyText={autocomplete.emptyText}
+          />
 
-              {/* MessageInput handles everything: text, dictation, attachments, all buttons */}
-              <StableMessageInput
-                ref={messageInputRef}
-                value={userInput}
-                onChangeText={handleComposerChangeText}
-                onSubmit={handleSubmit}
-                hasExternalContent={hasExternalContent}
-                allowEmptySubmit={allowEmptySubmit}
-                submitButtonAccessibilityLabel={submitButtonAccessibilityLabel}
-                submitButtonTestID={submitButtonTestID}
-                submitIcon={submitIcon}
-                isSubmitDisabled={isSubmitBusy || isPersonalitySwitching}
-                isSubmitLoading={isSubmitBusy}
-                preserveHeightOnSubmit={submitBehavior === "preserve-and-lock"}
-                attachments={selectedAttachments}
-                cwd={cwd}
-                attachmentMenuItems={attachmentMenuItems}
-                onAttachButtonRef={handleAttachButtonRef}
-                onAddImages={addImages}
-                client={client}
-                isReadyForDictation={isDictationReady && !isPersonalitySwitching}
-                placeholder={
-                  appSettings.promptSuggestionsEnabled && promptSuggestion && userInput.length === 0
-                    ? promptSuggestion
-                    : messagePlaceholder
-                }
-                autoFocus={messageInputAutoFocus}
-                autoFocusKey={`${serverId}:${agentId}`}
-                disabled={isSubmitLoading}
-                isPaneFocused={isPaneFocused}
-                autoStartDictation={autoStartDictation}
-                onAutoStartDictationConsumed={onAutoStartDictationConsumed}
-                leadingContent={contextWindowMeter}
-                leftContent={leftContent}
-                rightContent={rightContent}
-                voiceServerId={serverId}
-                voiceAgentId={agentId}
-                isAgentRunning={isAgentRunning}
-                defaultSendBehavior={appSettings.sendBehavior}
-                onQueue={handleQueue}
-                onSubmitLoadingPress={submitLoadingPressHandler}
-                onKeyPress={handleCommandKeyPress}
-                onSelectionChange={handleSelectionChange}
-                onFocusChange={handleFocusChange}
-                onHeightChange={onComposerHeightChange}
-                viewportHeight={viewportHeight}
-                inputWrapperStyle={inputWrapperStyle}
-                attachmentSlot={attachmentTray}
-              />
-              <Combobox
-                options={githubSearchOptions}
-                value=""
-                onSelect={noop}
-                keepOpenOnSelect
-                searchable
-                searchPlaceholder={t("composer.github.searchPlaceholder")}
-                title={t("composer.github.title")}
-                open={isGithubPickerOpen}
-                onOpenChange={handleGithubPickerOpenChange}
-                onSearchQueryChange={setGithubSearchQuery}
-                desktopPlacement="top-start"
-                anchorRef={attachButtonRef}
-                emptyText={githubEmptyText}
-                renderOption={renderGithubPickerOption}
-              />
-              <Combobox
-                options={folderSearchOptions}
-                value=""
-                onSelect={handleSelectFolder}
-                searchable
-                searchPlaceholder={t("composer.folder.searchPlaceholder")}
-                title={t("composer.folder.title")}
-                open={isFolderPickerOpen}
-                onOpenChange={handleFolderPickerOpenChange}
-                onSearchQueryChange={setFolderSearchQuery}
-                desktopPlacement="top-start"
-                anchorRef={attachButtonRef}
-                emptyText={folderEmptyText}
-              />
-            </View>
-          </ChatWidthBounds>
+          {/* MessageInput handles everything: text, dictation, attachments, all buttons */}
+          <StableMessageInput
+            ref={messageInputRef}
+            value={userInput}
+            onChangeText={handleComposerChangeText}
+            onSubmit={handleSubmit}
+            hasExternalContent={hasExternalContent}
+            allowEmptySubmit={allowEmptySubmit}
+            submitButtonAccessibilityLabel={submitButtonAccessibilityLabel}
+            submitButtonTestID={submitButtonTestID}
+            submitIcon={submitIcon}
+            isSubmitDisabled={isSubmitBusy || isPersonalitySwitching}
+            isSubmitLoading={isSubmitBusy}
+            preserveHeightOnSubmit={submitBehavior === "preserve-and-lock"}
+            attachments={selectedAttachments}
+            cwd={cwd}
+            attachmentMenuItems={attachmentMenuItems}
+            onAttachButtonRef={handleAttachButtonRef}
+            onAddImages={addImages}
+            client={client}
+            isReadyForDictation={isDictationReady && !isPersonalitySwitching}
+            placeholder={
+              appSettings.promptSuggestionsEnabled && promptSuggestion && userInput.length === 0
+                ? promptSuggestion
+                : messagePlaceholder
+            }
+            autoFocus={messageInputAutoFocus}
+            autoFocusKey={`${serverId}:${agentId}`}
+            disabled={isSubmitLoading}
+            isPaneFocused={isPaneFocused}
+            autoStartDictation={autoStartDictation}
+            onAutoStartDictationConsumed={onAutoStartDictationConsumed}
+            leadingContent={contextWindowMeter}
+            leftContent={leftContent}
+            rightContent={rightContent}
+            voiceServerId={serverId}
+            voiceAgentId={agentId}
+            isAgentRunning={isAgentRunning}
+            defaultSendBehavior={appSettings.sendBehavior}
+            onQueue={handleQueue}
+            onSubmitLoadingPress={submitLoadingPressHandler}
+            onKeyPress={handleCommandKeyPress}
+            onSelectionChange={handleSelectionChange}
+            onFocusChange={handleFocusChange}
+            onHeightChange={onComposerHeightChange}
+            viewportHeight={viewportHeight}
+            inputWrapperStyle={inputWrapperStyle}
+            attachmentSlot={attachmentTray}
+          />
+          <Combobox
+            options={githubSearchOptions}
+            value=""
+            onSelect={noop}
+            keepOpenOnSelect
+            searchable
+            searchPlaceholder={t("composer.github.searchPlaceholder")}
+            title={t("composer.github.title")}
+            open={isGithubPickerOpen}
+            onOpenChange={handleGithubPickerOpenChange}
+            onSearchQueryChange={setGithubSearchQuery}
+            desktopPlacement="top-start"
+            anchorRef={attachButtonRef}
+            emptyText={githubEmptyText}
+            renderOption={renderGithubPickerOption}
+          />
+          <Combobox
+            options={folderSearchOptions}
+            value=""
+            onSelect={handleSelectFolder}
+            searchable
+            searchPlaceholder={t("composer.folder.searchPlaceholder")}
+            title={t("composer.folder.title")}
+            open={isFolderPickerOpen}
+            onOpenChange={handleFolderPickerOpenChange}
+            onSearchQueryChange={setFolderSearchQuery}
+            desktopPlacement="top-start"
+            anchorRef={attachButtonRef}
+            emptyText={folderEmptyText}
+          />
         </View>
-        {renderComposerFooter(footer, null)}
-      </Animated.View>
+      </ComposerFrame>
     </ComposerKeyboardScopeProvider>
   );
 }
 
 const styles = StyleSheet.create((theme: Theme) => ({
-  container: {
-    flexDirection: "column",
-    position: "relative",
-  },
-  borderSeparator: {
-    height: theme.borderWidth[1],
-    backgroundColor: theme.colors.border,
-  },
-  inputAreaContainer: {
-    position: "relative",
-    minHeight: FOOTER_HEIGHT,
-    marginHorizontal: "auto",
-    alignItems: "center",
-    width: "100%",
-    overflow: "visible",
-    paddingHorizontal: theme.spacing[4],
-    paddingBottom: theme.spacing[4],
-  },
-  inputAreaLocked: {
-    opacity: 0.6,
-  },
-  inputAreaContent: {
-    width: "100%",
-    gap: theme.spacing[3],
-  },
   footer: {
     width: "100%",
     paddingHorizontal: theme.spacing[4],

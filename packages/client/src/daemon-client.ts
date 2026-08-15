@@ -228,6 +228,7 @@ import type {
   ConnectorsOauthDisconnectResponse,
   CommunicationsGetOverviewResponse,
   CommunicationsInboxGetHomeResponse,
+  CommunicationsInboxNotificationsAcknowledgeResponse,
   CommunicationsInboxSearchResponse,
   CommunicationsInboxSetFavoriteResponse,
   CommunicationsInboxGetPresenceResponse,
@@ -235,6 +236,10 @@ import type {
   CommunicationsInboxSetPresenceResponse,
   CommunicationsInboxSetEnabledResponse,
   CommunicationsInboxSendMessageResponse,
+  CommunicationsRoomGetResponse,
+  CommunicationsRoomThreadGetResponse,
+  CommunicationsRoomMessageSendResponse,
+  CommunicationsRoomReactionSetResponse,
   IntegrationsAuthorizationGetOverviewResponse,
   IntegrationsAuthorizationGetMethodsResponse,
   IntegrationsAuthorizationStartBrowserResponse,
@@ -6910,6 +6915,23 @@ export class DaemonClient {
     return payload.home;
   }
 
+  async communicationsInboxAcknowledgeNotifications(
+    input: {
+      providerId: string;
+      notificationIds?: string[];
+      conversationId?: string;
+      clearAll?: boolean;
+    },
+    requestId?: string,
+  ): Promise<CommunicationsInboxNotificationsAcknowledgeResponse["payload"]["home"]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "communications.inbox.notifications.acknowledge.request", ...input },
+      responseType: "communications.inbox.notifications.acknowledge.response",
+    });
+    return payload.home;
+  }
+
   async communicationsInboxSearch(
     input: { providerId: string; query: string },
     requestId?: string,
@@ -6993,6 +7015,66 @@ export class DaemonClient {
       requestId,
       message: { type: "communications.inbox.send_message.request", ...input },
       responseType: "communications.inbox.send_message.response",
+    });
+    return payload.message;
+  }
+
+  /** Requires server_info.features.communicationsRooms. */
+  async communicationsRoomGet(
+    input: { providerId: string; conversationId: string },
+    requestId?: string,
+  ): Promise<CommunicationsRoomGetResponse["payload"]["room"]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "communications.room.get.request", ...input },
+      responseType: "communications.room.get.response",
+    });
+    return payload.room;
+  }
+
+  async communicationsRoomThreadGet(
+    input: { providerId: string; conversationId: string; parentMessageId: string },
+    requestId?: string,
+  ): Promise<CommunicationsRoomThreadGetResponse["payload"]["messages"]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "communications.room.thread.get.request", ...input },
+      responseType: "communications.room.thread.get.response",
+    });
+    return payload.messages;
+  }
+
+  async communicationsRoomMessageSend(
+    input: {
+      providerId: string;
+      conversationId: string;
+      text: string;
+      parentMessageId?: string | null;
+    },
+    requestId?: string,
+  ): Promise<CommunicationsRoomMessageSendResponse["payload"]["message"]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "communications.room.message.send.request", ...input },
+      responseType: "communications.room.message.send.response",
+    });
+    return payload.message;
+  }
+
+  async communicationsRoomReactionSet(
+    input: {
+      providerId: string;
+      conversationId: string;
+      messageId: string;
+      emoji: string;
+      active: boolean;
+    },
+    requestId?: string,
+  ): Promise<CommunicationsRoomReactionSetResponse["payload"]["message"]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "communications.room.reaction.set.request", ...input },
+      responseType: "communications.room.reaction.set.response",
     });
     return payload.message;
   }

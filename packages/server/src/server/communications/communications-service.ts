@@ -1,6 +1,8 @@
 import type {
   CommunicationConversationSummary,
   CommunicationMessage,
+  CommunicationNotification,
+  CommunicationRoom,
   CommunicationPresence,
   CommunicationPresenceStatus,
   CommunicationProviderId,
@@ -28,6 +30,19 @@ export interface CommunicationsProvider {
   setEnabled?(enabled: boolean): Promise<CommunicationPresence>;
   getMessages?(conversationId: string): Promise<CommunicationMessage[]>;
   sendMessage?(conversationId: string, text: string): Promise<CommunicationMessage>;
+  getRoom?(conversationId: string): Promise<CommunicationRoom>;
+  getThread?(conversationId: string, parentMessageId: string): Promise<CommunicationMessage[]>;
+  sendRoomMessage?(
+    conversationId: string,
+    text: string,
+    parentMessageId?: string | null,
+  ): Promise<CommunicationMessage>;
+  setReaction?(
+    conversationId: string,
+    messageId: string,
+    emoji: string,
+    active: boolean,
+  ): Promise<CommunicationMessage>;
 }
 
 /**
@@ -38,6 +53,8 @@ export interface CommunicationsProvider {
 export class CommunicationsService {
   private readonly providers = new Map<CommunicationProviderId, CommunicationsProvider>();
   private readonly presenceListeners = new Set<(presence: CommunicationPresence) => void>();
+  /** Local acknowledgement only. Never proxy this to a provider read-state API. */
+  private readonly dismissedNotificationIds = new Set<string>();
 
   registerProvider(provider: CommunicationsProvider): () => void {
     if (this.providers.has(provider.id)) {
@@ -95,7 +112,33 @@ export class CommunicationsService {
     if (!provider?.getHome) {
       throw new Error("This provider does not support a Chat Home.");
     }
-    return provider.getHome();
+    return this.withLocalNotifications(await provider.getHome());
+  }
+
+  async acknowledgeNotifications(input: {
+    providerId: CommunicationProviderId;
+    notificationIds?: readonly string[];
+    conversationId?: string;
+    clearAll?: boolean;
+  }): Promise<CommunicationsInboxHome> {
+    const providerHome = await this.requireProviderHome(input.providerId);
+    this.markNotificationsDismissed(providerHome, input);
+    return this.withLocalNotifications(providerHome);
+  }
+
+  private markNotificationsDismissed(
+    home: CommunicationsInboxHome,
+    input: { notificationIds?: readonly string[]; conversationId?: string; clearAll?: boolean },
+  ): void {
+    for (const notification of home.notifications ?? deriveNotifications(home)) {
+      if (
+        input.clearAll ||
+        input.notificationIds?.includes(notification.notificationId) ||
+        notification.conversation.conversationId === input.conversationId
+      ) {
+        this.dismissedNotificationIds.add(notification.notificationId);
+      }
+    }
   }
 
   async searchDestinations(input: {
@@ -162,4 +205,100 @@ export class CommunicationsService {
     }
     return provider.sendMessage(input.conversationId, input.text);
   }
+
+  async getRoom(input: {
+    providerId: CommunicationProviderId;
+    conversationId: string;
+  }): Promise<CommunicationRoom> {
+    const provider = this.providers.get(input.providerId);
+    if (!provider?.getRoom) throw new Error("This provider does not support chat rooms.");
+    const room = await provider.getRoom(input.conversationId);
+    // Opening is local acknowledgement only. The provider may expose a true
+    // mark-read API, but this room feature does not claim to have called it.
+    // A failure acknowledging notifications (e.g. the provider's Home scope
+    // was granted after the connection's original token was issued) must
+    // never fail the room read it's decorating - the room payload already
+    // loaded successfully.
+    if (provider.getHome) {
+      try {
+        await this.acknowledgeNotifications({
+          providerId: input.providerId,
+          conversationId: input.conversationId,
+        });
+      } catch (error) {
+        console.warn(
+          `Communications: failed to acknowledge notifications for '${input.providerId}' after opening room '${input.conversationId}':`,
+          error,
+        );
+      }
+    }
+    return room;
+  }
+
+  async getThread(input: {
+    providerId: CommunicationProviderId;
+    conversationId: string;
+    parentMessageId: string;
+  }): Promise<CommunicationMessage[]> {
+    const provider = this.providers.get(input.providerId);
+    if (!provider?.getThread) throw new Error("This provider does not support reply threads.");
+    return provider.getThread(input.conversationId, input.parentMessageId);
+  }
+
+  async sendRoomMessage(input: {
+    providerId: CommunicationProviderId;
+    conversationId: string;
+    text: string;
+    parentMessageId?: string | null;
+  }): Promise<CommunicationMessage> {
+    const provider = this.providers.get(input.providerId);
+    if (!provider?.sendRoomMessage)
+      throw new Error("This provider does not support room messages.");
+    return provider.sendRoomMessage(input.conversationId, input.text, input.parentMessageId);
+  }
+
+  async setReaction(input: {
+    providerId: CommunicationProviderId;
+    conversationId: string;
+    messageId: string;
+    emoji: string;
+    active: boolean;
+  }): Promise<CommunicationMessage> {
+    const provider = this.providers.get(input.providerId);
+    if (!provider?.setReaction) throw new Error("This provider does not support reactions.");
+    return provider.setReaction(input.conversationId, input.messageId, input.emoji, input.active);
+  }
+
+  private async requireProviderHome(
+    providerId: CommunicationProviderId,
+  ): Promise<CommunicationsInboxHome> {
+    const provider = this.providers.get(providerId);
+    if (!provider?.getHome) throw new Error("This provider does not support a Chat Home.");
+    return provider.getHome();
+  }
+
+  private withLocalNotifications(home: CommunicationsInboxHome): CommunicationsInboxHome {
+    const providerNotifications = home.notifications ?? deriveNotifications(home);
+    return {
+      ...home,
+      notifications: providerNotifications.filter(
+        (notification) => !this.dismissedNotificationIds.has(notification.notificationId),
+      ),
+    };
+  }
+}
+
+function deriveNotifications(home: CommunicationsInboxHome): CommunicationNotification[] {
+  return home.sections.flatMap((section) =>
+    section.conversations
+      .filter((conversation) => conversation.unreadCount > 0)
+      .map((conversation) => ({
+        // Carries the unread-state, not just the conversation identity, so a
+        // dismissal only suppresses the state it was raised for: once new
+        // unread messages change the count or timestamp, this mints a fresh
+        // id that is absent from dismissedNotificationIds and reappears.
+        notificationId: `${conversation.providerId}:${conversation.conversationId}:${conversation.unreadCount}:${conversation.updatedAt ?? "unknown"}`,
+        conversation,
+      })),
+  );
 }

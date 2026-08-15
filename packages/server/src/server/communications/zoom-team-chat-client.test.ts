@@ -293,18 +293,106 @@ describe("ZoomTeamChatClient", () => {
     ]);
   });
 
+  test("uses Zoom's documented parent, thread, and reaction routes", async () => {
+    const calls: Array<{ input: string; init: { method: string; body?: string } }> = [];
+    const client = new ZoomTeamChatClient(
+      async () => "daemon-access-token",
+      async (input, init) => {
+        calls.push({ input, init });
+        let status = 200;
+        if (init.method === "POST") status = 201;
+        if (init.method === "PATCH") status = 204;
+        return {
+          ok: true,
+          status,
+          json: async () => ({
+            id: "reply-1",
+            messages: [
+              {
+                msg_id: "reply-1",
+                message: "Child",
+                timestamp: Date.parse("2026-08-14T12:00:00.000Z"),
+                sender_display_name: "Ada",
+                reply_main_message_id: "root-1",
+                reactions: [{ emoji_id: "U+1F44D", count: 2, is_sender: true }],
+              },
+            ],
+          }),
+        };
+      },
+      { minimumRequestIntervalMs: 0 },
+    );
+
+    await client.sendUserMessage({
+      channelId: "channel-1",
+      message: "Child",
+      parentMessageId: "root-1",
+    });
+    await expect(
+      client.getMessageThread({
+        channelId: "channel-1",
+        messageId: "root-1",
+        from: "2026-07-15T12:00:00Z",
+      }),
+    ).resolves.toMatchObject({
+      items: [
+        {
+          id: "reply-1",
+          parentMessageId: "root-1",
+          reactions: [{ emoji: "U+1F44D", count: 2 }],
+        },
+      ],
+    });
+    await client.setUserMessageReaction({
+      channelId: "channel-1",
+      messageId: "reply-1",
+      emoji: "👍",
+      active: true,
+    });
+    expect(calls).toMatchObject([
+      {
+        init: {
+          method: "POST",
+          body: JSON.stringify({
+            message: "Child",
+            to_channel: "channel-1",
+            reply_main_message_id: "root-1",
+          }),
+        },
+      },
+      {
+        input:
+          "https://api.zoom.us/v2/chat/users/me/messages/root-1/thread?to_channel=channel-1&from=2026-07-15T12%3A00%3A00Z",
+        init: { method: "GET" },
+      },
+      {
+        input: "https://api.zoom.us/v2/chat/users/me/messages/reply-1/emoji_reactions",
+        init: {
+          method: "PATCH",
+          body: JSON.stringify({
+            action: "add",
+            emoji: "U+1F44D",
+            custom_emoji: false,
+            to_channel: "channel-1",
+          }),
+        },
+      },
+    ]);
+  });
+
   test("reads the OAuth user's identity without exposing its access token", async () => {
     const client = new ZoomTeamChatClient(
       async () => "daemon-access-token",
       async () => ({
         ok: true,
         status: 200,
-        json: async () => ({ email: "work@example.test", display_name: "Philippe" }),
+        json: async () => ({ id: "user-1", email: "work@example.test", display_name: "Philippe" }),
       }),
       { minimumRequestIntervalMs: 0 },
     );
 
     await expect(client.getCurrentUser()).resolves.toEqual({
+      id: "user-1",
       email: "work@example.test",
       displayName: "Philippe",
     });

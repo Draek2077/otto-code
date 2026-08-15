@@ -113,7 +113,28 @@ export const CommunicationSearchResultSchema = z.object({
   presenceLabel: z.string().trim().min(1).nullable().optional(),
 });
 
-/** A message deliberately contains only the display data Otto can render. */
+/** A provider-confirmed aggregate attached to one stable message identity. */
+export const CommunicationReactionSchema = z.object({
+  emoji: z.string().trim().min(1),
+  count: z.number().int().nonnegative(),
+  reactedByCurrentUser: z.boolean().optional(),
+});
+
+/** The message affordances the connected provider can actually honor. */
+export const CommunicationRoomCapabilitiesSchema = z.object({
+  canCompose: z.boolean(),
+  canReply: z.boolean(),
+  canRetrieveThreads: z.boolean(),
+  canReact: z.boolean(),
+  canMarkRead: z.boolean(),
+  /** Truthful provider/API limitation, never a daemon-version compatibility message. */
+  unavailableReason: z.string().trim().min(1).nullable(),
+});
+
+/**
+ * A room message has a stable provider identity and an explicit parent link.
+ * Renderers must never infer thread topology from chronology or indentation.
+ */
 export const CommunicationMessageSchema = z.object({
   providerId: CommunicationProviderIdSchema,
   conversationId: z.string().trim().min(1),
@@ -121,6 +142,20 @@ export const CommunicationMessageSchema = z.object({
   senderId: z.string().trim().min(1).nullable(),
   text: z.string(),
   sentAt: z.string().datetime().nullable(),
+  /** Optional additions keep old daemon payloads readable. */
+  senderDisplayName: z.string().trim().min(1).nullable().optional(),
+  /** Explicit provider-confirmed authorship. Never infer this from timeline order. */
+  isFromCurrentUser: z.boolean().optional(),
+  parentMessageId: z.string().trim().min(1).nullable().optional(),
+  replyCount: z.number().int().nonnegative().optional(),
+  reactions: z.array(CommunicationReactionSchema).optional(),
+});
+
+/** The durable room read model shared by popup and workspace-tab surfaces. */
+export const CommunicationRoomSchema = z.object({
+  conversation: CommunicationConversationSummarySchema,
+  messages: z.array(CommunicationMessageSchema),
+  capabilities: CommunicationRoomCapabilitiesSchema,
 });
 
 /**
@@ -144,10 +179,21 @@ export const CommunicationHomeSectionSchema = z.object({
   collections: z.array(CommunicationHomeCollectionSchema),
 });
 
+/**
+ * A local Otto notification. Acknowledging it only changes Otto's inbox
+ * projection; it is not evidence that a provider message was marked read.
+ */
+export const CommunicationNotificationSchema = z.object({
+  notificationId: z.string().trim().min(1),
+  conversation: CommunicationConversationSummarySchema,
+});
+
 /** A provider-owned, deliberately compact home surface for its chat topology. */
 export const CommunicationsInboxHomeSchema = z.object({
   provider: CommunicationProviderSummarySchema,
   sections: z.array(CommunicationHomeSectionSchema),
+  /** Optional so clients and daemons spanning the room feature stay compatible. */
+  notifications: z.array(CommunicationNotificationSchema).optional(),
 });
 
 /**
@@ -172,8 +218,12 @@ export type CommunicationConversationSummary = z.infer<
   typeof CommunicationConversationSummarySchema
 >;
 export type CommunicationSearchResult = z.infer<typeof CommunicationSearchResultSchema>;
+export type CommunicationReaction = z.infer<typeof CommunicationReactionSchema>;
+export type CommunicationRoomCapabilities = z.infer<typeof CommunicationRoomCapabilitiesSchema>;
 export type CommunicationMessage = z.infer<typeof CommunicationMessageSchema>;
+export type CommunicationRoom = z.infer<typeof CommunicationRoomSchema>;
 export type CommunicationHomeCollection = z.infer<typeof CommunicationHomeCollectionSchema>;
 export type CommunicationHomeSection = z.infer<typeof CommunicationHomeSectionSchema>;
+export type CommunicationNotification = z.infer<typeof CommunicationNotificationSchema>;
 export type CommunicationsInboxHome = z.infer<typeof CommunicationsInboxHomeSchema>;
 export type CommunicationsOverview = z.infer<typeof CommunicationsOverviewSchema>;

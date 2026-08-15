@@ -6,6 +6,7 @@ import {
   useWindowDimensions,
   type GestureResponderEvent,
   type LayoutChangeEvent,
+  type PressableStateCallbackType,
   StyleProp,
   ViewStyle,
   type TextStyle,
@@ -387,24 +388,6 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
   containerLastInGroup: {
     marginBottom: theme.spacing[2],
   },
-  bubble: {
-    // 75%-alpha surface3, derived in the theme builders (web CSSVars mode
-    // forbids string math on theme color reads here - it emits var(--...)).
-    backgroundColor: theme.colors.surfaceUserBubble,
-    borderRadius: theme.borderRadius["2xl"],
-    borderTopRightRadius: theme.borderRadius.sm,
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[2],
-    minWidth: 0,
-    flexShrink: 1,
-    // Clips the BubbleCornerSheen square to the rounded corners.
-    overflow: "hidden",
-  },
-  text: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-    ...(isWeb ? { lineHeight: 20, overflowWrap: "anywhere" as const } : {}),
-  },
   imagePreviewContainer: {
     flexDirection: "row",
     gap: theme.spacing[2],
@@ -443,6 +426,71 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
   },
 }));
+
+export type ChatMessageBubbleSide = "incoming" | "outgoing";
+
+/**
+ * The shared visual frame for participant messages. AssistantMessage keeps its
+ * markdown-specific vertical rhythm, while this frame owns the geometry both
+ * user messages and Communications participant messages have in common.
+ */
+export const chatMessageBubbleStylesheet = StyleSheet.create((theme) => ({
+  bubble: {
+    borderRadius: theme.borderRadius["2xl"],
+    flexShrink: 1,
+    maxWidth: "100%",
+    minWidth: 0,
+    overflow: "hidden",
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+  },
+  incoming: {
+    alignSelf: "flex-start",
+    backgroundColor: theme.colors.surfaceAssistantBubble,
+    borderTopLeftRadius: theme.borderRadius.sm,
+  },
+  outgoing: {
+    alignSelf: "flex-end",
+    backgroundColor: theme.colors.surfaceUserBubble,
+    borderTopRightRadius: theme.borderRadius.sm,
+  },
+  text: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    ...(isWeb ? { lineHeight: 20, overflowWrap: "anywhere" as const } : {}),
+  },
+}));
+
+export function ChatMessageBubble({
+  side,
+  children,
+  style,
+  accessibilityLabel,
+}: {
+  side: ChatMessageBubbleSide;
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+  accessibilityLabel?: string;
+}) {
+  const showBubbleGradient = useAppSettingValue(selectChatBubbleGradient);
+  return (
+    <View
+      accessibilityLabel={accessibilityLabel}
+      style={[
+        chatMessageBubbleStylesheet.bubble,
+        side === "incoming"
+          ? chatMessageBubbleStylesheet.incoming
+          : chatMessageBubbleStylesheet.outgoing,
+        style,
+      ]}
+    >
+      {showBubbleGradient ? (
+        <BubbleCornerSheen corner={side === "incoming" ? "left" : "right"} />
+      ) : null}
+      {children}
+    </View>
+  );
+}
 
 interface UserMessageImagePillProps {
   image: UserMessageImageAttachment;
@@ -491,7 +539,6 @@ export const UserMessage = memo(function UserMessage({
   // always visible. Hover doesn't exist on native/compact, so those always
   // show the row either way.
   const hideMessageDetails = useAppSettingValue(selectHideChatMessageDetails);
-  const showBubbleGradient = useAppSettingValue(selectChatBubbleGradient);
   const showTrailingRow = hasText && (!hideMessageDetails || isCompact || isNative || isHovered);
   const formattedTimestamp = useChatTimestampLabel(timestamp);
   const rewindMutation = useRewindAgentMutation({ serverId, agentId, client, messageId });
@@ -548,8 +595,7 @@ export const UserMessage = memo(function UserMessage({
         onPointerEnter={handlePointerEnter}
         onPointerLeave={handlePointerLeave}
       >
-        <View style={userMessageStylesheet.bubble}>
-          {showBubbleGradient ? <BubbleCornerSheen corner="right" /> : null}
+        <ChatMessageBubble side="outgoing">
           {hasImages ? (
             <View style={imagePreviewContainerStyle}>
               {images.map((image) => (
@@ -581,11 +627,11 @@ export const UserMessage = memo(function UserMessage({
             </View>
           ) : null}
           {hasText ? (
-            <Text selectable style={userMessageStylesheet.text}>
+            <Text selectable style={chatMessageBubbleStylesheet.text}>
               {message}
             </Text>
           ) : null}
-        </View>
+        </ChatMessageBubble>
         {hasText ? (
           <View style={trailingRowStyle} pointerEvents={showTrailingRow ? "auto" : "none"}>
             <Text style={userMessageStylesheet.timestampText}>{formattedTimestamp}</Text>
@@ -610,11 +656,15 @@ export const UserMessage = memo(function UserMessage({
   );
 });
 
-interface AssistantTurnFooterProps {
+interface MessageFooterProps {
   getContent: () => string;
   completedAt?: Date;
   durationMs?: number;
   usage?: AgentUsage;
+  /** Provider-neutral controls that sit between Copy and message details. */
+  leadingActions?: ReactNode;
+  /** Provider-neutral controls that trail message details on the shared baseline. */
+  trailingActions?: ReactNode;
   // Already bound to this turn's fork boundary by the caller; absent when the
   // turn has no forkable boundary at all.
   onFork?: (target: AssistantForkTarget) => Promise<void> | void;
@@ -646,6 +696,7 @@ const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
+    minHeight: 24,
   },
   copyButton: {
     alignSelf: "center",
@@ -665,6 +716,17 @@ const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
   spacer: {
     flex: 1,
   },
+  iconAction: {
+    alignItems: "center",
+    alignSelf: "center",
+    borderRadius: theme.borderRadius.md,
+    height: 24,
+    justifyContent: "center",
+    width: 24,
+  },
+  iconActionPressed: {
+    opacity: 0.7,
+  },
 }));
 
 /**
@@ -673,13 +735,15 @@ const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
  * bullet-separated - instead of swapping content on hover. Whether the whole footer is hidden
  * until hover is decided by its container (see CompletedTurnFooterRow).
  */
-export const AssistantTurnFooter = memo(function AssistantTurnFooter({
+export const MessageFooter = memo(function MessageFooter({
   getContent,
   completedAt,
   durationMs,
   usage,
   onFork,
-}: AssistantTurnFooterProps) {
+  leadingActions,
+  trailingActions,
+}: MessageFooterProps) {
   const timestampLabel = useChatTimestampLabel(completedAt?.getTime());
   const detailsLabel = useMemo(() => {
     const durationLabel = durationMs !== undefined ? formatDuration(durationMs) : "";
@@ -703,10 +767,49 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
         containerStyle={assistantTurnFooterStylesheet.copyButton}
       />
       {canFork ? <AssistantForkMenu onFork={handleFork} /> : null}
+      {leadingActions}
       {detailsLabel ? (
         <Text style={assistantTurnFooterStylesheet.detailsLabel}>{detailsLabel}</Text>
       ) : null}
+      {trailingActions}
     </View>
+  );
+});
+
+/** @deprecated Use the provider-neutral MessageFooter. */
+export const AssistantTurnFooter = MessageFooter;
+
+/** A bare glyph action that shares Copy's fixed message-footer baseline. */
+export const MessageFooterIconAction = memo(function MessageFooterIconAction({
+  onPress,
+  accessibilityLabel,
+  renderIcon,
+}: {
+  onPress: () => void;
+  accessibilityLabel: string;
+  renderIcon: (state: { active: boolean }) => ReactNode;
+}) {
+  const [focused, setFocused] = useState(false);
+  const handleFocus = useCallback(() => setFocused(true), []);
+  const handleBlur = useCallback(() => setFocused(false), []);
+  const actionStyle = useCallback(
+    ({ pressed }: PressableStateCallbackType) => [
+      assistantTurnFooterStylesheet.iconAction,
+      pressed && assistantTurnFooterStylesheet.iconActionPressed,
+    ],
+    [],
+  );
+  return (
+    <Pressable
+      accessibilityLabel={accessibilityLabel}
+      accessibilityRole="button"
+      onBlur={handleBlur}
+      onFocus={handleFocus}
+      onPress={onPress}
+      style={actionStyle}
+    >
+      {({ hovered, pressed }) => renderIcon({ active: Boolean(hovered) || pressed || focused })}
+    </Pressable>
   );
 });
 

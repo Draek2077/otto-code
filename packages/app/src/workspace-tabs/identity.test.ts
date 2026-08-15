@@ -225,3 +225,30 @@ describe("normalizeWorkspaceTabTarget provider subagents", () => {
     expect(normalizeWorkspaceTabTarget({ kind: "commit_diff", sha: "abc1234" })).toBeNull();
   });
 });
+
+describe("communications room tab identity", () => {
+  const room = {
+    kind: "communicationsRoom" as const,
+    providerId: "zoom-team-chat",
+    conversationId: "channel-1",
+    title: "Care coordination",
+  };
+
+  it("preserves the provider and conversation address without AI-chat fields", () => {
+    expect(normalizeWorkspaceTabTarget(room)).toEqual(room);
+  });
+
+  it("keys one room by its provider and conversation rather than its title", () => {
+    expect(workspaceTabTargetsEqual(room, { ...room, title: "Renamed channel" })).toBe(true);
+    expect(workspaceTabTargetsEqual(room, { ...room, providerId: "another-provider" })).toBe(false);
+    expect(workspaceTabTargetsEqual(room, { ...room, conversationId: "channel-2" })).toBe(false);
+    expect(buildDeterministicWorkspaceTabId(room)).toBe(
+      "communications-room_zoom-team-chat_channel-1",
+    );
+  });
+
+  it("drops a persisted room target missing either identity half", () => {
+    expect(normalizeWorkspaceTabTarget({ ...room, providerId: " " })).toBeNull();
+    expect(normalizeWorkspaceTabTarget({ ...room, conversationId: " " })).toBeNull();
+  });
+});

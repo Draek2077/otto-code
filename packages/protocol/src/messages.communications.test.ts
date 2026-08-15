@@ -81,6 +81,14 @@ describe("communications protocol", () => {
         features: { communicationsPresenceUpdates: true },
       }).features?.communicationsPresenceUpdates,
     ).toBe(true);
+
+    expect(
+      ServerInfoStatusPayloadSchema.parse({
+        status: "server_info",
+        serverId: "server",
+        features: { communicationsRoomNotifications: true },
+      }).features?.communicationsRoomNotifications,
+    ).toBe(true);
   });
 
   test("accepts the provider-neutral Chat Home request and collections", () => {
@@ -215,6 +223,17 @@ describe("communications protocol", () => {
     ).toMatchObject({ type: "communications.inbox.set_favorite.response" });
   });
 
+  test("accepts daemon-local notification acknowledgement without a provider read claim", () => {
+    expect(
+      SessionInboundMessageSchema.parse({
+        type: "communications.inbox.notifications.acknowledge.request",
+        requestId: "dismiss-zoom-chat",
+        providerId: "zoom-team-chat",
+        notificationIds: ["zoom-team-chat:channel-1"],
+      }),
+    ).toMatchObject({ type: "communications.inbox.notifications.acknowledge.request" });
+  });
+
   test("accepts daemon-owned presence reads and changes", () => {
     expect(
       SessionInboundMessageSchema.parse({
@@ -308,6 +327,61 @@ describe("communications protocol", () => {
 
     expect(parsed.payload).toMatchObject({ requestId: "authorization-overview" });
     expect(parsed.payload.overview.connections[0]).not.toHaveProperty("refreshToken");
+  });
+
+  test("accepts additive provider-neutral room, thread, and reaction operations", () => {
+    expect(
+      SessionInboundMessageSchema.parse({
+        type: "communications.room.message.send.request",
+        requestId: "room-send",
+        providerId: "zoom-team-chat",
+        conversationId: "channel-1",
+        parentMessageId: "root-1",
+        text: "A real reply",
+      }),
+    ).toMatchObject({ type: "communications.room.message.send.request" });
+
+    expect(
+      SessionOutboundMessageSchema.parse({
+        type: "communications.room.get.response",
+        payload: {
+          requestId: "room-get",
+          room: {
+            conversation: {
+              providerId: "zoom-team-chat",
+              conversationId: "channel-1",
+              kind: "channel",
+              title: "Team",
+              preview: null,
+              updatedAt: null,
+              unreadCount: 0,
+            },
+            capabilities: {
+              canCompose: true,
+              canReply: true,
+              canRetrieveThreads: true,
+              canReact: true,
+              canMarkRead: false,
+              unavailableReason: null,
+            },
+            messages: [
+              {
+                providerId: "zoom-team-chat",
+                conversationId: "channel-1",
+                messageId: "root-1",
+                senderId: "member-1",
+                senderDisplayName: "Ada",
+                text: "Root",
+                sentAt: "2026-08-14T12:00:00.000Z",
+                parentMessageId: null,
+                replyCount: 1,
+                reactions: [{ emoji: "U+1F44D", count: 1, reactedByCurrentUser: true }],
+              },
+            ],
+          },
+        },
+      }),
+    ).toMatchObject({ type: "communications.room.get.response" });
   });
 
   test("accepts explicit provider-neutral authorization method choices", () => {

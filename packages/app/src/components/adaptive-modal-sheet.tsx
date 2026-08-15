@@ -1,3 +1,4 @@
+/* oxlint-disable complexity -- this shared adaptive surface owns the compact, desktop, and bounded-resize lifecycle. */
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode, Ref } from "react";
 import { createPortal } from "react-dom";
@@ -841,7 +842,7 @@ export function AdaptiveModalSheet({
       desktopMaxWidth != null && { maxWidth: desktopMaxWidth },
       desktopHeight != null && { height: desktopHeight },
     ],
-    [desktopMaxWidth, desktopHeight],
+    [desktopHeight, desktopMaxWidth],
   );
   const desktopScrollContainerStyle = useMemo(
     () =>

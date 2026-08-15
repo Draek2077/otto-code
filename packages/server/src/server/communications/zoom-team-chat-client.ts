@@ -21,7 +21,16 @@ export interface ZoomTeamChatMessage {
   id: string;
   message: string;
   senderId: string | null;
+  senderDisplayName?: string | null;
   timestamp: string | null;
+  parentMessageId?: string | null;
+  reactions?: ZoomTeamChatReaction[];
+}
+
+export interface ZoomTeamChatReaction {
+  emoji: string;
+  count: number;
+  isSender: boolean;
 }
 
 export interface ZoomTeamChatSession {
@@ -44,6 +53,7 @@ export interface ZoomTeamChatPresence {
 }
 
 export interface ZoomTeamChatCurrentUser {
+  id: string | null;
   email: string | null;
   displayName: string | null;
 }
@@ -240,6 +250,7 @@ export class ZoomTeamChatClient {
   async getCurrentUser(): Promise<ZoomTeamChatCurrentUser> {
     const payload = await this.getJson("/users/me", {});
     return {
+      id: readOptionalString(payload, "id"),
       email: readOptionalString(payload, "email"),
       displayName: readOptionalString(payload, "display_name"),
     };
@@ -284,20 +295,82 @@ export class ZoomTeamChatClient {
     channelId?: string;
     contactEmail?: string;
     message: string;
+    parentMessageId?: string | null;
   }): Promise<{ id: string }> {
     if ((params.channelId ? 1 : 0) + (params.contactEmail ? 1 : 0) !== 1) {
       throw new Error("Zoom Team Chat messages require exactly one channel or contact target.");
     }
-    const { response } = await this.request("POST", "/chat/users/me/messages", undefined, {
-      message: params.message,
-      ...(params.channelId
-        ? { to_channel: params.channelId }
-        : { to_contact: params.contactEmail! }),
-    });
+    const requestBody: Record<string, unknown> = { message: params.message };
+    if (params.channelId) requestBody.to_channel = params.channelId;
+    else requestBody.to_contact = params.contactEmail!;
+    if (params.parentMessageId) requestBody.reply_main_message_id = params.parentMessageId;
+    const { response } = await this.request(
+      "POST",
+      "/chat/users/me/messages",
+      undefined,
+      requestBody,
+    );
     const payload = await response.json();
     const id = readOptionalString(payload, "id");
     if (!id) throw new ZoomTeamChatApiError(200);
     return { id };
+  }
+
+  async getUserMessage(params: {
+    channelId?: string;
+    contactEmail?: string;
+    messageId: string;
+  }): Promise<ZoomTeamChatMessage> {
+    const query: Record<string, string> = {};
+    if (params.channelId) query.to_channel = params.channelId;
+    else query.to_contact = params.contactEmail!;
+    const message = await this.getJson(
+      `/chat/users/me/messages/${encodeURIComponent(params.messageId)}`,
+      query,
+    );
+    const parsed = parseMessage(message)[0];
+    if (!parsed) throw new ZoomTeamChatApiError(200);
+    return parsed;
+  }
+
+  async getMessageThread(params: {
+    channelId?: string;
+    contactEmail?: string;
+    messageId: string;
+    from: string;
+  }): Promise<ZoomTeamChatPage<ZoomTeamChatMessage>> {
+    const page = await this.getJson(
+      `/chat/users/me/messages/${encodeURIComponent(params.messageId)}/thread`,
+      {
+        ...(params.channelId
+          ? { to_channel: params.channelId }
+          : { to_contact: params.contactEmail! }),
+        from: params.from,
+      },
+    );
+    return { items: readArray(page, "messages").flatMap(parseMessage), nextPageToken: null };
+  }
+
+  async setUserMessageReaction(params: {
+    channelId?: string;
+    contactEmail?: string;
+    messageId: string;
+    emoji: string;
+    active: boolean;
+  }): Promise<void> {
+    await this.request(
+      "PATCH",
+      `/chat/users/me/messages/${encodeURIComponent(params.messageId)}/emoji_reactions`,
+      undefined,
+      {
+        action: params.active ? "add" : "remove",
+        emoji: toZoomEmojiId(params.emoji),
+        custom_emoji: false,
+        ...(params.channelId
+          ? { to_channel: params.channelId }
+          : { to_contact: params.contactEmail! }),
+      },
+    );
   }
 
   private async getJson(path: string, query: Record<string, string>): Promise<unknown> {
@@ -309,7 +382,7 @@ export class ZoomTeamChatClient {
     method: "GET" | "POST" | "PUT" | "PATCH",
     path: string,
     query?: Record<string, string>,
-    body?: Record<string, string | number | Record<string, string>>,
+    body?: Record<string, unknown>,
   ): Promise<{ response: ZoomTeamChatFetchResponse; sentAt: number }> {
     let release: (() => void) | undefined;
     const previousRequest = this.requestTail;
@@ -343,7 +416,9 @@ export class ZoomTeamChatClient {
         },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
-      if (!response.ok) throw new ZoomTeamChatApiError(response.status, sentAt);
+      if (!response.ok) {
+        throw new ZoomTeamChatApiError(response.status, sentAt);
+      }
       return { response, sentAt };
     } finally {
       this.lastRequestCompletedAt = this.now();
@@ -394,16 +469,56 @@ function parseContact(value: unknown): ZoomTeamChatContact[] {
 }
 
 function parseMessage(value: unknown): ZoomTeamChatMessage[] {
-  if (!isRecord(value) || typeof value.id !== "string" || typeof value.message !== "string")
-    return [];
+  const id = readOptionalString(value, "id") ?? readOptionalString(value, "msg_id");
+  if (!isRecord(value) || !id || typeof value.message !== "string") return [];
   return [
     {
-      id: value.id,
+      id,
       message: value.message,
-      senderId: readOptionalString(value, "sender_id"),
-      timestamp: readOptionalString(value, "date_time"),
+      senderId:
+        readOptionalString(value, "sender_id") ?? readOptionalString(value, "sender_user_id"),
+      senderDisplayName: readOptionalString(value, "sender_display_name"),
+      timestamp: readMessageTimestamp(value),
+      parentMessageId: readOptionalString(value, "reply_main_message_id"),
+      reactions: readArray(value, "reactions").flatMap(parseReaction),
     },
   ];
+}
+
+function parseReaction(value: unknown): ZoomTeamChatReaction[] {
+  if (!isRecord(value)) return [];
+  const emoji = readOptionalString(value, "emoji_id") ?? readOptionalString(value, "emoji");
+  const count = value.count ?? value.total_count;
+  if (!emoji || typeof count !== "number" || !Number.isInteger(count) || count < 0) return [];
+  return [{ emoji, count, isSender: value.is_sender === true }];
+}
+
+// Zoom's mutation endpoint takes the API emoji identifier (`U+1F44D`), while
+// renderers and the provider-neutral contract use the actual display glyph.
+// Keep the conversion at the Zoom boundary so no caller has to know that wire
+// detail. Variation selectors are presentation-only and not part of Zoom's id.
+function toZoomEmojiId(emoji: string): string {
+  if (/^U\+[0-9A-F]{1,6}(?:[_-]U\+[0-9A-F]{1,6})*$/i.test(emoji)) {
+    return emoji.toUpperCase();
+  }
+  return Array.from(emoji)
+    .map((character) => character.codePointAt(0))
+    .filter((codePoint): codePoint is number => codePoint !== undefined && codePoint !== 0xfe0f)
+    .map((codePoint) => `U+${codePoint.toString(16).toUpperCase()}`)
+    .join("_");
+}
+
+function readMessageTimestamp(value: unknown): string | null {
+  const valueString = readOptionalString(value, "date_time");
+  if (valueString) return valueString;
+  if (
+    !isRecord(value) ||
+    typeof value.timestamp !== "number" ||
+    !Number.isFinite(value.timestamp)
+  ) {
+    return null;
+  }
+  return new Date(value.timestamp).toISOString();
 }
 
 function parseSession(value: unknown): ZoomTeamChatSession[] {

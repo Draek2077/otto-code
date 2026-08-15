@@ -5,7 +5,7 @@ title: "Zoom Chat destination search is limited to people and conversations"
 status: "confirmed"
 tags: ["zoom", "chat", "search", "title-bar", "provider-neutral"]
 created_at: "2026-08-15T03:18:42.087Z"
-updated_at: "2026-08-15T05:11:29.143Z"
+updated_at: "2026-08-15T05:31:39.808Z"
 ---
 
 # Zoom Chat destination search is limited to people and conversations
@@ -44,4 +44,14 @@ The popup presents concise result groups with enough context to choose correctly
   kind: "evidence"
   summary: "Correction: the signed-in user's Zoom contact index must include both `type=company` and `type=external`, not only external contacts. Corporate Zoom policies can constrain the account-wide directory independently of the contact list shown to a user. The adapter now unions the server-filtered account directory with both user-contact types, deduplicates identities, and retains a 30-second cache. Google/Outlook cloud-contact syncing may appear in Zoom's desktop contacts surface, but Zoom's Team Chat APIs do not document an API that exposes arbitrary third-party cloud contacts as chat destinations; Otto therefore does not claim to search them unless Zoom returns them through one of these supported contact feeds. Focused client/provider/OAuth tests (42 tests), lint, and server typecheck pass."
   source: "Design correction and focused verification, 2026-08-14"
+  affects: ["reference-zoom-team-chat-api"]
+- time: "2026-08-15T05:21:17.830Z"
+  kind: "evidence"
+  summary: "Live reproduction after a renewed Zoom authorization: `GET /chat/users/me/contacts` failed with HTTP 400 inside `ZoomTeamChatProvider.getSearchableUserContacts`, so the optional user-contact feed could reject the entire destination search. The same log showed the search request receiving the failure. The supported company-directory endpoint accepts only a first name, last name, or email, whereas the UI passed whole names such as `Ken Townly` verbatim. The fix makes unsupported user-contact reads non-fatal and splits multi-word directory queries into supported terms before local full-name matching. The exact cause of Zoom's 400 remains unresolved because Otto deliberately does not log vendor error bodies, which can contain user content."
+  source: "Dev daemon log and user reproduction, 2026-08-14"
+  affects: ["reference-zoom-team-chat-api"]
+- time: "2026-08-15T05:31:39.808Z"
+  kind: "evidence"
+  summary: "User verification resolved the live contact source: Zoom Contacts shows All contacts = 42, Google (connected account) = 42, Company directory = 0, External = 0. The native global-search contact `Ken Townley` comes from the Google connected-account group, not a Zoom Team Chat company or external contact. Zoom's public Team Chat contacts APIs enumerate Company and External contacts, not this Google Cloud Contacts group. Otto should not claim its Zoom Chat destination picker can mirror Zoom's broad cloud-contact search without a separately authorized Google integration, which is outside the present Team Chat scope."
+  source: "User-provided Zoom Contacts screenshot, 2026-08-14"
   affects: ["reference-zoom-team-chat-api"]

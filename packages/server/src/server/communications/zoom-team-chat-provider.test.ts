@@ -9,6 +9,8 @@ import {
   ZOOM_TEAM_CHAT_CONNECTION_ID,
   ZOOM_TEAM_CHAT_PROVIDER_ID,
 } from "./zoom-team-chat-provider.js";
+import { ZoomTeamChatApiError } from "./zoom-team-chat-client.js";
+import { ZOOM_TEAM_CHAT_ACTIVE_OPERATION_SCOPES } from "./zoom-team-chat-oauth.js";
 
 function createAuthorization(): IntegrationAuthorizationService {
   const records = new Map<string, IntegrationConnectionMetadata>();
@@ -332,7 +334,82 @@ describe("ZoomTeamChatProvider", () => {
         presenceLabel: "Available",
       },
     ]);
-    expect(searchCompanyContacts).toHaveBeenCalledWith({ query: "phi", pageSize: 6 });
+    expect(searchCompanyContacts).toHaveBeenCalledWith({ query: "phi", pageSize: 50 });
+  });
+
+  test("searches a full name through Zoom's supported first and last-name terms", async () => {
+    const authorization = createAuthorization();
+    await authorization.saveConnectionMetadata({
+      integrationId: ZOOM_TEAM_CHAT_PROVIDER_ID,
+      connectionId: ZOOM_TEAM_CHAT_CONNECTION_ID,
+      method: "oauth-pkce",
+      state: "connected",
+    });
+    const searchCompanyContacts = vi.fn(async ({ query }: { query: string }) => ({
+      items:
+        query === "ken"
+          ? [
+              {
+                displayName: "Ken Townly",
+                email: "ken.townly@example.test",
+                memberId: "member-ken",
+                presenceStatus: null,
+              },
+            ]
+          : [],
+    }));
+    const provider = new ZoomTeamChatProvider(authorization, {
+      searchCompanyContacts,
+      listUserChannels: async () => ({ items: [] }),
+      listUserMessages: async () => ({ items: [] }),
+      sendUserMessage: async () => ({ id: "sent" }),
+    });
+
+    await expect(provider.searchDestinations("Ken Townly")).resolves.toMatchObject([
+      {
+        category: "person",
+        detail: "ken.townly@example.test",
+        conversation: { title: "Ken Townly" },
+      },
+    ]);
+    expect(searchCompanyContacts).toHaveBeenNthCalledWith(1, { query: "ken", pageSize: 50 });
+    expect(searchCompanyContacts).toHaveBeenNthCalledWith(2, { query: "townly", pageSize: 50 });
+  });
+
+  test("keeps directory search working when Zoom rejects the optional user-contact feed", async () => {
+    const authorization = createAuthorization();
+    await authorization.saveConnectionMetadata({
+      integrationId: ZOOM_TEAM_CHAT_PROVIDER_ID,
+      connectionId: ZOOM_TEAM_CHAT_CONNECTION_ID,
+      method: "oauth-pkce",
+      state: "connected",
+    });
+    const provider = new ZoomTeamChatProvider(authorization, {
+      searchCompanyContacts: async () => ({
+        items: [
+          {
+            displayName: "Ken Townly",
+            email: "ken.townly@example.test",
+            memberId: "member-ken",
+            presenceStatus: null,
+          },
+        ],
+      }),
+      listUserContacts: async () => {
+        throw new ZoomTeamChatApiError(400);
+      },
+      listUserChannels: async () => ({ items: [] }),
+      listUserMessages: async () => ({ items: [] }),
+      sendUserMessage: async () => ({ id: "sent" }),
+    });
+
+    await expect(provider.searchDestinations("ken")).resolves.toMatchObject([
+      {
+        category: "person",
+        detail: "ken.townly@example.test",
+        conversation: { title: "Ken Townly" },
+      },
+    ]);
   });
 
   test("includes the signed-in user's Company and External Zoom contacts in people search", async () => {
@@ -598,6 +675,41 @@ describe("ZoomTeamChatProvider", () => {
     });
   });
 
+  test("reads messages using the user's local calendar day, not the UTC day", async () => {
+    const authorization = createAuthorization();
+    await authorization.saveConnectionMetadata({
+      integrationId: ZOOM_TEAM_CHAT_PROVIDER_ID,
+      connectionId: ZOOM_TEAM_CHAT_CONNECTION_ID,
+      method: "oauth-pkce",
+      state: "connected",
+    });
+    const originalTz = process.env.TZ;
+    process.env.TZ = "America/Los_Angeles";
+    try {
+      let requestedDate: string | undefined;
+      const provider = new ZoomTeamChatProvider(
+        authorization,
+        {
+          listUserChannels: async () => ({ items: [] }),
+          listUserMessages: async ({ date }) => {
+            requestedDate = date;
+            return { items: [] };
+          },
+          sendUserMessage: async () => ({ id: "sent" }),
+        },
+        // 2026-08-14T03:00:00Z is still 2026-08-13 in America/Los_Angeles (UTC-7 in August).
+        { now: () => new Date("2026-08-14T03:00:00.000Z").getTime() },
+      );
+
+      await provider.getMessages("channel-1");
+
+      expect(requestedDate).toBe("2026-08-13");
+    } finally {
+      if (originalTz === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTz;
+    }
+  });
+
   test("reads and sends a direct session using only its selected contact target", async () => {
     const authorization = createAuthorization();
     await authorization.saveConnectionMetadata({
@@ -622,6 +734,139 @@ describe("ZoomTeamChatProvider", () => {
     await expect(
       provider.sendMessage("contact:maya%40example.test", "Hello from Otto"),
     ).resolves.toMatchObject({ messageId: "message-1" });
+  });
+
+  test("keeps reply parents and reactions attached to provider message identities", async () => {
+    const authorization = createAuthorization();
+    await authorization.saveConnectionMetadata({
+      integrationId: ZOOM_TEAM_CHAT_PROVIDER_ID,
+      connectionId: ZOOM_TEAM_CHAT_CONNECTION_ID,
+      method: "oauth-pkce",
+      state: "connected",
+      grantedScopes: [
+        ZOOM_TEAM_CHAT_ACTIVE_OPERATION_SCOPES.sendUserMessage,
+        ZOOM_TEAM_CHAT_ACTIVE_OPERATION_SCOPES.getMessageThread,
+        ZOOM_TEAM_CHAT_ACTIVE_OPERATION_SCOPES.setMessageReaction,
+      ],
+    });
+    const provider = new ZoomTeamChatProvider(authorization, {
+      getCurrentUser: async () => ({ id: "ada", email: "ada@example.test", displayName: "Ada" }),
+      listUserChannels: async () => ({ items: [] }),
+      listUserMessages: async () => ({
+        items: [
+          {
+            id: "root-1",
+            message: "Root",
+            senderId: "ada",
+            senderDisplayName: "Ada",
+            timestamp: "2026-08-14T12:00:00.000Z",
+            reactions: [{ emoji: "U+1F44D", count: 1, isSender: true }],
+          },
+        ],
+      }),
+      sendUserMessage: async ({ parentMessageId }) => {
+        expect(parentMessageId).toBe("root-1");
+        return { id: "reply-1" };
+      },
+      getMessageThread: async ({ messageId }) => {
+        expect(messageId).toBe("root-1");
+        return {
+          items: [
+            {
+              id: "reply-1",
+              message: "Child",
+              senderId: "lin",
+              timestamp: "2026-08-14T12:01:00.000Z",
+            },
+          ],
+        };
+      },
+      setUserMessageReaction: async ({ messageId, emoji, active }) => {
+        expect(messageId).toBe("root-1");
+        // The neutral provider contract carries a renderer-facing glyph. The
+        // Zoom HTTP client alone converts it to Zoom's API identifier.
+        expect(emoji).toBe("👍");
+        expect(active).toBe(true);
+      },
+      getUserMessage: async () => ({
+        id: "root-1",
+        message: "Root",
+        senderId: "ada",
+        timestamp: "2026-08-14T12:00:00.000Z",
+        reactions: [{ emoji: "U+1F44D", count: 2, isSender: true }],
+      }),
+    });
+
+    await expect(provider.getRoom("channel-1")).resolves.toMatchObject({
+      messages: [
+        { messageId: "root-1", isFromCurrentUser: true, reactions: [{ emoji: "👍", count: 1 }] },
+      ],
+      capabilities: { canReply: true, canReact: true },
+    });
+    await expect(provider.getThread("channel-1", "root-1")).resolves.toMatchObject([
+      { messageId: "reply-1", parentMessageId: "root-1", isFromCurrentUser: false },
+    ]);
+    await expect(provider.sendRoomMessage("channel-1", "Child", "root-1")).resolves.toMatchObject({
+      parentMessageId: "root-1",
+      isFromCurrentUser: true,
+    });
+    await expect(provider.setReaction("channel-1", "root-1", "👍", true)).resolves.toMatchObject({
+      reactions: [{ emoji: "👍", count: 2 }],
+    });
+  });
+
+  test("degrades a malformed reaction codepoint to the raw id instead of failing the room load", async () => {
+    const authorization = createAuthorization();
+    await authorization.saveConnectionMetadata({
+      integrationId: ZOOM_TEAM_CHAT_PROVIDER_ID,
+      connectionId: ZOOM_TEAM_CHAT_CONNECTION_ID,
+      method: "oauth-pkce",
+      state: "connected",
+    });
+    const provider = new ZoomTeamChatProvider(authorization, {
+      listUserChannels: async () => ({ items: [] }),
+      listUserMessages: async () => ({
+        items: [
+          {
+            id: "root-1",
+            message: "Root",
+            senderId: "ada",
+            timestamp: "2026-08-14T12:00:00.000Z",
+            // Matches the regex (six hex digits) but exceeds U+10FFFF, so
+            // String.fromCodePoint would throw a RangeError.
+            reactions: [{ emoji: "U+FFFFFF", count: 1, isSender: false }],
+          },
+        ],
+      }),
+      sendUserMessage: async () => ({ id: "sent" }),
+    });
+
+    await expect(provider.getRoom("channel-1")).resolves.toMatchObject({
+      messages: [{ messageId: "root-1", reactions: [{ emoji: "U+FFFFFF", count: 1 }] }],
+    });
+  });
+
+  test("reports canCompose false when the send-message scope was never granted", async () => {
+    const authorization = createAuthorization();
+    await authorization.saveConnectionMetadata({
+      integrationId: ZOOM_TEAM_CHAT_PROVIDER_ID,
+      connectionId: ZOOM_TEAM_CHAT_CONNECTION_ID,
+      method: "oauth-pkce",
+      state: "connected",
+      grantedScopes: [
+        ZOOM_TEAM_CHAT_ACTIVE_OPERATION_SCOPES.getMessageThread,
+        ZOOM_TEAM_CHAT_ACTIVE_OPERATION_SCOPES.setMessageReaction,
+      ],
+    });
+    const provider = new ZoomTeamChatProvider(authorization, {
+      listUserChannels: async () => ({ items: [] }),
+      listUserMessages: async () => ({ items: [] }),
+      sendUserMessage: async () => ({ id: "sent" }),
+    });
+
+    await expect(provider.getRoom("channel-1")).resolves.toMatchObject({
+      capabilities: { canCompose: false, canReply: true, canReact: true },
+    });
   });
 
   test("keeps a status pending until Zoom confirms it", async () => {

@@ -7,7 +7,7 @@ tags: ["zoom", "team-chat", "api", "search", "oauth"]
 reference_disposition: "adopted"
 source_url: "https://developers.zoom.us/docs/api/chat/"
 created_at: "2026-08-15T03:19:43.525Z"
-updated_at: "2026-08-15T05:11:35.868Z"
+updated_at: "2026-08-15T05:30:57.446Z"
 ---
 
 # Zoom Team Chat API
@@ -39,4 +39,9 @@ Official Zoom API reference used for the Team Chat destination-search design. `G
   kind: "evidence"
   summary: "Destination search must combine supported feeds rather than assume one contact model. Zoom documents `/contacts` as an account company-directory search and `/chat/users/me/contacts` as the signed-in user's Company or External contact list, with the type required. Zoom Support documents that admins can limit directory visibility and external contacts, and that third-party Google/Outlook contact sync is a separate desktop Cloud Contacts feature. The public Team Chat API does not document an endpoint for arbitrary third-party cloud contacts as chat destinations."
   source: "Zoom official Chat API and Zoom Support contact documentation, verified 2026-08-14"
+  affects: ["zoom-chat-destination-search"]
+- time: "2026-08-15T05:30:57.446Z"
+  kind: "evidence"
+  summary: "The REST endpoint required to enumerate the signed-in user's Team Chat contacts (`GET /chat/users/me/contacts`) is limited by Zoom to a **user-managed** General OAuth app. Otto's current Zoom app registration rejects it with HTTP 400 after consent, which is consistent with an incompatible app-management type rather than a missing scope. The documented path is to switch the General app's Basic Info management type to User-managed, reconfirm scopes, and have users reauthorize. This is a Zoom Marketplace configuration change, not a second contacts-provider integration."
+  source: "Zoom OAuth app creation documentation and live endpoint behavior, verified 2026-08-14"
   affects: ["zoom-chat-destination-search"]

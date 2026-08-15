@@ -3,6 +3,9 @@ import type {
   CommunicationHomeCollection,
   CommunicationHomeSection,
   CommunicationMessage,
+  CommunicationReaction,
+  CommunicationRoom,
+  CommunicationRoomCapabilities,
   CommunicationPresence,
   CommunicationPresenceStatus,
   CommunicationProviderSummary,
@@ -17,6 +20,7 @@ import {
   ZoomTeamChatApiError,
   type ZoomTeamChatChannel,
   type ZoomTeamChatContact,
+  type ZoomTeamChatCurrentUser,
   type ZoomTeamChatMessage,
   type ZoomTeamChatSession,
   type ZoomTeamChatSharedSpace,
@@ -72,6 +76,7 @@ export function getZoomTeamChatAuthorizationMethods(): readonly IntegrationAutho
 }
 
 interface ZoomTeamChatChannelReader {
+  getCurrentUser?(): Promise<ZoomTeamChatCurrentUser>;
   listUserChannels(params?: { nextPageToken?: string }): Promise<{
     items: ZoomTeamChatChannel[];
     nextPageToken?: string | null;
@@ -85,7 +90,26 @@ interface ZoomTeamChatChannelReader {
     channelId?: string;
     contactEmail?: string;
     message: string;
+    parentMessageId?: string | null;
   }): Promise<{ id: string }>;
+  getUserMessage?(params: {
+    channelId?: string;
+    contactEmail?: string;
+    messageId: string;
+  }): Promise<ZoomTeamChatMessage>;
+  getMessageThread?(params: {
+    channelId?: string;
+    contactEmail?: string;
+    messageId: string;
+    from: string;
+  }): Promise<{ items: ZoomTeamChatMessage[] }>;
+  setUserMessageReaction?(params: {
+    channelId?: string;
+    contactEmail?: string;
+    messageId: string;
+    emoji: string;
+    active: boolean;
+  }): Promise<void>;
   searchCompanyContacts?(params: {
     query: string;
     pageSize?: number;
@@ -145,6 +169,7 @@ export class ZoomTeamChatProvider implements CommunicationsProvider {
   private lastPresenceChangeError: string | null = null;
   private readonly presenceListeners = new Set<(presence: CommunicationPresence) => void>();
   private readonly now: () => number;
+  private cachedCurrentUser: { accountLabel: string | null; id: string } | null = null;
 
   constructor(
     private readonly authorization: IntegrationAuthorizationService,
@@ -226,7 +251,7 @@ export class ZoomTeamChatProvider implements CommunicationsProvider {
     // only a user's own channel list. Keep those two vendor mechanics inside
     // the adapter and expose one provider-neutral destination list outward.
     const [companyContacts, userContacts] = await Promise.all([
-      this.searchCompanyContacts(query),
+      this.searchCompanyContacts(normalizedQuery),
       this.getSearchableUserContacts(),
     ]);
     const channels = await this.getSearchableChannels();
@@ -386,20 +411,18 @@ export class ZoomTeamChatProvider implements CommunicationsProvider {
   }
 
   async getMessages(conversationId: string): Promise<CommunicationMessage[]> {
-    await this.requireConnected();
+    const connection = await this.requireConnected();
     const contactEmail = getContactEmail(conversationId);
-    const messages = await this.channels.listUserMessages({
-      ...(contactEmail ? { contactEmail } : { channelId: conversationId }),
-      date: new Date().toISOString().slice(0, 10),
-    });
-    return messages.items.map((message) => ({
-      providerId: this.id,
-      conversationId,
-      messageId: message.id,
-      senderId: message.senderId,
-      text: message.message,
-      sentAt: message.timestamp,
-    }));
+    const [messages, currentUserId] = await Promise.all([
+      this.channels.listUserMessages({
+        ...(contactEmail ? { contactEmail } : { channelId: conversationId }),
+        date: toLocalDateString(new Date(this.now())),
+      }),
+      this.getCurrentUserId(connection.accountLabel),
+    ]);
+    return messages.items.map((message) =>
+      toCommunicationMessage(this.id, conversationId, message, currentUserId),
+    );
   }
 
   async sendMessage(conversationId: string, text: string): Promise<CommunicationMessage> {
@@ -414,8 +437,178 @@ export class ZoomTeamChatProvider implements CommunicationsProvider {
       conversationId,
       messageId: sent.id,
       senderId: null,
+      isFromCurrentUser: true,
       text,
       sentAt: new Date().toISOString(),
+    };
+  }
+
+  async getRoom(conversationId: string): Promise<CommunicationRoom> {
+    const connection = await this.requireConnected();
+    const [messages, conversation] = await Promise.all([
+      this.getMessages(conversationId),
+      this.getConversationSummary(conversationId),
+    ]);
+    return {
+      conversation,
+      // A normal room timeline deliberately contains only top-level messages.
+      // Thread children are read by the provider-confirmed thread operation.
+      messages: messages.filter((message) => !message.parentMessageId),
+      capabilities: this.getRoomCapabilities(connection.grantedScopes),
+    };
+  }
+
+  async getThread(
+    conversationId: string,
+    parentMessageId: string,
+  ): Promise<CommunicationMessage[]> {
+    const connection = await this.requireConnected();
+    if (!this.channels.getMessageThread) {
+      throw new Error("Zoom's current API connection cannot retrieve reply threads.");
+    }
+    requireGrantedScope(
+      connection.grantedScopes,
+      ZOOM_TEAM_CHAT_ACTIVE_OPERATION_SCOPES.getMessageThread,
+    );
+    const target = toZoomMessageTarget(conversationId);
+    // Zoom's documented `from` format is `yyyy-MM-dd'T'HH:mm:ss'Z'`, with no
+    // milliseconds. `Date#toISOString` always includes them, which is why
+    // every prior attempt failed regardless of value or span. `to` is
+    // optional and defaults to the current time, so it is omitted here.
+    const sixMonthsAgo = new Date(this.now());
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    const [thread, currentUserId] = await Promise.all([
+      this.channels.getMessageThread({
+        ...target,
+        messageId: parentMessageId,
+        from: toZoomTimestamp(sixMonthsAgo),
+      }),
+      this.getCurrentUserId(connection.accountLabel),
+    ]);
+    return thread.items
+      .filter((message) => message.id !== parentMessageId)
+      .map((message) => {
+        const translated = toCommunicationMessage(this.id, conversationId, message, currentUserId);
+        translated.parentMessageId ??= parentMessageId;
+        return translated;
+      });
+  }
+
+  async sendRoomMessage(
+    conversationId: string,
+    text: string,
+    parentMessageId?: string | null,
+  ): Promise<CommunicationMessage> {
+    const connection = await this.requireConnected();
+    requireGrantedScope(
+      connection.grantedScopes,
+      ZOOM_TEAM_CHAT_ACTIVE_OPERATION_SCOPES.sendUserMessage,
+    );
+    if (parentMessageId) {
+      requireGrantedScope(
+        connection.grantedScopes,
+        ZOOM_TEAM_CHAT_ACTIVE_OPERATION_SCOPES.getMessageThread,
+      );
+    }
+    const sent = await this.channels.sendUserMessage({
+      ...toZoomMessageTarget(conversationId),
+      message: text,
+      ...(parentMessageId ? { parentMessageId } : {}),
+    });
+    return {
+      providerId: this.id,
+      conversationId,
+      messageId: sent.id,
+      senderId: null,
+      isFromCurrentUser: true,
+      text,
+      sentAt: new Date().toISOString(),
+      ...(parentMessageId ? { parentMessageId } : {}),
+      reactions: [],
+    };
+  }
+
+  async setReaction(
+    conversationId: string,
+    messageId: string,
+    emoji: string,
+    active: boolean,
+  ): Promise<CommunicationMessage> {
+    const connection = await this.requireConnected();
+    if (!this.channels.setUserMessageReaction || !this.channels.getUserMessage) {
+      throw new Error("Zoom's current API connection cannot update reactions.");
+    }
+    requireGrantedScope(
+      connection.grantedScopes,
+      ZOOM_TEAM_CHAT_ACTIVE_OPERATION_SCOPES.setMessageReaction,
+    );
+    const target = toZoomMessageTarget(conversationId);
+    await this.channels.setUserMessageReaction({ ...target, messageId, emoji, active });
+    const message = await this.channels.getUserMessage({ ...target, messageId });
+    return toCommunicationMessage(
+      this.id,
+      conversationId,
+      message,
+      await this.getCurrentUserId(connection.accountLabel),
+    );
+  }
+
+  private async getCurrentUserId(accountLabel: string | null): Promise<string | null> {
+    if (this.cachedCurrentUser?.accountLabel === accountLabel) {
+      return this.cachedCurrentUser.id;
+    }
+    // Authorship only controls local speech affordances. A transient /users/me
+    // failure must not prevent the room timeline itself from loading. Only a
+    // successful lookup is cached, so a transient failure is retried on the
+    // next call instead of being remembered as "no current user" forever.
+    const currentUser = this.channels.getCurrentUser
+      ? await this.channels.getCurrentUser().catch(() => null)
+      : null;
+    if (!currentUser?.id) return null;
+    this.cachedCurrentUser = { accountLabel, id: currentUser.id };
+    return currentUser.id;
+  }
+
+  private getRoomCapabilities(grantedScopes: readonly string[]): CommunicationRoomCapabilities {
+    const canCompose = grantedScopes.includes(
+      ZOOM_TEAM_CHAT_ACTIVE_OPERATION_SCOPES.sendUserMessage,
+    );
+    const canReply = grantedScopes.includes(
+      ZOOM_TEAM_CHAT_ACTIVE_OPERATION_SCOPES.getMessageThread,
+    );
+    const canReact = grantedScopes.includes(
+      ZOOM_TEAM_CHAT_ACTIVE_OPERATION_SCOPES.setMessageReaction,
+    );
+    return {
+      canCompose,
+      canReply,
+      canRetrieveThreads: canReply,
+      canReact,
+      // Notifications are an Otto-local acknowledgement until the inbox has a
+      // concrete provider message identity and invokes Zoom's mark-read API.
+      canMarkRead: false,
+      unavailableReason:
+        canCompose && canReply && canReact
+          ? null
+          : "Reconnect Zoom Chat in Settings to enable sending, reply threads, and reactions.",
+    };
+  }
+
+  private async getConversationSummary(
+    conversationId: string,
+  ): Promise<CommunicationConversationSummary> {
+    const cached = this.getCachedConversations().find(
+      (conversation) => conversation.conversationId === conversationId,
+    );
+    if (cached) return cached;
+    return {
+      providerId: this.id,
+      conversationId,
+      kind: getContactEmail(conversationId) ? "direct" : "unknown",
+      title: getContactEmail(conversationId) ?? "Zoom chat",
+      preview: null,
+      updatedAt: null,
+      unreadCount: 0,
     };
   }
 
@@ -480,23 +673,19 @@ export class ZoomTeamChatProvider implements CommunicationsProvider {
     );
   }
 
-  private async searchCompanyContacts(query: string): Promise<ZoomTeamChatContact[]> {
+  private async searchCompanyContacts(normalizedQuery: string): Promise<ZoomTeamChatContact[]> {
     if (!this.channels.searchCompanyContacts) {
       throw new Error("This Zoom connection cannot search people.");
     }
     const contacts: ZoomTeamChatContact[] = [];
-    let nextPageToken: string | null | undefined;
-    for (let page = 0; page < 2; page += 1) {
-      const result = await this.channels.searchCompanyContacts({
-        query,
-        pageSize: CHAT_SEARCH_RESULT_LIMIT,
-        ...(nextPageToken ? { nextPageToken } : {}),
-      });
+    // Zoom's directory endpoint only accepts one first name, last name, or
+    // email. Split a full-name query into those supported lookup terms, then
+    // apply the user's complete query locally before presenting a result.
+    for (const query of toZoomContactSearchTerms(normalizedQuery)) {
+      const result = await this.channels.searchCompanyContacts({ query, pageSize: 50 });
       contacts.push(...result.items);
-      nextPageToken = result.nextPageToken;
-      if (!nextPageToken || contacts.length >= CHAT_SEARCH_RESULT_LIMIT) break;
     }
-    return contacts.slice(0, CHAT_SEARCH_RESULT_LIMIT);
+    return uniqueContacts(contacts);
   }
 
   private async getSearchableUserContacts(): Promise<ZoomTeamChatContact[]> {
@@ -512,23 +701,36 @@ export class ZoomTeamChatProvider implements CommunicationsProvider {
     // distinct, administrator-controlled feeds. Read both Company and
     // External contact lists alongside the fast directory lookup, then cache
     // their compact index across the popup's debounced searches.
-    const contacts: ZoomTeamChatContact[] = [];
-    for (const type of ["company", "external"] as const) {
-      let nextPageToken: string | null | undefined;
-      for (let page = 0; page < 2; page += 1) {
-        const result = await this.channels.listUserContacts({
-          type,
-          pageSize: 50,
-          ...(nextPageToken ? { nextPageToken } : {}),
-        });
-        contacts.push(...result.items);
-        nextPageToken = result.nextPageToken;
-        if (!nextPageToken) break;
+    try {
+      const contacts: ZoomTeamChatContact[] = [];
+      for (const type of ["company", "external"] as const) {
+        let nextPageToken: string | null | undefined;
+        for (let page = 0; page < 2; page += 1) {
+          const result = await this.channels.listUserContacts({
+            type,
+            pageSize: 50,
+            ...(nextPageToken ? { nextPageToken } : {}),
+          });
+          contacts.push(...result.items);
+          nextPageToken = result.nextPageToken;
+          if (!nextPageToken) break;
+        }
       }
+      const cached = { contacts: uniqueContacts(contacts), cachedAt: this.now() };
+      this.cachedSearchContacts = cached;
+      return cached.contacts;
+    } catch (error) {
+      // This endpoint is documented for user-managed OAuth apps. Some Zoom
+      // enterprise app registrations reject it even after reauthorization;
+      // preserve the account-directory search instead of failing all people
+      // results when that optional feed is unavailable.
+      if (!(error instanceof ZoomTeamChatApiError) || ![400, 403].includes(error.status)) {
+        throw error;
+      }
+      const cached = { contacts: [], cachedAt: this.now() };
+      this.cachedSearchContacts = cached;
+      return cached.contacts;
     }
-    const cached = { contacts: uniqueContacts(contacts), cachedAt: this.now() };
-    this.cachedSearchContacts = cached;
-    return cached.contacts;
   }
 
   private async listRecentSessions(): Promise<ZoomTeamChatSession[]> {
@@ -838,6 +1040,11 @@ function matchesContactSearch(contact: ZoomTeamChatContact, normalizedQuery: str
     .some((value) => matchesSearch(value, normalizedQuery));
 }
 
+function toZoomContactSearchTerms(normalizedQuery: string): string[] {
+  if (normalizedQuery.includes("@")) return [normalizedQuery];
+  return [...new Set(normalizedQuery.split(/\s+/).filter(Boolean))];
+}
+
 function uniqueContacts(contacts: readonly ZoomTeamChatContact[]): ZoomTeamChatContact[] {
   const seen = new Set<string>();
   return contacts.filter((contact) => {
@@ -945,6 +1152,77 @@ function getContactEmail(conversationId: string): string | null {
     return encodedEmail ? decodeURIComponent(encodedEmail) : null;
   } catch {
     return null;
+  }
+}
+
+/** The user's local calendar day, not the UTC day `toISOString` would give. */
+function toLocalDateString(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/** Zoom's documented thread `from`/`to` format: `yyyy-MM-dd'T'HH:mm:ss'Z'`, no milliseconds. */
+function toZoomTimestamp(date: Date): string {
+  return `${date.toISOString().slice(0, 19)}Z`;
+}
+
+function toZoomMessageTarget(conversationId: string): {
+  channelId?: string;
+  contactEmail?: string;
+} {
+  const contactEmail = getContactEmail(conversationId);
+  return contactEmail ? { contactEmail } : { channelId: conversationId };
+}
+
+function toCommunicationMessage(
+  providerId: string,
+  conversationId: string,
+  message: ZoomTeamChatMessage,
+  currentUserId: string | null = null,
+): CommunicationMessage {
+  const reactions: CommunicationReaction[] = (message.reactions ?? []).map((reaction) => ({
+    emoji: fromZoomEmojiId(reaction.emoji),
+    count: reaction.count,
+    reactedByCurrentUser: reaction.isSender,
+  }));
+  return {
+    providerId,
+    conversationId,
+    messageId: message.id,
+    senderId: message.senderId,
+    text: message.message,
+    sentAt: message.timestamp,
+    ...(message.senderDisplayName ? { senderDisplayName: message.senderDisplayName } : {}),
+    ...(currentUserId && message.senderId
+      ? { isFromCurrentUser: message.senderId === currentUserId }
+      : {}),
+    ...(message.parentMessageId ? { parentMessageId: message.parentMessageId } : {}),
+    ...(reactions.length > 0 ? { reactions } : {}),
+  };
+}
+
+function fromZoomEmojiId(emoji: string): string {
+  const parts = emoji.split(/[_-]/);
+  if (!parts.length || !parts.every((part) => /^U\+[0-9A-F]{1,6}$/i.test(part))) {
+    return emoji;
+  }
+  try {
+    return String.fromCodePoint(
+      ...parts.map((part) => Number.parseInt(part.slice(2), 16)).filter(Number.isFinite),
+    );
+  } catch {
+    // A malformed codepoint above U+10FFFF (matched by the regex above, which
+    // allows any 6 hex digits) must degrade to the raw id, not fail the whole
+    // room load over one bad reaction.
+    return emoji;
+  }
+}
+
+function requireGrantedScope(grantedScopes: readonly string[], scope: string): void {
+  if (!grantedScopes.includes(scope)) {
+    throw new Error("Reconnect Zoom Chat in Settings to enable this room action.");
   }
 }
 

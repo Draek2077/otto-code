@@ -5,7 +5,7 @@ title: "Communications title-bar icon"
 status: "confirmed"
 tags: ["communications", "titlebar", "ui", "icons"]
 created_at: "2026-08-13T23:29:26.376Z"
-updated_at: "2026-08-15T06:52:15.661Z"
+updated_at: "2026-08-15T07:34:22.897Z"
 ---
 
 # Communications title-bar icon
@@ -14,7 +14,7 @@ updated_at: "2026-08-15T06:52:15.661Z"
 
 The title bar has no umbrella Communications menu. It presents separate adjacent Chat and Meeting Notes controls, each opening its own direct popup.
 
-- The dedicated Chat control uses Material `chat_bubble` when connected and `chat_bubble_off` when disconnected. An incoming unread chat replaces that glyph with `mark_chat_unread`; this glyph is the only active-Otto-window notifier. It is not represented by a bell, desktop banner, separate notification control, or intrusive in-app alert.
+- Chat uses Material `chat` as its shared feature icon in workspace room tabs, popup conversation rows, the title bar’s normal connected state, and Settings. In the title bar only, an unacknowledged Otto local chat notification replaces that glyph with colored `mark_unread_chat_alt`. Opening its conversation in the popup or workspace immediately acknowledges that local notification and removes the unread glyph, without claiming a provider-side message was marked read. While a presence transition is Pending, the control instead shows `more_horiz`, including when unread messages exist, so the in-flight status change remains visible. When disconnected, it shows `chat_bubble_off`. It is not represented by a bell, desktop banner, separate notification control, or intrusive in-app alert.
 - The dedicated Meeting Notes control reflects desktop-local recorder state with `headset_mic` while active and `headset_off` when paused: blue while idle or complete, red while recording, amber while transcribing or downloading the model, and muted when paused or unavailable.
 - Title-bar tooltips use action text for toggles: `Mute voice cues`/`Unmute voice cues` and `Open Visualizer`/`Close Visualizer`. Stateful controls use a concise `Label: Status` form: `Hey Otto: Disabled|Enabled|Detecting|Recording|Processing`, `Meeting: Disabled|Detecting|Recording|Transcribing|Ready`, and `Chat: Disabled|<Status>|Notification`.
 
@@ -58,7 +58,19 @@ Chat and meeting transcription remain separate service families and must not sha
   kind: "decision"
   summary: "The user defined a uniform title-bar tooltip contract for voice, Visualizer, Hey Otto, Zoom Meeting, and Zoom Chat controls."
   source: "Explicit user UI requirement, 2026-08-13"
+- time: "2026-08-15T06:17:15.025Z"
+  kind: "decision"
+  summary: "Explicit user requirement, 2026-08-15: the Zoom Chat title-bar icon must display the pending ellipsis while a presence change is between statuses."
+  source: "Explicit user requirement, 2026-08-15"
 - time: "2026-08-15T06:52:15.661Z"
   kind: "decision"
   summary: "The user explicitly removed Zoom branding from the Chat and Meeting feature UI and specified concise unbranded title-bar labels."
+  source: "Explicit user requirement, 2026-08-15"
+- time: "2026-08-15T07:27:31.372Z"
+  kind: "decision"
+  summary: "User clarified that opening a Chat room in a workspace tab marks Otto's local notification read, so the active-window unread glyph must clear immediately."
+  source: "Explicit user requirement, 2026-08-15"
+- time: "2026-08-15T07:34:22.897Z"
+  kind: "decision"
+  summary: "User selected Material chat as the Chat feature icon across workspace tabs, title bar, and Settings, reserving colored mark_unread_chat_alt for title-bar unread state."
   source: "Explicit user requirement, 2026-08-15"

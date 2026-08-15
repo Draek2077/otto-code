@@ -3302,6 +3302,14 @@ export class Session {
           msg.conversationId,
           msg.favorite,
         );
+      case "communications.inbox.notifications.acknowledge.request":
+        return this.handleCommunicationsInboxNotificationsAcknowledgeRequest(
+          msg.requestId,
+          msg.providerId,
+          msg.notificationIds,
+          msg.conversationId,
+          msg.clearAll,
+        );
       case "communications.inbox.get_presence.request":
         return this.handleCommunicationsInboxGetPresenceRequest(msg.requestId, msg.providerId);
       case "communications.inbox.set_presence.request":
@@ -3328,6 +3336,36 @@ export class Session {
           msg.providerId,
           msg.conversationId,
           msg.text,
+        );
+      case "communications.room.get.request":
+        return this.handleCommunicationsRoomGetRequest(
+          msg.requestId,
+          msg.providerId,
+          msg.conversationId,
+        );
+      case "communications.room.thread.get.request":
+        return this.handleCommunicationsRoomThreadGetRequest(
+          msg.requestId,
+          msg.providerId,
+          msg.conversationId,
+          msg.parentMessageId,
+        );
+      case "communications.room.message.send.request":
+        return this.handleCommunicationsRoomMessageSendRequest(
+          msg.requestId,
+          msg.providerId,
+          msg.conversationId,
+          msg.text,
+          msg.parentMessageId,
+        );
+      case "communications.room.reaction.set.request":
+        return this.handleCommunicationsRoomReactionSetRequest(
+          msg.requestId,
+          msg.providerId,
+          msg.conversationId,
+          msg.messageId,
+          msg.emoji,
+          msg.active,
         );
       default:
         return undefined;
@@ -3378,6 +3416,25 @@ export class Session {
     });
     this.emit({
       type: "communications.inbox.set_favorite.response",
+      payload: { home, requestId },
+    });
+  }
+
+  private async handleCommunicationsInboxNotificationsAcknowledgeRequest(
+    requestId: string,
+    providerId: string,
+    notificationIds?: string[],
+    conversationId?: string,
+    clearAll?: boolean,
+  ): Promise<void> {
+    const home = await this.communicationsService.acknowledgeNotifications({
+      providerId,
+      ...(notificationIds ? { notificationIds } : {}),
+      ...(conversationId ? { conversationId } : {}),
+      ...(clearAll ? { clearAll } : {}),
+    });
+    this.emit({
+      type: "communications.inbox.notifications.acknowledge.response",
       payload: { home, requestId },
     });
   }
@@ -3442,6 +3499,72 @@ export class Session {
     });
     this.emit({
       type: "communications.inbox.send_message.response",
+      payload: { message, requestId },
+    });
+  }
+
+  private async handleCommunicationsRoomGetRequest(
+    requestId: string,
+    providerId: string,
+    conversationId: string,
+  ): Promise<void> {
+    const room = await this.communicationsService.getRoom({ providerId, conversationId });
+    this.emit({ type: "communications.room.get.response", payload: { room, requestId } });
+  }
+
+  private async handleCommunicationsRoomThreadGetRequest(
+    requestId: string,
+    providerId: string,
+    conversationId: string,
+    parentMessageId: string,
+  ): Promise<void> {
+    const messages = await this.communicationsService.getThread({
+      providerId,
+      conversationId,
+      parentMessageId,
+    });
+    this.emit({
+      type: "communications.room.thread.get.response",
+      payload: { messages, requestId },
+    });
+  }
+
+  private async handleCommunicationsRoomMessageSendRequest(
+    requestId: string,
+    providerId: string,
+    conversationId: string,
+    text: string,
+    parentMessageId?: string | null,
+  ): Promise<void> {
+    const message = await this.communicationsService.sendRoomMessage({
+      providerId,
+      conversationId,
+      text,
+      parentMessageId,
+    });
+    this.emit({
+      type: "communications.room.message.send.response",
+      payload: { message, requestId },
+    });
+  }
+
+  private async handleCommunicationsRoomReactionSetRequest(
+    requestId: string,
+    providerId: string,
+    conversationId: string,
+    messageId: string,
+    emoji: string,
+    active: boolean,
+  ): Promise<void> {
+    const message = await this.communicationsService.setReaction({
+      providerId,
+      conversationId,
+      messageId,
+      emoji,
+      active,
+    });
+    this.emit({
+      type: "communications.room.reaction.set.response",
       payload: { message, requestId },
     });
   }

@@ -35,6 +35,9 @@ export type WorkspaceTabTarget =
   | { kind: "setup"; workspaceId: string }
   | { kind: "commit_diff"; sha: string }
   | { kind: "artifact"; artifactId: string }
+  // A provider-neutral communications room. This is deliberately not an AI
+  // chat target: no model, agent, tool, metrics, or transcript controls apply.
+  | { kind: "communicationsRoom"; providerId: string; conversationId: string; title?: string }
   // A git operation's log pane ("Git Commit"/"Git Pull"/"Git Push"). One per
   // operation per workspace; `operation` is the wire operation id.
   | { kind: "gitLog"; operation: string }

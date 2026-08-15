@@ -3,7 +3,7 @@ import { Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { IntegrationAuthorizationOverview } from "@otto-code/protocol/integration-authorization";
-import { ChevronDown, InboxText } from "@/components/icons/material-icons";
+import { Chat, ChevronDown } from "@/components/icons/material-icons";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -25,10 +25,10 @@ import { zoomTeamChatAccountLabel } from "./zoom-team-chat-connection-display";
 const ZOOM_TEAM_CHAT_PROVIDER_ID = "zoom-team-chat";
 const ZOOM_TEAM_CHAT_CONNECTION_ID = "primary";
 const ZOOM_TEAM_CHAT_AUTHORIZATION_POLL_MS = 1_000;
-const ThemedInboxText = withUnistyles(InboxText);
+const ThemedChat = withUnistyles(Chat);
 const ThemedChevronDown = withUnistyles(ChevronDown);
 
-const inboxTextForegroundMapping = (theme: Theme) => ({
+const chatForegroundMapping = (theme: Theme) => ({
   color: theme.colors.foreground,
   size: theme.iconSize.md,
 });
@@ -324,7 +324,7 @@ function ZoomTeamChatConnectionCard(props: {
         <View style={settingsStyles.rowResponsive}>
           <View style={settingsStyles.rowContent}>
             <View style={styles.rowTitleRow}>
-              <ThemedInboxText uniProps={inboxTextForegroundMapping} />
+              <ThemedChat uniProps={chatForegroundMapping} />
               <Text style={settingsStyles.rowTitle}>Chat</Text>
             </View>
             <Text style={settingsStyles.rowHint}>Show Chat in the title bar.</Text>

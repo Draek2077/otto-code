@@ -17,6 +17,7 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
+  ScrollView,
   Text,
   View,
   Dimensions,
@@ -24,6 +25,7 @@ import {
   StatusBar,
   type PressableProps,
   type PressableStateCallbackType,
+  type ScrollViewProps,
   type ViewStyle,
   type StyleProp,
 } from "react-native";
@@ -185,6 +187,9 @@ function renderDropdownSurface(input: {
   content: ReactElement;
   surfaceNativeID: string;
   onExited: () => void;
+  scrollViewRef?: Ref<ScrollView>;
+  onScroll?: ScrollViewProps["onScroll"];
+  onContentSizeChange?: ScrollViewProps["onContentSizeChange"];
 }): ReactElement {
   const {
     frameStyle,
@@ -195,14 +200,20 @@ function renderDropdownSurface(input: {
     content,
     surfaceNativeID,
     onExited,
+    scrollViewRef,
+    onScroll,
+    onContentSizeChange,
   } = input;
 
   const body = scrollable ? (
     <FloatingScrollView
+      ref={scrollViewRef}
       bounces={false}
       showsVerticalScrollIndicator
       style={scrollViewportStyle}
       contentContainerStyle={DROPDOWN_SCROLL_CONTENT_STYLE}
+      onScroll={onScroll}
+      onContentSizeChange={onContentSizeChange}
     >
       {content}
     </FloatingScrollView>
@@ -495,6 +506,9 @@ export function DropdownMenuContent({
   fullWidth = false,
   horizontalPadding = 16,
   scrollable = false,
+  scrollViewRef,
+  onScroll,
+  onContentSizeChange,
   testID,
 }: PropsWithChildren<{
   side?: Placement;
@@ -507,6 +521,9 @@ export function DropdownMenuContent({
   fullWidth?: boolean;
   horizontalPadding?: number;
   scrollable?: boolean;
+  scrollViewRef?: Ref<ScrollView>;
+  onScroll?: ScrollViewProps["onScroll"];
+  onContentSizeChange?: ScrollViewProps["onContentSizeChange"];
   testID?: string;
 }>): ReactElement | null {
   const { t } = useTranslation();
@@ -706,6 +723,9 @@ export function DropdownMenuContent({
               scrollViewportStyle,
               content,
               surfaceNativeID,
+              scrollViewRef,
+              onScroll,
+              onContentSizeChange,
               onExited: () => setModalVisible(false),
             })
           : null}

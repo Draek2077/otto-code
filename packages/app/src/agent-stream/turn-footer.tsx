@@ -13,7 +13,7 @@ import {
   type StreamStrategy,
 } from "./strategy";
 import { resolveAssistantTurnForkBoundary, type AssistantTurnForkBoundary } from "./turn-boundary";
-import { AssistantTurnFooter, LiveElapsed, type AssistantForkTarget } from "@/components/message";
+import { MessageFooter, LiveElapsed, type AssistantForkTarget } from "@/components/message";
 import type { TurnFooterHost } from "./layout";
 import { BlobLoader, ThemedBlobLoader } from "@/components/blob-loader";
 import { useRetainedPanelActive } from "@/components/retained-panel";
@@ -242,7 +242,7 @@ function CompletedTurnFooter({
   );
   return (
     <View style={stylesheet.turnFooterSlot}>
-      <AssistantTurnFooter
+      <MessageFooter
         getContent={getContent}
         completedAt={timing?.completedAt}
         durationMs={timing?.durationMs}

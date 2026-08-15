@@ -53,6 +53,14 @@ export function normalizeWorkspaceTabTarget(
     const artifactId = trimNonEmpty(value.artifactId);
     return artifactId ? { kind: "artifact", artifactId } : null;
   }
+  if (value.kind === "communicationsRoom") {
+    const providerId = trimNonEmpty(value.providerId);
+    const conversationId = trimNonEmpty(value.conversationId);
+    const title = trimNonEmpty(value.title);
+    return providerId && conversationId
+      ? { kind: "communicationsRoom", providerId, conversationId, ...(title ? { title } : {}) }
+      : null;
+  }
   if (value.kind === "gitLog") {
     const operation = trimNonEmpty(value.operation);
     return operation ? { kind: "gitLog", operation } : null;
@@ -302,6 +310,9 @@ export function workspaceTabTargetsEqual(
   if (left.kind === "visualizer" && right.kind === "visualizer") {
     return left.runId === right.runId;
   }
+  if (left.kind === "communicationsRoom" && right.kind === "communicationsRoom") {
+    return communicationsRoomTargetsEqual(left, right);
+  }
   // Two path-keyed kinds, sharing one branch to stay inside this function's
   // complexity ceiling:
   //   fileHistory - path PLUS scope, because whole-file history and a
@@ -333,6 +344,13 @@ export function workspaceTabTargetsEqual(
     (left as unknown as Record<string, unknown>)[field] ===
     (right as unknown as Record<string, unknown>)[field]
   );
+}
+
+function communicationsRoomTargetsEqual(
+  left: Extract<WorkspaceTabTarget, { kind: "communicationsRoom" }>,
+  right: Extract<WorkspaceTabTarget, { kind: "communicationsRoom" }>,
+): boolean {
+  return left.providerId === right.providerId && left.conversationId === right.conversationId;
 }
 
 function workspaceDraftTabSetupsEqual(
@@ -379,6 +397,8 @@ const SIMPLE_TAB_ID_BUILDERS: {
   browser: (target) => `browser_${target.browserId}`,
   setup: (target) => `setup_${target.workspaceId}`,
   artifact: (target) => `artifact_${target.artifactId}`,
+  communicationsRoom: (target) =>
+    `communications-room_${target.providerId}_${target.conversationId}`,
   gitLog: (target) => `gitlog_${target.operation}`,
   contextManagement: () => "context-management",
   projectKnowledge: () => "project-knowledge",

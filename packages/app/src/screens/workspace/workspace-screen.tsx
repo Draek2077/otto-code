@@ -1,3 +1,4 @@
+/* oxlint-disable react-perf/jsx-no-new-function-as-prop, react/jsx-max-depth -- notification cards bind their own explicit conversation and acknowledgement identities. */
 import {
   memo,
   useCallback,
@@ -19,6 +20,7 @@ import {
   Keyboard,
   Pressable,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
@@ -36,7 +38,7 @@ import {
   ArrowRightToLine,
   BookOpen,
   CalendarClock,
-  ChatBubble,
+  Chat,
   ChatBubbleOff,
   CircleX,
   ContextualToken,
@@ -52,7 +54,7 @@ import {
   HeadsetMic,
   HeadsetOff,
   Import as ImportIcon,
-  MarkChatUnread,
+  MarkUnreadChatAlt,
   MoreHorizontal,
   Pencil,
   Play,
@@ -146,6 +148,7 @@ import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import type { WorkspaceTab, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useAppSettingValue, useSettings, type AppSettings } from "@/hooks/use-settings";
+import { useRetainedScrollOffset } from "@/hooks/use-retained-scroll-offset";
 import {
   confirmBrowserToolsOffBeforeOpening,
   useBrowserToolsWarningCopy,
@@ -195,7 +198,8 @@ import {
   buildWorkspaceAttachmentScopeKey,
 } from "@/attachments/workspace-attachments-store";
 import { getZoomMeetingTitlebarState } from "@/screens/workspace/zoom-meetings-titlebar-state";
-import { ZoomTeamChatConversationSheet } from "@/screens/workspace/zoom-team-chat-conversation-sheet";
+import { CommunicationsRoom } from "@/screens/workspace/communications-room";
+import type { DaemonClient } from "@otto-code/client";
 import type {
   CommunicationConversationSummary,
   CommunicationHomeSection,
@@ -206,6 +210,7 @@ import type {
 } from "@otto-code/protocol/communications";
 import { getErrorMessage } from "@otto-code/protocol/error-utils";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
+import { useAppVisible } from "@/hooks/use-app-visible";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { buildProviderCommand } from "@/utils/provider-command-templates";
 import { generateDraftId } from "@/stores/draft-keys";
@@ -317,6 +322,10 @@ import {
 } from "@/stores/workspace-content-readiness";
 
 const WORKSPACE_SETUP_AUTO_OPEN_WINDOW_MS = 30_000;
+// The title-bar notification glyph must reflect notifications raised while
+// the Chat popup is closed, so it is refreshed on its own low-frequency
+// background cadence instead of only on mount and on popup open.
+const CHAT_NOTIFICATION_BADGE_POLL_INTERVAL_MS = 60_000;
 const WORKSPACE_FLOATING_PANEL_PORTAL_HOST_PREFIX = "workspace-floating-panels";
 const EMPTY_UI_TABS: WorkspaceTab[] = [];
 const EMPTY_WORKSPACE_SCRIPTS: WorkspaceDescriptor["scripts"] = [];
@@ -368,9 +377,9 @@ const ThemedEllipsisVertical = withUnistyles(EllipsisVertical);
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedCopy = withUnistyles(Copy);
 const ThemedRotateCw = withUnistyles(RotateCw);
-const ThemedChatBubble = withUnistyles(ChatBubble);
+const ThemedChat = withUnistyles(Chat);
 const ThemedChatBubbleOff = withUnistyles(ChatBubbleOff);
-const ThemedMarkChatUnread = withUnistyles(MarkChatUnread);
+const ThemedMarkUnreadChatAlt = withUnistyles(MarkUnreadChatAlt);
 const ThemedCircleX = withUnistyles(CircleX);
 const ThemedMoreHorizontal = withUnistyles(MoreHorizontal);
 const ThemedHeadsetMic = withUnistyles(HeadsetMic);
@@ -1962,9 +1971,11 @@ function canStartZoomTeamChatSignIn({
   );
 }
 
-function zoomTeamChatAccessibilityLabel(unreadCount: number, enabled: boolean): string {
+function zoomTeamChatAccessibilityLabel(notificationCount: number, enabled: boolean): string {
   if (!enabled) return "Open Chat. Disabled.";
-  return unreadCount > 0 ? `Open Chat. ${unreadCount} unread.` : "Open Chat";
+  return notificationCount > 0
+    ? `Open Chat. ${notificationCount} notification${notificationCount === 1 ? "" : "s"}.`
+    : "Open Chat";
 }
 
 function zoomTeamChatTooltip(
@@ -1973,8 +1984,10 @@ function zoomTeamChatTooltip(
   presenceStatus: CommunicationPresenceStatus,
   observedStatusLabel: string | null,
   enabled: boolean,
+  pendingPresence: boolean,
 ): string {
   if (!enabled) return "Chat: Disabled";
+  if (pendingPresence) return "Chat: Pending";
   if (unreadCount > 0) return "Chat: Notification";
   return `Chat: ${
     connectionLabel === "Connected"
@@ -2002,26 +2015,37 @@ function zoomTeamChatPresenceColorMapping(status: ZoomChatDisplayedPresenceStatu
   };
 }
 
-const notificationColorMapping = (theme: Theme) => ({ color: theme.colors.statusWarning });
+const favoriteColorMapping = (theme: Theme) => ({ color: theme.colors.statusWarning });
+const unreadChatColorMapping = (theme: Theme) => ({ color: theme.colors.statusWarning });
 
 function ZoomTeamChatTitleIcon({
   unreadCount,
   connected,
   presenceStatus,
+  pendingPresence,
   enabled,
   iconSize,
 }: {
   unreadCount: number;
   connected: boolean;
   presenceStatus: CommunicationPresenceStatus;
+  pendingPresence: boolean;
   enabled: boolean;
   iconSize: number;
 }): ReactElement {
+  if (enabled && pendingPresence) {
+    return (
+      <ThemedMoreHorizontal
+        size={iconSize}
+        uniProps={zoomTeamChatPresenceColorMapping("pending")}
+      />
+    );
+  }
   if (enabled && unreadCount > 0) {
-    return <ThemedMarkChatUnread size={iconSize} uniProps={notificationColorMapping} />;
+    return <ThemedMarkUnreadChatAlt size={iconSize} uniProps={unreadChatColorMapping} />;
   }
   return connected && enabled ? (
-    <ThemedChatBubble size={iconSize} uniProps={zoomTeamChatPresenceColorMapping(presenceStatus)} />
+    <ThemedChat size={iconSize} uniProps={zoomTeamChatPresenceColorMapping(presenceStatus)} />
   ) : (
     <ThemedChatBubbleOff size={iconSize} uniProps={mutedColorMapping} />
   );
@@ -2329,7 +2353,7 @@ function ZoomChatFavoriteButton({
       style={[styles.teamChatFavoriteButton, disabled && styles.teamChatFavoriteButtonDisabled]}
     >
       {favorite ? (
-        <ThemedStarFilled size={16} uniProps={notificationColorMapping} />
+        <ThemedStarFilled size={16} uniProps={favoriteColorMapping} />
       ) : (
         <ThemedStar size={16} uniProps={mutedSmMapping} />
       )}
@@ -2456,7 +2480,7 @@ function ZoomChatSearchResultRow({
           </View>
         ) : (
           <View style={styles.teamChatSearchConversationIcon}>
-            <ChatBubble size={iconSize} color={styles.teamChatSearchConversationIconGlyph.color} />
+            <Chat size={iconSize} color={styles.teamChatSearchConversationIconGlyph.color} />
           </View>
         )}
         <View style={styles.teamChatSearchResultCopy}>
@@ -2675,7 +2699,7 @@ function ZoomChatHomeConversationRow({
           </View>
         ) : (
           <View style={styles.teamChatSearchConversationIcon}>
-            <ChatBubble size={iconSize} color={styles.teamChatSearchConversationIconGlyph.color} />
+            <Chat size={iconSize} color={styles.teamChatSearchConversationIconGlyph.color} />
           </View>
         )}
         <View style={styles.teamChatSearchResultCopy}>
@@ -2739,7 +2763,62 @@ function canSearchZoomChatDestinations(
   return supportsInboxSearch && connected && enabled;
 }
 
-function WorkspaceTeamChatButton({ serverId }: { serverId: string }) {
+function ZoomChatPopupRoomPage({
+  client,
+  serverId,
+  conversation,
+  onBack,
+  onOpenChat,
+}: {
+  client: DaemonClient | null;
+  serverId: string;
+  conversation: CommunicationConversationSummary;
+  onBack: () => void;
+  onOpenChat: (conversation: CommunicationConversationSummary) => void;
+}): ReactElement {
+  const handleOpenChat = useCallback(() => onOpenChat(conversation), [conversation, onOpenChat]);
+  const isCompactPopup = useIsCompactFormFactor();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  // The room's natural size (720x680) can exceed a short or narrow desktop
+  // window; nothing else clips it, since this popup does not use the
+  // scrollable DropdownMenuContent path. Bound it to the viewport instead.
+  const popupStyle = useMemo(
+    () => [
+      styles.teamChatRoomPopup,
+      { width: Math.min(720, windowWidth - 48), height: Math.min(680, windowHeight - 96) },
+    ],
+    [windowHeight, windowWidth],
+  );
+  return (
+    <View style={popupStyle}>
+      <View style={styles.teamChatRoomHeader}>
+        <Button size="xs" variant="ghost" onPress={onBack}>
+          Back
+        </Button>
+        <Text style={styles.teamChatRoomTitle} numberOfLines={1}>
+          {conversation.title}
+        </Text>
+        <Button size="xs" variant="ghost" onPress={handleOpenChat}>
+          Open chat
+        </Button>
+      </View>
+      <CommunicationsRoom
+        client={client}
+        serverId={serverId}
+        conversation={conversation}
+        compact={isCompactPopup}
+      />
+    </View>
+  );
+}
+
+function WorkspaceTeamChatButton({
+  serverId,
+  workspaceId,
+}: {
+  serverId: string;
+  workspaceId: string;
+}) {
   const isDesktop = getIsElectron();
   const supportsCommunications = useHostFeature(serverId, "communications");
   const supportsChatHome = useHostFeature(serverId, "communicationsChatHome");
@@ -2752,10 +2831,14 @@ function WorkspaceTeamChatButton({ serverId }: { serverId: string }) {
     "communicationsPresenceChangeTiming",
   );
   const supportsPresenceUpdates = useHostFeature(serverId, "communicationsPresenceUpdates");
+  const supportsCommunicationsRooms = useHostFeature(serverId, "communicationsRooms");
+  const supportsRoomNotifications = useHostFeature(serverId, "communicationsRoomNotifications");
   const supportsIntegrationAuthorization = useHostFeature(serverId, "integrationAuthorization");
   const client = useHostRuntimeClient(serverId);
+  const openWorkspaceTabFocused = useWorkspaceLayoutStore((state) => state.openTabFocused);
   const isHostConnected = useHostRuntimeIsConnected(serverId);
   const isLocalDaemon = useIsLocalDaemon(serverId);
+  const isAppVisible = useAppVisible();
   const iconSize = useIconSize(1.5);
   const [menuOpen, setMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -2765,10 +2848,14 @@ function WorkspaceTeamChatButton({ serverId }: { serverId: string }) {
   const [isChatEnabled, setIsChatEnabled] = useState(false);
   const [conversations, setConversations] = useState<CommunicationConversationSummary[]>([]);
   const [chatHomeSections, setChatHomeSections] = useState<CommunicationHomeSection[]>([]);
+  const [chatNotifications, setChatNotifications] = useState<
+    { notificationId: string; conversation: CommunicationConversationSummary }[]
+  >([]);
   const [favoriteUpdatingIds, setFavoriteUpdatingIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
   const [favoriteError, setFavoriteError] = useState<string | null>(null);
+  const [roomError, setRoomError] = useState<string | null>(null);
   const [presenceStatus, setPresenceStatus] = useState<CommunicationPresenceStatus>("unknown");
   const [observedPresenceLabel, setObservedPresenceLabel] = useState<string | null>(null);
   const [pendingPresenceStatus, setPendingPresenceStatus] =
@@ -2794,6 +2881,10 @@ function WorkspaceTeamChatButton({ serverId }: { serverId: string }) {
   });
   const [selectedConversation, setSelectedConversation] =
     useState<CommunicationConversationSummary | null>(null);
+  // The Home list and child room are separate reading surfaces. Back restores
+  // the Home list exactly where the reader left it instead of inheriting room
+  // scroll state.
+  const chatHomeScroll = useRetainedScrollOffset(`communications-popup:${serverId}:zoom-team-chat`);
   const applyZoomChatPresence = useCallback((presence: CommunicationPresence) => {
     // `unknown` is transport state, not a user-facing presence. Preserve a
     // confirmed value through a transient provider read failure.
@@ -2843,11 +2934,18 @@ function WorkspaceTeamChatButton({ serverId }: { serverId: string }) {
           try {
             const home = await client.communicationsInboxGetHome("zoom-team-chat");
             setChatHomeSections(home.sections);
+            const notifications = home.notifications ?? [];
+            setChatNotifications(notifications);
+            // The title-bar glyph is Otto's active-window notification, not a
+            // mirror of the provider's remote unread tally. It must disappear
+            // as soon as the corresponding room is opened or dismissed.
+            setUnreadCount(notifications.length);
           } catch {
             // Home access can be newly granted after the original token was
             // issued. Keep the established connection state honest and let the
             // settings reconnect flow obtain the expanded token.
             setChatHomeSections([]);
+            setChatNotifications([]);
           }
         } else {
           setChatHomeSections([]);
@@ -2867,6 +2965,7 @@ function WorkspaceTeamChatButton({ serverId }: { serverId: string }) {
         setUnreadCount(0);
         setConversations([]);
         setChatHomeSections([]);
+        setChatNotifications([]);
         setPresenceStatus("unknown");
         setChatConnectionLabel("Unavailable");
         setIsChatConnected(false);
@@ -2885,6 +2984,16 @@ function WorkspaceTeamChatButton({ serverId }: { serverId: string }) {
   useEffect(() => {
     refreshCommunicationsState();
   }, [refreshCommunicationsState]);
+  // Independent of the popup menu's open state: the title-bar glyph must
+  // still notify of a new unread conversation while the popup is closed.
+  useEffect(() => {
+    if (!isAppVisible) return;
+    const intervalId = setInterval(
+      refreshCommunicationsState,
+      CHAT_NOTIFICATION_BADGE_POLL_INTERVAL_MS,
+    );
+    return () => clearInterval(intervalId);
+  }, [isAppVisible, refreshCommunicationsState]);
   useEffect(() => {
     if (!client || !supportsPresenceUpdates) return;
     return client.on("communications.inbox.presence.changed.notification", (message) => {
@@ -2918,6 +3027,7 @@ function WorkspaceTeamChatButton({ serverId }: { serverId: string }) {
       setPresencePickerOpen(false);
       if (!nextOpen) {
         resetChatSearch();
+        setSelectedConversation(null);
       }
       refreshWhenZoomChatMenuOpens(nextOpen, refreshCommunicationsState);
     },
@@ -3053,11 +3163,89 @@ function WorkspaceTeamChatButton({ serverId }: { serverId: string }) {
     return sections;
   }, [chatHomeSections, chatSearch, conversations, isChatDestinationSearch, supportsChatHome]);
   const displayedChatHomeSections = isChatDestinationSearch ? [] : visibleChatHomeSections;
-  const openConversation = useCallback((conversation: CommunicationConversationSummary) => {
-    setMenuOpen(false);
-    setSelectedConversation(conversation);
-  }, []);
+  const acknowledgeConversationNotifications = useCallback(
+    (conversation: CommunicationConversationSummary) => {
+      const notificationIds = chatNotifications
+        .filter(
+          (notification) =>
+            notification.conversation.conversationId === conversation.conversationId &&
+            notification.conversation.providerId === conversation.providerId,
+        )
+        .map((notification) => notification.notificationId);
+      if (notificationIds.length === 0) return;
+
+      // Opening a room resolves Otto's local notification immediately. The
+      // provider may retain its own unread count, but that is not what the
+      // active-window title-bar glyph represents.
+      setChatNotifications((current) =>
+        current.filter((notification) => !notificationIds.includes(notification.notificationId)),
+      );
+      setUnreadCount((current) => Math.max(0, current - notificationIds.length));
+
+      if (!client || !supportsRoomNotifications) return;
+      void client
+        .communicationsInboxAcknowledgeNotifications({
+          providerId: conversation.providerId,
+          notificationIds,
+        })
+        .then((home) => {
+          const notifications = home.notifications ?? [];
+          setChatHomeSections(home.sections);
+          setChatNotifications(notifications);
+          setUnreadCount(notifications.length);
+          return undefined;
+        })
+        .catch(() => undefined);
+    },
+    [chatNotifications, client, supportsRoomNotifications],
+  );
+  const openConversation = useCallback(
+    (conversation: CommunicationConversationSummary) => {
+      if (!supportsCommunicationsRooms) {
+        setRoomError("Update the host to use this.");
+        return;
+      }
+      acknowledgeConversationNotifications(conversation);
+      // Keep the root dropdown mounted so its search and scroll context survive
+      // the child room page. Back only clears selectedConversation.
+      setRoomError(null);
+      setSelectedConversation(conversation);
+    },
+    [acknowledgeConversationNotifications, supportsCommunicationsRooms],
+  );
+  const openConversationInWorkspace = useCallback(
+    (conversation: CommunicationConversationSummary) => {
+      const persistenceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
+      if (!persistenceKey) return;
+      acknowledgeConversationNotifications(conversation);
+      openWorkspaceTabFocused(persistenceKey, {
+        kind: "communicationsRoom",
+        providerId: conversation.providerId,
+        conversationId: conversation.conversationId,
+        title: conversation.title,
+      });
+      setSelectedConversation(null);
+      setMenuOpen(false);
+    },
+    [acknowledgeConversationNotifications, openWorkspaceTabFocused, serverId, workspaceId],
+  );
   const closeConversation = useCallback(() => setSelectedConversation(null), []);
+  const acknowledgeNotifications = useCallback(
+    (input: { notificationIds?: string[]; clearAll?: boolean }) => {
+      if (!client || !supportsRoomNotifications) return;
+      void client
+        .communicationsInboxAcknowledgeNotifications({ providerId: "zoom-team-chat", ...input })
+        .then((home) => {
+          const notifications = home.notifications ?? [];
+          setChatHomeSections(home.sections);
+          setChatNotifications(notifications);
+          setUnreadCount(notifications.length);
+          return undefined;
+        })
+        .catch(() => undefined);
+    },
+    [client, supportsRoomNotifications],
+  );
   const isFavoriteUpdating = useCallback(
     (conversationId: string) => favoriteUpdatingIds.has(conversationId),
     [favoriteUpdatingIds],
@@ -3103,208 +3291,269 @@ function WorkspaceTeamChatButton({ serverId }: { serverId: string }) {
   }
 
   return (
-    <>
-      <DropdownMenu open={menuOpen} onOpenChange={handleMenuOpenChange}>
-        <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-          <TooltipTrigger asChild triggerRefProp="triggerRef">
-            <DropdownMenuTrigger
-              testID="workspace-zoom-team-chat-trigger"
-              suppressFocusOutline
-              accessibilityRole="button"
-              accessibilityLabel={zoomTeamChatAccessibilityLabel(unreadCount, isChatEnabled)}
-              style={chatTitlebarTriggerStyle}
-            >
-              {() => (
-                <ZoomTeamChatTitleIcon
-                  unreadCount={unreadCount}
-                  connected={isChatConnected}
-                  enabled={isChatEnabled}
-                  presenceStatus={presenceStatus}
-                  iconSize={iconSize.md}
-                />
-              )}
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" align="center" offset={8}>
-            <Text style={styles.headerMenuTooltipText}>
-              {zoomTeamChatTooltip(
-                unreadCount,
-                chatConnectionLabel,
-                presenceStatus,
-                observedPresenceLabel,
-                isChatEnabled,
-              )}
-            </Text>
-          </TooltipContent>
-        </Tooltip>
-        <DropdownMenuContent
-          align="end"
-          width={320}
-          maxHeight={420}
-          scrollable
-          testID="workspace-zoom-team-chat-menu"
-        >
-          <View style={styles.teamChatPopup}>
-            <View style={styles.teamChatPopupHeader}>
-              <View style={styles.teamChatPopupHeaderCopy}>
-                <Text style={styles.teamChatPopupTitle}>{chatConnectionLabel}</Text>
-              </View>
-              {isChatConnected ? (
-                <Pressable
-                  testID="workspace-zoom-team-chat-presence"
-                  onPress={togglePresencePicker}
-                  disabled={!supportsPresence || isUpdatingPresence}
-                  accessibilityLabel="Change Zoom Chat status"
-                  style={styles.teamChatPresenceTrigger}
-                >
-                  <ZoomChatPresenceIcon
-                    status={getZoomChatDisplayedPresenceStatus({
-                      enabled: isChatEnabled,
-                      pendingStatus: pendingPresenceStatus,
-                      status: presenceStatus,
-                    })}
-                    size={iconSize.sm}
-                  />
-                  {zoomChatPresenceDisplayText(
-                    presenceStatus,
-                    isChatEnabled,
-                    isUpdatingPresence,
-                    pendingPresenceStatus,
-                    observedPresenceLabel,
-                  ) ? (
-                    <Text style={styles.teamChatPresenceText} numberOfLines={1}>
-                      {zoomChatPresenceDisplayText(
-                        presenceStatus,
-                        isChatEnabled,
-                        isUpdatingPresence,
-                        pendingPresenceStatus,
-                        observedPresenceLabel,
-                      )}
-                    </Text>
-                  ) : null}
-                </Pressable>
-              ) : (
-                <Button
-                  testID="workspace-zoom-team-chat-open"
-                  variant="secondary"
-                  size="xs"
-                  onPress={handleStartSignIn}
-                  disabled={!canStartSignIn}
-                >
-                  Sign in
-                </Button>
-              )}
-            </View>
-            {presenceError ? (
-              <View style={styles.teamChatPresenceErrorCallout}>
-                <Text style={styles.teamChatPresenceError}>{presenceError}</Text>
-              </View>
-            ) : null}
-            {favoriteError ? (
-              <View style={styles.teamChatFavoriteErrorCallout}>
-                <Text style={styles.teamChatSearchError}>{favoriteError}</Text>
-              </View>
-            ) : null}
-            {isChatConnected && presencePickerOpen ? (
-              <View style={styles.teamChatPresenceOptions}>
-                {ZOOM_CHAT_PRESENCE_OPTIONS.filter(
-                  (option) => option.id !== "offline" || supportsChatAvailability,
-                ).map((option) => {
-                  const canSelect = canSelectZoomChatPresenceOption({
-                    option,
-                    enabled: isChatEnabled,
-                    supportsPresence,
-                    currentPresence: presenceStatus,
-                    statusChangeLocked,
-                    pendingStatus: pendingPresenceStatus,
-                  });
-                  const disabled = !canSelect || isUpdatingPresence;
-                  return (
-                    <Pressable
-                      key={option.id}
-                      onPress={disabled ? undefined : presenceSelectHandlers.get(option.id)}
-                      disabled={disabled}
-                      accessibilityLabel={zoomChatPresenceOptionAccessibilityLabel({
-                        option,
-                        disabled,
-                        statusChangeLocked,
-                        statusChangeCooldownMs,
+    <DropdownMenu open={menuOpen} onOpenChange={handleMenuOpenChange}>
+      <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+        <TooltipTrigger asChild triggerRefProp="triggerRef">
+          <DropdownMenuTrigger
+            testID="workspace-zoom-team-chat-trigger"
+            suppressFocusOutline
+            accessibilityRole="button"
+            accessibilityLabel={zoomTeamChatAccessibilityLabel(unreadCount, isChatEnabled)}
+            style={chatTitlebarTriggerStyle}
+          >
+            {() => (
+              <ZoomTeamChatTitleIcon
+                unreadCount={unreadCount}
+                connected={isChatConnected}
+                enabled={isChatEnabled}
+                presenceStatus={presenceStatus}
+                pendingPresence={pendingPresenceStatus !== null}
+                iconSize={iconSize.md}
+              />
+            )}
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="center" offset={8}>
+          <Text style={styles.headerMenuTooltipText}>
+            {zoomTeamChatTooltip(
+              unreadCount,
+              chatConnectionLabel,
+              presenceStatus,
+              observedPresenceLabel,
+              isChatEnabled,
+              pendingPresenceStatus !== null,
+            )}
+          </Text>
+        </TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent
+        align="end"
+        width={selectedConversation ? 720 : 320}
+        maxHeight={selectedConversation ? 720 : 420}
+        scrollable={!selectedConversation}
+        scrollViewRef={chatHomeScroll.ref}
+        onScroll={chatHomeScroll.onScroll}
+        onContentSizeChange={chatHomeScroll.onContentSizeChange}
+        testID="workspace-zoom-team-chat-menu"
+      >
+        {selectedConversation ? (
+          <ZoomChatPopupRoomPage
+            client={client}
+            serverId={serverId}
+            conversation={selectedConversation}
+            onBack={closeConversation}
+            onOpenChat={openConversationInWorkspace}
+          />
+        ) : (
+          <>
+            <View style={styles.teamChatPopup}>
+              <View style={styles.teamChatPopupHeader}>
+                <View style={styles.teamChatPopupHeaderCopy}>
+                  <Text style={styles.teamChatPopupTitle}>{chatConnectionLabel}</Text>
+                </View>
+                {isChatConnected ? (
+                  <Pressable
+                    testID="workspace-zoom-team-chat-presence"
+                    onPress={togglePresencePicker}
+                    disabled={!supportsPresence || isUpdatingPresence}
+                    accessibilityLabel="Change Chat status"
+                    style={styles.teamChatPresenceTrigger}
+                  >
+                    <ZoomChatPresenceIcon
+                      status={getZoomChatDisplayedPresenceStatus({
+                        enabled: isChatEnabled,
+                        pendingStatus: pendingPresenceStatus,
+                        status: presenceStatus,
                       })}
-                      style={[
-                        styles.teamChatPresenceOption,
-                        disabled && styles.teamChatPresenceOptionDisabled,
-                      ]}
-                    >
-                      <ZoomChatPresenceIcon status={option.id} size={iconSize.sm} />
-                      <Text
+                      size={iconSize.sm}
+                    />
+                    {zoomChatPresenceDisplayText(
+                      presenceStatus,
+                      isChatEnabled,
+                      isUpdatingPresence,
+                      pendingPresenceStatus,
+                      observedPresenceLabel,
+                    ) ? (
+                      <Text style={styles.teamChatPresenceText} numberOfLines={1}>
+                        {zoomChatPresenceDisplayText(
+                          presenceStatus,
+                          isChatEnabled,
+                          isUpdatingPresence,
+                          pendingPresenceStatus,
+                          observedPresenceLabel,
+                        )}
+                      </Text>
+                    ) : null}
+                  </Pressable>
+                ) : (
+                  <Button
+                    testID="workspace-zoom-team-chat-open"
+                    variant="secondary"
+                    size="xs"
+                    onPress={handleStartSignIn}
+                    disabled={!canStartSignIn}
+                  >
+                    Sign in
+                  </Button>
+                )}
+              </View>
+              {presenceError ? (
+                <View style={styles.teamChatPresenceErrorCallout}>
+                  <Text style={styles.teamChatPresenceError}>{presenceError}</Text>
+                </View>
+              ) : null}
+              {favoriteError ? (
+                <View style={styles.teamChatFavoriteErrorCallout}>
+                  <Text style={styles.teamChatSearchError}>{favoriteError}</Text>
+                </View>
+              ) : null}
+              {roomError ? (
+                <View style={styles.teamChatFavoriteErrorCallout}>
+                  <Text style={styles.teamChatSearchError}>{roomError}</Text>
+                </View>
+              ) : null}
+              {isChatConnected && presencePickerOpen ? (
+                <View style={styles.teamChatPresenceOptions}>
+                  {ZOOM_CHAT_PRESENCE_OPTIONS.filter(
+                    (option) => option.id !== "offline" || supportsChatAvailability,
+                  ).map((option) => {
+                    const canSelect = canSelectZoomChatPresenceOption({
+                      option,
+                      enabled: isChatEnabled,
+                      supportsPresence,
+                      currentPresence: presenceStatus,
+                      statusChangeLocked,
+                      pendingStatus: pendingPresenceStatus,
+                    });
+                    const disabled = !canSelect || isUpdatingPresence;
+                    return (
+                      <Pressable
+                        key={option.id}
+                        onPress={disabled ? undefined : presenceSelectHandlers.get(option.id)}
+                        disabled={disabled}
+                        accessibilityLabel={zoomChatPresenceOptionAccessibilityLabel({
+                          option,
+                          disabled,
+                          statusChangeLocked,
+                          statusChangeCooldownMs,
+                        })}
                         style={[
-                          styles.teamChatPresenceOptionText,
-                          disabled && styles.teamChatPresenceOptionTextDisabled,
+                          styles.teamChatPresenceOption,
+                          disabled && styles.teamChatPresenceOptionDisabled,
                         ]}
                       >
-                        {option.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-                {statusChangeLocked ? (
-                  <Text style={styles.teamChatPresenceCooldown}>
-                    Status changes available in {formatStatusChangeCooldown(statusChangeCooldownMs)}
-                  </Text>
-                ) : null}
-              </View>
-            ) : null}
-            <ZoomChatPopupSearchContents
-              connected={isChatConnected}
-              enabled={isChatEnabled}
-              query={chatSearch}
-              onChangeQuery={setChatSearch}
-              isSearchActive={isChatDestinationSearch}
-              people={chatSearchPeople}
-              conversations={chatSearchConversations}
-              isSearching={isSearchingChat}
-              error={chatSearchError}
-              iconSize={iconSize.sm}
-              onOpenConversation={openConversation}
-              canToggleFavorite={supportsChatFavorites && isChatConnected && isChatEnabled}
-              isFavoriteUpdating={isFavoriteUpdating}
-              onToggleFavorite={handleToggleFavorite}
-              homeSections={displayedChatHomeSections}
-            />
-          </View>
-          {displayedChatHomeSections.map((section) => (
-            <View key={section.id}>
-              <DropdownMenuLabel>{section.label}</DropdownMenuLabel>
-              {section.conversations.map((conversation) => (
-                <ZoomChatHomeConversationRow
-                  key={conversation.conversationId}
-                  conversation={conversation}
-                  iconSize={iconSize.sm}
-                  canToggleFavorite={supportsChatFavorites && isChatConnected && isChatEnabled}
-                  isFavoriteUpdating={isFavoriteUpdating(conversation.conversationId)}
-                  onOpenConversation={openConversation}
-                  onToggleFavorite={handleToggleFavorite}
-                />
-              ))}
-              {section.collections.map((collection) => (
-                <DropdownMenuItem
-                  key={collection.collectionId}
-                  description={collection.description ?? "Coming soon"}
-                  disabled
-                >
-                  {collection.title}
-                </DropdownMenuItem>
-              ))}
+                        <ZoomChatPresenceIcon status={option.id} size={iconSize.sm} />
+                        <Text
+                          style={[
+                            styles.teamChatPresenceOptionText,
+                            disabled && styles.teamChatPresenceOptionTextDisabled,
+                          ]}
+                        >
+                          {option.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                  {statusChangeLocked ? (
+                    <Text style={styles.teamChatPresenceCooldown}>
+                      Status changes available in{" "}
+                      {formatStatusChangeCooldown(statusChangeCooldownMs)}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
+              <ZoomChatPopupSearchContents
+                connected={isChatConnected}
+                enabled={isChatEnabled}
+                query={chatSearch}
+                onChangeQuery={setChatSearch}
+                isSearchActive={isChatDestinationSearch}
+                people={chatSearchPeople}
+                conversations={chatSearchConversations}
+                isSearching={isSearchingChat}
+                error={chatSearchError}
+                iconSize={iconSize.sm}
+                onOpenConversation={openConversation}
+                canToggleFavorite={supportsChatFavorites && isChatConnected && isChatEnabled}
+                isFavoriteUpdating={isFavoriteUpdating}
+                onToggleFavorite={handleToggleFavorite}
+                homeSections={displayedChatHomeSections}
+              />
+              {chatNotifications.length > 0 ? (
+                <View style={styles.teamChatNotifications}>
+                  <View style={styles.teamChatNotificationsHeader}>
+                    <Text style={styles.teamChatNotificationsTitle}>Notifications</Text>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      onPress={() => acknowledgeNotifications({ clearAll: true })}
+                      disabled={!supportsRoomNotifications}
+                    >
+                      Clear all
+                    </Button>
+                  </View>
+                  {chatNotifications.map((notification) => (
+                    <View key={notification.notificationId} style={styles.teamChatNotificationCard}>
+                      <Pressable
+                        onPress={() => openConversation(notification.conversation)}
+                        accessibilityLabel={`Open ${notification.conversation.title}`}
+                        style={styles.teamChatNotificationOpen}
+                      >
+                        <Text style={styles.teamChatNotificationTitle} numberOfLines={1}>
+                          {notification.conversation.title}
+                        </Text>
+                        {notification.conversation.preview ? (
+                          <Text style={styles.teamChatNotificationPreview} numberOfLines={1}>
+                            {notification.conversation.preview}
+                          </Text>
+                        ) : null}
+                      </Pressable>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        onPress={() =>
+                          acknowledgeNotifications({
+                            notificationIds: [notification.notificationId],
+                          })
+                        }
+                        disabled={!supportsRoomNotifications}
+                      >
+                        Dismiss
+                      </Button>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
             </View>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <ZoomTeamChatConversationSheet
-        client={client}
-        conversation={selectedConversation}
-        onClose={closeConversation}
-      />
-    </>
+            {displayedChatHomeSections.map((section) => (
+              <View key={section.id}>
+                <DropdownMenuLabel>{section.label}</DropdownMenuLabel>
+                {section.conversations.map((conversation) => (
+                  <ZoomChatHomeConversationRow
+                    key={conversation.conversationId}
+                    conversation={conversation}
+                    iconSize={iconSize.sm}
+                    canToggleFavorite={supportsChatFavorites && isChatConnected && isChatEnabled}
+                    isFavoriteUpdating={isFavoriteUpdating(conversation.conversationId)}
+                    onOpenConversation={openConversation}
+                    onToggleFavorite={handleToggleFavorite}
+                  />
+                ))}
+                {section.collections.map((collection) => (
+                  <DropdownMenuItem
+                    key={collection.collectionId}
+                    description={collection.description ?? "Coming soon"}
+                    disabled
+                  >
+                    {collection.title}
+                  </DropdownMenuItem>
+                ))}
+              </View>
+            ))}
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -3490,7 +3739,10 @@ function WorkspaceHeaderTitleBar({
           onOpenContextManagement={onOpenContextManagement}
           onOpenProjectKnowledge={onOpenProjectKnowledge}
         />
-        <WorkspaceTeamChatButton serverId={normalizedServerId} />
+        <WorkspaceTeamChatButton
+          serverId={normalizedServerId}
+          workspaceId={normalizedWorkspaceId}
+        />
         <WorkspaceMeetingNotesButton
           serverId={normalizedServerId}
           workspaceId={normalizedWorkspaceId}
@@ -6825,6 +7077,29 @@ const styles = StyleSheet.create((theme) => ({
     gap: 0,
     paddingTop: theme.spacing[2],
   },
+  teamChatRoomPopup: {
+    backgroundColor: theme.colors.surface0,
+    height: 680,
+    width: 720,
+  },
+  teamChatRoomHeader: {
+    alignItems: "center",
+    backgroundColor: theme.colors.surface1,
+    borderBottomColor: theme.colors.border,
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    gap: theme.spacing[2],
+    justifyContent: "space-between",
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+  },
+  teamChatRoomTitle: {
+    color: theme.colors.foreground,
+    flex: 1,
+    fontSize: theme.fontSize.sm,
+    fontWeight: "600",
+    textAlign: "center",
+  },
   teamChatPopupHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -6994,6 +7269,41 @@ const styles = StyleSheet.create((theme) => ({
     marginHorizontal: theme.spacing[3],
     marginTop: theme.spacing[1],
   },
+  teamChatNotifications: {
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    gap: theme.spacing[1],
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+  },
+  teamChatNotificationsHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  teamChatNotificationsTitle: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    fontWeight: "600",
+  },
+  teamChatNotificationCard: {
+    alignItems: "center",
+    backgroundColor: theme.colors.surface1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[2],
+  },
+  teamChatNotificationOpen: { flex: 1, gap: 1, minWidth: 0 },
+  teamChatNotificationTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: "500",
+  },
+  teamChatNotificationPreview: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.xs },
   teamChatHomeConversation: {
     alignItems: "center",
     flexDirection: "row",

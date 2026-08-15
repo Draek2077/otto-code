@@ -35,6 +35,7 @@ import {
 import { TOOL_CALL_ICON_NAMES } from "./agent-types.js";
 import {
   CommunicationMessageSchema,
+  CommunicationRoomSchema,
   CommunicationSearchResultSchema,
   CommunicationsInboxHomeSchema,
   CommunicationsOverviewSchema,
@@ -3667,6 +3668,26 @@ export type CommunicationsInboxSetFavoriteResponse = z.infer<
   typeof CommunicationsInboxSetFavoriteResponseSchema
 >;
 
+// COMPAT(communicationsRoomNotifications): added in v0.8.15, remove gate after
+// 2027-02-15. Acknowledgement is daemon-local and must not be sent to old hosts.
+export const CommunicationsInboxNotificationsAcknowledgeRequestSchema = z.object({
+  type: z.literal("communications.inbox.notifications.acknowledge.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+  notificationIds: z.array(z.string().trim().min(1)).optional(),
+  conversationId: z.string().trim().min(1).optional(),
+  clearAll: z.boolean().optional(),
+});
+
+export const CommunicationsInboxNotificationsAcknowledgeResponseSchema = z.object({
+  type: z.literal("communications.inbox.notifications.acknowledge.response"),
+  payload: z.object({ home: CommunicationsInboxHomeSchema, requestId: z.string() }),
+});
+
+export type CommunicationsInboxNotificationsAcknowledgeResponse = z.infer<
+  typeof CommunicationsInboxNotificationsAcknowledgeResponseSchema
+>;
+
 export const CommunicationsInboxGetPresenceRequestSchema = z.object({
   type: z.literal("communications.inbox.get_presence.request"),
   requestId: z.string(),
@@ -3769,6 +3790,74 @@ export type CommunicationsInboxSendMessageRequest = z.infer<
 >;
 export type CommunicationsInboxSendMessageResponse = z.infer<
   typeof CommunicationsInboxSendMessageResponseSchema
+>;
+
+// COMPAT(communicationsRooms): added in v0.8.15, remove gate after 2027-02-15.
+// Room operations are deliberately a separate, provider-neutral surface. Older
+// hosts must never receive them from newer popup or workspace-tab renderers.
+export const CommunicationsRoomGetRequestSchema = z.object({
+  type: z.literal("communications.room.get.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+  conversationId: z.string().trim().min(1),
+});
+
+export const CommunicationsRoomGetResponseSchema = z.object({
+  type: z.literal("communications.room.get.response"),
+  payload: z.object({ room: CommunicationRoomSchema, requestId: z.string() }),
+});
+
+export const CommunicationsRoomThreadGetRequestSchema = z.object({
+  type: z.literal("communications.room.thread.get.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+  conversationId: z.string().trim().min(1),
+  parentMessageId: z.string().trim().min(1),
+});
+
+export const CommunicationsRoomThreadGetResponseSchema = z.object({
+  type: z.literal("communications.room.thread.get.response"),
+  payload: z.object({ messages: z.array(CommunicationMessageSchema), requestId: z.string() }),
+});
+
+export const CommunicationsRoomMessageSendRequestSchema = z.object({
+  type: z.literal("communications.room.message.send.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+  conversationId: z.string().trim().min(1),
+  text: z.string().trim().min(1),
+  parentMessageId: z.string().trim().min(1).nullable().optional(),
+});
+
+export const CommunicationsRoomMessageSendResponseSchema = z.object({
+  type: z.literal("communications.room.message.send.response"),
+  payload: z.object({ message: CommunicationMessageSchema, requestId: z.string() }),
+});
+
+export const CommunicationsRoomReactionSetRequestSchema = z.object({
+  type: z.literal("communications.room.reaction.set.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+  conversationId: z.string().trim().min(1),
+  messageId: z.string().trim().min(1),
+  emoji: z.string().trim().min(1),
+  active: z.boolean(),
+});
+
+export const CommunicationsRoomReactionSetResponseSchema = z.object({
+  type: z.literal("communications.room.reaction.set.response"),
+  payload: z.object({ message: CommunicationMessageSchema, requestId: z.string() }),
+});
+
+export type CommunicationsRoomGetResponse = z.infer<typeof CommunicationsRoomGetResponseSchema>;
+export type CommunicationsRoomThreadGetResponse = z.infer<
+  typeof CommunicationsRoomThreadGetResponseSchema
+>;
+export type CommunicationsRoomMessageSendResponse = z.infer<
+  typeof CommunicationsRoomMessageSendResponseSchema
+>;
+export type CommunicationsRoomReactionSetResponse = z.infer<
+  typeof CommunicationsRoomReactionSetResponseSchema
 >;
 
 // Daemon-owned, provider-neutral meeting transcript library. The initial
@@ -7620,11 +7709,16 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   CommunicationsInboxGetHomeRequestSchema,
   CommunicationsInboxSearchRequestSchema,
   CommunicationsInboxSetFavoriteRequestSchema,
+  CommunicationsInboxNotificationsAcknowledgeRequestSchema,
   CommunicationsInboxGetPresenceRequestSchema,
   CommunicationsInboxSetPresenceRequestSchema,
   CommunicationsInboxSetEnabledRequestSchema,
   CommunicationsInboxGetMessagesRequestSchema,
   CommunicationsInboxSendMessageRequestSchema,
+  CommunicationsRoomGetRequestSchema,
+  CommunicationsRoomThreadGetRequestSchema,
+  CommunicationsRoomMessageSendRequestSchema,
+  CommunicationsRoomReactionSetRequestSchema,
   MeetingsTranscriptsListRequestSchema,
   MeetingsTranscriptsCreateRequestSchema,
   MeetingsTranscriptsUpdateRequestSchema,
@@ -8404,6 +8498,13 @@ export const ServerInfoStatusPayloadSchema = z
         // A capable client receives daemon-owned presence queue transitions and
         // cooldown updates without polling its popup.
         communicationsPresenceUpdates: z.boolean().optional(),
+        // COMPAT(communicationsRooms): added in v0.8.15, remove gate after 2027-02-15.
+        // A room carries thread and reaction semantics an older daemon cannot
+        // safely emulate through the legacy flat inbox message RPCs.
+        communicationsRooms: z.boolean().optional(),
+        // COMPAT(communicationsRoomNotifications): added in v0.8.15, remove gate after 2027-02-15.
+        // Acknowledgement mutates daemon-local state and older hosts do not know this RPC.
+        communicationsRoomNotifications: z.boolean().optional(),
         // COMPAT(meetingTranscripts): added in v0.8.11, remove gate after 2027-02-13.
         meetingTranscripts: z.boolean().optional(),
         // COMPAT(integrationAuthorization): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
@@ -12691,12 +12792,17 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   CommunicationsInboxGetHomeResponseSchema,
   CommunicationsInboxSearchResponseSchema,
   CommunicationsInboxSetFavoriteResponseSchema,
+  CommunicationsInboxNotificationsAcknowledgeResponseSchema,
   CommunicationsInboxGetPresenceResponseSchema,
   CommunicationsInboxPresenceChangedNotificationSchema,
   CommunicationsInboxSetPresenceResponseSchema,
   CommunicationsInboxSetEnabledResponseSchema,
   CommunicationsInboxGetMessagesResponseSchema,
   CommunicationsInboxSendMessageResponseSchema,
+  CommunicationsRoomGetResponseSchema,
+  CommunicationsRoomThreadGetResponseSchema,
+  CommunicationsRoomMessageSendResponseSchema,
+  CommunicationsRoomReactionSetResponseSchema,
   MeetingsTranscriptsListResponseSchema,
   MeetingsTranscriptsCreateResponseSchema,
   MeetingsTranscriptsUpdateResponseSchema,

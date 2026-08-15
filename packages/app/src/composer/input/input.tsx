@@ -129,6 +129,10 @@ export interface MessageInputProps {
   attachments: ComposerAttachment[];
   cwd: string;
   attachmentMenuItems: AttachmentMenuItem[];
+  /** Hide agent-only attachment controls while retaining the composer chrome and control slots. */
+  showAttachmentButton?: boolean;
+  /** Hide the per-chat auto-speech toggle when this is a secondary composer. */
+  showAutoSpeechButton?: boolean;
   onAttachButtonRef?: (node: View | null) => void;
   onAddImages?: (images: ImageAttachment[]) => void;
   client: DaemonClient | null;
@@ -281,6 +285,21 @@ function AttachmentMenuList({ items }: { items: AttachmentMenuItem[] }) {
       ))}
     </>
   );
+}
+
+function AutoSpeechControl({
+  show,
+  serverId,
+  agentId,
+  buttonIconSize,
+}: {
+  show: boolean;
+  serverId: string | undefined;
+  agentId: string | undefined;
+  buttonIconSize: number;
+}) {
+  if (!show) return null;
+  return <AutoSpeechButton serverId={serverId} agentId={agentId} buttonIconSize={buttonIconSize} />;
 }
 
 function AttachmentSheetItem({
@@ -1237,6 +1256,8 @@ interface ResolvedMessageInputProps {
   attachments: ComposerAttachment[];
   cwd: string;
   attachmentMenuItems: AttachmentMenuItem[];
+  showAttachmentButton: boolean;
+  showAutoSpeechButton: boolean;
   onAttachButtonRef: ((node: View | null) => void) | undefined;
   onAddImages: ((images: ImageAttachment[]) => void) | undefined;
   client: DaemonClient | null;
@@ -1285,6 +1306,8 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
     attachments: props.attachments,
     cwd: props.cwd,
     attachmentMenuItems: props.attachmentMenuItems,
+    showAttachmentButton: props.showAttachmentButton ?? true,
+    showAutoSpeechButton: props.showAutoSpeechButton ?? true,
     onAttachButtonRef: props.onAttachButtonRef,
     onAddImages: props.onAddImages,
     client: props.client,
@@ -1338,6 +1361,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       attachments,
       cwd,
       attachmentMenuItems,
+      showAttachmentButton,
+      showAutoSpeechButton,
       onAttachButtonRef,
       onAddImages,
       client,
@@ -2086,15 +2111,17 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               <View style={toolbarContentStyle}>
                 {/* Toolbar left: attachment button + usage ring + agent controls */}
                 <View style={styles.leftButtonGroup} onLayout={handleToolbarLeftLayout}>
-                  <AttachmentDropdown
-                    isConnected={isConnected}
-                    disabled={disabled}
-                    attachButtonStyle={attachButtonStyle}
-                    renderAttachButtonIcon={renderAttachButtonIcon}
-                    attachmentMenuItems={attachmentMenuItems}
-                    addAttachmentLabel={t("composer.input.addAttachment")}
-                    addAttachmentTooltipLabel={t("composer.input.add")}
-                  />
+                  {showAttachmentButton ? (
+                    <AttachmentDropdown
+                      isConnected={isConnected}
+                      disabled={disabled}
+                      attachButtonStyle={attachButtonStyle}
+                      renderAttachButtonIcon={renderAttachButtonIcon}
+                      attachmentMenuItems={attachmentMenuItems}
+                      addAttachmentLabel={t("composer.input.addAttachment")}
+                      addAttachmentTooltipLabel={t("composer.input.add")}
+                    />
+                  ) : null}
                   {leadingContent}
                   {leftContent}
                 </View>
@@ -2102,7 +2129,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 {/* Right: auto-speech toggle, voice button, contextual button
                   (realtime/send/cancel) */}
                 <View style={styles.rightButtonGroup} onLayout={handleToolbarRightLayout}>
-                  <AutoSpeechButton
+                  <AutoSpeechControl
+                    show={showAutoSpeechButton}
                     serverId={voiceServerId}
                     agentId={voiceAgentId}
                     buttonIconSize={buttonIconSize}
