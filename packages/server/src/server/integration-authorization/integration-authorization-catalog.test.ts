@@ -14,7 +14,7 @@ describe("IntegrationAuthorizationCatalog", () => {
         label: "Sign in with Zoom",
         description: "Recommended. Connect through Otto's managed Zoom sign-in flow.",
         recommended: true,
-        availability: "planned",
+        availability: "available",
       },
     ]);
   });

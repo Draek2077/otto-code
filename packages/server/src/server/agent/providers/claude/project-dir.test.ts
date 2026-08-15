@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -18,8 +18,30 @@ const workspaceRoot = join(homedir(), ".otto-claude-parity-tests");
 const tmpWorkspaceRoot = join(tmpdir(), "otto-claude-parity");
 const createdSessionFiles: string[] = [];
 
+// Symlink creation is denied on Windows without Developer Mode / elevated
+// privileges (EPERM). Probe once and skip the symlink parity case there
+// rather than failing the whole suite on a host-level permission.
+async function canCreateSymlink(): Promise<boolean> {
+  const dir = await mkdtemp(join(tmpdir(), "otto-claude-parity-sym-"));
+  const target = join(dir, "target");
+  const link = join(dir, "link");
+  let supported = false;
+  try {
+    await symlink(target, link);
+    supported = true;
+  } catch {
+    supported = false;
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+  return supported;
+}
+
+const supportsSymlink = await canCreateSymlink();
+
 interface ParityCase {
   label: string;
+  skip?: boolean;
   build(): Promise<string>;
 }
 
@@ -46,6 +68,7 @@ const cases: ParityCase[] = [
   },
   {
     label: "user-defined symlink",
+    skip: !supportsSymlink,
     build: async () => {
       const real = await ensureDir(join(workspaceRoot, "real-target"));
       const link = join(workspaceRoot, "via-symlink");
@@ -87,7 +110,7 @@ describe("claudeProjectDir parity with Claude Agent SDK", () => {
   });
 
   for (const c of cases) {
-    test(c.label, async () => {
+    test(c.label, { skip: c.skip }, async () => {
       const cwd = await c.build();
       const sessionId = randomUUID();
 

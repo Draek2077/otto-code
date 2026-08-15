@@ -4,6 +4,27 @@ import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { FileObserver, type FileObserverDependencies } from "./observer.js";
 
+// Symlink creation is denied on Windows without Developer Mode / elevated
+// privileges (EPERM). Probe once and skip the symlink-dependent case there
+// rather than failing the whole suite on a host-level permission.
+async function canCreateSymlink(): Promise<boolean> {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "otto-file-observer-sym-"));
+  const target = path.join(dir, "target");
+  const link = path.join(dir, "link");
+  let supported = false;
+  try {
+    await symlink(target, link, "dir");
+    supported = true;
+  } catch {
+    supported = false;
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+  return supported;
+}
+
+const supportsSymlink = await canCreateSymlink();
+
 class ObservationControls implements FileObserverDependencies {
   watches = 0;
   closes = 0;
@@ -98,28 +119,32 @@ describe("FileObserver", () => {
     expect(controls.closes).toBe(1);
   });
 
-  test("publishes shared watcher updates in each subscriber's path coordinates", async () => {
-    const root = await workspace();
-    const aliasParent = await mkdtemp(path.join(os.tmpdir(), "otto-file-observer-alias-"));
-    roots.push(aliasParent);
-    const aliasRoot = path.join(aliasParent, "workspace-link");
-    await symlink(root, aliasRoot, "dir");
-    const controls = new ObservationControls();
-    const observer = new FileObserver(controls);
-    const updates: Array<{ cwd: string; path: string }> = [];
-    const direct = await observer.subscribe({ cwd: root, path: "file.txt" }, () => undefined);
-    const alias = await observer.subscribe({ cwd: aliasRoot, path: "file.txt" }, (version) =>
-      updates.push({ cwd: version.cwd, path: version.path }),
-    );
+  test(
+    "publishes shared watcher updates in each subscriber's path coordinates",
+    { skip: !supportsSymlink },
+    async () => {
+      const root = await workspace();
+      const aliasParent = await mkdtemp(path.join(os.tmpdir(), "otto-file-observer-alias-"));
+      roots.push(aliasParent);
+      const aliasRoot = path.join(aliasParent, "workspace-link");
+      await symlink(root, aliasRoot, "dir");
+      const controls = new ObservationControls();
+      const observer = new FileObserver(controls);
+      const updates: Array<{ cwd: string; path: string }> = [];
+      const direct = await observer.subscribe({ cwd: root, path: "file.txt" }, () => undefined);
+      const alias = await observer.subscribe({ cwd: aliasRoot, path: "file.txt" }, (version) =>
+        updates.push({ cwd: version.cwd, path: version.path }),
+      );
 
-    await writeFile(path.join(root, "file.txt"), "changed content", "utf8");
-    await controls.fileChanged("file.txt");
+      await writeFile(path.join(root, "file.txt"), "changed content", "utf8");
+      await controls.fileChanged("file.txt");
 
-    expect(controls.watches).toBe(1);
-    expect(updates).toEqual([{ cwd: aliasRoot, path: "file.txt" }]);
-    direct.unsubscribe();
-    alias.unsubscribe();
-  });
+      expect(controls.watches).toBe(1);
+      expect(updates).toEqual([{ cwd: aliasRoot, path: "file.txt" }]);
+      direct.unsubscribe();
+      alias.unsubscribe();
+    },
+  );
 
   test("publishes deletion without dropping the subscription", async () => {
     const root = await workspace();

@@ -118,6 +118,15 @@ async function waitFor(
 
 console.log("=== Daemon Restart (supervisor regression) ===\n");
 
+// This regression reads the supervised worker's PID via POSIX `ps ax -o
+// ppid=` and relies on SIGTERM delivery to the worker. Neither exists on
+// Windows (no `ps`, and process.kill maps signals to TerminateProcess), so the
+// test's premise does not hold there. Skip rather than fail on the platform.
+if (process.platform === "win32") {
+  console.log("Skipping restart supervisor regression on Windows (POSIX ps/SIGTERM required)");
+  process.exit(0);
+}
+
 const port = await getAvailablePort();
 const ottoHome = await mkdtemp(join(tmpdir(), "otto-restart-supervisor-"));
 const cliRoot = join(import.meta.dirname, "..");

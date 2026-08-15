@@ -182,7 +182,7 @@ try {
         "--name",
         "smoke-loop",
         "--verify-check",
-        "true",
+        "exit 0",
         "--json",
       ],
       { timeout: 30000 },

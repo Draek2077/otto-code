@@ -123,6 +123,16 @@ function waitForProcessExit(processRef: ChildProcess, timeoutMs: number): Promis
 
 console.log("=== Daemon SIGINT (supervisor regression) ===\n");
 
+// Signal-delivery regression: Node on Windows maps process.kill(pid, "SIGINT")
+// to TerminateProcess, which bypasses the supervisor's SIGINT handler entirely.
+// The graceful-shutdown-under-SIGINT behavior this test asserts is a POSIX
+// property and cannot be exercised (or observed failing) on Windows, so skip
+// there rather than fail on a platform premise the test does not hold.
+if (process.platform === "win32") {
+  console.log("Skipping SIGINT supervisor regression on Windows (no signal delivery)");
+  process.exit(0);
+}
+
 const port = await getAvailablePort();
 const ottoHome = await mkdtemp(join(tmpdir(), "otto-sigint-supervisor-"));
 const cliRoot = join(import.meta.dirname, "..");

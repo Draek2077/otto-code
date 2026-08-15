@@ -155,7 +155,7 @@ describe("desktop packaging", () => {
     expect(beforePack).toContain('new Set(["linux", "win"])');
     expect(beforePack).toContain("context.arch !== Arch.x64");
     expect(beforePack).toContain('"build-zoom-recorder-runtime.py"');
-    expect(beforePack).toContain('"bin",\n    "x64"');
+    expect(beforePack).toContain('"bin", "x64"');
     expect(buildRuntime).toContain('OUTPUT_ROOT = HELPER_ROOT / "bin" / "x64"');
     expect(buildRuntime).toContain('system not in {"Linux", "Windows"}');
     expect(buildRuntime).toContain("smoke_test(executable)");
