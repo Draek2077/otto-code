@@ -42,12 +42,14 @@ import { createCpuSampler, sample as sampleSystem } from "../sysmon.js";
 import { createHostApi, type HostJob, type HostJobRunner } from "./host-api.js";
 import { errorMessage } from "./http-util.js";
 import { createRouter, Telemetry } from "./router.js";
-import { BrainStatusPublisher } from "./status-events.js";
+import { Scheduler } from "./scheduler.js";
+import { BrainLogPublisher, BrainStatusPublisher } from "./status-events.js";
 import { Supervisor } from "./supervisor.js";
 import * as tailscale from "./tailscale.js";
 import { CertManager, resolveTlsOptions, type SecurePair } from "./tls.js";
 import { removePidFile, writePidFile } from "./pid-lock.js";
 import { createBrainRunLog } from "./run-log.js";
+import { formatBrainLog, type BrainLogArea } from "./log-format.js";
 
 /** The effective config with secrets masked, for the `/__host/config` read. */
 function redactConfig(config: BrainConfig): BrainConfig {
@@ -137,7 +139,16 @@ class ServiceJobRunner implements HostJobRunner {
   constructor(
     private readonly onPullCompleted: () => void,
     private readonly runResidentJob: ResidentJobRunner,
+    private readonly scheduler: Scheduler,
+    private readonly resolveTarget: (target: string | null) => Model | null,
+    private readonly log: (area: BrainLogArea, line: string) => void,
   ) {}
+
+  private area(kind: HostJob["kind"]): BrainLogArea {
+    return kind === "pull" || kind === "runtime-install" || kind === "runtime-remove"
+      ? "library"
+      : "model";
+  }
 
   start(
     kind: HostJob["kind"],
@@ -158,17 +169,32 @@ class ServiceJobRunner implements HostJobRunner {
           for (const component of components) existing.pull.components.add(component);
           existing.pull.queue.push({ args: componentOnlyArgs(args, components), components });
           existing.message = `Queued ${components.join(", ")}…`;
+          this.log(
+            "library",
+            `job ${existing.id} queued bundle components: ${components.join(", ")}`,
+          );
         }
         return this.publicJob(existing);
       }
     }
 
+    const isResidentOperation = kind === "calibrate" || kind === "sweep" || kind === "bench";
     const running = [...this.jobs.values()].find((job) => job.status === "running");
     const activeNonDownload = [...this.jobs.values()].find(
       (job) => job.status === "running" && job.kind !== "pull",
     );
-    const conflict = canRunAlongsideModelPull(kind) ? activeNonDownload : running;
+    // Resident operations join Scheduler instead of rejecting one another. It
+    // owns their turn order with API requests and performs every model swap.
+    const conflict = isResidentOperation
+      ? undefined
+      : canRunAlongsideModelPull(kind)
+        ? activeNonDownload
+        : running;
     if (conflict) throw new Error(`Another operation is already running (${conflict.label}).`);
+    const residentTarget = isResidentOperation ? this.resolveTarget(target) : null;
+    if (isResidentOperation && !residentTarget) {
+      throw new Error("No installed model is available for this operation.");
+    }
     const job: ServiceJob = {
       id: `brainjob_${randomUUID()}`,
       kind,
@@ -198,23 +224,41 @@ class ServiceJobRunner implements HostJobRunner {
         : {}),
     };
     this.jobs.set(job.id, job);
+    this.log(this.area(job.kind), `job ${job.id} started: ${job.label}`);
 
     if (kind === "calibrate" || kind === "sweep" || kind === "bench") {
+      const model = residentTarget!;
       const controller = new AbortController();
       job.controller = controller;
-      void this.runResidentJob(
-        kind,
-        target,
-        {
-          message: (value) => {
-            if (job.status === "running") job.message = value.slice(-1000);
+      job.queuePosition = this.scheduler.stats().queued + 1;
+      job.message = `Queued for ${model.displayName}`;
+      void this.scheduler
+        .submit(
+          model,
+          () =>
+            controller.signal.aborted
+              ? Promise.reject(new Error("Operation canceled."))
+              : this.runResidentJob(
+                  kind,
+                  model.id,
+                  {
+                    message: (value) => {
+                      if (job.status === "running") job.message = value.slice(-1000);
+                    },
+                    percent: (value) => {
+                      if (job.status === "running") job.percent = value;
+                    },
+                  },
+                  controller.signal,
+                ),
+          {
+            kind: kind === "bench" ? "benchmark" : kind,
+            onStart: () => {
+              job.queuePosition = null;
+              job.message = `${job.label} started`;
+            },
           },
-          percent: (value) => {
-            if (job.status === "running") job.percent = value;
-          },
-        },
-        controller.signal,
-      )
+        )
         .then(() => this.finish(job, "succeeded", null))
         .catch((error: unknown) =>
           this.finish(job, controller.signal.aborted ? "canceled" : "failed", errorMessage(error)),
@@ -234,12 +278,18 @@ class ServiceJobRunner implements HostJobRunner {
     const child = spawn(process.execPath, [entry, ...args], {
       cwd: process.cwd(),
       env: process.env,
-      stdio: ["ignore", "ignore", "pipe"],
+      stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     });
     job.child = child;
+    this.log(
+      this.area(job.kind),
+      `job ${job.id} spawned pid ${child.pid ?? "unknown"}: ${args.join(" ")}`,
+    );
+    child.stdout?.setEncoding("utf8");
     child.stderr?.setEncoding("utf8");
-    child.stderr?.on("data", (chunk: string) => this.ingestOutput(job, chunk));
+    child.stdout?.on("data", (chunk: string) => this.ingestOutput(job, "stdout", chunk));
+    child.stderr?.on("data", (chunk: string) => this.ingestOutput(job, "stderr", chunk));
     child.once("error", (error) => this.finish(job, "failed", error.message));
     child.once("close", (code) => {
       if (job.status !== "running") return;
@@ -275,7 +325,7 @@ class ServiceJobRunner implements HostJobRunner {
     });
   }
 
-  async query(args: string[]): Promise<unknown> {
+  async query(args: string[], area: BrainLogArea = "library"): Promise<unknown> {
     const entry = process.argv[1];
     if (!entry) throw new Error("The brain service has no CLI entry point.");
     return new Promise((resolve, reject) => {
@@ -289,10 +339,21 @@ class ServiceJobRunner implements HostJobRunner {
       let err = "";
       child.stdout?.setEncoding("utf8");
       child.stderr?.setEncoding("utf8");
-      child.stdout?.on("data", (chunk: string) => (out += chunk));
-      child.stderr?.on("data", (chunk: string) => (err += chunk));
-      child.once("error", reject);
+      this.log(area, `query started: ${args.join(" ")}`);
+      child.stdout?.on("data", (chunk: string) => {
+        out += chunk;
+        this.logOutput(area, "query stdout", chunk);
+      });
+      child.stderr?.on("data", (chunk: string) => {
+        err += chunk;
+        this.logOutput(area, "query stderr", chunk);
+      });
+      child.once("error", (error) => {
+        this.log(area, `query failed to start: ${error.message}`);
+        reject(error);
+      });
       child.once("close", (code) => {
+        this.log(area, `query exited with code ${code}`);
         if (code !== 0) return reject(new Error(err.trim() || `Exited with code ${code}.`));
         try {
           resolve(JSON.parse(out));
@@ -329,17 +390,19 @@ class ServiceJobRunner implements HostJobRunner {
     } else {
       child.kill("SIGTERM");
     }
+    this.log(this.area(job.kind), `canceling job ${job.id}`);
     this.finish(job, "canceled", "Canceled.");
     return this.list();
   }
 
-  private ingestOutput(job: ServiceJob, chunk: string): void {
+  private ingestOutput(job: ServiceJob, source: "stdout" | "stderr", chunk: string): void {
     for (const line of chunk
       .split(/[\r\n]+/u)
       .map((value) => value.trim())
       .filter(Boolean)) {
       const progress = /(\d{1,3})\s*%/u.exec(line);
       if (progress) job.percent = Math.max(0, Math.min(100, Number(progress[1])));
+      this.log(this.area(job.kind), `job ${job.id} ${source}: ${line}`);
       // The final JSON result is not a useful status label. Keep progress and
       // actionable text instead, so a failed bundle pull tells the user why.
       if (line !== "[" && !/^[\]{}",]+$/u.test(line)) job.message = line.slice(-1000);
@@ -354,6 +417,16 @@ class ServiceJobRunner implements HostJobRunner {
     job.error = error;
     job.finishedAt = new Date().toISOString();
     if (status === "succeeded") job.percent = 100;
+    this.log(this.area(job.kind), `job ${job.id} ${status}${error ? `: ${error}` : ""}`);
+  }
+
+  private logOutput(area: BrainLogArea, source: string, chunk: string): void {
+    for (const line of chunk
+      .split(/[\r\n]+/u)
+      .map((entry) => entry.trim())
+      .filter(Boolean)) {
+      this.log(area, `${source}: ${line}`);
+    }
   }
 
   private publicJob({
@@ -435,9 +508,16 @@ export async function startService({
   onLog = () => {},
 }: StartServiceOptions): Promise<ServiceHandle> {
   const runLog = createBrainRunLog(env);
-  const log = (line: string): void => {
-    runLog.write(line);
-    onLog(line);
+  const logEvents = new BrainLogPublisher();
+  const log = (area: BrainLogArea, message: string): void => {
+    const line = formatBrainLog(area, message);
+    for (const entry of runLog.write(line)) {
+      logEvents.publish(entry);
+      // The daemon also captures this foreground child's stderr before the
+      // management listener exists. Give it the exact durable entry, rather
+      // than a second un-timestamped rendering of the same event.
+      onLog(entry);
+    }
   };
   // The management API must be useful before any setup exists: the Brain page
   // is where the owner downloads both a runtime and their first model. Keep the
@@ -501,7 +581,10 @@ export async function startService({
       // A removed default or last-used model must not take the management
       // service down. An explicit CLI selection remains an actionable error.
       if (modelNeedle) throw error;
-      log(`note: ${error instanceof Error ? error.message : "configured model is unavailable"}`);
+      log(
+        "server",
+        `note: ${error instanceof Error ? error.message : "configured model is unavailable"}`,
+      );
     }
   }
   let profile = model ? forModel(store, model, config.defaults) : null;
@@ -519,23 +602,26 @@ export async function startService({
       // An automatic startup candidate that cannot load must therefore leave
       // the host alive and unloaded, not make the only recovery surface vanish.
       log(
+        "model",
         `note: not loading ${model.displayName}: ${fit.reason ?? "does not fit in available VRAM"}`,
       );
       model = null;
       profile = null;
     } else {
-      if (fit.adjusted && fit.reason) log(`note: ${fit.reason}`);
+      if (fit.adjusted && fit.reason) log("model", `note: ${fit.reason}`);
       profile = fit.profile;
     }
   }
 
   const telemetry = new Telemetry();
-  const supervisor = new Supervisor({ runtime, paths, getProfilesStore: () => store });
-  supervisor.on("log", (line: string) => {
-    runLog.write(line);
-    if (/error|failed|warn/i.test(line)) onLog(line);
+  const supervisor = new Supervisor({
+    runtime,
+    paths,
+    getProfilesStore: () => store,
+    logVerbosity: config.runtime.logVerbosity,
   });
-  supervisor.on("crashed", (error: string) => runLog.write(`FATAL ${error}`));
+  supervisor.on("log", (line: string) => log("server", line));
+  supervisor.on("crashed", (error: string) => log("model", `FATAL ${error}`));
 
   // Serialize model switches: the router queues request-driven switches, but the
   // config path (POST /__host/config) calls loadModel directly. Chaining here
@@ -625,14 +711,6 @@ export async function startService({
       : null;
     if (!targetModel) throw new Error("No installed model is available for this operation.");
 
-    const restoreModel = supervisor.model;
-    const restoreProfile = supervisor.profile;
-    const restore = async (): Promise<void> => {
-      if (restoreModel && restoreProfile && !signal.aborted) {
-        await supervisor.start(restoreModel, restoreProfile, { preserveLogs: true });
-      }
-    };
-
     if (kind === "calibrate") {
       const runtime = supervisor.runtime ?? resolveRuntime(config, env);
       if (!runtime)
@@ -640,36 +718,30 @@ export async function startService({
       const profile = forModel(store, targetModel, config.defaults);
       update.message(`Calibrating ${targetModel.displayName}`);
       supervisor.recordLog(`operation calibrate: ${targetModel.displayName}`);
-      try {
-        const measurement = await calibrate({
-          runtime,
-          model: targetModel,
-          profile,
-          supervisor,
-          onProgress: (event) => {
-            ensureActive();
-            const message =
-              event.phase === "loading"
-                ? `Calibrating ${event.contextSize.toLocaleString()} context`
-                : event.phase === "measured"
-                  ? `Measured ${event.contextSize.toLocaleString()} context`
-                  : (event.reason ??
-                    event.error ??
-                    `Skipped ${event.contextSize.toLocaleString()} context`);
-            update.message(message);
-            supervisor.recordLog(`operation calibrate: ${message}`);
-          },
-        });
-        ensureActive();
-        putCalibration(store, targetModel, profile, measurement);
-        saveProfilesStore(store, paths);
-        update.percent(100);
-        supervisor.recordLog(
-          `operation calibrate: saved measurement for ${targetModel.displayName}`,
-        );
-      } finally {
-        await restore();
-      }
+      const measurement = await calibrate({
+        runtime,
+        model: targetModel,
+        profile,
+        supervisor,
+        onProgress: (event) => {
+          ensureActive();
+          const message =
+            event.phase === "loading"
+              ? `Calibrating ${event.contextSize.toLocaleString()} context`
+              : event.phase === "measured"
+                ? `Measured ${event.contextSize.toLocaleString()} context`
+                : (event.reason ??
+                  event.error ??
+                  `Skipped ${event.contextSize.toLocaleString()} context`);
+          update.message(message);
+          supervisor.recordLog(`operation calibrate: ${message}`);
+        },
+      });
+      ensureActive();
+      putCalibration(store, targetModel, profile, measurement);
+      saveProfilesStore(store, paths);
+      update.percent(100);
+      supervisor.recordLog(`operation calibrate: saved measurement for ${targetModel.displayName}`);
       return;
     }
 
@@ -680,43 +752,39 @@ export async function startService({
       const profile = forModel(store, targetModel, config.defaults);
       update.message(`Sweeping ${targetModel.displayName}`);
       supervisor.recordLog(`operation sweep: ${targetModel.displayName}`);
-      try {
-        const report = await sweep({
-          runtime,
-          model: targetModel,
-          profile,
-          supervisor,
-          onProgress: (event) => {
-            ensureActive();
-            const message =
-              event.phase === "loading"
-                ? `Budget ${event.budget}: loading`
-                : event.phase === "generating"
-                  ? `Budget ${event.budget}: generating`
-                  : event.phase === "done"
-                    ? `Budget ${event.budget}: complete`
-                    : `Budget ${event.budget}: ${event.error ?? "failed"}`;
-            update.message(message);
-            supervisor.recordLog(`operation sweep: ${message}`);
-          },
-        });
-        ensureActive();
-        if (report.recommended !== null) {
-          profile.reasoningBudget = report.recommended;
-          put(store, targetModel, profile);
-          saveProfilesStore(store, paths);
-          supervisor.recordLog(`operation sweep: saved budget ${report.recommended}`);
-        }
-        update.percent(100);
-      } finally {
-        await restore();
+      const report = await sweep({
+        runtime,
+        model: targetModel,
+        profile,
+        supervisor,
+        onProgress: (event) => {
+          ensureActive();
+          const message =
+            event.phase === "loading"
+              ? `Budget ${event.budget}: loading`
+              : event.phase === "generating"
+                ? `Budget ${event.budget}: generating`
+                : event.phase === "done"
+                  ? `Budget ${event.budget}: complete`
+                  : `Budget ${event.budget}: ${event.error ?? "failed"}`;
+          update.message(message);
+          supervisor.recordLog(`operation sweep: ${message}`);
+        },
+      });
+      ensureActive();
+      if (report.recommended !== null) {
+        profile.reasoningBudget = report.recommended;
+        put(store, targetModel, profile);
+        saveProfilesStore(store, paths);
+        supervisor.recordLog(`operation sweep: saved budget ${report.recommended}`);
       }
+      update.percent(100);
       return;
     }
 
     update.message(`Benchmarking ${targetModel.displayName}`);
     supervisor.recordLog(`operation benchmark: ${targetModel.displayName}`);
-    await loadModel(targetModel);
+    // Scheduler loaded this exact model before admitting the exclusive turn.
     ensureActive();
     supervisor.recordLog(`operation benchmark: resident model ready`);
     const profile = supervisor.profile ?? forModel(store, targetModel, config.defaults);
@@ -765,7 +833,26 @@ export async function startService({
     update.percent(100);
     supervisor.recordLog(`operation benchmark: saved result for ${targetModel.displayName}`);
   };
-  const jobs = new ServiceJobRunner(rescanCatalog, runResidentJob);
+  const scheduler = new Scheduler({
+    supervisor,
+    loadModel,
+    logger: (message) => log("api", `WARN ${message}`),
+    onChange: () => statusEvents.notify(),
+  });
+  const jobs = new ServiceJobRunner(
+    rescanCatalog,
+    runResidentJob,
+    scheduler,
+    (target) => {
+      const modelId = target ?? supervisor.model?.id ?? store.lastModelId ?? null;
+      return modelId
+        ? (catalog.find(
+            (candidate) => candidate.id === modelId || candidate.displayName === modelId,
+          ) ?? null)
+        : null;
+    },
+    log,
+  );
   // Assigned once `stop` exists below. This indirection lets the management API
   // answer a remote restart request before closing its own socket.
   let requestRestart = (): void => {};
@@ -786,6 +873,7 @@ export async function startService({
       }
     },
     loadModel,
+    scheduler,
     // The same gate as POST /__host/config. Deleting someone's model files over
     // the network is strictly more dangerous than changing their default model,
     // so it does not get a weaker one.
@@ -794,15 +882,21 @@ export async function startService({
     sampleResources: () =>
       sampleSystem(cpuSampler, { host: supervisor.host, port: supervisor.internalPort }),
     statusEvents,
+    logEvents,
     jobs,
+    runLog,
     restart: () => requestRestart(),
+    log,
   });
 
   const handler = withAuth(
     createRouter({
       supervisor,
       telemetry,
-      logger: { warn: (m: string) => log(`WARN ${m}`) },
+      logger: {
+        info: (m: string) => log("api", m),
+        warn: (m: string) => log("api", `WARN ${m}`),
+      },
       getCatalog: () => catalog,
       loadModel,
       version: resolveVersion(),
@@ -817,6 +911,7 @@ export async function startService({
       // time in parallel: the shared rate tracker needs one ordered timeline.
       getResources: () => sampleSystem(cpuSampler),
       statusEvents,
+      scheduler,
     }),
     authToken,
   );
@@ -827,12 +922,18 @@ export async function startService({
   let certManager: CertManager | null = null;
   let server: http.Server;
   if (tlsOptions) {
-    certManager = new CertManager({ ...tlsOptions, logger: { info: onLog, warn: onLog } });
+    certManager = new CertManager({
+      ...tlsOptions,
+      logger: {
+        info: (message) => log("server", message),
+        warn: (message) => log("server", message),
+      },
+    });
     const secure = await certManager.load();
     const httpsServer = https.createServer({ key: secure.key, cert: secure.cert }, handler);
     certManager.on("renewed", (pair: SecurePair) => {
       httpsServer.setSecureContext({ key: pair.key, cert: pair.cert });
-      onLog("note: TLS certificate hot-swapped");
+      log("server", "note: TLS certificate hot-swapped");
     });
     server = httpsServer;
   } else {
@@ -841,10 +942,19 @@ export async function startService({
   server.keepAliveTimeout = 75_000;
   server.requestTimeout = 0;
 
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(port, bindHost, resolve);
-  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(port, bindHost, resolve);
+    });
+  } catch (error) {
+    // A listener can fail before the host API exists, so this cannot travel
+    // through the host's own SSE endpoint. It still belongs to this service
+    // session: the foreground daemon child relays this timestamped entry until
+    // that endpoint becomes available.
+    log("server", `FATAL Brain service startup failed: ${errorMessage(error)}`);
+    throw error;
+  }
   certManager?.start();
 
   if (model && profile && runtime) {
@@ -853,9 +963,9 @@ export async function startService({
     store.lastModelId = model.id;
     saveProfilesStore(store, paths);
   } else if (!runtime) {
-    log("ready: no llama.cpp runtime installed; use the Library tab to download one");
+    log("server", "ready: no llama.cpp runtime installed; use the Library tab to download one");
   } else {
-    log("ready: no model installed; use the Library tab to download one");
+    log("server", "ready: no model installed; use the Library tab to download one");
   }
   writePidFile(
     {
@@ -869,16 +979,21 @@ export async function startService({
     env,
   );
   log(
+    "server",
     `ready: ${supervisor.model?.displayName ?? "no model loaded"} on ${bindHost}:${port}; run log ${runLog.path}`,
   );
 
   const stop = async (): Promise<void> => {
     certManager?.stop();
-    log("Brain service stopping");
+    log("server", "Brain service stopping");
+    await supervisor.stop();
+    // Publish the terminal outcome before closing the SSE responses below.
+    // Once the listener is closed, the daemon can still report the child exit,
+    // but it cannot receive this service-owned, durable session-log entry.
+    log("server", "Brain service stopped");
     // Before server.close(), which waits on open connections: a subscribed
     // daemon holds an SSE response open indefinitely by design.
     statusEvents.close();
-    await supervisor.stop();
     server.closeIdleConnections?.();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     removePidFile(env);

@@ -298,7 +298,7 @@ function makeConfig(providers: MutableDaemonConfig["providers"] = {}): MutableDa
       remote: { host: "", port: 1234, secure: false, authToken: null, certFingerprint: null },
       listen: { host: "127.0.0.1", port: 1234 },
       defaultModel: null,
-      runtime: { source: "auto", path: null },
+      runtime: { source: "auto", path: null, logVerbosity: 3 },
       lockModel: false,
       allowRemoteConfig: false,
       allowInsecureBind: false,

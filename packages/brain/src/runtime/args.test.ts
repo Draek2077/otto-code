@@ -22,9 +22,31 @@ test("emits only enabled component paths for llama.cpp", () => {
   } as Profile;
   const args = buildArgs(profile, { port: 20800 });
   assert.deepEqual(args.slice(-4), ["--reasoning-budget", "1536", "--parallel", "1"]);
+  assert.ok(args.includes("--no-ui"));
+  assert.ok(!args.includes("--no-webui"));
+  assert.deepEqual(args.slice(args.indexOf("-lv"), args.indexOf("-lv") + 2), ["-lv", "3"]);
   assert.ok(args.includes("--mmproj"));
   assert.ok(args.includes("--model-draft"));
   assert.equal(args[args.indexOf("--model-draft") + 1], "/models/draft.gguf");
+});
+
+test("passes the configured llama.cpp log verbosity", () => {
+  const profile = {
+    modelPath: "/models/main.gguf",
+    contextSize: 8192,
+    cacheTypeK: "q8_0",
+    cacheTypeV: "q8_0",
+    flashAttention: true,
+    gpuLayers: 999,
+    vision: false,
+    reasoningBudget: 1536,
+    parallelSlots: 1,
+    extraArgs: [],
+  } as Profile;
+
+  const args = buildArgs(profile, { port: 20800, logVerbosity: 5 });
+
+  assert.deepEqual(args.slice(args.indexOf("-lv"), args.indexOf("-lv") + 2), ["-lv", "5"]);
 });
 
 test("passes a supported model's preserve reasoning setting through its native template argument", () => {

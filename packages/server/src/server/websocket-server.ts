@@ -26,6 +26,11 @@ import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-m
 import { redactDaemonConfigForClient } from "./daemon-config-store.js";
 import type { DaemonConfigStore, MutableDaemonConfig } from "./daemon-config-store.js";
 import type { ConnectorOAuthBroker } from "./connectors/connector-oauth.js";
+import { CommunicationsService } from "./communications/communications-service.js";
+import { ZoomTeamChatManagedAuthorizationBroker } from "./communications/zoom-team-chat-managed-authorization.js";
+import { IntegrationAuthorizationCatalog } from "./integration-authorization/integration-authorization-catalog.js";
+import { IntegrationBrowserAuthorizationService } from "./integration-authorization/browser-authorization-service.js";
+import { IntegrationAuthorizationService } from "./integration-authorization/integration-authorization-service.js";
 
 // Normalize an optional constructor dependency to null. A function rather than
 // an inline `?? null` per field: this constructor takes forty-odd positional
@@ -606,6 +611,11 @@ export class VoiceAssistantWebSocketServer {
   private readonly worktreesRoot: string | undefined;
   private readonly daemonConfigStore: DaemonConfigStore;
   private readonly connectorOAuthBroker: ConnectorOAuthBroker | null;
+  private readonly communicationsService: CommunicationsService;
+  private readonly integrationAuthorization: IntegrationAuthorizationService | null;
+  private readonly integrationAuthorizationCatalog: IntegrationAuthorizationCatalog;
+  private readonly integrationBrowserAuthorization: IntegrationBrowserAuthorizationService | null;
+  private readonly zoomTeamChatAuthorization: ZoomTeamChatManagedAuthorizationBroker | null;
   private readonly pushTokenStore: PushTokenStore;
   private readonly pushNotificationSender: PushNotificationSender;
   private readonly mcpBaseUrl: string | null;
@@ -712,6 +722,11 @@ export class VoiceAssistantWebSocketServer {
     graphStore?: GraphStore | null,
     hubRelationships?: HubRelationshipManagement | null,
     connectorOAuthBroker?: ConnectorOAuthBroker | null,
+    communicationsService?: CommunicationsService,
+    integrationAuthorization?: IntegrationAuthorizationService | null,
+    integrationAuthorizationCatalog?: IntegrationAuthorizationCatalog,
+    integrationBrowserAuthorization?: IntegrationBrowserAuthorizationService | null,
+    zoomTeamChatAuthorization?: ZoomTeamChatManagedAuthorizationBroker | null,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -795,6 +810,12 @@ export class VoiceAssistantWebSocketServer {
     this.worktreesRoot = daemonRuntimeConfig?.worktreesRoot;
     this.daemonConfigStore = daemonConfigStore;
     this.connectorOAuthBroker = orNull(connectorOAuthBroker);
+    this.communicationsService = communicationsService ?? new CommunicationsService();
+    this.integrationAuthorization = integrationAuthorization ?? null;
+    this.integrationAuthorizationCatalog =
+      integrationAuthorizationCatalog ?? new IntegrationAuthorizationCatalog();
+    this.integrationBrowserAuthorization = orNull(integrationBrowserAuthorization);
+    this.zoomTeamChatAuthorization = orNull(zoomTeamChatAuthorization);
     this.mcpBaseUrl = mcpBaseUrl;
     this.assignOptionalServices({
       speech,
@@ -937,6 +958,14 @@ export class VoiceAssistantWebSocketServer {
             wrapSessionMessage({
               type: "status",
               payload: { status: "brain_status_changed", brain },
+            }),
+          );
+        },
+        onLogLine: (line) => {
+          this.broadcast(
+            wrapSessionMessage({
+              type: "status",
+              payload: { status: "brain_log_line_added", line },
             }),
           );
         },
@@ -1653,6 +1682,11 @@ export class VoiceAssistantWebSocketServer {
       ...(this.agentAutoTitle ? { agentAutoTitle: this.agentAutoTitle } : {}),
       daemonConfigStore: this.daemonConfigStore,
       connectorOAuthBroker: this.connectorOAuthBroker,
+      communicationsService: this.communicationsService,
+      integrationAuthorization: this.integrationAuthorization,
+      integrationAuthorizationCatalog: this.integrationAuthorizationCatalog,
+      integrationBrowserAuthorization: this.integrationBrowserAuthorization,
+      zoomTeamChatAuthorization: this.zoomTeamChatAuthorization,
       mcpBaseUrl: this.mcpBaseUrl,
       stt: () => this.speech?.resolveStt() ?? null,
       sttLanguage: this.speech?.resolveSttLanguage() ?? "en",
@@ -2030,6 +2064,28 @@ export class VoiceAssistantWebSocketServer {
         connectors: true,
         // COMPAT(connectorOauth): added in v0.7.7, drop the gate when daemon floor >= v0.7.7.
         connectorOauth: true,
+        // COMPAT(communications): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
+        communications: true,
+        // COMPAT(communicationsChatHome): added in v0.8.12, remove gate after 2027-02-14.
+        communicationsChatHome: true,
+        // COMPAT(communicationsInboxSearch): added in v0.8.13, remove gate after 2027-02-15.
+        communicationsInboxSearch: true,
+        // COMPAT(communicationsFavorites): added in v0.8.14, remove gate after 2027-02-15.
+        communicationsFavorites: true,
+        // COMPAT(communicationsPresence): added in v0.8.12, remove gate after 2027-02-14.
+        communicationsPresence: true,
+        // COMPAT(communicationsChatAvailability): added in v0.8.12, remove gate after 2027-02-14.
+        communicationsChatAvailability: true,
+        // COMPAT(communicationsPresenceChangeTiming): added in v0.8.12, remove gate after 2027-02-14.
+        communicationsPresenceChangeTiming: true,
+        // COMPAT(communicationsPresenceUpdates): added in v0.8.12, remove gate after 2027-02-14.
+        communicationsPresenceUpdates: true,
+        // COMPAT(meetingTranscripts): added in v0.8.11, remove gate after 2027-02-13.
+        meetingTranscripts: true,
+        // COMPAT(integrationAuthorization): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
+        integrationAuthorization: this.integrationAuthorization !== null,
+        // COMPAT(integrationAuthorizationBrowserFlow): added in v0.8.10, remove gate after 2027-02-14.
+        integrationAuthorizationBrowserFlow: this.integrationBrowserAuthorization !== null,
         // COMPAT(agentBehaviorToggles): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
         agentBehaviorToggles: true,
         // COMPAT(todoReminders): added in v0.7.5, drop the gate when daemon floor >= v0.7.5.
@@ -2076,6 +2132,10 @@ export class VoiceAssistantWebSocketServer {
         // as a child: brain.host.status/start/stop/restart, the editable `brain`
         // config block, kill-on-shutdown.
         brainControl: true,
+        // COMPAT(brainRuntimeLogVerbosity): added in v0.8.10, drop the gate when
+        // daemon floor >= v0.8.10. Daemon persists the llama.cpp `-lv` level and
+        // passes it to every resident Brain runtime launch.
+        brainRuntimeLogVerbosity: true,
         // COMPAT(brainStatus): added in v0.7.5, remove gate after 2026-01-30 once
         // daemon floor >= v0.7.5. Daemon serves brain.evals.get (and the brain's
         // status fields on brain.host.status).
@@ -2106,6 +2166,10 @@ export class VoiceAssistantWebSocketServer {
         // while the selected brain also advertises `capabilities.events`.
         // BrainManager re-broadcasts server_info when that flips.
         brainStatusPush: this.brainManager?.supportsStatusEvents() === true,
+        // COMPAT(brainLogPush): added in v0.8.10, drop the gate when daemon
+        // floor >= v0.8.10. A capable Brain publishes each durable log line
+        // through the daemon instead of waiting for the Logs tab's next poll.
+        brainLogPush: this.brainManager?.supportsLogEvents() === true,
         // COMPAT(brainManage): added in v0.7.5, remove gate after 2026-07-30
         // once daemon floor >= v0.7.5. Daemon drives the brain's model/runtime
         // verbs (scan/catalog/runtime list) and long jobs (pull/runtime

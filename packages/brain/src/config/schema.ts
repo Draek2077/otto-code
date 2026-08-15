@@ -218,6 +218,8 @@ export const RuntimeConfigSchema = z
     // auto = prefer a managed runtime, fall back to LM Studio discovery.
     source: z.enum(["auto", "managed", "lmstudio"]).default("auto"),
     path: z.string().nullable().default(null),
+    /** llama.cpp's `--log-verbosity`: 0 generic output through 5 debug. */
+    logVerbosity: z.number().int().min(0).max(5).default(3),
   })
   .strict();
 export type RuntimeConfig = z.infer<typeof RuntimeConfigSchema>;

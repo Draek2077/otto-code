@@ -54,8 +54,15 @@ import { runtimeBuild } from "../runtime/index.js";
 import * as vram from "../vram.js";
 import type { SystemSample } from "../sysmon.js";
 import { errorMessage, readJsonBody, sendError, sendJson } from "./http-util.js";
-import type { BrainStatusPublisher, BrainStatusSnapshot } from "./status-events.js";
+import type {
+  BrainLogPublisher,
+  BrainStatusPublisher,
+  BrainStatusSnapshot,
+} from "./status-events.js";
 import type { Supervisor } from "./supervisor.js";
+import type { Scheduler } from "./scheduler.js";
+import type { BrainRunLog } from "./run-log.js";
+import type { BrainLogArea } from "./log-format.js";
 
 const MAX_PATCH_BYTES = 256 * 1024;
 const MAX_DISPLAY_NAME = 200;
@@ -125,6 +132,8 @@ export interface HostCapabilities {
   events: boolean;
   /** Bounded live inference stages, token counts and throughput on status events. */
   liveInference: boolean;
+  /** Every completed Brain log line arrives immediately on the SSE stream. */
+  logEvents: boolean;
   /** Whether writes are currently permitted (allowRemoteConfig). */
   writable: boolean;
   /** POST/GET /__host/jobs and POST /__host/jobs/cancel. */
@@ -140,6 +149,8 @@ export interface HostJob {
   label: string;
   target: string | null;
   status: "running" | "succeeded" | "failed" | "canceled";
+  /** Positive while the shared scheduler has not admitted this operation yet. */
+  queuePosition?: number | null;
   percent: number | null;
   message: string | null;
   error: string | null;
@@ -157,7 +168,7 @@ export interface HostJobRunner {
   ) => HostJob;
   list: () => HostJob[];
   cancel: (jobId: string) => Promise<HostJob[]>;
-  query: (args: string[]) => Promise<unknown>;
+  query: (args: string[], area?: BrainLogArea) => Promise<unknown>;
 }
 
 export interface HostApiDeps {
@@ -172,6 +183,8 @@ export interface HostApiDeps {
   queryGpuInfo: () => Promise<GpuInfo | null>;
   getRanking: () => RankedModel[];
   loadModel: (model: Model) => Promise<void>;
+  /** The single model queue shared by completions and resident operations. */
+  scheduler?: Scheduler | null;
   /** Mirrors POST /__host/config's gate: may a network caller change things? */
   getAllowWrite: () => boolean;
   /** The managed models directory, for disk accounting. Null when unresolvable. */
@@ -183,10 +196,16 @@ export interface HostApiDeps {
    * its daemon keeps polling status.
    */
   statusEvents?: BrainStatusPublisher | null;
+  /** The append-only line stream behind `GET /__host/events`. */
+  logEvents?: BrainLogPublisher | null;
   /** Long operations that must execute on this brain's machine. */
   jobs?: HostJobRunner;
+  /** The append-only log owned by this Brain service run. */
+  runLog?: BrainRunLog;
   /** Gracefully restart the serving process after its HTTP acknowledgement. */
   restart?: () => void;
+  /** Durable service-session operation log. */
+  log?: (area: BrainLogArea, message: string) => void;
 }
 
 /** One row of the model inventory: the scan, metadata, profile and score joined. */
@@ -216,7 +235,7 @@ export interface InventoryRow {
   budget: vram.Budget | null;
   maxContextThatFits: number | null;
   score: RankedModel | null;
-  state: "loaded" | "loading" | "not-loaded";
+  state: "loaded" | "loading" | "unloading" | "active" | "queued" | "not-loaded";
   warnings: ReturnType<typeof profileWarnings>;
   components: NonNullable<Model["components"]> | null;
 }
@@ -366,10 +385,20 @@ function hostingProfilesFor(store: ProfilesStore, model: Model): HostingProfile[
   return Object.values(store.hostingProfiles).filter((candidate) => candidate.family === family);
 }
 
-function stateOf(supervisor: Supervisor, model: Model): InventoryRow["state"] {
-  if (!supervisor.model || supervisor.model.id !== model.id) return "not-loaded";
-  if (supervisor.state === "ready") return "loaded";
-  if (supervisor.state === "starting") return "loading";
+function stateOf(
+  supervisor: Supervisor,
+  scheduler: Scheduler | null | undefined,
+  model: Model,
+): InventoryRow["state"] {
+  const resident = supervisor.model?.id === model.id;
+  if (resident) {
+    if (supervisor.state === "starting") return "loading";
+    if (supervisor.state === "stopping") return "unloading";
+  }
+  const stats = scheduler?.stats();
+  if (stats?.active?.modelId === model.id) return "active";
+  if ((stats?.waitingModelIds[model.id] ?? 0) > 0) return "queued";
+  if (resident && supervisor.state === "ready") return "loaded";
   return "not-loaded";
 }
 
@@ -387,6 +416,7 @@ export function buildInventoryRow(params: {
   gpu: GpuInfo | null;
   ranking: RankedModel[];
   supervisor: Supervisor;
+  scheduler?: Scheduler | null;
   runtimeBuild?: number | null;
 }): InventoryRow {
   const {
@@ -396,6 +426,7 @@ export function buildInventoryRow(params: {
     gpu,
     ranking,
     supervisor,
+    scheduler = null,
     runtimeBuild: activeRuntimeBuild = null,
   } = params;
   const profile = forModel(store, model, defaults);
@@ -437,7 +468,7 @@ export function buildInventoryRow(params: {
     budget: budgetOptions ? vram.budget(budgetOptions) : null,
     maxContextThatFits: budgetOptions ? vram.maxContextThatFits(budgetOptions) : null,
     score: ranked,
-    state: stateOf(supervisor, model),
+    state: stateOf(supervisor, scheduler, model),
     warnings: profileWarnings(profile, model, store),
     components:
       model.components?.map((component) => {
@@ -535,6 +566,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
     // would make a daemon stop polling and see nothing.
     events: Boolean(deps.statusEvents?.ready),
     liveInference: Boolean(deps.statusEvents?.ready),
+    logEvents: Boolean(deps.statusEvents?.ready && deps.logEvents),
     writable: deps.getAllowWrite(),
     jobs: Boolean(deps.jobs),
     restart: Boolean(deps.restart),
@@ -563,6 +595,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
         gpu,
         ranking,
         supervisor: deps.supervisor,
+        scheduler: deps.scheduler,
         runtimeBuild: runtimeBuild(deps.supervisor.runtime),
       }),
     );
@@ -633,6 +666,10 @@ export function createHostApi(deps: HostApiDeps): HostApi {
           const requiresRestart = deps.supervisor.model?.id === model.id;
           if (requiresRestart) store.pendingReloadModelIds[model.id] = true;
           deps.saveProfiles(store);
+          deps.log?.(
+            "model",
+            `updated profile for ${model.displayName}${requiresRestart ? "; reload required" : ""}`,
+          );
 
           // Return the recomputed budget so an edit costs one round trip rather
           // than a write followed by a read the UI has to sequence.
@@ -705,6 +742,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
       // the brain is restarted. Reset already follows this pattern below.
       const catalog = deps.rescan();
       const updated = resolveModel(catalog, model.id);
+      deps.log?.("library", `renamed ${model.displayName} to ${displayName}`);
       sendJson(res, { displayName: updated ? updated.displayName : displayName });
     });
   };
@@ -718,6 +756,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
       deleteDisplayName(model.id);
       const catalog = deps.rescan();
       const updated = resolveModel(catalog, model.id);
+      deps.log?.("library", `reset display name for ${model.displayName}`);
       sendJson(res, { displayName: updated ? updated.displayName : model.displayName });
     });
   };
@@ -772,7 +811,9 @@ export function createHostApi(deps: HostApiDeps): HostApi {
       }
 
       try {
+        deps.log?.("model", `loading ${model.displayName}`);
         await deps.loadModel(model);
+        deps.log?.("model", `loaded ${model.displayName}`);
         sendJson(res, {
           status: deps.supervisor.status(),
           // What actually got used: loadModel fits the profile to VRAM, so the
@@ -780,6 +821,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
           profile: deps.supervisor.profile,
         });
       } catch (error) {
+        deps.log?.("model", `failed to load ${model.displayName}: ${errorMessage(error)}`);
         sendError(res, 409, `could not load ${model.displayName}: ${errorMessage(error)}`);
       }
     })();
@@ -788,7 +830,9 @@ export function createHostApi(deps: HostApiDeps): HostApi {
   const handleUnload = (res: http.ServerResponse): void => {
     void (async () => {
       try {
+        deps.log?.("model", "unloading resident model");
         await deps.supervisor.stop();
+        deps.log?.("model", "resident model unloaded");
         sendJson(res, { status: deps.supervisor.status() });
       } catch (error) {
         sendError(res, 500, `could not unload: ${errorMessage(error)}`);
@@ -804,6 +848,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
     try {
       const plan = deleteModelFiles(model);
       const catalog = deps.rescan();
+      deps.log?.("library", `deleted ${model.displayName}; freed ${plan.bytes} bytes`);
       sendJson(res, {
         deleted: plan.files,
         freedBytes: plan.bytes,
@@ -827,6 +872,10 @@ export function createHostApi(deps: HostApiDeps): HostApi {
     try {
       const plan = deleteComponentFile(model, componentId);
       deps.rescan();
+      deps.log?.(
+        "library",
+        `deleted ${componentId} from ${model.displayName}; freed ${plan.bytes} bytes`,
+      );
       sendJson(res, {
         deleted: plan.files,
         freedBytes: plan.bytes,
@@ -841,10 +890,11 @@ export function createHostApi(deps: HostApiDeps): HostApi {
     const raw = Number(params.get("limit"));
     const limit =
       Number.isFinite(raw) && raw > 0 ? Math.min(Math.round(raw), 1000) : DEFAULT_LOG_LINES;
+    const session = deps.runLog?.tail(limit);
     const all = deps.supervisor.logLines;
     sendJson(res, {
-      lines: all.slice(-limit),
-      total: all.length,
+      lines: session?.lines ?? all.slice(-limit),
+      total: session?.total ?? all.length,
       state: deps.supervisor.state,
       command: deps.supervisor.command,
     });
@@ -881,7 +931,12 @@ export function createHostApi(deps: HostApiDeps): HostApi {
       if (res.writableEnded || res.destroyed) return;
       res.write(`event: status\ndata: ${JSON.stringify(snapshot)}\n\n`);
     };
+    const writeLog = (line: string): void => {
+      if (res.writableEnded || res.destroyed) return;
+      res.write(`event: log\ndata: ${JSON.stringify({ line })}\n\n`);
+    };
     let unsubscribe = (): void => {};
+    let unsubscribeLogs = (): void => {};
     const keepalive = setInterval(() => {
       if (res.writableEnded || res.destroyed) return;
       res.write(": keepalive\n\n");
@@ -891,6 +946,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
     const teardown = (): void => {
       clearInterval(keepalive);
       unsubscribe();
+      unsubscribeLogs();
     };
     // The publisher ends the response on host shutdown: an open SSE response is
     // an open connection, and `server.close()` waits for those.
@@ -898,6 +954,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
       clearInterval(keepalive);
       if (!res.writableEnded && !res.destroyed) res.end();
     });
+    unsubscribeLogs = deps.logEvents?.subscribe(writeLog) ?? (() => {});
     // Both ends matter: `close` on the request covers a client that walked away,
     // and `close` on the response covers the service shutting the socket down.
     req.on("close", teardown);
@@ -937,6 +994,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
         return true;
       }
       if (!guardWrite(res)) return true;
+      deps.log?.("server", "restart requested through the management API");
       sendJson(res, { accepted: true });
       queueMicrotask(() => deps.restart?.());
       return true;
@@ -1133,27 +1191,32 @@ export function createHostApi(deps: HostApiDeps): HostApi {
       return true;
     }
     if (route === "/__host/catalog" && method === "GET") {
-      void deps.jobs?.query(["catalog", "--json"]).then((models) => sendJson(res, { models }));
+      deps.log?.("library", "refreshing the model catalog");
+      void deps.jobs
+        ?.query(["catalog", "--json"], "library")
+        .then((models) => sendJson(res, { models }));
       return true;
     }
     if (route === "/__host/runtimes" && method === "GET") {
       void deps.jobs
-        ?.query(["runtime", "list", "--json"])
+        ?.query(["runtime", "list", "--json"], "library")
         .then((runtimes) => sendJson(res, { runtimes }));
       return true;
     }
     if (route === "/__host/hf/search" && method === "GET") {
       const query = params.get("query") ?? "";
       const limit = Math.max(1, Math.min(100, Number(params.get("limit")) || 25));
+      deps.log?.("library", `searching Hugging Face for ${JSON.stringify(query)} (limit ${limit})`);
       void deps.jobs
-        ?.query(["search", "--json", "--limit", String(limit), "--", query])
+        ?.query(["search", "--json", "--limit", String(limit), "--", query], "library")
         .then((results) => sendJson(res, { results }));
       return true;
     }
     if (route === "/__host/hf/quants" && method === "GET") {
       const repo = params.get("repo") ?? "";
+      deps.log?.("library", `listing Hugging Face quants for ${repo}`);
       void deps.jobs
-        ?.query(["add", "--list-quants", "--json", "--", repo])
+        ?.query(["add", "--list-quants", "--json", "--", repo], "library")
         .then((quants) => sendJson(res, { quants }));
       return true;
     }
@@ -1201,6 +1264,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
     // without restarting the host or unloading its resident model.
     if (route === "/__host/models/rescan" && method === "POST") {
       const models = deps.rescan();
+      deps.log?.("library", `rescanned model library: ${models.length} models`);
       sendJson(res, { models: models.length });
       return true;
     }

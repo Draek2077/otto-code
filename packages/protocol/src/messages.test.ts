@@ -7,6 +7,7 @@ import {
   MutableDaemonConfigSchema,
   OttoWorktreeArchiveRequestSchema,
   parseServerInfoStatusPayload,
+  ServerInfoStatusPayloadSchema,
   SessionInboundMessageSchema,
   SessionOutboundMessageSchema,
 } from "./messages.js";
@@ -48,6 +49,24 @@ describe("Brain Hugging Face bundle discovery compatibility", () => {
     expect(BrainRepoQuantSchema.parse({ quant: "Q4_K_M", size: "4.2 GB" }).projector).toBe(
       undefined,
     );
+  });
+});
+
+describe("Brain runtime log verbosity capability", () => {
+  test("remains optional for older daemons and accepts capable hosts", () => {
+    const legacy = ServerInfoStatusPayloadSchema.parse({
+      status: "server_info",
+      serverId: "server",
+      features: {},
+    });
+    expect(legacy.features?.brainRuntimeLogVerbosity).toBeUndefined();
+
+    const capable = ServerInfoStatusPayloadSchema.parse({
+      status: "server_info",
+      serverId: "server",
+      features: { brainRuntimeLogVerbosity: true },
+    });
+    expect(capable.features?.brainRuntimeLogVerbosity).toBe(true);
   });
 });
 
@@ -597,6 +616,14 @@ describe("agent personalities compatibility", () => {
     const parsed = MutableDaemonConfigPatchSchema.parse({ brain: { listen: { host: "0.0.0.0" } } });
     expect(parsed.brain).toEqual({ listen: { host: "0.0.0.0" } });
     expect(parsed.brain?.listen).not.toHaveProperty("port");
+  });
+
+  test("brain runtime log verbosity defaults safely and patches independently", () => {
+    const config = MutableDaemonConfigSchema.parse({ mcp: { injectIntoAgents: true } });
+    expect(config.brain.runtime.logVerbosity).toBe(3);
+
+    const patch = MutableDaemonConfigPatchSchema.parse({ brain: { runtime: { logVerbosity: 5 } } });
+    expect(patch.brain).toEqual({ runtime: { logVerbosity: 5 } });
   });
 
   test("brain.remote.certFingerprint defaults to null and round-trips through a patch", () => {

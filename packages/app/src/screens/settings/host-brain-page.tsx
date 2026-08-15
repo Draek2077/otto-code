@@ -38,6 +38,7 @@ type BrainConfig = MutableDaemonConfig["brain"];
 type BrainConfigPatch = NonNullable<MutableDaemonConfigPatch["brain"]>;
 type TlsMode = BrainConfig["tls"]["mode"];
 type BrainMode = BrainConfig["mode"];
+type RuntimeLogVerbosity = BrainConfig["runtime"]["logVerbosity"];
 type BrainAction = "start" | "stop" | "restart";
 type ShareAccess = "key" | "open";
 
@@ -50,6 +51,24 @@ const ACCESS_OPTIONS: { value: ShareAccess; label: string }[] = [
   { value: "key", label: "Key" },
   { value: "open", label: "Open" },
 ];
+
+const RUNTIME_LOG_VERBOSITY_OPTIONS: SelectFieldOption<RuntimeLogVerbosity>[] = [
+  { id: "generic", value: 0, label: "Generic output (0)" },
+  { id: "errors", value: 1, label: "Errors (1)" },
+  { id: "warnings", value: 2, label: "Warnings (2)" },
+  { id: "info", value: 3, label: "Info (3, default)" },
+  { id: "trace", value: 4, label: "Trace (4)" },
+  { id: "debug", value: 5, label: "Debug (5)" },
+];
+
+const RUNTIME_LOG_VERBOSITY_SELECTED_DISPLAYS: Record<RuntimeLogVerbosity, { label: string }> = {
+  0: { label: "Generic output (0)" },
+  1: { label: "Errors (1)" },
+  2: { label: "Warnings (2)" },
+  3: { label: "Info (3, default)" },
+  4: { label: "Trace (4)" },
+  5: { label: "Debug (5)" },
+};
 
 function isLoopbackHost(host: string): boolean {
   return host === "127.0.0.1" || host === "::1" || host === "localhost" || host === "";
@@ -651,6 +670,7 @@ function TailscaleDiscoverRow({
 function BrainServerSection({ serverId }: { serverId: string }) {
   const { config, patchConfig } = useDaemonConfig(serverId);
   const remoteSupported = useHostFeature(serverId, "brainRemote");
+  const runtimeLogVerbositySupported = useHostFeature(serverId, "brainRuntimeLogVerbosity");
   const brain = config?.brain ?? null;
 
   const patchBrain = useCallback(
@@ -727,6 +747,13 @@ function BrainServerSection({ serverId }: { serverId: string }) {
   const handleDefaultModel = useCallback(
     (next: string | null) => patchBrain({ defaultModel: next }),
     [patchBrain],
+  );
+  const handleRuntimeLogVerbosity = useCallback(
+    (logVerbosity: RuntimeLogVerbosity) => {
+      if (!brain) return;
+      patchBrain({ runtime: { ...brain.runtime, logVerbosity } });
+    },
+    [brain, patchBrain],
   );
   const handleRemoteHost = useCallback((host: string) => patchRemote({ host }), [patchRemote]);
   const handleRemotePort = useCallback(
@@ -865,6 +892,31 @@ function BrainServerSection({ serverId }: { serverId: string }) {
                 testID="host-brain-auto-start-switch"
               />
             </View>
+            {runtimeLogVerbositySupported ? (
+              <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
+                <View style={settingsStyles.rowContent}>
+                  <Text style={settingsStyles.rowTitle}>Runtime log verbosity</Text>
+                  <Text style={settingsStyles.rowHint}>
+                    Controls llama.cpp output in Brain Logs. Changing it restarts the loaded model.
+                  </Text>
+                </View>
+                <SelectField<RuntimeLogVerbosity>
+                  field={false}
+                  size="sm"
+                  label="Runtime log verbosity"
+                  value={brain.runtime.logVerbosity}
+                  selectedDisplay={
+                    RUNTIME_LOG_VERBOSITY_SELECTED_DISPLAYS[brain.runtime.logVerbosity]
+                  }
+                  options={RUNTIME_LOG_VERBOSITY_OPTIONS}
+                  onChange={handleRuntimeLogVerbosity}
+                  placeholder="Info (3, default)"
+                  emptyText="No verbosity levels available"
+                  triggerStyle={styles.pickerTrigger}
+                  triggerTestID="host-brain-runtime-log-verbosity"
+                />
+              </View>
+            ) : null}
             <BrainTextRow
               title="Listen port"
               hint="The port the brain serves on."

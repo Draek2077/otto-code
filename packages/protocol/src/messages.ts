@@ -34,6 +34,18 @@ import {
 } from "./provider-config.js";
 import { TOOL_CALL_ICON_NAMES } from "./agent-types.js";
 import {
+  CommunicationMessageSchema,
+  CommunicationSearchResultSchema,
+  CommunicationsInboxHomeSchema,
+  CommunicationsOverviewSchema,
+  CommunicationPresenceSchema,
+  CommunicationPresenceStatusSchema,
+} from "./communications.js";
+import {
+  IntegrationAuthorizationMethodOptionSchema,
+  IntegrationAuthorizationOverviewSchema,
+} from "./integration-authorization.js";
+import {
   ChatCreateRequestSchema,
   ChatListRequestSchema,
   ChatInspectRequestSchema,
@@ -630,8 +642,9 @@ export const MutableBrainConfigSchema = z
       .object({
         source: z.enum(["auto", "managed", "lmstudio"]).default("auto"),
         path: z.string().nullable().default(null),
+        logVerbosity: z.number().int().min(0).max(5).default(3),
       })
-      .default({ source: "auto", path: null }),
+      .default({ source: "auto", path: null, logVerbosity: 3 }),
     // Pin the host to one model: serve only the default/resident model and
     // refuse completion requests that ask for a different one.
     lockModel: z.boolean().default(false),
@@ -710,7 +723,11 @@ export const MutableBrainConfigPatchSchema = z
     listen: MutableBrainListenPatchSchema,
     defaultModel: z.string().nullable(),
     runtime: z
-      .object({ source: z.enum(["auto", "managed", "lmstudio"]), path: z.string().nullable() })
+      .object({
+        source: z.enum(["auto", "managed", "lmstudio"]),
+        path: z.string().nullable(),
+        logVerbosity: z.number().int().min(0).max(5),
+      })
       .partial(),
     lockModel: z.boolean(),
     allowRemoteConfig: z.boolean(),
@@ -729,7 +746,7 @@ export const DEFAULT_MUTABLE_BRAIN_CONFIG = {
   remote: { host: "", port: 1234, secure: false, authToken: null, certFingerprint: null },
   listen: { host: "127.0.0.1", port: 1234 },
   defaultModel: null,
-  runtime: { source: "auto" as const, path: null },
+  runtime: { source: "auto" as const, path: null, logVerbosity: 3 },
   lockModel: false,
   allowRemoteConfig: false,
   allowInsecureBind: false,
@@ -1894,6 +1911,7 @@ export const BrainCapabilitiesSchema = z
      * management API had to change for pushed status to ship.
      */
     events: z.boolean().default(false),
+    logEvents: z.boolean().default(false),
     /**
      * Status events include bounded live inference stages, token counts and
      * throughput. False for the first event-stream generation, whose snapshots
@@ -2963,7 +2981,7 @@ export const BrainModelRenameResetResponseSchema = z.object({
   }),
 });
 
-// Tail the brain's llama-server log.
+// Tail the current Brain service log, including managed child processes and host operations.
 export const BrainLogsTailRequestSchema = z.object({
   type: z.literal("brain.logs.tail.request"),
   limit: z.number().nullable().default(null),
@@ -3552,6 +3570,373 @@ export type ConnectorsOauthDisconnectResponse = z.infer<
   typeof ConnectorsOauthDisconnectResponseSchema
 >;
 export type ConnectorsOauthStatusMessage = z.infer<typeof ConnectorsOauthStatusMessageSchema>;
+
+// Communications is a daemon-owned, provider-neutral integration family. The
+// first contract intentionally exposes only a compact read projection; OAuth,
+// message send, and provider-specific controls arrive only after the Zoom proof
+// demonstrates that this boundary is reliable. Gated by features.communications.
+export const CommunicationsGetOverviewRequestSchema = z.object({
+  type: z.literal("communications.get_overview.request"),
+  requestId: z.string(),
+});
+
+export const CommunicationsGetOverviewResponseSchema = z.object({
+  type: z.literal("communications.get_overview.response"),
+  payload: z.object({
+    overview: CommunicationsOverviewSchema,
+    requestId: z.string(),
+  }),
+});
+
+export type CommunicationsGetOverviewRequest = z.infer<
+  typeof CommunicationsGetOverviewRequestSchema
+>;
+export type CommunicationsGetOverviewResponse = z.infer<
+  typeof CommunicationsGetOverviewResponseSchema
+>;
+
+// A connected provider's title-bar home is more detailed than the global
+// overview and is independently capability-gated by communicationsChatHome.
+export const CommunicationsInboxGetHomeRequestSchema = z.object({
+  type: z.literal("communications.inbox.get_home.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+});
+
+export const CommunicationsInboxGetHomeResponseSchema = z.object({
+  type: z.literal("communications.inbox.get_home.response"),
+  payload: z.object({
+    home: CommunicationsInboxHomeSchema,
+    requestId: z.string(),
+  }),
+});
+
+export type CommunicationsInboxGetHomeRequest = z.infer<
+  typeof CommunicationsInboxGetHomeRequestSchema
+>;
+export type CommunicationsInboxGetHomeResponse = z.infer<
+  typeof CommunicationsInboxGetHomeResponseSchema
+>;
+
+// COMPAT(communicationsInboxSearch): added in v0.8.13, remove gate after
+// 2027-02-15. Destination search is a new capability and newer clients must
+// not issue this request to older hosts.
+export const CommunicationsInboxSearchRequestSchema = z.object({
+  type: z.literal("communications.inbox.search.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+  query: z.string().trim().min(2).max(100),
+});
+
+export const CommunicationsInboxSearchResponseSchema = z.object({
+  type: z.literal("communications.inbox.search.response"),
+  payload: z.object({
+    results: z.array(CommunicationSearchResultSchema),
+    requestId: z.string(),
+  }),
+});
+
+export type CommunicationsInboxSearchRequest = z.infer<
+  typeof CommunicationsInboxSearchRequestSchema
+>;
+export type CommunicationsInboxSearchResponse = z.infer<
+  typeof CommunicationsInboxSearchResponseSchema
+>;
+
+// COMPAT(communicationsFavorites): added in v0.8.14, remove gate after
+// 2027-02-15. A host without provider-native favorite mutations must not
+// receive this request from a newer frontend.
+export const CommunicationsInboxSetFavoriteRequestSchema = z.object({
+  type: z.literal("communications.inbox.set_favorite.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+  conversationId: z.string().trim().min(1),
+  favorite: z.boolean(),
+});
+
+export const CommunicationsInboxSetFavoriteResponseSchema = z.object({
+  type: z.literal("communications.inbox.set_favorite.response"),
+  payload: z.object({
+    // Return fresh daemon-owned Home state, not renderer-local toggle intent.
+    home: CommunicationsInboxHomeSchema,
+    requestId: z.string(),
+  }),
+});
+
+export type CommunicationsInboxSetFavoriteResponse = z.infer<
+  typeof CommunicationsInboxSetFavoriteResponseSchema
+>;
+
+export const CommunicationsInboxGetPresenceRequestSchema = z.object({
+  type: z.literal("communications.inbox.get_presence.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+});
+
+export const CommunicationsInboxGetPresenceResponseSchema = z.object({
+  type: z.literal("communications.inbox.get_presence.response"),
+  payload: z.object({ presence: CommunicationPresenceSchema, requestId: z.string() }),
+});
+
+// COMPAT(communicationsPresenceUpdates): added in v0.8.12, remove gate after
+// 2027-02-14. The daemon publishes the authoritative status queue and cooldown
+// state to capable frontends, so an open popup never has to be closed and
+// reopened to observe a retry, completion, or failure.
+export const CommunicationsInboxPresenceChangedNotificationSchema = z.object({
+  type: z.literal("communications.inbox.presence.changed.notification"),
+  payload: z.object({ presence: CommunicationPresenceSchema }),
+});
+
+export const CommunicationsInboxSetPresenceRequestSchema = z.object({
+  type: z.literal("communications.inbox.set_presence.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+  status: CommunicationPresenceStatusSchema,
+});
+
+export const CommunicationsInboxSetPresenceResponseSchema = z.object({
+  type: z.literal("communications.inbox.set_presence.response"),
+  payload: z.object({ presence: CommunicationPresenceSchema, requestId: z.string() }),
+});
+
+// The Chat availability toggle is separate from provider presence: disabling
+// Otto Chat must not discard the user's provider authorization or impersonate
+// an unsupported native presence value. Gated by communicationsChatAvailability.
+export const CommunicationsInboxSetEnabledRequestSchema = z.object({
+  type: z.literal("communications.inbox.set_enabled.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+  enabled: z.boolean(),
+});
+
+export const CommunicationsInboxSetEnabledResponseSchema = z.object({
+  type: z.literal("communications.inbox.set_enabled.response"),
+  payload: z.object({ presence: CommunicationPresenceSchema, requestId: z.string() }),
+});
+
+export type CommunicationsInboxGetPresenceResponse = z.infer<
+  typeof CommunicationsInboxGetPresenceResponseSchema
+>;
+export type CommunicationsInboxPresenceChangedNotification = z.infer<
+  typeof CommunicationsInboxPresenceChangedNotificationSchema
+>;
+export type CommunicationsInboxSetPresenceResponse = z.infer<
+  typeof CommunicationsInboxSetPresenceResponseSchema
+>;
+export type CommunicationsInboxSetEnabledResponse = z.infer<
+  typeof CommunicationsInboxSetEnabledResponseSchema
+>;
+
+export const CommunicationsInboxGetMessagesRequestSchema = z.object({
+  type: z.literal("communications.inbox.get_messages.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+  conversationId: z.string().trim().min(1),
+});
+
+export const CommunicationsInboxGetMessagesResponseSchema = z.object({
+  type: z.literal("communications.inbox.get_messages.response"),
+  payload: z.object({
+    messages: z.array(CommunicationMessageSchema),
+    requestId: z.string(),
+  }),
+});
+
+export const CommunicationsInboxSendMessageRequestSchema = z.object({
+  type: z.literal("communications.inbox.send_message.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+  conversationId: z.string().trim().min(1),
+  text: z.string().trim().min(1),
+});
+
+export const CommunicationsInboxSendMessageResponseSchema = z.object({
+  type: z.literal("communications.inbox.send_message.response"),
+  payload: z.object({
+    message: CommunicationMessageSchema,
+    requestId: z.string(),
+  }),
+});
+
+export type CommunicationsInboxGetMessagesRequest = z.infer<
+  typeof CommunicationsInboxGetMessagesRequestSchema
+>;
+export type CommunicationsInboxGetMessagesResponse = z.infer<
+  typeof CommunicationsInboxGetMessagesResponseSchema
+>;
+export type CommunicationsInboxSendMessageRequest = z.infer<
+  typeof CommunicationsInboxSendMessageRequestSchema
+>;
+export type CommunicationsInboxSendMessageResponse = z.infer<
+  typeof CommunicationsInboxSendMessageResponseSchema
+>;
+
+// Daemon-owned, provider-neutral meeting transcript library. The initial
+// recorder is Zoom-specific, but the retained data model deliberately is not.
+// Gated by server_info.features.meetingTranscripts.
+export const MeetingTranscriptSchema = z.object({
+  id: z.string(),
+  provider: z.string(),
+  title: z.string(),
+  content: z.string(),
+  occurredAt: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const MeetingsTranscriptsListRequestSchema = z.object({
+  type: z.literal("meetings.transcripts.list.request"),
+  requestId: z.string(),
+});
+
+export const MeetingsTranscriptsListResponseSchema = z.object({
+  type: z.literal("meetings.transcripts.list.response"),
+  payload: z.object({ requestId: z.string(), records: z.array(MeetingTranscriptSchema) }),
+});
+
+export const MeetingsTranscriptsCreateRequestSchema = z.object({
+  type: z.literal("meetings.transcripts.create.request"),
+  requestId: z.string(),
+  provider: z.string().min(1).max(48),
+  title: z.string().min(1).max(160),
+  content: z.string().min(1).max(5_000_000),
+  occurredAt: z.string().optional(),
+});
+
+export const MeetingsTranscriptsCreateResponseSchema = z.object({
+  type: z.literal("meetings.transcripts.create.response"),
+  payload: z.object({ requestId: z.string(), record: MeetingTranscriptSchema }),
+});
+
+export const MeetingsTranscriptsUpdateRequestSchema = z.object({
+  type: z.literal("meetings.transcripts.update.request"),
+  requestId: z.string(),
+  id: z.string(),
+  title: z.string().min(1).max(160).optional(),
+  content: z.string().min(1).max(5_000_000).optional(),
+});
+
+export const MeetingsTranscriptsUpdateResponseSchema = z.object({
+  type: z.literal("meetings.transcripts.update.response"),
+  payload: z.object({ requestId: z.string(), record: MeetingTranscriptSchema.nullable() }),
+});
+
+export const MeetingsTranscriptsDeleteRequestSchema = z.object({
+  type: z.literal("meetings.transcripts.delete.request"),
+  requestId: z.string(),
+  id: z.string(),
+});
+
+export const MeetingsTranscriptsDeleteResponseSchema = z.object({
+  type: z.literal("meetings.transcripts.delete.response"),
+  payload: z.object({ requestId: z.string(), deleted: z.boolean() }),
+});
+
+export type MeetingTranscript = z.infer<typeof MeetingTranscriptSchema>;
+export type MeetingsTranscriptsListResponse = z.infer<typeof MeetingsTranscriptsListResponseSchema>;
+export type MeetingsTranscriptsCreateResponse = z.infer<
+  typeof MeetingsTranscriptsCreateResponseSchema
+>;
+export type MeetingsTranscriptsUpdateResponse = z.infer<
+  typeof MeetingsTranscriptsUpdateResponseSchema
+>;
+export type MeetingsTranscriptsDeleteResponse = z.infer<
+  typeof MeetingsTranscriptsDeleteResponseSchema
+>;
+
+// Settings pages use this generic, daemon-owned projection to render reusable
+// integration connection state. OAuth drivers and API-key entry remain outside
+// the wire contract until their provider-specific implementation exists.
+// Gated by features.integrationAuthorization.
+export const IntegrationsAuthorizationGetOverviewRequestSchema = z.object({
+  type: z.literal("integrations.authorization.get_overview.request"),
+  requestId: z.string(),
+});
+
+export const IntegrationsAuthorizationGetOverviewResponseSchema = z.object({
+  type: z.literal("integrations.authorization.get_overview.response"),
+  payload: z.object({
+    overview: IntegrationAuthorizationOverviewSchema,
+    requestId: z.string(),
+  }),
+});
+
+export type IntegrationsAuthorizationGetOverviewRequest = z.infer<
+  typeof IntegrationsAuthorizationGetOverviewRequestSchema
+>;
+export type IntegrationsAuthorizationGetOverviewResponse = z.infer<
+  typeof IntegrationsAuthorizationGetOverviewResponseSchema
+>;
+
+/**
+ * List daemon-supported, nonsecret authorization methods for integration
+ * settings. Availability is explicit so a client never offers a flow the host
+ * has not implemented yet. Gated by features.integrationAuthorization.
+ */
+export const IntegrationsAuthorizationGetMethodsRequestSchema = z.object({
+  type: z.literal("integrations.authorization.get_methods.request"),
+  requestId: z.string(),
+  integrationId: z.string().optional(),
+});
+
+export const IntegrationsAuthorizationGetMethodsResponseSchema = z.object({
+  type: z.literal("integrations.authorization.get_methods.response"),
+  payload: z.object({
+    methods: z.array(IntegrationAuthorizationMethodOptionSchema),
+    requestId: z.string(),
+  }),
+});
+
+export type IntegrationsAuthorizationGetMethodsRequest = z.infer<
+  typeof IntegrationsAuthorizationGetMethodsRequestSchema
+>;
+export type IntegrationsAuthorizationGetMethodsResponse = z.infer<
+  typeof IntegrationsAuthorizationGetMethodsResponseSchema
+>;
+
+/**
+ * Starts a daemon-owned browser sign-in through the registered integration
+ * driver. Authorization codes and credentials remain daemon-only.
+ * Gated by features.integrationAuthorizationBrowserFlow.
+ */
+export const IntegrationsAuthorizationStartBrowserRequestSchema = z.object({
+  type: z.literal("integrations.authorization.start_browser.request"),
+  requestId: z.string(),
+  integrationId: z.string(),
+  connectionId: z.string(),
+});
+
+export const IntegrationsAuthorizationStartBrowserResponseSchema = z.object({
+  type: z.literal("integrations.authorization.start_browser.response"),
+  payload: z.object({
+    authorizationUrl: z.string().url().nullable(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export type IntegrationsAuthorizationStartBrowserResponse = z.infer<
+  typeof IntegrationsAuthorizationStartBrowserResponseSchema
+>;
+
+/** Starts the configured daemon-owned Zoom PKCE browser flow. */
+export const IntegrationsZoomStartAuthorizationRequestSchema = z.object({
+  type: z.literal("integrations.zoom.start_authorization.request"),
+  requestId: z.string(),
+});
+
+export const IntegrationsZoomStartAuthorizationResponseSchema = z.object({
+  type: z.literal("integrations.zoom.start_authorization.response"),
+  payload: z.object({
+    authorizationUrl: z.string().url().nullable(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export type IntegrationsZoomStartAuthorizationResponse = z.infer<
+  typeof IntegrationsZoomStartAuthorizationResponseSchema
+>;
 
 export const SpeechSettingsGetOptionsRequestSchema = z.object({
   type: z.literal("speech.settings.get_options.request"),
@@ -7231,6 +7616,23 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ConnectorsListToolsRequestSchema,
   ConnectorsOauthAuthorizeRequestSchema,
   ConnectorsOauthDisconnectRequestSchema,
+  CommunicationsGetOverviewRequestSchema,
+  CommunicationsInboxGetHomeRequestSchema,
+  CommunicationsInboxSearchRequestSchema,
+  CommunicationsInboxSetFavoriteRequestSchema,
+  CommunicationsInboxGetPresenceRequestSchema,
+  CommunicationsInboxSetPresenceRequestSchema,
+  CommunicationsInboxSetEnabledRequestSchema,
+  CommunicationsInboxGetMessagesRequestSchema,
+  CommunicationsInboxSendMessageRequestSchema,
+  MeetingsTranscriptsListRequestSchema,
+  MeetingsTranscriptsCreateRequestSchema,
+  MeetingsTranscriptsUpdateRequestSchema,
+  MeetingsTranscriptsDeleteRequestSchema,
+  IntegrationsAuthorizationGetOverviewRequestSchema,
+  IntegrationsAuthorizationGetMethodsRequestSchema,
+  IntegrationsAuthorizationStartBrowserRequestSchema,
+  IntegrationsZoomStartAuthorizationRequestSchema,
   SpeechSettingsGetOptionsRequestSchema,
   SpeechTtsPreviewRequestSchema,
   SpeechTtsSpeakRequestSchema,
@@ -7700,6 +8102,11 @@ export const ServerInfoStatusPayloadSchema = z
         // the Local brain host UI is hidden ("update the host").
         // COMPAT(brainControl): added in v0.7.5, remove gate after 2026-01-30 once daemon floor >= v0.7.5.
         brainControl: z.boolean().optional(),
+        // The daemon persists and applies llama.cpp's `-lv` launch option for
+        // the resident Brain runtime. Newer clients must hide this control on
+        // older daemons, whose Brain config rejects the field.
+        // COMPAT(brainRuntimeLogVerbosity): added in v0.8.10, drop the gate when daemon floor >= v0.8.10.
+        brainRuntimeLogVerbosity: z.boolean().optional(),
         // Daemon streams the brain's live status/telemetry via
         // subscribe_brain_status + brain_status_changed, and serves brain.evals.get.
         // Separate from brainControl because status/eval watching can ship after
@@ -7747,6 +8154,8 @@ export const ServerInfoStatusPayloadSchema = z
         // re-broadcasts server_info when that changes. A client that sees it
         // false keeps the explicit status poll.
         brainStatusPush: z.boolean().optional(),
+        // COMPAT(brainLogPush): added in v0.8.10, drop the gate when daemon floor >= v0.8.10.
+        brainLogPush: z.boolean().optional(),
         // COMPAT(agentForkContext): added in v0.1.102, remove gate after 2026-12-28.
         agentForkContext: z.boolean().optional(),
         // COMPAT(providerRemove): added in v0.1.105, drop the gate when daemon floor >= v0.1.105.
@@ -7968,6 +8377,43 @@ export const ServerInfoStatusPayloadSchema = z
         // daemons have no broker and no way to hold a token, so the client hides
         // Connect / Disconnect and offers only the paste-a-token connectors.
         connectorOauth: z.boolean().optional(),
+        // COMPAT(communications): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
+        // The daemon owns the provider-neutral communications overview. An old
+        // host must not receive a communications RPC from a newer frontend.
+        communications: z.boolean().optional(),
+        // COMPAT(communicationsChatHome): added in v0.8.12, remove gate after 2027-02-14.
+        // A host that lacks this projection must not receive the detailed Chat
+        // Home request from a newer frontend.
+        communicationsChatHome: z.boolean().optional(),
+        // COMPAT(communicationsInboxSearch): added in v0.8.13, remove gate after
+        // 2027-02-15. A host without destination search must not receive its RPC.
+        communicationsInboxSearch: z.boolean().optional(),
+        // COMPAT(communicationsFavorites): added in v0.8.14, remove gate after
+        // 2027-02-15. The host owns provider-native favorite reads and writes.
+        communicationsFavorites: z.boolean().optional(),
+        // COMPAT(communicationsPresence): added in v0.8.12, remove gate after 2027-02-14.
+        // A host that lacks daemon-owned presence must not receive presence RPCs.
+        communicationsPresence: z.boolean().optional(),
+        // COMPAT(communicationsChatAvailability): added in v0.8.12, remove gate after 2027-02-14.
+        // A host that lacks daemon-owned Chat availability must not receive its toggle RPC.
+        communicationsChatAvailability: z.boolean().optional(),
+        // COMPAT(communicationsPresenceChangeTiming): added in v0.8.12, remove gate after 2027-02-14.
+        // The daemon publishes authoritative provider presence-change cooldowns.
+        communicationsPresenceChangeTiming: z.boolean().optional(),
+        // COMPAT(communicationsPresenceUpdates): added in v0.8.12, remove gate after 2027-02-14.
+        // A capable client receives daemon-owned presence queue transitions and
+        // cooldown updates without polling its popup.
+        communicationsPresenceUpdates: z.boolean().optional(),
+        // COMPAT(meetingTranscripts): added in v0.8.11, remove gate after 2027-02-13.
+        meetingTranscripts: z.boolean().optional(),
+        // COMPAT(integrationAuthorization): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
+        // The daemon exposes secure-vault readiness and connection metadata for
+        // reusable integration settings. Old hosts must not receive these RPCs.
+        integrationAuthorization: z.boolean().optional(),
+        // COMPAT(integrationAuthorizationBrowserFlow): added in v0.8.10, remove gate after 2027-02-14.
+        // The daemon routes browser sign-in through registered, provider-neutral
+        // drivers. Older hosts only understand provider-specific legacy RPCs.
+        integrationAuthorizationBrowserFlow: z.boolean().optional(),
         // COMPAT(agentBehaviorToggles): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
         // Set when the daemon persists `agentBehaviors.*` (promptSuggestions,
         // agentProgressSummaries, notifyOnFinishDefault). The reads are wired by
@@ -8253,8 +8699,17 @@ export const BrainStatusChangedStatusPayloadSchema = z
   })
   .passthrough();
 
+/** One durable log line, pushed immediately after the Brain service writes it. */
+export const BrainLogLineAddedStatusPayloadSchema = z
+  .object({
+    status: z.literal("brain_log_line_added"),
+    line: z.string(),
+  })
+  .passthrough();
+
 export const KnownStatusPayloadSchema = z.discriminatedUnion("status", [
   BrainStatusChangedStatusPayloadSchema,
+  BrainLogLineAddedStatusPayloadSchema,
   LspActivityChangedStatusPayloadSchema,
   LspDiagnosticsChangedStatusPayloadSchema,
   AgentCreatedStatusPayloadSchema,
@@ -12232,6 +12687,24 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ConnectorsOauthAuthorizeResponseSchema,
   ConnectorsOauthDisconnectResponseSchema,
   ConnectorsOauthStatusMessageSchema,
+  CommunicationsGetOverviewResponseSchema,
+  CommunicationsInboxGetHomeResponseSchema,
+  CommunicationsInboxSearchResponseSchema,
+  CommunicationsInboxSetFavoriteResponseSchema,
+  CommunicationsInboxGetPresenceResponseSchema,
+  CommunicationsInboxPresenceChangedNotificationSchema,
+  CommunicationsInboxSetPresenceResponseSchema,
+  CommunicationsInboxSetEnabledResponseSchema,
+  CommunicationsInboxGetMessagesResponseSchema,
+  CommunicationsInboxSendMessageResponseSchema,
+  MeetingsTranscriptsListResponseSchema,
+  MeetingsTranscriptsCreateResponseSchema,
+  MeetingsTranscriptsUpdateResponseSchema,
+  MeetingsTranscriptsDeleteResponseSchema,
+  IntegrationsAuthorizationGetOverviewResponseSchema,
+  IntegrationsAuthorizationGetMethodsResponseSchema,
+  IntegrationsAuthorizationStartBrowserResponseSchema,
+  IntegrationsZoomStartAuthorizationResponseSchema,
   SpeechSettingsGetOptionsResponseSchema,
   SpeechTtsPreviewResponseSchema,
   SpeechTtsSpeakResponseSchema,

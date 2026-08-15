@@ -9,6 +9,8 @@ import type { Model, Runtime } from "../types.js";
 export interface ServeTarget {
   port: number;
   host?: string;
+  /** llama.cpp log threshold; 3 preserves its upstream default Info output. */
+  logVerbosity?: number;
 }
 
 /**
@@ -48,7 +50,7 @@ export function buildEnv(
  */
 export function buildArgs(
   profile: Profile,
-  { port, host = "127.0.0.1" }: ServeTarget,
+  { port, host = "127.0.0.1", logVerbosity = 3 }: ServeTarget,
   model?: Model,
 ): string[] {
   const args: string[] = [
@@ -68,7 +70,9 @@ export function buildArgs(
     host,
     "--port",
     String(port),
-    "--no-webui",
+    "--no-ui",
+    "-lv",
+    String(logVerbosity),
   ];
 
   if (profile.vision && profile.mmprojPath) {

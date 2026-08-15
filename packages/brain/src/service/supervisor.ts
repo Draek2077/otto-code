@@ -9,8 +9,9 @@ import { loadProfilesStore } from "../config/store.js";
 import { usedBytes } from "../gpu.js";
 import type { Model, Runtime } from "../types.js";
 import type { Profile, ProfilesStore } from "../config/schema.js";
+import { formatBrainLog, formatLlamaServerLog, type BrainLogArea } from "./log-format.js";
 
-const LOG_LINES_KEPT = 300;
+const LOG_LINES_KEPT = 10_000;
 
 /**
  * Default loopback port for the private llama-server child. Deliberately clear
@@ -30,6 +31,7 @@ export interface SupervisorOptions {
   runtime: Runtime | null;
   internalPort?: number;
   host?: string;
+  logVerbosity?: number;
   readyTimeoutMs?: number;
   /**
    * Long-lived hosts provide their live store so profile edits applied just
@@ -64,6 +66,7 @@ export class Supervisor extends EventEmitter {
   runtime: Runtime | null;
   internalPort: number;
   host: string;
+  logVerbosity: number;
   readyTimeoutMs: number;
   paths: BrainPaths;
   getProfilesStore: () => ProfilesStore;
@@ -90,6 +93,7 @@ export class Supervisor extends EventEmitter {
     runtime,
     internalPort = DEFAULT_INTERNAL_PORT,
     host = "127.0.0.1",
+    logVerbosity = 3,
     readyTimeoutMs = 300_000,
     paths = resolveBrainPaths(),
     getProfilesStore = loadProfilesStore,
@@ -98,6 +102,7 @@ export class Supervisor extends EventEmitter {
     this.runtime = runtime;
     this.internalPort = internalPort;
     this.host = host;
+    this.logVerbosity = logVerbosity;
     this.readyTimeoutMs = readyTimeoutMs;
     this.paths = paths;
     this.getProfilesStore = getProfilesStore;
@@ -133,14 +138,15 @@ export class Supervisor extends EventEmitter {
   }
 
   /**
-   * Add a host-operation event to the same bounded tail as llama-server output.
+   * Add a host-operation event to the same in-process tail as llama-server output.
    *
    * Calibrate, sweep, and benchmark deliberately reuse this supervisor rather
    * than creating invisible sidecar servers. Their lifecycle markers belong in
-   * the same log stream as the child they exercise.
+   * the same event stream as the child they exercise. The serving process
+   * copies that stream into its durable full Brain-session log.
    */
-  recordLog(line: string): void {
-    this.#log(line);
+  recordLog(line: string, area: BrainLogArea = "model"): void {
+    this.#log(formatBrainLog(area, line));
   }
 
   /**
@@ -151,11 +157,7 @@ export class Supervisor extends EventEmitter {
    * Jinja template and router-visible system addendum mandatory for every
    * caller, including future maintenance operations that start a sidecar.
    */
-  async start(
-    model: Model,
-    profile: Profile,
-    options: { preserveLogs?: boolean } = {},
-  ): Promise<this> {
+  async start(model: Model, profile: Profile): Promise<this> {
     await this.stop();
 
     if (!this.runtime) {
@@ -174,18 +176,17 @@ export class Supervisor extends EventEmitter {
     this.model = model;
     this.profile = launchProfile;
     this.lastError = null;
-    if (!options.preserveLogs) this.logLines = [];
     this.vramBaselineBytes = await usedBytes();
     this.#setState("starting");
 
     const args = buildArgs(
       { ...launchProfile, modelPath: model.modelPath, mmprojPath: model.mmprojPath },
-      { port: this.internalPort, host: this.host },
+      { port: this.internalPort, host: this.host, logVerbosity: this.logVerbosity },
       model,
     );
     this.args = args;
     this.command = formatCommand(runtime, args);
-    this.#log(`launching: ${this.command}`);
+    this.#log(formatBrainLog("model", `launching: ${this.command}`));
 
     const started = Date.now();
     this.child = spawn(runtime.exe, args, {
@@ -197,7 +198,7 @@ export class Supervisor extends EventEmitter {
 
     const onChunk = (chunk: Buffer): void => {
       for (const line of String(chunk).split(/\r?\n/)) {
-        if (line.trim()) this.#log(line.trim());
+        if (line.trim()) this.#log(formatLlamaServerLog(line.trim()));
       }
     };
     this.child.stdout?.on("data", onChunk);

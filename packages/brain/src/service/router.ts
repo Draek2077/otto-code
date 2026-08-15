@@ -44,8 +44,9 @@ const COMPLETION_RE = /\/v1\/(messages|chat\/completions)/;
 
 type Verdict = "ok" | "reasoning-only" | "truncated" | "failed";
 
-/** A logger sink; only `warn` is used by the router. */
+/** Optional durable operational-log sink for completion lifecycle events. */
 export interface Logger {
+  info?(message: string): void;
   warn(message: string): void;
 }
 
@@ -506,6 +507,9 @@ function proxyBuffered({
     headers["content-length"] = Buffer.byteLength(outbound);
 
     const started = Date.now();
+    logger?.info?.(
+      `dispatching ${req.method ?? "POST"} ${req.url ?? "/v1/chat/completions"} to ${model.displayName}`,
+    );
     const upstream = http.request(
       {
         host: supervisor.host,
@@ -559,6 +563,9 @@ function proxyBuffered({
               streamed: true,
               verdict: !sawContent && sawReasoning ? "reasoning-only" : "ok",
             });
+            logger?.info?.(
+              `completed streamed ${req.method ?? "POST"} ${req.url ?? "/v1/chat/completions"} for ${model.displayName}`,
+            );
             done();
           });
           upstreamRes.pipe(res);
@@ -585,6 +592,9 @@ function proxyBuffered({
             ...(analysis ?? { verdict: "ok" }),
           };
           telemetry.record(entry);
+          logger?.info?.(
+            `completed ${req.method ?? "POST"} ${req.url ?? "/v1/chat/completions"} for ${model.displayName} in ${entry.ms}ms (${entry.verdict})`,
+          );
           if (entry.verdict === "reasoning-only") {
             logger?.warn?.(
               `reasoning-only response: ${entry.outputTokens} tokens, ${entry.reasoningChars} reasoning chars, 0 content`,
@@ -608,6 +618,7 @@ function proxyBuffered({
         verdict: "failed",
         error: error.message,
       });
+      logger?.warn(`request to ${model.displayName} failed: ${error.message}`);
       sendError(res, 502, `Upstream llama-server error: ${error.message}`);
       done();
     });
@@ -788,28 +799,30 @@ function scheduleCompletion({
 
     const gate = modelGate(modelName);
     if (!gate.ok) {
+      logger?.warn(`refused ${req.method ?? "POST"} ${req.url ?? "completion"}: ${gate.message}`);
       sendError(res, gate.status, gate.message);
       return;
     }
     const model = gate.model;
-
-    scheduler
-      .submit(model, () =>
-        proxyBuffered({
-          agent,
-          model,
-          supervisor,
-          telemetry,
-          logger,
-          req,
-          res,
-          body,
-          reasoning: reasoningTracker,
-        }),
-      )
-      .catch((error: unknown) =>
-        sendError(res, 502, `could not serve ${model.displayName}: ${errorMessage(error)}`),
-      );
+    const queued = scheduler.submit(model, () =>
+      proxyBuffered({
+        agent,
+        model,
+        supervisor,
+        telemetry,
+        logger,
+        req,
+        res,
+        body,
+        reasoning: reasoningTracker,
+      }),
+    );
+    logger?.info?.(
+      `queued ${req.method ?? "POST"} ${req.url ?? "completion"} for ${model.displayName}; queue depth ${scheduler.stats().queued}`,
+    );
+    queued.catch((error: unknown) =>
+      sendError(res, 502, `could not serve ${model.displayName}: ${errorMessage(error)}`),
+    );
   });
 }
 
@@ -873,6 +886,8 @@ export interface RouterOptions {
    * can never disagree. Absent means this brain does not advertise events.
    */
   statusEvents?: BrainStatusPublisher | null;
+  /** A service shares this scheduler with host-owned model operations. */
+  scheduler?: Scheduler | null;
 }
 
 export function createRouter({
@@ -893,6 +908,7 @@ export function createRouter({
   hostApi = null,
   getResources = null,
   statusEvents = null,
+  scheduler: suppliedScheduler = null,
 }: RouterOptions): (req: http.IncomingMessage, res: http.ServerResponse) => void {
   // llama-server may close an idle response socket while this scheduler holds
   // the next request in queue. A reused keep-alive socket then fails as
@@ -900,14 +916,16 @@ export function createRouter({
   // Inference time dwarfs localhost connection setup, so isolate each request
   // instead of letting a second client inherit a stale upstream connection.
   const agent = new http.Agent({ keepAlive: false, maxSockets: 32 });
-  const scheduler = loadModel
-    ? new Scheduler({
-        supervisor,
-        loadModel,
-        logger: (m) => logger?.warn?.(m),
-        onChange: statusEvents ? () => statusEvents.notify() : null,
-      })
-    : null;
+  const scheduler =
+    suppliedScheduler ??
+    (loadModel
+      ? new Scheduler({
+          supervisor,
+          loadModel,
+          logger: (m) => logger?.warn?.(m),
+          onChange: statusEvents ? () => statusEvents.notify() : null,
+        })
+      : null);
 
   // A (re)start means whatever produced the current warning no longer applies -
   // either a different model is now resident, or the same one just picked up an
@@ -1091,8 +1109,12 @@ export function createRouter({
           sendError(res, 400, result.error);
           return;
         }
+        logger?.info?.("received host configuration update");
         applyConfigPatch(result.body)
-          .then((cfg) => sendJson(res, cfg))
+          .then((cfg) => {
+            logger?.info?.("applied host configuration update");
+            return sendJson(res, cfg);
+          })
           .catch((err) => sendError(res, 500, `could not apply config: ${errorMessage(err)}`));
       });
       return;

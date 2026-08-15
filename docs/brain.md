@@ -24,6 +24,22 @@ The rule is that **operations are work, not settings**. Downloading a model, cal
 running a benchmark are long-running, progress-bearing and result-producing. They do not belong next
 to a TLS certificate path, and burying them there is what made them hard to find.
 
+## One resident-model queue
+
+Brain currently has one resident `llama-server`, so it has one scheduler for all model-targeted
+work. API completions, calibration, sweep, and benchmark jobs enter the same queue with their
+resolved target model. A job waits for the current turn to drain, the scheduler unloads the old model
+when necessary, loads its target, runs the full operation, and then selects the next queued turn.
+
+Calibration, sweep, and benchmark jobs are exclusive turns. Completion requests for the resident
+model still use its configured parallel slots, but no completion can run beside a tuning or benchmark
+operation. A calibration or sweep deliberately does not restore the model that was resident before it
+started: doing so would jump ahead of the next queued request.
+
+The Models table mirrors that queue. A dot means a model is loaded and idle; a spinner identifies
+loading, unloading, or queued work; and the play marker identifies the model currently serving work.
+The job row names queued work before it begins, rather than implying that it is already using the GPU.
+
 The Brain page is reached from the Brain icon in the bottom-left icon rail. It is a top-level route
 outside any workspace, because a brain belongs to a host, not to a project.
 
@@ -65,7 +81,7 @@ The brain serves its own management surface at `/__host/*`. Its header comment s
 | `POST /__host/model/load?id=`               | Load a model into the running brain                                         |
 | `POST /__host/model/unload`                 | Stop the resident model                                                     |
 | `DELETE /__host/model?id=`                  | Delete a model's files                                                      |
-| `GET /__host/logs?limit=N`                  | Tail the llama-server log                                                   |
+| `GET /__host/logs?limit=N`                  | Tail the current Brain service log: every managed child and host operation  |
 
 ### Model ids are query parameters, not path segments
 
@@ -246,6 +262,10 @@ Each model carries a **Model profile**: its saved launch and VRAM settings. It i
 | GPU layers         | How many layers go on the GPU; 999 means all                        |
 | Parallel slots     | Concurrent requests, which share one KV pool                        |
 
+**Runtime log verbosity** is a host setting, not a model-profile field. It controls the resident
+`llama-server` output that appears in Brain Logs: Generic output (0), Errors (1), Warnings (2),
+Info (3, the default), Trace (4), or Debug (5). Changing it relaunches the loaded model.
+
 **The ranges, the validator and the warnings live in exactly one module**,
 `packages/brain/src/config/profile-edit.ts`, and the client renders its controls from the descriptors
 that module sends. A client that invented its own limits would either offer a value the brain rejects
@@ -385,13 +405,21 @@ Five tabs, on the `stats-screen.tsx` layout: a pinned header, a pinned toolbar h
 exactly one scroll region. A host picker appears only when more than one connected host has a brain.
 State is per-host and never merged: two brains are two machines with their own GPUs and model stores.
 
-| Tab            | Holds                                                                                                                        |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| **Overview**   | Status, lifecycle, installed runtime, VRAM, CPU/memory/GPU/slots, traffic counters including the reasoning-only warning      |
-| **Models**     | The model table, and a detail panel with metadata, the model-profile editor, the live budget, load, calibrate, sweep, delete |
-| **Library**    | The download catalog, Hugging Face search, and job progress                                                                  |
-| **Benchmarks** | The leaderboard over the run list, and a detail pane that compares two runs; plus a way to run the suite                     |
-| **Logs**       | The llama-server tail                                                                                                        |
+| Tab            | Holds                                                                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Overview**   | Status, lifecycle, installed runtime, VRAM, CPU/memory/GPU/slots, traffic counters including the reasoning-only warning                    |
+| **Models**     | The model table, and a detail panel with metadata, the model-profile editor, the live budget, load, calibrate, sweep, delete               |
+| **Library**    | The download catalog, Hugging Face search, and job progress                                                                                |
+| **Benchmarks** | The leaderboard over the run list, and a detail pane that compares two runs; plus a way to run the suite                                   |
+| **Logs**       | The current Brain service session: every managed process and operation in one append-only log, with each completed line pushed immediately |
+
+Every current-session line has a source marker. **`[brain]`** identifies Brain-owned work and carries
+one operation marker: **`[library]`** for catalog, Hugging Face, download and deletion work;
+**`[model]`** for profile changes, load/unload, calibrate, sweep and benchmark work; **`[api]`** for
+completion admission, queueing and dispatch; and **`[server]`** for service lifecycle. Raw child output
+is marked **`[llama-server]`** after removing llama.cpp's repetitive elapsed-time, level and component
+columns. Every row uses a compact `HH:mm:ss.SSS` session timestamp, and the Logs tab colors only the
+source tags rather than the body of the message.
 
 The model table and the leaderboard are **tables, not cards**: their whole job is comparison between
 rows.

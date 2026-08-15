@@ -1,7 +1,7 @@
 import http from "node:http";
 import https from "node:https";
 import type { AddressInfo } from "node:net";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -156,14 +156,58 @@ describe("structuralSignature", () => {
   test("changes when the selected runtime changes", () => {
     const automatic: MutableBrainConfig = {
       ...DEFAULT_MUTABLE_BRAIN_CONFIG,
-      runtime: { source: "auto", path: null },
+      runtime: { source: "auto", path: null, logVerbosity: 3 },
     };
     const managed: MutableBrainConfig = {
       ...automatic,
-      runtime: { source: "managed", path: "C:\\otto-brain\\runtimes\\cuda-12-4" },
+      runtime: {
+        source: "managed",
+        path: "C:\\otto-brain\\runtimes\\cuda-12-4",
+        logVerbosity: 3,
+      },
+    };
+    const verbose: MutableBrainConfig = {
+      ...automatic,
+      runtime: { ...automatic.runtime, logVerbosity: 5 },
     };
 
     expect(structuralSignature(managed)).not.toBe(structuralSignature(automatic));
+    expect(structuralSignature(verbose)).not.toBe(structuralSignature(automatic));
+  });
+});
+
+describe("BrainManager terminal session logs", () => {
+  test("tails the failed local service session when no host API was able to bind", async () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-brain-terminal-log-test-"));
+    const manager = new BrainManager({
+      logger: createTestLogger(),
+      managedProcesses: createRegistryStub(),
+      ottoHome,
+    });
+    try {
+      const pid = 54880;
+      const logsDir = path.join(ottoHome, "otto-brain", "logs");
+      mkdirSync(logsDir, { recursive: true });
+      writeFileSync(
+        path.join(logsDir, `20260815T030849Z-${pid}-brain.log`),
+        [
+          "2026-08-15T03:08:49.000Z Brain service started (pid 54880)",
+          "2026-08-15T03:08:49.010Z FATAL Brain service startup failed: listen EADDRINUSE",
+          "",
+        ].join("\n"),
+      );
+      (manager as unknown as { sessionLogPid: number; wantRunning: boolean }).sessionLogPid = pid;
+      (manager as unknown as { sessionLogPid: number; wantRunning: boolean }).wantRunning = true;
+
+      await expect(manager.hostLogs(1)).resolves.toMatchObject({
+        lines: [expect.stringContaining("FATAL Brain service startup failed")],
+        total: 2,
+        state: "failed",
+      });
+    } finally {
+      await manager.shutdown();
+      rmSync(ottoHome, { recursive: true, force: true });
+    }
   });
 });
 
@@ -454,6 +498,8 @@ describe("BrainManager.getProviderEndpoint", () => {
 interface EventBrainServer extends TestBrainServer {
   /** Push a snapshot to every currently subscribed daemon. */
   publish(snapshot: Record<string, unknown>): void;
+  /** Push one durable Brain-session line to every currently subscribed daemon. */
+  publishLog(line: string): void;
   /** End every open stream, as a brain that went away would. */
   dropStreams(): void;
   streamCount(): number;
@@ -463,7 +509,10 @@ interface EventBrainServer extends TestBrainServer {
  * A brain whose `/__host/status` advertises `capabilities.events` and whose
  * `/__host/events` is a real SSE endpoint.
  */
-function startEventBrainServer(options: { events: boolean }): Promise<EventBrainServer> {
+function startEventBrainServer(options: {
+  events: boolean;
+  logEvents?: boolean;
+}): Promise<EventBrainServer> {
   const requests: SeenRequest[] = [];
   let streams: http.ServerResponse[] = [];
   const server = http.createServer((req, res) => {
@@ -484,7 +533,10 @@ function startEventBrainServer(options: { events: boolean }): Promise<EventBrain
     }
     res.setHeader("content-type", "application/json");
     res.end(
-      JSON.stringify({ state: "ready", capabilities: { load: true, events: options.events } }),
+      JSON.stringify({
+        state: "ready",
+        capabilities: { load: true, events: options.events, logEvents: options.logEvents === true },
+      }),
     );
   });
   return listen(server, requests).then((base) => ({
@@ -492,6 +544,11 @@ function startEventBrainServer(options: { events: boolean }): Promise<EventBrain
     publish: (snapshot: Record<string, unknown>) => {
       for (const res of streams) {
         res.write(`event: status\ndata: ${JSON.stringify(snapshot)}\n\n`);
+      }
+    },
+    publishLog: (line: string) => {
+      for (const res of streams) {
+        res.write(`event: log\ndata: ${JSON.stringify({ line })}\n\n`);
       }
     },
     dropStreams: () => {
@@ -552,13 +609,20 @@ describe("BrainManager status event subscription", () => {
     rmSync(ottoHome, { recursive: true, force: true });
   });
 
-  function createManager(onStatusChanged: (status: BrainHostStatus) => void): BrainManager {
+  function createManager(
+    onStatusChanged: (status: BrainHostStatus) => void,
+    onLogLine?: (line: string) => void,
+  ): BrainManager {
     const created = new BrainManager({
       logger: createTestLogger(),
       managedProcesses: createRegistryStub(),
       ottoHome,
     });
-    created.setStatusListeners({ onStatusChanged, onStatusEventSupportChanged: () => {} });
+    created.setStatusListeners({
+      onStatusChanged,
+      onLogLine,
+      onStatusEventSupportChanged: () => {},
+    });
     return created;
   }
 
@@ -596,6 +660,26 @@ describe("BrainManager status event subscription", () => {
     expect(events.streamCount()).toBe(1);
     expect(events.requests.every((request) => request.token === "secret-token")).toBe(true);
     expect(events.requests.some((request) => request.path === "/__host/events")).toBe(true);
+  });
+
+  test("forwards durable session lines from the Brain SSE stream", async () => {
+    const events = await startEventBrainServer({ events: true, logEvents: true });
+    brainServer = events;
+    const lines: string[] = [];
+    manager = createManager(
+      () => {},
+      (line) => lines.push(line),
+    );
+
+    await manager.applySettings(
+      remoteConfig({ host: "127.0.0.1", port: events.port, secure: false }),
+    );
+    await until(() => events.streamCount() === 1, "the daemon to subscribe");
+    expect(manager.supportsLogEvents()).toBe(true);
+
+    events.publishLog("2026-08-15T03:08:49.000Z FATAL listener collision");
+    await until(() => lines.length === 1, "the pushed session line");
+    expect(lines).toEqual(["2026-08-15T03:08:49.000Z FATAL listener collision"]);
   });
 
   test("never opens a stream against a brain that reports events: false", async () => {

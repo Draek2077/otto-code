@@ -477,6 +477,14 @@ export const PersistedConfigSchema = z
               .passthrough()
               .optional(),
             defaultModel: z.string().nullable().optional(),
+            runtime: z
+              .object({
+                source: z.enum(["auto", "managed", "lmstudio"]).optional(),
+                path: z.string().nullable().optional(),
+                logVerbosity: z.number().int().min(0).max(5).optional(),
+              })
+              .passthrough()
+              .optional(),
             authMode: z.enum(["none", "token"]).optional(),
             authToken: z.string().nullable().optional(),
             tls: z

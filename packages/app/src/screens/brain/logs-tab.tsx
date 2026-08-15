@@ -1,5 +1,6 @@
 /**
- * The Logs tab: the brain's llama-server output.
+ * The Logs tab: the current Brain service session, including every managed
+ * child and host operation.
  *
  * This is the TUI's `l` view, which had no equivalent anywhere outside the
  * terminal. It is the first place to look when a model will not load, so it
@@ -19,6 +20,7 @@ import { useToast } from "@/contexts/toast-context";
 import type { Theme } from "@/styles/theme";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { useBrainLogs } from "./use-brain-data";
+import { parseBrainLogLine } from "./log-line";
 
 const ThemedSpinner = withUnistyles(LoadingSpinner, (theme) => ({
   color: theme.colors.foregroundMuted,
@@ -48,11 +50,23 @@ function lineTone(line: string): "error" | "warn" | "normal" {
 
 function LogLine({ line }: { line: string }) {
   const tone = lineTone(line);
+  const parsed = parseBrainLogLine(line);
   const style = useMemo(
     () => [styles.line, tone === "error" && styles.lineError, tone === "warn" && styles.lineWarn],
     [tone],
   );
-  return <Text style={style}>{line}</Text>;
+  if (!parsed.source) return <Text style={style}>{line}</Text>;
+  return (
+    <Text style={style}>
+      {parsed.timestamp ? `${parsed.timestamp} ` : null}
+      <Text
+        style={[styles.sourceTag, parsed.source === "brain" ? styles.brainTag : styles.llamaTag]}
+      >
+        [{parsed.source}]
+      </Text>
+      {parsed.area ? <Text style={styles.areaTag}> [{parsed.area}]</Text> : null} {parsed.message}
+    </Text>
+  );
 }
 
 export function BrainLogsTab({
@@ -217,7 +231,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
   },
-  // The llama-server tail is a code/terminal surface, so it sits on
+  // The Brain log is a code/terminal surface, so it sits on
   // `surfaceCode` - the same well the editor and tool-card diffs paint
   // (styles/theme.ts) - rather than the generic elevated-panel `surface3`.
   scroll: {
@@ -241,5 +255,17 @@ const styles = StyleSheet.create((theme) => ({
   },
   lineError: {
     color: theme.colors.palette.red[500],
+  },
+  sourceTag: {
+    fontWeight: theme.fontWeight.semibold,
+  },
+  brainTag: {
+    color: theme.colors.palette.blue[400],
+  },
+  llamaTag: {
+    color: theme.colors.palette.purple[500],
+  },
+  areaTag: {
+    color: theme.colors.foreground,
   },
 }));
