@@ -449,11 +449,23 @@ export class ZoomTeamChatProvider implements CommunicationsProvider {
       this.getMessages(conversationId),
       this.getConversationSummary(conversationId),
     ]);
+    const replyCounts = new Map<string, number>();
+    for (const message of messages) {
+      if (!message.parentMessageId) continue;
+      replyCounts.set(message.parentMessageId, (replyCounts.get(message.parentMessageId) ?? 0) + 1);
+    }
     return {
       conversation,
       // A normal room timeline deliberately contains only top-level messages.
-      // Thread children are read by the provider-confirmed thread operation.
-      messages: messages.filter((message) => !message.parentMessageId),
+      // Thread children are read by the provider-confirmed thread operation,
+      // but Zoom's list call already returned them once here, so their count
+      // is attached to the parent instead of being discarded.
+      messages: messages
+        .filter((message) => !message.parentMessageId)
+        .map((message) => {
+          const replyCount = replyCounts.get(message.messageId);
+          return replyCount ? Object.assign({}, message, { replyCount }) : message;
+        }),
       capabilities: this.getRoomCapabilities(connection.grantedScopes),
     };
   }

@@ -815,6 +815,53 @@ describe("ZoomTeamChatProvider", () => {
     });
   });
 
+  test("surfaces replyCount for a parent whose children came back in the same list-messages fetch", async () => {
+    const authorization = createAuthorization();
+    await authorization.saveConnectionMetadata({
+      integrationId: ZOOM_TEAM_CHAT_PROVIDER_ID,
+      connectionId: ZOOM_TEAM_CHAT_CONNECTION_ID,
+      method: "oauth-pkce",
+      state: "connected",
+    });
+    const provider = new ZoomTeamChatProvider(authorization, {
+      listUserChannels: async () => ({ items: [] }),
+      listUserMessages: async () => ({
+        items: [
+          { id: "root-1", message: "Root", senderId: "ada", timestamp: "2026-08-14T12:00:00.000Z" },
+          {
+            id: "reply-1",
+            message: "First reply",
+            senderId: "lin",
+            timestamp: "2026-08-14T12:01:00.000Z",
+            parentMessageId: "root-1",
+          },
+          {
+            id: "reply-2",
+            message: "Second reply",
+            senderId: "ada",
+            timestamp: "2026-08-14T12:02:00.000Z",
+            parentMessageId: "root-1",
+          },
+          {
+            id: "root-2",
+            message: "No replies here",
+            senderId: "ada",
+            timestamp: "2026-08-14T12:03:00.000Z",
+          },
+        ],
+      }),
+      sendUserMessage: async () => ({ id: "sent" }),
+    });
+
+    await expect(provider.getRoom("channel-1")).resolves.toMatchObject({
+      messages: [{ messageId: "root-1", replyCount: 2 }, { messageId: "root-2" }],
+    });
+    const room = await provider.getRoom("channel-1");
+    expect(
+      room.messages.find((message) => message.messageId === "root-2")?.replyCount,
+    ).toBeUndefined();
+  });
+
   test("degrades a malformed reaction codepoint to the raw id instead of failing the room load", async () => {
     const authorization = createAuthorization();
     await authorization.saveConnectionMetadata({
