@@ -1,6 +1,6 @@
 /* oxlint-disable complexity, react-perf/jsx-no-new-function-as-prop, react-perf/jsx-no-new-object-as-prop -- bundle rows carry id-bound controls */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
-import { Alert, Text, TextInput, View, type StyleProp, type ViewStyle } from "react-native";
+import { Text, TextInput, View, type StyleProp, type ViewStyle } from "react-native";
 import Svg, { Circle, G } from "react-native-svg";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useQueryClient } from "@tanstack/react-query";
@@ -31,7 +31,7 @@ import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import type { Theme } from "@/styles/theme";
-import { confirmDialog } from "@/utils/confirm-dialog";
+import { alertDialog, confirmDialog } from "@/utils/confirm-dialog";
 import { activeBrainQuantJob, selectInitialBrainQuant } from "./brain-quant-selection";
 import { describeRuntimeRemovalError } from "./brain-runtime-removal";
 
@@ -144,7 +144,14 @@ export function useRefreshOnJobCompletion(serverId: string, jobs: BrainJob[]): v
 }
 
 function reportError(context: string, error: unknown): void {
-  Alert.alert(context, error instanceof Error ? error.message : String(error));
+  // React Native's Alert is a no-op on the Electron/web renderer. Brain model
+  // mutations therefore appeared to do nothing when the host rejected them
+  // (for example, deleting the currently loaded model). Route every Library
+  // failure through the globally mounted dialog instead.
+  void alertDialog({
+    title: context,
+    message: error instanceof Error ? error.message : String(error),
+  });
 }
 
 function formatBytes(bytes: number): string {
