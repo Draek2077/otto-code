@@ -424,6 +424,18 @@ describe("sanitizeProfilePatch", () => {
     expect(result.profile.calibrationRequired).toBe(false);
   });
 
+  // "Fit to VRAM" sizes the context from the measured figure and then writes it.
+  // Invalidating the measurement on that write dropped the budget back to the
+  // theoretical estimate, so the context it had just saved no longer fit.
+  it("keeps the calibration when only the context size changes", () => {
+    const model = makeModel();
+    const current = makeProfile(model, { calibrationRequired: false });
+    const result = sanitizeProfilePatch(current, { contextSize: current.contextSize / 2 }, model);
+
+    expect(result.profile.contextSize).toBe(current.contextSize / 2);
+    expect(result.profile.calibrationRequired).toBe(false);
+  });
+
   it("ignores the order of the enabled component list", () => {
     const model = makeModel({
       components: [

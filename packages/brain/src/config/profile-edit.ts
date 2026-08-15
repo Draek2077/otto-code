@@ -321,10 +321,20 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-/** The settings whose value changes what a calibration would measure. */
+/**
+ * The settings whose value changes what a calibration would measure.
+ *
+ * `contextSize` is deliberately absent. A calibration measures bytes *per
+ * token* - the context size is the independent variable it varies to get the
+ * slope, so the result is by construction the same at any context, and
+ * `calibrationKey` does not record it either. Listing it here invalidated the
+ * measurement on every context edit, including the one "Fit to VRAM" makes
+ * itself: the fit picked a context from the measured figure, the write that
+ * saved it dropped back to the (~4x higher) theoretical estimate, and the
+ * saved context was then far past the budget it had just been sized against.
+ */
 const CALIBRATION_INPUTS = [
   "contextMultiplier",
-  "contextSize",
   "cacheTypeK",
   "cacheTypeV",
   "flashAttention",

@@ -929,7 +929,14 @@ function ModelDetail({
     () => model.profile?.calibrationRequired ?? true,
   );
   const handleReloaded = useCallback(() => setRequiresRestart(false), []);
-  const handleCalibrated = useCallback(() => setCalibrationRequired(false), []);
+  // A calibration rewrites the saved profile from outside the editor, so the
+  // editor has to re-read it. Otherwise its budget panel keeps showing the
+  // estimate it loaded with and the measurement looks like it was never saved.
+  const [profileReloadToken, setProfileReloadToken] = useState(0);
+  const handleCalibrated = useCallback(() => {
+    setCalibrationRequired(false);
+    setProfileReloadToken((token) => token + 1);
+  }, []);
 
   return (
     <ScrollView style={styles.detail} contentContainerStyle={styles.detailContent}>
@@ -955,6 +962,7 @@ function ModelDetail({
         family={model.family}
         components={model.components}
         canWrite={canWrite}
+        reloadToken={profileReloadToken}
         onSaved={onChanged}
         onRequiresRestartChange={setRequiresRestart}
         onCalibrationRequiredChange={setCalibrationRequired}

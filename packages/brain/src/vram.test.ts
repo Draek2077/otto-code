@@ -24,6 +24,10 @@ const MODEL = {
 
 const PROFILE = {
   contextSize: 225000,
+  // Every real profile carries one (the schema defaults it to 1). Omitting it
+  // here made the native-context cap NaN, which silently took three
+  // maxContextThatFits/fitToBudget assertions with it.
+  contextMultiplier: 1,
   cacheTypeK: "q8_0",
   cacheTypeV: "q8_0",
   vision: false,
@@ -142,6 +146,39 @@ test("an oversized context is reported as not fitting", () => {
   });
   assert.equal(b.fits, false);
   assert.ok(b.headroomBytes < 0);
+});
+
+test("maxContextThatFits charges the drafter's KV pool too", () => {
+  // A drafter doubles the per-token cost in `budget()`. Sizing the fit from the
+  // main pool alone handed back a context the budget then rejected, which is
+  // what "Fit to VRAM" wrote into the profile.
+  const bundle = {
+    ...MODEL,
+    metadata: { ...QWEN36_27B, contextLength: 1_000_000 },
+    components: [
+      {
+        id: "speculative-drafter",
+        role: "speculative_drafter",
+        available: true,
+        bytes: 0.5 * vram.GIB,
+      },
+    ],
+  } as unknown as Model;
+  const calibration = { kvBytesPerToken: 38.55 * 1024, baseOverheadBytes: 0.3 * vram.GIB };
+  const options = {
+    model: bundle,
+    profile: { ...PROFILE, enabledComponents: ["speculative-drafter"] } as unknown as Profile,
+    calibration,
+    totalVramBytes: RTX5090,
+  };
+
+  const max = vram.maxContextThatFits(options);
+  assert.ok(max! > 0);
+  assert.equal(
+    vram.budget({ ...options, profile: { ...options.profile, contextSize: max! } }).fits,
+    true,
+    "the fitted context must actually fit",
+  );
 });
 
 test("maxContextThatFits never exceeds the native context length", () => {

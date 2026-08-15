@@ -419,6 +419,7 @@ export function BrainProfileEditor({
   family,
   components,
   canWrite,
+  reloadToken = 0,
   onSaved,
   onRequiresRestartChange,
   onCalibrationRequiredChange,
@@ -430,6 +431,13 @@ export function BrainProfileEditor({
   components?: BrainInventoryModel["components"];
   /** False when the brain has not opted into remote configuration. */
   canWrite: boolean;
+  /**
+   * Bumped when something outside this editor changed the saved profile - a
+   * finished calibration is the one that matters. Without it the budget panel
+   * keeps reporting the estimate it loaded with, so a calibration that the
+   * brain did save still reads as "Estimated" until the model is reselected.
+   */
+  reloadToken?: number;
   onSaved: () => void;
   /** Whether the just-saved edit is sitting on the loaded model, unapplied. */
   onRequiresRestartChange: (requiresRestart: boolean) => void;
@@ -462,7 +470,8 @@ export function BrainProfileEditor({
   const [profilePrompt, setProfilePrompt] = useState("");
   const [profileTemplate, setProfileTemplate] = useState("");
 
-  // Load the profile and its descriptors whenever the selected model changes.
+  // Load the profile and its descriptors whenever the selected model changes,
+  // or when a calibration lands and makes the loaded budget stale.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -502,7 +511,7 @@ export function BrainProfileEditor({
     return () => {
       cancelled = true;
     };
-  }, [client, modelId, onCalibrationRequiredChange, onRequiresRestartChange]);
+  }, [client, modelId, reloadToken, onCalibrationRequiredChange, onRequiresRestartChange]);
 
   // Preview the VRAM budget for the draft, independent of saving it - this is
   // what answers "what happens if I keep this" while a control is still being

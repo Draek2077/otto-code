@@ -196,7 +196,13 @@ export function maxContextThatFits({
   const room = probe.usableBytes - fixed;
   if (room <= 0) return null;
 
-  const tokens = Math.floor(room / probe.kvBytesPerToken);
+  // More than one KV pool can scale with the context - a speculative drafter
+  // keeps its own. Derive the per-token cost from the probe rather than from
+  // `kvBytesPerToken` alone, so this can never hand back a context that
+  // `budget()` then declares does not fit.
+  const perToken = (probe.kvBytes + probe.drafterKvBytes) / step;
+  if (perToken <= 0) return null;
+  const tokens = Math.floor(room / perToken);
   const native = model.metadata?.contextLength;
   const contextLimit =
     typeof native === "number" && native > 0 ? native * profile.contextMultiplier : tokens;
