@@ -5,7 +5,7 @@ title: "Zoom Recorder title-bar transcript library"
 status: "confirmed"
 tags: ["zoom", "recorder", "transcripts", "desktop-ui", "daemon-storage", "title-bar"]
 created_at: "2026-08-13T23:04:08.846Z"
-updated_at: "2026-08-15T05:15:03.255Z"
+updated_at: "2026-08-15T06:52:37.495Z"
 ---
 
 # Zoom Recorder title-bar transcript library
@@ -14,13 +14,13 @@ updated_at: "2026-08-15T05:15:03.255Z"
 
 Zoom Recorder is an Otto Desktop frontend tool and requires the Zoom client on the same physical machine. It captures/transcribes locally and sends transcript data to the Daemon for durable storage and later Otto/AI use; audio is not retained.
 
-The Meeting Notes title-bar control is an anchored, stateful popup entry point, not the pause toggle itself. While active it uses `headset_mic`; while disabled or paused it uses the muted, crossed-out `headset_off`. Clicking it only opens or closes the compact popup, while Pause/Resume in that popup is the sole control for temporary disablement. Its visual state contract is exact: detecting a Zoom meeting is green, recording is red, transcribing is amber, and a completed/ready transcript is blue. Initial model download remains amber; errors are red. Labels are short state words, for example `Zoom Meetings: Detecting`. A recorder reporting setup while its model is already ready resolves to Detecting, never Downloading, after resume.
+The Meeting Notes title-bar control is an anchored, stateful popup entry point, not the pause toggle itself. While active it uses `headset_mic`; while disabled or paused it uses the muted, crossed-out `headset_off`. Clicking it only opens or closes the compact popup, while Pause/Resume in that popup is the sole control for temporary disablement. Its visual state contract is exact: detecting a meeting is green, recording is red, transcribing is amber, and a completed/ready transcript is blue. Initial model download remains amber; errors are red. Labels are short state words, for example `Meeting: Detecting`. A recorder reporting setup while its model is already ready resolves to Detecting, never Downloading, after resume.
 
 The Meeting Notes and Chat popups share the same compact footprint: a 240px anchored menu with a short bounded height and tight spacing. Meeting Notes has a single vertically centered header row with Meeting notes and the Pause/Resume control, without a subtitle; a searchable transcript list ordered newest-first, or a compact empty state when none exist; and direct per-transcript actions to add the transcript to a chat or delete it after confirmation. It has even horizontal content padding, and its search field is the same Settings search control, including search glyph and pinned clear action. Transcript-row visual tuning is deferred until real transcript data is available.
 
-When either popup has no records, its empty-state message uses the Zoom Chat treatment: 13px muted text, sentence case, terminal punctuation, and compact vertical padding rather than a fixed tall container.
+When either popup has no records, its empty-state message uses the Chat treatment: 13px muted text, sentence case, terminal punctuation, and compact vertical padding rather than a fixed tall container.
 
-Selecting a transcript's view/edit action opens a dialog where its name and transcript content can be previewed and edited. Because capture may not reliably identify the Zoom meeting, a new transcript is named during Daemon ingestion, with date/time as the dependable initial information and a user-supplied meaningful name.
+Selecting a transcript's view/edit action opens a dialog where its name and transcript content can be previewed and edited. Because capture may not reliably identify the meeting, a new transcript is named during Daemon ingestion, with date/time as the dependable initial information and a user-supplied meaningful name.
 
 ## Timeline
 
@@ -135,3 +135,7 @@ Selecting a transcript's view/edit action opens a dialog where its name and tran
   kind: "evidence"
   summary: "Corrected the Meeting Notes Enable/Disable control’s optical alignment: its icon now matches the 14px label and the label uses a tight matching line height, keeping both centered on the same horizontal axis. Focused formatting, lint, and app typecheck passed."
   source: "User-provided Zoom Meeting popup screenshot and implementation, 2026-08-14"
+- time: "2026-08-15T06:52:37.495Z"
+  kind: "decision"
+  summary: "The user explicitly removed Zoom branding from Meeting feature UI language and specified the unbranded Meeting status label."
+  source: "Explicit user requirement, 2026-08-15"

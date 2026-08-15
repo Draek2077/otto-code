@@ -5,7 +5,7 @@ title: "Communications title-bar icon"
 status: "confirmed"
 tags: ["communications", "titlebar", "ui", "icons"]
 created_at: "2026-08-13T23:29:26.376Z"
-updated_at: "2026-08-14T05:38:10.813Z"
+updated_at: "2026-08-15T06:52:15.661Z"
 ---
 
 # Communications title-bar icon
@@ -16,7 +16,7 @@ The title bar has no umbrella Communications menu. It presents separate adjacent
 
 - The dedicated Chat control uses Material `chat_bubble` when connected and `chat_bubble_off` when disconnected. An incoming unread chat replaces that glyph with `mark_chat_unread`; this glyph is the only active-Otto-window notifier. It is not represented by a bell, desktop banner, separate notification control, or intrusive in-app alert.
 - The dedicated Meeting Notes control reflects desktop-local recorder state with `headset_mic` while active and `headset_off` when paused: blue while idle or complete, red while recording, amber while transcribing or downloading the model, and muted when paused or unavailable.
-- Title-bar tooltips use action text for toggles: `Mute voice cues`/`Unmute voice cues` and `Open Visualizer`/`Close Visualizer`. Stateful controls use a concise `Label: Status` form: `Hey Otto: Disabled|Enabled|Detecting|Recording|Processing`, `Zoom Meeting: Disabled|Detecting|Recording|Transcribing|Ready`, and `Zoom Chat: Disabled|<Status>|Notification`.
+- Title-bar tooltips use action text for toggles: `Mute voice cues`/`Unmute voice cues` and `Open Visualizer`/`Close Visualizer`. Stateful controls use a concise `Label: Status` form: `Hey Otto: Disabled|Enabled|Detecting|Recording|Processing`, `Meeting: Disabled|Detecting|Recording|Transcribing|Ready`, and `Chat: Disabled|<Status>|Notification`.
 
 Chat and meeting transcription remain separate service families and must not share a combined title-bar control.
 
@@ -58,3 +58,7 @@ Chat and meeting transcription remain separate service families and must not sha
   kind: "decision"
   summary: "The user defined a uniform title-bar tooltip contract for voice, Visualizer, Hey Otto, Zoom Meeting, and Zoom Chat controls."
   source: "Explicit user UI requirement, 2026-08-13"
+- time: "2026-08-15T06:52:15.661Z"
+  kind: "decision"
+  summary: "The user explicitly removed Zoom branding from the Chat and Meeting feature UI and specified concise unbranded title-bar labels."
+  source: "Explicit user requirement, 2026-08-15"

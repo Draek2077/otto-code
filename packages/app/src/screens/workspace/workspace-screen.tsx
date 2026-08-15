@@ -1963,8 +1963,8 @@ function canStartZoomTeamChatSignIn({
 }
 
 function zoomTeamChatAccessibilityLabel(unreadCount: number, enabled: boolean): string {
-  if (!enabled) return "Open Zoom Team Chat. Disabled.";
-  return unreadCount > 0 ? `Open Zoom Team Chat. ${unreadCount} unread.` : "Open Zoom Team Chat";
+  if (!enabled) return "Open Chat. Disabled.";
+  return unreadCount > 0 ? `Open Chat. ${unreadCount} unread.` : "Open Chat";
 }
 
 function zoomTeamChatTooltip(
@@ -1974,9 +1974,9 @@ function zoomTeamChatTooltip(
   observedStatusLabel: string | null,
   enabled: boolean,
 ): string {
-  if (!enabled) return "Zoom Chat: Disabled";
-  if (unreadCount > 0) return "Zoom Chat: Notification";
-  return `Zoom Chat: ${
+  if (!enabled) return "Chat: Disabled";
+  if (unreadCount > 0) return "Chat: Notification";
+  return `Chat: ${
     connectionLabel === "Connected"
       ? formatZoomChatPresence(presenceStatus, observedStatusLabel)
       : connectionLabel
@@ -2087,11 +2087,11 @@ function zoomStatusUpdateErrorMessage(error: unknown): string {
   const cooldownMatch = /available again at (\d{4}-\d{2}-\d{2}T[^.]+\.\d{3}Z)/.exec(
     getErrorMessage(error),
   );
-  if (cooldownMatch) return "Zoom allows one status update per minute. Please wait for the timer.";
+  if (cooldownMatch) return "Status can be updated once per minute. Please wait for the timer.";
   const statusCode = /status (\d{3})/.exec(getErrorMessage(error))?.[1];
   return statusCode
-    ? `Zoom rejected this status update (HTTP ${statusCode}).`
-    : "Zoom could not apply this status update.";
+    ? `The service rejected this status update (HTTP ${statusCode}).`
+    : "Could not apply this status update.";
 }
 
 function statusChangeAvailableAtFromError(error: unknown): string | null {
@@ -2184,11 +2184,11 @@ function zoomChatPresenceOptionAccessibilityLabel(params: {
   statusChangeLocked: boolean;
   statusChangeCooldownMs: number;
 }): string {
-  if (!params.disabled) return `Set Zoom status to ${params.option.label}`;
+  if (!params.disabled) return `Set Chat status to ${params.option.label}`;
   if (params.statusChangeLocked && params.option.id !== "offline") {
     return `${params.option.label}, status changes available in ${formatStatusChangeCooldown(params.statusChangeCooldownMs)}`;
   }
-  return `${params.option.label}, unavailable from the current Zoom status`;
+  return `${params.option.label}, unavailable from the current status`;
 }
 
 function getZoomChatDisplayedPresenceStatus(params: {
@@ -2325,7 +2325,7 @@ function ZoomChatFavoriteButton({
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
-      accessibilityLabel={favorite ? "Remove from Zoom favorites" : "Add to Zoom favorites"}
+      accessibilityLabel={favorite ? "Remove from Chat favorites" : "Add to Chat favorites"}
       style={[styles.teamChatFavoriteButton, disabled && styles.teamChatFavoriteButtonDisabled]}
     >
       {favorite ? (
@@ -2392,7 +2392,7 @@ function useZoomChatDestinationSearch({
         } catch {
           if (requestSequence.current !== currentRequest) return;
           setResults([]);
-          setError("Could not search Zoom Chat. Reconnect if access was just granted.");
+          setError("Could not search Chat. Reconnect if access was just granted.");
         } finally {
           if (requestSequence.current === currentRequest) setIsSearching(false);
         }
@@ -2603,7 +2603,7 @@ function ZoomChatPopupSearchContents({
           value={query}
           onChangeText={onChangeQuery}
           placeholder="Search chats or people"
-          accessibilityLabel="Search your Zoom chats or people"
+          accessibilityLabel="Search chats or people"
         />
       ) : null}
       {isSearchActive ? (
@@ -2726,9 +2726,9 @@ function zoomChatHomeConversationDetail(
 
 function zoomChatFavoriteErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message.includes("Reconnect Zoom Chat in Settings")) {
-    return "Reconnect Zoom Chat in Settings to allow favorites.";
+    return "Reconnect Chat in Settings to allow favorites.";
   }
-  return "Could not update Zoom favorites. Try again.";
+  return "Could not update Chat favorites. Try again.";
 }
 
 function canSearchZoomChatDestinations(
@@ -2815,7 +2815,7 @@ function WorkspaceTeamChatButton({ serverId }: { serverId: string }) {
     if (!isDesktop || !supportsCommunications || !client || !isHostConnected) {
       setUnreadCount(0);
       setChatConnectionLabel(
-        supportsCommunications ? "Not connected" : "Update this host to use Zoom Team Chat",
+        supportsCommunications ? "Not connected" : "Update this host to use Chat",
       );
       setIsChatConnected(false);
       setIsChatEnabled(false);
@@ -2939,12 +2939,12 @@ function WorkspaceTeamChatButton({ serverId }: { serverId: string }) {
       try {
         const result = await client.integrationsZoomStartAuthorization();
         if (!result.authorizationUrl) {
-          throw new Error(result.error ?? "Could not start Zoom sign-in.");
+          throw new Error(result.error ?? "Could not start Chat sign-in.");
         }
         setChatConnectionLabel("Finish sign-in in your browser");
         await openExternalUrl(result.authorizationUrl);
       } catch {
-        setChatConnectionLabel("Could not start Zoom sign-in");
+        setChatConnectionLabel("Could not start Chat sign-in");
       } finally {
         setIsStartingSignIn(false);
       }
@@ -2999,7 +2999,7 @@ function WorkspaceTeamChatButton({ serverId }: { serverId: string }) {
               !isChatEnabled ||
               resolvedStatus === nextStatus
               ? null
-              : "Zoom did not apply that status update. Your current Zoom status is unchanged.",
+              : "The service did not apply that status update. Your current status is unchanged.",
           );
           setPresencePickerOpen(false);
         } catch (error) {
@@ -3355,7 +3355,7 @@ function WorkspaceMeetingNotesButton({
             suppressFocusOutline
             style={triggerStyle}
             accessibilityRole="button"
-            accessibilityLabel={`Open Zoom meeting notes. ${stateLabel}.`}
+            accessibilityLabel={`Open Meeting notes. ${stateLabel}.`}
           >
             {recorderActive ? (
               <ThemedHeadsetMic
@@ -3368,7 +3368,7 @@ function WorkspaceMeetingNotesButton({
           </DropdownMenuTrigger>
         </TooltipTrigger>
         <TooltipContent side="bottom" align="center" offset={8}>
-          <Text style={styles.headerMenuTooltipText}>Zoom Meeting: {stateLabel}</Text>
+          <Text style={styles.headerMenuTooltipText}>Meeting: {stateLabel}</Text>
         </TooltipContent>
       </Tooltip>
       <MeetingTranscriptLibrary
