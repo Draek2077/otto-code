@@ -3513,10 +3513,12 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     paddingTop: theme.spacing[16],
+    paddingHorizontal: theme.spacing[6],
   },
   emptyText: {
     fontSize: theme.fontSize.lg,
     color: theme.colors.foregroundMuted,
+    textAlign: "center",
   },
   fileSection: {
     overflow: "hidden",
