@@ -1002,15 +1002,16 @@ export const es: TranslationResources = {
         closeTabsRightTitle: "¿Cerrar pestañas a la derecha?",
         closeOtherTabsTitle: "¿Cerrar otras pestañas?",
         bulk: {
-          all: "Esto archivará los agentes{{agents}}, cerrará los terminales{{terminals}}y cerrará las pestañas{{tabs}}. Cualquier proceso en ejecución en una terminal cerrada se detendrá inmediatamente.",
+          all: "Esto archivará los agentes{{agents}}, cerrará los terminales{{terminals}}y cerrará las pestañas{{tabs}}. Cualquier proceso en ejecución o editor de archivos externo en esos terminales y pestañas se detendrá inmediatamente.",
           agentsAndTerminals:
             "Esto archivará los agentes{{agents}}y cerrará los terminales{{terminals}}. Cualquier proceso en ejecución en una terminal cerrada se detendrá inmediatamente.",
           terminalsAndTabs:
-            "Esto cerrará los terminales{{terminals}}y cerrará las pestañas{{tabs}}. Cualquier proceso en ejecución en una terminal cerrada se detendrá inmediatamente.",
-          agentsAndTabs: "Esto archivará los agentes{{agents}}y cerrará las pestañas{{tabs}}.",
+            "Esto cerrará los terminales{{terminals}}y cerrará las pestañas{{tabs}}. Cualquier proceso en ejecución o editor de archivos externo en esos terminales y pestañas se detendrá inmediatamente.",
+          agentsAndTabs:
+            "Esto archivará los agentes{{agents}}y cerrará las pestañas{{tabs}}. Cualquier editor de archivos externo en una pestaña cerrada se detendrá inmediatamente.",
           terminals:
             "Esto cerrará los terminales{{terminals}}. Cualquier proceso en ejecución en una terminal cerrada se detendrá inmediatamente.",
-          tabs: "Esto cerrará las pestañas{{tabs}}.",
+          tabs: "Esto cerrará las pestañas{{tabs}}. Cualquier editor de archivos externo en una pestaña cerrada se detendrá inmediatamente.",
           agents: "Esto archivará los agentes{{agents}}.",
         },
         unsavedTitle: "Cambios sin guardar",
@@ -2666,6 +2667,12 @@ export const es: TranslationResources = {
       title: "¿Descartar los cambios?",
       message: "Este archivo tiene cambios sin guardar. ¿Cerrarlo y descartarlos?",
       confirm: "Descartar",
+    },
+    externalEditorDialog: {
+      title: "¿Cerrar el editor de archivos en ejecución?",
+      message:
+        "Cerrar esta pestaña detiene el editor de archivos externo. Los cambios sin guardar dentro de Vim o Neovim podrían perderse.",
+      confirm: "Cerrar y detener el editor",
     },
   },
   fileFinder: {

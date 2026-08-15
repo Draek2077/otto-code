@@ -1002,15 +1002,16 @@ export const ja: TranslationResources = {
         closeTabsRightTitle: "右のタブを閉じますか？",
         closeOtherTabsTitle: "他のタブを閉じますか？",
         bulk: {
-          all: "{{agents}}件のエージェントをアーカイブし、{{terminals}}件のターミナルを閉じ、{{tabs}}件のタブを閉じます。閉じたターミナルで実行中のプロセスはすぐに停止されます。",
+          all: "{{agents}}件のエージェントをアーカイブし、{{terminals}}件のターミナルを閉じ、{{tabs}}件のタブを閉じます。それらのターミナルやタブで実行中のプロセスや外部ファイルエディターはすぐに停止されます。",
           agentsAndTerminals:
             "{{agents}}件のエージェントをアーカイブし、{{terminals}}件のターミナルを閉じます。閉じたターミナルで実行中のプロセスはすぐに停止されます。",
           terminalsAndTabs:
-            "{{terminals}}件のターミナルを閉じ、{{tabs}}件のタブを閉じます。閉じたターミナルで実行中のプロセスはすぐに停止されます。",
-          agentsAndTabs: "{{agents}}件のエージェントをアーカイブし、{{tabs}}件のタブを閉じます。",
+            "{{terminals}}件のターミナルを閉じ、{{tabs}}件のタブを閉じます。それらのターミナルやタブで実行中のプロセスや外部ファイルエディターはすぐに停止されます。",
+          agentsAndTabs:
+            "{{agents}}件のエージェントをアーカイブし、{{tabs}}件のタブを閉じます。閉じたタブ内の外部ファイルエディターはすぐに停止されます。",
           terminals:
             "{{terminals}}件のターミナルを閉じます。閉じたターミナルで実行中のプロセスはすぐに停止されます。",
-          tabs: "{{tabs}}件のタブを閉じます。",
+          tabs: "{{tabs}}件のタブを閉じます。閉じたタブ内の外部ファイルエディターはすぐに停止されます。",
           agents: "{{agents}}件のエージェントをアーカイブします。",
         },
         unsavedTitle: "未保存の変更",
@@ -2638,6 +2639,12 @@ export const ja: TranslationResources = {
       title: "変更を破棄しますか？",
       message: "このファイルには未保存の変更があります。閉じて破棄しますか？",
       confirm: "破棄",
+    },
+    externalEditorDialog: {
+      title: "実行中のファイルエディターを閉じますか？",
+      message:
+        "このタブを閉じると外部ファイルエディターが停止されます。Vim または Neovim 内の未保存の変更は失われる可能性があります。",
+      confirm: "閉じてエディターを停止",
     },
   },
   fileFinder: {

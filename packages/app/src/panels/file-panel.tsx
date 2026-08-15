@@ -64,10 +64,9 @@ interface EditorBufferId {
 async function confirmDiscardEditorBuffer(bufferId: EditorBufferId): Promise<boolean> {
   if (hasActiveExternalFileEditor(bufferId)) {
     const confirmed = await confirmDialog({
-      title: "Close the running file editor?",
-      message:
-        "Closing this tab stops the external file editor. Unsaved changes inside Vim or Neovim may be lost.",
-      confirmLabel: "Close and stop editor",
+      title: i18n.t("editor.externalEditorDialog.title"),
+      message: i18n.t("editor.externalEditorDialog.message"),
+      confirmLabel: i18n.t("editor.externalEditorDialog.confirm"),
       cancelLabel: i18n.t("editor.cancel"),
       destructive: true,
     });

@@ -20,11 +20,11 @@ export interface BulkCloseConfirmationLabels {
 
 export const DEFAULT_BULK_CLOSE_CONFIRMATION_LABELS: BulkCloseConfirmationLabels = {
   all: ({ agents, terminals, tabs }) =>
-    `This will archive ${agents} agent(s), close ${terminals} terminal(s), and close ${tabs} tab(s). Any running process or external file editor in them will be stopped immediately.`,
+    `This will archive ${agents} agent(s), close ${terminals} terminal(s), and close ${tabs} tab(s). Any running process or external file editor in those terminals and tabs will be stopped immediately.`,
   agentsAndTerminals: ({ agents, terminals }) =>
     `This will archive ${agents} agent(s) and close ${terminals} terminal(s). Any running process in a closed terminal will be stopped immediately.`,
   terminalsAndTabs: ({ terminals, tabs }) =>
-    `This will close ${terminals} terminal(s) and close ${tabs} tab(s). Any running process or external file editor in them will be stopped immediately.`,
+    `This will close ${terminals} terminal(s) and close ${tabs} tab(s). Any running process or external file editor in those terminals and tabs will be stopped immediately.`,
   agentsAndTabs: ({ agents, tabs }) =>
     `This will archive ${agents} agent(s) and close ${tabs} tab(s). Any external file editor in a closed tab will be stopped immediately.`,
   terminals: ({ terminals }) =>
