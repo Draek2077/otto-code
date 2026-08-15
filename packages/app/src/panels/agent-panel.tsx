@@ -35,7 +35,10 @@ import {
   type ToastState,
 } from "@/components/toast-host";
 import type { WorkspaceComposerAttachment } from "@/attachments/types";
-import { useWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
+import {
+  buildAgentWorkspaceAttachmentScopeKey,
+  useWorkspaceAttachmentScopeKey,
+} from "@/attachments/workspace-attachments-store";
 import { COMPACT_FORM_FACTOR_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
 import { isNative, isWeb } from "@/constants/platform";
 import { useAgentAttentionClear } from "@/hooks/use-agent-attention-clear";
@@ -1776,9 +1779,13 @@ function ActiveAgentComposer({
     cwd,
     workspaceId,
   });
+  const agentAttachmentScopeKey = useMemo(
+    () => buildAgentWorkspaceAttachmentScopeKey(agentId),
+    [agentId],
+  );
   const attachmentScopeKeys = useMemo(
-    () => [workspaceAttachmentScopeKey],
-    [workspaceAttachmentScopeKey],
+    () => [agentAttachmentScopeKey, workspaceAttachmentScopeKey],
+    [agentAttachmentScopeKey, workspaceAttachmentScopeKey],
   );
   const openFileExplorerForCheckout = usePanelStore((state) => state.openFileExplorerForCheckout);
   const setExplorerTabForCheckout = usePanelStore((state) => state.setExplorerTabForCheckout);

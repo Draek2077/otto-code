@@ -94,6 +94,70 @@ export interface DesktopWakeWordBridge {
   stop?: () => Promise<void>;
 }
 
+export type DesktopZoomRecorderState =
+  | "unavailable"
+  | "idle"
+  | "setup"
+  | "recording"
+  | "transcribing"
+  | "ready"
+  | "error";
+
+export interface DesktopZoomRecorderStatus {
+  available: boolean;
+  enabled: boolean;
+  modelReady: boolean;
+  modelBytes: number;
+  state: DesktopZoomRecorderState;
+  detail: string;
+  ownerPid?: number;
+}
+
+export interface DesktopZoomRecorderBridge {
+  status?: () => Promise<DesktopZoomRecorderStatus>;
+  enable?: () => Promise<DesktopZoomRecorderStatus>;
+  disable?: () => Promise<DesktopZoomRecorderStatus>;
+  takeOver?: () => Promise<DesktopZoomRecorderStatus>;
+  deleteModel?: () => Promise<DesktopZoomRecorderStatus>;
+  listPendingTranscripts?: () => Promise<
+    Array<{ token: string; content: string; occurredAt: string }>
+  >;
+  acknowledgeTranscript?: (token: string) => Promise<void>;
+}
+
+export type DesktopLocalMeetingTranscriptDeliveryState =
+  | "local_only"
+  | "waiting_for_secure_connection"
+  | "delivery_failed";
+
+export interface DesktopLocalMeetingTranscript {
+  id: string;
+  provider: string;
+  title: string;
+  content: string;
+  occurredAt: string;
+  createdAt: string;
+  updatedAt: string;
+  deliveryState: DesktopLocalMeetingTranscriptDeliveryState;
+}
+
+export interface DesktopMeetingTranscriptsBridge {
+  listLocal?: () => Promise<DesktopLocalMeetingTranscript[]>;
+  createLocal?: (input: {
+    provider: string;
+    title: string;
+    content: string;
+    occurredAt: string;
+    deliveryState: DesktopLocalMeetingTranscriptDeliveryState;
+  }) => Promise<DesktopLocalMeetingTranscript>;
+  updateLocal?: (input: {
+    id: string;
+    title?: string;
+    content?: string;
+  }) => Promise<DesktopLocalMeetingTranscript | null>;
+  deleteLocal?: (id: string) => Promise<boolean>;
+}
+
 export interface DesktopWebUtilsBridge {
   getPathForFile?: (file: File) => string;
 }
@@ -197,6 +261,7 @@ export interface DesktopInvokeBridge {
 
 export interface DesktopHostBridge {
   platform?: string;
+  arch?: string;
   invoke?: DesktopInvokeBridge["invoke"];
   getPendingOpenProject?: () => Promise<string | null>;
   getPendingOpenTarget?: () => Promise<{
@@ -212,6 +277,8 @@ export interface DesktopHostBridge {
   opener?: DesktopOpenerBridge;
   editor?: DesktopEditorBridge;
   wakeWord?: DesktopWakeWordBridge;
+  zoomRecorder?: DesktopZoomRecorderBridge;
+  meetingTranscripts?: DesktopMeetingTranscriptsBridge;
   webUtils?: DesktopWebUtilsBridge;
   menu?: DesktopMenuBridge;
   browser?: DesktopBrowserBridge;
