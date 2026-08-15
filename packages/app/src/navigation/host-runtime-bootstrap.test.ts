@@ -5,6 +5,7 @@ import {
   resolveStartupNavigationReady,
   resolveHostIndexRoute,
   resolveStartupRoute,
+  shouldMountStartupRuntime,
   shouldRunStartupGiveUpTimer,
   startHostRuntimeBootstrap,
 } from "./host-runtime-bootstrap";
@@ -163,6 +164,33 @@ describe("startup blocking policy", () => {
         hasGivenUpWaitingForHost: false,
       }),
     ).toBe(false);
+  });
+
+  it("keeps the application runtime unmounted until host bootstrap is settled", () => {
+    expect(
+      shouldMountStartupRuntime({
+        startupBlocker: { kind: "managed-daemon-starting" },
+        hostRegistryStatus: "loading",
+      }),
+    ).toBe(false);
+    expect(
+      shouldMountStartupRuntime({
+        startupBlocker: { kind: "none" },
+        hostRegistryStatus: "loading",
+      }),
+    ).toBe(false);
+    expect(
+      shouldMountStartupRuntime({
+        startupBlocker: { kind: "managed-daemon-error", message: "Failed to start" },
+        hostRegistryStatus: "ready",
+      }),
+    ).toBe(false);
+    expect(
+      shouldMountStartupRuntime({
+        startupBlocker: { kind: "none" },
+        hostRegistryStatus: "ready",
+      }),
+    ).toBe(true);
   });
 
   it("unblocks navigation when any host is online", () => {

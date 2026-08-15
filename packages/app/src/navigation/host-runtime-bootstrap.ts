@@ -106,6 +106,16 @@ export function resolveStartupNavigationReady(input: { startupBlocker: StartupBl
   return input.startupBlocker.kind !== "managed-daemon-starting";
 }
 
+// The root layout owns the first React paint. Keep the application tree out of
+// that paint until host bootstrap has reached a stable state; the splash can
+// then cover the runtime while its first route commits.
+export function shouldMountStartupRuntime(input: {
+  startupBlocker: StartupBlocker;
+  hostRegistryStatus: StartupRegistryStatus;
+}): boolean {
+  return input.startupBlocker.kind === "none" && input.hostRegistryStatus === "ready";
+}
+
 export function shouldRunStartupGiveUpTimer(input: {
   startupBlocker: StartupBlocker;
   anyOnlineHostServerId: string | null;

@@ -66,6 +66,7 @@ import {
   initialStartupBlocker,
   resolveStartupBlocker,
   resolveStartupNavigationReady,
+  shouldMountStartupRuntime,
   shouldRunStartupGiveUpTimer,
   startDaemonIfGateAllows,
   startHostRuntimeBootstrap,
@@ -104,6 +105,7 @@ import {
 import {
   getHostRuntimeStore,
   hasConfiguredLocalDaemonOverride,
+  useHostRegistryStatus,
   useHostRegistryLoaded,
   useHostMutations,
   useHostRuntimeClient,
@@ -129,6 +131,7 @@ import {
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { createWorkspaceFileTabTarget } from "@/workspace/file-open";
+import { StartupSplashScreen } from "@/screens/startup-splash-screen";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { useFileDrop } from "@/components/file-drop/use-file-drop";
 import { getDroppedFilePath } from "@/components/file-drop/file-path";
@@ -1270,12 +1273,12 @@ function AppShell() {
 
 function RuntimeProviders({ children }: { children: ReactNode }) {
   return (
-    <HostRuntimeBootstrapProvider>
+    <>
       <PushNotificationRouter />
       <SidebarCalloutProvider>
         <ProvidersWrapper>{children}</ProvidersWrapper>
       </SidebarCalloutProvider>
-    </HostRuntimeBootstrapProvider>
+    </>
   );
 }
 
@@ -1316,13 +1319,66 @@ function RootAppTree() {
   return (
     <GestureHandlerRootView style={flexStyle}>
       <View style={layoutStyles.surfaceFill}>
+        <HostRuntimeBootstrapProvider>
+          <RootStartupBoundary />
+        </HostRuntimeBootstrapProvider>
+      </View>
+    </GestureHandlerRootView>
+  );
+}
+
+function RootStartupBoundary() {
+  const bootstrapState = useHostRuntimeBootstrapState();
+  const hostRegistryStatus = useHostRegistryStatus();
+  const shouldMountRuntime = shouldMountStartupRuntime({
+    startupBlocker: bootstrapState.startupBlocker,
+    hostRegistryStatus,
+  });
+  const [hasMountedRuntime, setHasMountedRuntime] = useState(false);
+  const [isSplashCoverVisible, setIsSplashCoverVisible] = useState(true);
+  const hasHiddenNativeSplash = useRef(false);
+
+  useEffect(() => {
+    if (shouldMountRuntime) {
+      setHasMountedRuntime(true);
+    }
+  }, [shouldMountRuntime]);
+
+  useEffect(() => {
+    if (!hasMountedRuntime) {
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      setIsSplashCoverVisible(false);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [hasMountedRuntime]);
+
+  const hideNativeSplash = useCallback(() => {
+    if (hasHiddenNativeSplash.current) {
+      return;
+    }
+    hasHiddenNativeSplash.current = true;
+    void SplashScreen.hideAsync();
+  }, []);
+
+  return (
+    <>
+      {hasMountedRuntime ? (
         <RootProviders>
           <RuntimeProviders>
             <AppShell />
           </RuntimeProviders>
         </RootProviders>
-      </View>
-    </GestureHandlerRootView>
+      ) : null}
+      {!hasMountedRuntime || isSplashCoverVisible ? (
+        <View onLayout={hideNativeSplash} style={layoutStyles.startupOverlay}>
+          <StartupSplashScreen bootstrapState={bootstrapState} />
+        </View>
+      ) : null}
+    </>
   );
 }
 
@@ -1338,12 +1394,6 @@ export default function RootLayout() {
   // No-op on native.
   useEffect(() => installWebScrollbarStyles(), []);
   const [fontsLoaded] = useFonts({ Inter_400Regular, JetBrainsMono_400Regular });
-
-  useEffect(() => {
-    if (fontsLoaded) {
-      void SplashScreen.hideAsync();
-    }
-  }, [fontsLoaded]);
 
   if (!fontsLoaded) {
     return null;
@@ -1370,5 +1420,12 @@ const layoutStyles = StyleSheet.create((theme) => ({
   surfaceFill: {
     flex: 1,
     backgroundColor: theme.colors.surface0,
+  },
+  startupOverlay: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
   },
 }));
