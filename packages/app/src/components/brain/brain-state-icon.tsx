@@ -39,6 +39,11 @@ import type { Theme } from "@/styles/theme";
 const BAND_RATIO = 0.7;
 /** How far past the icon the glow bleeds. */
 const GLOW_RATIO = 1.7;
+/**
+ * On the compact form factor the rail and header are tight on space, and a
+ * glow at full ratio crowds them. Trim the halo to 85% of its extent there.
+ */
+const COMPACT_GLOW_RATIO = 0.85;
 
 const ABSOLUTE_FILL = { position: "absolute" } as const;
 
@@ -60,11 +65,14 @@ export function BrainStateIcon({
   size,
   theme,
   style,
+  compact = false,
 }: {
   state: BrainState;
   size: number;
   theme: Theme;
   style?: StyleProp<ViewStyle>;
+  /** Compact form factor: trims the glow so it fits the tighter rail. */
+  compact?: boolean;
 }) {
   const visual = BRAIN_STATE_VISUALS[state];
   const animationsEnabled = useAnimationsEnabled();
@@ -105,7 +113,13 @@ export function BrainStateIcon({
   return (
     <View pointerEvents="none" style={containerStyle}>
       {visual.glow > 0 ? (
-        <BrainIconGlow box={size} size={glyph} color={visual.peak ?? base} strength={visual.glow} />
+        <BrainIconGlow
+          box={size}
+          size={glyph}
+          color={visual.peak ?? base}
+          strength={visual.glow}
+          compact={compact}
+        />
       ) : null}
       {motion === null || motion === "pulse" ? (
         <BrainIconBreathing progress={progress} active={motion === "pulse"}>
@@ -347,6 +361,7 @@ function BrainIconGlow({
   size,
   color,
   strength,
+  compact,
 }: {
   /** The laid-out box the halo centres on. */
   box: number;
@@ -354,9 +369,11 @@ function BrainIconGlow({
   size: number;
   color: string;
   strength: number;
+  /** Trim the halo to 85% on the compact form factor. */
+  compact?: boolean;
 }) {
   const gradientId = useId();
-  const extent = size * GLOW_RATIO;
+  const extent = size * GLOW_RATIO * (compact ? COMPACT_GLOW_RATIO : 1);
   const haloStyle = useMemo(
     () => ({ position: "absolute" as const, left: (box - extent) / 2, top: (box - extent) / 2 }),
     [box, extent],

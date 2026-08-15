@@ -161,9 +161,12 @@ export function SidebarFooterNavRow({
   // need to see without navigating to look for it.
   const brainRail = useBrainRail();
   const brainState = brainRail.state;
+  const isCompact = useIsCompactFormFactor();
   const renderBrainIcon = useCallback(
-    ({ size }: { size: number }) => <BrainStateIcon state={brainState} size={size} theme={theme} />,
-    [brainState, theme],
+    ({ size }: { size: number }) => (
+      <BrainStateIcon state={brainState} size={size} theme={theme} compact={isCompact} />
+    ),
+    [brainState, theme, isCompact],
   );
   // The state's own wording replaces the plain "Brain" tooltip once there is
   // something to say; `labels.brain` stays the label when it is merely idle, so

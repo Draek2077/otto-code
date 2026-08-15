@@ -73,7 +73,12 @@ export function WorkspaceBrainButton() {
           deliberately not applied to the glyph. A status light that changes
           colour when you point at it is no longer reporting status, and the
           slot's own background already marks the hover. */}
-      <ThemedBrainStateIcon state={rail.state} size={glyphSize} uniProps={brainThemeMapping} />
+      <ThemedBrainStateIcon
+        state={rail.state}
+        size={glyphSize}
+        compact={isCompact}
+        uniProps={brainThemeMapping}
+      />
     </HeaderToggleButton>
   );
 }

@@ -567,9 +567,12 @@ function SidebarFooter({
   // which has no second row to put it in.
   const brainRail = useBrainRail();
   const brainState = brainRail.state;
+  const isCompact = useIsCompactFormFactor();
   const renderBrainIcon = useCallback(
-    ({ size }: { size: number }) => <BrainStateIcon state={brainState} size={size} theme={theme} />,
-    [brainState, theme],
+    ({ size }: { size: number }) => (
+      <BrainStateIcon state={brainState} size={size} theme={theme} compact={isCompact} />
+    ),
+    [brainState, theme, isCompact],
   );
   const brainLabel = resolveBrainRailLabel(brainRail, labels.brain);
 
