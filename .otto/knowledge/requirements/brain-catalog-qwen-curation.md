@@ -3,10 +3,11 @@ id: "brain-catalog-qwen-curation"
 kind: "requirement"
 title: "Brain catalog curates two Qwen models"
 status: "confirmed"
-tags: ["brain","model-catalog","curation"]
+tags: ["brain", "model-catalog", "curation"]
 created_at: "2026-08-14T19:28:03.137Z"
 updated_at: "2026-08-14T19:30:26.811Z"
 ---
+
 # Brain catalog curates two Qwen models
 
 <!-- compiled_truth -->

@@ -3,10 +3,11 @@ id: "brain-catalog-favorites-use-gold-premium-badge"
 kind: "requirement"
 title: "Brain catalog favorites use a gold premium badge"
 status: "confirmed"
-tags: ["brain","model-catalog","ux"]
+tags: ["brain", "model-catalog", "ux"]
 created_at: "2026-08-14T18:50:52.629Z"
 updated_at: "2026-08-14T18:55:35.376Z"
 ---
+
 # Brain catalog favorites use a gold premium badge
 
 <!-- compiled_truth -->

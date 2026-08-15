@@ -3,10 +3,11 @@ id: "brain-catalog-includes-gemma-4-e4b"
 kind: "requirement"
 title: "Brain catalog includes Gemma 4 E4B"
 status: "confirmed"
-tags: ["brain","model-catalog","gemma","bundles"]
+tags: ["brain", "model-catalog", "gemma", "bundles"]
 created_at: "2026-08-14T19:32:54.745Z"
 updated_at: "2026-08-14T19:34:35.276Z"
 ---
+
 # Brain catalog includes Gemma 4 E4B
 
 <!-- compiled_truth -->
