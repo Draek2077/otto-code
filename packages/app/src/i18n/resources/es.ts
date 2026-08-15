@@ -465,6 +465,10 @@ export const es: TranslationResources = {
     emptyForHost: "No hay sesiones para este host",
     emptyActive: "No hay chats activos",
     emptyArchived: "No hay chats archivados",
+    emptySearch: "No hay chats que coincidan",
+    searchPlaceholder: "Buscar en el historial...",
+    searchLabel: "Buscar en el historial",
+    clearSearch: "Borrar la búsqueda del historial",
     filters: {
       all: "Todos",
       active: "Activos",

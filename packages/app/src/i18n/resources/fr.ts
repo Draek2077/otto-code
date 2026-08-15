@@ -466,6 +466,10 @@ export const fr: TranslationResources = {
     emptyForHost: "Aucune session pour cet hôte",
     emptyActive: "Aucune conversation active",
     emptyArchived: "Aucune conversation archivée",
+    emptySearch: "Aucune conversation correspondante",
+    searchPlaceholder: "Rechercher dans l’historique...",
+    searchLabel: "Rechercher dans l’historique",
+    clearSearch: "Effacer la recherche dans l’historique",
     filters: {
       all: "Toutes",
       active: "Actives",

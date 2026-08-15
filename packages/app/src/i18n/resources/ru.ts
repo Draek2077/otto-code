@@ -464,6 +464,10 @@ export const ru: TranslationResources = {
     emptyForHost: "Нет сессий для этого хоста",
     emptyActive: "Нет активных чатов",
     emptyArchived: "Нет архивных чатов",
+    emptySearch: "Нет подходящих чатов",
+    searchPlaceholder: "Поиск по истории...",
+    searchLabel: "Поиск по истории",
+    clearSearch: "Очистить поиск по истории",
     filters: {
       all: "Все",
       active: "Активные",

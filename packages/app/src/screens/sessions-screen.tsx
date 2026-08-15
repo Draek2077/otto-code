@@ -1,14 +1,16 @@
 import { useMemo, useState, useCallback, useEffect } from "react";
-import { View, Text } from "react-native";
+import { View, Text, TextInput } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import { router } from "expo-router";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { ChevronLeft, Trash2 } from "@/components/icons/material-icons";
+import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
+import { ChevronLeft, Search, Trash2 } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { SegmentedControl } from "@/components/ui/segmented-control";
+import { SearchClearButton } from "@/components/ui/search-clear-button";
+import { COMPACT_CONTROL_HEIGHT } from "@/components/ui/control-geometry";
 import { AgentList, AgentListColumnHeader } from "@/components/agent-list";
 import { HostFilter } from "@/components/hosts/host-filter";
 import { ALL_HOSTS_OPTION_ID } from "@/components/hosts/host-picker";
@@ -19,6 +21,8 @@ import { useFetchQuery } from "@/data/query";
 import { formatFileSize } from "@/utils/format-file-size";
 import { useSessionStore } from "@/stores/session-store";
 import { buildOpenProjectRoute } from "@/utils/host-routes";
+import { isWeb } from "@/constants/platform";
+import { filterHistoryAgents } from "@/history/filter-history-agents";
 
 /**
  * The archive line. History has never had a filter, so an archived chat was only
@@ -26,6 +30,23 @@ import { buildOpenProjectRoute } from "@/utils/host-routes";
  * reason about ("clear what, exactly?"). Splitting the list is the prerequisite.
  */
 type ArchiveFilter = "all" | "active" | "archived";
+
+const ThemedSearch = withUnistyles(Search);
+const ThemedSearchInput = withUnistyles(TextInput);
+const ThemedDestructiveTrash = withUnistyles(Trash2, (theme) => ({
+  color: theme.colors.destructive,
+  size: theme.iconSize.sm,
+}));
+const searchIconProps = (theme: {
+  colors: { foregroundMuted: string };
+  iconSize: { md: number };
+}) => ({
+  color: theme.colors.foregroundMuted,
+  size: theme.iconSize.md,
+});
+const searchInputProps = (theme: { colors: { foregroundMuted: string } }) => ({
+  placeholderTextColor: theme.colors.foregroundMuted,
+});
 
 export function SessionsScreen() {
   const isFocused = useIsFocused();
@@ -99,21 +120,27 @@ function SessionsScreenContent() {
 
   const [isManualRefresh, setIsManualRefresh] = useState(false);
   const [archiveFilter, setArchiveFilter] = useState<ArchiveFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const destructiveTrash = useMemo(() => <ThemedDestructiveTrash />, []);
 
   const handleRefresh = useCallback(() => {
     setIsManualRefresh(true);
     void refreshAll().finally(() => setIsManualRefresh(false));
   }, [refreshAll]);
 
+  const clearSearch = useCallback(() => setSearchQuery(""), []);
+
   const sortedAgents = useMemo(() => {
-    const filtered =
+    const archiveFilteredAgents =
       archiveFilter === "all"
         ? agents
         : agents.filter((agent) =>
             archiveFilter === "archived" ? Boolean(agent.archivedAt) : !agent.archivedAt,
           );
-    return [...filtered].sort((a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime());
-  }, [agents, archiveFilter]);
+    return filterHistoryAgents(archiveFilteredAgents, searchQuery).sort(
+      (a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime(),
+    );
+  }, [agents, archiveFilter, searchQuery]);
 
   // The hosts a sweep would run against - the selected one, or every host the
   // history query is already reading from.
@@ -153,6 +180,9 @@ function SessionsScreenContent() {
   );
 
   const emptyText = useMemo(() => {
+    if (searchQuery.trim()) {
+      return t("sessions.emptySearch");
+    }
     if (archiveFilter === "archived") {
       return t("sessions.emptyArchived");
     }
@@ -160,7 +190,7 @@ function SessionsScreenContent() {
       return t("sessions.emptyActive");
     }
     return selectedHost === ALL_HOSTS_OPTION_ID ? t("sessions.empty") : t("sessions.emptyForHost");
-  }, [archiveFilter, selectedHost, t]);
+  }, [archiveFilter, searchQuery, selectedHost, t]);
   const hostOptionDescriptions = useMemo(() => {
     if (!historyStorage.data) return undefined;
     return {
@@ -215,12 +245,33 @@ function SessionsScreenContent() {
               size="sm"
               testID="sessions-archive-filter"
             />
+            <View style={styles.searchBox}>
+              <ThemedSearch uniProps={searchIconProps} />
+              <ThemedSearchInput
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder={t("sessions.searchPlaceholder")}
+                accessibilityLabel={t("sessions.searchLabel")}
+                // @ts-expect-error - outlineStyle is web-only
+                style={[styles.searchInput, isWeb && { outlineStyle: "none" }]}
+                testID="sessions-search-input"
+                uniProps={searchInputProps}
+              />
+              {searchQuery ? (
+                <SearchClearButton
+                  onPress={clearSearch}
+                  label={t("sessions.clearSearch")}
+                  testID="sessions-search-clear"
+                />
+              ) : null}
+            </View>
           </View>
           {canClearArchived ? (
             <Button
               variant="ghost"
               size="sm"
-              leftIcon={Trash2}
+              leftIcon={destructiveTrash}
+              textStyle={styles.clearArchivedText}
               onPress={handleClearArchived}
               disabled={isClearing}
               testID="sessions-clear-archived"
@@ -249,6 +300,11 @@ function SessionsScreenContent() {
       {!isInitialLoad && !showLoadError && sortedAgents.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>{emptyText}</Text>
+          {hasMore ? (
+            <Button variant="ghost" onPress={loadMore} disabled={isLoadingMore}>
+              {isLoadingMore ? "Loading..." : t("sessions.actions.loadMore")}
+            </Button>
+          ) : null}
           <Button variant="ghost" leftIcon={ChevronLeft} onPress={handleBack}>
             Back
           </Button>
@@ -280,6 +336,8 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: theme.spacing[3],
     paddingHorizontal: {
       xs: theme.spacing[3],
       md: theme.spacing[6],
@@ -291,9 +349,36 @@ const styles = StyleSheet.create((theme) => ({
     borderBottomColor: theme.colors.border,
   },
   controlsFilters: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
     gap: theme.spacing[3],
+  },
+  searchBox: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    minWidth: 200,
+    maxWidth: 360,
+    minHeight: COMPACT_CONTROL_HEIGHT,
+    paddingHorizontal: theme.spacing[3],
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.surface1,
+  },
+  searchInput: {
+    flex: 1,
+    minWidth: 0,
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    paddingVertical: theme.spacing[1],
+  },
+  clearArchivedText: {
+    color: theme.colors.destructive,
   },
   emptyContainer: {
     flex: 1,

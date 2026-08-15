@@ -466,6 +466,10 @@ export const ja: TranslationResources = {
     emptyForHost: "このホストのセッションはありません",
     emptyActive: "アクティブなチャットはありません",
     emptyArchived: "アーカイブされたチャットはありません",
+    emptySearch: "一致するチャットはありません",
+    searchPlaceholder: "履歴を検索...",
+    searchLabel: "履歴を検索",
+    clearSearch: "履歴の検索をクリア",
     filters: {
       all: "すべて",
       active: "アクティブ",

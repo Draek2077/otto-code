@@ -256,8 +256,8 @@ export function Button({
       variant === "default" ? styles.textDefault : null,
       variant === "destructive" ? styles.textDestructive : null,
       variant === "ghost" ? styles.textGhost : null,
-      textStyle,
       isGhostHovered ? styles.textGhostHovered : null,
+      textStyle,
     ],
     [size, variant, textStyle, isGhostHovered],
   );

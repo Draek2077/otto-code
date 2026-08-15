@@ -458,6 +458,10 @@ export const ar: TranslationResources = {
     emptyForHost: "لا توجد جلسات لهذا المضيف",
     emptyActive: "لا توجد محادثات نشطة",
     emptyArchived: "لا توجد محادثات مؤرشفة",
+    emptySearch: "لا توجد محادثات مطابقة",
+    searchPlaceholder: "البحث في السجل...",
+    searchLabel: "البحث في السجل",
+    clearSearch: "مسح البحث في السجل",
     filters: {
       all: "الكل",
       active: "نشطة",

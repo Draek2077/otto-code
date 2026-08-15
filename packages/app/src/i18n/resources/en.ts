@@ -472,6 +472,10 @@ export const en = {
     emptyForHost: "No sessions for this host",
     emptyActive: "No active chats",
     emptyArchived: "No archived chats",
+    emptySearch: "No matching chats",
+    searchPlaceholder: "Search history...",
+    searchLabel: "Search history",
+    clearSearch: "Clear history search",
     filters: {
       all: "All",
       active: "Active",

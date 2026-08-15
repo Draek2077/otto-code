@@ -456,6 +456,10 @@ export const zhCN: TranslationResources = {
     emptyForHost: "此主机没有会话",
     emptyActive: "没有进行中的对话",
     emptyArchived: "没有已归档的对话",
+    emptySearch: "没有匹配的对话",
+    searchPlaceholder: "搜索历史...",
+    searchLabel: "搜索历史",
+    clearSearch: "清除历史搜索",
     filters: {
       all: "全部",
       active: "进行中",

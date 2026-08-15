@@ -68,7 +68,7 @@ export function HostFilter({
       title="Filter by host"
       desktopPlacement="bottom-start"
     >
-      <View ref={filterAnchorRef} collapsable={false} style={styles.filterTriggerWrap}>
+      <View ref={filterAnchorRef} collapsable={false}>
         <Pressable
           onPress={handleFilterOpen}
           style={filterTriggerStyle}
@@ -92,9 +92,6 @@ export function HostFilter({
 }
 
 const styles = StyleSheet.create((theme) => ({
-  filterTriggerWrap: {
-    alignSelf: "flex-start",
-  },
   filterTrigger: {
     flexDirection: "row",
     alignItems: "center",

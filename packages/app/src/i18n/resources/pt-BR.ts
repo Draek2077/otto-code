@@ -466,6 +466,10 @@ export const ptBR: TranslationResources = {
     emptyForHost: "Nenhuma sessão para este host",
     emptyActive: "Nenhum chat ativo",
     emptyArchived: "Nenhum chat arquivado",
+    emptySearch: "Nenhum chat correspondente",
+    searchPlaceholder: "Pesquisar histórico...",
+    searchLabel: "Pesquisar histórico",
+    clearSearch: "Limpar pesquisa do histórico",
     filters: {
       all: "Todos",
       active: "Ativos",
