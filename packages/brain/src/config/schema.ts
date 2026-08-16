@@ -54,6 +54,15 @@ export const ProfileSchema = z
     /** Optional for old stored profiles; model defaults are resolved by forModel(). */
     preserveReasoning: z.boolean().optional(),
     parallelSlots: z.number().default(1),
+    /**
+     * How many chats' KV state llama-server may park in system RAM when they
+     * lose their GPU slot, so returning to one costs a bulk copy instead of a
+     * full re-prefill. Stored as a count, not a size: the byte budget it turns
+     * into (`--cache-ram`) depends on the measured KV bytes/token and the
+     * per-slot context, both of which move when other fields are edited.
+     * 0 means "leave llama.cpp's own default alone" - the flag is not emitted.
+     */
+    cachedChats: z.number().default(0),
     /** RoPE extension factor; 1 keeps the GGUF-native context window. */
     contextMultiplier: z.number().default(1),
     /** Cleared only by a successful calibration of this saved model profile. */

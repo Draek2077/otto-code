@@ -2670,6 +2670,8 @@ export const BrainProfileSchema = z
     reasoningBudget: z.number().default(0),
     preserveReasoning: z.boolean().optional(),
     parallelSlots: z.number().default(1),
+    /** Chats whose KV state may be parked in host RAM; 0 = the engine default. */
+    cachedChats: z.number().default(0),
     contextMultiplier: z.number().default(1),
     calibrationRequired: z.boolean().default(true),
     hostingProfileId: z.string().nullable().default(null),

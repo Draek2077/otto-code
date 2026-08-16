@@ -152,6 +152,18 @@ function hostingProfileSummary(
   return "Off · use the template embedded in the model";
 }
 
+/**
+ * The two numeric fields whose extreme reads as a word rather than a number.
+ * 999 GPU layers means "all of them", which is what the flag actually does, and
+ * 0 cached chats means the engine keeps its own prompt-cache limit - a
+ * different thing from caching nothing, which is how a bare "0" reads.
+ */
+function formatFieldValue(field: BrainProfileField, value: number): string {
+  if (field.key === "gpuLayers" && value >= (field.max ?? 999)) return "All";
+  if (field.key === "cachedChats" && value <= 0) return "Default";
+  return value.toLocaleString();
+}
+
 function NumberField({
   field,
   value,
@@ -176,9 +188,7 @@ function NumberField({
     [clamp, onChange, step, value],
   );
 
-  // 999 GPU layers means "all of them", which is what the flag actually does.
-  const display =
-    field.key === "gpuLayers" && value >= (field.max ?? 999) ? "All" : value.toLocaleString();
+  const display = formatFieldValue(field, value);
 
   return (
     <View style={styles.stepper}>

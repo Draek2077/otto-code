@@ -4,6 +4,7 @@ import { EventEmitter } from "node:events";
 
 import { buildArgs, buildEnv, formatCommand } from "../runtime/index.js";
 import { resolveHostingProfileForLaunch } from "../config/hosting-profiles.js";
+import { getCalibration } from "../config/profiles.js";
 import { resolveBrainPaths, type BrainPaths } from "../config/paths.js";
 import { loadProfilesStore } from "../config/store.js";
 import { usedBytes } from "../gpu.js";
@@ -183,6 +184,10 @@ export class Supervisor extends EventEmitter {
       { ...launchProfile, modelPath: model.modelPath, mmprojPath: model.mmprojPath },
       { port: this.internalPort, host: this.host, logVerbosity: this.logVerbosity },
       model,
+      // The prompt-cache budget is derived from measured KV bytes/token, so the
+      // launch boundary is where it has to be resolved - nothing downstream of
+      // here can reach the calibration store.
+      getCalibration(this.getProfilesStore(), model, launchProfile),
     );
     this.args = args;
     this.command = formatCommand(runtime, args);

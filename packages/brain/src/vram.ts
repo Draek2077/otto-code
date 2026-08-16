@@ -59,6 +59,70 @@ export function theoreticalKvBytesPerToken(
 
 export type BudgetSource = "measured" | "theoretical" | "unknown";
 
+/**
+ * KV bytes per token for a profile: the measurement when one exists, otherwise
+ * the theoretical bound.
+ *
+ * The two are not interchangeable. The theoretical formula overestimates badly
+ * on architectures that only keep a full cache on a subset of layers - measured
+ * at 3.5x for Qwen3.8-27B and 20x for Gemma-4-31B on this repo's own stored
+ * calibrations - which is the whole reason `calibrate` exists. Callers that
+ * spend real memory on this number must therefore branch on `source` rather
+ * than treating the theoretical figure as an answer.
+ */
+export function kvBytesPerToken(
+  model: Model,
+  profile: Profile,
+  calibration?: Calibration | null,
+): { value: number; source: BudgetSource; theoretical: number | null } {
+  const theoretical = theoreticalKvBytesPerToken(
+    model.metadata,
+    profile.cacheTypeK,
+    profile.cacheTypeV,
+  );
+  if (calibration && calibration.kvBytesPerToken > 0) {
+    return { value: calibration.kvBytesPerToken, source: "measured", theoretical };
+  }
+  if (theoretical !== null) return { value: theoretical, source: "theoretical", theoretical };
+  return { value: 0, source: "unknown", theoretical };
+}
+
+export interface PromptCacheSize {
+  /** One chat at its full per-slot window - the worst case for a single entry. */
+  perChatBytes: number;
+  /** What `--cache-ram` is set to, in bytes. */
+  totalBytes: number;
+  source: BudgetSource;
+}
+
+/**
+ * Turn `cachedChats` into a `--cache-ram` byte budget.
+ *
+ * llama-server parks the KV state of a chat that loses its slot in host RAM and
+ * copies it back when that chat returns, instead of re-prefilling its whole
+ * conversation. An entry is at most one slot's worth of KV, and a slot is
+ * `contextSize / parallelSlots` tokens, so the count the user picks is the
+ * count of chats guaranteed to survive. Real conversations rarely fill their
+ * window, so in practice more of them fit: the number is a floor, not a cap.
+ *
+ * Returns null when the size cannot be computed - `cachedChats` is 0 (leave
+ * llama.cpp's default alone) or nothing is known about this model's KV cost.
+ */
+export function promptCacheSize(
+  model: Model,
+  profile: Profile,
+  calibration?: Calibration | null,
+): PromptCacheSize | null {
+  const chats = Math.floor(profile.cachedChats ?? 0);
+  if (chats < 1) return null;
+  const { value, source } = kvBytesPerToken(model, profile, calibration);
+  if (value <= 0 || profile.contextSize <= 0) return null;
+  const perSlotTokens = Math.floor(profile.contextSize / Math.max(1, profile.parallelSlots || 1));
+  if (perSlotTokens <= 0) return null;
+  const perChatBytes = value * perSlotTokens;
+  return { perChatBytes, totalBytes: perChatBytes * chats, source };
+}
+
 export interface Budget {
   weightsBytes: number;
   mmprojBytes: number;
@@ -115,26 +179,9 @@ export function budget({
     projector.reduce((total, component) => total + component.bytes, 0) ||
     (components.length ? 0 : componentBytes);
 
-  const theoretical = theoreticalKvBytesPerToken(
-    model.metadata,
-    profile.cacheTypeK,
-    profile.cacheTypeV,
-  );
+  const { value: perToken, source, theoretical } = kvBytesPerToken(model, profile, calibration);
 
-  let kvBytesPerToken: number;
-  let source: BudgetSource;
-  if (calibration && calibration.kvBytesPerToken > 0) {
-    kvBytesPerToken = calibration.kvBytesPerToken;
-    source = "measured";
-  } else if (theoretical !== null) {
-    kvBytesPerToken = theoretical;
-    source = "theoretical";
-  } else {
-    kvBytesPerToken = 0;
-    source = "unknown";
-  }
-
-  const kv = kvBytesPerToken * profile.contextSize;
+  const kv = perToken * profile.contextSize;
   // The speculative decoder keeps its own KV cache. Until component-specific
   // calibration exists, reserve the same conservative per-token cost.
   const drafterKv = drafters.length * kv;
@@ -160,7 +207,7 @@ export function budget({
     usableBytes: usable,
     totalVramBytes,
     reserveBytes,
-    kvBytesPerToken,
+    kvBytesPerToken: perToken,
     source,
     theoreticalKvBytesPerToken: theoretical,
     fits: total <= usable,

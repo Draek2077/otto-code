@@ -53,7 +53,7 @@ describe("nativeContextLimit", () => {
 });
 
 describe("profileFieldDescriptors", () => {
-  it("offers the context multiplier and eight hosting fields", () => {
+  it("offers the context multiplier and nine hosting fields", () => {
     const keys = profileFieldDescriptors(makeModel()).map((f) => f.key);
     expect(keys).toEqual([
       "contextMultiplier",
@@ -65,6 +65,7 @@ describe("profileFieldDescriptors", () => {
       "reasoningBudget",
       "gpuLayers",
       "parallelSlots",
+      "cachedChats",
     ]);
   });
 
@@ -108,6 +109,7 @@ describe("profileFieldDescriptors", () => {
       "reasoningBudget",
       "gpuLayers",
       "parallelSlots",
+      "cachedChats",
     ]);
   });
 
@@ -319,6 +321,38 @@ describe("profileWarnings", () => {
     const profile = makeProfile(model, { reasoningBudget: -1 });
     const warning = profileWarnings(profile, model).find((w) => w.field === "reasoningBudget");
     expect(warning?.severity).toBe("warn");
+    expect(warning?.blocksStart).toBe(false);
+  });
+
+  it("prices cached chats in RAM once the model has been measured", () => {
+    const model = makeModel();
+    const profile = makeProfile(model, {
+      cachedChats: 4,
+      parallelSlots: 2,
+      contextSize: 32768,
+    });
+    const store = putCalibration(emptyStore(), model, profile, {
+      kvBytesPerToken: 40000,
+      baseOverheadBytes: 0,
+    });
+
+    const warning = profileWarnings(profile, model, store).find((w) => w.field === "cachedChats");
+    // 4 chats x 16384 tokens per slot x 40000 B/token = ~2.4 GiB total, 0.6 each.
+    expect(warning?.message).toContain("2.4G");
+    expect(warning?.message).toContain("0.6G each");
+    expect(warning?.message).toContain("4 chats");
+    expect(warning?.blocksStart).toBe(false);
+  });
+
+  it("refuses to price cached chats for an unmeasured model", () => {
+    const model = makeModel({ metadata: { arch: "qwen3", contextLength: 32768 } });
+    const profile = makeProfile(model, { cachedChats: 4 });
+
+    const warning = profileWarnings(profile, model, emptyStore()).find(
+      (w) => w.field === "cachedChats",
+    );
+    expect(warning?.severity).toBe("warn");
+    expect(warning?.message).toContain("Calibrate");
     expect(warning?.blocksStart).toBe(false);
   });
 

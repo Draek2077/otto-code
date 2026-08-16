@@ -518,7 +518,7 @@ function resolveModel(catalog: Model[], needle: string | null): Model | null {
  */
 function profileFromQuery(base: Profile, params: URLSearchParams, model: Model): Profile {
   const patch: Record<string, unknown> = {};
-  const numeric = ["contextSize", "gpuLayers", "parallelSlots", "reasoningBudget"];
+  const numeric = ["contextSize", "gpuLayers", "parallelSlots", "cachedChats", "reasoningBudget"];
   for (const key of numeric) {
     const raw = params.get(key);
     if (raw !== null && raw !== "") patch[key] = Number(raw);

@@ -54,6 +54,7 @@ export function defaultProfile(model: Model | null, defaults?: ProfileDefaults):
     reasoningBudgetMessage: DEFAULT_REASONING_MESSAGE,
     preserveReasoning: model?.reasoningPreservation?.default ?? false,
     parallelSlots: defaults?.parallelSlots ?? 1, // one agent at a time: max context per request
+    cachedChats: 0, // llama.cpp's own --cache-ram default until the user sizes it
     batchSize: null,
     ubatchSize: null,
     extraArgs: [],

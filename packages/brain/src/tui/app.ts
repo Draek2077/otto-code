@@ -276,6 +276,20 @@ export const FIELDS: Field[] = [
     note: (p) =>
       p.parallelSlots > 1 ? `${p.parallelSlots} concurrent requests, sharing one KV pool` : null,
   },
+  {
+    key: "cachedChats",
+    label: "Cached chats",
+    kind: "number",
+    step: 1,
+    min: 0,
+    max: () => 64,
+    format: (p) =>
+      (p.cachedChats ?? 0) > 0 ? String(p.cachedChats) : `default ${style.grey}(0)${style.reset}`,
+    note: (p) =>
+      (p.cachedChats ?? 0) > 0
+        ? `${p.cachedChats} chats parked in system RAM instead of re-prefilled`
+        : null,
+  },
 ];
 
 export class App {

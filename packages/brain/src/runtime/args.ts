@@ -3,8 +3,11 @@
  * needs. Runtime-source agnostic: works the same for an LM Studio runtime or a
  * managed one, since both resolve to a `Runtime` (exe + optional vendorDir).
  */
-import type { Profile } from "../config/schema.js";
+import type { Calibration, Profile } from "../config/schema.js";
 import type { Model, Runtime } from "../types.js";
+import { promptCacheSize } from "../vram.js";
+
+const MIB = 1024 * 1024;
 
 export interface ServeTarget {
   port: number;
@@ -52,6 +55,7 @@ export function buildArgs(
   profile: Profile,
   { port, host = "127.0.0.1", logVerbosity = 3 }: ServeTarget,
   model?: Model,
+  calibration?: Calibration | null,
 ): string[] {
   const args: string[] = [
     "-m",
@@ -93,6 +97,18 @@ export function buildArgs(
   }
 
   if (profile.parallelSlots) args.push("--parallel", String(profile.parallelSlots));
+
+  // Prompt cache: how much host RAM llama-server may use to park the KV state
+  // of chats that lost their slot, so returning to one is a bulk copy instead
+  // of a full re-prefill. Sized from the chat count the user chose, because a
+  // raw MiB figure is unusable without knowing this model's KV bytes/token.
+  // Emitted only when the size is real: with no measurement, the theoretical
+  // KV cost overestimates by multiples, and reserving multiples of the RAM
+  // actually needed is worse than leaving llama.cpp's own default in place.
+  const cache = model ? promptCacheSize(model, profile, calibration) : null;
+  if (cache && cache.source === "measured") {
+    args.push("--cache-ram", String(Math.max(1, Math.round(cache.totalBytes / MIB))));
+  }
   if (profile.contextMultiplier > 1) {
     const nativeContext = model?.metadata?.contextLength;
     args.push(

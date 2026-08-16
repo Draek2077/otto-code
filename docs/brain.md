@@ -251,16 +251,32 @@ and may not assume weights are shared across processes.
 Each model carries a **Model profile**: its saved launch and VRAM settings. It is distinct from a
 **Prompt & template profile**, which supplies message formatting and a system-prompt addendum.
 
-| Field              | Effect                                                              |
-| ------------------ | ------------------------------------------------------------------- |
-| Context multiplier | YaRN extension factor: 1, 2, or 4 times the native context window   |
-| Context            | The window, bounded by the model's limit and by VRAM                |
-| KV cache K, V      | Quantisation of the key and value caches; the main lever on KV size |
-| Flash attention    | Required for a quantised V cache                                    |
-| Vision             | Load the paired projector; only available when the model has one    |
-| Reasoning budget   | The cap on thinking tokens                                          |
-| GPU layers         | How many layers go on the GPU; 999 means all                        |
-| Parallel slots     | Concurrent requests, which share one KV pool                        |
+| Field              | Effect                                                                   |
+| ------------------ | ------------------------------------------------------------------------ |
+| Context multiplier | YaRN extension factor: 1, 2, or 4 times the native context window        |
+| Context            | The window, bounded by the model's limit and by VRAM                     |
+| KV cache K, V      | Quantisation of the key and value caches; the main lever on KV size      |
+| Flash attention    | Required for a quantised V cache                                         |
+| Vision             | Load the paired projector; only available when the model has one         |
+| Reasoning budget   | The cap on thinking tokens                                               |
+| GPU layers         | How many layers go on the GPU; 999 means all                             |
+| Parallel slots     | Concurrent requests, which share one KV pool                             |
+| Cached chats       | Chats whose KV state is parked in system RAM; 0 keeps the engine default |
+
+**Cached chats sizes llama.cpp's prompt cache in chats, not megabytes.** When a chat loses its GPU
+slot, `llama-server` can park its KV state in host RAM and copy it back when that chat returns,
+instead of re-prefilling the whole conversation. The budget for that is `--cache-ram`, a size in MiB,
+which is unusable as a setting because the size of one chat depends on the model's measured KV
+bytes/token and on the per-slot context. Brain therefore stores a count and derives the flag:
+`cachedChats x kvBytesPerToken x (contextSize / parallelSlots)`. The profile warning shows the
+resulting figure against installed RAM, and both move when context or slots are edited.
+
+The count is a floor, not a cap: it assumes every chat fills its whole window, and real conversations
+rarely do, so more of them usually fit. `0` means Brain emits no flag and llama.cpp keeps its own
+default (8192 MiB), which is not the same as caching nothing. The flag is also withheld when the
+model has no measured calibration: the theoretical KV cost overestimates by multiples, so a budget
+derived from it would reserve several times the RAM actually needed. The warning names that case and
+asks for a calibration.
 
 **Runtime log verbosity** is a host setting, not a model-profile field. It controls the resident
 `llama-server` output that appears in Brain Logs: Generic output (0), Errors (1), Warnings (2),
@@ -330,7 +346,7 @@ YaRN extrapolates beyond the native context. Recalibrate before relying on an ex
 `calibrationRequired` is a durable verdict on the saved model profile. It begins true and is cleared
 only by a successful calibration. A change to a setting that affects the KV cache system or the
 evaluation sets it true again: context multiplier, KV cache K or V type, flash attention, vision, or
-enabled components. Context size, GPU layers, and parallel slots never set it: the calibration is a
+enabled components. Context size, GPU layers, parallel slots, and cached chats never set it: the calibration is a
 differential measurement of KV bytes per token, so fixed terms (weights wherever they sit, CUDA
 context, compute buffers) cancel out of the slope, and a context size or slot count the measurement
 was taken at does not change what the measurement says.

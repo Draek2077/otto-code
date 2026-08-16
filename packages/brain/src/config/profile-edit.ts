@@ -17,7 +17,9 @@
  *  - Changing a cache type invalidates a measured calibration, because KV
  *    bytes/token is a function of the cache types (see `vram.ts`).
  */
-import { CACHE_TYPE_BYTES } from "../vram.js";
+import os from "node:os";
+
+import { CACHE_TYPE_BYTES, formatGiB, promptCacheSize } from "../vram.js";
 import type { Model } from "../types.js";
 import { getCalibration, hasStaleCalibration } from "./profiles.js";
 import type { Calibration, Profile, ProfilesStore } from "./schema.js";
@@ -72,6 +74,12 @@ export function formatReasoningBudget(budget: number): string {
 }
 
 export const MAX_PARALLEL_SLOTS = 16;
+/**
+ * Ceiling on `cachedChats`. Generous on purpose: entries are small for a small
+ * model and huge for a large one, so the honest guard is the RAM figure the
+ * warning shows, not an arbitrary count.
+ */
+export const MAX_CACHED_CHATS = 64;
 export const MAX_GPU_LAYERS = 999;
 export const MIN_CONTEXT_SIZE = 1024;
 export const CONTEXT_STEP = 8192;
@@ -155,6 +163,15 @@ export function profileFieldDescriptors(
       step: 1,
       min: 1,
       max: MAX_PARALLEL_SLOTS,
+      available: true,
+    },
+    {
+      key: "cachedChats",
+      label: "Cached chats",
+      kind: "number",
+      step: 1,
+      min: 0,
+      max: MAX_CACHED_CHATS,
       available: true,
     },
   ];
@@ -243,6 +260,36 @@ export function profileWarnings(
           : `${profile.parallelSlots} concurrent requests, sharing one KV pool.`,
       blocksStart: false,
     });
+  }
+
+  if ((profile.cachedChats ?? 0) > 0) {
+    // The size is what the user is really choosing, so show it. Without a
+    // measurement there is no size to show: the theoretical KV cost runs to
+    // multiples of the real one, so naming a figure derived from it would
+    // invite reserving several times the RAM actually needed.
+    const calibration = model && store ? getCalibration(store, model, profile) : null;
+    const cache = model ? promptCacheSize(model, profile, calibration) : null;
+    if (!cache || cache.source !== "measured") {
+      warnings.push({
+        field: "cachedChats",
+        severity: "warn",
+        message:
+          "Calibrate this model first: without a measured KV cost the RAM this needs cannot be sized, so llama.cpp's own cache limit stays in effect.",
+        blocksStart: false,
+      });
+    } else {
+      const share = cache.totalBytes / os.totalmem();
+      warnings.push({
+        field: "cachedChats",
+        severity: share > 0.6 ? "warn" : "info",
+        message: `${profile.cachedChats} chats kept in system RAM: ${formatGiB(
+          cache.totalBytes,
+        )} of ${formatGiB(os.totalmem())} installed, ${formatGiB(
+          cache.perChatBytes,
+        )} each. A chat that returns to a slot is copied back instead of re-prefilled.`,
+        blocksStart: false,
+      });
+    }
   }
 
   if (profile.contextMultiplier > 1) {
@@ -350,6 +397,9 @@ function clamp(value: number, min: number, max: number): number {
  * buffers - cancels out of the slope, and a load whose KV split to CPU is
  * rejected as unusable rather than measured low. Neither the bytes/token nor the
  * evaluation changes, so neither may discard a real measurement.
+ *
+ * `cachedChats` is absent because it spends host RAM, not VRAM, and never
+ * reaches the load a calibration measures.
  */
 const CALIBRATION_INPUTS = [
   "contextMultiplier",
@@ -434,6 +484,7 @@ export function sanitizeProfilePatch(
   takeBoolean("flashAttention");
   takeNumber("gpuLayers", 0, MAX_GPU_LAYERS);
   takeNumber("parallelSlots", 1, MAX_PARALLEL_SLOTS);
+  takeNumber("cachedChats", 0, MAX_CACHED_CHATS);
 
   // -1 (unrestricted) is the floor; anything below it is meaningless to
   // llama-server. There is no upper bound worth inventing: a budget larger than
