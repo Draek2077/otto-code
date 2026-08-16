@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import pino from "pino";
 import { afterEach, describe, expect, it } from "vitest";
 import { LspService } from "./service.js";
-import type { LspServerRow } from "./registry.js";
+import type { LspInstallRoute, LspServerRow } from "./registry.js";
 
 const stubServer = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -45,10 +45,22 @@ function stubRow(id: string, extensions: readonly string[] = [".ts"]): LspServer
   };
 }
 
-function createService(rows: readonly LspServerRow[], now: () => number = () => 0): LspService {
-  const service = LspService.create({ logger, rows, now });
+function createService(
+  rows: readonly LspServerRow[],
+  now: () => number = () => 0,
+  extras: { dotnetAvailable?: () => Promise<boolean>; platform?: NodeJS.Platform } = {},
+): LspService {
+  const service = LspService.create({ logger, rows, now, ...extras });
   services.push(service);
   return service;
+}
+
+function installRow(
+  id: string,
+  install: LspInstallRoute,
+  bin = "otto-nonexistent-language-server",
+): LspServerRow {
+  return { ...stubRow(id, [".fake"]), bin, install };
 }
 
 /** The stub answers definitions by finding the line containing `target`. */
@@ -586,6 +598,148 @@ describe("honouring the host's settings", () => {
     const languages = await service.languageStates(null);
 
     expect(languages[0]).toEqual(expect.objectContaining({ id: "stub", running: true }));
+  });
+});
+
+describe("install info for the settings screen", () => {
+  it("resolves a command route to its steps, argv flattened, note or null", async () => {
+    const row = installRow("tsish", {
+      kind: "command",
+      steps: [
+        {
+          command: "npm",
+          args: ["install", "-g", "pyright"],
+          display: "npm install -g pyright",
+          note: "Needs Node.js and npm on this host.",
+        },
+      ],
+    });
+    const service = createService(
+      [row],
+      () => 0,
+      async () => false,
+    );
+
+    const [state] = await service.languageStates(null);
+
+    expect(state?.install).toEqual({
+      steps: [
+        {
+          command: "npm",
+          args: ["install", "-g", "pyright"],
+          display: "npm install -g pyright",
+          note: "Needs Node.js and npm on this host.",
+        },
+      ],
+      url: null,
+    });
+  });
+
+  it("resolves a manual route to its link with no steps", async () => {
+    const row = installRow("manually", { kind: "manual", url: "https://example.com/install" });
+    const service = createService([row]);
+
+    const [state] = await service.languageStates(null);
+
+    expect(state?.install).toEqual({ steps: [], url: "https://example.com/install" });
+  });
+
+  it("resolves null for a row with no install route - the project supplies it", async () => {
+    const row: LspServerRow = {
+      ...stubRow("project-only", [".fake"]),
+      discovery: ["workspaceBin"],
+    };
+    const service = createService([row]);
+
+    const [state] = await service.languageStates(null);
+
+    expect(state?.install).toBeNull();
+  });
+
+  it("prepends the SDK bootstrap for a dotnet route only when dotnet is missing", async () => {
+    const csharp: LspInstallRoute = {
+      kind: "command",
+      steps: [
+        {
+          command: "dotnet",
+          args: ["tool", "install", "-g", "csharp-ls"],
+          display: "dotnet tool install -g csharp-ls",
+        },
+      ],
+    };
+
+    const withDotnet = createService([installRow("csharp", csharp)], () => 0, {
+      dotnetAvailable: async () => true,
+    });
+    const [present] = await withDotnet.languageStates(null);
+    expect(present?.install?.steps).toHaveLength(1);
+    expect(present?.install?.steps[0]?.display).toBe("dotnet tool install -g csharp-ls");
+
+    const withoutDotnet = createService([installRow("csharp", csharp)], () => 0, {
+      dotnetAvailable: async () => false,
+    });
+    const [missing] = await withoutDotnet.languageStates(null);
+    expect(missing?.install?.steps).toHaveLength(2);
+    expect(missing?.install?.steps[0]?.command).not.toBe("dotnet");
+    expect(missing?.install?.steps[1]).toMatchObject({
+      command: "dotnet",
+      args: ["tool", "install", "-g", "csharp-ls"],
+      display: "dotnet tool install -g csharp-ls",
+    });
+  });
+
+  it("picks the per-platform SDK bootstrap when dotnet is missing", async () => {
+    const csharp: LspInstallRoute = {
+      kind: "command",
+      steps: [
+        {
+          command: "dotnet",
+          args: ["tool", "install", "-g", "csharp-ls"],
+          display: "dotnet tool install -g csharp-ls",
+        },
+      ],
+    };
+    for (const [platform, expected] of [
+      ["win32", { command: "winget", args: ["install", "--id", "Microsoft.DotNet.SDK.9", "-e"] }],
+      ["darwin", { command: "brew", args: ["install", "dotnet-sdk"] }],
+      ["linux", { command: "sudo", args: ["apt-get", "install", "-y", "dotnet-sdk-9.0"] }],
+    ] as const) {
+      const service = createService([installRow("csharp", csharp)], () => 0, {
+        dotnetAvailable: async () => false,
+        platform,
+      });
+      const [state] = await service.languageStates(null);
+      expect(state?.install?.steps[0]).toMatchObject(expected);
+      // A bootstrap is a real step: it carries its own display the confirm dialog shows.
+      expect(state?.install?.steps[0]?.display).toBe(
+        `${expected.command} ${expected.args.join(" ")}`,
+      );
+    }
+  });
+
+  it("reports the install block on a missing row and leaves it to the client on an installed one", async () => {
+    const rootPath = await createRoot();
+    // `present` resolves from PATH (the stub's bin is `node`); `missing` cannot.
+    const missing = installRow("missing", {
+      kind: "command",
+      steps: [
+        {
+          command: "npm",
+          args: ["install", "-g", "y"],
+          display: "npm install -g y",
+        },
+      ],
+    });
+    const service = createService([stubRow("present"), missing]);
+
+    const languages = await service.languageStates(rootPath);
+
+    expect(languages.find((entry) => entry.id === "present")?.installed).toBe(true);
+    const absent = languages.find((entry) => entry.id === "missing");
+    expect(absent?.installed).toBe(false);
+    // The daemon reports the route unconditionally (it is a host fact); the client is the
+    // one that gates it on `installed: false`, so this test pins only the missing-row half.
+    expect(absent?.install?.steps[0]?.display).toBe("npm install -g y");
   });
 });
 

@@ -135,6 +135,84 @@ describe("server discovery", () => {
   });
 });
 
+describe("install routes on the registry rows", () => {
+  function routeFor(id: string) {
+    const found = LSP_SERVER_ROWS.find((entry) => entry.id === id);
+    if (found === undefined) {
+      throw new Error(`no row ${id}`);
+    }
+    return found.install;
+  }
+
+  it("gives every host-installable row a command route with finished argv and display", () => {
+    for (const id of ["typescript", "python", "csharp"]) {
+      const route = routeFor(id);
+      expect(route, `${id} should be host-installable`).toBeDefined();
+      if (route?.kind !== "command") {
+        throw new Error(`${id} should be a command route`);
+      }
+      expect(route.steps.length).toBeGreaterThan(0);
+      for (const step of route.steps) {
+        // A real argv, never a shell string: no flags glued to their command, no `;` or `&&`.
+        expect(step.command).not.toMatch(/\s/);
+        for (const arg of step.args) {
+          expect(arg).not.toMatch(/[;&|]/);
+        }
+        expect(step.display).toBe(`${step.command} ${step.args.join(" ")}`);
+      }
+    }
+  });
+
+  it("installs the TypeScript and Python servers with npm, identically on every platform", () => {
+    expect(routeFor("typescript")).toEqual({
+      kind: "command",
+      steps: [
+        {
+          command: "npm",
+          args: ["install", "-g", "typescript-language-server", "typescript"],
+          display: "npm install -g typescript-language-server typescript",
+          note: expect.any(String),
+        },
+      ],
+    });
+    expect(routeFor("python")).toEqual({
+      kind: "command",
+      steps: [
+        {
+          command: "npm",
+          args: ["install", "-g", "pyright"],
+          display: "npm install -g pyright",
+          note: expect.any(String),
+        },
+      ],
+    });
+  });
+
+  it("installs the C# server with `dotnet tool install -g`, with no platform logic in the row", () => {
+    // The row is platform-neutral: the .NET SDK bootstrap is the daemon's job, added at
+    // resolve time when `dotnet` is not on the host. A row that hard-codes winget/brew/apt
+    // would leak platform logic into the table.
+    expect(routeFor("csharp")).toEqual({
+      kind: "command",
+      steps: [
+        {
+          command: "dotnet",
+          args: ["tool", "install", "-g", "csharp-ls"],
+          display: "dotnet tool install -g csharp-ls",
+          note: expect.any(String),
+        },
+      ],
+    });
+  });
+
+  it("gives the project-supplied rows no install route at all", () => {
+    // Their only discovery rung is `workspaceBin`: a host that lacks them is not missing
+    // anything, so there is no command to copy and no button to show.
+    expect(routeFor("oxlint")).toBeUndefined();
+    expect(routeFor("angular")).toBeUndefined();
+  });
+});
+
 describe("extension routing", () => {
   it("routes a TypeScript file to the TypeScript server", () => {
     const ids = rowsForExtension(".ts").map((entry) => entry.id);

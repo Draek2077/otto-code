@@ -3715,6 +3715,19 @@ export const es: TranslationResources = {
         columnRoot: "Ruta raíz",
         columnUptime: "Tiempo activo",
         stop: "Detener",
+        install: {
+          copy: "Copiar",
+          copied: "Comando de instalación",
+          copyFailed: "No se pudo copiar al portapapeles",
+          run: "Ejecutar en terminal",
+          runTitle: "¿Ejecutar el comando de instalación en una terminal?",
+          runMessage:
+            "Esto abre una nueva terminal en el host y ejecuta el comando exacto mostrado:\n\n{{command}}",
+          runConfirm: "Ejecutar",
+          runCancel: "Cancelar",
+          terminalTitle: "Instalar {{id}}",
+          terminalStarted: "Terminal iniciada",
+        },
       },
       storage: {
         title: "Imágenes de los agentes",

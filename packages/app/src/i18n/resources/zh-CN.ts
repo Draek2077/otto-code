@@ -3591,6 +3591,18 @@ export const zhCN: TranslationResources = {
         columnRoot: "根路径",
         columnUptime: "运行时长",
         stop: "停止",
+        install: {
+          copy: "复制",
+          copied: "安装命令",
+          copyFailed: "无法复制到剪贴板",
+          run: "在终端中运行",
+          runTitle: "在终端中运行安装命令？",
+          runMessage: "这将在主机上打开一个新终端，并运行显示的准确命令：\n\n{{command}}",
+          runConfirm: "运行",
+          runCancel: "取消",
+          terminalTitle: "安装 {{id}}",
+          terminalStarted: "终端已启动",
+        },
       },
       storage: {
         title: "来自 Agent 的图片",

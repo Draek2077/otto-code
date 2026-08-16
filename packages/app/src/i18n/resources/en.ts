@@ -3683,6 +3683,19 @@ export const en = {
         columnRoot: "Root path",
         columnUptime: "Uptime",
         stop: "Stop",
+        install: {
+          copy: "Copy",
+          copied: "Install command",
+          copyFailed: "Could not copy to the clipboard",
+          run: "Run in terminal",
+          runTitle: "Run install command in a terminal?",
+          runMessage:
+            "This opens a new terminal on the host and runs the exact command shown:\n\n{{command}}",
+          runConfirm: "Run",
+          runCancel: "Cancel",
+          terminalTitle: "Install {{id}}",
+          terminalStarted: "Terminal started",
+        },
       },
       storage: {
         title: "Images from agents",

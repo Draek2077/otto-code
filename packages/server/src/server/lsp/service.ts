@@ -24,7 +24,12 @@ import {
   type LspPoolLimits,
   type RunningServer,
 } from "./pool.js";
-import { resolveServerCommand, type LspServerRow } from "./registry.js";
+import {
+  commandOnPath,
+  resolveServerCommand,
+  type LspInstallRoute,
+  type LspServerRow,
+} from "./registry.js";
 import { documentKey, fromFileUri } from "./uri.js";
 
 /**
@@ -53,6 +58,85 @@ export interface LspServiceOptions {
   rows?: readonly LspServerRow[];
   limits?: Partial<LspPoolLimits>;
   now?: () => number;
+  /**
+   * Whether `dotnet` is on this host's PATH, used to decide if the C# server's install needs
+   * a .NET SDK bootstrap step first. Production reuses the cached .NET runtime probe; tests
+   * inject a fixed answer so the per-platform variants are checkable without a real SDK.
+   */
+  dotnetAvailable?: () => Promise<boolean>;
+  /** The daemon's platform for the per-platform SDK bootstrap; tests inject each variant. */
+  platform?: NodeJS.Platform;
+}
+
+/**
+ * The .NET SDK bootstrap, per platform. The client never sees this table - the daemon picks
+ * the row that matches its own `process.platform` and hands back the finished argv.
+ */
+function dotnetSdkBootstrap(platform: string): {
+  command: string;
+  args: string[];
+  display: string;
+  note: string | null;
+} {
+  if (platform === "win32") {
+    return {
+      command: "winget",
+      args: ["install", "--id", "Microsoft.DotNet.SDK.9", "-e"],
+      display: "winget install --id Microsoft.DotNet.SDK.9 -e",
+      note: "Installs the .NET 9 SDK via Winget. Start a new terminal so `dotnet` is on PATH.",
+    };
+  }
+  if (platform === "darwin") {
+    return {
+      command: "brew",
+      args: ["install", "dotnet-sdk"],
+      display: "brew install dotnet-sdk",
+      note: "Installs the .NET SDK via Homebrew.",
+    };
+  }
+  return {
+    command: "sudo",
+    args: ["apt-get", "install", "-y", "dotnet-sdk-9.0"],
+    display: "sudo apt-get install -y dotnet-sdk-9.0",
+    note: "Other distros: `dnf install dotnet-sdk-9.0`, or see dotnet.microsoft.com.",
+  };
+}
+
+/**
+ * Turn a row's install route into the ordered steps the host can actually run. This is the
+ * only place platform logic lives: the route is a plain table entry, and the daemon fills in
+ * the .NET SDK bootstrap for C# when `dotnet` is not yet on the host. A route with no
+ * `install` block (project-supplied rows) resolves to null - there is nothing to install here.
+ */
+async function resolveLspInstall(
+  route: LspInstallRoute | undefined,
+  options: {
+    platform: string;
+    dotnetAvailable: () => Promise<boolean>;
+  },
+): Promise<LspInstallInfo | null> {
+  if (route === undefined) {
+    return null;
+  }
+  if (route.kind === "manual") {
+    return { steps: [], url: route.url };
+  }
+
+  const steps = route.steps.map((step) => ({
+    command: step.command,
+    args: [...step.args],
+    display: step.display,
+    note: step.note ?? null,
+  }));
+
+  // The C# server is a .NET global tool, so it needs the SDK. When the host has no `dotnet`
+  // yet, the install is really two steps - bootstrap the SDK, then install the tool - and the
+  // user must see both, in order, before anything runs.
+  if (route.steps.some((step) => step.command === "dotnet") && !(await options.dotnetAvailable())) {
+    steps.unshift(dotnetSdkBootstrap(options.platform));
+  }
+
+  return { steps, url: null };
 }
 
 /**
@@ -96,6 +180,25 @@ export interface LspLanguageState {
   bin: string;
   extensions: string[];
   indexCost: string;
+  /**
+   * How to install a missing server on this host, or null when the row is project-supplied
+   * (the project brings it, so nothing is missing) or the daemon predates the field. The
+   * client shows the `display` text and offers to copy it or run the steps in a terminal;
+   * the daemon owns all platform logic, so the client never assembles a command.
+   */
+  install: LspInstallInfo | null;
+}
+
+/**
+ * The daemon's answer to "how do I install this on the host?" - a resolved, ordered list of
+ * steps. Optional on the wire so an older client ignores it and a newer client against an
+ * older daemon gets `null` and renders nothing extra.
+ */
+export interface LspInstallInfo {
+  /** Ordered steps, run in sequence. Usually one; two when a prerequisite (e.g. the .NET SDK) is missing. */
+  steps: { command: string; args: string[]; display: string; note: string | null }[];
+  /** Manual route: no command, just an installer link. Null for `command` routes. */
+  url: string | null;
 }
 
 export interface SyncDocumentInput {
@@ -304,6 +407,8 @@ export class LspService {
   private readonly pool: LspServerPool;
   private readonly documents: LspDocuments;
   private readonly logger: Logger;
+  private readonly dotnetAvailable: () => Promise<boolean>;
+  private readonly platform: NodeJS.Platform;
 
   private readonly diagnostics = new LspDiagnosticsStore();
   /** Plans and their runs, so a job can be executed as audited and taken back afterwards. */
@@ -317,10 +422,18 @@ export class LspService {
   /** Last snapshot sent, so an unchanged set never becomes a broadcast. */
   private lastBusyKey = "";
 
-  private constructor(pool: LspServerPool, documents: LspDocuments, logger: Logger) {
+  private constructor(
+    pool: LspServerPool,
+    documents: LspDocuments,
+    logger: Logger,
+    dotnetAvailable: () => Promise<boolean>,
+    platform: NodeJS.Platform,
+  ) {
     this.pool = pool;
     this.documents = documents;
     this.logger = logger;
+    this.dotnetAvailable = dotnetAvailable;
+    this.platform = platform;
     this.pool.setRowFilter((row) => this.isRowEnabled(row));
   }
 
@@ -336,7 +449,18 @@ export class LspService {
       onServerGone: (event) => service?.retractDiagnostics(event),
     });
     const documents = new LspDocuments({ pool, logger: options.logger });
-    service = new LspService(pool, documents, options.logger.child({ subsystem: "lsp-service" }));
+    // "Is `dotnet` on this host's PATH?" - the same rung logic server discovery already uses,
+    // so there is one definition of "resolvable here" for both. (Not the solution-model
+    // bootstrap: that also requires the sidecar payload, which is irrelevant to installing a
+    // .NET *tool*, and would read "dotnet missing" on a host that has the SDK but no sidecar.)
+    const dotnetAvailable = options.dotnetAvailable ?? (async () => commandOnPath("dotnet"));
+    service = new LspService(
+      pool,
+      documents,
+      options.logger.child({ subsystem: "lsp-service" }),
+      dotnetAvailable,
+      options.platform ?? process.platform,
+    );
     return service;
   }
 
@@ -484,6 +608,14 @@ export class LspService {
     return Promise.all(
       this.pool.rows().map(async (row): Promise<LspLanguageState> => {
         const resolved = await resolveServerCommand(row, rootPath);
+        // Install info is a property of the *host* (platform + what is on it), so it is the
+        // same whether or not a workspace was passed. It is present for host-installable
+        // rows and null for project-supplied ones; the client only acts on it when a row is
+        // also `installed: false`, so an installed row carries the block it does not use.
+        const install = await resolveLspInstall(row.install, {
+          platform: this.platform,
+          dotnetAvailable: this.dotnetAvailable,
+        });
         return {
           id: row.id,
           enabled: this.isRowEnabled(row),
@@ -498,6 +630,7 @@ export class LspService {
           bin: row.bin,
           extensions: [...row.extensions],
           indexCost: row.indexCost,
+          install,
         };
       }),
     );

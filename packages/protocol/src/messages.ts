@@ -11979,6 +11979,27 @@ export const LspLanguageStateSchema = z.object({
   extensions: z.array(z.string()),
   /** Plain-words index cost, so the toggle states its own price. */
   indexCost: z.string(),
+  /**
+   * How to install a missing server on the host, resolved by the daemon. Optional: an older
+   * daemon sends nothing, and the client renders nothing extra when it is absent. A row with
+   * no install route (project-supplied) is `null`, not an empty object.
+   */
+  install: z
+    .object({
+      /** Ordered argv steps; each `display` is the exact text the user reads and confirms. */
+      steps: z.array(
+        z.object({
+          command: z.string(),
+          args: z.array(z.string()),
+          display: z.string(),
+          note: z.string().nullable(),
+        }),
+      ),
+      /** Manual route: an official installer link instead of a command. */
+      url: z.string().nullable(),
+    })
+    .nullable()
+    .optional(),
 });
 
 export const LspRunningServerSchema = z.object({

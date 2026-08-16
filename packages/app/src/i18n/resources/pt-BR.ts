@@ -3695,6 +3695,19 @@ export const ptBR: TranslationResources = {
         columnRoot: "Caminho raiz",
         columnUptime: "Tempo ativo",
         stop: "Parar",
+        install: {
+          copy: "Copiar",
+          copied: "Comando de instalação",
+          copyFailed: "Não foi possível copiar para a área de transferência",
+          run: "Executar no terminal",
+          runTitle: "Executar o comando de instalação em um terminal?",
+          runMessage:
+            "Isso abre um novo terminal no host e executa exatamente o comando mostrado:\n\n{{command}}",
+          runConfirm: "Executar",
+          runCancel: "Cancelar",
+          terminalTitle: "Instalar {{id}}",
+          terminalStarted: "Terminal iniciada",
+        },
       },
       storage: {
         title: "Imagens dos agentes",

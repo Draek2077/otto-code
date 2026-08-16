@@ -3628,6 +3628,18 @@ export const ar: TranslationResources = {
         columnRoot: "المسار الجذر",
         columnUptime: "مدة التشغيل",
         stop: "إيقاف",
+        install: {
+          copy: "نسخ",
+          copied: "أمر التثبيت",
+          copyFailed: "تعذّر النسخ إلى الحافظة",
+          run: "التشغيل في الطرفية",
+          runTitle: "هل تريد تشغيل أمر التثبيت في طرفية؟",
+          runMessage: "يفتح هذا طرفية جديدة على المضيف ويشغّل الأمر المعروض كما هو:\n\n{{command}}",
+          runConfirm: "تشغيل",
+          runCancel: "إلغاء",
+          terminalTitle: "تثبيت {{id}}",
+          terminalStarted: "تم تشغيل الطرفية",
+        },
       },
       storage: {
         title: "الصور من الوكلاء",

@@ -3688,6 +3688,19 @@ export const ru: TranslationResources = {
         columnRoot: "Корневой путь",
         columnUptime: "Время работы",
         stop: "Остановить",
+        install: {
+          copy: "Копировать",
+          copied: "Команда установки",
+          copyFailed: "Не удалось скопировать в буфер обмена",
+          run: "Запустить в терминале",
+          runTitle: "Выполнить команду установки в терминале?",
+          runMessage:
+            "Это откроет новый терминал на хосте и выполнит указанную команду как есть:\n\n{{command}}",
+          runConfirm: "Выполнить",
+          runCancel: "Отмена",
+          terminalTitle: "Установить {{id}}",
+          terminalStarted: "Терминал запущен",
+        },
       },
       storage: {
         title: "Изображения от агентов",

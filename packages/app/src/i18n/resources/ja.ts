@@ -3676,6 +3676,19 @@ export const ja: TranslationResources = {
         columnRoot: "ルートパス",
         columnUptime: "稼働時間",
         stop: "停止",
+        install: {
+          copy: "コピー",
+          copied: "インストールコマンド",
+          copyFailed: "クリップボードにコピーできませんでした",
+          run: "ターミナルで実行",
+          runTitle: "ターミナルでインストールコマンドを実行しますか？",
+          runMessage:
+            "ホストで新しいターミナルを開き、表示されたコマンドを正確に実行します：\n\n{{command}}",
+          runConfirm: "実行",
+          runCancel: "キャンセル",
+          terminalTitle: "{{id}} をインストール",
+          terminalStarted: "ターミナルを開始しました",
+        },
       },
       storage: {
         title: "エージェントが生成した画像",

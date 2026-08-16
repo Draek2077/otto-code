@@ -14,6 +14,37 @@ import { fileURLToPath } from "node:url";
 
 export type LspDiscoveryRung = "workspaceBin" | "bundled" | "path";
 
+/**
+ * One step of installing a missing server on the daemon's host: an argv array, never a
+ * shell string. `display` is the exact string the user must be able to read (and confirm,
+ * for a terminal run) - the daemon renders it, so the client never joins argv itself.
+ */
+export interface LspInstallStep {
+  command: string;
+  args: readonly string[];
+  /** e.g. `npm install -g pyright` - the exact text the confirm dialog and the row show. */
+  display: string;
+  /** Plain-words caveat, shown under the command (a note, not an error). */
+  note?: string;
+}
+
+/**
+ * How a missing server can be installed on the daemon's host, when it can at all.
+ *
+ * A row WITHOUT an `install` block is project-supplied (oxlint, angular): its only
+ * discovery rung is `workspaceBin`, so a host that lacks it is not missing anything -
+ * the project brings it. Those rows deliberately never get an install command.
+ *
+ * `command` routes run in the daemon's shell, in order. `steps` is normally one entry;
+ * the C# server needs two when the .NET SDK is absent (bootstrap the SDK, then install the
+ * tool). A `manual` route has no command - only an official installer link.
+ *
+ * The route is a *row field*: adding Go or Rust later is a table entry, not a code path.
+ */
+export type LspInstallRoute =
+  | { kind: "command"; steps: readonly LspInstallStep[] }
+  | { kind: "manual"; url: string; note?: string };
+
 export interface LspServerRow {
   id: string;
   /** LSP `languageId` values this server expects on didOpen. */
@@ -24,6 +55,8 @@ export interface LspServerRow {
   /** `{root}` is replaced with the workspace root at resolve time. */
   args: readonly string[];
   discovery: readonly LspDiscoveryRung[];
+  /** How to install the server on the host, or absent when only the project can supply it. */
+  install?: LspInstallRoute;
   initializationOptions?: unknown;
   /**
    * Whether this row is on when the host config says nothing about it. The three
@@ -65,6 +98,19 @@ export const LSP_SERVER_ROWS: readonly LspServerRow[] = [
     discovery: ["workspaceBin", "bundled", "path"],
     defaultEnabled: true,
     indexCost: "Seconds to about half a minute on first use in a large repo; 1-4 GB while running.",
+    // The global install is platform-neutral: npm writes the right shim for whatever host it
+    // runs on, so one argv answers every platform.
+    install: {
+      kind: "command",
+      steps: [
+        {
+          command: "npm",
+          args: ["install", "-g", "typescript-language-server", "typescript"],
+          display: "npm install -g typescript-language-server typescript",
+          note: "Needs Node.js and npm on this host.",
+        },
+      ],
+    },
   },
   {
     id: "python",
@@ -75,6 +121,19 @@ export const LSP_SERVER_ROWS: readonly LspServerRow[] = [
     discovery: ["workspaceBin", "bundled", "path"],
     defaultEnabled: true,
     indexCost: "A few seconds on first use.",
+    // The npm package ships a standalone binary, so it is the same command on every platform
+    // and distro - deliberately NOT pip, which varies per distro and per venv.
+    install: {
+      kind: "command",
+      steps: [
+        {
+          command: "npm",
+          args: ["install", "-g", "pyright"],
+          display: "npm install -g pyright",
+          note: "Needs Node.js and npm on this host.",
+        },
+      ],
+    },
   },
   {
     id: "csharp",
@@ -94,6 +153,22 @@ export const LSP_SERVER_ROWS: readonly LspServerRow[] = [
     runtime: "dotnet",
     indexCost:
       "Loads the solution on first use; seconds on a small project, longer on a large one.",
+    // The server is a .NET global tool, so the install is `dotnet tool install -g csharp-ls`.
+    // That is the *server-side* step. When the daemon finds no `dotnet` on the host it
+    // PREPENDS a platform-specific SDK bootstrap step (winget / brew / apt) - the row does
+    // not know the host, and the client must not, either. See `resolveLspInstall` in the
+    // service, which owns the platform logic.
+    install: {
+      kind: "command",
+      steps: [
+        {
+          command: "dotnet",
+          args: ["tool", "install", "-g", "csharp-ls"],
+          display: "dotnet tool install -g csharp-ls",
+          note: "Newer csharp-ls releases target .NET 9; on a .NET 8-only host pin `--version 0.16.0`.",
+        },
+      ],
+    },
   },
   {
     id: "oxlint",
@@ -276,6 +351,15 @@ async function findBundled(bin: string): Promise<string | null> {
     }
     dir = parent;
   }
+}
+
+/**
+ * Whether a bare command resolves anywhere on the host's PATH. The .NET SDK question the C#
+ * install route needs ("is `dotnet` here?") is exactly this, and reusing the same rung logic
+ * as server discovery means one definition of "on the host's PATH" for both.
+ */
+export async function commandOnPath(bin: string): Promise<boolean> {
+  return (await findOnPath(bin)) !== null;
 }
 
 async function findOnPath(bin: string): Promise<string | null> {

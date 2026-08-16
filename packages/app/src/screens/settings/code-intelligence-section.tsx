@@ -16,9 +16,13 @@ import { Button } from "@/components/ui/button";
 import { settingsStyles } from "@/styles/settings";
 import { useToast } from "@/contexts/toast-context";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
-import { useHostRuntimeClient } from "@/runtime/host-runtime";
+import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useSolutionViewFeature } from "@/solution/use-solution-view-feature";
 import { useLspHostServersFeature } from "./use-lsp-host-servers-feature";
+import * as Clipboard from "expo-clipboard";
+import { useLastWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
+import { useWorkspace } from "@/stores/session-store-hooks";
+import { confirmDialog } from "@/utils/confirm-dialog";
 
 /**
  * Daemon → Code. These are processes on the daemon's machine, so the settings follow
@@ -248,6 +252,7 @@ function LanguageRows(props: {
               language={language}
               disabled={!masterEnabled}
               withBorder={index > 0}
+              serverId={serverId}
               onValueChange={setLanguageEnabled}
             />
           ))
@@ -261,9 +266,10 @@ function LanguageRow(props: {
   language: LspLanguageState;
   disabled: boolean;
   withBorder: boolean;
+  serverId: string;
   onValueChange: (id: string, enabled: boolean) => void;
 }) {
-  const { language, disabled, withBorder, onValueChange } = props;
+  const { language, disabled, withBorder, serverId, onValueChange } = props;
   const { t } = useTranslation();
   const handleChange = useCallback(
     (next: boolean) => onValueChange(language.id, next),
@@ -286,6 +292,16 @@ function LanguageRow(props: {
           </Text>
         ) : null}
         <Text style={styles.cost}>{language.indexCost}</Text>
+        {language.installed ||
+        language.install === undefined ||
+        language.install === null ? null : (
+          <LspInstallBlock
+            id={language.id}
+            serverId={serverId}
+            install={language.install}
+            disabled={disabled}
+          />
+        )}
       </View>
       <Switch
         value={language.enabled}
@@ -294,6 +310,148 @@ function LanguageRow(props: {
         accessibilityLabel={language.id}
         testID={`lsp-language-${language.id}-switch`}
       />
+    </View>
+  );
+}
+
+/**
+ * The "how to install this" block, shown only for a missing, host-installable server.
+ *
+ * The daemon has already resolved the platform logic and sent finished steps, so the client
+ * only ever displays and copies - it never assembles a command. Copy is primary; Run in
+ * terminal is secondary and MUST pass through a confirm dialog that shows the exact command
+ * before anything is spawned. A manual route has no command, so it offers only the link.
+ */
+function LspInstallBlock(props: {
+  id: string;
+  serverId: string;
+  install: NonNullable<LspLanguageState["install"]>;
+  disabled: boolean;
+}) {
+  const { id, serverId, install, disabled } = props;
+  const { t } = useTranslation();
+  const toast = useToast();
+
+  // "Run in terminal" needs a daemon and a directory to run in: the host must be connected,
+  // and the terminal opens in the user's last workspace on this host (a host screen has no
+  // other directory to offer). A last selection that belongs to another host is not a
+  // directory on this one, so it does not count. Without either, the button is absent
+  // rather than a dead end - copying the command still works.
+  const lastWorkspace = useLastWorkspaceSelection();
+  const onThisHost = lastWorkspace?.serverId === serverId;
+  const hostConnected = useHostRuntimeIsConnected(serverId);
+  // The terminal subsystem is keyed on the workspace's own opaque id (the descriptor's `id`),
+  // so read the whole descriptor rather than just its directory.
+  const lastWorkspaceDescriptor = useWorkspace(
+    onThisHost ? serverId : null,
+    onThisHost ? (lastWorkspace?.workspaceId ?? null) : null,
+  );
+  const runCwd = lastWorkspaceDescriptor?.workspaceDirectory ?? null;
+  const runWorkspaceId = lastWorkspaceDescriptor?.id ?? null;
+  const client = useHostRuntimeClient(serverId);
+
+  const copyCommand = useCallback(async () => {
+    const text = install.steps.map((step) => step.display).join("\n");
+    try {
+      await Clipboard.setStringAsync(text);
+      // `copied(label)` renders "Copied: {label}" - the key is a short noun, not a sentence.
+      toast.copied(t("settings.host.code.install.copied"));
+    } catch {
+      toast.error(t("settings.host.code.install.copyFailed"));
+    }
+  }, [install.steps, t, toast]);
+
+  const runInTerminal = useCallback(async () => {
+    if (!client || !hostConnected || !runCwd) {
+      return;
+    }
+    // The exact command is shown before anything runs; the user confirms the literal text.
+    const confirmed = await confirmDialog({
+      title: t("settings.host.code.install.runTitle"),
+      message: t("settings.host.code.install.runMessage", {
+        command: install.steps.map((step) => step.display).join("\n"),
+      }),
+      confirmLabel: t("settings.host.code.install.runConfirm"),
+      cancelLabel: t("settings.host.code.install.runCancel"),
+    });
+    if (!confirmed) {
+      return;
+    }
+    const first = install.steps[0];
+    if (!first) {
+      return;
+    }
+    try {
+      // A real argv, never a shell string: the daemon runs the first step as-is. The
+      // confirm dialog already showed every step, so a two-step install (SDK then tool)
+      // leaves the user in the terminal to run the second line once the first succeeds.
+      const result = await client.createTerminal(
+        runCwd,
+        t("settings.host.code.install.terminalTitle", { id }),
+        undefined,
+        {
+          command: first.command,
+          args: [...first.args],
+          workspaceId: runWorkspaceId ?? undefined,
+        },
+      );
+      if (!result.terminal && result.error) {
+        toast.error(result.error);
+        return;
+      }
+      toast.show(t("settings.host.code.install.terminalStarted"), { variant: "success" });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    }
+  }, [client, hostConnected, runCwd, runWorkspaceId, id, install.steps, t, toast]);
+
+  // A manual route is a link, not a command - no copy, no terminal, nothing to confirm.
+  if (install.steps.length === 0) {
+    return (
+      <View style={styles.installBlock} testID={`lsp-language-${id}-install`}>
+        <Text style={styles.installUrl} numberOfLines={1} ellipsizeMode="middle">
+          {install.url ?? ""}
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.installBlock} testID={`lsp-language-${id}-install`}>
+      {install.steps.map((step) => (
+        <View key={step.display} style={styles.installStep}>
+          <Text style={styles.installCommand} numberOfLines={1} ellipsizeMode="middle">
+            {step.display}
+          </Text>
+          {step.note ? (
+            <Text style={styles.installNote} numberOfLines={2}>
+              {step.note}
+            </Text>
+          ) : null}
+        </View>
+      ))}
+      <View style={styles.installActions}>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={disabled}
+          onPress={copyCommand}
+          testID={`lsp-language-${id}-install-copy`}
+        >
+          {t("settings.host.code.install.copy")}
+        </Button>
+        {client && hostConnected && runCwd ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={disabled}
+            onPress={runInTerminal}
+            testID={`lsp-language-${id}-install-run`}
+          >
+            {t("settings.host.code.install.run")}
+          </Button>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -406,6 +564,33 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
     fontStyle: "italic",
+  },
+  // The install block sits under the hint inside the row's label column: a command is a
+  // code surface, so it takes the Code font, and the actions stay a single compact row so
+  // a row with an install command does not grow the card.
+  installBlock: {
+    marginTop: theme.spacing[2],
+    gap: theme.spacing[2],
+  },
+  installStep: {
+    gap: theme.spacing[1],
+  },
+  installCommand: {
+    color: theme.colors.foreground,
+    fontFamily: theme.fontFamily.mono,
+    fontSize: theme.fontSize.code,
+  },
+  installNote: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  installUrl: {
+    color: theme.colors.accent,
+    fontSize: theme.fontSize.xs,
+  },
+  installActions: {
+    flexDirection: "row",
+    gap: theme.spacing[2],
   },
   // Empty/unavailable copy stands in for a row inside a card, so it carries the
   // same padding a real row would rather than sitting flush against the border.

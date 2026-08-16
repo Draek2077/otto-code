@@ -3728,6 +3728,19 @@ export const fr: TranslationResources = {
         columnRoot: "Chemin racine",
         columnUptime: "Durée d'activité",
         stop: "Arrêter",
+        install: {
+          copy: "Copier",
+          copied: "Commande d'installation",
+          copyFailed: "Impossible de copier dans le presse-papiers",
+          run: "Exécuter dans le terminal",
+          runTitle: "Exécuter la commande d'installation dans un terminal ?",
+          runMessage:
+            "Ceci ouvre un nouveau terminal sur l'hôte et exécute la commande exacte affichée :\n\n{{command}}",
+          runConfirm: "Exécuter",
+          runCancel: "Annuler",
+          terminalTitle: "Installer {{id}}",
+          terminalStarted: "Terminal démarrée",
+        },
       },
       storage: {
         title: "Images des agents",
