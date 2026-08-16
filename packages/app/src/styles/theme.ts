@@ -182,6 +182,10 @@ const lightStatusColors = {
   statusMergedSurface: "rgba(124, 58, 237, 0.14)",
   statusInfo: "#0284c7", // sky-600
   statusMerged: "#7c3aed", // purple-600
+  // The "online" state: present and ready, but not working. Distinct from
+  // `foregroundMuted` (which reads as "off / unavailable") — lighter and more
+  // neutral so an idle brain still looks alive at a glance.
+  statusOnline: "#71717a", // zinc-500 - clearly lighter than foregroundMuted (#55555e)
 };
 
 const darkStatusColors = {
@@ -206,6 +210,11 @@ const darkStatusColors = {
   statusMergedSurface: "rgba(147, 51, 234, 0.20)",
   statusInfo: "#38bdf8", // sky-400 - light blue that holds on dark surfaces
   statusMerged: "#9333ea", // purple-600
+  // The "online" state: present and ready, but not working. On a dark surface
+  // "off" (foregroundMuted) is already a light gray, so idle sits one step
+  // lighter than it - paler, clearly a resting-but-alive signal rather than
+  // "unavailable". Calibrate against the rail after the theme ships.
+  statusOnline: "#d4d4d8", // zinc-300 - lighter than foregroundMuted (#b6b6bf)
 };
 
 // Usage-ledger figure tints - input tokens, output tokens, and cost in the

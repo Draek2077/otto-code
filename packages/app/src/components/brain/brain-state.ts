@@ -171,7 +171,8 @@ export interface BrainStateVisual {
     | "statusWarning"
     | "statusWarningMuted"
     | "statusInfo"
-    | "statusMerged";
+    | "statusMerged"
+    | "statusOnline";
   /** Null for the flat lifecycle tints - those must not move. */
   motion: BrainMotion | null;
   /**
@@ -212,10 +213,14 @@ export const BRAIN_STATE_VISUALS: Record<BrainState, BrainStateVisual> = {
     durationMs: 0,
     glow: 0,
   },
+  // Idle is present and ready, not working. A lighter gray, deliberately one
+  // step away from `off` (foregroundMuted) so "alive but resting" and
+  // "unavailable" do not share a color. Freed from green so `generating` can
+  // own it.
   idle: {
     glyph: "brain",
     badge: null,
-    tone: "statusSuccess",
+    tone: "statusOnline",
     motion: null,
     peak: null,
     durationMs: 0,
@@ -272,22 +277,27 @@ export const BRAIN_STATE_VISUALS: Record<BrainState, BrainStateVisual> = {
     durationMs: 2200,
     glow: 0.25,
   },
-  // Tokens in: left to right, cyan. Tokens out: right to left, violet.
+  // Tokens in: left to right, cyan. Tokens out: right to left, green.
+  // The peak is the bright middle of the sweep band - pushed as far up the
+  // cyan scale as it can go without washing out, so the incoming scan reads at
+  // rail size.
   prefill: {
     glyph: "brain",
     badge: null,
     tone: "statusInfo",
     motion: "left-to-right",
-    peak: "#22d3ee",
+    peak: "#a5f3fc", // cyan-200 - the brightest cyan that still reads as cyan
     durationMs: 900,
     glow: 0.6,
   },
+  // Green for tokens going out, so it is not confused with `thinking`, which
+  // owns the purple/violet family.
   generating: {
     glyph: "brain",
     badge: null,
-    tone: "statusMerged",
+    tone: "statusSuccess",
     motion: "right-to-left",
-    peak: "#a78bfa",
+    peak: "#86efac", // green-300 - bright sweep over the green base
     durationMs: 750,
     glow: 0.7,
   },
