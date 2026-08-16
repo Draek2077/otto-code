@@ -1,6 +1,7 @@
 import { router, usePathname } from "expo-router";
 import {
   CalendarClock,
+  Columns2,
   FileText,
   FolderPlus,
   History,
@@ -76,6 +77,7 @@ import {
   buildArtifactsRoute,
   buildNewWorkspaceRoute,
   buildRunsRoute,
+  buildKanbanRoute,
   buildSchedulesRoute,
   buildSessionsRoute,
   buildSettingsAddHostRoute,
@@ -139,6 +141,7 @@ interface SidebarLabels {
   schedules: string;
   artifacts: string;
   runs: string;
+  kanban: string;
   closeSidebar: string;
 }
 
@@ -150,6 +153,7 @@ interface MobileSidebarProps extends SidebarSharedProps {
   handleViewSchedulesNavigate: () => void;
   handleViewArtifactsNavigate: () => void;
   handleViewRunsNavigate: () => void;
+  handleViewKanbanNavigate: () => void;
 }
 
 interface DesktopSidebarProps extends SidebarSharedProps {
@@ -159,6 +163,7 @@ interface DesktopSidebarProps extends SidebarSharedProps {
   handleViewSchedules: () => void;
   handleViewArtifacts: () => void;
   handleViewRuns: () => void;
+  handleViewKanban: () => void;
 }
 
 export const LeftSidebar = memo(function LeftSidebar() {
@@ -292,6 +297,10 @@ export const LeftSidebar = memo(function LeftSidebar() {
     router.push(buildRunsRoute());
   }, []);
 
+  const handleViewKanbanNavigate = useCallback(() => {
+    router.push(buildKanbanRoute());
+  }, []);
+
   const newWorkspaceKeys = useShortcutKeys("new-workspace");
   const labels = useMemo(
     (): SidebarLabels => ({
@@ -310,6 +319,8 @@ export const LeftSidebar = memo(function LeftSidebar() {
       // Temporary label (English-only) until Orchestrations get a permanent
       // home; avoids adding a locale key for a dev-facing entry.
       runs: "Orchestrations",
+      // Temporary label (English-only), same rationale as `runs` above.
+      kanban: "Kanban",
       closeSidebar: t("sidebar.actions.closeSidebar"),
     }),
     [t],
@@ -352,6 +363,7 @@ export const LeftSidebar = memo(function LeftSidebar() {
           handleViewSchedulesNavigate={handleViewSchedulesNavigate}
           handleViewArtifactsNavigate={handleViewArtifactsNavigate}
           handleViewRunsNavigate={handleViewRunsNavigate}
+          handleViewKanbanNavigate={handleViewKanbanNavigate}
         />
       </RetainedPanelActivity>
     );
@@ -374,6 +386,7 @@ export const LeftSidebar = memo(function LeftSidebar() {
         handleViewSchedules={handleViewSchedulesNavigate}
         handleViewArtifacts={handleViewArtifactsNavigate}
         handleViewRuns={handleViewRunsNavigate}
+        handleViewKanban={handleViewKanbanNavigate}
       />
     </RetainedPanelActivity>
   );
@@ -644,12 +657,14 @@ function MobileSidebar({
   handleViewSchedulesNavigate,
   handleViewArtifactsNavigate,
   handleViewRunsNavigate,
+  handleViewKanbanNavigate,
 }: MobileSidebarProps) {
   const pathname = usePathname();
   const isSessionsActive = pathname.includes("/sessions");
   const isSchedulesActive = pathname.includes("/schedules");
   const isArtifactsActive = pathname.includes("/artifacts");
   const isRunsActive = pathname.includes("/runs");
+  const isKanbanActive = pathname.includes("/kanban");
   const { gesture: closeGesture, gestureRef: closeGestureRef } = useCloseAgentListGesture();
 
   const handleViewMore = useCallback(() => {
@@ -671,6 +686,11 @@ function MobileSidebar({
     closeSidebar();
     handleViewRunsNavigate();
   }, [closeSidebar, handleViewRunsNavigate]);
+
+  const handleViewKanban = useCallback(() => {
+    closeSidebar();
+    handleViewKanbanNavigate();
+  }, [closeSidebar, handleViewKanbanNavigate]);
 
   const handleWorkspacePress = useCallback(() => {
     closeSidebar();
@@ -731,6 +751,14 @@ function MobileSidebar({
             onPress={handleViewSchedules}
             isActive={isSchedulesActive}
             testID="sidebar-schedules"
+            variant="compact"
+          />
+          <SidebarHeaderRow
+            icon={Columns2}
+            label={labels.kanban}
+            onPress={handleViewKanban}
+            isActive={isKanbanActive}
+            testID="sidebar-kanban"
             variant="compact"
           />
         </View>
@@ -820,12 +848,14 @@ function DesktopSidebar({
   handleViewSchedules,
   handleViewArtifacts,
   handleViewRuns,
+  handleViewKanban,
 }: DesktopSidebarProps) {
   const pathname = usePathname();
   const isSessionsActive = pathname.includes("/sessions");
   const isSchedulesActive = pathname.includes("/schedules");
   const isArtifactsActive = pathname.includes("/artifacts");
   const isRunsActive = pathname.includes("/runs");
+  const isKanbanActive = pathname.includes("/kanban");
   const padding = useWindowControlsPadding("sidebar");
   const { settings } = useAppSettings();
   const showTopSpacer = padding.top > 0 && !settings.compactSidebarTopSpacing;
@@ -957,6 +987,14 @@ function DesktopSidebar({
               onPress={handleViewSchedules}
               isActive={isSchedulesActive}
               testID="sidebar-schedules"
+              variant="compact"
+            />
+            <SidebarHeaderRow
+              icon={Columns2}
+              label={labels.kanban}
+              onPress={handleViewKanban}
+              isActive={isKanbanActive}
+              testID="sidebar-kanban"
               variant="compact"
             />
           </View>

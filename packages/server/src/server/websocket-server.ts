@@ -2216,6 +2216,13 @@ export class VoiceAssistantWebSocketServer {
         stableProjectIdentity: true,
         // COMPAT(workspaceScriptManagement): added in v0.1.105, remove gate after 2027-01-10.
         workspaceScriptManagement: true,
+        // COMPAT(kanbanBoard): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
+        // The provider-agnostic Kanban board surface: kanban.* RPCs (boards
+        // list, board read, card move/create, external-task link) served
+        // through the KanbanProvider SPI with the in-memory mock and GitHub
+        // Projects v2 registered. Unconditionally true: the mock provider
+        // makes the surface work on every host without credentials.
+        kanbanBoard: true,
       },
     };
   }

@@ -220,6 +220,7 @@ import { wrapSpokenInput } from "./voice-config.js";
 import { isVoicePermissionAllowed } from "./voice-permission-policy.js";
 import { VoiceSession } from "./session/voice/voice-session.js";
 import { CheckoutSession, type BusyWorkspaceAgent } from "./session/checkout/checkout-session.js";
+import { KanbanSession } from "./kanban/kanban-session.js";
 import { gitOperationLog } from "./git-operation-log.js";
 import {
   createWorkspaceGitObserverService,
@@ -1012,6 +1013,7 @@ export class Session {
   private readonly workspaceDirectory: WorkspaceDirectory;
   private readonly voiceSession: VoiceSession;
   private readonly checkoutSession: CheckoutSession;
+  private readonly kanbanSession: KanbanSession;
   private readonly chatScheduleLoopSession: ChatScheduleLoopSession;
   private readonly providerCatalogSession: ProviderCatalogSession;
   private readonly workspaceFilesSession: WorkspaceFilesSession;
@@ -1233,6 +1235,14 @@ export class Session {
       ottoHome: this.ottoHome,
       worktreesRoot: this.worktreesRoot,
       logger: this.sessionLogger,
+    });
+    this.kanbanSession = new KanbanSession({
+      emit: (msg) => this.emit(msg),
+      readConfig: () => this.daemonConfigStore.get(),
+      log: {
+        info: (message) => this.sessionLogger.info(message),
+        error: (message, error) => this.sessionLogger.error({ err: error }, message),
+      },
     });
     this.voiceCueGenerator = createVoiceCueGenerator({
       generation: createAgentStructuredTextGeneration({
@@ -3953,6 +3963,16 @@ export class Session {
         return this.handleRunsTemplatesDeleteRequest(msg);
       case "runs.start.request":
         return this.handleRunsStartRequest(msg);
+      case "kanban.boards.list.request":
+        return this.kanbanSession.handleBoardsListRequest(msg);
+      case "kanban.board.get.request":
+        return this.kanbanSession.handleBoardGetRequest(msg);
+      case "kanban.card.move.request":
+        return this.kanbanSession.handleCardMoveRequest(msg);
+      case "kanban.card.create.request":
+        return this.kanbanSession.handleCardCreateRequest(msg);
+      case "kanban.task.link.request":
+        return this.kanbanSession.handleTaskLinkRequest(msg);
       case "checkout_merge_request":
         return this.checkoutSession.handleCheckoutMergeRequest(msg);
       case "checkout_merge_from_base_request":
@@ -12664,6 +12684,8 @@ export class Session {
     this.terminalController.dispose();
 
     this.checkoutSession.cleanup();
+
+    this.kanbanSession.dispose();
 
     this.workspaceGitObserver.dispose();
 

@@ -1195,6 +1195,7 @@ function AppWithSidebar({ children }: { children: ReactNode }) {
       pathname === "/sessions" ||
       pathname === "/schedules" ||
       pathname === "/runs" ||
+      pathname === "/kanban" ||
       pathname === "/artifacts" ||
       pathname === "/stats" ||
       pathname === "/brain" ||
@@ -1231,6 +1232,7 @@ function RootStack() {
         <Stack.Screen name="sessions" />
         <Stack.Screen name="schedules" />
         <Stack.Screen name="runs" />
+        <Stack.Screen name="kanban" />
         <Stack.Screen name="stats" />
         <Stack.Screen name="brain" />
         <Stack.Screen name="artifacts" />

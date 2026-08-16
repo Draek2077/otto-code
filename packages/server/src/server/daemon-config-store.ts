@@ -103,6 +103,8 @@ const SECRET_WIRE_PATHS: readonly (readonly string[])[] = [
   ["gitHosting", "providers", "bitbucketCloud", "apiToken"],
   ["brain", "authToken"],
   ["brain", "remote", "authToken"],
+  ["kanban", "providers", "github", "token"],
+  ["kanban", "providers", "jira", "token"],
 ];
 
 // Connector secrets can't be expressed in SECRET_WIRE_PATHS: `connectors` is an

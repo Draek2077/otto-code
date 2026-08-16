@@ -436,6 +436,10 @@ export function buildRunsRoute() {
   return "/runs" as const;
 }
 
+export function buildKanbanRoute() {
+  return "/kanban" as const;
+}
+
 export function buildStatsRoute() {
   return "/stats" as const;
 }

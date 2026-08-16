@@ -98,6 +98,11 @@ import type {
   StashSaveResponse,
   StashPopResponse,
   StashListResponse,
+  KanbanBoardsListResponse,
+  KanbanBoardGetResponse,
+  KanbanCardMoveResponse,
+  KanbanCardCreateResponse,
+  KanbanTaskLinkResponse,
   ValidateBranchResponse,
   BranchSuggestionsResponse,
   FileVersion,
@@ -3741,6 +3746,74 @@ export class DaemonClient {
         parentPath: input.parentPath,
         name: input.name,
       },
+    });
+  }
+
+  /**
+   * The provider-agnostic Kanban board surface. Each call names its provider
+   * ("memory", "github", ...) - the daemon dispatches to the registered
+   * KanbanProvider implementation and the wire never carries provider-native
+   * identifiers beyond the opaque board/card/column ids.
+   */
+  async kanbanListBoards(
+    providerId: string,
+    requestId?: string,
+  ): Promise<KanbanBoardsListResponse["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest<"kanban.boards.list.response">({
+      requestId,
+      message: { type: "kanban.boards.list.request", providerId, requestId: "" },
+      timeout: 60000,
+    });
+  }
+
+  async kanbanGetBoard(
+    providerId: string,
+    boardId: string,
+    requestId?: string,
+  ): Promise<KanbanBoardGetResponse["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest<"kanban.board.get.response">({
+      requestId,
+      message: { type: "kanban.board.get.request", providerId, boardId, requestId: "" },
+      timeout: 60000,
+    });
+  }
+
+  async kanbanMoveCard(
+    input: { providerId: string; boardId: string; cardId: string; targetColumnId: string },
+    requestId?: string,
+  ): Promise<KanbanCardMoveResponse["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest<"kanban.card.move.response">({
+      requestId,
+      message: { ...input, type: "kanban.card.move.request", requestId: "" },
+      timeout: 60000,
+    });
+  }
+
+  async kanbanCreateCard(
+    input: {
+      providerId: string;
+      boardId: string;
+      columnId?: string;
+      title: string;
+      body?: string;
+    },
+    requestId?: string,
+  ): Promise<KanbanCardCreateResponse["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest<"kanban.card.create.response">({
+      requestId,
+      message: { ...input, type: "kanban.card.create.request", requestId: "" },
+      timeout: 60000,
+    });
+  }
+
+  async kanbanLinkTask(
+    input: { providerId: string; boardId: string; externalId: string; columnId?: string },
+    requestId?: string,
+  ): Promise<KanbanTaskLinkResponse["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest<"kanban.task.link.response">({
+      requestId,
+      message: { ...input, type: "kanban.task.link.request", requestId: "" },
+      timeout: 60000,
     });
   }
 

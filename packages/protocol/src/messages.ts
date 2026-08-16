@@ -23,6 +23,18 @@ import {
   ArtifactUpdatedNotificationSchema,
   ArtifactDeletedNotificationSchema,
 } from "./artifacts/rpc-schemas.js";
+import {
+  KanbanBoardsListRequestSchema,
+  KanbanBoardsListResponseSchema,
+  KanbanBoardGetRequestSchema,
+  KanbanBoardGetResponseSchema,
+  KanbanCardMoveRequestSchema,
+  KanbanCardMoveResponseSchema,
+  KanbanCardCreateRequestSchema,
+  KanbanCardCreateResponseSchema,
+  KanbanTaskLinkRequestSchema,
+  KanbanTaskLinkResponseSchema,
+} from "./kanban.js";
 import { CLIENT_CAPS } from "./client-capabilities.js";
 import { AGENT_LIFECYCLE_STATUSES } from "./agent-lifecycle.js";
 import { MAX_EXPLICIT_AGENT_TITLE_CHARS } from "./agent-title-limits.js";
@@ -357,6 +369,36 @@ export const MutableGitHostingConfigSchema = z
   .passthrough();
 
 export type MutableGitHostingConfig = z.infer<typeof MutableGitHostingConfigSchema>;
+
+// Provider credentials for the Kanban board surface. Gated by
+// server_info features.kanbanBoard. The token is daemon-owned and masked on
+// the wire (SECRET_WIRE_PATHS); the client never authors a secret it cannot
+// get back.
+export const MutableKanbanConfigSchema = z
+  .object({
+    providers: z
+      .object({
+        github: z
+          .object({
+            // Fine-grained or classic PAT with `projects: read`. Empty string
+            // = not configured.
+            token: z.string().optional(),
+          })
+          .passthrough(),
+        jira: z
+          .object({
+            // Jira Cloud API token (site-wide token or PAT). Empty string =
+            // not configured.
+            token: z.string().optional(),
+          })
+          .passthrough(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+export type MutableKanbanConfig = z.infer<typeof MutableKanbanConfigSchema>;
 
 // Canonical personality roles, in display order. Kept as an exported const so
 // the daemon and app share one vocabulary, but the wire schema stores roles as
@@ -890,6 +932,9 @@ export const MutableDaemonConfigSchema = z
     // empty roster so a new client parsing an old daemon's config still sees a
     // well-formed section.
     connectors: z.array(ConnectorConfigSchema).default([]),
+    // Kanban board surface credentials (provider tokens). Gated by
+    // server_info features.kanbanBoard; absent on older daemons.
+    kanban: MutableKanbanConfigSchema.optional(),
   })
   .passthrough();
 
@@ -7848,6 +7893,11 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   StashSaveRequestSchema,
   StashPopRequestSchema,
   StashListRequestSchema,
+  KanbanBoardsListRequestSchema,
+  KanbanBoardGetRequestSchema,
+  KanbanCardMoveRequestSchema,
+  KanbanCardCreateRequestSchema,
+  KanbanTaskLinkRequestSchema,
   ValidateBranchRequestSchema,
   BranchSuggestionsRequestSchema,
   ForgeSearchRequestSchema,
@@ -8162,6 +8212,10 @@ export const ServerInfoStatusPayloadSchema = z
         checkoutRefresh: z.boolean().optional(),
         // COMPAT(gitFetchControl): added in v0.8.12, remove gate after 2027-02-14.
         gitFetchControl: z.boolean().optional(),
+        // COMPAT(kanbanBoard): added in v0.8.11, drop the gate when floor >= v0.8.11.
+        // The provider-agnostic Kanban board surface is present (kanban.*
+        // RPCs + the /kanban screen).
+        kanbanBoard: z.boolean().optional(),
         // COMPAT(workspaceMultiplicity): added in v0.1.97, drop the gate when floor >= v0.1.97
         workspaceMultiplicity: z.boolean().optional(),
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.
@@ -12978,6 +13032,11 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   StashSaveResponseSchema,
   StashPopResponseSchema,
   StashListResponseSchema,
+  KanbanBoardsListResponseSchema,
+  KanbanBoardGetResponseSchema,
+  KanbanCardMoveResponseSchema,
+  KanbanCardCreateResponseSchema,
+  KanbanTaskLinkResponseSchema,
   ValidateBranchResponseSchema,
   BranchSuggestionsResponseSchema,
   ForgeSearchResponseSchema,
@@ -13662,6 +13721,22 @@ export type StashPopRequest = z.infer<typeof StashPopRequestSchema>;
 export type StashPopResponse = z.infer<typeof StashPopResponseSchema>;
 export type StashListRequest = z.infer<typeof StashListRequestSchema>;
 export type StashListResponse = z.infer<typeof StashListResponseSchema>;
+export type {
+  KanbanBoard,
+  KanbanBoardRef,
+  KanbanBoardGetRequest,
+  KanbanBoardGetResponse,
+  KanbanBoardsListRequest,
+  KanbanBoardsListResponse,
+  KanbanCard,
+  KanbanCardCreateRequest,
+  KanbanCardCreateResponse,
+  KanbanCardMoveRequest,
+  KanbanCardMoveResponse,
+  KanbanColumn,
+  KanbanTaskLinkRequest,
+  KanbanTaskLinkResponse,
+} from "./kanban.js";
 export type StashEntry = z.infer<typeof StashEntrySchema>;
 export type ValidateBranchRequest = z.infer<typeof ValidateBranchRequestSchema>;
 export type ValidateBranchResponse = z.infer<typeof ValidateBranchResponseSchema>;
