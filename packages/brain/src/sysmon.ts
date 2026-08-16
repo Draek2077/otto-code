@@ -239,8 +239,13 @@ export class SlotActivityTracker {
               ? "prefill"
               : "decode";
       const elapsedSeconds = previous ? (now - previous.at) / 1000 : 0;
+      // A flat counter means no tokens crossed this window - the honest answer
+      // is "not measuring" (null), not 0 tok/s. Prefill in particular only
+      // moves its counter in chunks, so a strict inequality keeps the rate
+      // field quiet between movements instead of flashing 0 and the real value
+      // on every poll.
       const rate = (current: number | null, before: number | null | undefined) =>
-        current !== null && elapsedSeconds > 0 && before != null && current >= before
+        current !== null && elapsedSeconds > 0 && before != null && current > before
           ? (current - before) / elapsedSeconds
           : null;
       this.#previous.set(slot, { at: now, task, promptTokens, generatedTokens, phase });

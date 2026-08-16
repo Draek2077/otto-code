@@ -107,6 +107,27 @@ describe("SlotActivityTracker", () => {
     ]);
   });
 
+  it("reports a flat counter as not measuring, not zero tok/s", () => {
+    // Prompt tokens land in chunks: a window where the counter did not move
+    // must stay quiet (null, the UI's "Measuring…") instead of flashing 0.
+    const tracker = new SlotActivityTracker();
+    tracker.sample([{ id: 0, id_task: 1, is_processing: true, n_past: 100, n_decoded: 0 }], 1_000);
+    const flat = tracker.sample(
+      [{ id: 0, id_task: 1, is_processing: true, n_past: 100, n_decoded: 0 }],
+      2_000,
+    );
+    expect(flat.threads).toEqual([
+      expect.objectContaining({ phase: "prefill", promptTokensPerSecond: null }),
+    ]);
+    const moved = tracker.sample(
+      [{ id: 0, id_task: 1, is_processing: true, n_past: 200, n_decoded: 0 }],
+      3_000,
+    );
+    expect(moved.threads).toEqual([
+      expect.objectContaining({ phase: "prefill", promptTokensPerSecond: 100 }),
+    ]);
+  });
+
   it("measures current nested decoded counters live", () => {
     const tracker = new SlotActivityTracker();
     tracker.sample(
