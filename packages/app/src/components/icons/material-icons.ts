@@ -112,6 +112,7 @@ export const CircleSlash = createMaterialSymbolIcon("CircleSlash");
 export const CircleX = createMaterialSymbolIcon("CircleX");
 export const CloseFullscreen = createMaterialSymbolIcon("CloseFullscreen");
 export const Clapperboard = createMaterialSymbolIcon("Clapperboard");
+export const ClearAll = createMaterialSymbolIcon("ClearAll");
 export const ClipboardPaste = createMaterialSymbolIcon("ClipboardPaste");
 export const CodeBlocks = createMaterialSymbolIcon("CodeBlocks");
 export const Columns2 = createMaterialSymbolIcon("Columns2");

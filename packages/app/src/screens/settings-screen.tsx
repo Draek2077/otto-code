@@ -3259,7 +3259,7 @@ const searchOverviewStyles = StyleSheet.create((theme) => ({
   input: {
     flex: 1,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.base,
+    fontSize: theme.fontSize.sm,
     paddingVertical: theme.spacing[1],
   },
   results: {

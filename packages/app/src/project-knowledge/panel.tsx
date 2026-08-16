@@ -16,23 +16,34 @@ import {
   BookOpen,
   Check,
   Checklist,
+  ClearAll,
   FolderOpen,
   FolderTree,
   Gavel,
   Lightbulb,
   Pencil,
   Search,
+  Settings2,
   Shield,
   SquarePen,
   Trash2,
+  X,
 } from "@/components/icons/material-icons";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { PageLoading } from "@/components/ui/page-loading";
 import { PANE_TOOLBAR_HEIGHT } from "@/components/ui/control-geometry";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { SearchClearButton } from "@/components/ui/search-clear-button";
 import { ToolbarIconButton } from "@/components/ui/toolbar-icon-button";
 import { ToolbarSeparator } from "@/components/ui/toolbar-separator";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isWeb } from "@/constants/platform";
 import { useAnimationsEnabled } from "@/hooks/use-animations-enabled";
 import { usePaneContext } from "@/panels/pane-context";
@@ -43,7 +54,13 @@ import {
   type ProjectReferenceDisposition,
 } from "@/context-management/use-project-knowledge";
 import { usePanelStore } from "@/stores/panel-store";
-import { formatDeliveryStatus, formatMetadataLabel, summarizeProjectKnowledge } from "./model";
+import {
+  formatDeliveryStatus,
+  formatMetadataLabel,
+  recordMatchesTags,
+  summarizeProjectKnowledge,
+  uniqueTags,
+} from "./model";
 
 const MIN_SIDEBAR_WIDTH = 260;
 const MAX_SIDEBAR_WIDTH = 520;
@@ -64,6 +81,7 @@ export function ProjectKnowledgePanel(): ReactElement {
   const [scope, setScope] = useState<"knowledge" | "projects" | "references">("knowledge");
   const [filter, setFilter] = useState<"all" | "proposed" | "confirmed" | "superseded">("all");
   const [query, setQuery] = useState("");
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
   const [editingTruth, setEditingTruth] = useState(false);
   const [editingMetadata, setEditingMetadata] = useState(false);
@@ -128,9 +146,17 @@ export function ProjectKnowledgePanel(): ReactElement {
         (record) =>
           (filter === "all" || record.status === filter) &&
           recordMatchesScope(record.kind, scope) &&
+          recordMatchesTags(record, tagFilter) &&
           record.title.toLowerCase().includes(normalizedQuery),
       ) ?? [],
-    [filter, knowledge.view, normalizedQuery, scope],
+    [filter, knowledge.view, normalizedQuery, scope, tagFilter],
+  );
+  const scopedTags = useMemo(
+    () =>
+      uniqueTags(
+        (knowledge.view?.records ?? []).filter((record) => recordMatchesScope(record.kind, scope)),
+      ),
+    [knowledge.view, scope],
   );
   const selectedRoot =
     scope === "knowledge"
@@ -691,6 +717,7 @@ export function ProjectKnowledgePanel(): ReactElement {
                 setSelectedRootSlug(null);
                 setCreating(false);
                 setQuery("");
+                setTagFilter([]);
               }}
               options={[
                 { value: "knowledge", label: "Knowledge" },
@@ -740,6 +767,13 @@ export function ProjectKnowledgePanel(): ReactElement {
               />
               {query ? <SearchClearButton onPress={() => setQuery("")} /> : null}
             </View>
+            {scopedTags.length > 0 ? (
+              <ThemedKnowledgeTagFilter
+                tags={scopedTags}
+                selectedTags={tagFilter}
+                onChange={setTagFilter}
+              />
+            ) : null}
             <View style={styles.statusFilters}>
               <SegmentedControl
                 size="sm"
@@ -902,6 +936,115 @@ function KnowledgeRecordRow({
   );
 }
 
+/** Selected tags stay visible as small removable chips; the full list lives in a popover. */
+function KnowledgeTagFilter({
+  tags,
+  selectedTags,
+  onChange,
+  theme,
+}: {
+  tags: readonly string[];
+  selectedTags: readonly string[];
+  onChange: (tags: string[]) => void;
+  theme: { colors: { foreground: string; foregroundMuted: string } };
+}): ReactElement {
+  const toggle = (tag: string) =>
+    onChange(
+      selectedTags.includes(tag)
+        ? selectedTags.filter((value) => value !== tag)
+        : [...selectedTags, tag],
+    );
+  const triggerColor =
+    selectedTags.length > 0 ? theme.colors.foreground : theme.colors.foregroundMuted;
+  return (
+    <View style={styles.tagFilters} accessibilityLabel="Filter by tag">
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          accessibilityLabel="Filter by tag"
+          accessibilityRole="button"
+          style={styles.tagTrigger}
+          testID="project-knowledge-tag-filter-trigger"
+        >
+          <Settings2 size={14} color={triggerColor} />
+          <Text
+            style={[styles.tagTriggerLabel, selectedTags.length > 0 && styles.tagTriggerActive]}
+          >
+            {selectedTags.length > 0 ? `Tags · ${selectedTags.length}` : "Tags"}
+          </Text>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="start"
+          side="bottom"
+          offset={4}
+          minWidth={220}
+          scrollable
+          maxHeight={320}
+          testID="project-knowledge-tag-filter-content"
+        >
+          {tags.map((tag) => (
+            <DropdownMenuItem
+              key={tag}
+              closeOnSelect={false}
+              selected={selectedTags.includes(tag)}
+              showSelectedCheck
+              onSelect={() => toggle(tag)}
+            >
+              {tag}
+            </DropdownMenuItem>
+          ))}
+          {selectedTags.length > 0 ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem destructive onSelect={() => onChange([])}>
+                Clear all
+              </DropdownMenuItem>
+            </>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {selectedTags.length > 0 ? (
+        <View style={styles.tagFilterChips}>
+          {selectedTags.map((tag) => (
+            <View key={tag} style={styles.tagChipSelected}>
+              <Text numberOfLines={1} style={styles.tagChipText}>
+                {tag}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${tag} filter`}
+                hitSlop={4}
+                style={({ hovered, pressed }) => [
+                  styles.tagChipRemove,
+                  (hovered || pressed) && styles.tagChipRemoveActive,
+                ]}
+                onPress={() => toggle(tag)}
+              >
+                <X size={12} color={theme.colors.foregroundMuted} />
+              </Pressable>
+            </View>
+          ))}
+          <Tooltip delayDuration={250} enabledOnDesktop enabledOnMobile={false}>
+            <TooltipTrigger
+              accessibilityRole="button"
+              accessibilityLabel="Clear filter tags"
+              style={({ hovered, pressed }) => [
+                styles.tagChipClearButton,
+                (hovered || pressed) && styles.tagChipClearActive,
+              ]}
+              onPress={() => onChange([])}
+            >
+              <ClearAll size={14} color={theme.colors.foregroundMuted} />
+            </TooltipTrigger>
+            <TooltipContent side="top" align="center" offset={6}>
+              <Text style={styles.tagTooltipText}>Clear filter tags</Text>
+            </TooltipContent>
+          </Tooltip>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function KnowledgeKindIcon({
   kind,
   size,
@@ -920,6 +1063,7 @@ function KnowledgeKindIcon({
   if (kind === "reference") return <BookOpen size={size} color={color} />;
   return <Gavel size={size} color={color} />;
 }
+const ThemedKnowledgeTagFilter = withUnistyles(KnowledgeTagFilter, (theme) => ({ theme }));
 const ThemedKnowledgeKindIcon = withUnistyles(KnowledgeKindIcon, (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
@@ -1176,6 +1320,75 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
     backgroundColor: theme.colors.surface1,
   },
+  tagFilters: {
+    gap: theme.spacing[1],
+    paddingHorizontal: theme.spacing[2],
+    paddingTop: theme.spacing[2],
+  },
+  tagFilterChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.spacing[1],
+    alignItems: "center",
+  },
+  tagTrigger: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    selfStart: true,
+    minHeight: 32,
+    paddingHorizontal: theme.spacing[2],
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface1,
+  },
+  tagTriggerLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+  },
+  tagTriggerActive: { color: theme.colors.foreground },
+  tagChipSelected: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
+    borderRadius: theme.borderRadius.full,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surfaceToggleSelected,
+    userSelect: "none",
+  },
+  tagChipText: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+  },
+  tagChipRemove: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 2,
+    padding: 2,
+    borderRadius: theme.borderRadius.full,
+  },
+  tagChipRemoveActive: { backgroundColor: theme.colors.surface2 },
+  tagChipClearButton: {
+    width: 18,
+    height: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: theme.borderRadius.sm,
+    userSelect: "none",
+  },
+  tagChipClearActive: { backgroundColor: theme.colors.surface3 },
+  tagChipClearText: {
+    color: theme.colors.mutedForeground,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+  },
+  tagTooltipText: { color: theme.colors.foreground, fontSize: theme.fontSize.xs },
   statusFilters: {
     paddingTop: theme.spacing[2],
     paddingHorizontal: theme.spacing[2],
@@ -1186,7 +1399,7 @@ const styles = StyleSheet.create((theme) => ({
   searchInput: {
     flex: 1,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.base,
+    fontSize: theme.fontSize.sm,
     paddingVertical: theme.spacing[1],
   },
   browser: { flex: 1 },

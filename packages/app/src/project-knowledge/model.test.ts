@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { formatDeliveryStatus, formatMetadataLabel, summarizeProjectKnowledge } from "./model";
+import {
+  formatDeliveryStatus,
+  formatMetadataLabel,
+  recordMatchesTags,
+  summarizeProjectKnowledge,
+  uniqueTags,
+} from "./model";
 
 describe("project knowledge summary", () => {
   it("formats stored metadata for people without changing its value", () => {
@@ -57,5 +63,25 @@ describe("project knowledge summary", () => {
       references: 1,
       referencesAdopted: 1,
     });
+  });
+});
+
+describe("tag filtering", () => {
+  it("matches every selected tag and passes everything through with no selection", () => {
+    const record = { tags: ["protocol", "compatibility", "ui"] };
+    expect(recordMatchesTags(record, [])).toBe(true);
+    expect(recordMatchesTags(record, ["protocol"])).toBe(true);
+    expect(recordMatchesTags(record, ["protocol", "ui"])).toBe(true);
+    expect(recordMatchesTags(record, ["protocol", "missing"])).toBe(false);
+    expect(recordMatchesTags({ tags: [] }, ["protocol"])).toBe(false);
+  });
+
+  it("collects unique tags from records in stable case-insensitive order", () => {
+    const tags = uniqueTags([
+      { tags: ["ui", "protocol"] },
+      { tags: ["UI", "knowledge"] },
+      { tags: [] },
+    ]);
+    expect(tags).toEqual(["knowledge", "protocol", "ui"]);
   });
 });

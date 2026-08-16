@@ -44,6 +44,28 @@ export function summarizeProjectKnowledge(records: readonly Record[]): ProjectKn
   };
 }
 
+/** A record matches when it carries every selected tag (case-insensitive). */
+export function recordMatchesTags(
+  record: { tags: readonly string[] },
+  selected: readonly string[],
+): boolean {
+  if (selected.length === 0) return true;
+  const owned = new Set(record.tags.map((tag) => tag.toLowerCase()));
+  return selected.every((tag) => owned.has(tag.toLowerCase()));
+}
+
+/** Distinct tags across records, deduped case-insensitively in stable order. */
+export function uniqueTags(records: readonly { tags: readonly string[] }[]): string[] {
+  const seen = new Map<string, string>();
+  for (const record of records) {
+    for (const tag of record.tags) {
+      const key = tag.toLowerCase();
+      if (!seen.has(key)) seen.set(key, tag);
+    }
+  }
+  return [...seen.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+}
+
 export function formatDeliveryStatus(status: string | undefined): string {
   return formatMetadataLabel(status ?? "charter");
 }
