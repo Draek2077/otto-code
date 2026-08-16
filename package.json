@@ -139,9 +139,7 @@
     "release:minor": "npm run release:check && npm run version:all:minor && npm run release:publish && npm run release:push",
     "release:major": "npm run release:check && npm run version:all:major && npm run release:publish && npm run release:push",
     "build:visualizer": "npm run build --workspace=@otto-code/visualizer",
-    "build:visualizer:demo": "npm run build:demo --workspace=@otto-code/visualizer",
-    "archdocs:build": "node archdocs/build.mjs",
-    "archdocs:serve": "npm run archdocs:build && node archdocs/serve.mjs"
+    "build:visualizer:demo": "npm run build:demo --workspace=@otto-code/visualizer"
   },
   "devDependencies": {
     "@asciidoctor/core": "^4.0.4",

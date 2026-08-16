@@ -1,7 +1,7 @@
 # Graph Templates & Evaluation - do the graphs actually work?
 
-**Status:** charter. Decisions in `archdocs/pages/12-orchestration-data-model.adoc` §"Decided,
-not built" are inputs to this; status lives in `projects/README.md`.
+**Status:** charter. The engine-side "Decided, not built" records (now in Otto Knowledge, not
+`archdocs/`) are inputs to this; status lives in `projects/README.md`.
 
 ## Thesis
 

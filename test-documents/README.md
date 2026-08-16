@@ -23,6 +23,7 @@ These open in **Preview** mode by default; use the mode bar for raw source.
 | File | Exercises |
 | --- | --- |
 | [asciidoc.adoc](asciidoc.adoc) | Every AsciiDoc construct the converter handles, **including two `[mermaid]` diagrams** and both image macros |
+| [archdocs-corpus/](archdocs-corpus/) | The 18 real architecture pages (tables, admonition blocks, nested lists, embedded `[mermaid]` diagrams) as the converter's **fidelity corpus** — read by `asciidoc-to-markdown.test.ts`'s "archdocs corpus" suite to prove no construct leaks through as unconverted markup |
 | [markdown.md](markdown.md) | The markdown counterpart, with the **same two diagrams** for A/B comparison, plus relative, root-relative, HTML, escaping, missing and remote images |
 | [diagram.mmd](diagram.mmd) | A standalone mermaid file — a state diagram with a note |
 | [logo.svg](logo.svg) | Renders as an image, not as XML source |

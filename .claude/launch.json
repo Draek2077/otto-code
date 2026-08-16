@@ -18,12 +18,6 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev:website"],
       "port": 4300
-    },
-    {
-      "name": "archdocs",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "archdocs:serve"],
-      "port": 4400
     }
   ]
 }

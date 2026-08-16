@@ -60,9 +60,9 @@ const RESERVED_LOCAL_PORTS = new Set([
   // the desktop dev Expo band that packages/desktop/scripts/dev.{ps1,sh} probes
   // in order. Desktop dev starts at 8082 and never claims 8081.
   8081, 8082, 8083, 8084, 8085, 8086, 8087, 8088, 8089,
-  // The docs/marketing sites (`.claude/launch.json`): website, then archdocs.
-  // Deliberately outside the 808x Expo band - see packages/website/vite.config.ts.
-  4300, 4400,
+  // The marketing site (`.claude/launch.json`): website. Deliberately outside
+  // the 808x Expo band - see packages/website/vite.config.ts.
+  4300,
   // Electron remote-debugging (CDP) for the desktop dev shell.
   9223,
   // --- Third-party ---

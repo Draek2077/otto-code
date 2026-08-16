@@ -6,7 +6,7 @@ status: "confirmed"
 tags: ["project-charter", "legacy-projects-migration"]
 delivery_status: "charter"
 created_at: "2026-08-08T06:17:55.142Z"
-updated_at: "2026-08-08T06:19:47.076Z"
+updated_at: "2026-08-16T13:40:35.666Z"
 ---
 
 # Graph Templates
@@ -15,8 +15,7 @@ updated_at: "2026-08-08T06:19:47.076Z"
 
 # Graph Templates & Evaluation - do the graphs actually work?
 
-**Status:** charter. Decisions in `archdocs/pages/12-orchestration-data-model.adoc` §"Decided,
-not built" are inputs to this; status lives in `projects/README.md`.
+**Status:** charter. The engine-side "Decided, not built" records (now in Otto Knowledge, not `archdocs/`) are inputs to this; status lives in `projects/README.md`.
 
 ## Thesis
 
@@ -315,3 +314,6 @@ Three conclusions the tally forces:
 - time: "2026-08-08T06:19:47.076Z"
   kind: "note"
   summary: "Migrated from the repository's existing authoritative project or reference documentation at the user's request. New status: confirmed."
+- time: "2026-08-16T13:40:35.666Z"
+  kind: "decision"
+  summary: "Retiring archdocs/: the single \"Decisions in archdocs/pages/12... §Decided, not built\" pointer (top status line) now resolves to the five Otto Knowledge records. All other lines of the charter and the use-cases catalog are byte-identical to the restored original."

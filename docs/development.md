@@ -221,7 +221,7 @@ runs go at once - two e2e runs, or e2e and demos together, or one per worktree
 under `otto.json` services. A fixed band would trade all of that away to solve a
 collision the dynamic allocator does not have. Cross-lane safety instead comes
 from subtraction: `RESERVED_LOCAL_PORTS` in `global-setup.ts` lists every fixed
-port the other lanes own (`6868`, `6788`, `8081`–`8090`, `9223`, `4400`, plus
+port the other lanes own (`6868`, `6788`, `8081`–`8090`, `9223`, `4300`, plus
 OpenCode's `61680`) and the allocator refuses all of them. **Add a row there
 whenever a lane claims a new fixed port.**
 
@@ -294,8 +294,7 @@ OTTO_DEV_RESET_HOME=1 npm run dev            # clear and reseed the derived work
 - Root checkout Expo: `http://localhost:8081`.
 - Root checkout desktop dev Expo: first free port from `8082` through `8089`.
 - Desktop dev Electron CDP: `127.0.0.1:9223`.
-- Marketing site (`dev:website`): `http://localhost:4300`. Archdocs
-  (`archdocs:serve`): `http://localhost:4400`.
+- Marketing site (`dev:website`): `http://localhost:4300`.
 
 **`808x` belongs to Metro/Expo; nothing else may sit in it.** `8081` is the root
 checkout, `8082`–`8089` is the desktop dev band, `8095` is the agent lane. The

@@ -216,7 +216,7 @@ describe("degradation", () => {
 describe("archdocs corpus", () => {
   const pagesDir = join(
     dirname(fileURLToPath(import.meta.url)),
-    "../../../../../../archdocs/pages",
+    "../../../../../../test-documents/archdocs-corpus",
   );
   const pages = readdirSync(pagesDir).filter((name) => name.endsWith(".adoc"));
 

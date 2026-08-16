@@ -22,7 +22,7 @@ Four trees. Know which one you are in before you write anything down.
 | [`.otto/knowledge/projects/`](.otto/knowledge/projects/) | Project charters, delivery status, progress, and history; manage through Otto Knowledge      | Future and history  |
 | [`.otto/knowledge/references/`](.otto/knowledge/references/) | External sources and their project-specific evaluation                                    | Present and history |
 | [`projects/`](projects/README.md)     | Temporary read-only migration source for legacy charters; do not update                      | Legacy              |
-| [`archdocs/`](archdocs/README.md)     | The system-level architecture record - AsciiDoc + Mermaid, one level above `docs/`           | Present, wide-angle |
+| **Otto Knowledge** (`.otto/knowledge/`) | The durable system-level architecture record (architecture, decisions, findings, projects, references) - retired from `archdocs/` | Present, durable, wide-angle |
 | [`findings/`](findings/README.md)     | Measured investigations: method, numbers, what they ruled out. **Never status**              | Past                |
 | **This file**                         | Working rules for agents in this repo                                                        | Imperative          |
 

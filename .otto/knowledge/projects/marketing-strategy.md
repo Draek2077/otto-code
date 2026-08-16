@@ -488,7 +488,7 @@ Real work, but infrastructure rather than a feature someone would read on a land
 - Eight-locale i18n coverage of everything above
 - The three-tier Playwright E2E suite (122 specs plus a CI drift guard)
 - zod-aot generated inbound protocol validation
-- The four-tree documentation system (`docs/`, `projects/`, `findings/`, `archdocs/`)
+- The documentation system (`docs/` + Otto Knowledge; the former `archdocs/` site is retired, its unique content folded into Otto Knowledge)
 
 ---
 

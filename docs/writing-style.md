@@ -4,7 +4,7 @@ Applies to **everything a reader outside this repo sees**: the marketing site
 (`packages/website`), the user manual (`public-docs/`), release notes, store listings, and the
 marketing source material in `projects/marketing-strategy/` and `projects/outreach/`.
 
-It does **not** govern code, or the internal engineering trees (`docs/`, `archdocs/`, the rest of
+It does **not** govern code, or the internal engineering trees (`docs/`, Otto Knowledge, the rest of
 `projects/`). Those are written for people who work on Otto, and consistency there matters less than
 precision.
 

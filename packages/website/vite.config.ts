@@ -96,9 +96,9 @@ export default defineConfig((): UserConfig => {
   return {
     server: {
       host: "0.0.0.0",
-      // 4300, beside archdocs on 4400 - deliberately OUT of the 808x band, which
-      // belongs to Metro/Expo (root dev 8081, desktop dev 8082-8089, agent lane
-      // 8095). This used to be 8082, which is the desktop dev shell's first
+      // 4300 - deliberately OUT of the 808x band, which belongs to Metro/Expo
+      // (root dev 8081, desktop dev 8082-8089, agent lane 8095). This used to
+      // be 8082, which is the desktop dev shell's first
       // choice, so running `dev:desktop` and `dev:website` together handed one of
       // them a port the other expected. `strictPort` stays false: a collision here
       // should move the site, not fail the run - but it must not start inside a

@@ -3,9 +3,11 @@
 What a **Graph** node can declare beyond a prompt, and how the daemon enforces it.
 Everything here is opt-in: a node that declares none of it behaves exactly as it did
 before these fields existed. See `archive/projects/orchestration-graphs/enhancement-plan.md` (archived)
-for the staged plan this implements, and `archdocs/pages/10-19` for the architecture
-(pages 12–15 are reconciled to code; where this page and those disagree, code wins, then this
-page).
+for the staged plan this implements, and the Orchestration records in Otto Knowledge
+(`orchestration-domain-model-and-engine-invariants`, `orchestration-phase-run-engine`,
+`orchestration-graph-engine-execution-model`, `orchestration-agent-binding-and-provider-coverage`,
+and the "Decided, not built" design records) for the architecture — reconciled to code; where
+this page and those disagree, code wins, then this page.
 
 Engine: `packages/server/src/server/orchestration/graph-engine.ts`, with one module per
 concern beside it. Schemas: `packages/protocol/src/orchestration.ts`.
