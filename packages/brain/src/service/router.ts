@@ -607,6 +607,12 @@ function proxyBuffered({
 
     res.on("close", () => {
       if (!res.writableFinished && !upstream.destroyed) upstream.destroy();
+      // The client is gone - interrupt, chat switch, socket death. Destroying
+      // the upstream request does not reliably fire "aborted"/"error" on the
+      // already-open response stream, so this is the authoritative release:
+      // without it a departed client's job never resolves and pins its model's
+      // slot forever, wedging the whole queue behind it (needs a reboot).
+      done();
     });
     res.on("error", () => {
       if (!upstream.destroyed) upstream.destroy();
@@ -619,7 +625,11 @@ function proxyBuffered({
         error: error.message,
       });
       logger?.warn(`request to ${model.displayName} failed: ${error.message}`);
-      sendError(res, 502, `Upstream llama-server error: ${error.message}`);
+      // The client may already be gone; writing a 502 into a dead socket
+      // throws and would kill this handler before done() releases the slot.
+      if (!res.writableEnded && !res.destroyed) {
+        sendError(res, 502, `Upstream llama-server error: ${error.message}`);
+      }
       done();
     });
 
@@ -790,9 +800,21 @@ function scheduleCompletion({
     const body = Buffer.concat(chunks);
 
     let modelName: string | null = null;
+    let session: string | null = null;
     try {
       const parsed: unknown = JSON.parse(body.toString("utf8"));
-      modelName = isRecord(parsed) && typeof parsed.model === "string" ? parsed.model : null;
+      if (isRecord(parsed)) {
+        modelName = typeof parsed.model === "string" ? parsed.model : null;
+        // The standard prompt_cache_key is the chat's stable identity: Otto's
+        // provider sends its session id there, and a third-party client that
+        // uses it for prompt caching sends one too. Brain reads it for
+        // session-affine scheduling; the OpenAI-compatible contract is
+        // untouched either way.
+        session =
+          typeof parsed.prompt_cache_key === "string" && parsed.prompt_cache_key.length > 0
+            ? parsed.prompt_cache_key
+            : null;
+      }
     } catch {
       /* leave null */
     }
@@ -804,18 +826,21 @@ function scheduleCompletion({
       return;
     }
     const model = gate.model;
-    const queued = scheduler.submit(model, () =>
-      proxyBuffered({
-        agent,
-        model,
-        supervisor,
-        telemetry,
-        logger,
-        req,
-        res,
-        body,
-        reasoning: reasoningTracker,
-      }),
+    const queued = scheduler.submit(
+      model,
+      () =>
+        proxyBuffered({
+          agent,
+          model,
+          supervisor,
+          telemetry,
+          logger,
+          req,
+          res,
+          body,
+          reasoning: reasoningTracker,
+        }),
+      { session },
     );
     logger?.info?.(
       `queued ${req.method ?? "POST"} ${req.url ?? "completion"} for ${model.displayName}; queue depth ${scheduler.stats().queued}`,

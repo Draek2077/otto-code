@@ -222,3 +222,159 @@ test("stats reports the pending queue by model", async () => {
   release();
   await tick();
 });
+
+// --- Session affinity -------------------------------------------------------
+
+const tick2 = () => new Promise((r) => setTimeout(r, 10));
+
+test("a session's next job runs before another session's while its slots stay warm", async () => {
+  const supervisor = {
+    state: "ready",
+    model: A,
+    profile: { parallelSlots: 2 } as Profile,
+  } as SchedulerSupervisor;
+  const sched = new Scheduler({ supervisor, loadModel: async () => {} });
+
+  const order: string[] = [];
+  let releaseA1!: () => void;
+  const a1 = new Promise<void>((r) => {
+    releaseA1 = r;
+  });
+
+  // A1 holds one slot; A2 and B1 are already queued behind it.
+  const p1 = sched.submit(
+    A,
+    () => {
+      order.push("A1");
+      return a1;
+    },
+    { session: "chatA" },
+  );
+  await tick();
+  const p2 = sched.submit(
+    A,
+    () => {
+      order.push("A2");
+      return Promise.resolve();
+    },
+    { session: "chatA" },
+  );
+  const p3 = sched.submit(
+    A,
+    () => {
+      order.push("B1");
+      return Promise.resolve();
+    },
+    { session: "chatB" },
+  );
+
+  // A1 finishes: chatA's KV state is the warm one, so A2 takes the freed slot
+  // before B1 - no eviction, no re-prefill of chatA's context.
+  releaseA1();
+  await Promise.all([p1, p2, p3]);
+
+  assert.deepEqual(order, ["A1", "A2", "B1"], "the warm session runs next");
+});
+
+test("two sessions run concurrently across two slots, each keeping its own", async () => {
+  const supervisor = {
+    state: "ready",
+    model: A,
+    profile: { parallelSlots: 2 } as Profile,
+  } as SchedulerSupervisor;
+  const sched = new Scheduler({ supervisor, loadModel: async () => {} });
+
+  let active = 0;
+  let peak = 0;
+  const job = (_tag: string, _session: string) => () => {
+    active += 1;
+    peak = Math.max(peak, active);
+    return new Promise<void>((r) => setTimeout(() => ((active -= 1), r()), 10));
+  };
+
+  await Promise.all([
+    sched.submit(A, job("A1", "chatA"), { session: "chatA" }),
+    sched.submit(A, job("B1", "chatB"), { session: "chatB" }),
+    sched.submit(A, job("A2", "chatA"), { session: "chatA" }),
+    sched.submit(A, job("B2", "chatB"), { session: "chatB" }),
+  ]);
+
+  assert.equal(peak, 2, "never more than the two slots");
+});
+
+// --- Live slot admission ------------------------------------------------------
+
+test("waits for a free slot instead of dispatching into a saturated engine", async () => {
+  const { supervisor, loadModel } = harness(A);
+  let free = 0; // the engine reports every slot busy
+  const sched = new Scheduler({
+    supervisor,
+    loadModel,
+    freeSlots: () => free,
+    slotPollMs: 20,
+  });
+
+  let ran = false;
+  const p = sched.submit(A, () => {
+    ran = true;
+    return Promise.resolve();
+  });
+  await tick2();
+  assert.equal(ran, false, "no dispatch while /slots reports zero free");
+  assert.equal(sched.stats().queued, 1, "the job stays queued, not lost");
+
+  free = 1; // a slot frees up
+  await p;
+  assert.equal(ran, true, "dispatched once a slot was actually free");
+});
+
+test("falls back to the profile count when the slot sample is unavailable", async () => {
+  const supervisor = {
+    state: "ready",
+    model: A,
+    profile: { parallelSlots: 3 } as Profile,
+  } as SchedulerSupervisor;
+  const sched = new Scheduler({
+    supervisor,
+    loadModel: async () => {},
+    freeSlots: () => null, // sampler failed
+  });
+
+  let active = 0;
+  let peak = 0;
+  const job = () => async () => {
+    active += 1;
+    peak = Math.max(peak, active);
+    await tick2();
+    active -= 1;
+  };
+  await Promise.all(Array.from({ length: 5 }, () => sched.submit(A, job())));
+
+  assert.equal(peak, 3, "the static ceiling still bounds concurrency");
+});
+
+test("never dispatches more jobs than slots, across a long burst", async () => {
+  const supervisor = {
+    state: "ready",
+    model: A,
+    profile: { parallelSlots: 2 } as Profile,
+  } as SchedulerSupervisor;
+  let free = 2;
+  const sched = new Scheduler({
+    supervisor,
+    loadModel: async () => {},
+    freeSlots: () => free,
+  });
+
+  let active = 0;
+  let peak = 0;
+  const job = () => async () => {
+    active += 1;
+    peak = Math.max(peak, active);
+    await new Promise((r) => setTimeout(r, 5));
+    active -= 1;
+  };
+  await Promise.all(Array.from({ length: 12 }, () => sched.submit(A, job())));
+
+  assert.equal(peak, 2, "the measured slot count is the hard ceiling");
+});

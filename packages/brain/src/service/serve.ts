@@ -38,7 +38,7 @@ import * as archive from "../ops/archive.js";
 import { calibrate } from "../ops/calibrate.js";
 import { sweep } from "../ops/sweep.js";
 import * as bench from "../bench/index.js";
-import { createCpuSampler, sample as sampleSystem } from "../sysmon.js";
+import { createCpuSampler, sample as sampleSystem, slots as sampleSlots } from "../sysmon.js";
 import { createHostApi, type HostJob, type HostJobRunner } from "./host-api.js";
 import { errorMessage } from "./http-util.js";
 import { createRouter, Telemetry } from "./router.js";
@@ -838,6 +838,23 @@ export async function startService({
     loadModel,
     logger: (message) => log("api", `WARN ${message}`),
     onChange: () => statusEvents.notify(),
+    // Live admission: the engine's own /slots report is the source of truth
+    // for how many sequence slots are actually free right now. The profile's
+    // parallelSlots sizes the KV pool at launch; this keeps dispatch honest
+    // while llama-server is mid-eviction or saturated, and degrades to the
+    // static count when the sample is unavailable.
+    freeSlots: async () => {
+      if (supervisor.state !== "ready") return null;
+      try {
+        const slots = await sampleSlots({
+          host: supervisor.host,
+          port: supervisor.internalPort,
+        });
+        return slots ? slots.idle : null;
+      } catch {
+        return null;
+      }
+    },
   });
   const jobs = new ServiceJobRunner(
     rescanCatalog,

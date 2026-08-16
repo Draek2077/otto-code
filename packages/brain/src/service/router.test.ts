@@ -1,10 +1,15 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 
+import http from "node:http";
+import { EventEmitter } from "node:events";
+import net from "node:net";
+
 import {
   analyse,
   Telemetry,
   completionShape,
+  createRouter,
   describeModel,
   buildModelList,
   decideModelGate,
@@ -497,4 +502,240 @@ test("forwards an unparseable or unfamiliar body untouched", () => {
 
   const noMessages = Buffer.from(JSON.stringify({ prompt: "hi" }), "utf8");
   assert.equal(injectSystemAddendum(noMessages, "Be concise.", "openai"), noMessages);
+});
+
+/**
+ * Stand a fake llama-server and a real brain router (with its scheduler) on
+ * loopback, so a completion goes through the whole queue/dispatch path.
+ */
+async function completionHarness(
+  upstreamHandler: (req: http.IncomingMessage, res: http.ServerResponse) => void,
+) {
+  const model = { id: "qwen", displayName: "Qwen" } as unknown as Model;
+  const supervisor = new EventEmitter() as unknown as Supervisor & EventEmitter;
+  supervisor.state = "ready";
+  supervisor.model = model;
+  supervisor.profile = { parallelSlots: 1 } as Profile;
+  supervisor.host = "127.0.0.1";
+  supervisor.internalPort = 0;
+  const router = createRouter({
+    supervisor,
+    telemetry: new Telemetry(),
+    getCatalog: () => [model],
+    // A no-op switch so the router runs completions through the scheduler's
+    // proxyBuffered path (the model is already "loaded").
+    loadModel: async () => {},
+  });
+  const brain = http.createServer((req, res) => router(req, res));
+  const fakeLlama = http.createServer(upstreamHandler);
+  const listen = (server: http.Server) =>
+    new Promise<number>((resolve) =>
+      server.listen(0, "127.0.0.1", () => resolve((server.address() as { port: number }).port)),
+    );
+  const llamaPort = await listen(fakeLlama);
+  supervisor.internalPort = llamaPort;
+  const brainPort = await listen(brain);
+  const call = (stream = true) =>
+    new Promise<{ status: number; body: string; socket: net.Socket }>((resolve, reject) => {
+      const req = http.request(
+        {
+          host: "127.0.0.1",
+          port: brainPort,
+          path: "/v1/chat/completions",
+          method: "POST",
+          headers: { accept: stream ? "text/event-stream" : "application/json" },
+        },
+        (res) => {
+          let body = "";
+          res.on("data", (c) => (body += c));
+          res.on("end", () => resolve({ status: res.statusCode!, body, socket: res.socket }));
+          res.on("error", reject);
+        },
+      );
+      req.on("error", reject);
+      req.end(
+        JSON.stringify({
+          model: "qwen",
+          stream,
+          messages: [{ role: "user", content: "hi" }],
+        }),
+      );
+    });
+  return {
+    supervisor,
+    brainPort,
+    call,
+    close: async () => {
+      const closeOne = (server: http.Server) =>
+        new Promise<void>((r) => {
+          server.close();
+          server.closeAllConnections();
+          server.on("close", () => r());
+        });
+      await closeOne(brain);
+      await closeOne(fakeLlama);
+    },
+  };
+}
+
+const SSE_OK = (res: http.ServerResponse) => {
+  res.writeHead(200, { "content-type": "text/event-stream" });
+  res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "ok" } }] })}\n\n`);
+  res.write("data: [DONE]\n\n");
+  res.end();
+};
+
+test("a client departure mid-stream releases the slot so the queue moves on", async () => {
+  // The reported failure: the first request's stream never ends on the Brain
+  // side, and every request after it piles up in the queue until a reboot.
+  const h = await completionHarness((req, res) => {
+    req.resume();
+    SSE_OK(res);
+  });
+  try {
+    // Start the first request without waiting for it to end - we are going to
+    // abandon it mid-stream, which is exactly what the desktop client does.
+    const firstSocket = await new Promise<net.Socket>((resolve, reject) => {
+      const req = http.request(
+        { host: "127.0.0.1", port: h.brainPort, path: "/v1/chat/completions", method: "POST" },
+        (res) => {
+          res.resume();
+          resolve(res.socket);
+        },
+      );
+      req.on("error", reject);
+      req.end(
+        JSON.stringify({
+          model: "qwen",
+          stream: true,
+          messages: [{ role: "user", content: "hi" }],
+        }),
+      );
+    });
+    // Give the stream a beat to be in flight, then the client gives up.
+    await new Promise((r) => setTimeout(r, 50));
+    firstSocket.destroy();
+
+    // The next request from the same session must still be served, not queued
+    // behind the abandoned one.
+    const second = await h.call();
+    assert.equal(second.status, 200);
+    assert.match(second.body, /ok/);
+  } finally {
+    await h.close();
+  }
+});
+
+test("an upstream socket hang-up rejects only the dead request and frees the slot", async () => {
+  let hits = 0;
+  const h = await completionHarness((req, res) => {
+    hits += 1;
+    if (hits === 1) {
+      req.resume();
+      req.socket.destroy(); // llama-server dies before answering
+      return;
+    }
+    SSE_OK(res);
+  });
+  try {
+    const first = h.call().catch((error: Error) => ({ error }));
+    const second = await h.call();
+    assert.equal(second.status, 200, "the follow-up request runs without a reboot");
+    const dead = await first;
+    if ("error" in dead) {
+      assert.ok(true, "the dead request surfaced an error, not a hang");
+    } else {
+      // The 502 is the honest result: the upstream socket died before it could
+      // answer, and the client that is still there learns exactly why.
+      assert.equal(dead.status, 502);
+      assert.match(dead.body, /socket hang up/, "the failure names the upstream error");
+    }
+  } finally {
+    await h.close();
+  }
+});
+
+test("the standard prompt_cache_key reaches the scheduler as the session identity", async () => {
+  const { Scheduler } = await import("./scheduler.js");
+  const model = { id: "qwen", displayName: "Qwen" } as unknown as Model;
+  const supervisor = new EventEmitter() as unknown as Supervisor & EventEmitter;
+  supervisor.state = "ready";
+  supervisor.model = model;
+  supervisor.profile = { parallelSlots: 1 } as Profile;
+  supervisor.host = "127.0.0.1";
+  supervisor.internalPort = 0;
+  const scheduler = new Scheduler({ supervisor, loadModel: async () => {} });
+  let capturedSession: string | null = null;
+  // Observe the job exactly as the router submits it.
+  const originalSubmit = scheduler.submit.bind(scheduler);
+  scheduler.submit = (
+    m: Model,
+    run: () => Promise<unknown>,
+    opts: {
+      kind?: string;
+      exclusive?: boolean;
+      onStart?: (() => void) | null;
+      session?: string | null;
+    } = {},
+  ) => {
+    capturedSession = opts.session ?? null;
+    return originalSubmit(m, run, opts);
+  };
+  const router = createRouter({
+    supervisor,
+    telemetry: new Telemetry(),
+    getCatalog: () => [model],
+    scheduler,
+  });
+  const fakeLlama = http.createServer((req, res) => {
+    req.resume();
+    res.writeHead(200, { "content-type": "text/event-stream" });
+    res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "ok" } }] })}\n\n`);
+    res.write("data: [DONE]\n\n");
+    res.end();
+  });
+  const brain = http.createServer((req, res) => router(req, res));
+  const listen = (server: http.Server) =>
+    new Promise<number>((resolve) =>
+      server.listen(0, "127.0.0.1", () => resolve((server.address() as { port: number }).port)),
+    );
+  const llamaPort = await listen(fakeLlama);
+  supervisor.internalPort = llamaPort;
+  const brainPort = await listen(brain);
+
+  try {
+    const result = await new Promise<{ status: number }>((resolve, reject) => {
+      const req = http.request(
+        { host: "127.0.0.1", port: brainPort, path: "/v1/chat/completions", method: "POST" },
+        (res) => {
+          res.resume();
+          res.on("end", () => resolve({ status: res.statusCode! }));
+          res.on("error", reject);
+        },
+      );
+      req.on("error", reject);
+      req.end(
+        JSON.stringify({
+          model: "qwen",
+          stream: true,
+          prompt_cache_key: "chat-session-123",
+          messages: [{ role: "user", content: "hi" }],
+        }),
+      );
+    });
+    assert.equal(result.status, 200);
+    // The router extracted the standard prompt_cache_key and passed it to the
+    // scheduler as this job's session identity - no new wire field involved.
+    assert.equal(capturedSession, "chat-session-123");
+    assert.equal(scheduler.stats().queued, 0, "the job ran and drained the queue");
+  } finally {
+    const closeOne = (server: http.Server) =>
+      new Promise<void>((r) => {
+        server.close();
+        server.closeAllConnections();
+        server.on("close", () => r());
+      });
+    await closeOne(brain);
+    await closeOne(fakeLlama);
+  }
 });

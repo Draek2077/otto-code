@@ -230,10 +230,17 @@ export function profileWarnings(
   }
 
   if (profile.parallelSlots > 1) {
+    const perSlot =
+      profile.contextSize > 0 ? Math.floor(profile.contextSize / profile.parallelSlots) : null;
     warnings.push({
       field: "parallelSlots",
       severity: "info",
-      message: `${profile.parallelSlots} concurrent requests, sharing one KV pool.`,
+      message:
+        perSlot !== null
+          ? `${profile.parallelSlots} concurrent chats: ~${Math.round(
+              perSlot / 1000,
+            )}K context each, all resident. Fewer slots = more context per chat, serialized.`
+          : `${profile.parallelSlots} concurrent requests, sharing one KV pool.`,
       blocksStart: false,
     });
   }
