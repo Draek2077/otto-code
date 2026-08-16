@@ -73,7 +73,7 @@ The same tools and UI work in any repository. A project no longer needs an Otto-
 - `read_project_knowledge_root` and `update_project_knowledge_root` operate on the six rich project-map pages.
 - `lint_project_knowledge_links` reports unresolved wiki links without rewriting history.
 - `record_project_knowledge` creates a human-slugged Markdown page.
-- `migrate_legacy_project_findings` imports dated reports from `findings/` as first-class finding records without deleting the source tree.
+- `migrate_legacy_project_findings` imports dated reports from a legacy report directory as first-class finding records without deleting the source. Nothing in this repository still needs it; it exists for projects being onboarded that carry one.
 - `record_project_charter` creates a project page with independent delivery state and optional structured progress.
 - `update_project_delivery` changes delivery state or progress with an atomic timeline reason.
 - `record_project_reference` creates an evaluated reference with an optional canonical URL.

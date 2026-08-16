@@ -94,8 +94,7 @@ with `dotnet build` about what is in the solution.
   none evaluates MSBuild, and all reimplement precisely the semantics we are trying not to get wrong.
 - **Roslyn's `MSBuildWorkspace`** - models a _compilation_, not an _organisation_, and drops solution
   folders.
-- **Buildalyzer 9.0.** Settled by measurement, not by taste -
-  [findings/dotnet-project-evaluation](../findings/dotnet-project-evaluation/2026-07-25-buildalyzer-vs-msbuild.md).
+- **Buildalyzer 9.0.** Settled by measurement, not by taste (2026-07-25).
   Its design-time build was 33× slower on a 12-project solution, 70× larger as a payload, raised the
   runtime floor from .NET 8 to .NET 9, and reported generated `obj/*.AssemblyInfo.cs` as project
   sources. It absorbs design-time-build pain we do not have: we need **evaluated items**, not a

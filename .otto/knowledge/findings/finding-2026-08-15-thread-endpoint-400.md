@@ -1,4 +1,16 @@
+---
+id: "finding-2026-08-15-thread-endpoint-400"
+kind: "finding"
+title: "Reply threads 400 against Zoom's `GET .../messages/{messageId}/thread`"
+status: "confirmed"
+tags: ["finding", "zoom-team-chat-api"]
+created_at: "2026-08-16T22:16:11.567Z"
+updated_at: "2026-08-16T22:16:11.567Z"
+---
+
 # Reply threads 400 against Zoom's `GET .../messages/{messageId}/thread`
+
+<!-- compiled_truth -->
 
 **Date:** 2026-08-15
 **Question:** Clicking Reply on a Communications Room message (personal chat or channel) always
@@ -7,10 +19,10 @@ requestType=communications.room.thread.get.request code=handler_error`. What is 
 rejecting, and what does the endpoint require?
 
 This report is the audit trail. The fix itself lives in
-[`zoom-team-chat-client.ts`](../../packages/server/src/server/communications/zoom-team-chat-client.ts)
+[`zoom-team-chat-client.ts`](../../../packages/server/src/server/communications/zoom-team-chat-client.ts)
 and
-[`zoom-team-chat-provider.ts`](../../packages/server/src/server/communications/zoom-team-chat-provider.ts).
-Whatever follow-up work this implies is a row in [`projects/README.md`](../../projects/README.md),
+[`zoom-team-chat-provider.ts`](../../../packages/server/src/server/communications/zoom-team-chat-provider.ts).
+Whatever follow-up work this implies is a row in [`projects/README.md`](../../../projects/README.md),
 not here.
 
 ---
@@ -145,7 +157,7 @@ Extracted from Zoom's docs-page `__NEXT_DATA__` payload for `/chat/users/{userId
   1. Whether `messageId` in the URL path needs to be the literal clicked message (it does today —
      confirm it is always the thread **root**, not a child reply, since nested replies currently
      have no Reply action at all — see
-     [`.otto/knowledge/findings/communications-nested-reply-action-gap.md`](../../.otto/knowledge/findings/communications-nested-reply-action-gap.md)).
+     [`.otto/knowledge/findings/communications-nested-reply-action-gap.md`](communications-nested-reply-action-gap.md)).
   2. Whether the granted OAuth scope set actually includes `team_chat:read:thread_message` for this
      account (`requireGrantedScope` would throw a distinct, catchable error before ever calling
      Zoom if not — so a fresh `400` past that point still means the request shape, not the scope).
@@ -164,4 +176,11 @@ Extracted from Zoom's docs-page `__NEXT_DATA__` payload for `/chat/users/{userId
   `replyCount` concept).
 - Nested replies (children inside an expanded thread) have no Reply action of their own — recorded
   separately in
-  [`.otto/knowledge/findings/communications-nested-reply-action-gap.md`](../../.otto/knowledge/findings/communications-nested-reply-action-gap.md).
+  [`.otto/knowledge/findings/communications-nested-reply-action-gap.md`](communications-nested-reply-action-gap.md).
+
+## Timeline
+
+- time: "2026-08-16T22:16:11.567Z"
+  kind: "migration"
+  summary: "Migrated from the legacy findings report without discarding its evidence."
+  source: "findings/zoom-team-chat-api/2026-08-15-thread-endpoint-400.md"

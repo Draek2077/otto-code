@@ -1,4 +1,16 @@
+---
+id: "finding-2026-08-02-static-code-audit"
+kind: "finding"
+title: "Performance and efficiency audit: where Otto burns CPU, memory, and tokens a user feels"
+status: "confirmed"
+tags: ["finding", "performance-efficiency-audit"]
+created_at: "2026-08-16T22:16:11.495Z"
+updated_at: "2026-08-16T22:16:11.495Z"
+---
+
 # Performance and efficiency audit: where Otto burns CPU, memory, and tokens a user feels
+
+<!-- compiled_truth -->
 
 **Date:** 2026-08-02
 **Question:** Across chat streaming, editor/diff, app render architecture, daemon hot paths,
@@ -15,7 +27,7 @@ source before publication. The
 [measure-before-you-fix section](#measure-before-you-fix) names the single measurement that settles
 each inferred figure; treat those as the follow-up runs this file expects beside it.
 
-Prior work honored: the three 2026-07-25 [client-performance](../client-performance/) reports
+Prior work honored: the three 2026-07-25 the client-performance findings reports
 retired timer leaks, cache growth, message-decode cost, workspace-tree retention, and navigation
 refetch by measurement; none are re-litigated here. Note their soak census walked exactly ten
 stores (`diagnostics/resource-report/collect-resource-metrics.ts:47-58`), so the retention findings
@@ -309,3 +321,10 @@ Unverified inferences worth a look while instrumenting: whether the PR pipeline 
 `structuredContent` to the model in addition to `content` (decides how much Q7 saves); whether a
 TTS group cancelled mid-speech leaks its audio buffers (`session-context.tsx:952-999`, the release
 sits behind the final-chunk path).
+
+## Timeline
+
+- time: "2026-08-16T22:16:11.495Z"
+  kind: "migration"
+  summary: "Migrated from the legacy findings report without discarding its evidence."
+  source: "findings/performance-efficiency-audit/2026-08-02-static-code-audit.md"

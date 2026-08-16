@@ -1,7 +1,19 @@
+---
+id: "finding-2026-08-02-shipped-advisory-closure"
+kind: "finding"
+title: "Which of the shipped-surface advisory candidates survived a code-level read?"
+status: "confirmed"
+tags: ["finding", "dependency-vulnerabilities"]
+created_at: "2026-08-16T22:16:11.457Z"
+updated_at: "2026-08-16T22:16:11.457Z"
+---
+
 # Which of the shipped-surface advisory candidates survived a code-level read?
 
+<!-- compiled_truth -->
+
 **Date:** 2026-08-02
-**Question:** The same-day [Dependabot alert triage](2026-08-02-dependabot-alert-triage.md) narrowed
+**Question:** The same-day [[finding-2026-08-02-dependabot-alert-triage]] narrowed
 183 alerts to a handful of candidates that touch code Otto ships, and left `fast-uri` explicitly
 unresolved. `npm audit` adds two more names to that candidate list: `electron-updater` and the `hono`
 copy under the MCP transport. Which of these survive a read of the actual call sites, and can a CI
@@ -138,3 +150,10 @@ against.
   per-path counting and npm's `dev` flag both overstate.
 - **"The updater could leak a token on redirect."** There is no token anywhere in the update flow to
   leak; the fix was taken for hygiene, not necessity.
+
+## Timeline
+
+- time: "2026-08-16T22:16:11.457Z"
+  kind: "migration"
+  summary: "Migrated from the legacy findings report without discarding its evidence."
+  source: "findings/dependency-vulnerabilities/2026-08-02-shipped-advisory-closure.md"

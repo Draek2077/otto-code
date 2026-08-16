@@ -135,9 +135,9 @@ are in the `managed.ts` header; the ones that bite hardest:
   benchmarked on 2026-08-04 and rejected because CUDA led Vulkan by only
   1.00x-1.04x on an RTX 5090 across every prefill depth and at token generation,
   while costing a 40x download and a 14x disk footprint across three origins.
-  The reasoning and the numbers are in the `managed.ts` header; the evidence is
-  [findings/linux-gpu-acceleration](../../findings/linux-gpu-acceleration/2026-08-04-cuda-vs-vulkan-and-cuda-asset-origins.md).
-  Do not reopen it without a measurement on hardware lacking `NV_coopmat2`.
+  The reasoning and the numbers are in the `managed.ts` header; the full method
+  is the "cuda vs vulkan" finding in Otto Knowledge. Do not reopen it without a
+  measurement on hardware lacking `NV_coopmat2`.
 - **No Linux asset ships `libgomp.so.1`**, which `llama-server` hard-links, so on
   a minimal image (the stock WSL Ubuntu rootfs, a slim container) the download
   and extract both succeed and the binary dies with exit 127. Windows bundles

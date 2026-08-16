@@ -1,4 +1,16 @@
+---
+id: "finding-2026-08-09-settings-ownership-and-visibility"
+kind: "finding"
+title: "Settings ownership and visibility catalog"
+status: "confirmed"
+tags: ["finding", "settings-catalog"]
+created_at: "2026-08-16T22:16:11.514Z"
+updated_at: "2026-08-16T22:16:11.514Z"
+---
+
 # Settings ownership and visibility catalog
+
+<!-- compiled_truth -->
 
 Date: 2026-08-09  
 Question: Which settings belong to the local App versus a remote Host, and how should they be classified for future User/Developer and Essential/Advanced presentation?
@@ -155,3 +167,10 @@ The first review gate should be the ownership decision for Desktop settings and 
 - `packages/app/src/screens/settings/host-page.tsx`
 - `packages/app/src/screens/settings/host-brain-page.tsx`
 - `packages/app/src/i18n/resources/en.ts`
+
+## Timeline
+
+- time: "2026-08-16T22:16:11.514Z"
+  kind: "migration"
+  summary: "Migrated from the legacy findings report without discarding its evidence."
+  source: "findings/settings-catalog/2026-08-09-settings-ownership-and-visibility.md"

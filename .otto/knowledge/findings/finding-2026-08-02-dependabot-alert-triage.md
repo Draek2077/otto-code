@@ -1,4 +1,16 @@
+---
+id: "finding-2026-08-02-dependabot-alert-triage"
+kind: "finding"
+title: "Dependabot: what do the 183 alerts on `Draek2077/otto-code` actually expose?"
+status: "confirmed"
+tags: ["finding", "dependency-vulnerabilities"]
+created_at: "2026-08-16T22:16:11.449Z"
+updated_at: "2026-08-16T22:16:11.449Z"
+---
+
 # Dependabot: what do the 183 alerts on `Draek2077/otto-code` actually expose?
+
+<!-- compiled_truth -->
 
 **Date:** 2026-08-02
 **Question:** A `git push` to `main` reported 183 open Dependabot alerts (3 critical, 92 high, 70
@@ -229,4 +241,11 @@ grep -n "hono" node_modules/@modelcontextprotocol/sdk/dist/esm/server/streamable
 ## Where the work is tracked
 
 Remediation sequencing is not this document's job. The rows live under
-[`projects/README.md`](../../projects/README.md), in **Testing & tooling**.
+[`projects/README.md`](../../../projects/README.md), in **Testing & tooling**.
+
+## Timeline
+
+- time: "2026-08-16T22:16:11.449Z"
+  kind: "migration"
+  summary: "Migrated from the legacy findings report without discarding its evidence."
+  source: "findings/dependency-vulnerabilities/2026-08-02-dependabot-alert-triage.md"

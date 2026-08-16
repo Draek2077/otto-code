@@ -5,9 +5,9 @@
 // lockfile `dev` flag is a whole-tree property, not a ship/no-ship classifier:
 // Expo declares its CLI and Metro toolchain as production dependencies of
 // packages/app, so a raw `npm audit --omit=dev` gate would page on bundler
-// internals forever and get ignored (findings/dependency-vulnerabilities/
-// 2026-08-02-dependabot-alert-triage.md measured this: 3 of 183 alerts reached
-// a user). Instead, this script rebuilds the dependency graph from
+// internals forever and get ignored (the 2026-08-02 Dependabot alert triage
+// finding in Otto Knowledge measured this: 3 of 183 alerts reached a user).
+// Instead, this script rebuilds the dependency graph from
 // package-lock.json and BFS-walks production edges from the workspace roots
 // that ship, pruning the build-chain entry points listed below.
 //
@@ -187,6 +187,6 @@ for (const failure of failures) {
 console.error(
   "\nFix the dependency if the code can execute in a shipped build. If it provably cannot,\n" +
     "prune its entry point in scripts/audit-shipped.mjs with a justification, and record the\n" +
-    "reachability analysis in findings/dependency-vulnerabilities/.",
+    "reachability analysis as an Otto Knowledge finding.",
 );
 process.exit(1);

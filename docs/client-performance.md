@@ -259,12 +259,8 @@ are all in the same paste as the daemon's.
 ## Known properties of the client (as measured)
 
 These are the structural facts the instrument has established. They are properties of the code as it
-stands, not a status report - what is being done about them is a row in
-[`projects/README.md`](../projects/README.md#performance), and the evidence, method and dated
-numbers are in [`findings/client-performance/`](../findings/README.md) - the
-[FPS-degradation report](../findings/client-performance/2026-07-25-fps-degradation.md) and the
-[workspace-tree retention report](../findings/client-performance/2026-07-25-workspace-tree-retention.md)
-that corrects its first conclusion.
+stands, not a status report - what is being done about them lives in Otto Knowledge as project
+delivery, and the evidence, method and dated numbers live in its finding pages.
 
 - **Mounted workspace trees are evicted, LRU, at a user-set limit.**
   `pruneMountedWorkspaceSelections` in `screens/workspace/workspace-deck-retention.ts` keeps the

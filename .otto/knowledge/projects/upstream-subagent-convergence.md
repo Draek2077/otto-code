@@ -19,7 +19,7 @@ updated_at: "2026-08-08T06:19:51.935Z"
 `v0.2.1` and `v0.2.2` on 2026-07-24/25, and the `upstream` remote exists in this checkout. Sequencing
 belongs to [`projects/README.md` → Build order](../README.md#build-order), not here.
 
-**Measured 2026-07-25 ([findings](../../findings/upstream/2026-07-25-paseo-merge-gap.md)): this
+**Measured 2026-07-25 ([[finding-2026-07-25-paseo-merge-gap]]): this
 charter's subject is the cheapest part of the merge, not the expensive one.** Upstream's daemon-side
 ingestion - 47 files across `agent/provider-subagents/`, `agent/providers/omp/` and the protocol test
 

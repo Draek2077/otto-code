@@ -1,4 +1,16 @@
+---
+id: "finding-2026-07-25-paseo-merge-gap"
+kind: "finding"
+title: "What does merging upstream Paseo actually cost today, and what has the delay cost?"
+status: "confirmed"
+tags: ["finding", "upstream"]
+created_at: "2026-08-16T22:16:11.543Z"
+updated_at: "2026-08-16T22:16:11.543Z"
+---
+
 # What does merging upstream Paseo actually cost today, and what has the delay cost?
+
+<!-- compiled_truth -->
 
 **Date:** 2026-07-25 · **Question:** `projects/README.md` → Build order calls the upstream merge "trap
 1" - a fixed-order chain whose cost rises monotonically the longer it waits. That claim has never
@@ -15,12 +27,12 @@ the ledger is wrong**: the cost is not a steady accrual from Otto's own divergen
 
 Two findings matter more than the totals. **Not one of the 1,365 hunks is resolvable by the rebrand
 script** - the "take theirs, re-run the rules" shortcut in
-[docs/upstream-merges.md](../../docs/upstream-merges.md) § 1 resolves nothing on its own. And the
-**provider-subagent ingestion that [`upstream-subagent-convergence`](../../projects/upstream-subagent-convergence/upstream-subagent-convergence.md)
+[docs/upstream-merges.md](../../../docs/upstream-merges.md) § 1 resolves nothing on its own. And the
+**provider-subagent ingestion that [`upstream-subagent-convergence`](../../../projects/upstream-subagent-convergence/upstream-subagent-convergence.md)
 exists to stop forking is the cheapest thing in the merge: 47 daemon-side files, zero conflicts.**
 
 **Nothing was merged and no source file was modified.** Status:
-[`projects/README.md` → Build order](../../projects/README.md#build-order).
+[`projects/README.md` → Build order](../../../projects/README.md#build-order).
 
 ## Method
 
@@ -214,7 +226,7 @@ the merge surfaces.
   "Edit files directly in the web and desktop apps", #2270/#2309/#2277/#2382). Otto independently
   built `app/src/editor/` - **56 files**, which upstream has none of. Neither existed at the
   merge-base. Two abstractions over one concern, discovered at merge time, exactly as
-  [docs/upstream-merges.md](../../docs/upstream-merges.md) warns.
+  [docs/upstream-merges.md](../../../docs/upstream-merges.md) warns.
 - **Changes-as-a-tab and commit history.** Upstream's #2298, #1534/#2146/#2312. Otto ships both.
   `app/src/git/diff-pane.tsx` (33 hunks) and `git/use-actions.tsx` (19) are the second- and
   tenth-worst files in the merge.
@@ -380,7 +392,7 @@ behind it.
 5. **The convergence charter's subject is free and should ride with the merge**, not be sequenced
    behind it as its own phase.
 6. **Two rival abstractions have arrived** - a file editor and Changes-as-a-tab. The forge entry in
-   [docs/upstream-merges.md](../../docs/upstream-merges.md) predicted exactly this and the cadence
+   [docs/upstream-merges.md](../../../docs/upstream-merges.md) predicted exactly this and the cadence
    rule that was meant to catch it ("read every minor release's changelog even when you skip the
    merge") did not run.
 7. **Six NUL-byte files exist and one is in a directory upstream is actively developing.**
@@ -404,3 +416,10 @@ What this report does **not** answer:
 - **Whether Otto's drift rate of ~110 hunks / 1.5 days holds.** Single short-baseline sample. The
   12-day figure against `v0.1.107` (+17 hunks) is a far gentler rate, and the truth depends on which
   upstream surface the work lands near - so neither number extrapolates on its own.
+
+## Timeline
+
+- time: "2026-08-16T22:16:11.543Z"
+  kind: "migration"
+  summary: "Migrated from the legacy findings report without discarding its evidence."
+  source: "findings/upstream/2026-07-25-paseo-merge-gap.md"

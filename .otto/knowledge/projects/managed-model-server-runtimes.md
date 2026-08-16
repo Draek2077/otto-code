@@ -123,7 +123,7 @@ Every supported runtime must provide or implement:
 - Compare runtime results using common benchmark/task definitions while retaining runtime-specific evidence and configuration.
 - Expand OS/accelerator support only through explicit tested matrices.
 - Add further runtimes only after the driver contract has proven stable across llama.cpp, vLLM, and SGLang.
-- Fold the durable runtime contract and support matrix into `docs/`; record measured performance investigations in `findings/`.
+- Fold the durable runtime contract and support matrix into `docs/`; record measured performance investigations as Otto Knowledge finding pages.
 
 ## Acceptance criteria
 

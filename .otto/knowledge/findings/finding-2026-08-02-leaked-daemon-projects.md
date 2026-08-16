@@ -1,4 +1,16 @@
+---
+id: "finding-2026-08-02-leaked-daemon-projects"
+kind: "finding"
+title: "Why do unrelated E2E specs fail against directories that other specs deleted?"
+status: "confirmed"
+tags: ["finding", "e2e-shard-cascades"]
+created_at: "2026-08-16T22:16:11.481Z"
+updated_at: "2026-08-16T22:16:11.481Z"
+---
+
 # Why do unrelated E2E specs fail against directories that other specs deleted?
+
+<!-- compiled_truth -->
 
 **Date:** 2026-08-02
 **Subject:** CI run 30768976339, `playwright (shard 4/8)` and `playwright (shard 1/8)`
@@ -137,3 +149,10 @@ same shape. A user whose project folder sits on an unmounted drive gets an error
 New Workspace composer for the same reason a deleted E2E fixture does. Hardening that is a product
 decision (does the composer surface "this directory is gone" instead?) and is not part of the
 lifecycle fix recorded here.
+
+## Timeline
+
+- time: "2026-08-16T22:16:11.481Z"
+  kind: "migration"
+  summary: "Migrated from the legacy findings report without discarding its evidence."
+  source: "findings/e2e-shard-cascades/2026-08-02-leaked-daemon-projects.md"

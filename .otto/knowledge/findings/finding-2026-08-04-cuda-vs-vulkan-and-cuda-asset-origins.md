@@ -1,11 +1,23 @@
+---
+id: "finding-2026-08-04-cuda-vs-vulkan-and-cuda-asset-origins"
+kind: "finding"
+title: "Is a CUDA `llama-server` worth obtaining on Linux, and where would it come from?"
+status: "confirmed"
+tags: ["finding", "linux-gpu-acceleration"]
+created_at: "2026-08-16T22:16:11.488Z"
+updated_at: "2026-08-16T22:16:11.488Z"
+---
+
 # Is a CUDA `llama-server` worth obtaining on Linux, and where would it come from?
+
+<!-- compiled_truth -->
 
 **Date:** 2026-08-04
 **Question:** `resolveRuntimeVariant` returns `vulkan` for a Linux machine with an NVIDIA GPU,
 because upstream publishes no Linux CUDA release asset. Windows gets real CUDA. Is that gap costing
 otto-brain measurable performance, and if so, which of the available CUDA origins should we take?
 
-What gets done about this is a row in [`projects/README.md`](../../projects/README.md). This file is
+What gets done about this is a row in [`projects/README.md`](../../../projects/README.md). This file is
 the evidence only.
 
 ## Verdict in one line
@@ -255,3 +267,10 @@ llama-bench.exe -m <model> -p 512,2048,4096,8192 -n 128 -ngl 99 -r 8
 # the libgomp failure, on a host without libgomp1
 tar -xzf llama-b10236-bin-ubuntu-x64.tar.gz && LD_LIBRARY_PATH=$PWD ./llama-server --version
 ```
+
+## Timeline
+
+- time: "2026-08-16T22:16:11.488Z"
+  kind: "migration"
+  summary: "Migrated from the legacy findings report without discarding its evidence."
+  source: "findings/linux-gpu-acceleration/2026-08-04-cuda-vs-vulkan-and-cuda-asset-origins.md"

@@ -1,7 +1,19 @@
+---
+id: "finding-2026-08-02-wholesale-ours-sizing"
+kind: "finding"
+title: "How much of Paseo v0.2.5 did the merge actually drop?"
+status: "confirmed"
+tags: ["finding", "upstream"]
+created_at: "2026-08-16T22:16:11.559Z"
+updated_at: "2026-08-16T22:16:11.559Z"
+---
+
 # How much of Paseo v0.2.5 did the merge actually drop?
 
+<!-- compiled_truth -->
+
 **Date:** 2026-08-02 · **Question:**
-[audit-findings.md](../../projects/paseo-v025-merge/audit-findings.md) closed with an unsized risk:
+[audit-findings.md](../../../projects/paseo-v025-merge/audit-findings.md) closed with an unsized risk:
 "the ~180 _conflict-resolved_ wholesale-ours files are a different set from these 168 byte-identical
 ones. A file whose side won a conflict and was then edited is invisible to the byte-identical scan.
 That gap is the most likely home of further regressions and nobody has sized it." This sizes it.
@@ -103,4 +115,11 @@ correctness bug rather than a declined feature.
   button was diagnosed as stale mocks and never traced back to the merge.
 
 Status for anything done about this belongs in
-[projects/README.md](../../projects/README.md), not here.
+[projects/README.md](../../../projects/README.md), not here.
+
+## Timeline
+
+- time: "2026-08-16T22:16:11.559Z"
+  kind: "migration"
+  summary: "Migrated from the legacy findings report without discarding its evidence."
+  source: "findings/upstream/2026-08-02-wholesale-ours-sizing.md"

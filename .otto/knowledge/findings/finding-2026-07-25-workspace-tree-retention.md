@@ -1,16 +1,28 @@
+---
+id: "finding-2026-07-25-workspace-tree-retention"
+kind: "finding"
+title: "Does the workspace deck evict, and what does a retained tree cost?"
+status: "confirmed"
+tags: ["finding", "client-performance"]
+created_at: "2026-08-16T22:16:11.440Z"
+updated_at: "2026-08-16T22:16:11.440Z"
+---
+
 # Does the workspace deck evict, and what does a retained tree cost?
+
+<!-- compiled_truth -->
 
 **Date:** 2026-07-25 · **Question:** the earlier finding concluded that mounted workspace trees are
 never released and that ~35% of the frame rate goes with them. An eviction cap already existed. Was
 that conclusion an artifact of a harness that never crossed it?
 
 **Yes.** Eviction fires, and it fully releases the tree. The retention diagnosis in
-[2026-07-25-fps-degradation.md § 1](2026-07-25-fps-degradation.md) is withdrawn, and so is the
+[[finding-2026-07-25-fps-degradation]] is withdrawn, and so is the
 frame-rate number attached to it - which turns out to come from a statistic that flips sign between
 identical runs.
 
-Instrument: [`docs/client-performance.md`](../../docs/client-performance.md). Status:
-[`projects/README.md` → Performance](../../projects/README.md#performance).
+Instrument: [`docs/client-performance.md`](../../../docs/client-performance.md). Status:
+[`projects/README.md` → Performance](../../../projects/README.md#performance).
 
 ## The premise being tested
 
@@ -220,3 +232,10 @@ No behaviour changed. The cap constant was restored to 3 after the sweep. Whethe
 move is a live question, but it belongs to the "make the cap a setting" item and should be decided
 on switch latency and the working-set-of-4 thrashing case - **not** on frame rate, which is what
 this report removes from the argument.
+
+## Timeline
+
+- time: "2026-08-16T22:16:11.440Z"
+  kind: "migration"
+  summary: "Migrated from the legacy findings report without discarding its evidence."
+  source: "findings/client-performance/2026-07-25-workspace-tree-retention.md"

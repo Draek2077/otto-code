@@ -1,4 +1,16 @@
+---
+id: "finding-2026-08-02-relay-role-authentication"
+kind: "finding"
+title: "Relay `role=server` connections are unauthenticated"
+status: "confirmed"
+tags: ["finding", "relay-auth"]
+created_at: "2026-08-16T22:16:11.507Z"
+updated_at: "2026-08-16T22:16:11.507Z"
+---
+
 # Relay `role=server` connections are unauthenticated
+
+<!-- compiled_truth -->
 
 **Date:** 2026-08-02
 **Question:** A security audit claimed `packages/relay/src/cloudflare-adapter.ts` routes connections on
@@ -7,7 +19,7 @@ remote access. Does the finding hold, what is the real severity, and what is the
 actually closes it?
 
 This report is the audit trail. Whatever we decide to build about it is a row in
-[`projects/README.md`](../../projects/README.md), not here.
+[`projects/README.md`](../../../projects/README.md), not here.
 
 ---
 
@@ -317,3 +329,10 @@ scope note, since the surrounding guarantees are about confidentiality and integ
 >   availability only: it cannot read, forge, or inject application traffic, which remains end-to-end
 >   encrypted. Rotate the pairing link, or use a direct connection with a password, if you suspect a
 >   link has leaked.
+
+## Timeline
+
+- time: "2026-08-16T22:16:11.507Z"
+  kind: "migration"
+  summary: "Migrated from the legacy findings report without discarding its evidence."
+  source: "findings/relay-auth/2026-08-02-relay-role-authentication.md"

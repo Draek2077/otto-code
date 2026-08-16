@@ -23,7 +23,6 @@ Four trees. Know which one you are in before you write anything down.
 | [`.otto/knowledge/references/`](.otto/knowledge/references/) | External sources and their project-specific evaluation                                    | Present and history |
 | [`projects/`](projects/README.md)     | Temporary read-only migration source for legacy charters; do not update                      | Legacy              |
 | **Otto Knowledge** (`.otto/knowledge/`) | The durable system-level architecture record (architecture, decisions, findings, projects, references) - retired from `archdocs/` | Present, durable, wide-angle |
-| [`findings/`](findings/README.md)     | Measured investigations: method, numbers, what they ruled out. **Never status**              | Past                |
 | **This file**                         | Working rules for agents in this repo                                                        | Imperative          |
 
 **The documentation index is [`docs/README.md`](docs/README.md).** Every chat receives the compact
@@ -68,11 +67,14 @@ Non-negotiable. Each one exists because someone got it wrong first.
   page through `record_project_charter`. Use rich Markdown for the complete charter.
 - **Status and progress** → the same project page through `update_project_delivery`. Review status
   says whether the charter is trusted; delivery status and structured progress say what is done.
-  Do not start a second registry or dated progress document. This bans a rival **status** ledger,
-  not evidence: a measured investigation still belongs in [`findings/`](findings/README.md).
-- **A measured investigation** (numbers, method, what was ruled out) →
-  [`findings/`](findings/README.md), one folder per question, one dated file per run. The durable
-  half graduates into `docs/`; the evidence stays as the audit trail.
+  Do not start a second registry or dated progress document.
+- **A measured investigation** (numbers, method, what was ruled out) → a first-class finding page
+  through `record_project_knowledge`, with the method and the numbers in its evidence. The durable
+  half graduates into `docs/`; the finding page stays as the audit trail. Never start a directory of
+  dated reports for these.
+- **An unresolved observation** (something measured or seen, but not yet decided) → the same finding
+  page kind. Record it before it turns into a decision, and say plainly what is verified and what is
+  still hypothesis.
 - **An external source that shaped a decision** → a first-class reference page through
   `record_project_reference`, including sources evaluated and rejected.
 

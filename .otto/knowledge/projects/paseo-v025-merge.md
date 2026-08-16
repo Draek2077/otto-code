@@ -349,7 +349,7 @@ lines. Worst by churn, with `Δtheirs` = permanent divergence now carried:
 
 ~~**Not yet measured:** the ~180 _conflict-resolved_ wholesale-ours files are a different set from
 these 168 byte-identical ones.~~ **MEASURED 2026-08-02:**
-[findings/upstream/2026-08-02-wholesale-ours-sizing.md](../../findings/upstream/2026-08-02-wholesale-ours-sizing.md).
+[[finding-2026-08-02-wholesale-ours-sizing]].
 
 Headline: **the tree carries 88.6% of upstream's additions**, and that is a floor, because a file
 Otto re-implemented in its own idiom scores low even when the capability was taken. The

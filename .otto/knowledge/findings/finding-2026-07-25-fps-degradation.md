@@ -1,7 +1,19 @@
+---
+id: "finding-2026-07-25-fps-degradation"
+kind: "finding"
+title: "Why app-wide FPS degrades over a long session"
+status: "confirmed"
+tags: ["finding", "client-performance"]
+created_at: "2026-08-16T22:16:11.425Z"
+updated_at: "2026-08-16T22:16:11.425Z"
+---
+
 # Why app-wide FPS degrades over a long session
 
+<!-- compiled_truth -->
+
 > **Partly superseded by
-> [2026-07-25-workspace-tree-retention.md](2026-07-25-workspace-tree-retention.md).** Finding 1
+> [[finding-2026-07-25-workspace-tree-retention]].** Finding 1
 > below - "mounted workspace trees are never released", and the ~35% frame-rate cost attributed to
 > it - is **wrong**, for two independent reasons this report could not see:
 >
@@ -22,8 +34,8 @@
 the Visualizer stays smooth. Where does it go?
 
 Instrument built for this investigation:
-[`docs/client-performance.md`](../../docs/client-performance.md). Resulting work:
-[`projects/README.md` → Performance](../../projects/README.md#performance).
+[`docs/client-performance.md`](../../../docs/client-performance.md). Resulting work:
+[`projects/README.md` → Performance](../../../projects/README.md#performance).
 
 ## Method
 
@@ -112,7 +124,7 @@ an invariant in the instrument's documentation: read the series before calling s
 ### 1. Mounted workspace trees are never released - WITHDRAWN
 
 > **This section is wrong.** See
-> [2026-07-25-workspace-tree-retention.md](2026-07-25-workspace-tree-retention.md). The deck is an
+> [[finding-2026-07-25-workspace-tree-retention]]. The deck is an
 > LRU capped at 3 and it does release; this soak seeded exactly 3 workspaces, so it never crossed
 > the cap. The −35% is a one-sample comparison that flips sign between identical runs. Kept
 > verbatim because knowing what we believed, and why, is the point of this tree.
@@ -167,3 +179,10 @@ trades instant switch-back for bounded cost, and is a product decision rather th
 > `WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES = 3`, LRU, remount on switch-back - and it works. There was
 > no decision to take. The lesson: before framing something as a product choice, check whether the
 > mechanism is already in the tree.
+
+## Timeline
+
+- time: "2026-08-16T22:16:11.425Z"
+  kind: "migration"
+  summary: "Migrated from the legacy findings report without discarding its evidence."
+  source: "findings/client-performance/2026-07-25-fps-degradation.md"

@@ -6,8 +6,8 @@
 # that would be noise the team learns to ignore. So this runs weekly, off the
 # PR path, and scripts/audit-shipped.mjs fails only on high/critical advisories
 # that reach code Otto actually ships. A red run here means either fix the
-# dependency or record a reachability analysis in
-# findings/dependency-vulnerabilities/ and prune the entry point. Never ignore it.
+# dependency or record a reachability analysis as an Otto Knowledge finding and
+# prune the entry point. Never ignore it.
 name: Audit shipped dependencies
 
 on:

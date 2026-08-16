@@ -25,7 +25,8 @@ import {
  * drained by the daemon's 30 s `ws_runtime_metrics` window. `buildDescriptorMap`
  * runs once per connected session per agent lifecycle event, so calls/window and
  * ms/call are what say whether the scoped fetch and the emit coalescing are
- * actually holding - see findings/performance-efficiency-audit/ (F5).
+ * actually holding - see the 2026-08-02 static code audit finding (F5) in Otto
+ * Knowledge.
  */
 export interface WorkspaceDescriptorMetricsSnapshot {
   calls: number;

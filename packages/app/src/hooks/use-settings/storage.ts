@@ -336,7 +336,7 @@ export interface AppSettings {
   // The cost is memory, NOT frame rate. That was measured and it did not hold:
   // 3 resident trees versus 6 is inside run-to-run noise on every frame metric
   // the soak can produce. Do not reintroduce "higher means a worse frame rate"
-  // here - findings/client-performance/2026-07-25-workspace-tree-retention.md
+  // here - the 2026-07-25 workspace-tree retention finding in Otto Knowledge
   // exists to keep that claim out.
   //
   // The real failure mode is the other direction: set below the number of

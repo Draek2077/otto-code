@@ -182,20 +182,19 @@ npm run typecheck
 
 ## Documentation
 
-Five trees, five audiences. This section is the entry point to all of them.
+Four trees, four audiences. This section is the entry point to all of them.
 
-| Tree                                    | Audience               | What it is                                                                                                                                                           |
-| --------------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **[`docs/`](docs/README.md)**           | Anyone building Otto   | **The official software documentation.** How Otto works - system design, subsystem behaviour, conventions, gotchas. This is the specification we build against       |
-| **[`projects/`](projects/README.md)**   | Anyone planning Otto   | Charters for work not yet done, plus **the single open-work ledger** - the one place that says what is done and what is not                                          |
-| **[`findings/`](findings/README.md)**   | Anyone diagnosing Otto | Dated, reproducible investigation reports - what was measured, how, and what it ruled in or out. Evidence, not specification                                         |
-| **Otto Knowledge** (`.otto/knowledge/`) | Architects             | The system-level architecture record: durable architecture, decision, finding, project and reference pages managed through Otto Knowledge (retired from `archdocs/`) |
-| **[`CLAUDE.md`](CLAUDE.md)**            | AI coding agents       | Working rules and constraints for agents in this repo. Deliberately **not** a documentation index - that is [`docs/README.md`](docs/README.md)                       |
+| Tree                                    | Audience                               | What it is                                                                                                                                                                                                                                                                      |
+| --------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **[`docs/`](docs/README.md)**           | Anyone building Otto                   | **The official software documentation.** How Otto works - system design, subsystem behaviour, conventions, gotchas. This is the specification we build against                                                                                                                  |
+| **[`projects/`](projects/README.md)**   | Anyone planning Otto                   | Charters for work not yet done, plus **the single open-work ledger** - the one place that says what is done and what is not                                                                                                                                                     |
+| **Otto Knowledge** (`.otto/knowledge/`) | Architects, and anyone diagnosing Otto | The system-level architecture record: durable architecture, decision, finding, project and reference pages managed through Otto Knowledge (retired from `archdocs/`). Finding pages carry the reproducible investigations - what was measured, how, and what it ruled in or out |
+| **[`CLAUDE.md`](CLAUDE.md)**            | AI coding agents                       | Working rules and constraints for agents in this repo. Deliberately **not** a documentation index - that is [`docs/README.md`](docs/README.md)                                                                                                                                  |
 
-The three writing trees differ by **tense**: `docs/` is present (_this is how it behaves_),
-`projects/` is future (_this is what we will build_), `findings/` is past (_this is what we
-measured_). A dated measurement in `docs/` reads as a permanent fact, which is why it has its own
-tree.
+The writing trees differ by **tense**: `docs/` is present (_this is how it behaves_), `projects/` is
+future (_this is what we will build_), and an Otto Knowledge finding page is past (_this is what we
+measured_). A dated measurement in `docs/` reads as a permanent fact, which is why it is recorded
+separately.
 
 User-facing product documentation is published at
 [otto-code.me/docs](https://otto-code.me/docs) and authored in `public-docs/`. It documents what Otto

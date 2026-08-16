@@ -99,7 +99,8 @@ export interface WorkspaceGitRuntimeSnapshot {
     // Otto's provider-neutral hosting layer (docs/git-providers.md). Upstream's forge
     // shape carries `authState` + a loose `forge` name; Otto additionally projects a
     // typed provider id and its capabilities to the client. Populated by the git-hosting
-    // resolver -- see the re-attachment TODO in findings/upstream/.
+    // resolver -- see the re-attachment TODO in the 2026-07-31 deleted-file
+    // audit finding in Otto Knowledge.
     provider?: GitHostingProviderId;
     capabilities?: GitHostingCapabilities;
     credentialsMissing?: boolean;

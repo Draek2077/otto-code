@@ -38,8 +38,8 @@
  *    also needs `libcublas`, `libcudart` and `libnccl.so.2` - and NCCL ships in
  *    neither NVIDIA redistributable. Do not reopen this without a measurement on
  *    hardware that does *not* report NV_coopmat2, which is the one case where
- *    the gap could still be real. Full evidence:
- *    findings/linux-gpu-acceleration/2026-08-04-cuda-vs-vulkan-and-cuda-asset-origins.md
+ *    the gap could still be real. Measured 2026-08-04; the full method and
+ *    numbers are the "cuda vs vulkan" finding in Otto Knowledge.
  *  - **No Linux asset ships `libgomp.so.1`**, which `llama-server` hard-links,
  *    so a host without `libgomp1` installs a runtime that then exits 127 on
  *    spawn. Windows bundles its OpenMP runtime (`libomp140.x86_64.dll`); Linux

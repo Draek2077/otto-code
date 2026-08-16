@@ -1,4 +1,16 @@
+---
+id: "finding-2026-07-31-deleted-file-audit"
+kind: "finding"
+title: "Audit: the 20 files upstream deleted that Otto still uses"
+status: "confirmed"
+tags: ["finding", "upstream"]
+created_at: "2026-08-16T22:16:11.552Z"
+updated_at: "2026-08-16T22:16:11.552Z"
+---
+
 # Audit: the 20 files upstream deleted that Otto still uses
+
+<!-- compiled_truth -->
 
 **Date:** 2026-07-31 · **Merge:** `merge/paseo-v0.2.5` · **Status:** audit only, nothing ported yet
 
@@ -107,12 +119,12 @@ Lowest-risk heavy file in the audit.
 
 Otto added `hostingSearchEnabled`, `normalizeHostingSearchPayload`, `toHostingSearchKinds`,
 `useHostingSearchFeature`. This is Otto's **provider-neutral git-hosting layer**
-([docs/git-providers.md](../../docs/git-providers.md)): GitHub and Bitbucket Cloud behind one
+([docs/git-providers.md](../../../docs/git-providers.md)): GitHub and Bitbucket Cloud behind one
 interface.
 
 Upstream shipped `git/forges/github.ts`, a forge layer of their own. Both exist to solve the same
 problem, but **ours is the provider-neutral one and theirs is GitHub-shaped**. This is the forge
-cautionary tale from [docs/upstream-merges.md](../../docs/upstream-merges.md) repeating.
+cautionary tale from [docs/upstream-merges.md](../../../docs/upstream-merges.md) repeating.
 
 **Lands in:** upstream's `git/forges/` structure, with our hosting abstraction as the layer above
 their GitHub forge. Do not collapse Bitbucket support to make the port easier.
@@ -176,7 +188,7 @@ concession: Bitbucket becomes a sixth forge under an established pattern, and Ot
 Gitea, Forgejo and Codeberg support it does not have today.
 
 **Verify before calling this done:** Bitbucket Cloud must keep working end to end. Re-deriving it on
-upstream's abstraction is the risk in this item; see [docs/git-providers.md](../../docs/git-providers.md)
+upstream's abstraction is the risk in this item; see [docs/git-providers.md](../../../docs/git-providers.md)
 for the behaviour that has to survive.
 
 Everything else in this audit has an unambiguous destination and can be ported without further input.
@@ -222,7 +234,14 @@ populated**, so they arrive `undefined`.
    it should now receive them again, but this has not been exercised.
 5. ⬜ **Hard gate: Bitbucket Cloud end to end** - resolve a Bitbucket remote, list and open a PR, and
    confirm the checkout status shows the right provider and capabilities. See
-   [docs/git-providers.md](../../docs/git-providers.md).
+   [docs/git-providers.md](../../../docs/git-providers.md).
 
 The wiring is restored, but **until steps 4 and 5 are exercised, treat Bitbucket as unverified rather
 than shipped.** Nothing here has been run against a real Bitbucket remote.
+
+## Timeline
+
+- time: "2026-08-16T22:16:11.552Z"
+  kind: "migration"
+  summary: "Migrated from the legacy findings report without discarding its evidence."
+  source: "findings/upstream/2026-07-31-deleted-file-audit.md"

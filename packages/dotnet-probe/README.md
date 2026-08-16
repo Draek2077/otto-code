@@ -93,8 +93,8 @@ feature is opt-in and off by default.
 ## Evaluation, not a design-time build
 
 Phase 0's remaining open question was Buildalyzer versus raw `Microsoft.Build`. Measured on a
-12-project solution (2026-07-25, .NET SDK 10.0.301); full method and the hypotheses it retired in
-[findings/dotnet-project-evaluation](../../findings/dotnet-project-evaluation/2026-07-25-buildalyzer-vs-msbuild.md):
+12-project solution (2026-07-25, .NET SDK 10.0.301); the full method and the hypotheses it retired
+are the Buildalyzer-versus-MSBuild finding in Otto Knowledge:
 
 |                                      | raw `Microsoft.Build` evaluation       | Buildalyzer 9.0.0 design-time build                     |
 | ------------------------------------ | -------------------------------------- | ------------------------------------------------------- |

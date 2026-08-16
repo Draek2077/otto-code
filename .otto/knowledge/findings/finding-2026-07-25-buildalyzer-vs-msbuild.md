@@ -1,7 +1,19 @@
+---
+id: "finding-2026-07-25-buildalyzer-vs-msbuild"
+kind: "finding"
+title: "Buildalyzer 9.0 versus raw `Microsoft.Build`, for reading .NET project membership"
+status: "confirmed"
+tags: ["finding", "dotnet-project-evaluation"]
+created_at: "2026-08-16T22:16:11.464Z"
+updated_at: "2026-08-16T22:16:11.464Z"
+---
+
 # Buildalyzer 9.0 versus raw `Microsoft.Build`, for reading .NET project membership
 
+<!-- compiled_truth -->
+
 **Date:** 2026-07-25
-**Question:** The [Solution view](../../docs/solution-view.md) needs each project's evaluated file
+**Question:** The [Solution view](../../../docs/solution-view.md) needs each project's evaluated file
 membership. Its charter left one Phase 0 spike open: use **Buildalyzer 9.0** - one dependency that
 absorbs design-time-build pain - or **raw `Microsoft.Build` + `Microsoft.Build.Locator`**, fewer
 dependencies and more of our own code?
@@ -96,7 +108,7 @@ the fixed patch and is what shipped.)
   `You must install or update .NET to run this application`. A framework-dependent app pins its major
   version; `<RollForward>LatestMajor</RollForward>` is what makes the portability claim true, and the
   charter's "one payload works on all three platforms" was only correct with it. Now set, and
-  explained in [packages/dotnet-probe/README.md](../../packages/dotnet-probe/README.md).
+  explained in [packages/dotnet-probe/README.md](../../../packages/dotnet-probe/README.md).
 - **"~193 KB payload."** The spike's figure was SolutionPersistence alone. With
   `Microsoft.Build.Locator` in - needed for evaluation, not for structure - it is **257 KB across 5
   files**. Still one order of magnitude below the alternative and still per-RID-free.
@@ -109,6 +121,13 @@ the fixed patch and is what shipped.)
 
 ## What this established
 
-The durable half has graduated into [docs/solution-view.md](../../docs/solution-view.md) and
-[packages/dotnet-probe/README.md](../../packages/dotnet-probe/README.md). What gets done next is a
-row in [projects/README.md](../../projects/README.md).
+The durable half has graduated into [docs/solution-view.md](../../../docs/solution-view.md) and
+[packages/dotnet-probe/README.md](../../../packages/dotnet-probe/README.md). What gets done next is a
+row in [projects/README.md](../../../projects/README.md).
+
+## Timeline
+
+- time: "2026-08-16T22:16:11.464Z"
+  kind: "migration"
+  summary: "Migrated from the legacy findings report without discarding its evidence."
+  source: "findings/dotnet-project-evaluation/2026-07-25-buildalyzer-vs-msbuild.md"

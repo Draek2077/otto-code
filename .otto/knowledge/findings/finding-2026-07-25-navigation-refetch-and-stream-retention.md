@@ -1,15 +1,27 @@
+---
+id: "finding-2026-07-25-navigation-refetch-and-stream-retention"
+kind: "finding"
+title: "Cutting the navigation path's redundant round-trips, and bounding the stream buffers"
+status: "confirmed"
+tags: ["finding", "client-performance"]
+created_at: "2026-08-16T22:16:11.433Z"
+updated_at: "2026-08-16T22:16:11.433Z"
+---
+
 # Cutting the navigation path's redundant round-trips, and bounding the stream buffers
 
+<!-- compiled_truth -->
+
 **Date:** 2026-07-25 · **Question:** two of the three open items from
-[the FPS investigation](2026-07-25-fps-degradation.md) - how much of the navigation path's daemon
+[[finding-2026-07-25-fps-degradation]] - how much of the navigation path's daemon
 traffic is the client re-asking for state it already holds, and what does it cost to make
 `agentStreamTail` / `agentStreamHead` releasable?
 
 Neither depends on the workspace-tree retention question, which is
-[a separate finding](2026-07-25-workspace-tree-retention.md). Nothing here changes deck retention.
+[[finding-2026-07-25-workspace-tree-retention]]. Nothing here changes deck retention.
 
-Instrument: [`docs/client-performance.md`](../../docs/client-performance.md). Resulting work:
-[`projects/README.md` → Performance](../../projects/README.md#performance).
+Instrument: [`docs/client-performance.md`](../../../docs/client-performance.md). Resulting work:
+[`projects/README.md` → Performance](../../../projects/README.md#performance).
 
 ## Method
 
@@ -160,3 +172,10 @@ this is stated as untested-by-soak rather than dressed up as verified.
 - **Render cost per inbound message** is still the missing instrument, unchanged from the original
   report. Every count above is a message count; none of it bounds the React re-render each store
   write triggers.
+
+## Timeline
+
+- time: "2026-08-16T22:16:11.433Z"
+  kind: "migration"
+  summary: "Migrated from the legacy findings report without discarding its evidence."
+  source: "findings/client-performance/2026-07-25-navigation-refetch-and-stream-retention.md"
