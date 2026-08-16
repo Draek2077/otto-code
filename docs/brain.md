@@ -261,22 +261,26 @@ Each model carries a **Model profile**: its saved launch and VRAM settings. It i
 | Reasoning budget   | The cap on thinking tokens                                               |
 | GPU layers         | How many layers go on the GPU; 999 means all                             |
 | Parallel slots     | Concurrent requests, which share one KV pool                             |
-| Cached chats       | Chats whose KV state is parked in system RAM; 0 keeps the engine default |
+| Cached KVs         | Chats whose KV state is parked in system RAM; 0 keeps the engine default  |
 
-**Cached chats sizes llama.cpp's prompt cache in chats, not megabytes.** When a chat loses its GPU
+**Cached KVs sizes llama.cpp's prompt cache in chats, not megabytes.** When a chat loses its GPU
 slot, `llama-server` can park its KV state in host RAM and copy it back when that chat returns,
 instead of re-prefilling the whole conversation. The budget for that is `--cache-ram`, a size in MiB,
 which is unusable as a setting because the size of one chat depends on the model's measured KV
 bytes/token and on the per-slot context. Brain therefore stores a count and derives the flag:
-`cachedChats x kvBytesPerToken x (contextSize / parallelSlots)`. The profile warning shows the
-resulting figure against installed RAM, and both move when context or slots are edited.
+`cachedChats x kvBytesPerToken x (contextSize / parallelSlots)`.
+
+The warning prices that figure against installed RAM and is shown at every value, including the
+Default of 0: `4.8G each becomes 28.8G of 61.6G.`, or at 0, `llama.cpp's own limit applies: about
+8.0G of 61.6G.`, because 0 emits no flag and the engine then parks up to its own 8192 MiB default in
+host RAM - not the same as caching nothing. The estimate turns yellow at half the machine's RAM and
+red once it would use at least all of it.
 
 The count is a floor, not a cap: it assumes every chat fills its whole window, and real conversations
-rarely do, so more of them usually fit. `0` means Brain emits no flag and llama.cpp keeps its own
-default (8192 MiB), which is not the same as caching nothing. The flag is also withheld when the
-model has no measured calibration: the theoretical KV cost overestimates by multiples, so a budget
-derived from it would reserve several times the RAM actually needed. The warning names that case and
-asks for a calibration.
+rarely do, so more of them usually fit. A count above 0 is priced only from a measurement; the flag is
+withheld when the model has no measured calibration, because the theoretical KV cost overestimates by
+multiples, and a budget derived from it would reserve several times the RAM actually needed. The
+warning names that case and asks for a calibration.
 
 **Runtime log verbosity** is a host setting, not a model-profile field. It controls the resident
 `llama-server` output that appears in Brain Logs: Generic output (0), Errors (1), Warnings (2),

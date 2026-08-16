@@ -5,17 +5,24 @@ title: "Brain sizes the llama.cpp prompt cache in chats, not megabytes"
 status: "proposed"
 tags: ["brain", "kv-cache", "prompt-cache", "profile", "calibration", "memory"]
 created_at: "2026-08-16T21:58:33.975Z"
-updated_at: "2026-08-16T21:58:33.975Z"
+updated_at: "2026-08-16T23:35:00.000Z"
 ---
 
 # Brain sizes the llama.cpp prompt cache in chats, not megabytes
 
 <!-- compiled_truth -->
 
-A model profile stores `cachedChats`, a count of chats whose KV state llama-server may park in host RAM when they lose a GPU slot. Brain derives `--cache-ram` from it at the launch boundary as `cachedChats x kvBytesPerToken x (contextSize / parallelSlots)`, and the profile warning shows the resulting total, the per-chat size, and both against installed RAM. A raw MiB setting is not offered: the size of one parked chat depends on the model's measured KV cost and on the per-slot context, so the same megabyte figure means a different number of chats on every profile. 0 emits no flag and leaves llama.cpp's own default in place, which is not the same as caching nothing, so the editor renders it as "Default". An unmeasured model also emits no flag, because the theoretical KV cost overestimates by multiples and a budget derived from it would reserve several times the RAM actually needed; the warning asks for a calibration instead. `cachedChats` is not a calibration input - it spends host RAM, never VRAM.
+A model profile stores `cachedChats` (edited under the label **Cached KVs**), a count of chats whose KV state llama-server may park in host RAM when they lose a GPU slot. Brain derives `--cache-ram` from it at the launch boundary as `cachedChats x kvBytesPerToken x (contextSize / parallelSlots)`. A raw MiB setting is not offered: the size of one parked chat depends on the model's measured KV cost and on the per-slot context, so the same megabyte figure means a different number of chats on every profile.
+
+The RAM estimate is shown for **every** value of the field, at all times the field is available - not only once a count above 0 has been priced. It is the single `cachedChats` warning from `profileWarnings` (the one source, in `config/profile-edit.ts`), rendered in both the app editor and the TUI: a count above 0 reads `4.8G each becomes 28.8G of 61.6G.`; the Default of 0 reads `llama.cpp's own limit applies: about 8.0G of 61.6G.`, because 0 emits no flag and the engine then parks up to its own fixed 8192 MiB `--cache-ram` default (`ENGINE_DEFAULT_CACHE_RAM_BYTES`) in host RAM - model-independent, and not the same as caching nothing. The estimate's colour is its severity: muted below half the installed RAM, **yellow at ≥50%** (`warn`), **red once it would use at least all of the system RAM** (`error`); the app maps `info`/`warn`/`error` to `hintText`/`warnText`/`errorText`.
+
+A count above 0 is priced only from a measurement; an unmeasured model with a count above 0 still emits no flag, because the theoretical KV cost overestimates by multiples and a budget derived from it would reserve several times the RAM actually needed, so the warning asks for a calibration instead. `cachedChats` is not a calibration input - it spends host RAM, never VRAM.
 
 ## Timeline
 
+- time: "2026-08-16T23:35:00.000Z"
+  kind: "note"
+  summary: "Compiled truth updated to the shipped behaviour: the field is labelled Cached KVs; the RAM estimate is shown for every value of the field, including the Default of 0 (the engine's own 8192 MiB cache-ram default, model-independent); the prose is shortened to '<per> each becomes <total> of <installed>.' / 'llama.cpp's own limit applies: about 8.0G of <installed>.'; and the estimate's severity is coloured muted below half the installed RAM, yellow at >=50% (warn), red once it would use at least all of it (error). The estimate is the single cachedChats ProfileWarning from config/profile-edit.ts, rendered by both the app editor and the TUI."
 - time: "2026-08-16T21:58:33.975Z"
   kind: "decision"
   summary: "Knowledge page created."

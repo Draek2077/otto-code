@@ -80,6 +80,13 @@ export const MAX_PARALLEL_SLOTS = 16;
  * warning shows, not an arbitrary count.
  */
 export const MAX_CACHED_CHATS = 64;
+/**
+ * What llama.cpp allows by default when no `--cache-ram` is emitted, in bytes.
+ * `cachedChats` of 0 emits no flag, so the estimate for the Default option is
+ * this fixed figure against the installed RAM - not the model's measured KV
+ * cost, which is irrelevant here because the size does not depend on the model.
+ */
+export const ENGINE_DEFAULT_CACHE_RAM_BYTES = 8192 * 1024 * 1024;
 export const MAX_GPU_LAYERS = 999;
 export const MIN_CONTEXT_SIZE = 1024;
 export const CONTEXT_STEP = 8192;
@@ -167,7 +174,7 @@ export function profileFieldDescriptors(
     },
     {
       key: "cachedChats",
-      label: "Cached chats",
+      label: "Cached KVs",
       kind: "number",
       step: 1,
       min: 0,
@@ -208,7 +215,12 @@ export function profileFieldDescriptors(
 /** A note attached to a field, or to the profile as a whole when `field` is null. */
 export interface ProfileWarning {
   field: string | null;
-  severity: "info" | "warn";
+  /**
+   * `info` renders as muted text, `warn` as yellow. `error` is red: the
+   * Cached KVs estimate earns it when the parked state would use at least the
+   * machine's whole RAM.
+   */
+  severity: "info" | "warn" | "error";
   message: string;
   /** True when this combination cannot start, as opposed to merely being unwise. */
   blocksStart: boolean;
@@ -262,34 +274,40 @@ export function profileWarnings(
     });
   }
 
-  if ((profile.cachedChats ?? 0) > 0) {
-    // The size is what the user is really choosing, so show it. Without a
-    // measurement there is no size to show: the theoretical KV cost runs to
-    // multiples of the real one, so naming a figure derived from it would
-    // invite reserving several times the RAM actually needed.
-    const calibration = model && store ? getCalibration(store, model, profile) : null;
-    const cache = model ? promptCacheSize(model, profile, calibration) : null;
-    if (!cache || cache.source !== "measured") {
-      warnings.push({
-        field: "cachedChats",
-        severity: "warn",
-        message:
-          "Calibrate this model first: without a measured KV cost the RAM this needs cannot be sized, so llama.cpp's own cache limit stays in effect.",
-        blocksStart: false,
-      });
-    } else {
-      const share = cache.totalBytes / os.totalmem();
-      warnings.push({
-        field: "cachedChats",
-        severity: share > 0.6 ? "warn" : "info",
-        message: `${profile.cachedChats} chats kept in system RAM: ${formatGiB(
-          cache.totalBytes,
-        )} of ${formatGiB(os.totalmem())} installed, ${formatGiB(
-          cache.perChatBytes,
-        )} each. A chat that returns to a slot is copied back instead of re-prefilled.`,
-        blocksStart: false,
-      });
-    }
+  // The estimate is shown whenever this field is available, including at the
+  // Default of 0. That is the one value the user could not otherwise price:
+  // 0 emits no flag, and llama.cpp then parks up to its own 8 GiB cache-ram
+  // default in system RAM, which is not the same as caching nothing.
+  //
+  // A count above 0 can only be priced from a measurement: without one the
+  // theoretical KV cost runs to multiples of the real one, and naming a figure
+  // derived from it would invite reserving several times the RAM actually
+  // needed. So the unmeasured count falls back to the calibration request.
+  const calibration = model && store ? getCalibration(store, model, profile) : null;
+  const cache = model ? promptCacheSize(model, profile, calibration) : null;
+  const hasCount = (profile.cachedChats ?? 0) > 0;
+  if (hasCount && (!cache || cache.source !== "measured")) {
+    warnings.push({
+      field: "cachedChats",
+      severity: "warn",
+      message:
+        "Calibrate this model first: without a measured KV cost the RAM this needs cannot be sized, so llama.cpp's own cache limit stays in effect.",
+      blocksStart: false,
+    });
+  } else {
+    const totalBytes = hasCount ? cache!.totalBytes : ENGINE_DEFAULT_CACHE_RAM_BYTES;
+    const installed = formatGiB(os.totalmem());
+    warnings.push({
+      field: "cachedChats",
+      // Yellow at half the machine's RAM, red once the parked state would use
+      // at least all of it.
+      severity:
+        totalBytes >= os.totalmem() ? "error" : totalBytes >= os.totalmem() / 2 ? "warn" : "info",
+      message: hasCount
+        ? `${formatGiB(cache!.perChatBytes)} each becomes ${formatGiB(totalBytes)} of ${installed}.`
+        : `llama.cpp's own limit applies: about ${formatGiB(totalBytes)} of ${installed}.`,
+      blocksStart: false,
+    });
   }
 
   if (profile.contextMultiplier > 1) {

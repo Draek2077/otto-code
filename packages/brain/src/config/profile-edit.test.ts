@@ -1,7 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+import os from "node:os";
 
 import {
   calibrationInfo,
+  ENGINE_DEFAULT_CACHE_RAM_BYTES,
   formatReasoningBudget,
   nativeContextLimit,
   profileFieldDescriptors,
@@ -10,6 +13,7 @@ import {
 } from "./profile-edit.js";
 import { defaultProfile, putCalibration } from "./profiles.js";
 import { ProfilesStoreSchema, type Profile, type ProfilesStore } from "./schema.js";
+import { GIB } from "../vram.js";
 import type { Model } from "../types.js";
 
 function makeModel(overrides: Partial<Model> = {}): Model {
@@ -338,9 +342,7 @@ describe("profileWarnings", () => {
 
     const warning = profileWarnings(profile, model, store).find((w) => w.field === "cachedChats");
     // 4 chats x 16384 tokens per slot x 40000 B/token = ~2.4 GiB total, 0.6 each.
-    expect(warning?.message).toContain("2.4G");
-    expect(warning?.message).toContain("0.6G each");
-    expect(warning?.message).toContain("4 chats");
+    expect(warning?.message).toContain("0.6G each becomes 2.4G");
     expect(warning?.blocksStart).toBe(false);
   });
 
@@ -356,9 +358,65 @@ describe("profileWarnings", () => {
     expect(warning?.blocksStart).toBe(false);
   });
 
-  it("says nothing about a sane profile beyond the defaults", () => {
+  it("prices the Default of 0 at llama.cpp's own cache-ram limit, not the model's KV cost", () => {
     const model = makeModel();
-    expect(profileWarnings(makeProfile(model), model)).toEqual([]);
+    const totalmem = vi.spyOn(os, "totalmem").mockReturnValue(64 * GIB);
+    try {
+      const warning = profileWarnings(makeProfile(model), model).find(
+        (w) => w.field === "cachedChats",
+      );
+      // 0 emits no flag, so the engine parks up to its own 8192 MiB default.
+      // Model-independent: no calibration exists, and none is required.
+      expect(warning).toEqual({
+        field: "cachedChats",
+        severity: "info",
+        message: `llama.cpp's own limit applies: about ${
+          ENGINE_DEFAULT_CACHE_RAM_BYTES / GIB
+        }.0G of 64.0G.`,
+        blocksStart: false,
+      });
+    } finally {
+      totalmem.mockRestore();
+    }
+  });
+
+  it("colours the estimate by how much of the installed RAM it would take", () => {
+    const totalmem = vi.spyOn(os, "totalmem").mockReturnValue(64 * GIB);
+    try {
+      const measured = (kvBytesPerToken: number, cachedChats: number) => {
+        const model = makeModel();
+        const profile = makeProfile(model, { cachedChats, contextSize: 32768 });
+        const store = putCalibration(emptyStore(), model, profile, {
+          kvBytesPerToken,
+          baseOverheadBytes: 0,
+        });
+        return profileWarnings(profile, model, store).find((w) => w.field === "cachedChats");
+      };
+
+      // 1 chat x 32768 tokens x 40000 B/token = ~1.2 GiB: well under half of 64 GiB.
+      const info = measured(40_000, 1);
+      expect(info?.severity).toBe("info");
+      // 1 chat x 32768 tokens x 1048576 B/token = 32 GiB: half of 64 GiB, at the edge.
+      const warn = measured(1_048_576, 1);
+      expect(warn?.severity).toBe("warn");
+      // 2 chats x 32768 tokens x 1048576 B/token = 64 GiB: all of the installed RAM.
+      const error = measured(1_048_576, 2);
+      expect(error?.severity).toBe("error");
+    } finally {
+      totalmem.mockRestore();
+    }
+  });
+
+  it("still shows the estimate for a sane profile, at the engine's default size", () => {
+    const model = makeModel();
+    const warnings = profileWarnings(makeProfile(model), model);
+    expect(warnings.filter((w) => w.field === "cachedChats")).toHaveLength(1);
+    const estimate = warnings.find((w) => w.field === "cachedChats")!;
+    expect(estimate.blocksStart).toBe(false);
+    expect(estimate.severity).toBe("info");
+    // 8 GiB is below half of any machine this code runs on, so the Default is
+    // muted rather than loud.
+    expect(estimate.message).toMatch(/^llama\.cpp's own limit applies: about 8\.0G of \d+\.\dG\.$/);
   });
 });
 

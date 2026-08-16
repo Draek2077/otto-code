@@ -309,6 +309,13 @@ function FieldControl({
   );
 }
 
+/** Muted, yellow, or red, by the warning's severity. */
+function warningSeverityStyle(severity: string) {
+  if (severity === "error") return styles.errorText;
+  if (severity === "warn") return styles.warnText;
+  return styles.hintText;
+}
+
 function FieldRow({
   field,
   value,
@@ -354,10 +361,7 @@ function FieldRow({
           <FieldControl field={field} value={value} onChange={handleChange} locked={locked} />
         </View>
         {fieldWarnings.map((warning) => (
-          <Text
-            key={warning.message}
-            style={warning.severity === "warn" ? styles.warnText : styles.hintText}
-          >
+          <Text key={warning.message} style={warningSeverityStyle(warning.severity)}>
             {warning.message}
           </Text>
         ))}
@@ -1186,6 +1190,13 @@ const styles = StyleSheet.create((theme) => ({
   warnText: {
     fontSize: theme.fontSize.xs,
     color: theme.colors.palette.yellow[400],
+    textAlign: "right",
+  },
+  // The Cached KVs estimate turns red when the parked state would use at
+  // least the whole installed RAM. Matches the budget panel's "over" verdict.
+  errorText: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.palette.red[500],
     textAlign: "right",
   },
   budget: {

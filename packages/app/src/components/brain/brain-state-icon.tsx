@@ -90,7 +90,7 @@ export function BrainStateIcon({
   // own resting frame, so nothing is lost but the movement.
   const motion = animationsEnabled ? visual.motion : null;
 
-  const progress = useSweepProgress(state, motion !== null, visual.durationMs);
+  const progress = useSweepProgress(motion !== null, visual.durationMs);
 
   // Laid out at `size`, drawn at `glyph`. The container already centres its
   // children, so the overflow falls evenly on all four edges; `overflow` has to
@@ -182,17 +182,22 @@ function BrainIconBadge({
 }
 
 /**
- * One linear 0 → 1 ramp per cycle, restarted only when the state changes.
+ * One linear 0 → 1 ramp per cycle, restarted only when the motion actually
+ * changes - the glyph starts or stops moving (`active`), or the sweep speed
+ * changes (`durationMs`).
  *
- * Status snapshots arrive more often than the state they describe. Keeping the
- * BrainStateIcon mounted lets those same-state updates redraw the current frame
- * without cancelling its sweep and sending it back to the beginning.
+ * Deliberately NOT keyed on the state itself. The brain pushes a status
+ * snapshot on every inference-phase change, so the derived state flaps between
+ * prefill / thinking / generating throughout a single continuous generation.
+ * If the state were a dependency here, each flap would run the cleanup
+ * (`cancelAnimation`) and restart the sweep from zero, so instead of one smooth
+ * loop for the life of the state you get the first traversal and then a yank
+ * back to the beginning on every snapshot - it reads as "it plays once and
+ * stops." Keying on `active`/`durationMs` alone keeps the loop running for the
+ * whole busy period; `cancelAnimation` still stops it the instant the state
+ * leaves the busy set, because `active` flips to false then.
  */
-function useSweepProgress(
-  state: BrainState,
-  active: boolean,
-  durationMs: number,
-): SharedValue<number> {
+function useSweepProgress(active: boolean, durationMs: number): SharedValue<number> {
   const progress = useSharedValue(0);
   useEffect(() => {
     if (!active || durationMs <= 0) {
@@ -218,7 +223,7 @@ function useSweepProgress(
     return () => {
       cancelAnimation(progress);
     };
-  }, [active, durationMs, progress, state]);
+  }, [active, durationMs, progress]);
   return progress;
 }
 

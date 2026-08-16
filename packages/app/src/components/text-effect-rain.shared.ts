@@ -113,8 +113,9 @@ export const rainStylesheet = StyleSheet.create((theme) => ({
     overflow: "hidden",
     // The glyph line box centers a hair above the label's own optical center
     // (cap-height vs. the label's x-height run), which reads as the rain
-    // floating above the text. One pixel down sits it on the text.
-    transform: [{ translateY: 1 }],
+    // floating above the text. No vertical nudge: the strip sits a pixel
+    // higher than the label's optical center.
+    transform: [{ translateY: 0 }],
   },
   column: {
     position: "relative",

@@ -18,6 +18,7 @@ import {
   formatReasoningBudget,
   loadBrainConfig,
   loadProfilesStore,
+  profileWarnings,
   saveProfilesStore,
   UNRESTRICTED_REASONING_BUDGET,
 } from "../config/index.js";
@@ -278,17 +279,15 @@ export const FIELDS: Field[] = [
   },
   {
     key: "cachedChats",
-    label: "Cached chats",
+    label: "Cached KVs",
     kind: "number",
     step: 1,
     min: 0,
     max: () => 64,
     format: (p) =>
       (p.cachedChats ?? 0) > 0 ? String(p.cachedChats) : `default ${style.grey}(0)${style.reset}`,
-    note: (p) =>
-      (p.cachedChats ?? 0) > 0
-        ? `${p.cachedChats} chats parked in system RAM instead of re-prefilled`
-        : null,
+    // No inline note: the RAM estimate is the warning's job, and the warning
+    // lives in one place (profile-edit.ts). The panel reads it from there.
   },
 ];
 
@@ -2078,8 +2077,25 @@ export class App {
         const arrow = focused ? `${style.brightCyan}›${style.reset}` : " ";
         if (focused) focusLine = content.length;
         content.push(`${arrow} ${pad(field.label, 17)} ${value}`);
-        const note = field.note?.(profile);
-        if (note) content.push(`  ${style.yellow}  ${note}${style.reset}`);
+        // The cachedChats estimate is a ProfileWarning, not a field note: it is
+        // computed once in profile-edit.ts, colored by how much of the machine's
+        // RAM it would take, and the app editor renders the very same object.
+        const cachedWarning =
+          field.key === "cachedChats"
+            ? profileWarnings(profile, model, this.store).find((w) => w.field === "cachedChats")
+            : undefined;
+        const note = cachedWarning?.message ?? field.note?.(profile);
+        if (note) {
+          const tone =
+            cachedWarning?.severity === "error"
+              ? style.red
+              : cachedWarning?.severity === "warn"
+                ? style.yellow
+                : field.key === "cachedChats"
+                  ? style.grey
+                  : style.yellow;
+          content.push(`  ${tone}  ${note}${style.reset}`);
+        }
       }
 
       const sweepResult = this.sweepResult;
