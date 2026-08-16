@@ -1,35 +1,60 @@
 /**
- * Cooperative single-GPU scheduler with per-model concurrency.
+ * Cooperative single-GPU scheduler: one resident model, many concurrent chats.
  *
- * Only one model is resident at a time. Completion requests are queued rather
- * than refused for "wrong / no model loaded".
+ * There is exactly one place a job is ever started - `#dispatch`. Every event
+ * that could change the answer (a submit, a job settling, a model finishing its
+ * load, a slot poll) calls it again, and it re-derives the whole decision from
+ * scratch. There is no worker pool, no parked promise, no wake generation and
+ * no claim lock: the dispatcher is single-threaded by construction (`#busy`),
+ * so the state it reads cannot move underneath it.
  *
- *  - Requests for the resident model run concurrently, up to the resident
- *    model's `parallelSlots` (the number of sequence slots llama-server was
- *    launched with). The static profile value sizes the KV pool at launch;
- *    dispatch is additionally gated on the *measured* free-slot count (the
- *    `freeSlots` source, sampled from llama-server's `/slots`), so the
- *    scheduler never over-commits the GPU while llama-server is mid-eviction,
- *    mid-swap, or simply saturated. Extra same-model requests wait for a free
- *    slot; they never trigger a load.
- *  - Requests for a *different* model wait for a model switch. When the resident
- *    model's current batch drains, the scheduler switches and serves the other
- *    model's batch - so two clients wanting different models share the GPU by
- *    taking turns.
+ * The five variables it arbitrates, in the order it applies them:
  *
- * Ordering:
- *  - Session affinity: a job carries the chat's stable `prompt_cache_key`.
- *    While that session holds a slot, the next turn for the same model prefers
- *    its queued jobs - the chat's KV cache is still resident, so it pays no
- *    re-prefill. A different session goes first only when no in-flight job
- *    from another session is holding the slot.
- *  - Model fairness: after a model finishes a turn, the next turn prefers a
- *    *different* model when one is waiting, so a steady stream for model A
- *    cannot starve model B. A turn is a snapshot: requests that arrive for a
- *    model mid-turn wait for its next turn.
+ *  1. RESIDENCY. Only one model is resident, so `#running` never mixes models.
+ *     A switch happens only from a fully drained engine. Nothing that reaches
+ *     the scheduler is ever refused for "wrong model loaded" - it is queued
+ *     until its model is resident. Whether a switch is *allowed* at all is
+ *     decided upstream by `decideModelGate`: with `config.lockModel` on, the
+ *     host serves one pinned model and a request naming another is refused
+ *     there with a 409, so the scheduler never sees it.
+ *
+ *  2. EXCLUSIVITY. Calibrate, sweep and benchmark own the engine alone: the
+ *     engine drains before one starts, and nothing is admitted while it runs.
+ *
+ *  3. THE TURN, and what may join it. A turn takes every queued job of its
+ *     model up to the first exclusive operation. When that batch drains the
+ *     turn stays OPEN: a same-model job arriving a moment later joins it and
+ *     takes a free slot immediately. That is the difference between two chats
+ *     each holding their own slot and two chats trading one slot back and
+ *     forth - the latter is what a closed per-turn batch produces, because
+ *     agentic traffic arrives one request per chat per turn and never as a
+ *     burst.
+ *
+ *  4. FAIRNESS. A turn stops absorbing the moment the queue head is another
+ *     model's job or an exclusive operation. Since the queue is FIFO, "another
+ *     model is waiting" means it is at the head, so a steady stream for model
+ *     A cannot starve model B: B waits exactly as long as A's already-running
+ *     jobs take, then the turn retires and B is picked (preferring a model
+ *     other than the one that just ran).
+ *
+ *  5. CAPACITY. `parallelSlots` is the number of sequence slots llama-server
+ *     was launched with and therefore the KV pool we own; `#running.size`
+ *     against it is the hard bound. The measured free-slot count (llama-server's
+ *     own `/slots`) is the second bound, and it exists to notice slots taken by
+ *     traffic Otto did not schedule, or an engine mid-eviction. The two are
+ *     combined as `min(ceiling - running, measured)` and never both subtracted:
+ *     the engine's idle count already excludes our running jobs, so subtracting
+ *     them from it a second time leaves zero capacity with a single chat live
+ *     and silently serializes every other chat behind it.
+ *
+ * Ordering within a turn is session-affine: a job whose session already holds a
+ * slot goes first, because that chat's KV state is what llama-server's
+ * longest-common-prefix slot selection just filled, so it pays no re-prefill.
+ * Session identity is the standard `prompt_cache_key`; clients that omit it get
+ * plain FIFO.
  *
  * The scheduler is transport-agnostic: a job is a resolved catalog model plus a
- * `run()` that does the proxying, which keeps the turn logic unit-testable.
+ * `run()` that does the proxying, which keeps the logic unit-testable.
  */
 import type { Model } from "../types.js";
 import type { Profile } from "../config/schema.js";
@@ -57,13 +82,15 @@ export interface SchedulerOptions {
   /**
    * Live slot measurement: how many sequence slots llama-server actually has
    * free right now, or null when unknown (server not ready, sample failed).
-   * The static `parallelSlots` sizes the KV pool at launch; this gate stops
-   * the scheduler from dispatching ahead of what the engine can hold - the
-   * over-commit that turns a healthy queue into a wedged one. Absent means
-   * "trust the profile count".
+   * See CAPACITY in the file header for how it combines with `parallelSlots`.
+   * Absent means "trust the profile count".
    */
   freeSlots?: (() => Promise<number | null> | number | null) | null;
-  /** How long to wait between free-slot re-checks while a batch is queued. */
+  /**
+   * How long to wait before re-checking the engine when capacity is zero and
+   * no job of ours is running - the only state where nothing else will wake
+   * the dispatcher.
+   */
   slotPollMs?: number;
 }
 
@@ -74,13 +101,13 @@ export interface SchedulerSubmitOptions {
   kind?: SchedulerJobKind;
   /** An operation never shares its model turn with inference. */
   exclusive?: boolean;
-  /** Called exactly when this request becomes the active turn. */
+  /** Called exactly when this job starts running, before `run()` is awaited. */
   onStart?: (() => void) | null;
   /**
-   * The chat's stable identity (its `prompt_cache_key`). Jobs from the same
-   * session that already hold a slot run next in line for their model, so a
-   * resident chat's KV cache is reused instead of evicted by a different chat.
-   * Absent (third-party clients) means no affinity - plain model fairness.
+   * The chat's stable identity (its `prompt_cache_key`). Jobs from a session
+   * that already holds a slot run next in line for their model, so a resident
+   * chat's KV cache is reused instead of evicted by a different chat. Absent
+   * (third-party clients) means no affinity - plain FIFO.
    */
   session?: string | null;
 }
@@ -109,22 +136,34 @@ export interface SchedulerStats {
 
 export class Scheduler {
   supervisor: SchedulerSupervisor;
-  loadModel: (model: Model) => Promise<void>; // async (model) => resolves once it is ready
-  logger: ((message: string) => void) | null; // optional (message: string) => void
-  queue: QueuedJob[]; // { modelId, model, run, resolve, reject }
-  lastTurnId: string | null;
+  loadModel: (model: Model) => Promise<void>;
+  logger: ((message: string) => void) | null;
+  /** Submitted, not yet claimed by a turn. */
+  queue: QueuedJob[] = [];
+  lastTurnId: string | null = null;
   /**
    * Per model: the session whose jobs most recently filled its slots. That
    * session's KV state is the one llama-server's LCP selection will match
-   * against, so its queued jobs go first on the next turn.
+   * against, so its queued jobs go first on the next dispatch.
    */
-  hotSessions: Map<string, string>;
-  activeJob: QueuedJob | null;
-  pumping: boolean;
+  hotSessions = new Map<string, string>();
+  /** The exclusive operation in flight, if any. Reported by `stats()`. */
+  activeJob: QueuedJob | null = null;
   onChange: (() => void) | null;
   freeSlots: SchedulerOptions["freeSlots"];
   slotPollMs: number;
-  #claimLock: Promise<void> = Promise.resolve();
+
+  /** Claimed by the current turn, waiting for a slot. Empty between turns. */
+  #batch: QueuedJob[] = [];
+  /** Started, not yet settled. Invariant: every member's model is `#turnId`. */
+  #running = new Set<QueuedJob>();
+  /** The model that owns the engine for this turn, or null between turns. */
+  #turnId: string | null = null;
+  /** A dispatch pass is running. Only one may read/mutate the state at a time. */
+  #busy = false;
+  /** State changed mid-pass; run one more pass before yielding. */
+  #dirty = false;
+  #slotTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor({
     supervisor,
@@ -137,11 +176,6 @@ export class Scheduler {
     this.supervisor = supervisor;
     this.loadModel = loadModel; // async (model) => resolves once it is ready
     this.logger = logger; // optional (message: string) => void
-    this.queue = []; // { modelId, model, run, resolve, reject }
-    this.lastTurnId = null;
-    this.hotSessions = new Map();
-    this.activeJob = null;
-    this.pumping = false;
     this.onChange = onChange;
     this.freeSlots = freeSlots;
     this.slotPollMs = slotPollMs;
@@ -169,26 +203,10 @@ export class Scheduler {
   }
 
   /**
-   * Live free-slot count for the resident model, or the static ceiling when no
-   * sampler is wired. `freeSlots` returns null when the engine cannot be
-   * sampled - in that case the static profile count is the best available
-   * answer rather than "wait forever".
-   */
-  async #freeSlotCount(): Promise<number> {
-    if (!this.freeSlots) return this.concurrency;
-    try {
-      const free = await this.freeSlots();
-      return free === null || Number.isNaN(free) ? this.concurrency : Math.max(0, free);
-    } catch {
-      return this.concurrency;
-    }
-  }
-
-  /**
    * Queue a job for an already-resolved catalog model. `run` is invoked once
    * that model is the resident one; the returned promise settles when run does.
-   * Pumping is deferred a microtask so a burst of requests submitted together
-   * share one turn rather than the first one snapshotting a turn by itself.
+   * Dispatch is deferred a microtask so a burst of requests submitted together
+   * shares one turn rather than the first one taking a turn by itself.
    */
   submit(
     model: Model,
@@ -213,13 +231,13 @@ export class Scheduler {
         reject,
       });
       this.#announce();
-      queueMicrotask(() => this.pump());
+      queueMicrotask(() => void this.#dispatch());
     });
   }
 
   /**
-   * An exclusive operation is a hard boundary inside its model's request queue.
-   *  - At the queue head: it takes the turn alone.
+   * An exclusive operation is a hard boundary inside its model's queue.
+   *  - At the head: it takes the turn alone.
    *  - Behind other jobs: those jobs take the turn; the operation (and
    *    everything behind it) stays queued until it is the head.
    */
@@ -243,154 +261,200 @@ export class Scheduler {
     return taken;
   }
 
+  /** Sessions that currently hold a slot, for affinity. */
+  #warmSessions(): Set<string> {
+    const warm = new Set<string>();
+    for (const job of this.#running) if (job.session) warm.add(job.session);
+    return warm;
+  }
+
   /**
-   * Atomically claim the next job a worker may dispatch from a turn's
-   * snapshot, or null when the snapshot is drained:
+   * Pick which batched job goes next.
    *
-   *  - While `active` sessions still hold slots of this model, a job from one
-   *    of them goes next - its KV state is what llama-server's LCP selection
-   *    just filled, so dispatching it costs no eviction + re-prefill.
-   *  - No active session (or none with a queued job): plain FIFO.
+   *  - While a session still holds a slot for this model, one of its jobs goes
+   *    next: its KV state is what llama-server's LCP selection just filled, so
+   *    dispatching it costs no eviction plus re-prefill.
+   *  - Otherwise plain FIFO.
    *
-   * (A snapshot never mixes an exclusive operation with other jobs - that
-   * split happens in `#takeTurn` - so no boundary check is needed here.)
-   * Called under `#claimLock` so two workers cannot claim the same job.
+   * (A batch never mixes an exclusive operation with other jobs - that split
+   * happens in `#takeTurn` - so no boundary check is needed here.)
    */
-  #claimJob(snapshot: QueuedJob[], active: Set<string>, turnId: string): QueuedJob | null {
-    if (snapshot.length === 0) return null;
-    let chosen: QueuedJob;
-    if (active.size > 0) {
-      chosen = snapshot.find((j) => j.session !== null && active.has(j.session)) ?? snapshot[0];
-    } else {
-      chosen = snapshot[0];
-    }
-    snapshot.splice(snapshot.indexOf(chosen), 1);
-    if (chosen.session) {
-      active.add(chosen.session);
-      this.hotSessions.set(turnId, chosen.session);
-    }
+  #claimJob(turnId: string): QueuedJob | null {
+    if (this.#batch.length === 0) return null;
+    const warm = this.#warmSessions();
+    const chosen =
+      warm.size > 0
+        ? (this.#batch.find((job) => job.session !== null && warm.has(job.session)) ??
+          this.#batch[0])
+        : this.#batch[0];
+    this.#batch.splice(this.#batch.indexOf(chosen), 1);
+    if (chosen.session) this.hotSessions.set(turnId, chosen.session);
     return chosen;
   }
 
-  /** Serialize job claims across concurrent workers. */
-  async #withClaimLock<T>(fn: () => T): Promise<T> {
-    const previous = this.#claimLock;
-    let release!: () => void;
-    this.#claimLock = new Promise((resolve) => (release = resolve));
-    await previous;
+  /**
+   * The engine's idle slot count, or null when it cannot be sampled - in which
+   * case the static profile count is the best available answer rather than
+   * "wait forever".
+   */
+  async #sampleFreeSlots(): Promise<number | null> {
+    if (!this.freeSlots) return null;
     try {
-      return fn();
-    } finally {
-      release();
-    }
-  }
-
-  /** Wait (no deadline) until the engine reports at least one free slot. */
-  async #awaitSlot(): Promise<void> {
-    while ((await this.#freeSlotCount()) < 1) {
-      await new Promise((r) => setTimeout(r, this.slotPollMs));
+      const free = await this.freeSlots();
+      return free === null || Number.isNaN(free) ? null : Math.max(0, free);
+    } catch {
+      return null;
     }
   }
 
   /**
-   * Serve one model's snapshot with bounded concurrency. Returns how many jobs
-   * actually ran: 0 means no slot was free and nothing was dispatched, and the
-   * pump then waits for a free slot instead of busy-spinning.
-   *
-   * The worker pool is sized to the *measured* free-slot count at turn start -
-   * that is the live admission gate. Each worker is one slot: it dispatches a
-   * job, waits for it, and takes the next one when the slot is free again.
-   *
-   * Session affinity: while sessions have in-flight jobs, the next dispatch
-   * prefers a job from one of them. Their KV state is what llama-server's LCP
-   * slot selection just filled, so dispatching another session's job first
-   * would force an eviction and a full re-prefill of that job's context. When
-   * no session is active, plain FIFO applies.
+   * Re-check the engine after a delay. Only needed when capacity is zero and
+   * nothing of ours is running: that is the one state where no settle callback
+   * is coming, because the slots are held by traffic we did not schedule.
    */
-  async #serveTurn(turnId: string): Promise<number> {
-    const free = await this.#freeSlotCount();
-    if (free === 0) return 0;
+  #pollForSlot(): void {
+    if (this.#slotTimer) return;
+    this.#slotTimer = setTimeout(() => {
+      this.#slotTimer = null;
+      void this.#dispatch();
+    }, this.slotPollMs);
+  }
 
-    const snapshot = this.#takeTurn(turnId);
-    if (snapshot.length === 1 && snapshot[0].exclusive) {
-      const job = snapshot[0];
-      this.activeJob = job;
-      if (job.session) this.hotSessions.set(turnId, job.session);
-      this.#announce();
+  /**
+   * Start a job and wire its completion back into the dispatcher. Never
+   * awaited by the dispatcher: a pass decides and returns, and the settle
+   * callback is what asks for the next decision.
+   */
+  #start(job: QueuedJob): void {
+    this.#running.add(job);
+    if (job.exclusive) this.activeJob = job;
+    this.#announce();
+    void (async () => {
       try {
         job.onStart?.();
         job.resolve(await job.run());
       } catch (error) {
         job.reject(error);
       } finally {
-        this.activeJob = null;
+        this.#running.delete(job);
+        if (this.activeJob === job) this.activeJob = null;
         this.#announce();
+        void this.#dispatch();
       }
-      return 1;
-    }
-    if (snapshot.length === 0) return 0;
-
-    const total = snapshot.length;
-    const active = new Set<string>();
-    const worker = async (): Promise<void> => {
-      for (;;) {
-        const job = await this.#withClaimLock(() => this.#claimJob(snapshot, active, turnId));
-        if (!job) return;
-        try {
-          job.resolve(await job.run());
-        } catch (error) {
-          job.reject(error);
-        }
-        active.delete(job.session ?? "");
-      }
-    };
-    const pool: Promise<void>[] = [];
-    for (let i = 0; i < Math.min(free, snapshot.length); i += 1) pool.push(worker());
-    await Promise.all(pool);
-
-    // Undispatched jobs go back in snapshot order, so an exclusive boundary is
-    // never overtaken by a deferred job.
-    if (snapshot.length > 0) {
-      this.queue.push(...snapshot);
-      this.#announce();
-    }
-    return total - snapshot.length;
+    })();
   }
 
-  async pump(): Promise<void> {
-    if (this.pumping) return;
-    this.pumping = true;
+  /**
+   * Ask for a scheduling decision. Safe to call from anywhere, any number of
+   * times: overlapping calls collapse into one more pass after the current one,
+   * so the state a pass reads never moves underneath it.
+   */
+  async #dispatch(): Promise<void> {
+    if (this.#busy) {
+      this.#dirty = true;
+      return;
+    }
+    this.#busy = true;
     try {
-      while (this.queue.length) {
-        // Prefer a model other than the one that just took a turn, so the two
-        // sides alternate; fall back to the head of the queue when only one
-        // model is waiting (it simply keeps its turn).
-        const pick = this.queue.find((j) => j.modelId !== this.lastTurnId) || this.queue[0];
-        const turnId = pick.modelId;
+      do {
+        this.#dirty = false;
+        await this.#pass();
+      } while (this.#dirty);
+    } finally {
+      this.#busy = false;
+    }
+  }
 
-        if (this.loadedId !== turnId) {
+  /**
+   * One decision pass: start as many jobs as residency, exclusivity, the turn
+   * boundary and capacity allow, then return. Each iteration re-derives
+   * everything, so there is no state to keep consistent between them.
+   */
+  async #pass(): Promise<void> {
+    // The engine's idle count, sampled at most once per pass, plus how many
+    // jobs this pass has started against it (the sample cannot see those yet).
+    let measured: number | null = null;
+    let sampled = false;
+    let startedHere = 0;
+
+    for (;;) {
+      // An exclusive operation owns the engine alone.
+      if (this.activeJob !== null) return;
+
+      // 1. Between turns: a turn may only begin on a drained engine, because
+      //    it may need a different model resident.
+      if (this.#turnId === null) {
+        if (this.#running.size > 0) return; // its settle callback re-dispatches
+        if (this.queue.length === 0) return; // idle
+        // Prefer a model other than the one that just ran, so two sides
+        // alternate; fall back to the head when only one model is waiting.
+        const pick = this.queue.find((job) => job.modelId !== this.lastTurnId) ?? this.queue[0];
+        if (this.loadedId !== pick.modelId) {
           try {
             this.logger?.(`switching to ${pick.model.displayName}`);
             await this.loadModel(pick.model);
           } catch (error) {
-            // The model would not load - fail exactly its queued jobs and move on.
-            for (const job of this.#take((j) => j.modelId === turnId)) job.reject(error);
+            // The model would not load - fail exactly its queued jobs, move on.
+            for (const job of this.#take((j) => j.modelId === pick.modelId)) job.reject(error);
             continue;
           }
+          // A relaunched engine has all its slots back; the old sample is void.
+          sampled = false;
+          startedHere = 0;
         }
-
-        this.lastTurnId = turnId;
+        this.#turnId = pick.modelId;
+        this.lastTurnId = pick.modelId;
+        this.#batch = this.#takeTurn(pick.modelId);
         this.#announce();
-        const ran = await this.#serveTurn(turnId);
-        if (ran === 0) {
-          // Nothing was dispatched: no slot was free. Wait for one instead of
-          // busy-spinning; the queue keeps its no-deadline contract - it
-          // simply cannot start yet.
-          await this.#awaitSlot();
+      }
+      const turnId = this.#turnId;
+
+      // 2. Batch drained: keep the turn open by absorbing the queue head when
+      //    it belongs to this turn. This is what lets a steady stream of chats
+      //    each hold their own slot instead of trading one.
+      if (this.#batch.length === 0) {
+        const head = this.queue[0];
+        if (head !== undefined && !head.exclusive && head.modelId === turnId) {
+          this.#batch = this.#take((job) => job === head);
+        } else {
+          // Boundary: another model's job, an exclusive operation, or nothing.
+          // The turn ends as soon as its own jobs have drained.
+          if (this.#running.size > 0) return;
+          this.#turnId = null;
+          this.#announce();
+          if (this.queue.length === 0) return;
+          continue; // pick the next turn
         }
       }
-    } finally {
-      this.pumping = false;
+
+      // 3. An exclusive operation runs alone, on a drained engine.
+      if (this.#batch.length === 1 && this.#batch[0].exclusive) {
+        if (this.#running.size > 0) return;
+        this.#start(this.#batch.shift()!);
+        return;
+      }
+
+      // 4. Capacity. The ceiling is the KV pool we own; the measurement is
+      //    there to notice slots taken by traffic we did not schedule. They
+      //    are combined, never both subtracted - see CAPACITY in the header.
+      if (!sampled) {
+        measured = await this.#sampleFreeSlots();
+        sampled = true;
+      }
+      const room = Math.min(
+        this.concurrency - this.#running.size,
+        measured === null ? Number.POSITIVE_INFINITY : measured - startedHere,
+      );
+      if (room < 1) {
+        if (this.#running.size === 0) this.#pollForSlot();
+        return;
+      }
+
+      // 5. Start the next job. Affinity decides which of the batch goes first.
+      const job = this.#claimJob(turnId);
+      if (!job) return;
+      startedHere += 1;
+      this.#start(job);
     }
   }
 
@@ -398,7 +462,9 @@ export class Scheduler {
   stats(): SchedulerStats {
     const waiting: Record<string, number> = {};
     const waitingModelIds: Record<string, number> = {};
-    for (const job of this.queue) {
+    // Batched jobs have left the queue but have not started: to everyone
+    // outside the scheduler they are still waiting.
+    for (const job of [...this.queue, ...this.#batch]) {
       const name = job.model.displayName;
       waiting[name] = (waiting[name] || 0) + 1;
       waitingModelIds[job.modelId] = (waitingModelIds[job.modelId] || 0) + 1;
@@ -408,7 +474,7 @@ export class Scheduler {
         ? { modelId: this.activeJob.modelId, kind: this.activeJob.kind }
         : null;
     return {
-      queued: this.queue.length,
+      queued: this.queue.length + this.#batch.length,
       waiting,
       waitingModelIds,
       lastTurn: this.lastTurnId,

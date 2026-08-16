@@ -302,6 +302,193 @@ test("two sessions run concurrently across two slots, each keeping its own", asy
   assert.equal(peak, 2, "never more than the two slots");
 });
 
+test("a second chat takes the free slot while the first is still streaming", async () => {
+  // The agentic traffic pattern: one request per chat per turn, never a burst.
+  // A1 is in flight when B1 arrives. B1 must join A1's open turn and take the
+  // second slot immediately - a closed per-turn batch made it wait for A1 to
+  // finish, which is the two-chats-trading-one-slot symptom.
+  const supervisor = {
+    state: "ready",
+    model: A,
+    profile: { parallelSlots: 2 } as Profile,
+  } as SchedulerSupervisor;
+  const sched = new Scheduler({ supervisor, loadModel: async () => {} });
+
+  let active = 0;
+  let peak = 0;
+  const started: string[] = [];
+  const job = (tag: string, done: Promise<void>) => async () => {
+    active += 1;
+    peak = Math.max(peak, active);
+    started.push(tag);
+    await done;
+    active -= 1;
+  };
+
+  let releaseA1!: () => void;
+  let releaseB1!: () => void;
+  const a1 = new Promise<void>((r) => (releaseA1 = r));
+  const b1 = new Promise<void>((r) => (releaseB1 = r));
+
+  const pA1 = sched.submit(A, job("A1", a1), { session: "chatA" });
+  await tick(); // A1 in flight, one slot still free
+
+  const pB1 = sched.submit(A, job("B1", b1), { session: "chatB" });
+  await tick(); // B1 joins the open turn rather than waiting for A1's to end
+  assert.equal(active, 2, "both chats are streaming at the same time");
+
+  releaseA1();
+  const pA2 = sched.submit(A, job("A2", Promise.resolve()), { session: "chatA" });
+  releaseB1();
+  await Promise.all([pA1, pB1, pA2]);
+
+  assert.equal(peak, 2, "both slots were live at once");
+  assert.deepEqual(started.slice(0, 2), ["A1", "B1"], "A1 first, then B1 before A1 finished");
+  assert.equal(started.indexOf("A2"), 2, "A2 ran last, after both predecessors had started");
+});
+
+test("a live slot sample does not double-count the jobs already in flight", async () => {
+  // Production shape: llama-server's /slots idle count already excludes our
+  // running jobs. Subtracting them from it a second time leaves zero capacity
+  // as soon as one chat is live, which serializes every other chat onto that
+  // one slot while the Overview honestly reports 1/2 in use.
+  const TOTAL = 2;
+  let busy = 0;
+  const supervisor = {
+    state: "ready",
+    model: A,
+    profile: { parallelSlots: TOTAL } as Profile,
+  } as SchedulerSupervisor;
+  const sched = new Scheduler({
+    supervisor,
+    loadModel: async () => {},
+    freeSlots: () => TOTAL - busy,
+  });
+
+  let peak = 0;
+  const job = (done: Promise<void>) => async () => {
+    busy += 1;
+    peak = Math.max(peak, busy);
+    await done;
+    busy -= 1;
+  };
+
+  let releaseA1!: () => void;
+  let releaseB1!: () => void;
+  const a1 = new Promise<void>((r) => (releaseA1 = r));
+  const b1 = new Promise<void>((r) => (releaseB1 = r));
+
+  const pA1 = sched.submit(A, job(a1), { session: "chatA" });
+  await tick2();
+  const pB1 = sched.submit(A, job(b1), { session: "chatB" });
+  await tick2();
+
+  assert.equal(busy, 2, "the engine reported one idle slot and it was used");
+
+  releaseA1();
+  releaseB1();
+  await Promise.all([pA1, pB1]);
+  assert.equal(peak, 2, "two slots, two concurrent chats");
+});
+
+test("a third chat waits for a slot and runs as soon as one frees", async () => {
+  // Two slots, three chats: the extra chat must queue rather than pile a third
+  // sequence onto a two-slot KV pool, and must start the moment a slot frees.
+  const TOTAL = 2;
+  let busy = 0;
+  const supervisor = {
+    state: "ready",
+    model: A,
+    profile: { parallelSlots: TOTAL } as Profile,
+  } as SchedulerSupervisor;
+  const sched = new Scheduler({
+    supervisor,
+    loadModel: async () => {},
+    freeSlots: () => TOTAL - busy,
+    slotPollMs: 5,
+  });
+
+  let peak = 0;
+  const started: string[] = [];
+  const job = (tag: string, done: Promise<void>) => async () => {
+    busy += 1;
+    peak = Math.max(peak, busy);
+    started.push(tag);
+    await done;
+    busy -= 1;
+  };
+
+  const release: Record<string, () => void> = {};
+  const held = (tag: string) =>
+    new Promise<void>((r) => {
+      release[tag] = r;
+    });
+  const [hA, hB, hC] = [held("A"), held("B"), held("C")];
+
+  const pA = sched.submit(A, job("A", hA), { session: "chatA" });
+  await tick2();
+  const pB = sched.submit(A, job("B", hB), { session: "chatB" });
+  await tick2();
+  const pC = sched.submit(A, job("C", hC), { session: "chatC" });
+  await tick2();
+
+  assert.deepEqual(started, ["A", "B"], "the third chat waits for a slot");
+  assert.equal(sched.stats().queued, 1, "and is reported as waiting, not lost");
+
+  release.A();
+  await tick2();
+  assert.deepEqual(started, ["A", "B", "C"], "it starts the moment a slot frees");
+
+  release.B();
+  release.C();
+  await Promise.all([pA, pB, pC]);
+  assert.equal(peak, 2, "never more than the two slots");
+});
+
+test("a queued different model gets its turn once the open turn drains", async () => {
+  // Two slots: A1 holds one and the turn stays open on the other. B1 lands on
+  // that open turn - it must end the turn rather than hold it open, or the
+  // scheduler would never switch models and B would starve.
+  const supervisor = {
+    state: "ready",
+    model: A,
+    profile: { parallelSlots: 2 } as Profile,
+  } as SchedulerSupervisor;
+  const switches: string[] = [];
+  const sched = new Scheduler({
+    supervisor,
+    loadModel: async (m: Model) => {
+      switches.push(m.id);
+      supervisor.state = "ready";
+      supervisor.model = m;
+    },
+  });
+
+  const order: string[] = [];
+  let releaseA!: () => void;
+  const a1 = new Promise<void>((r) => {
+    releaseA = r;
+  });
+
+  const p1 = sched.submit(A, () => {
+    order.push("A1");
+    return a1;
+  });
+  await tick(); // A1 in flight, A's turn open on the second slot
+
+  const p2 = sched.submit(B, () => {
+    order.push("B1");
+    return Promise.resolve();
+  });
+  await tick(); // B1 is at the head, so A's turn stops absorbing
+
+  releaseA();
+  await Promise.all([p1, p2]);
+
+  assert.deepEqual(order, ["A1", "B1"], "B was served after A finished");
+  assert.deepEqual(switches, ["b"], "model switched to B");
+});
+
 // --- Live slot admission ------------------------------------------------------
 
 test("waits for a free slot instead of dispatching into a saturated engine", async () => {

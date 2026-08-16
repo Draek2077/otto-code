@@ -239,7 +239,7 @@ export function profileWarnings(
         perSlot !== null
           ? `${profile.parallelSlots} concurrent chats: ~${Math.round(
               perSlot / 1000,
-            )}K context each, all resident. Fewer slots = more context per chat, serialized.`
+            )}K context each, all resident.`
           : `${profile.parallelSlots} concurrent requests, sharing one KV pool.`,
       blocksStart: false,
     });
