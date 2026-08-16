@@ -185,7 +185,21 @@ describe("sanitizeProfilePatch", () => {
 
     expect(profile.contextSize).toBe(32768);
     expect(adjustments).toEqual(["contextSize clamped to 32768"]);
+    // The multiplier is an evaluation input: the RoPE shape changed, so the
+    // measurement must be re-taken even though the context clamp is cosmetic.
     expect(profile.calibrationRequired).toBe(true);
+  });
+
+  it("keeps the calibration when only placement or slot settings change", () => {
+    const model = makeModel();
+    const current = makeProfile(model, { calibrationRequired: false, gpuLayers: 999 });
+    const result = sanitizeProfilePatch(current, { gpuLayers: 24, parallelSlots: 4 }, model);
+
+    // Neither the KV cache system nor the evaluation changed: the differential
+    // measurement is identical at any layer split and slot count.
+    expect(result.profile.gpuLayers).toBe(24);
+    expect(result.profile.parallelSlots).toBe(4);
+    expect(result.profile.calibrationRequired).toBe(false);
   });
 
   it("clamps parallel slots to the supported range", () => {

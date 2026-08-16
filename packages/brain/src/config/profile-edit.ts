@@ -329,7 +329,10 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 /**
- * The settings whose value changes what a calibration would measure.
+ * The settings whose value changes what a calibration would measure - the KV
+ * cache system (cache types, attention configuration, loaded components) or the
+ * evaluation (the extended RoPE shape). Only these may set
+ * `calibrationRequired`.
  *
  * `contextSize` is deliberately absent. A calibration measures bytes *per
  * token* - the context size is the independent variable it varies to get the
@@ -339,14 +342,20 @@ function clamp(value: number, min: number, max: number): number {
  * itself: the fit picked a context from the measured figure, the write that
  * saved it dropped back to the (~4x higher) theoretical estimate, and the
  * saved context was then far past the budget it had just been sized against.
+ *
+ * `gpuLayers` and `parallelSlots` are absent for the same differential reason:
+ * they only move weights between devices or split the one KV pool across slots.
+ * The calibration is the GPU-delta between two loads at different contexts, so
+ * every fixed term - weights wherever they sit, the CUDA context, compute
+ * buffers - cancels out of the slope, and a load whose KV split to CPU is
+ * rejected as unusable rather than measured low. Neither the bytes/token nor the
+ * evaluation changes, so neither may discard a real measurement.
  */
 const CALIBRATION_INPUTS = [
   "contextMultiplier",
   "cacheTypeK",
   "cacheTypeV",
   "flashAttention",
-  "gpuLayers",
-  "parallelSlots",
   "vision",
   "enabledComponents",
 ] as const;

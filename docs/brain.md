@@ -328,9 +328,12 @@ YaRN extrapolates beyond the native context. Recalibrate before relying on an ex
 ### The calibration verdict
 
 `calibrationRequired` is a durable verdict on the saved model profile. It begins true and is cleared
-only by a successful calibration. A change to any VRAM-affecting input sets it true again:
-context multiplier, context size, KV cache K or V type, flash attention, GPU layers, parallel slots,
-vision, or enabled components.
+only by a successful calibration. A change to a setting that affects the KV cache system or the
+evaluation sets it true again: context multiplier, KV cache K or V type, flash attention, vision, or
+enabled components. Context size, GPU layers, and parallel slots never set it: the calibration is a
+differential measurement of KV bytes per token, so fixed terms (weights wherever they sit, CUDA
+context, compute buffers) cancel out of the slope, and a context size or slot count the measurement
+was taken at does not change what the measurement says.
 
 A measurement from the previous shape remains stored for comparison, but it is not used as the
 current VRAM budget while calibration is required. Brain uses the theoretical budget until a new
