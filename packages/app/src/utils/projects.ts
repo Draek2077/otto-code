@@ -1,4 +1,5 @@
 import type { ProjectDescriptor, WorkspaceDescriptor } from "@/stores/session-store";
+import type { ProjectKanbanTarget } from "@otto-code/protocol/messages";
 import type { HostProjectListItem } from "@/projects/host-project-model";
 import { buildWorkspaceStructureProjects } from "@/projects/workspace-structure";
 
@@ -17,6 +18,8 @@ export interface ProjectHostEntry {
   projectId: string;
   projectName: string;
   projectCustomName: string | null;
+  // This host's Kanban board target for the project; null means unconfigured.
+  projectKanban: ProjectKanbanTarget | null;
   serverName: string;
   isOnline: boolean;
   repoRoot: string;
@@ -82,6 +85,8 @@ interface HostGroup {
   projectId: string;
   projectName: string;
   projectCustomName: string | null;
+  // This host's Kanban board target for the project; null means unconfigured.
+  projectKanban: ProjectKanbanTarget | null;
   serverName: string;
   isOnline: boolean;
   workspaces: WorkspaceDescriptor[];
@@ -100,12 +105,13 @@ interface ProjectGroup {
 function findProjectMetadata(
   host: ProjectHost,
   projectKey: string,
-): { customName: string | null; displayName: string } | null {
+): { customName: string | null; displayName: string; kanban: ProjectKanbanTarget | null } | null {
   for (const project of host.projects) {
     if (project.projectId === projectKey) {
       return {
         customName: project.projectCustomName ?? null,
         displayName: project.projectDisplayName,
+        kanban: project.projectKanban ?? null,
       };
     }
   }
@@ -149,6 +155,7 @@ function toHostEntry(group: HostGroup): ProjectHostEntry {
     projectId: group.projectId,
     projectName: group.projectName,
     projectCustomName: group.projectCustomName,
+    projectKanban: group.projectKanban,
     serverName: group.serverName,
     isOnline: group.isOnline,
     repoRoot,
@@ -216,6 +223,7 @@ function addHostProjects(
         projectId,
         projectName: customName?.displayName ?? hostProject.projectName,
         projectCustomName: customName?.customName ?? null,
+        projectKanban: customName?.kanban ?? null,
         serverName: host.serverName,
         isOnline: host.isOnline,
         workspaces: [],

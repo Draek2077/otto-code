@@ -45,15 +45,31 @@ export interface KanbanProvider {
 }
 
 /**
- * The provider's slice of the daemon config, projected from
- * MutableDaemonConfig by the session. Secret values may arrive masked to the
- * wire sentinel when the daemon is serving other daemons over the relay; a
- * direct (trusted) host session passes the real values. Providers treat an
- * empty or sentinel token as "not configured".
+ * The provider's slice of the host's credentials. Kanban has no credential
+ * store of its own: it reuses whatever already authenticates the host to the
+ * same service, so a user who can already open PRs can already see the board.
+ *
+ *   GitHub -> the `gh` CLI owns the credential (`gh auth token`), the same way
+ *             the git-hosting GitHub service authenticates. There is no token
+ *             field in settings to author or forget.
+ *   Jira   -> the shared Atlassian account credential (email + API token, HTTP
+ *             Basic) plus the site URL, the same pair Bitbucket git hosting
+ *             uses.
+ *
+ * Secret values may arrive masked to the wire sentinel when the daemon is
+ * serving other daemons over the relay; a direct (trusted) host session passes
+ * the real values. Providers treat an empty or sentinel credential as "not
+ * configured".
  */
 export interface MutableKanbanProviderConfig {
+  /** GitHub OAuth token resolved from the gh CLI; null when gh is absent or signed out. */
   githubToken?: string | null;
-  jiraToken?: string | null;
+  /** Atlassian account email, shared with Bitbucket git hosting. */
+  atlassianEmail?: string | null;
+  /** Atlassian API token, shared with Bitbucket git hosting. */
+  atlassianApiToken?: string | null;
+  /** Jira Cloud site origin, e.g. https://acme.atlassian.net. */
+  jiraSiteUrl?: string | null;
 }
 
 export interface KanbanBoardListContext {

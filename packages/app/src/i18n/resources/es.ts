@@ -3655,6 +3655,29 @@ export const es: TranslationResources = {
           name: "GitHub",
           hint: "Autenticado mediante la CLI de GitHub (gh)",
           idle: "Usa el inicio de sesión de la CLI de GitHub del host",
+          usedFor: "Pull requests y tableros Kanban (GitHub Projects)",
+          scopesTitle: "Permisos necesarios",
+          scopesHint:
+            "Los tableros de Projects necesitan read:project y project, además de repo para leer tarjetas de repositorios privados. Concédelos con: gh auth refresh -s read:project,project",
+        },
+        atlassian: {
+          name: "Atlassian",
+          hint: "Una sola cuenta para Jira y Bitbucket Cloud",
+          usedFor: "Tableros Kanban (Jira) y pull requests (Bitbucket Cloud)",
+          email: "Correo de Atlassian",
+          apiToken: "Token de API",
+          apiTokenHint: "Se guarda de forma privada en el host, nunca en un repositorio",
+          apiTokenPlaceholder: "Pega un token de API",
+          jiraSiteUrl: "Sitio de Jira",
+          jiraSiteUrlHint:
+            "Solo se necesita para los tableros de Jira. El nombre de tu sitio o su URL completa.",
+          jiraSiteUrlPlaceholder: "acme.atlassian.net",
+          scopesTitle: "Permisos necesarios",
+          scopesHint:
+            "Un token con permisos necesita read:jira-work, write:jira-work, read:board-scope:jira-software y read:project:jira. Un token sin permisos definidos también funciona, pero es más amplio.",
+          saveError: "No se pudieron guardar las credenciales",
+          readyToCheck: "Credenciales guardadas",
+          missingCredentials: "Introduce tu correo y tu token de API",
         },
         bitbucket: {
           name: "Bitbucket Cloud",
@@ -4027,6 +4050,25 @@ export const es: TranslationResources = {
         empty: "No hay otros proyectos en este host para vincular.",
         error: "No se pudo actualizar el vínculo del proyecto",
         toggleAccessibility: "Vincular {{project}}",
+      },
+      kanban: {
+        sectionTitle: "Kanban",
+        description: "El tablero de seguimiento que este proyecto muestra en la pantalla Kanban.",
+        adapter: "Proveedor del tablero",
+        adapterNone: "Ninguno",
+        adapterGithub: "GitHub Projects",
+        adapterJira: "Jira",
+        githubBoard: "Tablero",
+        githubBoardHint:
+          "Déjalo vacío para usar los tableros del repositorio de GitHub de este proyecto. Si no, pega un número de tablero o una URL.",
+        githubBoardPlaceholder: "Número de tablero o URL",
+        jiraBoard: "Tablero",
+        jiraBoardHint: "El id del tablero de Jira, o la URL del tablero. Obligatorio para Jira.",
+        jiraBoardPlaceholder: "Id o URL del tablero",
+        credentialsHint:
+          "La conexión de ambos proveedores se configura una vez por equipo en Ajustes.",
+        saveError: "No se pudo guardar el objetivo del tablero Kanban.",
+        jiraBoardRequired: "Introduce un id de tablero de Jira.",
       },
       readFailures: {
         invalidTitle: "otto.json no se pudo analizar",

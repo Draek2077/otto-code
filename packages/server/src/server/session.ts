@@ -220,7 +220,8 @@ import { wrapSpokenInput } from "./voice-config.js";
 import { isVoicePermissionAllowed } from "./voice-permission-policy.js";
 import { VoiceSession } from "./session/voice/voice-session.js";
 import { CheckoutSession, type BusyWorkspaceAgent } from "./session/checkout/checkout-session.js";
-import { KanbanSession } from "./kanban/kanban-session.js";
+import { KanbanSession, type KanbanProjectTarget } from "./kanban/kanban-session.js";
+import { normalizeKanbanProjectTarget } from "./kanban/project-target.js";
 import { gitOperationLog } from "./git-operation-log.js";
 import {
   createWorkspaceGitObserverService,
@@ -385,7 +386,7 @@ import {
 import { archiveByScope, type ActiveWorkspaceRef } from "./workspace-archive-service.js";
 import { detectWorktreeArchiveBranch } from "./workspace-archive-branch.js";
 import { buildReattachCandidates } from "./worktree-reattach.js";
-import { parseGitRemoteLocation } from "@otto-code/protocol/git-remote";
+import { parseGitHubRemoteUrl, parseGitRemoteLocation } from "@otto-code/protocol/git-remote";
 import {
   WorktreeRequestError,
   toWorktreeRequestError,
@@ -1239,6 +1240,7 @@ export class Session {
     this.kanbanSession = new KanbanSession({
       emit: (msg) => this.emit(msg),
       readConfig: () => this.daemonConfigStore.get(),
+      resolveProjectTarget: (input) => this.resolveKanbanProjectTarget(input),
       log: {
         info: (message) => this.sessionLogger.info(message),
         error: (message, error) => this.sessionLogger.error({ err: error }, message),
@@ -5203,6 +5205,8 @@ export class Session {
         return this.handleProjectCreateDirectoryRequest(msg);
       case "project.remove.request":
         return this.handleProjectRemoveRequest(msg);
+      case "kanban.project.target.set.request":
+        return this.handleKanbanProjectTargetSetRequest(msg);
       case "project.links.list.request":
         return this.handleProjectLinksListRequest(msg);
       case "project.links.set.request":
@@ -7255,6 +7259,83 @@ export class Session {
           error: getErrorMessageOr(error, "Failed to rename project"),
         },
       });
+    }
+  }
+
+  /**
+   * Sets which tracking board a project shows on the Kanban screen.
+   *
+   * The stored value is a pointer, never a credential, which is why it can live
+   * unmasked in the project record - `normalizeKanbanProjectTarget` is what
+   * keeps that true, so a rejected value must not be persisted.
+   */
+  private async handleKanbanProjectTargetSetRequest(
+    request: Extract<SessionInboundMessage, { type: "kanban.project.target.set.request" }>,
+  ): Promise<void> {
+    const { projectId, target, requestId } = request;
+    this.sessionLogger.info(
+      { projectId, requestId, adapter: target?.adapter ?? null },
+      "session: kanban.project.target.set.request",
+    );
+
+    const reject = (error: string): void => {
+      this.emit({
+        type: "kanban.project.target.set.response",
+        payload: { requestId, projectId, accepted: false, target: null, error },
+      });
+    };
+
+    try {
+      const existing = await this.projectRegistry.get(projectId);
+      if (!existing) {
+        reject("Project not found");
+        return;
+      }
+
+      let normalized: { adapter: "github" | "jira"; boardId: string | null } | null = null;
+      if (target) {
+        const result = normalizeKanbanProjectTarget({
+          adapter: target.adapter,
+          boardId: target.boardId ?? null,
+        });
+        if (!result.ok) {
+          reject(result.error);
+          return;
+        }
+        normalized = result.target;
+      }
+
+      const updated = {
+        ...existing,
+        kanban: normalized,
+        updatedAt: new Date().toISOString(),
+      };
+      await this.projectRegistry.upsert(updated);
+
+      this.emit({
+        type: "kanban.project.target.set.response",
+        payload: { requestId, projectId, accepted: true, target: normalized, error: null },
+      });
+
+      // The target is host-global project metadata, same as the name: announce
+      // it on the project channel so every session's Kanban picker sees the
+      // project flip between configured and unconfigured immediately.
+      this.emitProjectUpdate({ kind: "upsert", project: updated });
+      const workspaces = await this.workspaceRegistry.list();
+      const hasActiveWorkspaces = workspaces.some(
+        (workspace) =>
+          workspace.projectId === projectId && !workspace.archivedAt && !workspace.hidden,
+      );
+      this.broadcastToAllSessions({
+        type: "project.updated.notification",
+        payload: { project: this.buildProjectDescriptor(updated), hasActiveWorkspaces },
+      });
+    } catch (error) {
+      this.sessionLogger.error(
+        { err: error, projectId, requestId },
+        "session: kanban.project.target.set.request error",
+      );
+      reject(getErrorMessageOr(error, "Failed to save the Kanban board target"));
     }
   }
 
@@ -9466,6 +9547,60 @@ export class Session {
     };
   }
 
+  /**
+   * Resolves "which board does this project show?" for the Kanban screen.
+   *
+   * The app names a project; everything else is decided here, so the picker
+   * stays dumb and the wire stays provider-agnostic. A project with no kanban
+   * target returns null, which the screen renders as the unconfigured
+   * watermark rather than an error.
+   */
+  private async resolveKanbanProjectTarget(input: {
+    projectId?: string;
+    projectKey?: string;
+  }): Promise<KanbanProjectTarget | null> {
+    const project = input.projectId
+      ? await this.projectRegistry.get(input.projectId)
+      : ((await this.projectRegistry.list()).find(
+          (candidate) => candidate.projectKey === input.projectKey,
+        ) ?? null);
+    const target = project?.kanban;
+    if (!project || !target) {
+      return null;
+    }
+    if (target.adapter === "jira") {
+      // Jira boards are site-scoped, not repo-scoped: the board id is the whole
+      // address, and an unset one is a misconfiguration the settings form
+      // prevents.
+      return { adapter: "jira", boardId: target.boardId };
+    }
+    // GitHub with no explicit board derives the project's boards from its git
+    // remote, so a repo-scoped board needs no configuration at all.
+    const remote = target.boardId ? null : await this.readProjectGitHubRemote(project.rootPath);
+    return {
+      adapter: "github",
+      boardId: target.boardId,
+      ...(remote ? { owner: remote.owner, repo: remote.repo } : {}),
+    };
+  }
+
+  private async readProjectGitHubRemote(
+    rootPath: string,
+  ): Promise<{ owner: string; repo: string } | null> {
+    try {
+      const { stdout } = await runGitCommand(["remote", "get-url", "origin"], {
+        cwd: rootPath,
+        envOverlay: { GIT_TERMINAL_PROMPT: "0" },
+      });
+      const parsed = parseGitHubRemoteUrl(stdout.trim());
+      return parsed ? { owner: parsed.owner, repo: parsed.repo } : null;
+    } catch {
+      // A project without a readable origin simply has no repo scoping; the
+      // provider falls back to the account's own boards.
+      return null;
+    }
+  }
+
   private buildWorkspaceGitHubRuntimePayload(
     snapshot: WorkspaceGitRuntimeSnapshot,
   ): NonNullable<WorkspaceDescriptorPayload["githubRuntime"]> {
@@ -9687,6 +9822,7 @@ export class Session {
       ...(project.projectKey ? { projectKey: project.projectKey } : {}),
       projectDisplayName: resolveProjectDisplayName(project),
       projectCustomName: project.customName ?? null,
+      projectKanban: project.kanban ?? null,
       projectRootPath: project.rootPath,
       projectKind: project.kind,
     };

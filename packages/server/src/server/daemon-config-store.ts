@@ -102,8 +102,13 @@ export const DAEMON_CONFIG_SECRET_SENTINEL = "__otto_secret_present__";
 const SECRET_WIRE_PATHS: readonly (readonly string[])[] = [
   ["speech", "openai", "apiKey"],
   ["gitHosting", "providers", "bitbucketCloud", "apiToken"],
+  ["gitHosting", "providers", "atlassian", "apiToken"],
   ["brain", "authToken"],
   ["brain", "remote", "authToken"],
+  // Retired credential slots. Kanban now reuses the host's gh CLI and Atlassian
+  // credentials, but a config written before v0.8.11 may still hold these, and
+  // an unmasked stale token is exactly as leakable as a live one.
+  // COMPAT(kanbanProviderTokens): retired in v0.8.11, delete after 2027-02-28.
   ["kanban", "providers", "github", "token"],
   ["kanban", "providers", "jira", "token"],
 ];

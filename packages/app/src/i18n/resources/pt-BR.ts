@@ -3636,6 +3636,29 @@ export const ptBR: TranslationResources = {
           name: "GitHub",
           hint: "Autenticado pela CLI do GitHub (gh)",
           idle: "Usa o login da CLI do GitHub do host",
+          usedFor: "Pull requests e quadros Kanban (GitHub Projects)",
+          scopesTitle: "Escopos necessários",
+          scopesHint:
+            "Os quadros do Projects precisam de read:project e project, além de repo para ler cartões de repositórios privados. Conceda-os com: gh auth refresh -s read:project,project",
+        },
+        atlassian: {
+          name: "Atlassian",
+          hint: "Uma conta para o Jira e o Bitbucket Cloud",
+          usedFor: "Quadros Kanban (Jira) e pull requests (Bitbucket Cloud)",
+          email: "E-mail da Atlassian",
+          apiToken: "Token de API",
+          apiTokenHint: "Armazenado de forma privada no host, nunca em um repositório",
+          apiTokenPlaceholder: "Cole um token de API",
+          jiraSiteUrl: "Site do Jira",
+          jiraSiteUrlHint:
+            "Necessário apenas para quadros do Jira. O nome do seu site ou a URL completa.",
+          jiraSiteUrlPlaceholder: "acme.atlassian.net",
+          scopesTitle: "Escopos necessários",
+          scopesHint:
+            "Um token com escopos precisa de read:jira-work, write:jira-work, read:board-scope:jira-software e read:project:jira. Um token sem escopos também funciona, mas é mais abrangente.",
+          saveError: "Falha ao salvar as credenciais",
+          readyToCheck: "Credenciais salvas",
+          missingCredentials: "Informe seu e-mail e token de API",
         },
         bitbucket: {
           name: "Bitbucket Cloud",
@@ -4006,6 +4029,25 @@ export const ptBR: TranslationResources = {
         empty: "Não há outros projetos neste host para vincular.",
         error: "Não foi possível atualizar o vínculo do projeto",
         toggleAccessibility: "Vincular {{project}}",
+      },
+      kanban: {
+        sectionTitle: "Kanban",
+        description: "O quadro de rastreamento que este projeto mostra na tela Kanban.",
+        adapter: "Provedor do quadro",
+        adapterNone: "Nenhum",
+        adapterGithub: "GitHub Projects",
+        adapterJira: "Jira",
+        githubBoard: "Quadro",
+        githubBoardHint:
+          "Deixe vazio para usar os quadros do repositório GitHub deste projeto. Caso contrário, cole um número de quadro ou uma URL.",
+        githubBoardPlaceholder: "Número do quadro ou URL",
+        jiraBoard: "Quadro",
+        jiraBoardHint: "O id do quadro Jira, ou a URL do quadro. Obrigatório para Jira.",
+        jiraBoardPlaceholder: "Id ou URL do quadro",
+        credentialsHint:
+          "O login de ambos os provedores é configurado uma vez por host em Configurações.",
+        saveError: "Não foi possível salvar o destino do quadro Kanban.",
+        jiraBoardRequired: "Digite um id de quadro Jira.",
       },
       readFailures: {
         invalidTitle: "Não foi possível analisar otto.json",

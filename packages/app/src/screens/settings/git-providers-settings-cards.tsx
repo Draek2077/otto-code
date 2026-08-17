@@ -45,7 +45,7 @@ export function GitProvidersSettingsCards({ serverId }: { serverId: string }) {
   return (
     <>
       <GitHubProviderCard serverId={serverId} />
-      <BitbucketCloudProviderCard serverId={serverId} />
+      <AtlassianProviderCard serverId={serverId} />
     </>
   );
 }
@@ -78,7 +78,22 @@ function GitHubProviderCard({ serverId }: { serverId: string }) {
             <Text style={settingsStyles.rowHint}>
               {t("settings.host.gitProviders.github.hint")}
             </Text>
+            <Text style={settingsStyles.rowHint}>
+              {t("settings.host.gitProviders.github.usedFor")}
+            </Text>
           </View>
+        </View>
+      </View>
+      {/* Scopes are listed here rather than only in an error, so a user can
+          create a working token before the board fails to load. */}
+      <View style={styles.borderedRow}>
+        <View style={settingsStyles.rowContent}>
+          <Text style={settingsStyles.rowTitle}>
+            {t("settings.host.gitProviders.github.scopesTitle")}
+          </Text>
+          <Text style={settingsStyles.rowHint}>
+            {t("settings.host.gitProviders.github.scopesHint")}
+          </Text>
         </View>
       </View>
       <View style={styles.borderedRow}>
@@ -104,16 +119,46 @@ function GitHubProviderCard({ serverId }: { serverId: string }) {
   );
 }
 
-function BitbucketCloudProviderCard({ serverId }: { serverId: string }) {
+/**
+ * Reads the host's stored Atlassian credential.
+ *
+ * COMPAT(atlassianCredential): added in v0.8.11, drop the bitbucketCloud
+ * fallback after 2027-02-28. A host that authored its credential before the
+ * Atlassian re-frame shows it here rather than looking empty.
+ */
+function readPersistedAtlassian(
+  providers: NonNullable<
+    NonNullable<ReturnType<typeof useDaemonConfig>["config"]>["gitHosting"]
+  >["providers"],
+): { email: string; apiToken: string; jiraSiteUrl: string } {
+  const atlassian = providers?.atlassian;
+  const legacy = providers?.bitbucketCloud;
+  return {
+    email: atlassian?.email ?? legacy?.email ?? "",
+    apiToken: atlassian?.apiToken ?? legacy?.apiToken ?? "",
+    jiraSiteUrl: atlassian?.jiraSiteUrl ?? "",
+  };
+}
+
+/**
+ * One card for the whole Atlassian account. Jira (Kanban boards) and Bitbucket
+ * Cloud (git hosting) are the same account and the same HTTP Basic pair, so the
+ * user authors the credential once. The Jira site is the only Jira-specific
+ * field and is not a secret.
+ */
+function AtlassianProviderCard({ serverId }: { serverId: string }) {
   const { t } = useTranslation();
   const client = useHostRuntimeClient(serverId);
   const { config, patchConfig } = useDaemonConfig(serverId);
-  const persisted = config?.gitHosting?.providers?.bitbucketCloud;
-  const persistedEmail = persisted?.email ?? "";
-  const persistedToken = persisted?.apiToken ?? "";
+  const {
+    email: persistedEmail,
+    apiToken: persistedToken,
+    jiraSiteUrl: persistedSite,
+  } = readPersistedAtlassian(config?.gitHosting?.providers);
 
   const [emailDraft, setEmailDraft] = useState(persistedEmail);
   const [tokenDraft, setTokenDraft] = useState(persistedToken);
+  const [siteDraft, setSiteDraft] = useState(persistedSite);
 
   // Resync from the committed values when they change elsewhere.
   useEffect(() => {
@@ -122,11 +167,14 @@ function BitbucketCloudProviderCard({ serverId }: { serverId: string }) {
   useEffect(() => {
     setTokenDraft(persistedToken);
   }, [persistedToken]);
+  useEffect(() => {
+    setSiteDraft(persistedSite);
+  }, [persistedSite]);
 
   const credentialsMutation = useMutation({
-    mutationFn: async (next: { email?: string; apiToken?: string }) => {
+    mutationFn: async (next: { email?: string; apiToken?: string; jiraSiteUrl?: string }) => {
       const result = await patchConfig({
-        gitHosting: { providers: { bitbucketCloud: next } },
+        gitHosting: { providers: { atlassian: next } },
       });
       if (!result) {
         throw new Error(t("workspace.terminal.hostDisconnected"));
@@ -147,6 +195,12 @@ function BitbucketCloudProviderCard({ serverId }: { serverId: string }) {
     credentialsMutation.mutate({ apiToken: next });
   }, [tokenDraft, persistedToken, credentialsMutation]);
 
+  const commitSite = useCallback(() => {
+    const next = siteDraft.trim();
+    if (next === persistedSite.trim()) return;
+    credentialsMutation.mutate({ jiraSiteUrl: next });
+  }, [siteDraft, persistedSite, credentialsMutation]);
+
   const authStatusMutation = useMutation({
     mutationFn: async (): Promise<HostingAuthStatusPayload> => {
       if (!client) {
@@ -161,8 +215,8 @@ function BitbucketCloudProviderCard({ serverId }: { serverId: string }) {
 
   const hasCredentials = persistedEmail.trim().length > 0 && persistedToken.trim().length > 0;
   const idleHint = hasCredentials
-    ? t("settings.host.gitProviders.bitbucket.readyToCheck")
-    : t("settings.host.gitProviders.bitbucket.missingCredentials");
+    ? t("settings.host.gitProviders.atlassian.readyToCheck")
+    : t("settings.host.gitProviders.atlassian.missingCredentials");
   const statusContent = credentialsMutation.isError
     ? renderSaveError(t)
     : renderAuthStatus({
@@ -173,16 +227,19 @@ function BitbucketCloudProviderCard({ serverId }: { serverId: string }) {
       });
 
   return (
-    <View style={settingsStyles.card} testID="git-providers-bitbucket-card">
+    <View style={settingsStyles.card} testID="git-providers-atlassian-card">
       <View style={settingsStyles.row}>
         <View style={styles.providerHeading}>
           <BitbucketIcon size={20} color={styles.iconColor.color} />
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>
-              {t("settings.host.gitProviders.bitbucket.name")}
+              {t("settings.host.gitProviders.atlassian.name")}
             </Text>
             <Text style={settingsStyles.rowHint}>
-              {t("settings.host.gitProviders.bitbucket.hint")}
+              {t("settings.host.gitProviders.atlassian.hint")}
+            </Text>
+            <Text style={settingsStyles.rowHint}>
+              {t("settings.host.gitProviders.atlassian.usedFor")}
             </Text>
           </View>
         </View>
@@ -190,7 +247,7 @@ function BitbucketCloudProviderCard({ serverId }: { serverId: string }) {
       <View style={styles.borderedRow}>
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>
-            {t("settings.host.gitProviders.bitbucket.email")}
+            {t("settings.host.gitProviders.atlassian.email")}
           </Text>
         </View>
         <TextInput
@@ -205,17 +262,17 @@ function BitbucketCloudProviderCard({ serverId }: { serverId: string }) {
           spellCheck={false}
           inputMode="email"
           style={styles.credentialInput}
-          accessibilityLabel={t("settings.host.gitProviders.bitbucket.email")}
-          testID="git-providers-bitbucket-email-input"
+          accessibilityLabel={t("settings.host.gitProviders.atlassian.email")}
+          testID="git-providers-atlassian-email-input"
         />
       </View>
       <View style={styles.borderedRow}>
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>
-            {t("settings.host.gitProviders.bitbucket.apiToken")}
+            {t("settings.host.gitProviders.atlassian.apiToken")}
           </Text>
           <Text style={settingsStyles.rowHint}>
-            {t("settings.host.gitProviders.bitbucket.apiTokenHint")}
+            {t("settings.host.gitProviders.atlassian.apiTokenHint")}
           </Text>
         </View>
         <TextInput
@@ -223,21 +280,56 @@ function BitbucketCloudProviderCard({ serverId }: { serverId: string }) {
           onChangeText={setTokenDraft}
           onBlur={commitToken}
           onSubmitEditing={commitToken}
-          placeholder={t("settings.host.gitProviders.bitbucket.apiTokenPlaceholder")}
+          placeholder={t("settings.host.gitProviders.atlassian.apiTokenPlaceholder")}
           placeholderTextColor={styles.placeholderColor.color}
           secureTextEntry
           autoCapitalize="none"
           autoCorrect={false}
           spellCheck={false}
           style={styles.credentialInput}
-          accessibilityLabel={t("settings.host.gitProviders.bitbucket.apiToken")}
-          testID="git-providers-bitbucket-token-input"
+          accessibilityLabel={t("settings.host.gitProviders.atlassian.apiToken")}
+          testID="git-providers-atlassian-token-input"
         />
+      </View>
+      <View style={styles.borderedRow}>
+        <View style={settingsStyles.rowContent}>
+          <Text style={settingsStyles.rowTitle}>
+            {t("settings.host.gitProviders.atlassian.jiraSiteUrl")}
+          </Text>
+          <Text style={settingsStyles.rowHint}>
+            {t("settings.host.gitProviders.atlassian.jiraSiteUrlHint")}
+          </Text>
+        </View>
+        <TextInput
+          value={siteDraft}
+          onChangeText={setSiteDraft}
+          onBlur={commitSite}
+          onSubmitEditing={commitSite}
+          placeholder={t("settings.host.gitProviders.atlassian.jiraSiteUrlPlaceholder")}
+          placeholderTextColor={styles.placeholderColor.color}
+          autoCapitalize="none"
+          autoCorrect={false}
+          spellCheck={false}
+          inputMode="url"
+          style={styles.credentialInput}
+          accessibilityLabel={t("settings.host.gitProviders.atlassian.jiraSiteUrl")}
+          testID="git-providers-atlassian-jira-site-input"
+        />
+      </View>
+      <View style={styles.borderedRow}>
+        <View style={settingsStyles.rowContent}>
+          <Text style={settingsStyles.rowTitle}>
+            {t("settings.host.gitProviders.atlassian.scopesTitle")}
+          </Text>
+          <Text style={settingsStyles.rowHint}>
+            {t("settings.host.gitProviders.atlassian.scopesHint")}
+          </Text>
+        </View>
       </View>
       <View style={styles.borderedRow}>
         <View style={settingsStyles.rowContent}>{statusContent}</View>
         <Button
-          testID="git-providers-bitbucket-check-button"
+          testID="git-providers-atlassian-check-button"
           onPress={handleCheck}
           variant="secondary"
           size="sm"
@@ -253,7 +345,7 @@ function BitbucketCloudProviderCard({ serverId }: { serverId: string }) {
 function renderSaveError(t: TFunction) {
   return (
     <Text style={settingsStyles.rowError} testID="git-providers-credentials-error">
-      {t("settings.host.gitProviders.bitbucket.saveError")}
+      {t("settings.host.gitProviders.atlassian.saveError")}
     </Text>
   );
 }

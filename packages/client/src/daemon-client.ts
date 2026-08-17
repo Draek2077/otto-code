@@ -99,6 +99,7 @@ import type {
   StashPopResponse,
   StashListResponse,
   KanbanBoardsListResponse,
+  ProjectKanbanTarget,
   KanbanBoardGetResponse,
   KanbanCardMoveResponse,
   KanbanCardCreateResponse,
@@ -3425,6 +3426,31 @@ export class DaemonClient {
       throw new Error(payload.error ?? "renameProject rejected");
     }
     return { customName: payload.customName };
+  }
+
+  /**
+   * Sets (or with a null target, clears) which tracking board a project shows
+   * on the Kanban screen. The daemon normalizes what it stores - a pasted board
+   * URL comes back as the parsed id - so the caller should render the returned
+   * target rather than its own draft.
+   */
+  async setKanbanProjectTarget(
+    input: { projectId: string; target: ProjectKanbanTarget | null },
+    requestId?: string,
+  ): Promise<{ target: ProjectKanbanTarget | null }> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "kanban.project.target.set.request",
+        projectId: input.projectId,
+        target: input.target,
+      },
+      responseType: "kanban.project.target.set.response",
+    });
+    if (!payload.accepted) {
+      throw new Error(payload.error ?? "setKanbanProjectTarget rejected");
+    }
+    return { target: payload.target };
   }
 
   async removeProject(

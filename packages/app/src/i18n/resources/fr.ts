@@ -3669,6 +3669,29 @@ export const fr: TranslationResources = {
           name: "GitHub",
           hint: "Authentifié via l'interface en ligne de commande GitHub (gh)",
           idle: "Utilise la connexion à l'interface en ligne de commande GitHub de l'hôte",
+          usedFor: "Pull requests et tableaux Kanban (GitHub Projects)",
+          scopesTitle: "Portées requises",
+          scopesHint:
+            "Les tableaux Projects nécessitent read:project et project, ainsi que repo pour lire les cartes des dépôts privés. Accordez-les avec : gh auth refresh -s read:project,project",
+        },
+        atlassian: {
+          name: "Atlassian",
+          hint: "Un seul compte pour Jira et Bitbucket Cloud",
+          usedFor: "Tableaux Kanban (Jira) et pull requests (Bitbucket Cloud)",
+          email: "E-mail Atlassian",
+          apiToken: "Jeton d'API",
+          apiTokenHint: "Stocké de manière privée sur l'hôte, jamais dans un dépôt",
+          apiTokenPlaceholder: "Collez un jeton d'API",
+          jiraSiteUrl: "Site Jira",
+          jiraSiteUrlHint:
+            "Nécessaire uniquement pour les tableaux Jira. Le nom de votre site ou son URL complète.",
+          jiraSiteUrlPlaceholder: "acme.atlassian.net",
+          scopesTitle: "Portées requises",
+          scopesHint:
+            "Un jeton à portées limitées nécessite read:jira-work, write:jira-work, read:board-scope:jira-software et read:project:jira. Un jeton sans portée fonctionne aussi, mais il est plus large.",
+          saveError: "Échec de l'enregistrement des identifiants",
+          readyToCheck: "Identifiants enregistrés",
+          missingCredentials: "Saisissez votre e-mail et votre jeton d'API",
         },
         bitbucket: {
           name: "Bitbucket Cloud",
@@ -4043,6 +4066,25 @@ export const fr: TranslationResources = {
         empty: "Aucun autre projet sur cet hôte à lier.",
         error: "Impossible de mettre à jour le lien du projet",
         toggleAccessibility: "Lier {{project}}",
+      },
+      kanban: {
+        sectionTitle: "Kanban",
+        description: "Le tableau de suivi que ce projet affiche sur l'écran Kanban.",
+        adapter: "Fournisseur du tableau",
+        adapterNone: "Aucun",
+        adapterGithub: "GitHub Projects",
+        adapterJira: "Jira",
+        githubBoard: "Tableau",
+        githubBoardHint:
+          "Laissez vide pour utiliser les tableaux du dépôt GitHub de ce projet. Sinon, collez un numéro de tableau ou une URL.",
+        githubBoardPlaceholder: "Numéro de tableau ou URL",
+        jiraBoard: "Tableau",
+        jiraBoardHint: "L'identifiant du tableau Jira, ou l'URL du tableau. Requis pour Jira.",
+        jiraBoardPlaceholder: "Identifiant ou URL du tableau",
+        credentialsHint:
+          "La connexion des deux fournisseurs se configure une fois par hôte dans Paramètres.",
+        saveError: "Impossible d'enregistrer la cible du tableau Kanban.",
+        jiraBoardRequired: "Saisissez un identifiant de tableau Jira.",
       },
       readFailures: {
         invalidTitle: "otto.json n'a pas pu être analysé",

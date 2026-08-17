@@ -1,264 +1,328 @@
 import { describe, expect, it } from "vitest";
 import { JIRA_UNASSIGNED_COLUMN_ID, JiraKanbanProvider } from "./jira-provider.js";
 
-/**
- * Builds a fetch stub that routes on the Jira REST v3 URL path. Returns the
- * captured calls plus the provider.
- */
-function makeProvider(options: {
-  token?: string | null;
+const SITE = "https://acme.atlassian.net";
+
+interface StubIssue {
+  key: string;
+  summary: string;
+  /** Status id, matched against a column's statuses. */
+  statusId: string;
+  statusName?: string;
+  assignee?: string;
+  description?: unknown;
+}
+
+interface StubOptions {
   boards?: Array<{ id: number; name: string }>;
-  board?: { id: number; name: string };
-  filters?: Array<{ id: number; name: string }>;
-  issues?: Array<{ key: string; summary: string; assignee?: string; description?: string }>;
-  filterMembers: Record<number, string[]>;
-}) {
-  const calls: Array<{ method: string; path: string; body: string | null }> = [];
+  columns?: Array<{ name: string; statusIds: string[] }>;
+  issues?: StubIssue[];
+  projectKey?: string;
+  /** Transitions the stub offers for any issue: transition id -> target status id. */
+  transitions?: Array<{ id: string; toStatusId: string }>;
+  createdKey?: string;
+}
+
+const DEFAULT_COLUMNS = [
+  { name: "To Do", statusIds: ["1"] },
+  { name: "In Progress", statusIds: ["3"] },
+];
+
+const DEFAULT_ISSUES: StubIssue[] = [
+  { key: "ENG-1", summary: "First issue", statusId: "1" },
+  { key: "ENG-2", summary: "Second issue", statusId: "3", assignee: "Ada Lovelace" },
+];
+
+/**
+ * Builds a fetch stub over the real Jira Cloud REST surface: boards and board
+ * configuration come from the Agile API, issues and transitions from the
+ * platform API. Returns the captured calls plus the provider.
+ */
+function makeProvider(options: StubOptions = {}) {
+  const calls: Array<{ method: string; path: string; search: string; body: string | null }> = [];
+  const issues = options.issues ?? DEFAULT_ISSUES;
+
+  const asIssue = (issue: StubIssue): unknown => ({
+    key: issue.key,
+    self: `${SITE}/rest/api/3/issue/${issue.key}`,
+    fields: {
+      summary: issue.summary,
+      description: issue.description ?? null,
+      status: { id: issue.statusId, name: issue.statusName ?? "Status" },
+      assignee: issue.assignee ? { displayName: issue.assignee } : null,
+    },
+  });
+
   const fetchImpl: typeof fetch = async (input, init) => {
     const url = new URL(String(input));
     const method = (init?.method ?? "GET").toUpperCase();
     const body = typeof init?.body === "string" ? init.body : null;
-    calls.push({ method, path: url.pathname, body });
+    calls.push({ method, path: url.pathname, search: url.search, body });
 
-    const issue = (key: string): unknown => {
-      const source = options.issues?.find((i) => i.key === key);
-      return {
-        key,
-        self: `https://acme.atlassian.net/rest/api/3/issue/${key}`,
-        fields: {
-          summary: source?.summary ?? key,
-          description: source?.description ?? null,
-          assignee: source?.assignee ? { displayName: source.assignee } : null,
-        },
-      };
-    };
-
-    const payload = routeJiraStub(url.pathname, method, body, options, issue);
-    return new Response(JSON.stringify(payload), {
+    // A transition POST answers 204 with no body, exactly as Jira does.
+    if (url.pathname.endsWith("/transitions") && method !== "GET") {
+      return new Response(null, { status: 204 });
+    }
+    return new Response(JSON.stringify(routeJira(url.pathname, method, options, issues, asIssue)), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   };
-  return { calls, provider: new JiraKanbanProvider({ fetch: fetchImpl }) };
+
+  return { calls, provider: new JiraKanbanProvider({ fetch: fetchImpl, apiBaseUrl: SITE }) };
 }
 
-/** Routes a Jira REST path to its canned payload. */
-function routeJiraStub(
-  pathname: string,
+/** Maps a Jira Cloud REST path to its canned payload. */
+function routeJira(
+  path: string,
   method: string,
-  body: string | null,
-  options: {
-    boards?: Array<{ id: number; name: string }>;
-    board?: { id: number; name: string };
-    filters?: Array<{ id: number; name: string }>;
-    issues?: Array<{ key: string; summary: string; assignee?: string; description?: string }>;
-    filterMembers: Record<number, string[]>;
-  },
-  issue: (key: string) => unknown,
+  options: StubOptions,
+  issues: StubIssue[],
+  asIssue: (issue: StubIssue) => unknown,
 ): unknown {
-  if (pathname === "/ex/jira/api/3/board") {
-    return (options.boards ?? [{ id: 100, name: "Sprint Board" }]).map((b) => ({
-      id: b.id,
-      name: b.name,
-      self: `https://acme.atlassian.net/rest/api/3/board/${b.id}`,
-    }));
+  switch (path) {
+    case "/rest/agile/1.0/board":
+      return {
+        values: (options.boards ?? [{ id: 100, name: "Sprint Board" }]).map((board) => ({
+          id: board.id,
+          name: board.name,
+        })),
+      };
+    case "/rest/agile/1.0/board/100":
+      return { id: 100, name: options.boards?.[0]?.name ?? "Sprint Board" };
+    case "/rest/agile/1.0/board/100/configuration":
+      return {
+        columnConfig: {
+          columns: (options.columns ?? DEFAULT_COLUMNS).map((column) => ({
+            name: column.name,
+            statuses: column.statusIds.map((id) => ({ id })),
+          })),
+        },
+      };
+    case "/rest/agile/1.0/board/100/issue":
+      return { issues: issues.map(asIssue) };
+    case "/rest/agile/1.0/board/100/project":
+      return { values: [{ key: options.projectKey ?? "ENG" }] };
+    default:
+      break;
   }
-  if (pathname === "/ex/jira/api/3/board/100") {
+  if (path.endsWith("/transitions")) {
     return {
-      id: options.board?.id ?? 100,
-      name: options.board?.name ?? "Sprint Board",
-      self: "https://acme.atlassian.net/rest/api/3/board/100",
+      transitions: (options.transitions ?? [{ id: "11", toStatusId: "3" }]).map((transition) => ({
+        id: transition.id,
+        to: { id: transition.toStatusId },
+      })),
     };
   }
-  if (pathname === "/ex/jira/api/3/board/100/filter") {
-    return (options.filters ?? []).map((f) => ({ id: f.id, name: f.name }));
+  if (path === "/rest/api/3/issue" && method === "POST") {
+    return { key: options.createdKey ?? "ENG-9" };
   }
-  if (pathname.startsWith("/ex/jira/api/3/board/100/issues")) {
-    return (options.issues ?? []).map((i) => issue(i.key));
-  }
-  if (pathname === "/ex/jira/api/3/issue" && method === "POST") {
-    // The created issue gets the next key and echoes the requested fields.
-    const requested = JSON.parse(String(body)) as {
-      fields: { summary: string; description?: string };
-    };
-    return {
-      key: "PROJ-10",
-      self: "https://acme.atlassian.net/rest/api/3/issue/PROJ-10",
-      fields: {
-        summary: requested.fields.summary,
-        description: requested.fields.description ?? null,
-        assignee: null,
-      },
-    };
-  }
-  const issueGetMatch = pathname.match(/\/ex\/jira\/api\/3\/issue\/([^/]+)/);
-  if (issueGetMatch) {
-    return issue(decodeURIComponent(issueGetMatch[1]));
-  }
-  const memberMatch = pathname.match(/\/ex\/jira\/api\/3\/board\/100\/quickfilter\/(\d+)\/search/);
-  if (memberMatch) {
-    const keys = options.filterMembers[Number(memberMatch[1])] ?? [];
-    return keys.map((key) => issue(key));
+  if (path.startsWith("/rest/api/3/issue/")) {
+    const key = path.slice("/rest/api/3/issue/".length);
+    const found = issues.find((issue) => issue.key === key);
+    return asIssue(found ?? { key, summary: `Summary for ${key}`, statusId: "1" });
   }
   return {};
 }
 
+const CREDENTIALS = {
+  atlassianEmail: "dev@acme.com",
+  atlassianApiToken: "atl_token",
+  jiraSiteUrl: SITE,
+};
+
 describe("JiraKanbanProvider", () => {
-  it("lists the site's boards", async () => {
-    const { provider } = makeProvider({ token: "jira_tok", filterMembers: {} });
-    await provider.initialize({ jiraToken: "jira_tok" });
-    const boards = await provider.listBoards({});
-    expect(boards).toEqual([{ providerId: "jira", boardId: "100", title: "Sprint Board" }]);
+  it("authenticates with the shared Atlassian credential as HTTP Basic", async () => {
+    const captured: Array<Record<string, string>> = [];
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      captured.push({ ...(init?.headers as Record<string, string>) });
+      return new Response(JSON.stringify({ values: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    };
+    const provider = new JiraKanbanProvider({ fetch: fetchImpl, apiBaseUrl: SITE });
+    await provider.initialize(CREDENTIALS);
+
+    const expected = Buffer.from("dev@acme.com:atl_token").toString("base64");
+    expect(captured[0].Authorization).toBe(`Basic ${expected}`);
   });
 
-  it("reports unconfigured when no token is set", async () => {
-    const { provider } = makeProvider({ token: null, filterMembers: {} });
-    await provider.initialize({ jiraToken: null });
+  it("reports unconfigured until email, token, and site URL are all present", async () => {
+    const { provider } = makeProvider();
+    // A credential missing its site URL cannot address a Jira Cloud site at
+    // all, so it is not "partly configured" - it is unconfigured.
+    await provider.initialize({ ...CREDENTIALS, jiraSiteUrl: "" });
     await expect(provider.listBoards({})).rejects.toThrow(/not configured/i);
   });
 
-  it("normalizes a board into quick-filter columns plus an unassigned bucket", async () => {
-    const { provider } = makeProvider({
-      token: "jira_tok",
-      filters: [
-        { id: 1, name: "This Sprint" },
-        { id: 2, name: "Blocked" },
-      ],
-      issues: [
-        { key: "PROJ-1", summary: "Do the thing", assignee: "alice" },
-        { key: "PROJ-2", summary: "Other thing", description: "blocked by infra" },
-        { key: "PROJ-3", summary: "No filter" },
-      ],
-      filterMembers: { 1: ["PROJ-1"], 2: ["PROJ-2"] },
-    });
-    await provider.initialize({ jiraToken: "jira_tok" });
-    const board = await provider.getBoard("100");
-
-    expect(board.id).toBe("100");
-    expect(board.title).toBe("Sprint Board");
-
-    const sprint = board.columns.find((c) => c.name === "This Sprint");
-    expect(sprint?.id).toBe("1");
-    expect(sprint?.cards.map((c) => c.id)).toEqual(["PROJ-1"]);
-
-    const blocked = board.columns.find((c) => c.name === "Blocked");
-    expect(blocked?.id).toBe("2");
-    expect(blocked?.cards.map((c) => c.id)).toEqual(["PROJ-2"]);
-
-    // The issue in no filter lands in the synthetic unassigned column.
-    const unassigned = board.columns.find((c) => c.id === JIRA_UNASSIGNED_COLUMN_ID);
-    expect(unassigned?.name).toBe("Unassigned");
-    expect(unassigned?.cards.map((c) => c.id)).toEqual(["PROJ-3"]);
-  });
-
-  it("maps the filter name onto the card status and the issue key onto rawProviderId", async () => {
-    const { provider } = makeProvider({
-      token: "jira_tok",
-      filters: [{ id: 1, name: "This Sprint" }],
-      issues: [{ key: "PROJ-1", summary: "Do the thing", assignee: "alice" }],
-      filterMembers: { 1: ["PROJ-1"] },
-    });
-    await provider.initialize({ jiraToken: "jira_tok" });
-    const board = await provider.getBoard("100");
-    const card = board.columns.find((c) => c.id === "1")?.cards.find((c) => c.id === "PROJ-1");
-    expect(card?.status).toBe("This Sprint");
-    expect(card?.assignees).toEqual(["alice"]);
-    expect(card?.rawProviderId).toBe("PROJ-1");
-  });
-
-  it("moves a card into a quick filter via addIssue", async () => {
+  it("lists the site's boards from the Agile API", async () => {
     const { provider, calls } = makeProvider({
-      token: "jira_tok",
-      filters: [
-        { id: 1, name: "This Sprint" },
-        { id: 2, name: "Blocked" },
+      boards: [
+        { id: 100, name: "Sprint Board" },
+        { id: 101, name: "Support Board" },
       ],
-      issues: [{ key: "PROJ-1", summary: "Do the thing" }],
-      filterMembers: { 1: ["PROJ-1"], 2: [] },
     });
-    await provider.initialize({ jiraToken: "jira_tok" });
-    await provider.getBoard("100");
-    await provider.moveCard("100", "PROJ-1", "2");
+    await provider.initialize(CREDENTIALS);
+    const boards = await provider.listBoards({});
 
-    const moveCall = calls.find((c) => c.path === "/ex/jira/api/3/quickfilter/2/addIssue");
-    expect(moveCall).toBeDefined();
-    expect(moveCall?.method).toBe("POST");
-    expect(JSON.parse(moveCall?.body ?? "{}")).toEqual({ issue: "PROJ-1" });
-  });
-
-  it("clears every filter when dropped on the unassigned column", async () => {
-    const { provider, calls } = makeProvider({
-      token: "jira_tok",
-      filters: [
-        { id: 1, name: "This Sprint" },
-        { id: 2, name: "Blocked" },
-      ],
-      issues: [{ key: "PROJ-1", summary: "Do the thing" }],
-      // The issue matches both filters; moving it to Unassigned must remove
-      // it from both.
-      filterMembers: { 1: ["PROJ-1"], 2: ["PROJ-1"] },
-    });
-    await provider.initialize({ jiraToken: "jira_tok" });
-    await provider.getBoard("100");
-    await provider.moveCard("100", "PROJ-1", JIRA_UNASSIGNED_COLUMN_ID);
-
-    const removes = calls.filter((c) => c.method === "POST" && c.path.endsWith("/removeIssue"));
-    expect(removes.map((c) => c.path).sort()).toEqual([
-      "/ex/jira/api/3/quickfilter/1/removeIssue",
-      "/ex/jira/api/3/quickfilter/2/removeIssue",
+    expect(boards).toEqual([
+      { providerId: "jira", boardId: "100", title: "Sprint Board" },
+      { providerId: "jira", boardId: "101", title: "Support Board" },
     ]);
+    expect(calls.every((call) => call.path.startsWith("/rest/"))).toBe(true);
+  });
+
+  it("normalizes a board into its configured columns", async () => {
+    const { provider } = makeProvider();
+    await provider.initialize(CREDENTIALS);
+    const board = await provider.getBoard("100");
+
+    expect(board.title).toBe("Sprint Board");
+    expect(board.columns.map((column) => column.id)).toEqual(["To Do", "In Progress"]);
+    expect(board.columns[0].cards.map((card) => card.id)).toEqual(["ENG-1"]);
+    expect(board.columns[1].cards.map((card) => card.id)).toEqual(["ENG-2"]);
+  });
+
+  it("places issues whose status maps to no column in an unassigned bucket", async () => {
+    const { provider } = makeProvider({
+      issues: [
+        ...DEFAULT_ISSUES,
+        // Status 99 belongs to no column; Jira allows this and the issue is
+        // still on the board, so hiding it would lose the user's work.
+        { key: "ENG-3", summary: "Orphan status", statusId: "99" },
+      ],
+    });
+    await provider.initialize(CREDENTIALS);
+    const board = await provider.getBoard("100");
+
+    const unassigned = board.columns.find((column) => column.id === JIRA_UNASSIGNED_COLUMN_ID);
+    expect(unassigned?.cards.map((card) => card.id)).toEqual(["ENG-3"]);
+  });
+
+  it("reads a board without querying per column", async () => {
+    // The issue's own status decides its column, so board reads must not scale
+    // with the number of columns.
+    const { provider, calls } = makeProvider({
+      columns: [
+        { name: "A", statusIds: ["1"] },
+        { name: "B", statusIds: ["2"] },
+        { name: "C", statusIds: ["3"] },
+        { name: "D", statusIds: ["4"] },
+      ],
+    });
+    await provider.initialize(CREDENTIALS);
+    calls.length = 0;
+    await provider.getBoard("100");
+
+    expect(calls).toHaveLength(4);
+  });
+
+  it("gives cards a browse URL rather than the REST self link", async () => {
+    const { provider } = makeProvider();
+    await provider.initialize(CREDENTIALS);
+    const board = await provider.getBoard("100");
+
+    expect(board.columns[0].cards[0].url).toBe(`${SITE}/browse/ENG-1`);
+  });
+
+  it("moves a card by transitioning it into a status the target column owns", async () => {
+    const { provider, calls } = makeProvider({
+      transitions: [
+        { id: "5", toStatusId: "99" },
+        { id: "11", toStatusId: "3" },
+      ],
+    });
+    await provider.initialize(CREDENTIALS);
+    await provider.getBoard("100");
+    calls.length = 0;
+    await provider.moveCard("100", "ENG-1", "In Progress");
+
+    const posted = calls.find((call) => call.method === "POST");
+    expect(posted?.path).toBe("/rest/api/3/issue/ENG-1/transitions");
+    // Transition 5 lands on status 99, which "In Progress" does not own.
+    expect(JSON.parse(posted?.body ?? "{}")).toEqual({ transition: { id: "11" } });
+  });
+
+  it("explains when the workflow offers no transition into the target column", async () => {
+    const { provider } = makeProvider({ transitions: [{ id: "5", toStatusId: "99" }] });
+    await provider.initialize(CREDENTIALS);
+    await provider.getBoard("100");
+
+    await expect(provider.moveCard("100", "ENG-1", "In Progress")).rejects.toThrow(
+      /no available transition/i,
+    );
   });
 
   it("rejects a move to an unknown column", async () => {
+    const { provider } = makeProvider();
+    await provider.initialize(CREDENTIALS);
+    await provider.getBoard("100");
+
+    await expect(provider.moveCard("100", "ENG-1", "Nope")).rejects.toThrow(/unknown column/i);
+  });
+
+  it("rejects a move into the synthetic unassigned column", async () => {
+    const { provider } = makeProvider();
+    await provider.initialize(CREDENTIALS);
+    await provider.getBoard("100");
+
+    await expect(provider.moveCard("100", "ENG-1", JIRA_UNASSIGNED_COLUMN_ID)).rejects.toThrow(
+      /not a real Jira column/i,
+    );
+  });
+
+  it("creates a card in the board's project", async () => {
+    const { provider, calls } = makeProvider({ createdKey: "ENG-9" });
+    await provider.initialize(CREDENTIALS);
+    await provider.getBoard("100");
+    calls.length = 0;
+    const card = await provider.createCard("100", null, { title: "New work", body: "Details" });
+
+    const created = calls.find(
+      (call) => call.method === "POST" && call.path === "/rest/api/3/issue",
+    );
+    const fields = JSON.parse(created?.body ?? "{}").fields;
+    expect(fields.project).toEqual({ key: "ENG" });
+    expect(fields.summary).toBe("New work");
+    // v3 takes Atlassian Document Format, not a plain string.
+    expect(fields.description.type).toBe("doc");
+    expect(card.id).toBe("ENG-9");
+  });
+
+  it("round-trips a card body through Atlassian Document Format", async () => {
     const { provider } = makeProvider({
-      token: "jira_tok",
-      filters: [{ id: 1, name: "This Sprint" }],
-      issues: [{ key: "PROJ-1", summary: "Do the thing" }],
-      filterMembers: { 1: ["PROJ-1"] },
+      issues: [
+        {
+          key: "ENG-1",
+          summary: "First issue",
+          statusId: "1",
+          description: {
+            type: "doc",
+            version: 1,
+            content: [{ type: "paragraph", content: [{ type: "text", text: "Body text" }] }],
+          },
+        },
+      ],
     });
-    await provider.initialize({ jiraToken: "jira_tok" });
-    await provider.getBoard("100");
-    await expect(provider.moveCard("100", "PROJ-1", "999")).rejects.toThrow(/Unknown column/);
+    await provider.initialize(CREDENTIALS);
+    const board = await provider.getBoard("100");
+
+    expect(board.columns[0].cards[0].body).toBe("Body text");
   });
 
-  it("creates a card in the board's project and restores it into the target filter", async () => {
-    const { provider, calls } = makeProvider({
-      token: "jira_tok",
-      filters: [{ id: 1, name: "This Sprint" }],
-      issues: [{ key: "PROJ-9", summary: "existing" }],
-      filterMembers: { 1: [] },
-    });
-    await provider.initialize({ jiraToken: "jira_tok" });
+  it("links an existing issue into a column", async () => {
+    const { provider, calls } = makeProvider();
+    await provider.initialize(CREDENTIALS);
     await provider.getBoard("100");
-    const card = await provider.createCard("100", "1", { title: "New task", body: "details" });
+    calls.length = 0;
+    const card = await provider.linkExternalTask("100", { externalId: "ENG-2" }, "In Progress");
 
-    expect(card.title).toBe("New task");
-    expect(card.body).toBe("details");
-    expect(card.status).toBe("This Sprint");
-
-    const createCall = calls.find((c) => c.path === "/ex/jira/api/3/issue" && c.method === "POST");
-    expect(createCall).toBeDefined();
-    expect(JSON.parse(createCall?.body ?? "{}")).toEqual({
-      fields: { project: { key: "PROJ" }, summary: "New task", description: "details" },
-    });
-    const addCall = calls.find((c) => c.path === "/ex/jira/api/3/quickfilter/1/addIssue");
-    expect(addCall).toBeDefined();
-  });
-
-  it("links an existing issue into a quick filter", async () => {
-    const { provider, calls } = makeProvider({
-      token: "jira_tok",
-      filters: [{ id: 1, name: "This Sprint" }],
-      issues: [{ key: "PROJ-1", summary: "Do the thing" }],
-      filterMembers: { 1: [] },
-    });
-    await provider.initialize({ jiraToken: "jira_tok" });
-    await provider.getBoard("100");
-    const card = await provider.linkExternalTask("100", { externalId: "PROJ-1" }, "1");
-    expect(card.id).toBe("PROJ-1");
-    expect(card.status).toBe("This Sprint");
-    const addCall = calls.find((c) => c.path === "/ex/jira/api/3/quickfilter/1/addIssue");
-    expect(addCall).toBeDefined();
-    expect(JSON.parse(addCall?.body ?? "{}")).toEqual({ issue: "PROJ-1" });
+    expect(card.id).toBe("ENG-2");
+    expect(
+      calls.some(
+        (call) => call.method === "POST" && call.path === "/rest/api/3/issue/ENG-2/transitions",
+      ),
+    ).toBe(true);
   });
 });

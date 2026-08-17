@@ -1,4 +1,6 @@
 import type { MutableDaemonConfig } from "@otto-code/protocol/messages";
+import { readAtlassianCredentials } from "../../services/git-hosting/atlassian-credentials.js";
+import { resolveGitHubCliToken } from "./github-cli-token.js";
 import { GitHubProjectV2Provider } from "./github-provider.js";
 import { InMemoryKanbanProvider } from "./memory-provider.js";
 import { JiraKanbanProvider } from "./jira-provider.js";
@@ -28,22 +30,41 @@ export interface KanbanRegistry {
 }
 
 /**
- * Projects the daemon config's kanban section down to the provider view.
- * Each provider reads only its own credential; new providers extend
- * MutableKanbanProviderConfig and this projection.
+ * Projects the host's existing credentials down to the provider view.
+ *
+ * Kanban authors no credentials of its own: GitHub comes from the `gh` CLI and
+ * Jira from the shared Atlassian account credential that Bitbucket git hosting
+ * already uses. The retired `kanban.providers.*.token` config is deliberately
+ * not read - a stale hand-edited token must not quietly outrank the host's real
+ * authentication.
  */
-export function projectKanbanProviderConfig(
+export async function projectKanbanProviderConfig(
   config: MutableDaemonConfig,
-): MutableKanbanProviderConfig {
-  const githubToken = config.kanban?.providers?.github?.token ?? null;
-  const jiraToken = config.kanban?.providers?.jira?.token ?? null;
+  resolveGitHubToken: () => Promise<string | null>,
+): Promise<MutableKanbanProviderConfig> {
+  const githubToken = await resolveGitHubToken();
+  const atlassian = readAtlassianCredentials(config);
   return {
     ...(githubToken !== null ? { githubToken } : {}),
-    ...(jiraToken !== null ? { jiraToken } : {}),
+    ...(atlassian
+      ? {
+          atlassianEmail: atlassian.email,
+          atlassianApiToken: atlassian.apiToken,
+          jiraSiteUrl: atlassian.jiraSiteUrl,
+        }
+      : {}),
   };
 }
 
-export function createKanbanRegistry(readConfig: () => MutableDaemonConfig): KanbanRegistry {
+export interface KanbanRegistryOptions {
+  readConfig: () => MutableDaemonConfig;
+  /** Injectable so tests never shell out to a real gh binary. */
+  resolveGitHubToken?: () => Promise<string | null>;
+}
+
+export function createKanbanRegistry(options: KanbanRegistryOptions): KanbanRegistry {
+  const { readConfig } = options;
+  const resolveGitHubToken = options.resolveGitHubToken ?? resolveGitHubCliToken;
   const providers = new Map<string, KanbanProvider>();
   const register = (provider: KanbanProvider): void => {
     if (!providers.has(provider.providerId)) {
@@ -63,7 +84,9 @@ export function createKanbanRegistry(readConfig: () => MutableDaemonConfig): Kan
       if (!provider) {
         throw new Error(`No kanban provider registered for: ${providerId}`);
       }
-      await provider.initialize(projectKanbanProviderConfig(readConfig()));
+      await provider.initialize(
+        await projectKanbanProviderConfig(readConfig(), resolveGitHubToken),
+      );
     },
     dispose: () => {
       for (const provider of providers.values()) {

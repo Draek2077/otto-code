@@ -118,6 +118,11 @@ export class GitHubProjectV2Provider implements KanbanProvider {
     this.apiBaseUrl = (options.apiBaseUrl ?? DEFAULT_API_BASE_URL).replace(/\/$/, "");
   }
 
+  /**
+   * The token is the gh CLI's own credential (see github-cli-token.ts) - the
+   * provider never reads a Kanban-specific token, so "not configured" here
+   * means the host is signed out of gh, not that a settings field is empty.
+   */
   async initialize(config: MutableKanbanProviderConfig): Promise<void> {
     const token = (config.githubToken ?? "").trim();
     this.token = token.length > 0 ? token : null;
@@ -390,7 +395,8 @@ export class GitHubProjectV2Provider implements KanbanProvider {
   ): Promise<TData> {
     if (!this.token) {
       throw new Error(
-        "GitHub is not configured: add a personal access token in the Kanban settings.",
+        "GitHub is not signed in. Otto uses the GitHub CLI for GitHub: run `gh auth login`, " +
+          "then `gh auth refresh -s read:project,project` to grant Projects access.",
       );
     }
     let response: Response;

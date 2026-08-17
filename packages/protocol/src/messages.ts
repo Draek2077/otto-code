@@ -369,9 +369,28 @@ const MutableGitHostingBitbucketCloudConfigSchema = z
   })
   .passthrough();
 
+// The one Atlassian account credential, shared by every Atlassian surface:
+// Bitbucket Cloud for git hosting and Jira for the Kanban board. Both are HTTP
+// Basic (account email + API token), so there is one credential to author and
+// one place it can go stale. `atlassian` supersedes `bitbucketCloud`; the
+// daemon reads this first and falls back to the older key.
+// COMPAT(atlassianCredential): added in v0.8.11, drop the bitbucketCloud
+// fallback after 2027-02-28.
+const MutableGitHostingAtlassianConfigSchema = z
+  .object({
+    email: z.string().optional(),
+    apiToken: z.string().optional(),
+    // Jira Cloud site base URL, e.g. https://acme.atlassian.net. Not a secret.
+    // Required for Jira: Basic-auth Jira Cloud calls are site-addressed, unlike
+    // the OAuth-only api.atlassian.com/ex/jira gateway.
+    jiraSiteUrl: z.string().optional(),
+  })
+  .passthrough();
+
 const MutableGitHostingProvidersConfigSchema = z
   .object({
     bitbucketCloud: MutableGitHostingBitbucketCloudConfigSchema.optional(),
+    atlassian: MutableGitHostingAtlassianConfigSchema.optional(),
   })
   .passthrough();
 
@@ -383,10 +402,14 @@ export const MutableGitHostingConfigSchema = z
 
 export type MutableGitHostingConfig = z.infer<typeof MutableGitHostingConfigSchema>;
 
-// Provider credentials for the Kanban board surface. Gated by
-// server_info features.kanbanBoard. The token is daemon-owned and masked on
-// the wire (SECRET_WIRE_PATHS); the client never authors a secret it cannot
-// get back.
+// RETIRED: the Kanban board surface no longer has credentials of its own. It
+// reuses the host's existing authentication - GitHub through the `gh` CLI, Jira
+// through the shared Atlassian credential above. Nothing reads these fields any
+// more and the settings UI never wrote them, but the schema stays so existing
+// $OTTO_HOME/config.json files and older clients keep parsing (removed fields
+// stay accepted; we only stop sending them). They remain masked via
+// SECRET_WIRE_PATHS so a hand-edited token is never echoed back in the clear.
+// COMPAT(kanbanProviderTokens): retired in v0.8.11, delete after 2027-02-28.
 export const MutableKanbanConfigSchema = z
   .object({
     providers: z
@@ -3069,6 +3092,29 @@ export const ProjectRenameRequestSchema = z.object({
   requestId: z.string(),
 });
 
+// Which tracking board a project shows on the Kanban screen. A pointer, never a
+// credential: `boardId` is equivalent to a URL, so it rides in the clear and
+// lives in the project record next to the display name. Credentials stay
+// host-scoped (the gh CLI for GitHub, the Atlassian account for Jira).
+// A null `boardId` on the github adapter means "derive the boards from this
+// project's git remote"; jira always needs an explicit board id.
+export const ProjectKanbanTargetSchema = z
+  .object({
+    adapter: z.enum(["github", "jira"]),
+    boardId: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+export type ProjectKanbanTarget = z.infer<typeof ProjectKanbanTargetSchema>;
+
+export const KanbanProjectTargetSetRequestSchema = z.object({
+  type: z.literal("kanban.project.target.set.request"),
+  projectId: z.string().min(1),
+  // Null clears the target and returns the project to "no board configured".
+  target: ProjectKanbanTargetSchema.nullable(),
+  requestId: z.string(),
+});
+
 export const ProjectRemoveRequestSchema = z.object({
   type: z.literal("project.remove.request"),
   projectId: z.string(),
@@ -5568,6 +5614,21 @@ export const ProjectRenameResponseSchema = z.object({
   payload: ProjectRenameResponsePayloadSchema,
 });
 
+export const KanbanProjectTargetSetResponsePayloadSchema = z.object({
+  requestId: z.string(),
+  projectId: z.string(),
+  accepted: z.boolean(),
+  // The normalized target the daemon actually stored: a pasted board URL comes
+  // back as the parsed id, so the settings form can show what was saved.
+  target: ProjectKanbanTargetSchema.nullable(),
+  error: z.string().nullable(),
+});
+
+export const KanbanProjectTargetSetResponseSchema = z.object({
+  type: z.literal("kanban.project.target.set.response"),
+  payload: KanbanProjectTargetSetResponsePayloadSchema,
+});
+
 export const ProjectRemoveResponsePayloadSchema = z.object({
   requestId: z.string(),
   projectId: z.string(),
@@ -7744,6 +7805,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   BrainLogsTailRequestSchema,
   UpdateAgentRequestMessageSchema,
   ProjectRenameRequestSchema,
+  KanbanProjectTargetSetRequestSchema,
   ProjectRemoveRequestSchema,
   ProjectLinksListRequestSchema,
   ProjectLinksSetRequestSchema,
@@ -9106,6 +9168,11 @@ export const WorkspaceDescriptorPayloadSchema = z
     // value (customName) and projectCustomName mirrors the raw override so the
     // settings UI can prefill its input and offer a "reset" action.
     projectCustomName: z.string().nullable().optional(),
+    // The project's Kanban board target, so the Kanban screen can tell a
+    // configured project from an unconfigured one without a round-trip.
+    // COMPAT(projectKanbanTarget): added in v0.8.11, drop the optional gate when
+    // floor >= v0.8.11.
+    projectKanban: ProjectKanbanTargetSchema.nullable().optional(),
     projectRootPath: z.string(),
     workspaceDirectory: z.string().optional(),
     projectKind: z.enum(["git", "non_git", "directory"]),
@@ -9263,6 +9330,12 @@ export const WorkspaceProjectDescriptorPayloadSchema = z.object({
   projectKey: z.string().optional(),
   projectDisplayName: z.string(),
   projectCustomName: z.string().nullable().optional(),
+  // The project's Kanban board target. Rides on the project channel so the
+  // Kanban screen can tell a configured project from an unconfigured one, and
+  // so a project with no active workspaces still reports it.
+  // COMPAT(projectKanbanTarget): added in v0.8.11, drop the optional gate when
+  // floor >= v0.8.11.
+  projectKanban: ProjectKanbanTargetSchema.nullable().optional(),
   projectRootPath: z.string(),
   projectKind: z.enum(["git", "non_git", "directory"]),
 });
@@ -12939,6 +13012,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   AgentRewindResponseMessageSchema,
   UpdateAgentResponseMessageSchema,
   ProjectRenameResponseSchema,
+  KanbanProjectTargetSetResponseSchema,
   ProjectUpdatedNotificationSchema,
   ProjectRemoveResponseSchema,
   ProjectLinksListResponseSchema,
@@ -13344,6 +13418,7 @@ export type TasksSuggestedDismissResponseMessage = z.infer<
 export type AgentRewindResponseMessage = z.infer<typeof AgentRewindResponseMessageSchema>;
 export type UpdateAgentResponseMessage = z.infer<typeof UpdateAgentResponseMessageSchema>;
 export type ProjectRenameResponse = z.infer<typeof ProjectRenameResponseSchema>;
+export type KanbanProjectTargetSetResponse = z.infer<typeof KanbanProjectTargetSetResponseSchema>;
 export type ProjectUpdatedNotification = z.infer<typeof ProjectUpdatedNotificationSchema>;
 export type ProjectUpdatedNotificationPayload = ProjectUpdatedNotification["payload"];
 export type ProjectRemoveResponse = z.infer<typeof ProjectRemoveResponseSchema>;
@@ -13578,6 +13653,7 @@ export type ResumeAgentRequestMessage = z.infer<typeof ResumeAgentRequestMessage
 export type DeleteAgentRequestMessage = z.infer<typeof DeleteAgentRequestMessageSchema>;
 export type UpdateAgentRequestMessage = z.infer<typeof UpdateAgentRequestMessageSchema>;
 export type ProjectRenameRequest = z.infer<typeof ProjectRenameRequestSchema>;
+export type KanbanProjectTargetSetRequest = z.infer<typeof KanbanProjectTargetSetRequestSchema>;
 export type ProjectRemoveRequest = z.infer<typeof ProjectRemoveRequestSchema>;
 export type ProjectLinksListRequest = z.infer<typeof ProjectLinksListRequestSchema>;
 export type ProjectLinksSetRequest = z.infer<typeof ProjectLinksSetRequestSchema>;

@@ -8,6 +8,7 @@ import type {
 } from "@otto-code/protocol/messages";
 import { runGitCommand } from "../../utils/run-git-command.js";
 import { parseGitRevParsePath } from "../../utils/git-rev-parse-path.js";
+import { readAtlassianCredentials } from "./atlassian-credentials.js";
 import {
   createBitbucketCloudService,
   type BitbucketCloudCredentials,
@@ -134,13 +135,13 @@ export function createGitHostingResolver(options: GitHostingResolverOptions): Gi
   }
 
   function bitbucketCredentials(): BitbucketCloudCredentials | null {
-    const config = options.getDaemonConfig();
-    const email = config.gitHosting?.providers?.bitbucketCloud?.email?.trim() ?? "";
-    const apiToken = config.gitHosting?.providers?.bitbucketCloud?.apiToken?.trim() ?? "";
-    if (!email || !apiToken) {
+    // One Atlassian account serves both Bitbucket and Jira; Bitbucket needs only
+    // the Basic-auth half of it.
+    const atlassian = readAtlassianCredentials(options.getDaemonConfig());
+    if (!atlassian) {
       return null;
     }
-    return { email, apiToken };
+    return { email: atlassian.email, apiToken: atlassian.apiToken };
   }
 
   function getBitbucketService(credentials: BitbucketCloudCredentials): GitHostingService {

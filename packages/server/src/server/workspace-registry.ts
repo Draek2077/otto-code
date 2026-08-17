@@ -29,6 +29,26 @@ const PersistedProjectRecordSchema = z.object({
     .nullable()
     .optional()
     .transform((value) => value ?? null),
+  // Which tracking board the Kanban screen shows for this project. Deliberately
+  // a pointer and never a credential: `boardId` is equivalent to a URL, so it
+  // is safe to persist in the project record alongside the display name.
+  // Credentials stay host-scoped (gh CLI for GitHub, the Atlassian account for
+  // Jira). A null `boardId` on the github adapter means "derive the boards from
+  // this project's git remote"; jira always needs an explicit board id.
+  // Reconciliation never touches this, same as customName.
+  // COMPAT(projectKanbanTarget): added in v0.8.11; remove optional after 2027-02-28.
+  kanban: z
+    .object({
+      adapter: z.enum(["github", "jira"]),
+      boardId: z
+        .string()
+        .nullable()
+        .optional()
+        .transform((value) => value ?? null),
+    })
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
   createdAt: z.string(),
   updatedAt: z.string(),
   archivedAt: z.string().nullable(),

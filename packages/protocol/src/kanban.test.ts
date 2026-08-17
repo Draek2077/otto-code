@@ -67,6 +67,39 @@ describe("kanban request schemas", () => {
     expect(emptyProvider.success).toBe(false);
   });
 
+  it("parses a boards list request scoped to a project (new wire)", () => {
+    const parsed = KanbanBoardsListRequestSchema.parse({
+      type: "kanban.boards.list.request",
+      providerId: "github",
+      projectId: "project-1",
+      projectKey: "key-1",
+      requestId: "r1",
+    });
+    expect(parsed.projectId).toBe("project-1");
+    expect(parsed.projectKey).toBe("key-1");
+  });
+
+  it("still parses a boards list request without project scoping (old client)", () => {
+    const parsed = KanbanBoardsListRequestSchema.parse({
+      type: "kanban.boards.list.request",
+      providerId: "github",
+      requestId: "r1",
+    });
+    expect(parsed.projectId).toBeUndefined();
+    expect(parsed.projectKey).toBeUndefined();
+  });
+
+  it("rejects a boards list request with an unknown field (strict)", () => {
+    const result = KanbanBoardsListRequestSchema.safeParse({
+      type: "kanban.boards.list.request",
+      providerId: "github",
+      projectId: "project-1",
+      serverId: "host-1",
+      requestId: "r1",
+    });
+    expect(result.success).toBe(false);
+  });
+
   it("rejects a move request missing its target column", () => {
     const result = KanbanCardMoveRequestSchema.safeParse({
       type: "kanban.card.move.request",

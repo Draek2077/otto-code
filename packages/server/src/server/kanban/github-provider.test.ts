@@ -111,10 +111,13 @@ describe("GitHubProjectV2Provider", () => {
     expect(boards).toEqual([{ providerId: "github", boardId: "PVT_1", title: "Board A" }]);
   });
 
-  it("reports unconfigured when no token is set", async () => {
+  it("reports signed out, and points at the gh CLI, when it has no token", async () => {
+    // The token comes from `gh auth token`, so "no token" means the host is
+    // signed out of the GitHub CLI - the error has to send the user there and
+    // not to a Kanban settings field, which does not exist.
     const { provider } = makeProvider({ token: null });
     await provider.initialize({ githubToken: null });
-    await expect(provider.listBoards({})).rejects.toThrow(/not configured/i);
+    await expect(provider.listBoards({})).rejects.toThrow(/gh auth login/);
   });
 
   it("normalizes a board into status columns plus an unassigned bucket", async () => {

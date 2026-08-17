@@ -66,104 +66,135 @@ export type KanbanBoardRef = z.infer<typeof KanbanBoardRefSchema>;
 
 export const KanbanErrorSchema = z.string().nullable();
 
-export const KanbanBoardsListRequestSchema = z.object({
-  type: z.literal("kanban.boards.list.request"),
-  /** The provider that owns the board ("memory", "github", ...). */
-  providerId: z.string().min(1),
-  requestId: z.string(),
-});
-
-export const KanbanBoardsListResponseSchema = z.object({
-  type: z.literal("kanban.boards.list.response"),
-  payload: z.object({
+export const KanbanBoardsListRequestSchema = z
+  .object({
+    type: z.literal("kanban.boards.list.request"),
+    /** The provider that owns the board ("memory", "github", ...). */
     providerId: z.string().min(1),
-    boards: z.array(KanbanBoardRefSchema),
-    error: KanbanErrorSchema,
+    /**
+     * Project scoping. COMPAT(kanbanProjectScoping): added in v0.8.11, drop the
+     * optionals after 2027-02-28. The (host, project) pair determines which
+     * tracking board the daemon serves: it resolves the project's kanban target
+     * (adapter + board identifier) from the project record and fills the
+     * provider's list context. serverId is implicit in the connection.
+     * Absent on clients that predate project scoping; the daemon answers those
+     * with a "no project" error rather than guessing.
+     */
+    projectId: z.string().min(1).optional(),
+    projectKey: z.string().min(1).optional(),
     requestId: z.string(),
-  }),
-});
+  })
+  .strict();
 
-export const KanbanBoardGetRequestSchema = z.object({
-  type: z.literal("kanban.board.get.request"),
-  providerId: z.string().min(1),
-  boardId: z.string().min(1),
-  requestId: z.string(),
-});
+export const KanbanBoardsListResponseSchema = z
+  .object({
+    type: z.literal("kanban.boards.list.response"),
+    payload: z.object({
+      providerId: z.string().min(1),
+      boards: z.array(KanbanBoardRefSchema),
+      error: KanbanErrorSchema,
+      requestId: z.string(),
+    }),
+  })
+  .strict();
 
-export const KanbanBoardGetResponseSchema = z.object({
-  type: z.literal("kanban.board.get.response"),
-  payload: z.object({
+export const KanbanBoardGetRequestSchema = z
+  .object({
+    type: z.literal("kanban.board.get.request"),
     providerId: z.string().min(1),
-    board: KanbanBoardSchema.nullable(),
-    error: KanbanErrorSchema,
+    boardId: z.string().min(1),
     requestId: z.string(),
-  }),
-});
+  })
+  .strict();
 
-export const KanbanCardMoveRequestSchema = z.object({
-  type: z.literal("kanban.card.move.request"),
-  providerId: z.string().min(1),
-  boardId: z.string().min(1),
-  cardId: z.string().min(1),
-  targetColumnId: z.string().min(1),
-  requestId: z.string(),
-});
+export const KanbanBoardGetResponseSchema = z
+  .object({
+    type: z.literal("kanban.board.get.response"),
+    payload: z.object({
+      providerId: z.string().min(1),
+      board: KanbanBoardSchema.nullable(),
+      error: KanbanErrorSchema,
+      requestId: z.string(),
+    }),
+  })
+  .strict();
 
-export const KanbanCardMoveResponseSchema = z.object({
-  type: z.literal("kanban.card.move.response"),
-  payload: z.object({
+export const KanbanCardMoveRequestSchema = z
+  .object({
+    type: z.literal("kanban.card.move.request"),
     providerId: z.string().min(1),
     boardId: z.string().min(1),
     cardId: z.string().min(1),
     targetColumnId: z.string().min(1),
-    error: KanbanErrorSchema,
     requestId: z.string(),
-  }),
-});
+  })
+  .strict();
 
-export const KanbanCardCreateRequestSchema = z.object({
-  type: z.literal("kanban.card.create.request"),
-  providerId: z.string().min(1),
-  boardId: z.string().min(1),
-  columnId: z.string().min(1).optional(),
-  title: z.string().trim().min(1),
-  body: z.string().optional(),
-  requestId: z.string(),
-});
+export const KanbanCardMoveResponseSchema = z
+  .object({
+    type: z.literal("kanban.card.move.response"),
+    payload: z.object({
+      providerId: z.string().min(1),
+      boardId: z.string().min(1),
+      cardId: z.string().min(1),
+      targetColumnId: z.string().min(1),
+      error: KanbanErrorSchema,
+      requestId: z.string(),
+    }),
+  })
+  .strict();
 
-export const KanbanCardCreateResponseSchema = z.object({
-  type: z.literal("kanban.card.create.response"),
-  payload: z.object({
+export const KanbanCardCreateRequestSchema = z
+  .object({
+    type: z.literal("kanban.card.create.request"),
     providerId: z.string().min(1),
     boardId: z.string().min(1),
-    columnId: z.string().min(1),
-    card: KanbanCardSchema.nullable(),
-    error: KanbanErrorSchema,
+    columnId: z.string().min(1).optional(),
+    title: z.string().trim().min(1),
+    body: z.string().optional(),
     requestId: z.string(),
-  }),
-});
+  })
+  .strict();
 
-export const KanbanTaskLinkRequestSchema = z.object({
-  type: z.literal("kanban.task.link.request"),
-  providerId: z.string().min(1),
-  boardId: z.string().min(1),
-  /** The provider's native id of the external work object (issue/PR id). */
-  externalId: z.string().min(1),
-  columnId: z.string().min(1).optional(),
-  requestId: z.string(),
-});
+export const KanbanCardCreateResponseSchema = z
+  .object({
+    type: z.literal("kanban.card.create.response"),
+    payload: z.object({
+      providerId: z.string().min(1),
+      boardId: z.string().min(1),
+      columnId: z.string().min(1),
+      card: KanbanCardSchema.nullable(),
+      error: KanbanErrorSchema,
+      requestId: z.string(),
+    }),
+  })
+  .strict();
 
-export const KanbanTaskLinkResponseSchema = z.object({
-  type: z.literal("kanban.task.link.response"),
-  payload: z.object({
+export const KanbanTaskLinkRequestSchema = z
+  .object({
+    type: z.literal("kanban.task.link.request"),
     providerId: z.string().min(1),
     boardId: z.string().min(1),
-    columnId: z.string().min(1),
-    card: KanbanCardSchema.nullable(),
-    error: KanbanErrorSchema,
+    /** The provider's native id of the external work object (issue/PR id). */
+    externalId: z.string().min(1),
+    columnId: z.string().min(1).optional(),
     requestId: z.string(),
-  }),
-});
+  })
+  .strict();
+
+export const KanbanTaskLinkResponseSchema = z
+  .object({
+    type: z.literal("kanban.task.link.response"),
+    payload: z.object({
+      providerId: z.string().min(1),
+      boardId: z.string().min(1),
+      columnId: z.string().min(1),
+      card: KanbanCardSchema.nullable(),
+      error: KanbanErrorSchema,
+      requestId: z.string(),
+    }),
+  })
+  .strict();
 
 export type KanbanBoardsListRequest = z.infer<typeof KanbanBoardsListRequestSchema>;
 export type KanbanBoardsListResponse = z.infer<typeof KanbanBoardsListResponseSchema>;

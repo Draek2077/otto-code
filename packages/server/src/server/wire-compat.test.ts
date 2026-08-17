@@ -405,6 +405,8 @@ describe("wire compatibility", () => {
             projectCustomName: "Favorite project",
             projectRootPath: "/tmp/project",
             projectKind: "git",
+            // COMPAT(projectKanbanTarget): emitted as null for legacy project records.
+            projectKanban: null,
           },
         },
       },

@@ -8,6 +8,7 @@ function descriptor(id: string, key: string, root: string): ProjectDescriptor {
     projectKey: key,
     projectDisplayName: "acme/app",
     projectCustomName: null,
+    projectKanban: null,
     projectRootPath: root,
     projectKind: "git",
   };

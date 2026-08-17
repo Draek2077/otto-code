@@ -66,6 +66,7 @@ import {
 import { buildProjectsSettingsRoute } from "@/utils/host-routes";
 import type { ProjectHostEntry, ProjectSummary } from "@/utils/projects";
 import { useIconSize } from "@/styles/theme";
+import { ProjectKanbanSection } from "./project-settings-kanban-section";
 
 const SCRIPT_SERVICE_TYPE = "service";
 
@@ -367,6 +368,12 @@ function ProjectSettingsBody({
         list, and `linkProjects` sent an id the daemon cannot resolve.
       */}
       <ProjectLinksSection
+        serverId={selectedHost.serverId}
+        projectId={selectedHost.projectId}
+        client={client}
+      />
+
+      <ProjectKanbanSection
         serverId={selectedHost.serverId}
         projectId={selectedHost.projectId}
         client={client}

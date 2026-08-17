@@ -33,6 +33,7 @@ import type {
   BackgroundShellTaskInfo,
   SuggestedTaskInfo,
   AgentRateLimitInfo,
+  ProjectKanbanTarget,
 } from "@otto-code/protocol/messages";
 import {
   normalizeWorkspaceOpaqueId,
@@ -270,6 +271,8 @@ export interface ProjectDescriptor {
   projectKey?: string | null;
   projectDisplayName: string;
   projectCustomName: string | null;
+  /** The project's Kanban board target; null means no board is configured. */
+  projectKanban: ProjectKanbanTarget | null;
   projectRootPath: string;
   projectKind: WorkspaceDescriptorPayload["projectKind"];
 }
@@ -282,6 +285,9 @@ export function normalizeProjectDescriptor(
     projectKey: payload.projectKey ?? null,
     projectDisplayName: payload.projectDisplayName,
     projectCustomName: payload.projectCustomName ?? null,
+    // A pointer, never a credential; null keeps the descriptor readable for
+    // daemons that predate the field.
+    projectKanban: payload.projectKanban ?? null,
     projectRootPath: payload.projectRootPath,
     projectKind: payload.projectKind,
   };
