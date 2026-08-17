@@ -210,6 +210,29 @@ export const FIELDS: Field[] = [
     format: (p) => p.cacheTypeV,
   },
   {
+    key: "parallelSlots",
+    label: "Parallel slots",
+    kind: "number",
+    step: 1,
+    min: 1,
+    max: () => 16,
+    format: (p) => String(p.parallelSlots),
+    note: (p) =>
+      p.parallelSlots > 1 ? `${p.parallelSlots} concurrent requests, sharing one KV pool` : null,
+  },
+  {
+    key: "cachedChats",
+    label: "Cached KVs",
+    kind: "number",
+    step: 1,
+    min: 0,
+    max: () => 64,
+    format: (p) =>
+      (p.cachedChats ?? 0) > 0 ? String(p.cachedChats) : `default ${style.grey}(0)${style.reset}`,
+    // No inline note: the RAM estimate is the warning's job, and the warning
+    // lives in one place (profile-edit.ts). The panel reads it from there.
+  },
+  {
     key: "flashAttention",
     label: "Flash attention",
     kind: "toggle",
@@ -265,29 +288,6 @@ export const FIELDS: Field[] = [
     max: () => 999,
     format: (p) =>
       p.gpuLayers >= 999 ? `all ${style.grey}(999)${style.reset}` : String(p.gpuLayers),
-  },
-  {
-    key: "parallelSlots",
-    label: "Parallel slots",
-    kind: "number",
-    step: 1,
-    min: 1,
-    max: () => 16,
-    format: (p) => String(p.parallelSlots),
-    note: (p) =>
-      p.parallelSlots > 1 ? `${p.parallelSlots} concurrent requests, sharing one KV pool` : null,
-  },
-  {
-    key: "cachedChats",
-    label: "Cached KVs",
-    kind: "number",
-    step: 1,
-    min: 0,
-    max: () => 64,
-    format: (p) =>
-      (p.cachedChats ?? 0) > 0 ? String(p.cachedChats) : `default ${style.grey}(0)${style.reset}`,
-    // No inline note: the RAM estimate is the warning's job, and the warning
-    // lives in one place (profile-edit.ts). The panel reads it from there.
   },
 ];
 

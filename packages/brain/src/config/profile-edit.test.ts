@@ -64,12 +64,12 @@ describe("profileFieldDescriptors", () => {
       "contextSize",
       "cacheTypeK",
       "cacheTypeV",
-      "vision",
-      "flashAttention",
-      "reasoningBudget",
-      "gpuLayers",
       "parallelSlots",
       "cachedChats",
+      "flashAttention",
+      "vision",
+      "reasoningBudget",
+      "gpuLayers",
     ]);
   });
 
@@ -109,11 +109,11 @@ describe("profileFieldDescriptors", () => {
       "contextSize",
       "cacheTypeK",
       "cacheTypeV",
+      "parallelSlots",
+      "cachedChats",
       "flashAttention",
       "reasoningBudget",
       "gpuLayers",
-      "parallelSlots",
-      "cachedChats",
     ]);
   });
 

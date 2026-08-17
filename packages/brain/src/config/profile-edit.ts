@@ -144,6 +144,29 @@ export function profileFieldDescriptors(
       options: CACHE_TYPE_CYCLE,
       available: true,
     },
+    // The five KV/context settings that size and split the cache sit together,
+    // in the order the math reads them: the window (multiplier, size), its
+    // quantisation (K, V), how it is split (slots), and the RAM fallback
+    // (cached chats). Flash attention is related but leaves the KV byte total
+    // untouched, so it stays with the remaining options below.
+    {
+      key: "parallelSlots",
+      label: "Parallel slots",
+      kind: "number",
+      step: 1,
+      min: 1,
+      max: MAX_PARALLEL_SLOTS,
+      available: true,
+    },
+    {
+      key: "cachedChats",
+      label: "Cached KVs",
+      kind: "number",
+      step: 1,
+      min: 0,
+      max: MAX_CACHED_CHATS,
+      available: true,
+    },
     { key: "flashAttention", label: "Flash attention", kind: "toggle", available: true },
     {
       key: "reasoningBudget",
@@ -163,28 +186,11 @@ export function profileFieldDescriptors(
       max: MAX_GPU_LAYERS,
       available: true,
     },
-    {
-      key: "parallelSlots",
-      label: "Parallel slots",
-      kind: "number",
-      step: 1,
-      min: 1,
-      max: MAX_PARALLEL_SLOTS,
-      available: true,
-    },
-    {
-      key: "cachedChats",
-      label: "Cached KVs",
-      kind: "number",
-      step: 1,
-      min: 0,
-      max: MAX_CACHED_CHATS,
-      available: true,
-    },
   ];
 
   if (model?.reasoningPreservation?.templateArgument) {
-    fields.splice(7, 0, {
+    // Between reasoningBudget and gpuLayers: it extends the reasoning group.
+    fields.splice(8, 0, {
       key: "preserveReasoning",
       label: "Preserve reasoning",
       kind: "toggle",
@@ -194,9 +200,10 @@ export function profileFieldDescriptors(
 
   // Bundle models expose the projector in the component section below. Keep
   // the legacy profile field for hand-scanned single-file models, but do not
-  // render two controls that write the same vision setting for bundles.
+  // render two controls that write the same vision setting for bundles. It
+  // belongs with the other options, right after flash attention.
   if (!model?.components) {
-    fields.splice(4, 0, {
+    fields.splice(7, 0, {
       key: "vision",
       label: "Vision",
       kind: "toggle",
