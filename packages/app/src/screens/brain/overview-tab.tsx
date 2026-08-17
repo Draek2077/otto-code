@@ -80,6 +80,7 @@ const ThemedTimeline = withUnistyles(Timeline);
 const ThemedHardDrive = withUnistyles(HardDrive);
 
 const tileIconColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const tileIconWarningColorMapping = (theme: Theme) => ({ color: theme.colors.statusWarningMuted });
 
 type Phase = "running" | "starting" | "stopped" | "failed";
 
@@ -147,23 +148,34 @@ function StatTile({
   label,
   value,
   hint,
+  warning = false,
 }: {
   Icon: typeof ThemedGauge;
   label: string;
   value: string;
   hint?: string | null;
+  warning?: boolean;
 }) {
   return (
-    <View style={styles.tile}>
-      <Icon size={24} uniProps={tileIconColorMapping} />
-      <Text style={styles.tileValue} numberOfLines={1}>
+    <View style={warning ? [styles.tile, styles.tileWarning] : styles.tile}>
+      <Icon size={24} uniProps={warning ? tileIconWarningColorMapping : tileIconColorMapping} />
+      <Text
+        style={warning ? [styles.tileValue, styles.tileValueWarning] : styles.tileValue}
+        numberOfLines={1}
+      >
         {value}
       </Text>
-      <Text style={styles.tileLabel} numberOfLines={1}>
+      <Text
+        style={warning ? [styles.tileLabel, styles.tileTextWarning] : styles.tileLabel}
+        numberOfLines={1}
+      >
         {label}
       </Text>
       {hint ? (
-        <Text style={styles.tileHint} numberOfLines={1}>
+        <Text
+          style={warning ? [styles.tileHint, styles.tileTextWarning] : styles.tileHint}
+          numberOfLines={1}
+        >
           {hint}
         </Text>
       ) : null}
@@ -477,7 +489,7 @@ function ResourceTiles({
         Icon={ThemedBoxes}
         label="Slots"
         value={slotsTotal === null ? "unknown" : `${slotsBusy ?? 0} / ${slotsTotal}`}
-        hint={saturated ? "Saturated, further requests queue" : null}
+        warning={saturated}
       />
     </View>
   );
@@ -938,6 +950,17 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface1,
     alignItems: "center",
     justifyContent: "center",
+  },
+  // Saturation warning: the whole tile turns amber (icon, value, label, hint),
+  // not just a caption, so a full slot pool reads as a warning at a glance.
+  tileWarning: {
+    borderColor: theme.colors.statusWarning,
+  },
+  tileValueWarning: {
+    color: theme.colors.statusWarningMuted,
+  },
+  tileTextWarning: {
+    color: theme.colors.statusWarningMuted,
   },
   tileLabel: {
     fontSize: theme.fontSize.xs,

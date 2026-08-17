@@ -261,7 +261,7 @@ Each model carries a **Model profile**: its saved launch and VRAM settings. It i
 | Reasoning budget   | The cap on thinking tokens                                               |
 | GPU layers         | How many layers go on the GPU; 999 means all                             |
 | Parallel slots     | Concurrent requests, which share one KV pool                             |
-| Cached KVs         | Chats whose KV state is parked in system RAM; 0 keeps the engine default  |
+| Cached KVs         | Chats whose KV state is parked in system RAM; 0 keeps the engine default |
 
 **Cached KVs sizes llama.cpp's prompt cache in chats, not megabytes.** When a chat loses its GPU
 slot, `llama-server` can park its KV state in host RAM and copy it back when that chat returns,

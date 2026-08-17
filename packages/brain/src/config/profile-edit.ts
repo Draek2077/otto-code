@@ -117,7 +117,7 @@ export function profileFieldDescriptors(
       label: "Context multiplier",
       kind: "cycle",
       options: CONTEXT_MULTIPLIERS,
-      optionLabels: ["Off", "2× (YaRN)", "4× (YaRN)"],
+      optionLabels: ["Off", "2×", "4×"],
       available: Boolean(model?.metadata?.contextLength),
       ...(model?.metadata?.contextLength ? {} : { unavailableReason: "native context unknown" }),
     },

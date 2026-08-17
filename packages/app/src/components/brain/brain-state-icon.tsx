@@ -219,6 +219,18 @@ function useSweepProgress(active: boolean, durationMs: number): SharedValue<numb
       }),
       -1,
       false,
+      // The reduceMotion option is a 5th argument on withRepeat (after the
+      // callback). It MUST be set here, not just on the inner withTiming:
+      // reanimated fills an unset reduceMotion in from the *system* setting
+      // (util.js decorateAnimation), and a reduceMotion of `true` on the repeat
+      // wrapper is the one path that ends a `withRepeat(-1)` loop - after
+      // exactly one completed cycle it returns finished and stops. That is why
+      // the icon ran a single sweep/rotation and then froze on hosts (or CI)
+      // where reduced motion is on. Reanimated only propagates reduceMotion
+      // parent -> child (repeat -> timing), never the other way around, so the
+      // Never on the timing above does not protect the wrapper.
+      undefined,
+      ReduceMotion.Never,
     );
     return () => {
       cancelAnimation(progress);
