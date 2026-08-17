@@ -14,12 +14,15 @@ export function useKanbanBoardFeature(serverId: string): boolean {
 }
 
 /**
- * Live board list for one host + provider. Fetched once per (host, provider)
- * pair and re-fetched when refreshKey bumps (the screen's refresh action).
+ * Live board list for one project. Fetched once per (host, project) pair and
+ * re-fetched when refreshKey bumps (the screen's refresh action). The app
+ * never picks a provider: it names a project, and the daemon resolves that
+ * project's configured target to a provider and a board list.
  */
 export function useKanbanBoards(
   serverId: string | null,
-  providerId: string | null,
+  projectId: string | null,
+  projectKey: string | null,
   refreshKey: number,
 ): {
   boards: KanbanBoardRef[];
@@ -29,14 +32,14 @@ export function useKanbanBoards(
   const client = useHostRuntimeClient(serverId ?? "");
   const isConnected = useHostRuntimeIsConnected(serverId ?? "");
   const supported = useKanbanBoardFeature(serverId ?? "");
-  const enabled = Boolean(serverId && providerId && client && isConnected && supported);
+  const enabled = Boolean(serverId && projectId && client && isConnected && supported);
 
   const [boards, setBoards] = useState<KanbanBoardRef[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!enabled || !providerId || !client) {
+    if (!enabled || !projectId || !client) {
       setBoards([]);
       setIsLoading(false);
       setError(null);
@@ -47,7 +50,13 @@ export function useKanbanBoards(
     setError(null);
     const load = async (): Promise<void> => {
       try {
-        const payload = await client.kanbanListBoards(providerId);
+        // providerId is an inert default: the project-scoped request is
+        // authoritative and the daemon overrides it from the resolved target.
+        const payload = await client.kanbanListBoards({
+          providerId: "github",
+          projectId,
+          ...(projectKey ? { projectKey } : {}),
+        });
         if (cancelled) return;
         setBoards(payload.boards ?? []);
         setError(payload.error);
@@ -62,7 +71,7 @@ export function useKanbanBoards(
     return () => {
       cancelled = true;
     };
-  }, [enabled, providerId, client, refreshKey]);
+  }, [enabled, projectId, projectKey, client, refreshKey]);
 
   return { boards, isLoading, error };
 }

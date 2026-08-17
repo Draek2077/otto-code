@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Kanban boards are reached by picking a host and a project, and the project's board is chosen in that project's settings
+- GitHub boards sign in with the GitHub CLI, and Jira boards use the Atlassian account credential shared with Bitbucket
+- Jira boards show the board's real columns, and moving a card transitions the issue
+
 ## 0.8.10 - 2026-08-13
 
 ### Fixed

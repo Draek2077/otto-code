@@ -206,3 +206,12 @@ export type KanbanCardCreateRequest = z.infer<typeof KanbanCardCreateRequestSche
 export type KanbanCardCreateResponse = z.infer<typeof KanbanCardCreateResponseSchema>;
 export type KanbanTaskLinkRequest = z.infer<typeof KanbanTaskLinkRequestSchema>;
 export type KanbanTaskLinkResponse = z.infer<typeof KanbanTaskLinkResponseSchema>;
+
+/**
+ * The one "this project has no board yet" message. The app matches on it to
+ * render the watermark state with a link into project settings, so it is part
+ * of the contract rather than incidental copy. Lives with the wire model (not
+ * the daemon) so the app can compare against it without depending on the
+ * server package.
+ */
+export const KANBAN_NOT_CONFIGURED = "No kanban board is configured for this project.";

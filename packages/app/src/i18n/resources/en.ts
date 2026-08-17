@@ -4151,6 +4151,25 @@ export const en = {
       },
     },
   },
+  kanban: {
+    title: "Boards",
+    host: "Host",
+    project: "Project",
+    board: "Board",
+    refresh: "Refresh boards",
+    noHostsTitle: "No boards available",
+    noHostsBody: "Connect a host with the Kanban feature to see its boards.",
+    noProjectsTitle: "No projects on this host",
+    noProjectsBody: "Open a project on this host to track it on a board.",
+    unconfiguredTitle: "No board configured",
+    unconfiguredBody: "Choose a GitHub or Jira board for this project to see it here.",
+    unconfiguredAction: "Open project settings",
+    boardError: "Couldn't load boards",
+    addCard: "Add card",
+    cardTitlePlaceholder: "Card title",
+    cancel: "Cancel",
+    moveTo: "Move to {{column}}",
+  },
 } as const;
 
 type WidenStringLeaves<T> = {

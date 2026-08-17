@@ -8,10 +8,10 @@ These are **not** project knowledge and **not** `docs/`. They are disposable:
 delete a task file once its phase has shipped and its durable facts have landed
 in `docs/` or Otto Knowledge.
 
-| File                                                                     | Phase                                | Status      |
-| ------------------------------------------------------------------------ | ------------------------------------ | ----------- |
-| [kanban-phase-4-project-settings.md](kanban-phase-4-project-settings.md) | Kanban target in project settings    | Shipped     |
-| [kanban-phase-5-kanban-screen.md](kanban-phase-5-kanban-screen.md)       | Kanban screen host + project pickers | Not started |
+| File                                                                     | Phase                                | Status  |
+| ------------------------------------------------------------------------ | ------------------------------------ | ------- |
+| [kanban-phase-4-project-settings.md](kanban-phase-4-project-settings.md) | Kanban target in project settings    | Shipped |
+| [kanban-phase-5-kanban-screen.md](kanban-phase-5-kanban-screen.md)       | Kanban screen host + project pickers | Shipped |
 
 ## Shared context for both Kanban phases
 

@@ -2,24 +2,66 @@
  * The Kanban screen's body-state machine, isolated from React so it is
  * unit-testable without mounting the component tree (same shape as
  * schedules-screen-state.ts).
+ *
+ * The flow the screen renders is: host picker -> project picker (that host's
+ * projects) -> board. A project's board is chosen in that project's settings,
+ * never on this screen.
  */
-export type KanbanScreenBodyState = { kind: "loading" } | { kind: "empty" } | { kind: "picker" };
+export type KanbanScreenBodyState =
+  | { kind: "loading" }
+  // No connected host advertises the kanban feature.
+  | { kind: "no-hosts" }
+  // A host is selected but has no projects.
+  | { kind: "no-projects" }
+  // A project is selected but has no board target configured. Carries what the
+  // watermark needs to link into that project's settings.
+  | { kind: "unconfigured"; serverId: string; projectId: string }
+  // A project is selected and its boards failed to load.
+  | { kind: "error"; message: string }
+  // Boards are known; render the board picker and the board.
+  | { kind: "board" };
 
 /**
- * Maps the board-option load state to the body the screen renders.
- * - Loading with nothing fetched yet: spinner.
- * - Nothing loaded and nothing to load: empty state (no hosts / no feature).
- * - Any known board (even mid-refresh): the picker.
+ * Maps the selection and board-load state to the body the screen renders.
+ * Precedence, in order:
+ * - No hosts at all: `no-hosts` (even while loading; there is nothing to wait
+ *   for).
+ * - Loading with no boards fetched yet: spinner.
+ * - Host with no projects, or nothing selected yet: `no-projects`.
+ * - Selected project without a configured target: `unconfigured` (carries the
+ *   project's ids for the settings link), even if a board fetch also errored.
+ * - Boards failed to load: `error`.
+ * - Otherwise: the board.
  */
 export function resolveKanbanScreenBodyState(input: {
   isLoading: boolean;
+  hostCount: number;
+  projectCount: number;
+  selectedProject: { serverId: string; projectId: string; hasTarget: boolean } | null;
+  boardError: string | null;
   boardCount: number;
 }): KanbanScreenBodyState {
+  if (input.hostCount === 0) {
+    return { kind: "no-hosts" };
+  }
   if (input.isLoading && input.boardCount === 0) {
     return { kind: "loading" };
   }
-  if (input.boardCount === 0) {
-    return { kind: "empty" };
+  if (input.projectCount === 0) {
+    return { kind: "no-projects" };
   }
-  return { kind: "picker" };
+  if (input.selectedProject === null) {
+    return { kind: "no-projects" };
+  }
+  if (!input.selectedProject.hasTarget) {
+    return {
+      kind: "unconfigured",
+      serverId: input.selectedProject.serverId,
+      projectId: input.selectedProject.projectId,
+    };
+  }
+  if (input.boardError) {
+    return { kind: "error", message: input.boardError };
+  }
+  return { kind: "board" };
 }

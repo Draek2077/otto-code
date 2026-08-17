@@ -3780,14 +3780,25 @@ export class DaemonClient {
    * ("memory", "github", ...) - the daemon dispatches to the registered
    * KanbanProvider implementation and the wire never carries provider-native
    * identifiers beyond the opaque board/card/column ids.
+   *
+   * A project-scoped request is authoritative: the daemon resolves the
+   * project's configured board target and overrides providerId from it. The
+   * wire still carries providerId so older clients keep working; pass an inert
+   * value (e.g. "github") when a project is supplied.
    */
   async kanbanListBoards(
-    providerId: string,
+    input: { providerId: string; projectId?: string; projectKey?: string },
     requestId?: string,
   ): Promise<KanbanBoardsListResponse["payload"]> {
     return this.sendNamespacedCorrelatedSessionRequest<"kanban.boards.list.response">({
       requestId,
-      message: { type: "kanban.boards.list.request", providerId, requestId: "" },
+      message: {
+        type: "kanban.boards.list.request",
+        providerId: input.providerId,
+        ...(input.projectId ? { projectId: input.projectId } : {}),
+        ...(input.projectKey ? { projectKey: input.projectKey } : {}),
+        requestId: "",
+      },
       timeout: 60000,
     });
   }

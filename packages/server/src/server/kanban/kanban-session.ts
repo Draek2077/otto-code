@@ -1,4 +1,9 @@
-import type { KanbanBoard, KanbanBoardRef, KanbanCard } from "@otto-code/protocol/kanban";
+import {
+  KANBAN_NOT_CONFIGURED,
+  type KanbanBoard,
+  type KanbanBoardRef,
+  type KanbanCard,
+} from "@otto-code/protocol/kanban";
 import type {
   KanbanBoardGetRequest,
   KanbanBoardsListRequest,
@@ -11,12 +16,10 @@ import { createKanbanRegistry, type KanbanRegistry } from "./kanban-registry.js"
 import type { KanbanBoardListContext } from "./types.js";
 import type { MutableDaemonConfig } from "@otto-code/protocol/messages";
 
-/**
- * The one "this project has no board yet" message. The app matches on it to
- * render the watermark state with a link into project settings, so it is part
- * of the contract rather than incidental copy.
- */
-export const KANBAN_NOT_CONFIGURED = "No kanban board is configured for this project.";
+// The "this project has no board yet" message lives with the wire model in
+// @otto-code/protocol/kanban so the app can compare against it without a
+// server dependency. Re-exported here for existing callers.
+export { KANBAN_NOT_CONFIGURED };
 
 /**
  * Session-facing Kanban dispatcher. Owns the provider registry, translates
