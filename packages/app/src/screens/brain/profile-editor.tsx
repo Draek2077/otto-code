@@ -676,7 +676,7 @@ export function BrainProfileEditor({
             </View>
             <Switch
               value={enabled}
-              disabled={!canWrite || saving || !component.available || component.required}
+              disabled={!canWrite || !component.available || component.required}
               onValueChange={(value) =>
                 setEnabledComponents((current) =>
                   value
@@ -939,7 +939,7 @@ export function BrainProfileEditor({
               field={field}
               value={draft[field.key]}
               onChange={handleChange}
-              disabled={!canWrite || saving}
+              disabled={!canWrite}
               warnings={warnings}
               onFitContext={
                 field.key === "contextSize" && canWrite && maxContext ? handleFitContext : undefined
