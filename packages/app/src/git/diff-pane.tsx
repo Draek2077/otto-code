@@ -118,6 +118,19 @@ import {
   CheckoutGitRollbackFailedError,
   useCheckoutGitActionsStore,
 } from "@/git/actions-store";
+import {
+  CONVENTIONAL_COMMIT_TYPES,
+  NO_COMMIT_TYPE,
+  formatConventionalCommitMessage,
+  type CommitTypeChoice,
+  type ConventionalCommitType,
+} from "@/git/conventional-commit";
+import {
+  Combobox,
+  ComboboxItem,
+  type ComboboxOption,
+  type ComboboxProps,
+} from "@/components/ui/combobox";
 import { resolveRunningAgentLabels } from "@/git/running-agent-labels";
 import type {
   CheckoutBaseSource,
@@ -164,6 +177,26 @@ import {
 } from "@/review";
 
 export type { GitActionId, GitAction, GitActions } from "@/git/policy";
+
+/**
+ * i18n key for each picker-row description. Explicit on purpose: the type
+ * *tokens* (`fix`, `feat`, ...) are literals straight from the TS module so a
+ * translation can never rename them, while the descriptions are translated
+ * through a static key map (no dynamic key building).
+ */
+const COMMIT_TYPE_DESCRIPTION_KEYS: Record<ConventionalCommitType, string> = {
+  feat: "workspace.git.commit.type.featDescription",
+  fix: "workspace.git.commit.type.fixDescription",
+  docs: "workspace.git.commit.type.docsDescription",
+  style: "workspace.git.commit.type.styleDescription",
+  refactor: "workspace.git.commit.type.refactorDescription",
+  perf: "workspace.git.commit.type.perfDescription",
+  test: "workspace.git.commit.type.testDescription",
+  build: "workspace.git.commit.type.buildDescription",
+  ci: "workspace.git.commit.type.ciDescription",
+  chore: "workspace.git.commit.type.choreDescription",
+  revert: "workspace.git.commit.type.revertDescription",
+};
 
 function fileHeaderPressableStyle({ pressed }: PressableStateCallbackType) {
   return [styles.fileHeader, pressed && styles.fileHeaderPressed];
@@ -1804,6 +1837,222 @@ function DiffContextToggleMenuItem({ toggle }: { toggle: DiffContextAttachmentTo
   );
 }
 
+function renderCommitTypeOption({
+  option,
+  selected,
+  active,
+  onPress,
+}: {
+  option: ComboboxOption;
+  selected: boolean;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <ComboboxItem
+      label={option.label}
+      description={option.description}
+      selected={selected}
+      active={active}
+      onPress={onPress}
+      testID={`changes-commit-type-option-${option.id}`}
+    />
+  );
+}
+
+/**
+ * The git-cz style type chip + Combobox above the commit message input.
+ *
+ * Owns its picker state (open/close, anchor) so the surrounding section stays
+ * simple. The selected type itself lives in the changes-preferences store and
+ * is read back by the section, which is what builds the `type: subject`
+ * message at commit time - this component just chooses it.
+ */
+function CommitTypeSelector({
+  value,
+  onCommitTypeChange,
+}: {
+  value: CommitTypeChoice;
+  onCommitTypeChange: (next: CommitTypeChoice) => void;
+}) {
+  const { t } = useTranslation();
+  const iconSize = useIconSize();
+  const anchorRef = useRef<View>(null);
+  const [open, setOpen] = useState(false);
+
+  const options = useMemo<ComboboxProps["options"]>(
+    () => [
+      {
+        id: NO_COMMIT_TYPE,
+        label: t("workspace.git.commit.type.none"),
+        description: t("workspace.git.commit.type.noneDescription"),
+      },
+      ...CONVENTIONAL_COMMIT_TYPES.map<ComboboxProps["options"][number]>((type) => ({
+        id: type,
+        label: type,
+        description: t(COMMIT_TYPE_DESCRIPTION_KEYS[type]),
+      })),
+    ],
+    [t],
+  );
+
+  const handleSelect = useCallback(
+    (id: string) => {
+      setOpen(false);
+      const next: CommitTypeChoice = (CONVENTIONAL_COMMIT_TYPES as readonly string[]).includes(id)
+        ? (id as ConventionalCommitType)
+        : NO_COMMIT_TYPE;
+      if (next !== value) {
+        onCommitTypeChange(next);
+      }
+    },
+    [onCommitTypeChange, value],
+  );
+  const handleOpen = useCallback(() => setOpen(true), []);
+
+  const triggerStyle = useCallback(
+    ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.commitTypeTrigger,
+      (hovered || pressed || open) && styles.commitTypeTriggerHovered,
+    ],
+    [open],
+  );
+
+  return (
+    <View ref={anchorRef} collapsable={false} style={styles.commitTypeAnchor}>
+      <Pressable
+        testID="changes-commit-type-selector"
+        onPress={handleOpen}
+        style={triggerStyle}
+        accessibilityRole="button"
+        accessibilityLabel={t("workspace.git.commit.type.selectorLabel")}
+      >
+        <Text style={styles.commitTypeLabel} numberOfLines={1}>
+          {t("workspace.git.commit.type.selectorLabel")}
+        </Text>
+        <Text style={styles.commitTypeValue} numberOfLines={1}>
+          {value === NO_COMMIT_TYPE ? t("workspace.git.commit.type.none") : value}
+        </Text>
+        <ThemedChevronDown size={iconSize.xs} uniProps={foregroundMutedIconColorMapping} />
+      </Pressable>
+      <Combobox
+        options={options}
+        value={value}
+        onSelect={handleSelect}
+        open={open}
+        onOpenChange={setOpen}
+        anchorRef={anchorRef}
+        desktopPlacement="bottom-start"
+        desktopMinWidth={240}
+        title={t("workspace.git.commit.type.selectorLabel")}
+        renderOption={renderCommitTypeOption}
+      />
+    </View>
+  );
+}
+
+/**
+ * The select-all / commit button row and the inline error beneath it, pulled
+ * out of the section so the commit logic and the selection-state branching
+ * don't pile into one oversized render function.
+ */
+function CommitActionRow({
+  serverId,
+  workspaceId,
+  logSupported,
+  selectedPathsCount,
+  totalFiles,
+  allSelected,
+  partiallySelected,
+  onToggleSelectAll,
+  isCommitting,
+  commitDisabled,
+  onCommit,
+  commitError,
+}: {
+  serverId: string;
+  workspaceId: string | null | undefined;
+  logSupported: boolean;
+  selectedPathsCount: number;
+  totalFiles: number;
+  allSelected: boolean;
+  partiallySelected: boolean;
+  onToggleSelectAll: () => void;
+  isCommitting: boolean;
+  commitDisabled: boolean;
+  onCommit: () => void;
+  commitError: CheckoutGitCommitError | null;
+}) {
+  const { t } = useTranslation();
+  const errorDescription = commitError ? describeCommitError(commitError, t) : null;
+  const selectAllAccessibilityState = useMemo(
+    () => ({ checked: partiallySelected ? ("mixed" as const) : allSelected }),
+    [allSelected, partiallySelected],
+  );
+
+  let selectAllMark: ReactElement | null = null;
+  if (partiallySelected) {
+    selectAllMark = <View style={styles.fileCheckboxIndeterminateMark} />;
+  } else if (allSelected) {
+    selectAllMark = <ThemedCheck size={12} uniProps={accentForegroundIconColorMapping} />;
+  }
+
+  return (
+    <>
+      <View style={styles.commitActions}>
+        <View style={styles.commitSelectionGroup}>
+          <Pressable
+            style={
+              allSelected || partiallySelected ? SELECTED_FILE_CHECKBOX_STYLE : styles.fileCheckbox
+            }
+            onPress={onToggleSelectAll}
+            accessibilityRole="checkbox"
+            accessibilityState={selectAllAccessibilityState}
+            aria-checked={partiallySelected ? "mixed" : allSelected}
+            accessibilityLabel={
+              allSelected
+                ? t("workspace.git.commit.deselectAllFiles")
+                : t("workspace.git.commit.selectAllFiles")
+            }
+            hitSlop={6}
+            testID="changes-commit-select-all"
+          >
+            {selectAllMark}
+          </Pressable>
+          <Text style={styles.commitSelectionCount} numberOfLines={1}>
+            {t("workspace.git.commit.filesSelected", {
+              selected: selectedPathsCount,
+              total: totalFiles,
+            })}
+          </Text>
+        </View>
+        <View style={styles.commitButtonGroup}>
+          <CommitLogButton serverId={serverId} workspaceId={workspaceId} enabled={logSupported} />
+          <Button
+            size="sm"
+            variant="default"
+            disabled={commitDisabled}
+            onPress={onCommit}
+            testID="changes-commit-button"
+          >
+            {isCommitting ? t("workspace.git.commit.committing") : t("workspace.git.commit.button")}
+          </Button>
+        </View>
+      </View>
+      {errorDescription ? (
+        <Text style={styles.commitErrorText} testID="changes-commit-error">
+          {errorDescription.title}
+        </Text>
+      ) : null}
+      {errorDescription?.detail ? (
+        <Text style={styles.commitErrorDetail} testID="changes-commit-error-detail">
+          {errorDescription.detail}
+        </Text>
+      ) : null}
+    </>
+  );
+}
+
 interface ChangesCommitSectionProps {
   serverId: string;
   cwd: string;
@@ -1915,6 +2164,12 @@ function ChangesCommitSection({
   const isCommitting =
     useCheckoutGitActionsStore((s) => s.getStatus({ serverId, cwd, actionId: "commit" })) ===
     "pending";
+  const { preferences, updatePreferences } = useChangesPreferences();
+  const commitType = preferences.commitType;
+  const handleCommitTypeChange = useCallback(
+    (next: CommitTypeChoice) => void updatePreferences({ commitType: next }),
+    [updatePreferences],
+  );
 
   const handleFocus = useCallback(() => setIsFocused(true), []);
   const handleBlur = useCallback(() => setIsFocused(false), []);
@@ -1929,12 +2184,15 @@ function ChangesCommitSection({
       return;
     }
     setCommitError(null);
+    // Prefixing happens here, client-side: the daemon runs `git commit -m`
+    // with this string verbatim, so `fix: handle null cursor` is what lands.
+    const finalMessage = formatConventionalCommitMessage(commitType, trimmed);
     const attempt = async (allowWithRunningAgents: boolean): Promise<void> => {
       try {
         await commitPaths({
           serverId,
           cwd,
-          message: trimmed,
+          message: finalMessage,
           paths: selectedPaths,
           ...(allowWithRunningAgents ? { allowWithRunningAgents: true } : {}),
         });
@@ -1965,14 +2223,21 @@ function ChangesCommitSection({
       }
     };
     await attempt(false);
-  }, [commitPaths, cwd, isCommitting, message, onCommitted, selectedPaths, serverId, t, toast]);
+  }, [
+    commitPaths,
+    commitType,
+    cwd,
+    isCommitting,
+    message,
+    onCommitted,
+    selectedPaths,
+    serverId,
+    t,
+    toast,
+  ]);
 
   const allSelected = totalFiles > 0 && selectedPaths.length === totalFiles;
   const partiallySelected = selectedPaths.length > 0 && !allSelected;
-  const selectAllAccessibilityState = useMemo(
-    () => ({ checked: partiallySelected ? ("mixed" as const) : allSelected }),
-    [allSelected, partiallySelected],
-  );
 
   if (!isGit || diffMode !== "uncommitted" || !hasChanges) {
     return null;
@@ -1987,17 +2252,10 @@ function ChangesCommitSection({
   }
 
   const commitDisabled = message.trim().length === 0 || selectedPaths.length === 0 || isCommitting;
-  const errorDescription = commitError ? describeCommitError(commitError, t) : null;
-
-  let selectAllMark: ReactElement | null = null;
-  if (partiallySelected) {
-    selectAllMark = <View style={styles.fileCheckboxIndeterminateMark} />;
-  } else if (allSelected) {
-    selectAllMark = <ThemedCheck size={12} uniProps={accentForegroundIconColorMapping} />;
-  }
 
   return (
     <View style={styles.commitSection} testID="changes-commit-section">
+      <CommitTypeSelector value={commitType} onCommitTypeChange={handleCommitTypeChange} />
       <TextInput
         multiline
         value={message}
@@ -2011,56 +2269,20 @@ function ChangesCommitSection({
         style={inputStyle}
         testID="changes-commit-message"
       />
-      <View style={styles.commitActions}>
-        <View style={styles.commitSelectionGroup}>
-          <Pressable
-            style={
-              allSelected || partiallySelected ? SELECTED_FILE_CHECKBOX_STYLE : styles.fileCheckbox
-            }
-            onPress={onToggleSelectAll}
-            accessibilityRole="checkbox"
-            accessibilityState={selectAllAccessibilityState}
-            aria-checked={partiallySelected ? "mixed" : allSelected}
-            accessibilityLabel={
-              allSelected
-                ? t("workspace.git.commit.deselectAllFiles")
-                : t("workspace.git.commit.selectAllFiles")
-            }
-            hitSlop={6}
-            testID="changes-commit-select-all"
-          >
-            {selectAllMark}
-          </Pressable>
-          <Text style={styles.commitSelectionCount} numberOfLines={1}>
-            {t("workspace.git.commit.filesSelected", {
-              selected: selectedPaths.length,
-              total: totalFiles,
-            })}
-          </Text>
-        </View>
-        <View style={styles.commitButtonGroup}>
-          <CommitLogButton serverId={serverId} workspaceId={workspaceId} enabled={logSupported} />
-          <Button
-            size="sm"
-            variant="default"
-            disabled={commitDisabled}
-            onPress={handleCommit}
-            testID="changes-commit-button"
-          >
-            {isCommitting ? t("workspace.git.commit.committing") : t("workspace.git.commit.button")}
-          </Button>
-        </View>
-      </View>
-      {errorDescription ? (
-        <Text style={styles.commitErrorText} testID="changes-commit-error">
-          {errorDescription.title}
-        </Text>
-      ) : null}
-      {errorDescription?.detail ? (
-        <Text style={styles.commitErrorDetail} testID="changes-commit-error-detail">
-          {errorDescription.detail}
-        </Text>
-      ) : null}
+      <CommitActionRow
+        serverId={serverId}
+        workspaceId={workspaceId}
+        logSupported={logSupported}
+        selectedPathsCount={selectedPaths.length}
+        totalFiles={totalFiles}
+        allSelected={allSelected}
+        partiallySelected={partiallySelected}
+        onToggleSelectAll={onToggleSelectAll}
+        isCommitting={isCommitting}
+        commitDisabled={commitDisabled}
+        onCommit={handleCommit}
+        commitError={commitError}
+      />
     </View>
   );
 }
@@ -3605,6 +3827,39 @@ const styles = StyleSheet.create((theme) => ({
     paddingRight: 10,
     paddingVertical: theme.spacing[2],
     gap: theme.spacing[2],
+  },
+  commitTypeAnchor: {
+    // The chip is its own width; the row stays left-aligned.
+    alignSelf: "flex-start",
+  },
+  commitTypeTrigger: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    height: 28,
+    paddingHorizontal: theme.spacing[2],
+    borderRadius: theme.borderRadius.base,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface1,
+  },
+  commitTypeTriggerHovered: {
+    backgroundColor: theme.colors.surfaceHover,
+  },
+  commitTypeLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    flexShrink: 1,
+  },
+  commitTypeValue: {
+    color: theme.colors.foreground,
+    fontFamily: theme.fontFamily.mono,
+    // Compact bump: +2px on mobile, matching the message input font.
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
+    flexShrink: 1,
   },
   commitInput: {
     minHeight: 56,

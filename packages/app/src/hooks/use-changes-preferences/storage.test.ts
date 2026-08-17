@@ -34,6 +34,7 @@ describe("loadChangesPreferencesFromStorage", () => {
       hideWhitespace: false,
       pinnedToolbarItems: DEFAULT_CHANGES_PREFERENCES.pinnedToolbarItems,
       commitsCollapsed: true,
+      commitType: "none",
     });
     expect(storage.entries.get(CHANGES_PREFERENCES_STORAGE_KEY)).toBe(JSON.stringify(result));
   });
@@ -59,6 +60,7 @@ describe("loadChangesPreferencesFromStorage", () => {
       wrapLines: false,
       pinnedToolbarItems: DEFAULT_CHANGES_PREFERENCES.pinnedToolbarItems,
       commitsCollapsed: true,
+      commitType: "none",
     });
     expect(storage.entries.get(CHANGES_PREFERENCES_STORAGE_KEY)).toBe(persisted);
     expect(storage.entries.size).toBe(1);
@@ -106,6 +108,32 @@ describe("changes preferences commitsCollapsed", () => {
     const prefs = await loadChangesPreferencesFromStorage(storage);
 
     expect(prefs.commitsCollapsed).toBe(true);
+  });
+});
+
+describe("changes preferences commitType", () => {
+  it("defaults to no type prefix", () => {
+    expect(DEFAULT_CHANGES_PREFERENCES.commitType).toBe("none");
+  });
+
+  it("round-trips a persisted commit type", async () => {
+    const storage = createInMemoryKeyValueStorage({
+      [CHANGES_PREFERENCES_STORAGE_KEY]: JSON.stringify({ commitType: "fix" }),
+    });
+
+    const prefs = await loadChangesPreferencesFromStorage(storage);
+
+    expect(prefs.commitType).toBe("fix");
+  });
+
+  it("falls back to none for an unknown commit type", async () => {
+    const storage = createInMemoryKeyValueStorage({
+      [CHANGES_PREFERENCES_STORAGE_KEY]: JSON.stringify({ commitType: "wip" }),
+    });
+
+    const prefs = await loadChangesPreferencesFromStorage(storage);
+
+    expect(prefs.commitType).toBe("none");
   });
 });
 

@@ -5,10 +5,20 @@ import {
   DEFAULT_PINNED_CHANGES_TOOLBAR_ITEMS,
   type ChangesToolbarItemId,
 } from "@/git/changes-toolbar/items";
+import {
+  CONVENTIONAL_COMMIT_TYPES,
+  NO_COMMIT_TYPE,
+  type CommitTypeChoice,
+} from "@/git/conventional-commit";
 
 export const CHANGES_PREFERENCES_STORAGE_KEY = "@otto:changes-preferences";
 export const LEGACY_WRAP_LINES_STORAGE_KEY = "diff-wrap-lines";
 export const CHANGES_PREFERENCES_QUERY_KEY = ["changes-preferences"];
+
+const COMMIT_TYPE_VALUES = [NO_COMMIT_TYPE, ...CONVENTIONAL_COMMIT_TYPES] as [
+  CommitTypeChoice,
+  ...CommitTypeChoice[],
+];
 
 const changesPreferencesSchema = z.object({
   presentation: z.enum(["line", "structural"]).optional(),
@@ -18,6 +28,7 @@ const changesPreferencesSchema = z.object({
   hideWhitespace: z.boolean().optional(),
   pinnedToolbarItems: z.array(z.enum(CHANGES_TOOLBAR_ITEM_IDS)).optional(),
   commitsCollapsed: z.boolean().optional(),
+  commitType: z.enum(COMMIT_TYPE_VALUES).optional(),
 });
 
 export interface ChangesPreferences {
@@ -29,6 +40,11 @@ export interface ChangesPreferences {
   hideWhitespace: boolean;
   pinnedToolbarItems: ChangesToolbarItemId[];
   commitsCollapsed: boolean;
+  /**
+   * Conventional Commits type the commit form prefixes the message with
+   * (`fix: …`). "none" commits the message as-is.
+   */
+  commitType: CommitTypeChoice;
 }
 
 export const DEFAULT_CHANGES_PREFERENCES: ChangesPreferences = {
@@ -39,6 +55,7 @@ export const DEFAULT_CHANGES_PREFERENCES: ChangesPreferences = {
   hideWhitespace: false,
   pinnedToolbarItems: DEFAULT_PINNED_CHANGES_TOOLBAR_ITEMS,
   commitsCollapsed: true,
+  commitType: NO_COMMIT_TYPE,
 };
 
 export interface KeyValueStorage {
