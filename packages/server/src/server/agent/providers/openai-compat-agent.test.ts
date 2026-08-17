@@ -155,6 +155,73 @@ function createClient(
 }
 
 /**
+ * Endpoint that serves an exact sequence of /v1/chat/completions SSE chunks on
+ * the first round, then a final text round - for asserting how interleaved
+ * reasoning_content / content deltas map onto timeline items.
+ */
+async function startInterleaveEndpoint(
+  roundChunks: unknown[],
+  finalChunk?: unknown,
+): Promise<TestEndpoint & { completionBodies: Array<Record<string, unknown>> }> {
+  const completionBodies: Array<Record<string, unknown>>[] = [];
+  const server = createServer((req, res) => {
+    if (req.method === "GET" && req.url === "/v1/models") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ data: [{ id: "test-model-a" }] }));
+      return;
+    }
+    if (req.method === "POST" && req.url === "/v1/chat/completions") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", () => {
+        const request = JSON.parse(body) as { messages: unknown[] };
+        completionBodies.push(request as unknown as Record<string, unknown>);
+        const hasToolResult = (request.messages as Array<{ role: string }>).some(
+          (message) => message.role === "tool",
+        );
+        res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
+        if (hasToolResult) {
+          // Second round: emit the final answer then stop.
+          if (finalChunk) res.write(sseChunk(finalChunk));
+          res.write(sseChunk({ choices: [{ delta: { content: "done" } }] }));
+        } else {
+          for (const chunk of roundChunks) {
+            res.write(sseChunk(chunk));
+          }
+        }
+        res.write("data: [DONE]\n\n");
+        res.end();
+      });
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  servers.push(server);
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const { port } = server.address() as AddressInfo;
+  return { server, baseUrl: `http://127.0.0.1:${port}`, completionBodies };
+}
+
+const reasoningDelta = (text: string): unknown => ({
+  choices: [{ delta: { reasoning_content: text } }],
+});
+const contentDelta = (text: string): unknown => ({ choices: [{ delta: { content: text } }] });
+const toolCallDelta = (name: string, args: string): unknown => ({
+  choices: [
+    {
+      delta: {
+        tool_calls: [{ index: 0, id: "call_1", function: { name, arguments: args } }],
+      },
+    },
+  ],
+});
+
+/**
  * Endpoint that serves a two-round tool turn - a write_file call, then a
  * final text round - reporting usage on each round's last chunk so per-round
  * usage_updated emission can be asserted.
@@ -401,6 +468,138 @@ describe("OpenAICompatAgentClient", () => {
       // reasoning persists so a resumed session can replay the thinking block.
       { role: "assistant", content: "Hello from test-model-a", reasoning: "thinking " },
     ]);
+  });
+
+  // Reasoning-bleed repair: OpenAI-compatible servers (llama-server in
+  // particular) split thinking/content on the model's think markers. When the
+  // model emits a spurious close tag mid-thought, the rest of the reasoning
+  // arrives on the `content` channel. Without the repair the timeline renders
+  // Thinking → stray prose → Thinking (two live thought blocks). With it, the
+  // first content delta after an open reasoning block is held for one delta:
+  // if the wire flips back to reasoning_content it was a leak and folds into
+  // the thought; otherwise it settles as genuine prose.
+  test("folds a content delta back into reasoning when the stream flips back to thinking", async () => {
+    const endpoint = await startInterleaveEndpoint([
+      reasoningDelta("step one "),
+      reasoningDelta("step two "),
+      contentDelta("For user "),
+      reasoningDelta("messages the answer is yes"),
+    ]);
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    const result = await session.run("Answer");
+
+    const timelineItems = events.flatMap((event) =>
+      event.type === "timeline" ? [event.item] : [],
+    );
+    const reasoningItems = timelineItems.filter((item) => item.type === "reasoning");
+    const messageItems = timelineItems.filter((item) => item.type === "assistant_message");
+    // No stray prose: the leaked content delta was re-emitted as reasoning,
+    // and nothing was lost (the fold preserves the text).
+    expect(messageItems.length).toBe(0);
+    expect(reasoningItems.map((item) => item.text).join("")).toBe(
+      "step one step two For user messages the answer is yes",
+    );
+    // No assistant text settled for the round.
+    expect(result.finalText).toBe("");
+  });
+
+  test("settles a held content delta as prose when content continues", async () => {
+    const endpoint = await startInterleaveEndpoint([
+      reasoningDelta("thinking "),
+      contentDelta("Hello"),
+      contentDelta(" world"),
+    ]);
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    const result = await session.run("Say hello");
+
+    const timelineItems = events.flatMap((event) =>
+      event.type === "timeline" ? [event.item] : [],
+    );
+    const reasoningItems = timelineItems.filter((item) => item.type === "reasoning");
+    const messageItems = timelineItems.filter((item) => item.type === "assistant_message");
+    // Both content deltas reached the user, in order, as one assistant message.
+    expect(reasoningItems.length).toBe(1);
+    expect(reasoningItems[0].text).toBe("thinking ");
+    expect(messageItems.map((item) => item.text).join("")).toBe("Hello world");
+    expect(result.finalText).toBe("Hello world");
+  });
+
+  test("leaves content-only streams untouched when no reasoning preceded", async () => {
+    const endpoint = await startInterleaveEndpoint([contentDelta("Hello"), contentDelta(" world")]);
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    const result = await session.run("Say hello");
+
+    const timelineItems = events.flatMap((event) =>
+      event.type === "timeline" ? [event.item] : [],
+    );
+    expect(timelineItems.filter((item) => item.type === "reasoning")).toHaveLength(0);
+    expect(
+      timelineItems.filter((item) => item.type === "assistant_message").map((item) => item.text),
+    ).toEqual(["Hello", " world"]);
+    expect(result.finalText).toBe("Hello world");
+  });
+
+  test("settles a held content delta as prose when a tool call follows", async () => {
+    const args = JSON.stringify({ path: "note.txt", content: "hello tools" });
+    const endpoint = await startInterleaveEndpoint(
+      [
+        reasoningDelta("planning "),
+        contentDelta("Writing the note now. "),
+        toolCallDelta("write_file", args),
+      ],
+      { choices: [{ delta: {} }] },
+    );
+    const client = createClient(endpoint.baseUrl);
+    const cwd = await makeTempCwd();
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd,
+      model: "test-model-a",
+      modeId: "bypassPermissions",
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    const result = await session.run("Create note.txt");
+
+    const timelineItems = events.flatMap((event) =>
+      event.type === "timeline" ? [event.item] : [],
+    );
+    const reasoningItems = timelineItems.filter((item) => item.type === "reasoning");
+    const messageItems = timelineItems.filter((item) => item.type === "assistant_message");
+    const toolItems = timelineItems.filter((item) => item.type === "tool_call");
+    // The prose before the tool call settled as an assistant message; the
+    // reasoning stayed one block; the tool call still executed.
+    expect(reasoningItems.map((item) => item.text).join("")).toBe("planning ");
+    expect(messageItems.map((item) => item.text).join("")).toBe("Writing the note now. done");
+    expect(toolItems.map((item) => item.status)).toEqual(["running", "completed"]);
+    expect(toolItems[0].name).toBe("write_file");
+    expect(result.canceled).toBe(false);
+    await session.close();
   });
 
   // Attachments must survive to the wire here exactly as they do on claude,
