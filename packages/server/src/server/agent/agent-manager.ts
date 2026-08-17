@@ -25,6 +25,11 @@ import type {
   ProviderActionBreakerConfig,
   ProviderCompactionConfig,
 } from "@otto-code/protocol/provider-config";
+import {
+  STALL_GUARD_DEFAULT_THRESHOLD,
+  STALL_GUARD_MAX_THRESHOLD,
+  STALL_GUARD_MIN_THRESHOLD,
+} from "@otto-code/protocol/provider-config";
 import type { Logger } from "pino";
 import { z } from "zod";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
@@ -129,6 +134,15 @@ import {
   stripTrailingTodoNudge,
   todoListSignature,
 } from "./todo-reminders.js";
+import {
+  buildStallInterruptMessage,
+  classifyTimelineItem,
+  createStallGuardState,
+  hasStalled,
+  latchStallGuard,
+  observeStallSignal,
+  type StallGuardState,
+} from "./agent-stall-guard.js";
 import { unwrapSpokenInput } from "../voice-config.js";
 import { stripInternalOttoMcpServer, withRuntimeOttoMcpServer } from "./runtime-mcp-config.js";
 import { resolveCreateAgentTitles } from "./create-agent-title.js";
@@ -219,6 +233,7 @@ function resolveAgentBehaviorSettings(
         notifyOnFinishDefault?: boolean;
         todoNudge?: boolean;
         todoReconcileOnIdle?: boolean;
+        stallGuardThreshold?: number;
       }
     | undefined,
 ): AgentBehaviorSettings {
@@ -228,7 +243,25 @@ function resolveAgentBehaviorSettings(
     notifyOnFinishDefault: behaviors?.notifyOnFinishDefault !== false,
     todoNudge: behaviors?.todoNudge !== false,
     todoReconcileOnIdle: behaviors?.todoReconcileOnIdle !== false,
+    stallGuardThreshold: resolveStallGuardThreshold(behaviors?.stallGuardThreshold),
   };
+}
+
+/**
+ * Clamp the stall-guard threshold into [MIN, MAX], keeping 0 (disabled) as an
+ * explicit escape hatch. A hand-edited config can turn the guard off outright
+ * but cannot set it to a hair trigger. Missing or non-finite values fall back
+ * to the default rather than silently disabling the guard.
+ */
+function resolveStallGuardThreshold(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return STALL_GUARD_DEFAULT_THRESHOLD;
+  }
+  const rounded = Math.round(value);
+  if (rounded <= 0) {
+    return 0;
+  }
+  return Math.min(STALL_GUARD_MAX_THRESHOLD, Math.max(STALL_GUARD_MIN_THRESHOLD, rounded));
 }
 
 function buildStoredAgentConfig(record: StoredAgentRecord): AgentSessionConfig {
@@ -470,6 +503,7 @@ export interface AgentManagerOptions {
     notifyOnFinishDefault?: boolean;
     todoNudge?: boolean;
     todoReconcileOnIdle?: boolean;
+    stallGuardThreshold?: number;
   };
   agentStreamCoalesceWindowMs?: number;
   rescueTimeouts?: AgentManagerRescueTimeouts;
@@ -989,6 +1023,13 @@ interface ManagedAgentBase {
    * count once. Lives beside the counter it guards.
    */
   countedToolCallIds?: Set<string>;
+  /**
+   * Tool-emission stall guard: consecutive assistant messages that neither
+   * called a tool nor handed back to the user. Purely structural, spans turns,
+   * reset by any tool call or real user prompt. Ephemeral like the counters
+   * above. See agent-stall-guard.ts.
+   */
+  stallGuard?: StallGuardState;
   lastError?: string;
   attention: AttentionState;
   foregroundTurnWaiters: Set<ForegroundTurnWaiter>;
@@ -1469,6 +1510,10 @@ export class AgentManager {
       onFlush: ({ agentId, item, provider, turnId }) => {
         const event = this.recordAndDispatchTimelineItem(agentId, item, provider, turnId);
         this.notifyForegroundTurnWaiters(agentId, event);
+        // Assistant messages and tool calls are coalescable, so this flush - not
+        // onStreamTimelineEvent - is where the live ones land. The guard has to
+        // watch both paths to see the whole stream.
+        this.observeStallGuard(agentId, item);
       },
     });
     this.updateProviderRegistry({
@@ -1610,6 +1655,7 @@ export class AgentManager {
           notifyOnFinishDefault?: boolean;
           todoNudge?: boolean;
           todoReconcileOnIdle?: boolean;
+          stallGuardThreshold?: number;
         }
       | undefined,
   ): void {
@@ -5844,8 +5890,59 @@ export class AgentManager {
       agent.lastUserMessageAt = new Date();
       this.emitState(agent);
     }
+    this.observeStallGuard(agent.id, event.item);
     flags.shouldDispatchEvent = false;
     flags.shouldNotifyWaiters = true;
+  }
+
+  /**
+   * Fold one live timeline item into the agent's tool-emission stall guard, and
+   * stop the run if the guard trips.
+   *
+   * The guard answers one structural question - "has this agent produced
+   * anything with a side effect lately?" - and nothing about the content of
+   * what it produced. See agent-stall-guard.ts for the invariant and the two
+   * resets (any tool call, any real user prompt).
+   *
+   * Only live items reach here: the `fromHistory` replay path and
+   * system-injected prompts both return before this call. That is deliberate.
+   * Replaying a stalled transcript must not re-stop an agent that is fine now,
+   * and a daemon-authored nudge is not a user taking back control.
+   */
+  private observeStallGuard(agentId: string, item: AgentTimelineItem): void {
+    const threshold = this.agentBehaviors.stallGuardThreshold;
+    if (threshold <= 0) {
+      return;
+    }
+    const agent = this.agents.get(agentId);
+    if (!agent) {
+      return;
+    }
+    const signal = classifyTimelineItem(item, {
+      isSystemInjected: item.type === "user_message" && isSystemInjectedEnvelope(item.text),
+    });
+    const next = observeStallSignal(agent.stallGuard ?? createStallGuardState(), signal);
+    agent.stallGuard = next;
+    if (!hasStalled(next, threshold)) {
+      return;
+    }
+
+    // Latch before stopping: the cancel is async, and the tail of the burst
+    // keeps arriving through this same path. Without the latch the guard would
+    // trip again every threshold messages and stack up duplicate stop rows for
+    // one stall. A tool call or a real user prompt clears it.
+    agent.stallGuard = latchStallGuard();
+    const message = buildStallInterruptMessage(next.count);
+    this.logger.warn(
+      { agentId: agent.id, provider: agent.provider, count: next.count, threshold },
+      "Stall guard tripped: no tool call in consecutive assistant messages, stopping the run",
+    );
+    // Surface the reason in the transcript first, so the row explaining the
+    // stop is already there when the run goes idle.
+    this.recordAndDispatchTimelineItem(agent.id, { type: "error", message }, agent.provider);
+    void this.cancelAgentRun(agent.id).catch((error: unknown) => {
+      this.logger.error({ err: error, agentId: agent.id }, "Stall guard failed to stop the run");
+    });
   }
 
   /**

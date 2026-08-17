@@ -10,6 +10,7 @@ import {
 import { ProviderOverrideSchema } from "./agent/provider-launch-config.js";
 import {
   OTTO_TOOL_GROUPS,
+  STALL_GUARD_DEFAULT_THRESHOLD,
   type ConnectorAuthState,
   type ConnectorConfig,
   type OttoToolGroup,
@@ -1109,6 +1110,7 @@ interface AgentBehaviorsPersistShape {
   notifyOnFinishDefault: boolean;
   todoNudge: boolean;
   todoReconcileOnIdle: boolean;
+  stallGuardThreshold: number;
 }
 
 // Read the agent-behavior toggles off the mutable config. The wire schema
@@ -1124,6 +1126,12 @@ function readAgentBehaviors(mutable: MutableDaemonConfig): AgentBehaviorsPersist
     notifyOnFinishDefault: behaviors["notifyOnFinishDefault"] !== false,
     todoNudge: behaviors["todoNudge"] !== false,
     todoReconcileOnIdle: behaviors["todoReconcileOnIdle"] !== false,
+    // Numeric, so the boolean !== false idiom above does not apply: anything
+    // that is not a number reads as the built-in default rather than 0 (off).
+    stallGuardThreshold:
+      typeof behaviors["stallGuardThreshold"] === "number"
+        ? behaviors["stallGuardThreshold"]
+        : STALL_GUARD_DEFAULT_THRESHOLD,
   };
 }
 

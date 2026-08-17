@@ -53,6 +53,9 @@ import {
   ACTION_BREAKER_DEFAULT_THRESHOLD,
   ACTION_BREAKER_MIN_THRESHOLD,
   ACTION_BREAKER_MAX_THRESHOLD,
+  MAX_ROUND_TEXT_CHARS_DEFAULT,
+  MAX_ROUND_TEXT_CHARS_MIN,
+  MAX_ROUND_TEXT_CHARS_MAX,
   type OttoToolGroup,
   type ProviderActionBreakerConfig,
 } from "@otto-code/protocol/provider-config";
@@ -130,6 +133,37 @@ function resolveActionBreakerThreshold(value: number | null | undefined): number
   }
   const rounded = Math.round(value);
   return Math.min(ACTION_BREAKER_MAX_THRESHOLD, Math.max(ACTION_BREAKER_MIN_THRESHOLD, rounded));
+}
+
+/**
+ * Resolve the per-round assistant-text budget from provider config. `0` is
+ * preserved verbatim as "disabled"; every other value clamps into
+ * [MIN, MAX] so a hand-edited config can't turn the valve into a hair trigger.
+ * Omitted or non-numeric falls back to the default rather than failing the
+ * session - a bad config must not cost the user their agent.
+ */
+function resolveMaxRoundTextChars(value: number | null | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return MAX_ROUND_TEXT_CHARS_DEFAULT;
+  }
+  const rounded = Math.round(value);
+  if (rounded <= 0) {
+    return 0;
+  }
+  return Math.min(MAX_ROUND_TEXT_CHARS_MAX, Math.max(MAX_ROUND_TEXT_CHARS_MIN, rounded));
+}
+
+/**
+ * The message shown when the round text budget stops a turn. States the
+ * structural fact that tripped it and names the setting, so a stopped run is
+ * never a mystery. Mirrors buildStallInterruptMessage in agent-stall-guard.ts.
+ */
+function buildRoundTextBudgetMessage(chars: number, budget: number): string {
+  return (
+    `Stopped: the model streamed ${chars.toLocaleString("en-US")} characters in one response ` +
+    `without emitting a tool call or finishing - a possible tool-emission stall. ` +
+    `Adjust or disable this with the provider's maxRoundTextChars setting (currently ${budget.toLocaleString("en-US")}).`
+  );
 }
 
 /** Split a breaker key ("name|argsJson") back into its two parts. */
@@ -637,6 +671,12 @@ export interface OpenAICompatAgentClientOptions {
    * undefined/null/disabled = the historical execute-everything behavior.
    */
   actionBreaker?: ProviderActionBreakerConfig | null;
+  /**
+   * Assistant-text budget for one model round. A round that streams past this
+   * many characters with no tool call emitted is interrupted as a stall.
+   * undefined/null = MAX_ROUND_TEXT_CHARS_DEFAULT; 0 disables the guard.
+   */
+  maxRoundTextChars?: number | null;
   managedProcesses?: ManagedProcessRegistry | null;
   /**
    * Endpoint source for providers the daemon configures itself (otto-brain),
@@ -1345,6 +1385,7 @@ export class OpenAICompatAgentClient implements AgentClient {
   private readonly compaction: ProviderCompactionConfig | null;
   private readonly maxToolRounds: number | null;
   private readonly actionBreaker: ProviderActionBreakerConfig | null;
+  private readonly maxRoundTextChars: number | null;
   private readonly managedProcesses: ManagedProcessRegistry | null;
   private readonly endpointResolver: (() => ResolvedEndpoint) | null;
   private readonly reasoningEffortMode: "levels" | "toggle";
@@ -1361,6 +1402,7 @@ export class OpenAICompatAgentClient implements AgentClient {
     this.compaction = options.compaction ?? null;
     this.maxToolRounds = options.maxToolRounds ?? null;
     this.actionBreaker = options.actionBreaker ?? null;
+    this.maxRoundTextChars = options.maxRoundTextChars ?? null;
     this.managedProcesses = options.managedProcesses ?? null;
     this.endpointResolver = options.resolveEndpoint ?? null;
     this.reasoningEffortMode = options.reasoningEffortMode ?? "levels";
@@ -1593,6 +1635,7 @@ export class OpenAICompatAgentClient implements AgentClient {
       reasoningEffortMode: this.reasoningEffortMode,
       maxToolRounds: this.maxToolRounds,
       actionBreaker: this.actionBreaker,
+      maxRoundTextChars: this.maxRoundTextChars,
       managedProcesses: this.managedProcesses,
     });
   }
@@ -1629,6 +1672,7 @@ export class OpenAICompatAgentClient implements AgentClient {
       reasoningEffortMode: this.reasoningEffortMode,
       maxToolRounds: this.maxToolRounds,
       actionBreaker: this.actionBreaker,
+      maxRoundTextChars: this.maxRoundTextChars,
       managedProcesses: this.managedProcesses,
     });
   }
@@ -1839,6 +1883,8 @@ export class OpenAICompatAgentSession implements AgentSession {
   private actionBreakerEnabled: boolean;
   /** Consecutive identical failures before the breaker trips a key. */
   private actionBreakerThreshold: number;
+  /** Assistant-text budget for one model round; 0 disables the guard. */
+  private maxRoundTextChars: number;
   private activeTurn: ActiveTurn | null = null;
   /** Resolved context window for the active model; null until (or unless) discovered. */
   private contextWindowMaxTokens: number | null = null;
@@ -1875,6 +1921,7 @@ export class OpenAICompatAgentSession implements AgentSession {
     reasoningEffortMode?: "levels" | "toggle";
     maxToolRounds?: number | null;
     actionBreaker?: ProviderActionBreakerConfig | null;
+    maxRoundTextChars?: number | null;
     managedProcesses?: ManagedProcessRegistry | null;
     /** See OpenAICompatAgentClientOptions.resolveEndpoint. */
     resolveEndpoint?: () => ResolvedEndpoint;
@@ -1950,6 +1997,7 @@ export class OpenAICompatAgentSession implements AgentSession {
     this.maxToolRounds = resolveMaxToolRounds(options.maxToolRounds);
     this.actionBreakerEnabled = options.actionBreaker?.enabled === true;
     this.actionBreakerThreshold = resolveActionBreakerThreshold(options.actionBreaker?.threshold);
+    this.maxRoundTextChars = resolveMaxRoundTextChars(options.maxRoundTextChars);
 
     // The system message is always rebuilt so cwd/mode/config changes take
     // effect on resume; restored copies of it are dropped first.
@@ -3761,7 +3809,70 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       const payload = line.slice(5).trim();
       if (!payload || payload === "[DONE]") continue;
       this.applyStreamPayload(turn, payload);
+      this.enforceRoundTextBudget(turn);
+      // Unwind deterministically rather than waiting for the aborted body
+      // stream to error: settleTurnFailure sees `aborted` and settles the turn
+      // as canceled. Covers a user interrupt landing mid-stream too.
+      if (turn.abort.signal.aborted) {
+        throw new Error("Interrupted");
+      }
     }
+  }
+
+  /**
+   * Stop a round that is streaming prose without end and without acting.
+   *
+   * The turn-level half of the stall invariant: a model round either emits a
+   * tool call (it acts) or stops (it hands back). One that does neither, past
+   * this much text, is not working - the run has degenerated. The daemon-wide
+   * stall guard (agent-stall-guard.ts) cannot see this shape: it keys on
+   * `messageId` so a message arriving as a burst of deltas counts once, which
+   * is right for its job and reads 1 for a single runaway generation. See the
+   * "unbounded tool-call announcement" finding - 66,384 characters in one
+   * completion over 5m40s, ended only by the user typing /compact.
+   *
+   * Structural: it measures how much was produced, never what was said - there
+   * is no repeat-phrase or similarity check here, deliberately. Two conditions
+   * keep it off real work:
+   *
+   * - **`pendingToolCalls` must be empty.** Once the model has begun emitting a
+   *   tool call this round it is going to act, so the round is doing its job
+   *   however long its preamble ran.
+   * - **Only content counts, never `roundReasoning`.** High-effort thinking is
+   *   legitimately enormous, and the degeneration this bounds is in content.
+   *   A runaway that stays entirely inside reasoning is out of scope here.
+   *
+   * Interrupts through the turn's own AbortController, so this settles down the
+   * existing cancel path (settleTurnFailure sees `aborted` and emits
+   * turn_canceled, preserving the partial text) rather than surfacing a crash.
+   */
+  private enforceRoundTextBudget(turn: ActiveTurn): void {
+    if (this.maxRoundTextChars <= 0 || turn.abort.signal.aborted) {
+      return;
+    }
+    if (turn.pendingToolCalls.size > 0 || turn.roundText.length <= this.maxRoundTextChars) {
+      return;
+    }
+    const message = buildRoundTextBudgetMessage(turn.roundText.length, this.maxRoundTextChars);
+    this.logger?.warn(
+      {
+        provider: this.provider,
+        sessionId: this.id,
+        turnId: turn.turnId,
+        chars: turn.roundText.length,
+        budget: this.maxRoundTextChars,
+      },
+      "OpenAI-compatible round text budget exceeded - interrupting turn",
+    );
+    // The error item carries the reason; turn_canceled alone only says
+    // "Interrupted", which would leave the user guessing why their agent died.
+    this.emit({
+      type: "timeline",
+      provider: this.provider,
+      turnId: turn.turnId,
+      item: { type: "error", message },
+    });
+    turn.abort.abort();
   }
 
   private applyStreamPayload(turn: ActiveTurn, payload: string): void {

@@ -219,6 +219,7 @@ import {
   MutableBrainConfigSchema,
 } from "@otto-code/protocol/messages";
 import type { OttoToolGroup } from "@otto-code/protocol/provider-config";
+import { STALL_GUARD_DEFAULT_THRESHOLD } from "@otto-code/protocol/provider-config";
 import {
   DEFAULT_AGENT_PERSONALITIES,
   DEFAULT_AGENT_TEAMS,
@@ -479,6 +480,7 @@ export interface OttoDaemonConfig {
     notifyOnFinishDefault?: boolean;
     todoNudge?: boolean;
     todoReconcileOnIdle?: boolean;
+    stallGuardThreshold?: number;
   };
   autoArchiveAfterMerge?: boolean;
   enableTerminalAgentHooks?: boolean;
@@ -740,6 +742,8 @@ function buildInitialAgentBehaviors(
     notifyOnFinishDefault: config.agentBehaviors?.notifyOnFinishDefault ?? true,
     todoNudge: config.agentBehaviors?.todoNudge ?? true,
     todoReconcileOnIdle: config.agentBehaviors?.todoReconcileOnIdle ?? true,
+    stallGuardThreshold:
+      config.agentBehaviors?.stallGuardThreshold ?? STALL_GUARD_DEFAULT_THRESHOLD,
   };
 }
 

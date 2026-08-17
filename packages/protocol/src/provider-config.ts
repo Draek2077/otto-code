@@ -256,6 +256,53 @@ export const ACTION_BREAKER_MIN_THRESHOLD = 2;
 export const ACTION_BREAKER_MAX_THRESHOLD = 100;
 
 /**
+ * Tool-emission stall guard (daemon-wide, provider-agnostic). A healthy agent
+ * turn either acts - it emits a tool call - or it hands back to the human. An
+ * assistant message that does neither has no side effect, so a run that only
+ * produces those is not working, it is stuck. This is the count of consecutive
+ * such messages tolerated before the daemon interrupts the run.
+ *
+ * Purely structural: it counts stream events, never their text. A tool call
+ * resets it to zero, so a long working loop (a 200-turn investigation with a
+ * tool call every few turns) can never trip it; so does a real user prompt, so
+ * ordinary back-and-forth chat can never trip it either.
+ *
+ * `0` disables the guard. Bounds keep the setting a guard rail rather than a
+ * hair trigger. See agent-stall-guard.ts and the "unbounded tool-call
+ * announcement" finding: a local model emitted ~840 consecutive text-only
+ * messages over five minutes, re-announcing three tool calls it never sent, and
+ * nothing in the runtime noticed.
+ */
+export const STALL_GUARD_DEFAULT_THRESHOLD = 15;
+export const STALL_GUARD_MIN_THRESHOLD = 3;
+export const STALL_GUARD_MAX_THRESHOLD = 500;
+
+/**
+ * Per-round assistant-text budget for daemon-hosted tool loops (openai-compat /
+ * Otto Brain). The same invariant the stall guard enforces across messages, held
+ * *within* one: a model round that has streamed this much prose while emitting
+ * no tool call is neither acting nor finishing, so the turn is interrupted.
+ *
+ * This is the sibling STALL_GUARD_* cannot cover. That counter keys on
+ * `messageId` so a message streamed as a burst of deltas counts once - correct,
+ * and the reason it reads 1 for a *single* runaway generation. In the
+ * "unbounded tool-call announcement" incident the model produced 66,384
+ * characters inside one completion over 5m40s, never emitting a stop token and
+ * never emitting a tool call; the run ended only because the user typed
+ * /compact. Counting characters within the round is what catches that shape.
+ *
+ * Structural, not textual: it measures how much was produced, never what was
+ * said. Reasoning/thinking text is deliberately excluded - high-effort thinking
+ * is legitimately long, and the degeneration this bounds is in content.
+ *
+ * The default is far above any real answer (roughly 8K tokens of prose in one
+ * round), so it is a safety valve rather than a style limit. `0` disables it.
+ */
+export const MAX_ROUND_TEXT_CHARS_DEFAULT = 32_000;
+export const MAX_ROUND_TEXT_CHARS_MIN = 2_000;
+export const MAX_ROUND_TEXT_CHARS_MAX = 2_000_000;
+
+/**
  * Compaction tuning for providers whose conversation the daemon owns
  * (openai-compat). These set the provider-level defaults; the per-agent
  * "Auto-compact" feature select overrides them at runtime.
@@ -344,6 +391,17 @@ export const ProviderOverrideSchema = z.object({
    * instead of re-executing it. Omitted = disabled (historical behavior).
    */
   actionBreaker: ProviderActionBreakerConfigSchema.optional(),
+  /**
+   * Assistant-text budget for one model round (openai-compat / Otto Brain).
+   * A round that streams past this many characters without emitting a tool call
+   * interrupts the turn. Omitted = MAX_ROUND_TEXT_CHARS_DEFAULT; `0` disables.
+   */
+  maxRoundTextChars: z
+    .union([
+      z.literal(0),
+      z.number().int().min(MAX_ROUND_TEXT_CHARS_MIN).max(MAX_ROUND_TEXT_CHARS_MAX),
+    ])
+    .optional(),
   enabled: z.boolean().optional(),
   order: z.number().optional(),
 });

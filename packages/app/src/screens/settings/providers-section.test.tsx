@@ -280,6 +280,7 @@ function makeConfig(providers: MutableDaemonConfig["providers"] = {}): MutableDa
       notifyOnFinishDefault: true,
       todoNudge: true,
       todoReconcileOnIdle: true,
+      stallGuardThreshold: 15,
     },
     agentPersonalities: { personalities: [] },
     agentTeams: { teams: [] },

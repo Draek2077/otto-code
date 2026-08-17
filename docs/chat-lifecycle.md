@@ -16,6 +16,74 @@ initializing → idle → running → idle (or error → closed)
 
 Each chat in `AgentManager` carries a `lastStatus` of `initializing`, `idle`, `running`, `error`, or `closed`, reflecting the state of the agent session behind it. State transitions persist to disk and stream to subscribed clients via WebSocket.
 
+## The stall guard - stopping a run that is not working
+
+A healthy agent turn either **acts** - it emits a tool call - or it **hands back** to you. An
+assistant message that does neither has no effect on the world. A run that produces nothing but those
+is not working, it is stuck, and before this guard existed nothing in the runtime noticed: a local
+model once spent five minutes emitting ~840 consecutive one-line messages announcing three tool calls
+it never sent, and the run only stopped because the user typed `/compact`.
+
+The daemon counts **consecutive assistant messages with no tool call**, and stops the run at
+`agentBehaviors.stallGuardThreshold` (default 15, `0` disables). The stop goes through the ordinary
+cancel path - the same one the composer's Stop button uses - and writes a row into the transcript
+saying why.
+
+Two properties matter more than the count:
+
+- **It is purely structural.** It reads the shape of the event stream, never the text. There is no
+  repeat-phrase matching and no similarity scoring; both were considered and rejected. A model
+  legitimately repeats itself, and a stalled one can vary its wording indefinitely.
+- **Two resets keep it off the back of real work.** Any **tool call** resets it to zero, so a
+  200-turn investigation that calls a tool every few messages can never trip it however long it runs.
+  Any **user prompt** resets it to zero, so ordinary conversation - where every turn is text-only by
+  design - can never trip it either. A system-injected prompt (a todo nudge, an idle reconcile pass)
+  is _not_ a user prompt for this purpose: that is the daemon talking to itself, and an automated
+  re-prompt loop is exactly what the guard has to remain able to see.
+
+The counter therefore **spans turns**, and it has to. For the daemon-owned tool loop (openai-compat /
+Otto Brain) a round that emits no tool call _ends the turn_, so a per-turn counter would top out at
+one and never fire. A chain of turns and a chain of messages inside one turn are the same failure
+seen at two granularities, and one cross-turn counter catches both.
+
+It is provider-agnostic: the counting sits in `AgentManager`, on the live stream every provider feeds
+(both the coalesced path and the plain timeline path), not in any one provider's loop. See
+`agent-stall-guard.ts`.
+
+This is a different guard from the two per-turn ones in the daemon-owned tool loop, which stay where
+they are: `maxToolRounds` bounds model→tool→model rounds within a turn, and the action circuit
+breaker stops a tool call that keeps failing with identical arguments. Those catch an agent doing the
+wrong thing repeatedly; this one catches an agent doing nothing at all.
+
+### The round text budget - the same invariant inside one message
+
+The counter above keys on `messageId`, so a message that arrives as a burst of streamed deltas counts
+**once**. That is right for its job, and it is also the reason it cannot see a runaway that never
+starts a second message. The five-minute incident above was exactly that shape: not 840 turns, but
+**one completion** that streamed 66,384 characters over 5m40s and never emitted a stop token. The
+transcript shows 825 separate assistant entries because the daemon flushes streaming text every 60ms
+(`AGENT_STREAM_COALESCE_DEFAULT_WINDOW_MS`) and each flush is its own timeline row - one `messageId`
+throughout. The cross-turn counter reads 1 against it.
+
+So the daemon-owned tool loop holds the same invariant **within** a round: a round that has streamed
+past `maxRoundTextChars` (default 32,000, `0` disables, set per provider) while emitting no tool call
+is neither acting nor finishing, and the turn is interrupted. Same cancel path, same
+reason-on-the-timeline, and the partial output is kept rather than discarded.
+
+Two conditions keep it off real work:
+
+- **A round that has begun emitting a tool call is never interrupted**, however long its preamble
+  ran. It is going to act, so it is doing its job.
+- **Only content counts, never reasoning.** High-effort thinking is legitimately enormous; the
+  degeneration this bounds is in content. A runaway confined to reasoning is out of scope.
+
+The default sits far above any real answer - roughly 8K tokens of prose in a single round - so it is
+a safety valve, not a style limit. It lives in the provider (`openai-compat-agent.ts`) rather than in
+`AgentManager` because the round is a concept only the daemon-owned tool loop has.
+
+The two guards are siblings, not alternatives: the counter catches a chain of messages that each stop
+without acting, the budget catches a single message that never stops at all.
+
 ## Delivery - how a prompt reaches a busy agent
 
 Every prompt entrypoint (composer, MCP `send_agent_prompt`, CLI, chat mentions, schedule fires, notify-on-finish) funnels through `sendPromptToAgent` → `startAgentRun`, which takes a `delivery` mode. It only matters when the target is **busy**; against an idle agent both modes run the prompt immediately.

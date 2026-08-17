@@ -203,6 +203,7 @@ const PROVIDER_CLIENT_FACTORIES: Record<string, ProviderClientFactory> = {
       reasoningEffortMode: "toggle",
       maxToolRounds: options?.providerOverride?.maxToolRounds,
       actionBreaker: options?.providerOverride?.actionBreaker ?? null,
+      maxRoundTextChars: options?.providerOverride?.maxRoundTextChars,
       managedProcesses: options?.managedProcesses,
     }),
 };
@@ -847,6 +848,7 @@ function resolveOpenAICompatProvider(
         compaction: override.compaction,
         maxToolRounds: override.maxToolRounds,
         actionBreaker: override.actionBreaker ?? null,
+        maxRoundTextChars: override.maxRoundTextChars,
         managedProcesses: options.managedProcesses,
       }),
   };

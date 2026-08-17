@@ -44,6 +44,7 @@ import type {
 import type { OttoToolCatalog } from "./tools/types.js";
 import type { ProviderDefinition } from "./provider-registry.js";
 import type { ProviderCompactionConfig } from "@otto-code/protocol/provider-config";
+import { STALL_GUARD_DEFAULT_THRESHOLD } from "@otto-code/protocol/provider-config";
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -71,6 +72,7 @@ const DEFAULT_LAUNCH_AGENT_BEHAVIORS = {
   notifyOnFinishDefault: true,
   todoNudge: true,
   todoReconcileOnIdle: true,
+  stallGuardThreshold: STALL_GUARD_DEFAULT_THRESHOLD,
 };
 
 function waitForAgentLifecycle(
@@ -2800,13 +2802,7 @@ test("importProviderSession imports the selected session without listing and pub
     },
     // Otto carries the daemon-wide behavior toggles on every launch context;
     // providers that cannot honor one ignore it.
-    agentBehaviors: {
-      promptSuggestions: true,
-      agentProgressSummaries: true,
-      notifyOnFinishDefault: true,
-      todoNudge: true,
-      todoReconcileOnIdle: true,
-    },
+    agentBehaviors: DEFAULT_LAUNCH_AGENT_BEHAVIORS,
   });
   expect(imported.lifecycle).toBe("idle");
   expect(imported.historyPrimed).toBe(true);

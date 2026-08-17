@@ -387,6 +387,9 @@ export const PersistedConfigSchema = z
             notifyOnFinishDefault: z.boolean().optional(),
             todoNudge: z.boolean().optional(),
             todoReconcileOnIdle: z.boolean().optional(),
+            // Tool-emission stall guard: consecutive assistant messages with no
+            // tool call and no handback before the run is interrupted. 0 = off.
+            stallGuardThreshold: z.number().int().min(0).optional(),
           })
           .passthrough()
           .optional(),

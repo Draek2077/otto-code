@@ -920,6 +920,12 @@ export interface AgentBehaviorSettings {
   todoNudge: boolean;
   /** Inject a one-shot reconcile pass when an agent goes idle with a stale todo list. */
   todoReconcileOnIdle: boolean;
+  /**
+   * Consecutive assistant messages that neither call a tool nor hand back to
+   * the user before the daemon interrupts the run. 0 disables the guard.
+   * Provider-agnostic and purely structural - see agent-stall-guard.ts.
+   */
+  stallGuardThreshold: number;
 }
 
 export interface AgentLaunchContext {

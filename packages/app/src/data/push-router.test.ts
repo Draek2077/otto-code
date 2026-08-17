@@ -80,6 +80,7 @@ const daemonConfig: MutableDaemonConfig = {
     notifyOnFinishDefault: true,
     todoNudge: true,
     todoReconcileOnIdle: true,
+    stallGuardThreshold: 15,
   },
   agentPersonalities: { personalities: [] },
   agentTeams: { teams: [] },

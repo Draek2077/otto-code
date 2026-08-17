@@ -43,6 +43,8 @@ import {
   ConnectorConfigSchema,
   McpServerConfigSchema,
   OTTO_TOOL_GROUPS,
+  STALL_GUARD_DEFAULT_THRESHOLD,
+  STALL_GUARD_MAX_THRESHOLD,
 } from "./provider-config.js";
 import { TOOL_CALL_ICON_NAMES } from "./agent-types.js";
 import {
@@ -217,6 +219,17 @@ const MutableAgentBehaviorsConfigSchema = z
     // reconcile pass so it marks done what's done (or states what's genuinely
     // left) before the turn truly ends.
     todoReconcileOnIdle: z.boolean().default(true),
+    // Provider-agnostic tool-emission stall guard: consecutive assistant
+    // messages that neither call a tool nor hand back to the user before the
+    // daemon interrupts the run. A tool call or a real user prompt resets the
+    // count, so working loops and ordinary chat never trip it. 0 disables.
+    // See STALL_GUARD_* in provider-config.ts and agent-stall-guard.ts.
+    stallGuardThreshold: z
+      .number()
+      .int()
+      .min(0)
+      .max(STALL_GUARD_MAX_THRESHOLD)
+      .default(STALL_GUARD_DEFAULT_THRESHOLD),
   })
   .passthrough();
 
@@ -848,6 +861,7 @@ export const MutableDaemonConfigSchema = z
       notifyOnFinishDefault: true,
       todoNudge: true,
       todoReconcileOnIdle: true,
+      stallGuardThreshold: STALL_GUARD_DEFAULT_THRESHOLD,
     }),
     providers: z.record(z.string(), MutableDaemonProviderConfigSchema).default({}),
     metadataGeneration: MutableMetadataGenerationConfigSchema.default({
