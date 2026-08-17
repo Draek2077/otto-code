@@ -140,4 +140,4 @@ archive/
 test-logs*/
 
 # AI common temp folder
-.tmp/
+.tmp*/

@@ -2083,7 +2083,9 @@ function describeCommitError(
     case "identity_missing":
       return { title: t("workspace.git.commit.errorIdentity"), detail: null };
     case "hook_failed":
-      return { title: t("workspace.git.commit.errorHook"), detail: error.output.trim() || null };
+      // The raw hook output is not actionable here, so only the error
+      // sentence is shown; the full log stays available via the log tab.
+      return { title: t("workspace.git.commit.errorHook"), detail: null };
     case "signing_failed":
       return { title: t("workspace.git.commit.errorSigning"), detail: error.detail.trim() || null };
     case "nothing_to_commit":
