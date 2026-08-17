@@ -63,8 +63,8 @@ describe("summariseSlots", () => {
   });
 
   it("calls a busy slot with no counter at all decode, not prefill", () => {
-    // Claiming prefill here would make the rail show "processing incoming
-    // tokens" for the whole of every response on that build.
+    // Claiming prefill here would make the rail show "processing tokens"
+    // for the whole of every response on that build.
     expect(summariseSlots([{ is_processing: true }])).toMatchObject({ prefill: 0, decode: 1 });
   });
 

@@ -2207,7 +2207,6 @@ function SettingsSidebar({
       settings: t("sidebar.actions.settings"),
       // Temporary label (English-only) - mirrors the workspace sidebar footer.
       stats: "Metrics",
-      brain: "Brain",
     }),
     [t],
   );

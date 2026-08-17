@@ -134,7 +134,6 @@ interface SidebarLabels {
   home: string;
   settings: string;
   stats: string;
-  brain: string;
   switchHost: string;
   searchHosts: string;
   sessions: string;
@@ -310,7 +309,6 @@ export const LeftSidebar = memo(function LeftSidebar() {
       settings: t("sidebar.actions.settings"),
       // Temporary label (English-only), same rationale as `runs` below.
       stats: "Metrics",
-      brain: "Brain",
       switchHost: t("sidebar.host.switchTitle"),
       searchHosts: t("sidebar.host.searchPlaceholder"),
       sessions: t("sidebar.sections.sessions"),
@@ -562,7 +560,6 @@ function SidebarFooter({
     home: string;
     settings: string;
     stats: string;
-    brain: string;
     switchHost: string;
     searchHosts: string;
   };
@@ -587,7 +584,7 @@ function SidebarFooter({
     ),
     [brainState, theme, isCompact],
   );
-  const brainLabel = resolveBrainRailLabel(brainRail, labels.brain);
+  const brainLabel = resolveBrainRailLabel(brainRail);
 
   return (
     <View style={styles.sidebarFooter}>

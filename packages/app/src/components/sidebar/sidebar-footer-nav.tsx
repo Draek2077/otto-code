@@ -144,7 +144,7 @@ export function SidebarFooterNavRow({
   settingsButtonRef,
 }: {
   theme: SidebarTheme;
-  labels: { home: string; settings: string; stats: string; brain: string };
+  labels: { home: string; settings: string; stats: string };
   onHome: () => void;
   onSettings: () => void;
   onStats: () => void;
@@ -168,10 +168,9 @@ export function SidebarFooterNavRow({
     ),
     [brainState, theme, isCompact],
   );
-  // The state's own wording replaces the plain "Brain" tooltip once there is
-  // something to say; `labels.brain` stays the label when it is merely idle, so
-  // the rail still reads as navigation rather than as a status readout.
-  const brainLabel = resolveBrainRailLabel(brainRail, labels.brain);
+  // Every state - idle included - carries the state's own sentence, so the
+  // tooltip reads "Brain - idle" at rest rather than dropping the state.
+  const brainLabel = resolveBrainRailLabel(brainRail);
 
   return (
     <View style={styles.footerIconRow}>
