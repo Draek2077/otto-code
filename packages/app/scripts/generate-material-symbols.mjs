@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -68,4 +69,15 @@ ${body}
 `;
 
 await fs.writeFile(output, contents);
-console.log(`Wrote ${path.relative(repoRoot, output)} (${entries.length} icons)`);
+
+// The raw JSON.stringify output above (double-quoted, escaped) is not what this
+// repo commits: oxfmt reflows every SVG to a single-quoted, wrapped line (none
+// of the vendored SVGs contain a single quote, so that form is escape-free).
+// Normalize with the repo's own formatter - the same binary the pre-commit
+// hook and CI run - so regeneration lands gate-clean without a manual pass.
+execFileSync(
+  process.execPath,
+  [path.join(repoRoot, "node_modules", "oxfmt", "bin", "oxfmt"), output],
+  { stdio: "inherit" },
+);
+console.log(`Wrote ${path.relative(repoRoot, output)} (${entries.length} icons, oxfmt-normalized)`);
