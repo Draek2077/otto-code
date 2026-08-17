@@ -108,8 +108,9 @@ describe("SlotActivityTracker", () => {
   });
 
   it("reports a flat counter as not measuring, not zero tok/s", () => {
-    // Prompt tokens land in chunks: a window where the counter did not move
-    // must stay quiet (null, the UI's "Measuring…") instead of flashing 0.
+    // Prompt tokens land in chunks: a window where the counter has never moved
+    // must stay quiet (null, which the UI renders as an empty rate column)
+    // instead of flashing 0.
     const tracker = new SlotActivityTracker();
     tracker.sample([{ id: 0, id_task: 1, is_processing: true, n_past: 100, n_decoded: 0 }], 1_000);
     const flat = tracker.sample(
@@ -119,12 +120,79 @@ describe("SlotActivityTracker", () => {
     expect(flat.threads).toEqual([
       expect.objectContaining({ phase: "prefill", promptTokensPerSecond: null }),
     ]);
+    // 100 tokens, first seen at 3s but last known absent at 1s: the honest rate
+    // is 50/s over the interval they were earned in, not 100/s over the single
+    // window they happened to become visible in.
     const moved = tracker.sample(
       [{ id: 0, id_task: 1, is_processing: true, n_past: 200, n_decoded: 0 }],
       3_000,
     );
     expect(moved.threads).toEqual([
-      expect.objectContaining({ phase: "prefill", promptTokensPerSecond: 100 }),
+      expect.objectContaining({ phase: "prefill", promptTokensPerSecond: 50 }),
+    ]);
+  });
+
+  it("holds the last measured rate through windows where the counter is flat", () => {
+    // The counters advance in chunks and /slots is polled far faster than they
+    // move, so most windows are flat. Blanking the rate on those is what made
+    // the number blink out and back on the Overview panel.
+    const tracker = new SlotActivityTracker();
+    tracker.sample([{ id: 0, id_task: 7, is_processing: true, n_decoded: 10 }], 1_000);
+    const measured = tracker.sample(
+      [{ id: 0, id_task: 7, is_processing: true, n_decoded: 30 }],
+      2_000,
+    );
+    expect(measured.threads?.[0]?.tokensPerSecond).toBe(20);
+    const flat = tracker.sample([{ id: 0, id_task: 7, is_processing: true, n_decoded: 30 }], 2_250);
+    expect(flat.threads?.[0]?.tokensPerSecond).toBe(20);
+  });
+
+  it("does not carry a rate across a new request on the same slot", () => {
+    const tracker = new SlotActivityTracker();
+    tracker.sample([{ id: 0, id_task: 7, is_processing: true, n_decoded: 10 }], 1_000);
+    tracker.sample([{ id: 0, id_task: 7, is_processing: true, n_decoded: 30 }], 2_000);
+    // A different id_task is a different request; the previous request's
+    // throughput says nothing about it.
+    const reused = tracker.sample(
+      [{ id: 0, id_task: 8, is_processing: true, n_decoded: 4 }],
+      2_250,
+    );
+    expect(reused.threads?.[0]?.tokensPerSecond).toBeNull();
+  });
+
+  it("averages a chunked counter over the interval it actually covered", () => {
+    // 100 prompt tokens land as one batch after four flat polls. Measuring that
+    // chunk against the last poll alone would claim 400 tok/s; it was earned
+    // over the whole second the slot spent on it.
+    const tracker = new SlotActivityTracker();
+    tracker.sample([{ id: 0, id_task: 3, is_processing: true, n_past: 100, n_decoded: 0 }], 1_000);
+    for (const at of [1_250, 1_500, 1_750]) {
+      tracker.sample([{ id: 0, id_task: 3, is_processing: true, n_past: 100, n_decoded: 0 }], at);
+    }
+    const chunk = tracker.sample(
+      [{ id: 0, id_task: 3, is_processing: true, n_past: 200, n_decoded: 0 }],
+      2_000,
+    );
+    expect(chunk.threads?.[0]?.promptTokensPerSecond).toBe(100);
+  });
+
+  it("names the idle slots so a request can be pinned to one", () => {
+    const info = summariseSlots([
+      { id: 0, is_processing: true },
+      { id: 1, is_processing: false },
+      { id: 2, is_processing: false },
+    ]);
+    expect(info.idle).toBe(2);
+    expect(info.idleSlots).toEqual([1, 2]);
+  });
+
+  it("names no idle slot when every slot is busy", () => {
+    expect(summariseSlots([{ id: 0, is_processing: true }]).idleSlots).toEqual([]);
+  });
+
+  it("falls back to row order when a slot carries no id", () => {
+    expect(summariseSlots([{ is_processing: true }, { is_processing: false }]).idleSlots).toEqual([
+      1,
     ]);
   });
 

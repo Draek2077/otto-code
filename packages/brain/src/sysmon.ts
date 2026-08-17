@@ -37,6 +37,21 @@ export interface SlotInfo {
   /** Slots emitting tokens. */
   decode: number;
   contexts: number[];
+  /**
+   * The engine's ids for the slots that are NOT processing, in `/slots` order.
+   *
+   * `idle` counts them; this names them, which is the difference between
+   * knowing there is room and being able to pin a request to a specific slot
+   * (`id_slot`). The scheduler hands one of these to each job it admits so the
+   * proxy can attribute that request's stage to the exact slot row the Overview
+   * panel shows. Empty when every slot is busy - never a guess, because a
+   * guessed id would pin a request onto work that is already running.
+   *
+   * Deliberately the idle half, not the busy half: `threads` below lists only
+   * the slots that ARE processing, so it is the wrong end to draw a free slot
+   * from.
+   */
+  idleSlots: number[];
   threads?: Array<{
     slot: number;
     phase: "prefill" | "decode";
@@ -138,6 +153,18 @@ function isProcessing(rec: Record<string, unknown>): boolean {
   return false;
 }
 
+/**
+ * The engine's id for a slot row, falling back to its position in `/slots`.
+ *
+ * Shared by the summary and the per-slot sampler so a slot cannot be called `2`
+ * in one and `1` in the other - the ids are used to join a request to a row, and
+ * a disagreement here would attribute a stage to the wrong slot.
+ */
+function slotIdOf(rec: Record<string, unknown>, index: number): number {
+  const id = rec.id;
+  return typeof id === "number" && Number.isFinite(id) ? id : index;
+}
+
 /** How many tokens this slot has emitted for the request it is on. */
 function decodedTokens(rec: Record<string, unknown>): number {
   for (const key of ["n_decoded", "n_decoded_tokens", "tokens_predicted"]) {
@@ -184,6 +211,11 @@ export function summariseSlots(rows: unknown[]): SlotInfo {
     idle: rows.length - busyRows.length,
     prefill,
     decode: busyRows.length - prefill,
+    idleSlots: rows.flatMap((s, index) =>
+      isProcessing(s as Record<string, unknown>)
+        ? []
+        : [slotIdOf(s as Record<string, unknown>, index)],
+    ),
     contexts: rows.map((s) => {
       const rec = s as Record<string, unknown>;
       const nCtx = typeof rec.n_ctx === "number" ? rec.n_ctx : undefined;
@@ -193,24 +225,41 @@ export function summariseSlots(rows: unknown[]): SlotInfo {
   };
 }
 
+/**
+ * Where a counter was the last time it moved. Rates are measured from here
+ * rather than from the previous poll, because the counters advance in chunks
+ * and the poll is faster than they move. See `advance` in `sample`.
+ */
+interface RateBaseline {
+  at: number;
+  tokens: number;
+}
+
 /** Measures throughput from successive `/slots` snapshots, without guessing. */
 export class SlotActivityTracker {
   #previous = new Map<
     number,
     {
-      at: number;
       task: string | number | null;
       promptTokens: number | null;
       generatedTokens: number;
       phase: "prefill" | "decode";
+      promptBase: RateBaseline | undefined;
+      decodeBase: RateBaseline | undefined;
+      /**
+       * The last rate actually measured for this task, carried so a window in
+       * which the counter did not move reports the throughput that is still
+       * running rather than blanking the field. See the note in `sample`.
+       */
+      promptRate: number | null;
+      decodeRate: number | null;
     }
   >();
 
   sample(rows: unknown[], now = Date.now()): SlotInfo {
     const threads = rows.flatMap((row, index) => {
       const record = row as Record<string, unknown>;
-      const id = record.id;
-      const slot = typeof id === "number" && Number.isFinite(id) ? id : index;
+      const slot = slotIdOf(record, index);
       if (!isProcessing(record)) {
         this.#previous.delete(slot);
         return [];
@@ -238,27 +287,50 @@ export class SlotActivityTracker {
             : generatedTokens === 0
               ? "prefill"
               : "decode";
-      const elapsedSeconds = previous ? (now - previous.at) / 1000 : 0;
-      // A flat counter means no tokens crossed this window - the honest answer
-      // is "not measuring" (null), not 0 tok/s. Prefill in particular only
-      // moves its counter in chunks, so a strict inequality keeps the rate
-      // field quiet between movements instead of flashing 0 and the real value
-      // on every poll.
-      const rate = (current: number | null, before: number | null | undefined) =>
-        current !== null && elapsedSeconds > 0 && before != null && current > before
-          ? (current - before) / elapsedSeconds
-          : null;
-      this.#previous.set(slot, { at: now, task, promptTokens, generatedTokens, phase });
+      // Rate is measured against the last window in which this counter actually
+      // MOVED, not against the last poll. `/slots` is read at 4 Hz while both
+      // counters advance in chunks (prefill a whole batch at a time), so a chunk
+      // landing after several flat polls covers all of them: dividing it by the
+      // final 250 ms window alone would report several times the real speed.
+      // Holding the baseline until movement makes the number an average over the
+      // interval it was actually earned. A counter that has not moved yet still
+      // yields null - "no measurement", never a fabricated 0 tok/s.
+      const advance = (current: number | null, base: RateBaseline | undefined) => {
+        if (current === null) return { rate: null, base: undefined };
+        if (!base) return { rate: null, base: { at: now, tokens: current } };
+        const seconds = (now - base.at) / 1000;
+        if (current <= base.tokens || seconds <= 0) return { rate: null, base };
+        return { rate: (current - base.tokens) / seconds, base: { at: now, tokens: current } };
+      };
+      const promptStep = advance(promptTokens, previous?.promptBase);
+      const decodeStep = advance(generatedTokens, previous?.decodeBase);
+      // A flat window is the counter not having moved *yet*, not throughput
+      // falling to nothing, so the last rate measured for THIS task carries
+      // forward instead of blanking the field. At any real speed most windows
+      // are flat, which is why the number used to visibly blink out and back on
+      // every poll. It cannot go stale across requests: `previous` is already
+      // gated on an unchanged `id_task`, and the row disappears entirely once
+      // the slot stops processing.
+      const promptRate = promptStep.rate ?? previous?.promptRate ?? null;
+      const decodeRate = decodeStep.rate ?? previous?.decodeRate ?? null;
+      this.#previous.set(slot, {
+        task,
+        promptTokens,
+        generatedTokens,
+        phase,
+        promptBase: promptStep.base,
+        decodeBase: decodeStep.base,
+        promptRate,
+        decodeRate,
+      });
       return [
         {
           slot,
           phase,
           promptTokens,
           generatedTokens,
-          promptTokensPerSecond:
-            phase === "prefill" ? rate(promptTokens, previous?.promptTokens) : null,
-          tokensPerSecond:
-            phase === "decode" ? rate(generatedTokens, previous?.generatedTokens) : null,
+          promptTokensPerSecond: phase === "prefill" ? promptRate : null,
+          tokensPerSecond: phase === "decode" ? decodeRate : null,
         },
       ];
     });

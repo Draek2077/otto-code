@@ -68,6 +68,19 @@ export interface SchedulerSupervisor {
   profile: Profile | null;
 }
 
+/**
+ * The answer to a live slot measurement: how many sequence slots are free, and
+ * optionally WHICH ones. `idle` drives admission (see CAPACITY); `ids` lets
+ * `#pass` hand a distinct slot id to each job it admits, so the router can pin
+ * a completion to the exact slot this sample saw free. `ids` is absent when the
+ * engine reports a count but no per-slot rows - then admission still works, but
+ * no honest pin can be named and the affected requests run unpinned.
+ */
+export interface SlotMeasurement {
+  idle: number;
+  ids?: number[];
+}
+
 export interface SchedulerOptions {
   supervisor: SchedulerSupervisor;
   loadModel: (model: Model) => Promise<void>;
@@ -84,8 +97,16 @@ export interface SchedulerOptions {
    * free right now, or null when unknown (server not ready, sample failed).
    * See CAPACITY in the file header for how it combines with `parallelSlots`.
    * Absent means "trust the profile count".
+   *
+   * May also answer with the free slots NAMED, not just counted:
+   * `{ idle, ids }` (the engine's idle slot ids from `/slots`). The count is
+   * what admission needs; the ids are what `onSlotFree` hands to admitted
+   * completions so the router can pin each one to the slot this very sample
+   * saw free. A plain number still works - it just yields no pin data.
    */
-  freeSlots?: (() => Promise<number | null> | number | null) | null;
+  freeSlots?:
+    | (() => Promise<SlotMeasurement | number | null> | SlotMeasurement | number | null)
+    | null;
   /**
    * How long to wait before re-checking the engine when capacity is zero and
    * no job of ours is running - the only state where nothing else will wake
@@ -110,6 +131,25 @@ export interface SchedulerSubmitOptions {
    * (third-party clients) means no affinity - plain FIFO.
    */
   session?: string | null;
+  /**
+   * Called exactly once, when this job is admitted to a slot - i.e. the moment
+   * the scheduler's own free-slot measurement just counted it. The argument is
+   * the engine slot id the job may pin to, or null when no slot can be named
+   * honestly (sample failed, engine reports no per-slot rows, or the engine's
+   * slot pool is fully busy).
+   *
+   * Why the scheduler, not the job, names the slot: a job that samples `/slots`
+   * itself at dispatch time can race another job admitted in the same pass -
+   * neither has reached the engine yet, so both see the same slot free and both
+   * pin it, and the engine's busy-pinned-slot deferral turns the pair back into
+   * a serial queue. The pin must be drawn from the very measurement that
+   * admitted the job, one distinct id per job, so the ids it hands out are
+   * exactly the slots the engine still has free at the moment of admission.
+   *
+   * Exclusive operations are never called: they run alone on a drained engine
+   * and their attribution is not per-slot.
+   */
+  onSlotFree?: ((slotId: number | null) => void) | null;
 }
 
 /** A queued request or host operation bound to a resolved catalog model. */
@@ -120,6 +160,16 @@ export interface QueuedJob {
   exclusive: boolean;
   session: string | null;
   onStart: (() => void) | null;
+  onSlotFree: ((slotId: number | null) => void) | null;
+  /**
+   * The engine slot this job was pinned to at admission, or null when none was
+   * named. Kept on the job so a later pass can exclude it from the ids it hands
+   * out: a job admitted moments ago may not have reached llama-server yet, so
+   * the next `/slots` sample can still report its slot idle and offer it to a
+   * second job. Both would then pin the same slot, and the engine's defer-when-
+   * busy behavior would serialize the pair onto it while another slot sat empty.
+   */
+  slotId: number | null;
   run: () => Promise<unknown>;
   resolve: (value: unknown) => void;
   reject: (error: unknown) => void;
@@ -159,6 +209,16 @@ export class Scheduler {
   #running = new Set<QueuedJob>();
   /** The model that owns the engine for this turn, or null between turns. */
   #turnId: string | null = null;
+  /**
+   * Distinct engine slot ids, one per job this pass may still admit, drawn from
+   * the pass's own free-slot sample (`null` when the engine reported no
+   * per-slot rows - then nothing is pinned). A job pops one as it is admitted
+   * in `#start`, so two jobs admitted in the same pass can never be named the
+   * same slot - the failure mode a job-side sample at dispatch time would
+   * produce. Reset whenever the engine is relaunched, because slot ids do not
+   * survive a model switch.
+   */
+  #freeSlotIds: number[] | null = null;
   /** A dispatch pass is running. Only one may read/mutate the state at a time. */
   #busy = false;
   /** State changed mid-pass; run one more pass before yielding. */
@@ -216,6 +276,7 @@ export class Scheduler {
       exclusive = kind !== "completion",
       onStart = null,
       session = null,
+      onSlotFree = null,
     }: SchedulerSubmitOptions = {},
   ): Promise<unknown> {
     return new Promise((resolve, reject) => {
@@ -226,6 +287,8 @@ export class Scheduler {
         exclusive,
         session: session ?? null,
         onStart,
+        onSlotFree,
+        slotId: null,
         run,
         resolve,
         reject,
@@ -295,13 +358,20 @@ export class Scheduler {
   /**
    * The engine's idle slot count, or null when it cannot be sampled - in which
    * case the static profile count is the best available answer rather than
-   * "wait forever".
+   * "wait forever". Also carries the free slot ids when the engine reports
+   * them, so `#pass` can pin each admitted job to a distinct one.
    */
-  async #sampleFreeSlots(): Promise<number | null> {
+  async #sampleFreeSlots(): Promise<SlotMeasurement | null> {
     if (!this.freeSlots) return null;
     try {
       const free = await this.freeSlots();
-      return free === null || Number.isNaN(free) ? null : Math.max(0, free);
+      if (free === null || free === undefined || (typeof free === "number" && Number.isNaN(free)))
+        return null;
+      if (typeof free === "number") return { idle: Math.max(0, free) };
+      return {
+        idle: Math.max(0, free.idle),
+        ...(Array.isArray(free.ids) && free.ids.length > 0 ? { ids: free.ids } : {}),
+      };
     } catch {
       return null;
     }
@@ -328,6 +398,18 @@ export class Scheduler {
   #start(job: QueuedJob): void {
     this.#running.add(job);
     if (job.exclusive) this.activeJob = job;
+    // Name the slot this job is admitted to, from this pass's own sample,
+    // before `run()` is invoked. One id per job, never reused: two jobs
+    // admitted in the same pass must never be pinned to the same slot.
+    if (!job.exclusive && job.onSlotFree) {
+      const slotId = this.#freeSlotIds ? (this.#freeSlotIds.shift() ?? null) : null;
+      job.slotId = slotId;
+      try {
+        job.onSlotFree(slotId);
+      } catch {
+        // Slot attribution must never fail the job it belongs to.
+      }
+    }
     this.#announce();
     void (async () => {
       try {
@@ -373,9 +455,12 @@ export class Scheduler {
   async #pass(): Promise<void> {
     // The engine's idle count, sampled at most once per pass, plus how many
     // jobs this pass has started against it (the sample cannot see those yet).
-    let measured: number | null = null;
+    let measured: SlotMeasurement | null = null;
     let sampled = false;
     let startedHere = 0;
+    // Distinct slot ids this pass may pin, one per admitted job. Refilled from
+    // the sample the first time capacity is checked; consumed in `#start`.
+    this.#freeSlotIds = null;
 
     for (;;) {
       // An exclusive operation owns the engine alone.
@@ -398,9 +483,11 @@ export class Scheduler {
             for (const job of this.#take((j) => j.modelId === pick.modelId)) job.reject(error);
             continue;
           }
-          // A relaunched engine has all its slots back; the old sample is void.
+          // A relaunched engine has all its slots back; the old sample is void,
+          // and slot ids do not survive the relaunch.
           sampled = false;
           startedHere = 0;
+          this.#freeSlotIds = null;
         }
         this.#turnId = pick.modelId;
         this.lastTurnId = pick.modelId;
@@ -440,10 +527,18 @@ export class Scheduler {
       if (!sampled) {
         measured = await this.#sampleFreeSlots();
         sampled = true;
+        // Drop any id a running job already holds. That job may have been
+        // admitted only moments ago and not yet reached the engine, so this
+        // sample can still see its slot idle; handing the same id out twice
+        // would pin two requests to one slot (see `QueuedJob.slotId`).
+        const held = new Set<number>();
+        for (const job of this.#running) if (job.slotId !== null) held.add(job.slotId);
+        const ids = measured?.ids?.filter((id) => !held.has(id)) ?? null;
+        this.#freeSlotIds = ids && ids.length > 0 ? ids : null;
       }
       const room = Math.min(
         this.concurrency - this.#running.size,
-        measured === null ? Number.POSITIVE_INFINITY : measured - startedHere,
+        measured === null ? Number.POSITIVE_INFINITY : measured.idle - startedHere,
       );
       if (room < 1) {
         if (this.#running.size === 0) this.#pollForSlot();

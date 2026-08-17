@@ -374,38 +374,81 @@ function VramPanel({ gpu }: { gpu: Record<string, unknown> | null }) {
 }
 
 /**
- * A slot row's label comes from the slot's own engine phase, never from the
- * request-level `inference` counts.
+ * The request stage a slot row can show, from the proxy's per-slot join
+ * (`inference.slotStages`, host API v3).
  *
- * The old version folded the global `thinking`/`generating` counts into every
- * row, so a single thinking request relabelled *every* decode slot as
- * "Thinking" - the panel then printed "1 thinking" above two rows both reading
- * "Thinking", contradicting its own summary. llama-server only knows prefill
- * and decode; "thinking" is a request-level stage the engine cannot report per
- * slot, so a decode row honestly says "Decoding" and the request-level stages
- * live in the summary line above (and the rail icon, which does have the
- * request-level signal). Until the request-to-slot join lands, that is the
- * most this row can claim without guessing.
+ * The router pins every dispatch to one llama-server slot (`id_slot`) and
+ * records the stage of the request that owns the pin, so "thinking" - a
+ * stage the engine cannot report - can be attributed to the exact slot the
+ * panel shows. Absent on brains that predate the join, or for requests that
+ * could not be pinned (the engine could not be sampled), which is why every
+ * lookup below has a fallback.
  */
-function modelActivityPhase(enginePhase: unknown): string {
-  return enginePhase === "prefill" ? "Processing prompt" : "Decoding";
+type SlotRequestStage = "processing" | "thinking" | "generating";
+
+function readSlotStages(inference: Record<string, unknown> | null): Record<string, unknown> | null {
+  const value = inference?.["slotStages"];
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function readStage(value: unknown): SlotRequestStage | null {
+  return value === "processing" || value === "thinking" || value === "generating" ? value : null;
 }
 
 /**
- * The panel deliberately shows two different measurements and labels them as
- * such, instead of pretending they are one picture:
+ * What the slot is doing, in the same words the rail uses ("processing
+ * tokens", "thinking", "generating tokens"), never the engine jargon.
+ *
+ * The row is the slot, so the engine phase (llama-server's `/slots`, sampled
+ * at 4 Hz) stays the ground truth for *where* the slot is: a prefill row is
+ * ingesting its prompt no matter what the proxy last saw. A decode row is
+ * emitting tokens; the request stage then decides *which kind* - "thinking"
+ * when the pinned request is mid-reasoning, "generating tokens" otherwise.
+ *
+ * A decode row without a joined stage (older brain, unpinned request) says
+ * "generating tokens" rather than "Decoding": that is exactly what the engine
+ * is doing, and it is the same claim the rail makes for the same slot, so the
+ * row and the icon can no longer disagree about a word. A "processing" stage
+ * on a decode row is the sub-second boundary race (first token out, first
+ * delta not yet observed), and "generating tokens" is the honest label for it.
+ *
+ * The pre-join bug this replaces: folding the GLOBAL thinking/generating
+ * counts into every row relabelled *every* decode slot "Thinking" because one
+ * request thought - the panel then printed "1 thinking" above two rows both
+ * reading "Thinking", contradicting its own summary.
+ */
+function modelActivityPhase(enginePhase: unknown, requestStage: SlotRequestStage | null): string {
+  if (enginePhase === "prefill") {
+    return "Processing tokens";
+  }
+  // Decode row. The joined stage is the request's own word for what it is
+  // doing and is always present when this brain supports the join - the panel
+  // reads it from the same snapshot that produced the summary line, so a row
+  // and the summary can never disagree about a word. Only when the snapshot
+  // carries no stage data at all (older brain) does the row fall back to the
+  // engine phase: a decode slot is, by definition, emitting tokens.
+  if (requestStage === "thinking") return "Thinking";
+  if (requestStage === "generating") return "Generating tokens";
+  if (requestStage === "processing") return "Processing tokens";
+  return "Generating tokens";
+}
+/**
+ * The panel shows one picture in two resolutions:
  *
  *  - The **summary line** counts *requests* in flight, from the proxy's own
- *    `inference` tracker. That is the only place "thinking" can be claimed
- *    per-request, because llama-server cannot tell a reasoning token from a
- *    content token.
- *  - The **slot rows** show each slot's *engine phase* (prefill / decode),
- *    sampled from llama-server's `/slots`. They cannot say "thinking" - they
- *    can only say the prompt is being ingested or tokens are being emitted.
+ *    `inference` tracker.
+ *  - The **slot rows** show what each slot is doing. With the host API v3
+ *    join (`inference.slotStages`) the row says the request's own stage -
+ *    thinking, generating tokens, processing tokens; without it (older brain,
+ *    unpinned request) it falls back to the slot's engine phase, which is
+ *    still user-facing wording, never engine jargon.
  *
- * The two agree by construction once a request-to-slot join exists; until then
- * the honest thing is to name what each line measures so a reader never has to
- * assume the rows will reproduce the summary.
+ * The row can be a step fresher than the summary (stage observed on a chunk
+ * before the next 4 Hz `/slots` sample) and the summary can name a stage whose
+ * row has not appeared yet. Both are true at their own resolution; neither is
+ * a correction of the other.
  */
 function ModelActivityPanel({
   slots,
@@ -415,6 +458,7 @@ function ModelActivityPanel({
   inference: Record<string, unknown> | null;
 }) {
   const threads = readRecords(slots, "threads");
+  const slotStages = readSlotStages(inference);
   const processing = readNumber(inference, "processing") ?? 0;
   const thinking = readNumber(inference, "thinking") ?? 0;
   const generating = readNumber(inference, "generating") ?? 0;
@@ -433,12 +477,7 @@ function ModelActivityPanel({
     <View style={styles.panel}>
       <Text style={styles.panelTitle}>Live model activity</Text>
       {stageSummary.length > 0 ? (
-        <>
-          <Text style={styles.panelCaption}>{stageSummary.join(" · ")}</Text>
-          <Text style={styles.panelCaptionMuted}>
-            Request stages · slot rows below show the engine phase
-          </Text>
-        </>
+        <Text style={styles.panelCaption}>{stageSummary.join(" · ")}</Text>
       ) : null}
       {threads.length === 0 && stageSummary.length === 0 ? (
         <Text style={styles.panelCaption}>No active inference requests.</Text>
@@ -449,7 +488,8 @@ function ModelActivityPanel({
       {threads.length > 0 ? (
         <View style={styles.activityList}>
           {threads.map((thread) => {
-            const phase = modelActivityPhase(thread.phase);
+            const stage = slotStages ? readStage(slotStages[String(thread.slot)]) : null;
+            const phase = modelActivityPhase(thread.phase, stage);
             const rate = readNumber(
               thread,
               thread.phase === "prefill" ? "promptTokensPerSecond" : "tokensPerSecond",
@@ -462,9 +502,21 @@ function ModelActivityPanel({
               <View key={String(thread.slot)} style={styles.activityRow}>
                 <Text style={styles.activitySlot}>Slot {String(thread.slot)}</Text>
                 <Text style={styles.activityPhase}>{phase}</Text>
-                <Text style={styles.activityRate}>
-                  {rate === null ? "Measuring…" : `${Math.round(rate).toLocaleString()} tok/s`}
-                </Text>
+                {/*
+                  No placeholder while a rate is unknown. The host now holds the
+                  last measured rate for as long as the slot stays on the same
+                  request, so `null` here means only one thing: not a single
+                  token has crossed yet on this request. A "Measuring…" caption
+                  for that sub-second state read as a status the row kept
+                  flipping back into, and it displaced the number that was
+                  already there. An absent rate simply leaves the column empty,
+                  the same way the token count already behaves.
+                */}
+                {rate !== null ? (
+                  <Text style={styles.activityRate}>
+                    {`${Math.round(rate).toLocaleString()} tok/s`}
+                  </Text>
+                ) : null}
                 {tokenCount !== null ? (
                   <Text style={styles.activityTokens}>
                     {tokenCount.toLocaleString()}{" "}

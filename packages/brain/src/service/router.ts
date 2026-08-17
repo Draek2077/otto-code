@@ -411,6 +411,16 @@ interface ProxyBufferedOptions {
   body: Buffer;
   /** Live mid-thought tracking for `/__host/status`. See `activity.ts`. */
   reasoning?: ReasoningTracker | null;
+  /**
+   * The engine slot the scheduler admitted this request to, or null when none
+   * could be named. Chosen by the scheduler from the very sample that gated
+   * the job's admission (see `Scheduler.onSlotFree`), so it is distinct from
+   * every other in-flight request's pin - a second `/slots` sample here would
+   * race the sibling job and let both pin the same slot. Injected into the
+   * outbound body as `id_slot` and recorded on the reasoning tracker so the
+   * status snapshot can join the request's stage to the slot it occupies.
+   */
+  slot: number | null;
 }
 
 /**
@@ -459,10 +469,50 @@ export function applyModelReasoningTemplate(body: Buffer, model: Model): Buffer 
 }
 
 /**
+ * Pin the request to one llama-server slot by adding the engine's own
+ * `id_slot` field to the request body (host API v3).
+ *
+ * Why pin instead of guess: the OpenAI-compatible stream chunks never carry the
+ * slot id, so without a pin the router can only correlate a request to a slot
+ * by elimination, and with several concurrent requests that guess is exactly
+ * the lie the Overview panel used to tell. llama-server honors the pin on every
+ * completion endpoint: if the named slot is free the task lands there, and if
+ * it is busy the engine DEFERS the task internally - it never reassigns the
+ * task elsewhere and never fails the request - so the slot this router names is
+ * always the slot the request ends up on (possibly after waiting on it).
+ *
+ * `null` returns the body untouched: no pin, and therefore no join data for
+ * this request, which is the same degraded state as an older brain. A body this
+ * cannot parse is forwarded exactly as-is - an unfamiliar request must reach
+ * llama-server and get llama-server's own answer, not a 400 invented here.
+ */
+export function pinSlot(body: Buffer, slotId: number | null): Buffer {
+  if (slotId === null) return body;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body.toString("utf8"));
+  } catch {
+    return body;
+  }
+  if (!isRecord(parsed)) return body;
+  parsed.id_slot = slotId;
+  return Buffer.from(JSON.stringify(parsed), "utf8");
+}
+
+/**
  * Forward a buffered completion body to the resident llama-server and stream the
  * reply back, teeing non-streaming bodies for classification. Resolves once the
  * client response is fully concluded (it owns the response in every outcome,
  * including upstream errors), so the scheduler can move to the next turn.
+ *
+ * The slot this request is pinned to arrives as `options.slot`, named by the
+ * scheduler at the moment of admission (see `Scheduler.onSlotFree`). That is
+ * the only race-free place to choose it: by then the model is resident (slot
+ * ids do not survive a model switch), the admission sample has just counted
+ * the slot free, and every sibling admitted in the same pass has been named a
+ * DISTINCT id. `null` means the engine could not be sampled or reported no
+ * per-slot rows - the request then runs unpinned with no join data, exactly
+ * the degraded state of an older brain.
  */
 function proxyBuffered({
   agent,
@@ -474,7 +524,9 @@ function proxyBuffered({
   res,
   body,
   reasoning = null,
+  slot,
 }: ProxyBufferedOptions): Promise<void> {
+  const slotId = slot ?? null;
   return new Promise((resolve) => {
     let settled = false;
     const streamId = nextStreamId();
@@ -497,7 +549,7 @@ function proxyBuffered({
       supervisor.profile?.chatSystemAddendum ?? null,
       completionShape(req.url),
     );
-    const outbound = applyModelReasoningTemplate(withSystemAddendum, model);
+    const outbound = pinSlot(applyModelReasoningTemplate(withSystemAddendum, model), slotId);
 
     const headers: http.OutgoingHttpHeaders = {};
     for (const [name, value] of Object.entries(req.headers)) {
@@ -635,8 +687,10 @@ function proxyBuffered({
 
     // This is the first authoritative inference-stage signal: the request is
     // being dispatched to llama-server and is waiting for prompt processing or
-    // its first output delta.
+    // its first output delta. The slot association is set once here, at the
+    // same moment, so `observe` stays free of any per-chunk slot work.
     reasoning?.begin(streamId);
+    if (slotId !== null) reasoning?.setSlot(streamId, slotId);
     upstream.end(outbound);
   });
 }
@@ -826,6 +880,12 @@ function scheduleCompletion({
       return;
     }
     const model = gate.model;
+    // The slot is named by the scheduler at admission time (one distinct id per
+    // job, drawn from the pass's own free-slot sample). It is not sampled here
+    // at queue time - that could name a slot of an engine about to be
+    // relaunched - and not at dispatch time either, where a sibling admitted in
+    // the same pass could see the same slot free and pin it too.
+    let slot: number | null = null;
     const queued = scheduler.submit(
       model,
       () =>
@@ -839,8 +899,9 @@ function scheduleCompletion({
           res,
           body,
           reasoning: reasoningTracker,
+          slot,
         }),
-      { session },
+      { session, onSlotFree: (id) => (slot = id) },
     );
     logger?.info?.(
       `queued ${req.method ?? "POST"} ${req.url ?? "completion"} for ${model.displayName}; queue depth ${scheduler.stats().queued}`,

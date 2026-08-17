@@ -31,15 +31,38 @@ export type BrainStatusListener = (snapshot: BrainStatusSnapshot) => void;
 export type BrainLogListener = (line: string) => void;
 
 /**
- * How often the publisher resamples while at least one listener is attached.
+ * How often the publisher resamples while work is actually in flight.
  *
- * A sample is needed at all because two inputs have no event to hang off:
+ * A sample is needed at all because only two inputs have no event to hang off:
  * `activity` is a file written by a *different* process (a `calibrate` or
- * `pull` CLI run), and the slot phase split is a loopback read of
- * llama-server's `/slots`. Everything else notifies directly. Sampling is not
- * a heartbeat: an unchanged sample emits nothing.
+ * `pull` CLI run), and the per-slot token rates are a loopback read of
+ * llama-server's `/slots`. **Everything a user reads as state already arrives
+ * by push** - stage transitions call `notify()` through
+ * `reasoningTracker.onChange`, the scheduler through `onChange`, the supervisor
+ * on `state` and `crashed`. So this timer is not what makes the UI feel live;
+ * it only refreshes two numbers.
+ *
+ * It used to be 250ms (4 Hz), which cost a loopback GET to llama-server four
+ * times a second for the entire time a daemon was subscribed - including while
+ * the brain sat completely idle. `/slots` is served off llama-server's own task
+ * queue, so that traffic competes with the decoding it is reporting on, and the
+ * brain is already the heaviest thing on the machine. One second is well inside
+ * what a rounded tok/s readout can show (the rate is held between samples, see
+ * `SlotActivityTracker`), and it cuts the busy-path sampling by 4x.
  */
-const DEFAULT_SAMPLE_INTERVAL_MS = 250;
+const DEFAULT_SAMPLE_INTERVAL_MS = 1_000;
+
+/**
+ * How often to resample when nothing is running.
+ *
+ * With no request in flight, no queued job and no operation, the only thing a
+ * sample can discover is a `calibrate`/`pull` starting in another process -
+ * long jobs whose progress bar is not harmed by appearing a few seconds in.
+ * Everything else that could change is pushed. Polling an idle engine four
+ * times a second was pure waste: 14,400 loopback requests an hour to report
+ * that nothing happened.
+ */
+const DEFAULT_IDLE_INTERVAL_MS = 5_000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -101,8 +124,41 @@ export function statusChangeKey(snapshot: BrainStatusSnapshot): string {
 }
 
 export interface BrainStatusPublisherOptions {
-  /** Resample cadence while subscribed. See DEFAULT_SAMPLE_INTERVAL_MS. */
+  /** Resample cadence while work is in flight. See DEFAULT_SAMPLE_INTERVAL_MS. */
   sampleIntervalMs?: number;
+  /** Resample cadence while idle. See DEFAULT_IDLE_INTERVAL_MS. */
+  idleIntervalMs?: number;
+}
+
+/**
+ * Whether the last snapshot showed anything worth sampling quickly for.
+ *
+ * Read from the snapshot itself rather than tracked separately, so the cadence
+ * can never disagree with what was last published. Busy means one of:
+ * a request is dispatched or queued (the per-slot rates are moving), an
+ * operation is running (`activity` carries a progress bar), or the engine is
+ * between states (`ready` is the only settled one that serves traffic).
+ *
+ * Erring towards "busy" is the safe direction - it costs a sample, where the
+ * opposite would freeze a moving number - so an unreadable snapshot counts as
+ * busy.
+ */
+function isBusySnapshot(snapshot: BrainStatusSnapshot): boolean {
+  if (snapshot.activity != null) return true;
+  const queued = snapshot.queued;
+  if (typeof queued === "number" && queued > 0) return true;
+  const inference = isRecord(snapshot.inference) ? snapshot.inference : null;
+  if (inference) {
+    for (const key of ["activeRequests", "processing", "thinking", "generating"]) {
+      const value = inference[key];
+      if (typeof value === "number" && value > 0) return true;
+    }
+  }
+  const state = snapshot.state;
+  // A settled engine that is not serving anything: "ready" idles here, and
+  // "stopped" has no engine to poll at all. Anything else is mid-transition
+  // (starting, loading) and worth watching closely.
+  return typeof state === "string" && state !== "ready" && state !== "stopped";
 }
 
 /**
@@ -119,8 +175,11 @@ export class BrainStatusPublisher {
   /** Per-subscription teardown, so `close()` can end the responses it feeds. */
   readonly #closers = new Set<() => void>();
   readonly #sampleIntervalMs: number;
+  readonly #idleIntervalMs: number;
   #source: (() => Promise<BrainStatusSnapshot>) | null = null;
   #timer: NodeJS.Timeout | null = null;
+  /** The cadence the running timer was armed at, so it is only re-armed on change. */
+  #timerDelayMs: number | null = null;
   /** The last snapshot that was actually emitted, replayed to a late subscriber. */
   #last: BrainStatusSnapshot | null = null;
   #lastKey: string | null = null;
@@ -132,6 +191,13 @@ export class BrainStatusPublisher {
 
   constructor(options: BrainStatusPublisherOptions = {}) {
     this.#sampleIntervalMs = options.sampleIntervalMs ?? DEFAULT_SAMPLE_INTERVAL_MS;
+    // Never slower than the busy cadence: a caller that asks for a slow busy
+    // poll means "sample rarely", and an idle default below it would speed the
+    // idle path up instead.
+    this.#idleIntervalMs = Math.max(
+      options.idleIntervalMs ?? DEFAULT_IDLE_INTERVAL_MS,
+      this.#sampleIntervalMs,
+    );
   }
 
   /** Whether a snapshot source has been installed - i.e. events can be served. */
@@ -161,7 +227,10 @@ export class BrainStatusPublisher {
     this.#listeners.add(listener);
     if (onClose) this.#closers.add(onClose);
     if (this.#last) listener(this.#last);
-    this.#startTimer();
+    // Start at the busy cadence; the sample below settles it. Guessing high for
+    // one tick costs a single loopback read, where guessing low could leave a
+    // subscriber that arrived mid-generation waiting out the idle interval.
+    this.#armTimer(this.#sampleIntervalMs);
     this.notify();
     return () => {
       this.#listeners.delete(listener);
@@ -217,6 +286,10 @@ export class BrainStatusPublisher {
       // Always keep the newest body for replay, even when nothing significant
       // changed: a late subscriber should not get last minute's counters.
       this.#last = snapshot;
+      // Re-pace from what was actually observed, before the unchanged-snapshot
+      // return below - an idle brain reports "nothing changed" every time, and
+      // that is exactly the case whose cadence needs to back off.
+      this.#armTimer(isBusySnapshot(snapshot) ? this.#sampleIntervalMs : this.#idleIntervalMs);
       if (key === this.#lastKey) return;
       this.#lastKey = key;
       // Set iteration tolerates a listener unsubscribing mid-emit, which the
@@ -239,9 +312,21 @@ export class BrainStatusPublisher {
     }
   }
 
-  #startTimer(): void {
-    if (this.#timer || this.#closed) return;
-    this.#timer = setInterval(() => this.notify(), this.#sampleIntervalMs);
+  /**
+   * Arm the resample timer at `delayMs`, replacing a timer running at a
+   * different cadence.
+   *
+   * Re-arming only on an actual cadence change keeps the steady state a plain
+   * interval - a busy brain does not tear down and rebuild a timer every
+   * second - while a busy/idle transition takes effect on the next tick rather
+   * than waiting out the old one.
+   */
+  #armTimer(delayMs: number): void {
+    if (this.#closed || this.#listeners.size === 0) return;
+    if (this.#timer && this.#timerDelayMs === delayMs) return;
+    this.#stopTimer();
+    this.#timerDelayMs = delayMs;
+    this.#timer = setInterval(() => this.notify(), delayMs);
     // Never hold the process open for status reporting alone.
     this.#timer.unref?.();
   }
@@ -250,6 +335,7 @@ export class BrainStatusPublisher {
     if (!this.#timer) return;
     clearInterval(this.#timer);
     this.#timer = null;
+    this.#timerDelayMs = null;
   }
 }
 

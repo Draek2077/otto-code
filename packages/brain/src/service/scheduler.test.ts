@@ -565,3 +565,77 @@ test("never dispatches more jobs than slots, across a long burst", async () => {
 
   assert.equal(peak, 2, "the measured slot count is the hard ceiling");
 });
+
+// --- Slot pinning -------------------------------------------------------------
+// The ids handed out here become `id_slot` on the outbound completion, which is
+// what lets the host attribute a request's stage ("thinking", which llama-server
+// cannot report) to the exact slot row the Overview panel draws.
+
+test("hands each concurrently admitted job a distinct slot id", async () => {
+  const supervisor = {
+    state: "ready",
+    model: A,
+    profile: { parallelSlots: 2 } as Profile,
+  } as SchedulerSupervisor;
+  const sched = new Scheduler({
+    supervisor,
+    loadModel: async () => {},
+    freeSlots: () => ({ idle: 2, ids: [0, 1] }),
+  });
+
+  const pinned: Array<number | null> = [];
+  const job = () => async () => {
+    await new Promise((r) => setTimeout(r, 5));
+  };
+  await Promise.all(
+    Array.from({ length: 2 }, () =>
+      sched.submit(A, job(), { onSlotFree: (id) => pinned.push(id) }),
+    ),
+  );
+
+  assert.deepEqual(pinned.slice().sort(), [0, 1], "two jobs, two different slots");
+});
+
+test("does not re-offer a slot a running job already holds", async () => {
+  const supervisor = {
+    state: "ready",
+    model: A,
+    profile: { parallelSlots: 2 } as Profile,
+  } as SchedulerSupervisor;
+  // A stale sample: the engine still reports slot 0 idle because the job
+  // admitted to it has not reached llama-server yet.
+  const sched = new Scheduler({
+    supervisor,
+    loadModel: async () => {},
+    freeSlots: () => ({ idle: 2, ids: [0, 1] }),
+  });
+
+  const pinned: Array<number | null> = [];
+  let release = () => {};
+  const held = new Promise<void>((r) => (release = r));
+  void sched.submit(A, () => held, { onSlotFree: (id) => pinned.push(id) });
+  await tick();
+  const second = sched.submit(A, async () => {}, { onSlotFree: (id) => pinned.push(id) });
+  await second;
+  release();
+
+  assert.deepEqual(pinned, [0, 1], "the second job took the free slot, not slot 0 again");
+});
+
+test("reports no pin when the engine answers with a bare count", async () => {
+  const supervisor = {
+    state: "ready",
+    model: A,
+    profile: { parallelSlots: 1 } as Profile,
+  } as SchedulerSupervisor;
+  const sched = new Scheduler({
+    supervisor,
+    loadModel: async () => {},
+    freeSlots: () => 1, // a count with no ids: admission works, no honest pin
+  });
+
+  const pinned: Array<number | null> = [];
+  await sched.submit(A, async () => {}, { onSlotFree: (id) => pinned.push(id) });
+
+  assert.deepEqual(pinned, [null], "unpinned rather than a guessed slot id");
+});

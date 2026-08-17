@@ -210,6 +210,14 @@ export interface InferenceActivitySnapshot {
   processing: number;
   thinking: number;
   generating: number;
+  /**
+   * Per-slot stage join, present only when at least one tracked request was
+   * pinned to a llama-server slot by the router (host API v3). Keys are the
+   * engine's slot ids as reported by `/slots`; values are that request's
+   * proxy-side stage. Absent (not just empty) on brains that predate the join,
+   * which is how an old client tells "no join data" from "no pinned requests".
+   */
+  slotStages?: Record<string, InferenceStage>;
 }
 
 /**
@@ -228,6 +236,12 @@ export interface InferenceActivitySnapshot {
  */
 export class ReasoningTracker {
   #requests = new Map<string, InferenceStage>();
+  /**
+   * The llama-server slot a request was pinned to at dispatch, so its proxy-side
+   * stage can be attributed to the engine row the panel actually shows. Set once
+   * per request (see `setSlot`), never on the per-chunk path.
+   */
+  #slots = new Map<string, number>();
   /** Tail of the last transport chunk, so a field name split by TCP is still detected. */
   #tails = new Map<string, string>();
   /** Models/runtimes that leave reasoning inline as `<think>…</think>`. */
@@ -249,7 +263,17 @@ export class ReasoningTracker {
 
   #announce(): void {
     const snapshot = this.snapshot;
-    const key = `${snapshot.activeRequests}:${snapshot.processing}:${snapshot.thinking}:${snapshot.generating}`;
+    // The slot join rides in the key too: pinning a request to a slot is a
+    // state change even when no stage count moves, and it is the field the
+    // Overview rows read. The map is bounded by concurrency, so the digest is
+    // cheap enough to build on every announce.
+    const slotKey = snapshot.slotStages
+      ? Object.entries(snapshot.slotStages)
+          .map(([slot, stage]) => `${slot}:${stage}`)
+          .sort()
+          .join(",")
+      : "";
+    const key = `${snapshot.activeRequests}:${snapshot.processing}:${snapshot.thinking}:${snapshot.generating}:${slotKey}`;
     if (key === this.#lastSnapshot) return;
     this.#lastSnapshot = key;
     for (const listener of this.#listeners) {
@@ -265,6 +289,23 @@ export class ReasoningTracker {
   begin(requestId: string): void {
     if (this.#requests.has(requestId)) return;
     this.#requests.set(requestId, "processing");
+    this.#announce();
+  }
+
+  /**
+   * Record the engine slot this request was pinned to. Called exactly once per
+   * request, at dispatch - the pin is injected into the outbound body before
+   * the request goes out, so the association exists before the first chunk and
+   * `observe` never has to learn about it.
+   *
+   * Idempotent and self-cleaning: a repeat for the same slot is a no-op, and a
+   * different slot replaces it, so a request that somehow moves slots (a
+   * restarted engine hands a task out again) reports where it is now.
+   */
+  setSlot(requestId: string, slotId: number): void {
+    if (!Number.isInteger(slotId) || slotId < 0) return;
+    if (this.#slots.get(requestId) === slotId) return;
+    this.#slots.set(requestId, slotId);
     this.#announce();
   }
 
@@ -307,6 +348,7 @@ export class ReasoningTracker {
   /** Forget the request. Must be called on end *and* on error, or the flag sticks. */
   end(requestId: string): void {
     this.#requests.delete(requestId);
+    this.#slots.delete(requestId);
     this.#tails.delete(requestId);
     this.#inlineReasoning.delete(requestId);
     this.#announce();
@@ -328,7 +370,14 @@ export class ReasoningTracker {
       thinking: 0,
       generating: 0,
     };
-    for (const stage of this.#requests.values()) result[stage] += 1;
+    let slotStages: Record<string, InferenceStage> | undefined;
+    for (const [requestId, stage] of this.#requests) {
+      result[stage] += 1;
+      const slot = this.#slots.get(requestId);
+      if (slot === undefined) continue;
+      (slotStages ??= {})[String(slot)] = stage;
+    }
+    if (slotStages) result.slotStages = slotStages;
     return result;
   }
 }

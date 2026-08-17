@@ -843,6 +843,13 @@ export async function startService({
     // parallelSlots sizes the KV pool at launch; this keeps dispatch honest
     // while llama-server is mid-eviction or saturated, and degrades to the
     // static count when the sample is unavailable.
+    // Answers with the free slots NAMED, not just counted. The count gates
+    // admission; the ids let the scheduler pin each admitted completion to a
+    // distinct slot (`id_slot`), which is what lets the proxy attribute a
+    // request's stage - "thinking" above all, which llama-server cannot report -
+    // to the exact slot row the Overview panel draws. Handing back only a count
+    // (as this did before) leaves every request unpinned and the panel unable to
+    // say which slot is thinking and which is emitting tokens.
     freeSlots: async () => {
       if (supervisor.state !== "ready") return null;
       try {
@@ -850,7 +857,7 @@ export async function startService({
           host: supervisor.host,
           port: supervisor.internalPort,
         });
-        return slots ? slots.idle : null;
+        return slots ? { idle: slots.idle, ids: slots.idleSlots } : null;
       } catch {
         return null;
       }

@@ -181,3 +181,104 @@ describe("BrainStatusPublisher", () => {
     expect(seen).toEqual([{ state: "ready" }]);
   });
 });
+
+describe("BrainStatusPublisher sampling cadence", () => {
+  /**
+   * The brain is the heaviest process on the machine and `/slots` is served off
+   * llama-server's own task queue, so an idle engine must not be polled at the
+   * cadence a generating one needs.
+   */
+  it("backs off while idle and speeds up again when work arrives", async () => {
+    vi.useFakeTimers();
+    try {
+      let snapshot: Record<string, unknown> = { state: "ready", queued: 0 };
+      let samples = 0;
+      const publisher = new BrainStatusPublisher({
+        sampleIntervalMs: 100,
+        idleIntervalMs: 1_000,
+      });
+      publisher.setSource(async () => {
+        samples += 1;
+        return snapshot;
+      });
+      publisher.subscribe(() => {});
+      await vi.advanceTimersByTimeAsync(0);
+
+      samples = 0;
+      await vi.advanceTimersByTimeAsync(1_000);
+      // An idle brain: one sample for the second that passed, not ten.
+      expect(samples).toBeLessThanOrEqual(2);
+
+      // Work arrives. The stage change pushes a notify rather than waiting for
+      // the timer, and the cadence tightens from that sample on.
+      snapshot = { state: "ready", queued: 0, inference: { activeRequests: 1, generating: 1 } };
+      publisher.notify();
+      await vi.advanceTimersByTimeAsync(0);
+      samples = 0;
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(samples).toBeGreaterThanOrEqual(8);
+
+      // Back to idle: the cadence relaxes again rather than staying hot.
+      snapshot = { state: "ready", queued: 0 };
+      publisher.notify();
+      await vi.advanceTimersByTimeAsync(0);
+      samples = 0;
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(samples).toBeLessThanOrEqual(2);
+
+      publisher.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("treats a queued job and a running operation as busy", async () => {
+    vi.useFakeTimers();
+    try {
+      for (const busy of [
+        { state: "ready", queued: 2 },
+        { state: "ready", queued: 0, activity: { kind: "calibrate" } },
+        { state: "starting", queued: 0 },
+      ]) {
+        let samples = 0;
+        const publisher = new BrainStatusPublisher({
+          sampleIntervalMs: 100,
+          idleIntervalMs: 1_000,
+        });
+        publisher.setSource(async () => {
+          samples += 1;
+          return busy;
+        });
+        publisher.subscribe(() => {});
+        await vi.advanceTimersByTimeAsync(0);
+        samples = 0;
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(samples, JSON.stringify(busy)).toBeGreaterThanOrEqual(8);
+        publisher.close();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops sampling entirely once the last subscriber leaves", async () => {
+    vi.useFakeTimers();
+    try {
+      let samples = 0;
+      const publisher = new BrainStatusPublisher({ sampleIntervalMs: 100, idleIntervalMs: 1_000 });
+      publisher.setSource(async () => {
+        samples += 1;
+        return { state: "ready", queued: 0, inference: { activeRequests: 1 } };
+      });
+      const unsubscribe = publisher.subscribe(() => {});
+      await vi.advanceTimersByTimeAsync(0);
+      unsubscribe();
+      samples = 0;
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(samples).toBe(0);
+      publisher.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
