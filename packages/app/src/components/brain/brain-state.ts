@@ -45,20 +45,20 @@ export type BrainState =
   | "benchmarking";
 
 /**
- * The tooltip and accessibility text for each state. Callers pass these into
- * the rail button rather than the component reaching for them, matching how
- * `SidebarFooterNavRow` already takes its labels from the sidebar.
+ * The tooltip and accessibility text for each state. Every state - idle
+ * included - uses its own sentence, so the rail always reads as
+ * "Brain - <state>" and never drops the "Brain" identity.
  */
 export const BRAIN_STATE_LABELS: Record<BrainState, string> = {
   off: "Brain - off",
   unreachable: "Brain - unreachable",
-  idle: "Brain - ready",
+  idle: "Brain - idle",
   degraded: "Brain - ready, with a warning",
   error: "Brain - failed",
   loading: "Brain - loading model",
   unloading: "Brain - unloading model",
   queued: "Brain - queued",
-  prefill: "Brain - processing incoming tokens",
+  prefill: "Brain - processing tokens",
   thinking: "Brain - thinking",
   generating: "Brain - generating tokens",
   downloading: "Brain - downloading model",
@@ -69,12 +69,6 @@ export const BRAIN_STATE_LABELS: Record<BrainState, string> = {
 };
 
 export const BRAIN_DISABLED_LABEL = "Brain - Disabled";
-
-/**
- * What the button says when the brain is merely idle. English-only on purpose,
- * matching `BRAIN_STATE_LABELS` above and the sidebar's own `labels.brain`.
- */
-export const BRAIN_NAV_LABEL = "Brain";
 
 export interface BrainRailPresentation {
   state: BrainState;
@@ -100,21 +94,16 @@ export function resolveBrainRailPresentation(
 
 /**
  * The one wording rule every Brain button shares (sidebar footer, settings
- * footer, workspace title bar): the state's own sentence replaces the plain
- * "Brain" once there is something to say, so the button still reads as
- * navigation while it is merely idle.
- *
- * `idleLabel` is a parameter because the sidebar rows pass their own label
- * bundle; callers with no bundle pass {@link BRAIN_NAV_LABEL}.
+ * footer, workspace title bar): the button always carries the state's own
+ * sentence - "Brain - idle" when it is merely idle, "Brain - generating tokens"
+ * when it is working - so every state reads the same way and the tooltip never
+ * drops the "Brain" identity.
  */
-export function resolveBrainRailLabel(
-  presentation: BrainRailPresentation,
-  idleLabel: string = BRAIN_NAV_LABEL,
-): string {
+export function resolveBrainRailLabel(presentation: BrainRailPresentation): string {
   if (presentation.label) {
     return presentation.label;
   }
-  return presentation.state === "idle" ? idleLabel : BRAIN_STATE_LABELS[presentation.state];
+  return BRAIN_STATE_LABELS[presentation.state];
 }
 
 /**
@@ -499,34 +488,36 @@ function deriveLifecycleState(input: BrainStateInput): BrainState | null {
 }
 
 /**
- * The per-request half of the state: what the loaded model is doing right now,
- * or null when it is doing nothing. Split out of `deriveBrainState` because
- * these four are the states that depend on signals the brain only recently
- * grew, and they are the ones most likely to gain siblings.
+ * The busy half of the state: what the loaded model is doing right now, or
+ * null when it is doing nothing. Split out of `deriveBrainState` because these
+ * are the states that depend on signals the brain only recently grew, and they
+ * are the ones most likely to gain siblings.
+ *
+ * **The rail reads the same signals the Overview's slot rows do.** The panel's
+ * rows show each slot's engine phase from llama-server's `/slots`, so the rail
+ * derives from that same phase split (plus the `reasoning` flag, which is the
+ * one "thinking" signal that is genuinely per-slot: the proxy has seen a
+ * reasoning delta on the stream a slot is serving). The request-level
+ * `inference` counts are deliberately NOT consulted here, even though they
+ * update before the next `/slots` sample: they count requests, not slots, and
+ * "thinking" in particular cannot be expressed per slot at all. Preferring
+ * them made the rail say "thinking" while the panel's own rows said "Decoding"
+ * - the icon contradicting the page it navigates to. The cost is a sub-second
+ * lag at request dispatch (the rail moves with the first `/slots` sample
+ * instead of at proxy dispatch); once a request-to-slot join exists, the
+ * request stages can come back in here without lying.
  */
 function deriveInferenceState(input: BrainStateInput): BrainState | null {
-  // Host API v2 reports request lifecycle changes synchronously from the proxy,
-  // before the next `/slots` sample. Prefer it so the rail moves as soon as the
-  // request is dispatched to the model rather than after the first generated token.
-  if ((input.inference?.thinking ?? 0) > 0) {
-    return "thinking";
-  }
-  if ((input.inference?.generating ?? 0) > 0) {
-    return "generating";
-  }
-  if ((input.inference?.processing ?? 0) > 0) {
-    return "prefill";
-  }
   // Reasoning outranks decode: a model emitting reasoning tokens is decoding
   // too, and "thinking" is the more useful of the two claims.
   if (input.reasoning) {
     return "thinking";
   }
-  if ((input.slots?.decode ?? 0) > 0) {
-    return "generating";
-  }
   if ((input.slots?.prefill ?? 0) > 0) {
     return "prefill";
+  }
+  if ((input.slots?.decode ?? 0) > 0) {
+    return "generating";
   }
   if ((input.queued ?? 0) > 0) {
     return "queued";

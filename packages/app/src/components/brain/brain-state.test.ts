@@ -60,28 +60,47 @@ describe("deriveBrainState", () => {
     expect(deriveBrainState({ ...READY, reasoning: true, slots: { decode: 1 } })).toBe("thinking");
   });
 
-  it("uses host API v2 request stages before slot sampling catches up", () => {
+  it("does not move the rail from request-level stages alone", () => {
+    // The `inference` counts track requests, which llama-server cannot express
+    // per slot - so a request the proxy thinks is mid-thought must not flip
+    // the rail to "thinking" while the Overview's own slot rows say "Decoding".
+    // Until a request-to-slot join exists, only per-slot signals move the rail.
     expect(
       deriveBrainState({
         ...READY,
         slots: { prefill: 0, decode: 0 },
-        inference: { processing: 1, thinking: 0, generating: 0 },
+        inference: { processing: 1, thinking: 1, generating: 1 },
+      }),
+    ).toBe("idle");
+  });
+
+  it("reads the same per-slot signals the Overview panel's rows use", () => {
+    // One request thinking while a slot is decoding: the panel's row says
+    // "Decoding", so the rail says generating, not thinking.
+    expect(
+      deriveBrainState({
+        ...READY,
+        slots: { prefill: 0, decode: 1 },
+        inference: { processing: 0, thinking: 1, generating: 0 },
+      }),
+    ).toBe("generating");
+    expect(
+      deriveBrainState({
+        ...READY,
+        slots: { prefill: 1, decode: 0 },
+        inference: { processing: 0, thinking: 1, generating: 1 },
       }),
     ).toBe("prefill");
+    // The reasoning flag is per-slot by construction (a reasoning delta on
+    // this stream), so it stays the "thinking" signal.
     expect(
       deriveBrainState({
         ...READY,
-        slots: { prefill: 0, decode: 0 },
+        reasoning: true,
+        slots: { prefill: 0, decode: 1 },
         inference: { processing: 0, thinking: 1, generating: 0 },
       }),
     ).toBe("thinking");
-    expect(
-      deriveBrainState({
-        ...READY,
-        slots: { prefill: 0, decode: 0 },
-        inference: { processing: 0, thinking: 0, generating: 1 },
-      }),
-    ).toBe("generating");
   });
 
   it("shows queued work that has no slot yet", () => {
@@ -261,22 +280,20 @@ describe("Brain rail enablement", () => {
 });
 
 describe("resolveBrainRailLabel", () => {
-  it("reads as navigation while the brain is merely idle", () => {
-    expect(resolveBrainRailLabel(resolveBrainRailPresentation("idle", true), "Brain")).toBe(
-      "Brain",
+  it("carries the state's own sentence even while merely idle", () => {
+    expect(resolveBrainRailLabel(resolveBrainRailPresentation("idle", true))).toBe(
+      BRAIN_STATE_LABELS.idle,
     );
-    // No bundle to draw on (the title-bar button) falls back to the same word.
-    expect(resolveBrainRailLabel(resolveBrainRailPresentation("idle", true))).toBe("Brain");
   });
 
   it("says what the brain is doing as soon as there is something to say", () => {
-    expect(resolveBrainRailLabel(resolveBrainRailPresentation("generating", true), "Brain")).toBe(
+    expect(resolveBrainRailLabel(resolveBrainRailPresentation("generating", true))).toBe(
       BRAIN_STATE_LABELS.generating,
     );
   });
 
-  it("lets the disabled wording win over both the idle label and the state's own", () => {
-    expect(resolveBrainRailLabel(resolveBrainRailPresentation("generating", false), "Brain")).toBe(
+  it("lets the disabled wording win over the state's own", () => {
+    expect(resolveBrainRailLabel(resolveBrainRailPresentation("generating", false))).toBe(
       BRAIN_DISABLED_LABEL,
     );
   });

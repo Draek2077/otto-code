@@ -373,17 +373,40 @@ function VramPanel({ gpu }: { gpu: Record<string, unknown> | null }) {
   );
 }
 
-function modelActivityPhase(input: {
-  enginePhase: unknown;
-  thinking: number;
-  generating: number;
-}): string {
-  if (input.enginePhase === "prefill") return "Processing prompt";
-  if (input.thinking > 0 && input.generating === 0) return "Thinking";
-  if (input.thinking > 0 && input.generating > 0) return "Decoding";
-  return "Generating";
+/**
+ * A slot row's label comes from the slot's own engine phase, never from the
+ * request-level `inference` counts.
+ *
+ * The old version folded the global `thinking`/`generating` counts into every
+ * row, so a single thinking request relabelled *every* decode slot as
+ * "Thinking" - the panel then printed "1 thinking" above two rows both reading
+ * "Thinking", contradicting its own summary. llama-server only knows prefill
+ * and decode; "thinking" is a request-level stage the engine cannot report per
+ * slot, so a decode row honestly says "Decoding" and the request-level stages
+ * live in the summary line above (and the rail icon, which does have the
+ * request-level signal). Until the request-to-slot join lands, that is the
+ * most this row can claim without guessing.
+ */
+function modelActivityPhase(enginePhase: unknown): string {
+  return enginePhase === "prefill" ? "Processing prompt" : "Decoding";
 }
 
+/**
+ * The panel deliberately shows two different measurements and labels them as
+ * such, instead of pretending they are one picture:
+ *
+ *  - The **summary line** counts *requests* in flight, from the proxy's own
+ *    `inference` tracker. That is the only place "thinking" can be claimed
+ *    per-request, because llama-server cannot tell a reasoning token from a
+ *    content token.
+ *  - The **slot rows** show each slot's *engine phase* (prefill / decode),
+ *    sampled from llama-server's `/slots`. They cannot say "thinking" - they
+ *    can only say the prompt is being ingested or tokens are being emitted.
+ *
+ * The two agree by construction once a request-to-slot join exists; until then
+ * the honest thing is to name what each line measures so a reader never has to
+ * assume the rows will reproduce the summary.
+ */
 function ModelActivityPanel({
   slots,
   inference,
@@ -395,28 +418,38 @@ function ModelActivityPanel({
   const processing = readNumber(inference, "processing") ?? 0;
   const thinking = readNumber(inference, "thinking") ?? 0;
   const generating = readNumber(inference, "generating") ?? 0;
+  const activeRequests = processing + thinking + generating;
   const stageSummary = [
     processing > 0 ? `${processing} processing ${processing === 1 ? "prompt" : "prompts"}` : null,
     thinking > 0 ? `${thinking} thinking` : null,
     generating > 0 ? `${generating} generating` : null,
   ].filter((value): value is string => value !== null);
+  // The request tracker says work is in flight but the slot sample shows no
+  // busy row - the slot read is a 4 Hz loopback, so this is the sub-second gap
+  // at a request boundary, not a contradiction. Say so rather than showing an
+  // empty panel under a non-empty summary.
+  const requestsWithoutSlot = activeRequests > 0 && threads.length === 0;
   return (
     <View style={styles.panel}>
       <Text style={styles.panelTitle}>Live model activity</Text>
       {stageSummary.length > 0 ? (
-        <Text style={styles.panelCaption}>{stageSummary.join(" · ")}</Text>
+        <>
+          <Text style={styles.panelCaption}>{stageSummary.join(" · ")}</Text>
+          <Text style={styles.panelCaptionMuted}>
+            Request stages · slot rows below show the engine phase
+          </Text>
+        </>
       ) : null}
       {threads.length === 0 && stageSummary.length === 0 ? (
         <Text style={styles.panelCaption}>No active inference requests.</Text>
       ) : null}
+      {requestsWithoutSlot ? (
+        <Text style={styles.panelCaption}>Slot state appears on the next refresh.</Text>
+      ) : null}
       {threads.length > 0 ? (
         <View style={styles.activityList}>
           {threads.map((thread) => {
-            const phase = modelActivityPhase({
-              enginePhase: thread.phase,
-              thinking,
-              generating,
-            });
+            const phase = modelActivityPhase(thread.phase);
             const rate = readNumber(
               thread,
               thread.phase === "prefill" ? "promptTokensPerSecond" : "tokensPerSecond",
@@ -875,6 +908,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   panelCaption: {
     fontSize: theme.fontSize.sm,
+    color: theme.colors.foregroundMuted,
+  },
+  panelCaptionMuted: {
+    fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
   },
   activityList: {
