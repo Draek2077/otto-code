@@ -120,6 +120,13 @@ export default {
     name: variant.name,
     slug: "otto-code-mobile",
     version: pkg.version,
+    // Shared by iOS and Android. Kept "portrait" on purpose: the only value that
+    // unlocks rotation is "default", which would also allow all four iOS
+    // orientations. Android instead gets android:screenOrientation="unspecified"
+    // via plugins/with-android-rotation.js (same value "default" maps to there),
+    // so the app follows the device's auto-rotate setting - landscape is
+    // available on tablets, phones stay portrait unless the user enables
+    // auto-rotate in their OS.
     orientation: "portrait",
     icon: "./assets/images/icon.png",
     scheme: "otto",
@@ -201,6 +208,9 @@ export default {
           },
         },
       ],
+      // Android-only: let the app follow the device rotation setting
+      // (landscape on tablets). See plugins/with-android-rotation.js.
+      "./plugins/with-android-rotation",
       // Windows-only: re-absolutize the Android bundle `--entry-file` so local
       // release builds don't fail with "Unable to resolve module ./index.ts".
       // No-op on Linux/macOS. See plugins/with-metro-embed-cli.js.
