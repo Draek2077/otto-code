@@ -8,8 +8,10 @@ import {
   useRef,
   useState,
   type ComponentProps,
+  type Dispatch,
   type ReactElement,
   type ReactNode,
+  type SetStateAction,
 } from "react";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { useIsFocused } from "@react-navigation/native";
@@ -232,6 +234,7 @@ import {
   WorkspaceDesktopTabsRow,
   type WorkspaceDesktopTabRowItem,
 } from "@/screens/workspace/workspace-desktop-tabs-row";
+import { WorkspaceDesktopTabsRail } from "@/screens/workspace/workspace-desktop-tabs-rail";
 import {
   buildWorkspaceTabMenuEntries,
   type WorkspaceTabMenuEntry,
@@ -4270,6 +4273,153 @@ function WorkspaceCenterContent({
 // the tab retention limit changes and on nothing else in settings.
 const selectMountedTabLimit = (settings: AppSettings) => settings.mountedTabLimit;
 
+/** The non-split desktop fallback's tab chrome: the horizontal row above the
+ * center content, or the vertical rail beside it, following the pane's
+ * orientation. Extracted from WorkspaceScreenContent purely to keep that
+ * function inside the repo's complexity budget - it holds no state and the
+ * split-capable surface renders its own panes instead of this. */
+function WorkspaceFallbackTabs({
+  tabOrientation,
+  paneId,
+  isFocused,
+  tabs,
+  focusedTab,
+  normalizedServerId,
+  normalizedWorkspaceId,
+  setHoveredCloseTabKey,
+  onNavigateTab,
+  onCloseTab,
+  onCopyResumeCommand,
+  onCopyTerminalId,
+  onCopyAgentId,
+  onCopyFilePath,
+  onReloadAgent,
+  onRenameTab,
+  onCloseTabsToLeft,
+  onCloseTabsToRight,
+  onCloseOtherTabs,
+  onCreateDraftTab,
+  onCreateTerminalTab,
+  onCreateBrowserTab,
+  showCreateBrowserTab,
+  disableCreateTerminal,
+  isWaitingOnTerminalReadiness,
+  onReorderTabs,
+  onArchiveAgent,
+  onDeleteAgent,
+  onToggleTabOrientation,
+  children,
+}: {
+  tabOrientation: "horizontal" | "vertical";
+  paneId?: string;
+  isFocused: boolean;
+  tabs: WorkspaceDesktopTabRowItem[];
+  focusedTab: WorkspaceTabDescriptor | null;
+  normalizedServerId: string;
+  normalizedWorkspaceId: string;
+  setHoveredCloseTabKey: Dispatch<SetStateAction<string | null>>;
+  onNavigateTab: (tabId: string) => void;
+  onCloseTab: (tabId: string) => void | Promise<void>;
+  onCopyResumeCommand: (agentId: string) => void | Promise<void>;
+  onCopyTerminalId: (terminalId: string) => void | Promise<void>;
+  onCopyAgentId: (agentId: string) => void | Promise<void>;
+  onCopyFilePath: (path: string) => void | Promise<void>;
+  onReloadAgent: (agentId: string) => void | Promise<void>;
+  onRenameTab: (tab: WorkspaceTabDescriptor) => void;
+  onCloseTabsToLeft: (tabId: string) => void | Promise<void>;
+  onCloseTabsToRight: (tabId: string) => void | Promise<void>;
+  onCloseOtherTabs: (tabId: string) => void | Promise<void>;
+  onArchiveAgent?: (agentId: string) => void | Promise<void>;
+  onDeleteAgent?: (agentId: string) => void | Promise<void>;
+  onCreateDraftTab: (input: { paneId?: string }) => void;
+  onCreateTerminalTab: (input: { paneId?: string; profile?: TerminalProfileInput }) => void;
+  onCreateBrowserTab: (input: { paneId?: string }) => void;
+  showCreateBrowserTab: boolean;
+  disableCreateTerminal: boolean;
+  isWaitingOnTerminalReadiness: boolean;
+  onReorderTabs: (nextTabs: WorkspaceTabDescriptor[]) => void;
+  onToggleTabOrientation: () => void;
+  children: ReactNode;
+}) {
+  if (tabOrientation === "vertical") {
+    return (
+      <View style={styles.fallbackVerticalTabsRow}>
+        <WorkspaceDesktopTabsRail
+          paneId={paneId}
+          isFocused={isFocused}
+          tabs={tabs}
+          focusedTab={focusedTab}
+          normalizedServerId={normalizedServerId}
+          normalizedWorkspaceId={normalizedWorkspaceId}
+          setHoveredCloseTabKey={setHoveredCloseTabKey}
+          onNavigateTab={onNavigateTab}
+          onCloseTab={onCloseTab}
+          onCopyResumeCommand={onCopyResumeCommand}
+          onCopyTerminalId={onCopyTerminalId}
+          onCopyAgentId={onCopyAgentId}
+          onCopyFilePath={onCopyFilePath}
+          onReloadAgent={onReloadAgent}
+          onRenameTab={onRenameTab}
+          onCloseTabsToLeft={onCloseTabsToLeft}
+          onCloseTabsToRight={onCloseTabsToRight}
+          onCloseOtherTabs={onCloseOtherTabs}
+          onCreateDraftTab={onCreateDraftTab}
+          onCreateTerminalTab={onCreateTerminalTab}
+          onCreateBrowserTab={onCreateBrowserTab}
+          showCreateBrowserTab={showCreateBrowserTab}
+          disableCreateTerminal={disableCreateTerminal}
+          isWaitingOnTerminalReadiness={isWaitingOnTerminalReadiness}
+          onReorderTabs={onReorderTabs}
+          onSplitRight={noop}
+          onSplitDown={noop}
+          showPaneSplitActions={false}
+          tabOrientation={tabOrientation}
+          onToggleTabOrientation={onToggleTabOrientation}
+        />
+        {children}
+      </View>
+    );
+  }
+  return (
+    <>
+      <WorkspaceDesktopTabsRow
+        paneId={paneId}
+        isFocused={isFocused}
+        tabs={tabs}
+        normalizedServerId={normalizedServerId}
+        normalizedWorkspaceId={normalizedWorkspaceId}
+        setHoveredCloseTabKey={setHoveredCloseTabKey}
+        onNavigateTab={onNavigateTab}
+        onCloseTab={onCloseTab}
+        onCopyResumeCommand={onCopyResumeCommand}
+        onCopyTerminalId={onCopyTerminalId}
+        onCopyAgentId={onCopyAgentId}
+        onCopyFilePath={onCopyFilePath}
+        onReloadAgent={onReloadAgent}
+        onRenameTab={onRenameTab}
+        onCloseTabsToLeft={onCloseTabsToLeft}
+        onCloseTabsToRight={onCloseTabsToRight}
+        onCloseOtherTabs={onCloseOtherTabs}
+        onArchiveAgent={onArchiveAgent}
+        onDeleteAgent={onDeleteAgent}
+        onCreateDraftTab={onCreateDraftTab}
+        onCreateTerminalTab={onCreateTerminalTab}
+        onCreateBrowserTab={onCreateBrowserTab}
+        showCreateBrowserTab={showCreateBrowserTab}
+        disableCreateTerminal={disableCreateTerminal}
+        isWaitingOnTerminalReadiness={isWaitingOnTerminalReadiness}
+        onReorderTabs={onReorderTabs}
+        onSplitRight={noop}
+        onSplitDown={noop}
+        showPaneSplitActions={false}
+        tabOrientation={tabOrientation}
+        onToggleTabOrientation={onToggleTabOrientation}
+      />
+      {children}
+    </>
+  );
+}
+
 function WorkspaceScreenContent({
   serverId,
   workspaceId,
@@ -6764,6 +6914,24 @@ function WorkspaceScreenContent({
   ]);
   const desktopContent = desktopSplitContent ?? content;
 
+  // Shared by both orientations of the fallback: the vertical layout hoists the
+  // rail beside this node rather than above it, so it must render as a child of
+  // that row instead of a sibling of the rail.
+  const centerContentNode = (
+    <WorkspaceCenterContent
+      serverId={normalizedServerId}
+      workspaceId={normalizedWorkspaceId}
+      isRouteFocused={isRouteFocused}
+      onOpenPipFile={handleOpenWorkspaceFileFromPip}
+    >
+      {isMobile ? (
+        <View style={styles.content}>{content}</View>
+      ) : (
+        <View style={styles.content}>{desktopContent}</View>
+      )}
+    </WorkspaceCenterContent>
+  );
+
   const workspaceCenterColumn = (
     <View style={styles.centerColumn}>
       {showScreenHeader && (
@@ -6850,11 +7018,29 @@ function WorkspaceScreenContent({
         />
       ) : null}
 
+      <WakeWordEmptyStateListener
+        normalizedServerId={normalizedServerId}
+        normalizedWorkspaceId={normalizedWorkspaceId}
+        isRouteFocused={isRouteFocused}
+        hasActiveTab={Boolean(activeTabDescriptor)}
+        hasHydratedAgents={hasHydratedAgents}
+        wakeWordEnabled={settings.wakeWordEnabled}
+        wakeWordListeningPaused={settings.wakeWordListeningPaused}
+        wakeWordPhrase={settings.wakeWordPhrase}
+        wakeWordSensitivity={settings.wakeWordSensitivity}
+        wakeWordSilenceTimeoutMs={settings.wakeWordSilenceTimeoutMs}
+        wakeWordAutoSend={settings.wakeWordAutoSend}
+        openWorkspaceDraftTab={openWorkspaceDraftTab}
+        onError={handleWakeWordEmptyStateError}
+      />
+
       {shouldRenderDesktopPaneFallback ? (
-        <WorkspaceDesktopTabsRow
+        <WorkspaceFallbackTabs
+          tabOrientation={fallbackTabOrientation}
           paneId={focusedPaneIdOrUndefined}
           isFocused={isRouteFocused}
           tabs={desktopTabRowItems}
+          focusedTab={activeTabDescriptor}
           normalizedServerId={normalizedServerId}
           normalizedWorkspaceId={normalizedWorkspaceId}
           setHoveredCloseTabKey={setHoveredCloseTabKey}
@@ -6878,42 +7064,13 @@ function WorkspaceScreenContent({
           disableCreateTerminal={createTerminalMutation.isPending}
           isWaitingOnTerminalReadiness={pendingTerminalCreateInput !== null}
           onReorderTabs={handleReorderTabsInFocusedPane}
-          onSplitRight={noop}
-          onSplitDown={noop}
-          showPaneSplitActions={false}
-          tabOrientation={fallbackTabOrientation}
           onToggleTabOrientation={handleToggleFallbackTabOrientation}
-        />
-      ) : null}
-
-      <WakeWordEmptyStateListener
-        normalizedServerId={normalizedServerId}
-        normalizedWorkspaceId={normalizedWorkspaceId}
-        isRouteFocused={isRouteFocused}
-        hasActiveTab={Boolean(activeTabDescriptor)}
-        hasHydratedAgents={hasHydratedAgents}
-        wakeWordEnabled={settings.wakeWordEnabled}
-        wakeWordListeningPaused={settings.wakeWordListeningPaused}
-        wakeWordPhrase={settings.wakeWordPhrase}
-        wakeWordSensitivity={settings.wakeWordSensitivity}
-        wakeWordSilenceTimeoutMs={settings.wakeWordSilenceTimeoutMs}
-        wakeWordAutoSend={settings.wakeWordAutoSend}
-        openWorkspaceDraftTab={openWorkspaceDraftTab}
-        onError={handleWakeWordEmptyStateError}
-      />
-
-      <WorkspaceCenterContent
-        serverId={normalizedServerId}
-        workspaceId={normalizedWorkspaceId}
-        isRouteFocused={isRouteFocused}
-        onOpenPipFile={handleOpenWorkspaceFileFromPip}
-      >
-        {isMobile ? (
-          <View style={styles.content}>{content}</View>
-        ) : (
-          <View style={styles.content}>{desktopContent}</View>
-        )}
-      </WorkspaceCenterContent>
+        >
+          {centerContentNode}
+        </WorkspaceFallbackTabs>
+      ) : (
+        centerContentNode
+      )}
     </View>
   );
 
@@ -7553,6 +7710,15 @@ const styles = StyleSheet.create((theme) => ({
   centerContent: {
     flex: 1,
     minHeight: 0,
+  },
+  // The non-split fallback's vertical-tab layout: the rail is a left column,
+  // the workspace content the rest of the width. The rail owns its own width
+  // (content-driven or the user-saved one, capped at 60% of this row).
+  fallbackVerticalTabsRow: {
+    flex: 1,
+    minHeight: 0,
+    flexDirection: "row",
+    alignItems: "stretch",
   },
   tab: {
     paddingHorizontal: theme.spacing[3],
