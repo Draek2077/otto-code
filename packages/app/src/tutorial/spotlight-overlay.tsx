@@ -343,7 +343,11 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     padding: theme.spacing[4],
     gap: theme.spacing[2],
-    boxShadow: "0 8px 24px rgba(0, 0, 0, 0.35)",
+    // Native-safe popup shadow: a CSS `boxShadow` string reaches the native
+    // `boxShadow` prop (an array) as a raw string and throws on re-layout
+    // (rotation). The theme token composes the CSS shadow on web and uses
+    // elevation on Android.
+    ...theme.shadow.lg,
   },
   stepLabel: {
     fontSize: theme.fontSize.xs,

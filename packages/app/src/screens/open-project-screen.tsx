@@ -206,9 +206,6 @@ interface HomeTileProps {
   accent?: boolean;
 }
 
-const TILE_SHADOW_DARK = "0 0 5px rgba(0, 0, 0, 0.2)";
-const TILE_SHADOW_LIGHT = "0 0 5px rgba(0, 0, 0, 0.1)";
-
 function HomeTile({
   icon: Icon,
   title,
@@ -219,7 +216,6 @@ function HomeTile({
   shortcutDiscoveryAction,
   accent,
 }: HomeTileProps) {
-  // useUnistyles is acceptable here: leaf component, off the hot path (home screen renders once).
   const { theme } = useUnistyles();
   const [hovered, setHovered] = useState(false);
   const handleHoverIn = useCallback(() => setHovered(true), []);
@@ -227,20 +223,13 @@ function HomeTile({
 
   const iconColor = accent ? theme.colors.accent : theme.colors.foregroundMuted;
 
-  // The shadow must flow through React, not a `theme.colorScheme` ternary in the
-  // StyleSheet factory: on web the factory's non-color values are computed once at
-  // module load against the then-active theme and freeze on the startup scheme
-  // (docs/unistyles.md).
-  const boxShadow = theme.colorScheme === "dark" ? TILE_SHADOW_DARK : TILE_SHADOW_LIGHT;
-
   const pressableStyle = useCallback(
     ({ pressed }: { pressed: boolean }) => [
       styles.tile,
-      { boxShadow },
       hovered && styles.tileHovered,
       pressed && styles.tilePressed,
     ],
-    [hovered, boxShadow],
+    [hovered],
   );
 
   return (
@@ -334,6 +323,11 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.xl,
     gap: theme.spacing[3],
+    // Native-safe shadow: a CSS `boxShadow` string here would be shipped to the
+    // native `boxShadow` prop (an array) as a raw string and throw on every
+    // re-layout (e.g. rotation). The theme token composes the same look on web
+    // via unistyles and uses elevation on Android.
+    ...theme.shadow.sm,
   },
   shortcutDiscoveryHint: {
     position: "absolute",
