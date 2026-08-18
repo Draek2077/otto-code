@@ -518,7 +518,23 @@ function resolveModel(catalog: Model[], needle: string | null): Model | null {
  */
 function profileFromQuery(base: Profile, params: URLSearchParams, model: Model): Profile {
   const patch: Record<string, unknown> = {};
-  const numeric = ["contextSize", "gpuLayers", "parallelSlots", "cachedChats", "reasoningBudget"];
+  // The samplers cost no VRAM and so change nothing in the budget this powers,
+  // but they ride in the same draft the editor sends. Parse them anyway: an
+  // unparsed key reaches sanitizeProfilePatch as the string "0.8" and throws,
+  // which would fail the whole preview over a field it does not even price.
+  const numeric = [
+    "contextSize",
+    "gpuLayers",
+    "parallelSlots",
+    "cachedChats",
+    "reasoningBudget",
+    "temperature",
+    "topP",
+    "topK",
+    "minP",
+    "presencePenalty",
+    "repeatPenalty",
+  ];
   for (const key of numeric) {
     const raw = params.get(key);
     if (raw !== null && raw !== "") patch[key] = Number(raw);
@@ -531,6 +547,13 @@ function profileFromQuery(base: Profile, params: URLSearchParams, model: Model):
     const raw = params.get(key);
     if (raw !== null && raw !== "") patch[key] = raw === "true" || raw === "1";
   }
+  // Tri-state, and every spelling a client might use for it. Unknown text is
+  // dropped rather than thrown on: this field prices nothing, so a value this
+  // route cannot read must not take the whole budget preview down with it.
+  const preserve = params.get("preserveReasoning");
+  if (preserve === "true" || preserve === "on") patch.preserveReasoning = true;
+  else if (preserve === "false" || preserve === "off") patch.preserveReasoning = false;
+  else if (preserve === "default" || preserve === "null") patch.preserveReasoning = null;
   if (Object.keys(patch).length === 0) return base;
   return sanitizeProfilePatch(base, patch, model, runtimeBuild(null)).profile;
 }

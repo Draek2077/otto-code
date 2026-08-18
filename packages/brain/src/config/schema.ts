@@ -51,8 +51,27 @@ export const ProfileSchema = z
     vision: z.boolean().default(false),
     reasoningBudget: z.number().default(1536),
     reasoningBudgetMessage: z.string().default(DEFAULT_REASONING_MESSAGE),
-    /** Optional for old stored profiles; model defaults are resolved by forModel(). */
-    preserveReasoning: z.boolean().optional(),
+    /**
+     * Tri-state, matching llama-server's own `--reasoning-preserve` /
+     * `--no-reasoning-preserve` / unset: `true` keeps the reasoning trace in the
+     * whole history, `false` forces it to the last assistant message only, and
+     * null/undefined leaves the template's own default alone. Null is the
+     * default precisely so an untouched profile emits no flag and launches
+     * exactly as it did before this field existed.
+     */
+    preserveReasoning: z.boolean().nullable().optional(),
+    // ------------------------------------------------------------- sampling
+    // Defaults are llama.cpp's own, read from `llama-server --help` on the
+    // pinned build (b10433) so an untouched profile runs identically to one
+    // that never emitted these flags. They are stored and emitted explicitly
+    // rather than left implicit because a sampler the user can see is one they
+    // can reason about; re-check them when DEFAULT_LLAMA_BUILD moves.
+    temperature: z.number().default(0.8),
+    topP: z.number().default(0.95),
+    topK: z.number().default(40),
+    minP: z.number().default(0.05),
+    presencePenalty: z.number().default(0),
+    repeatPenalty: z.number().default(1),
     parallelSlots: z.number().default(1),
     /**
      * How many chats' KV state llama-server may park in system RAM when they

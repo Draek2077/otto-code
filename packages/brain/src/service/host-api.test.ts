@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
+import http from "node:http";
 
-import { applyHostingProfilePatch, buildInventoryRow } from "./host-api.js";
+import {
+  applyHostingProfilePatch,
+  buildInventoryRow,
+  createHostApi,
+  type HostApiDeps,
+} from "./host-api.js";
 import type { Supervisor } from "./supervisor.js";
 import type { Scheduler } from "./scheduler.js";
 import { forModel } from "../config/profiles.js";
@@ -435,5 +441,164 @@ describe("applyHostingProfilePatch", () => {
         hostingProfile: hostingProfile({ id: "", name: "One too many" }),
       }),
     ).toThrow(/hosting profile limit of 100 reached/i);
+  });
+});
+
+describe("requiresRestart (pendingReloadModelIds)", () => {
+  /**
+   * The one link the static trace never closed: whether an edit to the
+   * currently resident model earns the reload badge. The desktop app reads
+   * `requiresRestart` from the profile-POST reply to decide whether the
+   * button says "Reload", so a sampler edit that lands on the loaded model
+   * must come back `true` — and it must persist in the store so a later
+   * GET (a re-opened detail pane) still reports it until the model is
+   * actually reloaded.
+   */
+  function harness(residentModel: Model | null) {
+    const model = makeModel();
+    const other = makeModel({ id: "vendor/other.gguf", displayName: "Other" });
+    const supervisor = {
+      state: "ready",
+      model: residentModel,
+      runtime: null,
+      paths: { root: "" },
+    } as unknown as Supervisor;
+    const store = ProfilesStoreSchema.parse({});
+    const deps: HostApiDeps = {
+      supervisor,
+      getCatalog: () => [model, other],
+      rescan: () => [model, other],
+      getProfilesStore: () => store,
+      saveProfiles: () => {},
+      getProfileDefaults: () => undefined,
+      queryGpuInfo: async () => GPU,
+      getRanking: () => [],
+      loadModel: async () => {},
+      getAllowWrite: () => true,
+      getModelsDir: () => null,
+      sampleResources: async () =>
+        ({
+          cpu: null,
+          cpuCount: 1,
+          loadAverage: null,
+          ramUsedBytes: 0,
+          ramTotalBytes: 0,
+          gpu: null,
+          slots: null,
+        }) as never,
+    };
+    const api = createHostApi(deps);
+    const server = http.createServer((req, res) => {
+      if (api.handle(req, res)) return;
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end("{}");
+    });
+    let base = "";
+    const setProfile = async (id: string, patch: Record<string, unknown>) => {
+      const res = await fetch(`${base}/__host/model/profile?id=${encodeURIComponent(id)}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+    };
+    const getProfile = async (id: string) => {
+      const res = await fetch(`${base}/__host/model/profile?id=${encodeURIComponent(id)}`);
+      return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+    };
+    return {
+      model,
+      other,
+      supervisor,
+      store,
+      setProfile,
+      getProfile,
+      close: () =>
+        new Promise<void>((resolve) => {
+          server.closeAllConnections();
+          server.close(() => resolve());
+        }),
+      start: () =>
+        new Promise<void>((resolve) => {
+          server.listen(0, "127.0.0.1", () => {
+            base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+            resolve();
+          });
+        }),
+    };
+  }
+
+  it("returns true for a sampler edit on the resident model and persists it", async () => {
+    const h = harness(makeModel());
+    await h.start();
+    try {
+      const res = await h.setProfile(h.model.id, { temperature: 0.9 });
+      expect(res.status).toBe(200);
+      // The reply the desktop app reads to flip the button to "Reload".
+      expect(res.body.requiresRestart).toBe(true);
+      // And it survives: the store now carries the pending reload.
+      expect(h.store.pendingReloadModelIds[h.model.id]).toBe(true);
+      // The sampler value itself round-trips into the saved profile.
+      expect(h.store.profiles[h.model.id]?.temperature).toBe(0.9);
+    } finally {
+      await h.close();
+    }
+  });
+
+  it("keeps reporting the pending reload on GET until the model is reloaded", async () => {
+    const h = harness(makeModel());
+    await h.start();
+    try {
+      await h.setProfile(h.model.id, { topK: 50 });
+      // A re-opened detail pane (GET) must still show the badge.
+      expect((await h.getProfile(h.model.id)).body.requiresRestart).toBe(true);
+      // Reloading the model is what clears it — the only other clear site is
+      // service start. Simulate the serve.ts load success here.
+      delete h.store.pendingReloadModelIds[h.model.id];
+      expect((await h.getProfile(h.model.id)).body.requiresRestart).toBe(false);
+    } finally {
+      await h.close();
+    }
+  });
+
+  it("does not earn a reload badge for an edit to an unloaded model", async () => {
+    const h = harness(makeModel());
+    await h.start();
+    try {
+      const res = await h.setProfile(h.other.id, { temperature: 0.9 });
+      expect(res.status).toBe(200);
+      expect(res.body.requiresRestart).toBe(false);
+      expect(h.store.pendingReloadModelIds[h.other.id]).toBeUndefined();
+      // The resident model was not touched either.
+      expect(h.store.pendingReloadModelIds[h.model.id]).toBeUndefined();
+    } finally {
+      await h.close();
+    }
+  });
+
+  it("does not flag the resident model when nothing is loaded", async () => {
+    const h = harness(null);
+    await h.start();
+    try {
+      const res = await h.setProfile(h.model.id, { temperature: 0.9 });
+      expect(res.status).toBe(200);
+      expect(res.body.requiresRestart).toBe(false);
+      expect(h.store.pendingReloadModelIds[h.model.id]).toBeUndefined();
+    } finally {
+      await h.close();
+    }
+  });
+
+  it("flags the resident model on any profile edit, not just samplers", async () => {
+    const h = harness(makeModel());
+    await h.start();
+    try {
+      const res = await h.setProfile(h.model.id, { contextSize: 16384 });
+      expect(res.status).toBe(200);
+      expect(res.body.requiresRestart).toBe(true);
+      expect(h.store.pendingReloadModelIds[h.model.id]).toBe(true);
+    } finally {
+      await h.close();
+    }
   });
 });

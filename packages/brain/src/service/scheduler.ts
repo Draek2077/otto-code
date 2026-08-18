@@ -8,7 +8,7 @@
  * no claim lock: the dispatcher is single-threaded by construction (`#busy`),
  * so the state it reads cannot move underneath it.
  *
- * The five variables it arbitrates, in the order it applies them:
+ * The variables it arbitrates, in the order it applies them:
  *
  *  1. RESIDENCY. Only one model is resident, so `#running` never mixes models.
  *     A switch happens only from a fully drained engine. Nothing that reaches
@@ -53,6 +53,26 @@
  * Session identity is the standard `prompt_cache_key`; clients that omit it get
  * plain FIFO.
  *
+ *  6. OWNERSHIP. A slot's KV belongs to the chat that last ran on it.
+ *     llama-server never clears a released slot's prompt, so a slot handed to a
+ *     different chat would still hold the previous chat's KV - and that is
+ *     exactly the cross-chat bleed users see in thinking blocks. The scheduler
+ *     therefore tracks `slotId -> session` for every slot it names (the
+ *     `prompt_cache_key` that owned it, or `null` for keyless jobs) and erases
+ *     the slot before handoff to a different owner. Same session reusing its
+ *     own slot keeps its KV (that is the cache the whole point of `--cache-ram`
+ *     is to protect). The eraser is injected, because the engine endpoint is a
+ *     transport detail the scheduler stays agnostic of. The map is wiped when
+ *     the engine reloads a model: slot ids do not survive a switch, and a
+ *     fresh engine has no stale KV.
+ *
+ *     The erase is awaited BEFORE the job's run() reaches the engine: the
+ *     engine runs tasks in arrival order, so the erase must land in its queue
+ *     ahead of the completion that follows. Firing the erase and the
+ *     completion back-to-back as independent requests would let the engine see
+ *     the completion first, run it on the dirty slot, and only then erase the
+ *     KV the completion just produced - the fix inverting into the bug.
+ *
  * The scheduler is transport-agnostic: a job is a resolved catalog model plus a
  * `run()` that does the proxying, which keeps the logic unit-testable.
  */
@@ -60,6 +80,11 @@ import type { Model } from "../types.js";
 import type { Profile } from "../config/schema.js";
 
 const MAX_CONCURRENCY = 16;
+
+/** A short, safe description of an unknown error value for log lines. */
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 /** The subset of the supervisor the scheduler observes to size and route turns. */
 export interface SchedulerSupervisor {
@@ -80,6 +105,26 @@ export interface SlotMeasurement {
   idle: number;
   ids?: number[];
 }
+
+/**
+ * Erase one engine slot's retained KV state before the next task may land on
+ * it. This is the fix for the cross-chat KV bleed (see OWNERSHIP below):
+ * llama.cpp never clears a slot's prompt on release, so a slot that served one
+ * chat hands that chat's KV to whoever is pinned to the slot next. The caller
+ * (the router) performs the engine-side erase; the scheduler only decides WHEN
+ * a handoff happens and reports it, because only it knows which session was
+ * admitted to which slot.
+ *
+ * The promise resolves (never rejects) once the engine has ACKNOWLEDGED the
+ * erase. That acknowledgment matters: the engine runs tasks in arrival order,
+ * so the erase must sit in its queue ahead of the completion the scheduler is
+ * about to post. The scheduler awaits the promise before `run()` reaches the
+ * engine, which is what keeps the order honest across the HTTP boundary.
+ *
+ * Must never throw or reject: an erase failure degrades to the old (bleedy)
+ * behavior but must never fail the completion that is about to run.
+ */
+export type SlotEraser = (slotId: number) => Promise<void>;
 
 export interface SchedulerOptions {
   supervisor: SchedulerSupervisor;
@@ -113,6 +158,16 @@ export interface SchedulerOptions {
    * the dispatcher.
    */
   slotPollMs?: number;
+  /**
+   * Erase an engine slot's KV before it is handed to a different chat (see
+   * OWNERSHIP). Injected rather than built in: the engine endpoint is a
+   * transport detail, and its availability is runtime-dependent (the
+   * llama-server build must support `POST /slots?action=erase` - it does not
+   * on a server launched without `--slot-save-path`). Absent (null) means
+   * ownership is tracked and reported but nothing is erased - the old
+   * behavior, for runtimes where the engine cannot wipe a slot.
+   */
+  eraseSlot?: SlotEraser | null;
 }
 
 /** Work kinds sharing the single resident model. Operations own a full turn. */
@@ -202,6 +257,15 @@ export class Scheduler {
   onChange: (() => void) | null;
   freeSlots: SchedulerOptions["freeSlots"];
   slotPollMs: number;
+  eraseSlot: SlotEraser | null;
+  /**
+   * Engine slot -> the session that last ran on it (see OWNERSHIP). The value
+   * is null for keyless jobs: a keyless job cannot prove ownership of anything
+   * after it settles, so the next keyed chat landing on that slot is treated as
+   * a handoff and the slot is erased for it. Wiped wholesale whenever the
+   * engine reloads a model - slot ids do not survive the relaunch.
+   */
+  slotOwners = new Map<number, string | null>();
 
   /** Claimed by the current turn, waiting for a slot. Empty between turns. */
   #batch: QueuedJob[] = [];
@@ -232,6 +296,7 @@ export class Scheduler {
     onChange = null,
     freeSlots = null,
     slotPollMs = 2500,
+    eraseSlot = null,
   }: SchedulerOptions) {
     this.supervisor = supervisor;
     this.loadModel = loadModel; // async (model) => resolves once it is ready
@@ -239,6 +304,7 @@ export class Scheduler {
     this.onChange = onChange;
     this.freeSlots = freeSlots;
     this.slotPollMs = slotPollMs;
+    this.eraseSlot = eraseSlot;
   }
 
   /** Announce a queue/turn change. Never lets a status listener break a turn. */
@@ -391,11 +457,12 @@ export class Scheduler {
   }
 
   /**
-   * Start a job and wire its completion back into the dispatcher. Never
-   * awaited by the dispatcher: a pass decides and returns, and the settle
-   * callback is what asks for the next decision.
+   * Start a job and wire its completion back into the dispatcher. The settle
+   * callback is what asks for the next decision. `await`ed by the pass: a
+   * handoff erase must reach the engine's task queue BEFORE this job's
+   * completion is posted (see OWNERSHIP), so the pass yields for the erase.
    */
-  #start(job: QueuedJob): void {
+  async #start(job: QueuedJob): Promise<void> {
     this.#running.add(job);
     if (job.exclusive) this.activeJob = job;
     // Name the slot this job is admitted to, from this pass's own sample,
@@ -404,6 +471,29 @@ export class Scheduler {
     if (!job.exclusive && job.onSlotFree) {
       const slotId = this.#freeSlotIds ? (this.#freeSlotIds.shift() ?? null) : null;
       job.slotId = slotId;
+      // OWNERSHIP: the slot now belongs to this job's session. A job may only
+      // reuse a slot's KV when it is the same session that last ran there -
+      // llama-server keeps a released slot's prompt, so a different session
+      // would inherit the previous chat's KV (the cross-chat bleed). Erase the
+      // slot - and WAIT for the engine to acknowledge it - before the job's
+      // run() reaches the engine, so the handoff lands in the engine's task
+      // queue ahead of this completion. Same-session reuse keeps the KV: that
+      // is the cache --cache-ram exists to protect, and settling never erases.
+      if (slotId !== null) {
+        // A slot with NO entry is fresh (just launched, or just relaunched):
+        // it holds nothing, so nothing may be erased for it - the first chat
+        // to land there is the one the KV is being paid for. A slot WITH an
+        // entry holds that session's KV (or a keyless client's, recorded as
+        // null): handing it to a DIFFERENT session would inherit that KV, so
+        // the erase is owed. The entry's mere existence is the distinction -
+        // `get() ?? null` collapses it and erases fresh slots.
+        const hasPrevious = this.slotOwners.has(slotId);
+        const previous = this.slotOwners.get(slotId) ?? null;
+        if (hasPrevious && previous !== job.session) {
+          await this.#eraseFor(slotId, previous, job.session);
+        }
+        this.slotOwners.set(slotId, job.session);
+      }
       try {
         job.onSlotFree(slotId);
       } catch {
@@ -420,10 +510,39 @@ export class Scheduler {
       } finally {
         this.#running.delete(job);
         if (this.activeJob === job) this.activeJob = null;
+        // OWNERSHIP: settling does NOT erase and does NOT clear the owner entry.
+        // The engine keeps a released slot's KV indefinitely (nothing in our
+        // configuration clears or parks it - see OWNERSHIP in the header), and
+        // that is exactly what this job's session wants back on its next turn:
+        // the chat's KV, paid for once, reused on every following request.
+        // Erasing here would hand the same chat its own re-prefill cost, and a
+        // DIFFERENT chat is protected the moment it is admitted, when the
+        // owner mismatch is known for sure. So the slot keeps its KV and its
+        // owner until the next admission - whoever that is - decides otherwise.
         this.#announce();
         void this.#dispatch();
       }
     })();
+  }
+
+  /**
+   * Erase one slot's KV before it is handed to a different owner (see
+   * OWNERSHIP). `from` is the session whose KV the slot currently holds
+   * (null for a keyless previous owner), `to` is the session about to run on
+   * it. Resolves once the engine acknowledges the erase, so the caller can
+   * post the new completion only after the clean state is guaranteed to sit
+   * in the engine's task queue first. Never throws or rejects: a failure
+   * degrades to the old (bleedy) behavior but must not fail the completion it
+   * protects.
+   */
+  async #eraseFor(slotId: number, from: string | null, to: string | null): Promise<void> {
+    if (!this.eraseSlot) return;
+    try {
+      this.logger?.(`erasing slot ${slotId} before handoff${from ? ` from ${from}` : ""} to ${to}`);
+      await this.eraseSlot(slotId);
+    } catch (error) {
+      this.logger?.(`slot ${slotId} erase failed: ${describeError(error)}`);
+    }
   }
 
   /**
@@ -445,6 +564,30 @@ export class Scheduler {
     } finally {
       this.#busy = false;
     }
+  }
+
+  /**
+   * Drop every recorded slot owner. The engine's slots do not survive a model
+   * (re)launch, so their owners do not either - a stale entry would make the
+   * next admission think a FRESH slot still holds a previous chat's KV and
+   * erase it (an unnecessary re-prefill), or, worse, let a keyless job be
+   * mistaken for the owner of a slot it is not.
+   *
+   * Called from two places: `#pass` clears the owners the moment a turn begins
+   * on a different model than the one it last served (a model switch, where
+   * the scheduler itself sees the relaunch), and the router calls it on the
+   * supervisor's `starting` state - the relaunch that keeps the SAME model
+   * resident (a live profile edit), where the turn never changes and only the
+   * supervisor says the slots are gone. Both paths are idempotent.
+   */
+  forgetSlots(): void {
+    this.slotOwners.clear();
+  }
+
+  /** The relaunch reset: owners and the in-flight pin list are both slot-scoped. */
+  #resetSlots(): void {
+    this.forgetSlots();
+    this.#freeSlotIds = null;
   }
 
   /**
@@ -484,10 +627,13 @@ export class Scheduler {
             continue;
           }
           // A relaunched engine has all its slots back; the old sample is void,
-          // and slot ids do not survive the relaunch.
+          // and slot ids do not survive the relaunch, so the owners that named
+          // them are void too - a stale entry would make the next admission
+          // erase a FRESH slot (an unnecessary re-prefill) or mistake a keyless
+          // job for its owner.
           sampled = false;
           startedHere = 0;
-          this.#freeSlotIds = null;
+          this.#resetSlots();
         }
         this.#turnId = pick.modelId;
         this.lastTurnId = pick.modelId;
@@ -514,10 +660,12 @@ export class Scheduler {
         }
       }
 
-      // 3. An exclusive operation runs alone, on a drained engine.
+      // 3. An exclusive operation runs alone, on a drained engine. (Awaited:
+      // `#start` may pause on a handoff erase, and the pass must not read or
+      // mutate the state a started job depends on while it is in flight.)
       if (this.#batch.length === 1 && this.#batch[0].exclusive) {
         if (this.#running.size > 0) return;
-        this.#start(this.#batch.shift()!);
+        await this.#start(this.#batch.shift()!);
         return;
       }
 
@@ -549,7 +697,7 @@ export class Scheduler {
       const job = this.#claimJob(turnId);
       if (!job) return;
       startedHere += 1;
-      this.#start(job);
+      await this.#start(job);
     }
   }
 

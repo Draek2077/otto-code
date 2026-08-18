@@ -111,7 +111,10 @@ export interface RecordModel {
  * a bad score - `gpuLayers` short of the model's layer count silently runs part
  * of it on the CPU, `parallelSlots` splits the context between slots so the
  * effective window is a fraction of `contextSize`, and `extraArgs` can override
- * anything above.
+ * anything above. Schema 3 added the settings that landed after the setup-capture
+ * change - `preserveReasoning`, `contextMultiplier`, `cachedChats`, the sampler
+ * values, and the hosting-profile identity - so the record keeps tracking the
+ * profile instead of silently stopping at the field set it was born with.
  */
 export interface RecordProfile {
   contextSize: number;
@@ -126,6 +129,28 @@ export interface RecordProfile {
   batchSize: number | null;
   ubatchSize: number | null;
   extraArgs: string[];
+  /**
+   * Schema 3+. Absent on schema 2 records, which predate the setting.
+   * Tri-state: true/false as chosen, null for "the template's own default".
+   */
+  preserveReasoning: boolean | null;
+  /** Schema 3+. RoPE extension factor; 1 is the GGUF-native window. */
+  contextMultiplier: number;
+  /** Schema 3+. Chats parked in system RAM; 0 leaves llama.cpp's default. */
+  cachedChats: number;
+  /** Schema 3+. The sampler the run was served with, server-level for every task. */
+  temperature: number | null;
+  topP: number | null;
+  topK: number | null;
+  minP: number | null;
+  presencePenalty: number | null;
+  repeatPenalty: number | null;
+  /**
+   * Schema 3+. The Brain-owned hosting profile in effect (id, not text): its
+   * chat template and system-prompt addendum change what the model is asked
+   * to do, so a run under one profile is not comparable to one under another.
+   */
+  hostingProfileId: string | null;
 }
 
 /**
@@ -211,10 +236,12 @@ export interface RecordTask {
 /**
  * One stored benchmark run - the shared shape used across results and report.
  *
- * `schema` is 2 as of the setup-capture change: 2 carries the full profile plus
- * `setup` and `suite`; 1 carried six profile fields and neither. Readers must
- * treat everything added in 2 as absent on an older record rather than assuming
- * it, because those runs are still perfectly good scores - they just cannot say
+ * `schema` is 3 as of the profile-completeness change: 3 carries every profile
+ * field that reaches llama-server, including the sampler values and the hosting
+ * profile; 2 carried the profile as of the setup-capture change plus `setup`
+ * and `suite`; 1 carried six profile fields and neither. Readers must treat
+ * everything added after a record's schema as absent rather than assuming it,
+ * because those runs are still perfectly good scores - they just cannot say
  * what they were measured with.
  */
 export interface RunRecord {
@@ -339,22 +366,75 @@ function slugify(text: string): string {
 }
 
 /**
+ * llama.cpp's own sampler defaults, the values an untouched profile stores
+ * verbatim (see `ProfileSchema`). A key token is only emitted when the profile
+ * deviates from these, which is what makes an untouched profile keep its
+ * historical key after the widening.
+ */
+const ENGINE_SAMPLER_DEFAULTS = {
+  temperature: 0.8,
+  topP: 0.95,
+  topK: 40,
+  minP: 0.05,
+  presencePenalty: 0,
+  repeatPenalty: 1,
+} as const;
+
+/**
  * Stable identity for "same model, same settings", so reruns can be grouped.
  *
- * Deliberately unchanged when the record grew: this string is the grouping key
- * every stored run was written with, and widening it would not re-key history -
- * it would split each model's past runs from its future ones and quietly reset
- * every variance figure on the page. New settings are recorded as data, not
- * folded in here.
+ * The base four tokens predate the record and are never rewritten - a stored
+ * run's key is its key, and re-deriving the same string for the same setup is
+ * what lets old runs stay in their old groups. The tokens added in schema 3 are
+ * appended ONLY when they deviate from the engine default, because that is what
+ * the key means: the effective configuration, and a default is the historical
+ * configuration. An untouched profile therefore keeps exactly the key it had
+ * before the setting existed, so variance figures for unchanged setups survive
+ * the widening; a run that differs only in, say, `contextMultiplier` gets a
+ * new key instead of silently merging into its predecessor's group and
+ * contaminating that group's consistency line.
  */
 function configKey(profile: Profile | null): string {
   if (!profile) return "unknown";
-  return [
+  const parts = [
     `ctx${profile.contextSize}`,
     `kv${profile.cacheTypeK}-${profile.cacheTypeV}`,
     `rb${profile.reasoningBudget}`,
     profile.vision ? "vision" : "novision",
-  ].join("_");
+  ];
+  if (profile.contextMultiplier !== undefined && profile.contextMultiplier > 1) {
+    parts.push(`x${profile.contextMultiplier}`);
+  }
+  if (profile.cachedChats !== undefined && profile.cachedChats > 0) {
+    parts.push(`cc${profile.cachedChats}`);
+  }
+  if (profile.preserveReasoning === true) parts.push("pr");
+  else if (profile.preserveReasoning === false) parts.push("nopr");
+  // The sampler deviates from the engine default only when the user set it -
+  // an untouched profile stores llama.cpp's own defaults verbatim, and those
+  // are the default, so they carry no token. Each entry pairs the short token
+  // name with the `ENGINE_SAMPLER_DEFAULTS` key the default is looked up by -
+  // the two deliberately differ, so conflating them would emit every sampler
+  // value on every key.
+  const sampler: Array<[string, number | undefined, keyof typeof ENGINE_SAMPLER_DEFAULTS]> = [
+    ["temp", profile.temperature, "temperature"],
+    ["p", profile.topP, "topP"],
+    ["k", profile.topK, "topK"],
+    ["minp", profile.minP, "minP"],
+    ["pres", profile.presencePenalty, "presencePenalty"],
+    ["rep", profile.repeatPenalty, "repeatPenalty"],
+  ];
+  for (const [name, value, defaultKey] of sampler) {
+    if (
+      typeof value === "number" &&
+      Number.isFinite(value) &&
+      value !== ENGINE_SAMPLER_DEFAULTS[defaultKey]
+    ) {
+      parts.push(`${name}${value}`);
+    }
+  }
+  if (profile.hostingProfileId) parts.push(`hp${profile.hostingProfileId}`);
+  return parts.join("_");
 }
 
 /** Read a numeric GGUF metadata field, which is `null` when the header lacked it. */
@@ -412,7 +492,7 @@ function save({
   fs.mkdirSync(RESULTS_DIR, { recursive: true });
 
   const record: RunRecord = {
-    schema: 2,
+    schema: 3,
     ranAt: timestamp.toISOString(),
     model: {
       id: model?.id ?? null,
@@ -428,7 +508,9 @@ function save({
     },
     // The whole profile, not a summary of it. `ProfileSchema` is `.passthrough()`
     // and its numeric fields carry defaults, so read them defensively: a profile
-    // written by an older brain can be missing anything below `vision`.
+    // written by an older brain can be missing anything below `vision`, and a
+    // schema-1-era profile can be missing the sampler values entirely (they
+    // were implicit in llama.cpp then).
     profile: profile
       ? {
           contextSize: profile.contextSize,
@@ -443,6 +525,16 @@ function save({
           batchSize: profile.batchSize ?? null,
           ubatchSize: profile.ubatchSize ?? null,
           extraArgs: profile.extraArgs ?? [],
+          preserveReasoning: profile.preserveReasoning ?? null,
+          contextMultiplier: profile.contextMultiplier ?? 1,
+          cachedChats: profile.cachedChats ?? 0,
+          temperature: profile.temperature ?? null,
+          topP: profile.topP ?? null,
+          topK: profile.topK ?? null,
+          minP: profile.minP ?? null,
+          presencePenalty: profile.presencePenalty ?? null,
+          repeatPenalty: profile.repeatPenalty ?? null,
+          hostingProfileId: profile.hostingProfileId ?? null,
         }
       : null,
     setup: buildSetup({ args, fit, calibration }),
@@ -660,4 +752,5 @@ export {
   taskColumns,
   configKey,
   slugify,
+  ENGINE_SAMPLER_DEFAULTS,
 };

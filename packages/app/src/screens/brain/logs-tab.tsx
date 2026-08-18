@@ -19,7 +19,7 @@ import { isNative } from "@/constants/platform";
 import { useToast } from "@/contexts/toast-context";
 import type { Theme } from "@/styles/theme";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
-import { useBrainLogs } from "./use-brain-data";
+import { useBrainLogs, useBrainLogWatch } from "./use-brain-data";
 import { parseBrainLogLine } from "./log-line";
 
 const ThemedSpinner = withUnistyles(LoadingSpinner, (theme) => ({
@@ -77,6 +77,7 @@ export function BrainLogsTab({
   isConnected: boolean;
 }) {
   const query = useBrainLogs(serverId, isConnected);
+  useBrainLogWatch(serverId, isConnected);
   const toast = useToast();
   const scrollRef = useRef<ScrollView>(null);
   const [follow, setFollow] = useState(true);

@@ -10,6 +10,7 @@ import {
   Telemetry,
   completionShape,
   createRouter,
+  createSlotEraser,
   describeModel,
   buildModelList,
   decideModelGate,
@@ -653,6 +654,46 @@ test("an upstream socket hang-up rejects only the dead request and frees the slo
   } finally {
     await h.close();
   }
+});
+
+test("eraseSlot sends action and id_slot in the query string, not the body", async () => {
+  // Regression: llama-server's POST /slots handler reads `action` and
+  // `id_slot` via req.get_param(), which is built only from query + path
+  // params - never from the JSON body. A body-only request reaches
+  // std::stoi("") and answers 400 "Invalid slot ID", so the erase silently
+  // no-ops and the KV bleed survives. Pin the exact wire shape.
+  const seen: { path: string; body: string }[] = [];
+  const llama = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      seen.push({ path: req.url ?? "", body });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ id: 1, id_slot: 2, n_erased: 42 }));
+    });
+  });
+  await new Promise<void>((resolve) => {
+    llama.listen(0, "127.0.0.1", () => resolve());
+  });
+  const { port } = llama.address() as { port: number };
+
+  try {
+    await createSlotEraser("127.0.0.1", port)(2);
+  } finally {
+    llama.closeAllConnections();
+    await new Promise<void>((resolve) => llama.close(() => resolve()));
+  }
+
+  assert.equal(seen.length, 1, "exactly one erase request was sent");
+  const [hit] = seen;
+  // The engine parses these from the query string.
+  assert.match(hit.path, /^\/slots\?/, "the route is POST /slots");
+  const query = new URL(`http://127.0.0.1${hit.path}`).searchParams;
+  assert.equal(query.get("action"), "erase", "action travels in the query string");
+  assert.equal(query.get("id_slot"), "2", "id_slot travels in the query string");
+  // The body must stay empty: the handler ignores it, and a body here is the
+  // exact shape that previously made the engine throw on stoi("").
+  assert.equal(hit.body, "", "no JSON body - the engine never reads it for this route");
 });
 
 test("the standard prompt_cache_key reaches the scheduler as the session identity", async () => {

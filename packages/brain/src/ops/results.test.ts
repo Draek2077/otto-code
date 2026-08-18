@@ -1,7 +1,8 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 
-import { grouped, variance, stats, rankModels, type RunRecord } from "./results.js";
+import { configKey, grouped, variance, stats, rankModels, type RunRecord } from "./results.js";
+import type { Profile } from "../config/schema.js";
 
 function run(
   name: string,
@@ -102,4 +103,104 @@ test("variance reports spread across repeated runs, ranked by mean", () => {
   assert.ok(Math.abs(a.tasks.t.mean! - 0.8) < 1e-9);
   assert.equal(v[1].count, 1);
   assert.equal(v[1].overall!.std, 0);
+});
+
+// ---------------------------------------------------------------- configKey
+
+/**
+ * A profile shaped exactly as `ProfileSchema` would emit one for an untouched
+ * model: engine defaults everywhere, nothing the user has touched. `configKey`
+ * must return its historical (pre-schema-3) key for this, because that is the
+ * whole point of the widening - unchanged setups keep their groups.
+ */
+function baseProfile(): Profile {
+  return {
+    modelId: null,
+    modelPath: null,
+    mmprojPath: null,
+    enabledComponents: [],
+    componentPaths: {},
+    contextSize: 8192,
+    cacheTypeK: "q8_0",
+    cacheTypeV: "q8_0",
+    flashAttention: true,
+    gpuLayers: 999,
+    vision: false,
+    reasoningBudget: 1536,
+    reasoningBudgetMessage: "",
+    preserveReasoning: undefined,
+    temperature: 0.8,
+    topP: 0.95,
+    topK: 40,
+    minP: 0.05,
+    presencePenalty: 0,
+    repeatPenalty: 1,
+    parallelSlots: 1,
+    cachedChats: 0,
+    contextMultiplier: 1,
+    calibrationRequired: true,
+    batchSize: null,
+    ubatchSize: null,
+    extraArgs: [],
+    hostingProfileId: null,
+    hostingProfileMode: "inherit",
+    chatTemplateFile: null,
+    chatTemplateKwargs: {},
+    chatSystemAddendum: null,
+  } as Profile;
+}
+
+test("configKey of an untouched profile is its historical key", () => {
+  assert.equal(configKey(baseProfile()), "ctx8192_kvq8_0-q8_0_rb1536_novision");
+});
+
+test("configKey of a null profile is 'unknown'", () => {
+  assert.equal(configKey(null), "unknown");
+});
+
+test("configKey adds a token only when a sampler deviates from the engine default", () => {
+  const p = baseProfile();
+  p.temperature = 0.3;
+  assert.equal(configKey(p), "ctx8192_kvq8_0-q8_0_rb1536_novision_temp0.3");
+
+  const q = baseProfile();
+  q.topP = 0.9;
+  q.minP = 0.01;
+  assert.equal(configKey(q), "ctx8192_kvq8_0-q8_0_rb1536_novision_p0.9_minp0.01");
+});
+
+test("configKey tokens for contextMultiplier, cachedChats, preserveReasoning and hostingProfileId", () => {
+  const p = baseProfile();
+  p.contextMultiplier = 2;
+  p.cachedChats = 4;
+  p.preserveReasoning = true;
+  p.hostingProfileId = "qwen-sharp";
+  assert.equal(configKey(p), "ctx8192_kvq8_0-q8_0_rb1536_novision_x2_cc4_pr_hpqwen-sharp");
+
+  const q = baseProfile();
+  q.contextMultiplier = 2;
+  q.cachedChats = 4;
+  q.preserveReasoning = false;
+  q.hostingProfileId = "qwen-sharp";
+  assert.equal(configKey(q), "ctx8192_kvq8_0-q8_0_rb1536_novision_x2_cc4_nopr_hpqwen-sharp");
+});
+
+test("configKey leaves defaults and the null tri-state out of the key", () => {
+  // contextMultiplier 1, cachedChats 0 and preserveReasoning null/undefined are
+  // all "the engine does what it has always done", so none of them carry a token.
+  assert.equal(configKey(baseProfile()), "ctx8192_kvq8_0-q8_0_rb1536_novision");
+
+  const p = baseProfile();
+  p.preserveReasoning = null;
+  assert.equal(configKey(p), "ctx8192_kvq8_0-q8_0_rb1536_novision");
+});
+
+test("configKey deviates one setting at a time, so each split is attributable", () => {
+  const a = baseProfile();
+  a.temperature = 0.3;
+  const b = baseProfile();
+  b.topK = 20;
+  assert.notEqual(configKey(a), configKey(b));
+  assert.ok(configKey(a).endsWith("temp0.3"));
+  assert.ok(configKey(b).endsWith("k20"));
 });

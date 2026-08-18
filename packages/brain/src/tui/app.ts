@@ -112,7 +112,13 @@ interface Field {
   step?: number;
   min?: number;
   max?: number | ((ctx: FieldContext) => number);
-  values?: Array<number | string>;
+  /**
+   * Cycle options as the values actually stored, not their labels: `adjust`
+   * writes the selected entry straight into the profile, so a list of display
+   * strings would persist "on" where the schema wants `true`. `format` is the
+   * one place that turns a stored value into something readable.
+   */
+  values?: Array<number | string | boolean | null>;
   note?: (profile: Profile) => string | null;
   enabled?: (ctx: FieldContext) => boolean;
 }
@@ -272,12 +278,18 @@ export const FIELDS: Field[] = [
   {
     key: "preserveReasoning",
     label: "Preserve reasoning",
-    kind: "toggle",
+    kind: "cycle",
+    // The stored tri-state, in the order PRESERVE_REASONING_CYCLE names it.
+    values: [null, true, false],
     format: (p) =>
-      p.preserveReasoning
+      p.preserveReasoning === true
         ? `${style.brightGreen}on${style.reset}`
-        : `${style.yellow}off${style.reset}`,
-    enabled: (ctx) => Boolean(ctx.model?.reasoningPreservation?.templateArgument),
+        : p.preserveReasoning === false
+          ? `${style.yellow}off${style.reset}`
+          : `${style.grey}template default${style.reset}`,
+    // Offered wherever the template has thinking to preserve, not only where it
+    // spells the setting as a kwarg. See profileFieldDescriptors for why.
+    enabled: (ctx) => Boolean(ctx.model?.metadata?.reasoning || ctx.model?.reasoningPreservation),
   },
   {
     key: "gpuLayers",
@@ -958,7 +970,7 @@ export class App {
   }
 
   /** Write a profile field by key; a no-op when no model is selected. */
-  writeField(key: keyof Profile, value: number | string | boolean): void {
+  writeField(key: keyof Profile, value: number | string | boolean | null): void {
     if (!this.profile) return;
     (this.profile as unknown as Record<string, unknown>)[key] = value;
   }
@@ -972,7 +984,7 @@ export class App {
       this.writeField(field.key, !this.readField(field.key));
     } else if (field.kind === "cycle") {
       const values = field.values ?? [];
-      const at = values.indexOf(this.readField(field.key) as number | string);
+      const at = values.indexOf(this.readField(field.key) as number | string | boolean | null);
       const next = (at < 0 ? 0 : at + direction + values.length) % values.length;
       this.writeField(field.key, values[next]);
     } else {

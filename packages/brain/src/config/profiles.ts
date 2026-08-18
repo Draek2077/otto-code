@@ -52,7 +52,18 @@ export function defaultProfile(model: Model | null, defaults?: ProfileDefaults):
       : Boolean(model?.mmprojPath),
     reasoningBudget: defaults?.reasoningBudget ?? 1536,
     reasoningBudgetMessage: DEFAULT_REASONING_MESSAGE,
-    preserveReasoning: model?.reasoningPreservation?.default ?? false,
+    // Null, not false: llama-server's own default is "whatever the template
+    // wants", and a profile that has never been touched must not override it.
+    // A template that declares a preservation kwarg still gets its own default
+    // through that path (see buildArgs).
+    preserveReasoning: model?.reasoningPreservation?.default ?? null,
+    // llama.cpp's sampler defaults; see the note on ProfileSchema.
+    temperature: 0.8,
+    topP: 0.95,
+    topK: 40,
+    minP: 0.05,
+    presencePenalty: 0,
+    repeatPenalty: 1,
     parallelSlots: defaults?.parallelSlots ?? 1, // one agent at a time: max context per request
     cachedChats: 0, // llama.cpp's own --cache-ram default until the user sizes it
     batchSize: null,

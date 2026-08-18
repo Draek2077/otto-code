@@ -41,7 +41,7 @@ import * as bench from "../bench/index.js";
 import { createCpuSampler, sample as sampleSystem, slots as sampleSlots } from "../sysmon.js";
 import { createHostApi, type HostJob, type HostJobRunner } from "./host-api.js";
 import { errorMessage } from "./http-util.js";
-import { createRouter, Telemetry } from "./router.js";
+import { createRouter, createSlotEraser, Telemetry } from "./router.js";
 import { Scheduler } from "./scheduler.js";
 import { BrainLogPublisher, BrainStatusPublisher } from "./status-events.js";
 import { Supervisor } from "./supervisor.js";
@@ -862,6 +862,13 @@ export async function startService({
         return null;
       }
     },
+    // Erase a slot's retained KV when it is handed to a different chat, so one
+    // chat's KV never bleeds into the next chat's thinking. The scheduler
+    // decides the handoff from the owner map; this is the engine-side wipe on
+    // the private port, resolved once the engine acknowledges it (see
+    // Scheduler.OWNERSHIP). The router that shares this scheduler clears the
+    // owner map on the supervisor's `starting` state.
+    eraseSlot: createSlotEraser(supervisor.host, supervisor.internalPort),
   });
   const jobs = new ServiceJobRunner(
     rescanCatalog,

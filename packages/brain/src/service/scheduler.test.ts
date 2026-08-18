@@ -639,3 +639,154 @@ test("reports no pin when the engine answers with a bare count", async () => {
 
   assert.deepEqual(pinned, [null], "unpinned rather than a guessed slot id");
 });
+
+// --- Ownership: a slot's KV belongs to the chat that last ran on it ---------
+// The cross-chat bleed fix. The scheduler erases a slot's retained KV only
+// when it is handed to a DIFFERENT session - never when the same chat reuses
+// its own slot, and never at settle (the chat keeps its KV across turns).
+//
+// The harness mirrors the router's real wiring: the job's onSlotFree callback
+// is what receives the slot id the scheduler named at admission (the router
+// uses it to pin the completion via `id_slot`), and onStart fires exactly
+// when the completion is POSTED to the engine - the moment that must come
+// AFTER a handoff erase is acknowledged. A job that never receives onSlotFree
+// is never pinned, which is exactly the production shape of a request the
+// engine could not sample.
+function ownershipHarness(erase: (slotId: number) => Promise<void> | void): {
+  sched: Scheduler;
+  erased: number[];
+  pinned: Array<number | null>;
+  order: string[];
+  run: (session: string | null) => Promise<unknown>;
+} {
+  const supervisor = {
+    state: "ready",
+    model: A,
+    profile: { parallelSlots: 1 } as Profile,
+  } as SchedulerSupervisor;
+  const erased: number[] = [];
+  const pinned: Array<number | null> = [];
+  const order: string[] = [];
+  const sched = new Scheduler({
+    supervisor,
+    loadModel: async () => {},
+    freeSlots: () => ({ idle: 1, ids: [0] }),
+    eraseSlot: (slotId) => {
+      erased.push(slotId);
+      return Promise.resolve(erase(slotId));
+    },
+  });
+  const run = (session: string | null) =>
+    sched
+      .submit(A, () => Promise.resolve(), {
+        ...(session ? { session } : {}),
+        onSlotFree: (slotId) => {
+          pinned.push(slotId);
+        },
+        onStart: () => {
+          order.push(`posted:${session ?? "keyless"}`);
+        },
+      })
+      .then(() => {
+        order.push(`ran:${session ?? "keyless"}`);
+      });
+  return { sched, erased, pinned, order, run };
+}
+
+test("erases a slot handed from one chat to another, before the job runs", async () => {
+  const { erased, pinned, order, run } = ownershipHarness(() => {});
+
+  // Chat A occupies the only slot, settles, keeps its KV in the owner map.
+  await run("chat-A");
+  assert.equal(erased.length, 0, "the first chat to a fresh slot is never erased");
+  assert.deepEqual(pinned, [0], "the slot was named at admission");
+
+  // Chat B is admitted to the SAME slot: the handoff erases it first.
+  await run("chat-B");
+
+  assert.deepEqual(erased, [0], "slot 0 erased exactly once, for the handoff");
+  assert.deepEqual(
+    order,
+    ["posted:chat-A", "ran:chat-A", "posted:chat-B", "ran:chat-B"],
+    "both chats still ran, B's completion posted only after the handoff",
+  );
+});
+
+test("does not erase when the same chat reuses its own slot", async () => {
+  const { erased, pinned, run } = ownershipHarness(() => {});
+
+  // The same chat takes the slot, settles, and takes it AGAIN: its KV is the
+  // whole point of the cache, so no handoff and no erase either time.
+  await run("chat-A");
+  await run("chat-A");
+  await run("chat-A");
+
+  assert.equal(erased.length, 0, "a chat reusing its own slot is never erased");
+  assert.deepEqual(pinned, [0, 0, 0], "the same slot, named for the same chat, every time");
+});
+
+test("erases when a keyless client touches a slot a keyed chat last owned", async () => {
+  const { erased, pinned, run } = ownershipHarness(() => {});
+
+  // A keyed chat fills the slot and settles; its KV stays there.
+  await run("chat-A");
+  // A third-party client with no prompt_cache_key cannot prove ownership, so
+  // the slot must be wiped before it lands there.
+  await run(null);
+
+  assert.deepEqual(erased, [0], "the keyless client's first touch erases the slot");
+  assert.deepEqual(pinned, [0, 0], "both requests were admitted to the one slot");
+});
+
+test("clears the owner map when the engine relaunches the same model", async () => {
+  const { sched, erased, pinned, run } = ownershipHarness(() => {});
+
+  await run("chat-A");
+  assert.equal(sched.slotOwners.get(0), "chat-A", "the slot is owned before the relaunch");
+
+  // The supervisor's `starting` state is what the router forwards here: the
+  // slots are gone, so their owners are void.
+  sched.forgetSlots();
+  assert.equal(sched.slotOwners.size, 0, "the owner map is empty after a relaunch");
+
+  // A FRESH slot 0 must not be erased just because a stale entry said it was
+  // owned - that would force a needless re-prefill on a clean engine.
+  await run("chat-B");
+  assert.equal(erased.length, 0, "no erase after a relaunch: the slot was fresh");
+  assert.deepEqual(pinned, [0, 0], "the fresh slot was named for the new chat");
+});
+
+test("a handoff erase failure degrades to the old behavior and never fails the job", async () => {
+  const { order, run } = ownershipHarness(() => {
+    throw new Error("engine refused");
+  });
+
+  await run("chat-A");
+  // The eraser throws on the handoff; the job must still run, not reject.
+  await run("chat-B");
+
+  assert.deepEqual(
+    order,
+    ["posted:chat-A", "ran:chat-A", "posted:chat-B", "ran:chat-B"],
+    "both ran even though the erase failed",
+  );
+});
+
+test("the handoff erase is acknowledged BEFORE the job's run reaches the engine", async () => {
+  const { order, run } = ownershipHarness(async () => {
+    // Simulate the engine: the erase is only "done" when it has reached the
+    // engine's task queue. It must be acknowledged before the completion is
+    // posted, so the clean state sits in the queue ahead of it.
+    await new Promise((r) => setTimeout(r, 5));
+    order.push("erase-acked");
+  });
+
+  await run("chat-A");
+  await run("chat-B");
+
+  assert.deepEqual(
+    order,
+    ["posted:chat-A", "ran:chat-A", "erase-acked", "posted:chat-B", "ran:chat-B"],
+    "the erase lands in the engine's queue ahead of the completion that follows",
+  );
+});

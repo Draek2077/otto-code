@@ -31,18 +31,66 @@ export interface ProfileFieldDescriptor {
   key: string;
   label: string;
   kind: ProfileFieldKind;
+  /**
+   * One sentence on what the field does, for the client's tooltip. It lives
+   * here rather than in the UI for the same reason the ranges do: a client that
+   * wrote its own copy would describe a setting the brain had since changed.
+   */
+  description?: string;
   /** For `number`: the increment a stepper should use. */
   step?: number;
   min?: number;
   max?: number;
+  /**
+   * For `number`: decimal places the value carries. Absent means an integer.
+   * A stepper MUST round to this after adding `step`, or repeated presses walk
+   * a sampler into 0.30000000000000004 and the profile stores that.
+   */
+  precision?: number;
   /** For `cycle`: the values to offer, in order. */
   options?: (string | number)[];
   /** Labels for `options`, index-aligned, when the raw value is not presentable. */
   optionLabels?: string[];
+  /**
+   * For `cycle`: what each option actually stores, index-aligned. Absent means
+   * the option IS the stored value, which is true of every cycle but the
+   * tri-states: `options` is limited to strings and numbers on the wire, so a
+   * field storing `true`/`false`/`null` needs somewhere to say so. A client
+   * matches the current value here first, then falls back to `options`.
+   */
+  optionValues?: (string | number | boolean | null)[];
   /** False when this model cannot use the field at all (vision with no projector). */
   available: boolean;
   /** Why it is unavailable, for the disabled-state hint. */
   unavailableReason?: string;
+}
+
+/**
+ * Sampler ranges. llama.cpp itself bounds almost none of these - it will take a
+ * temperature of 50 - so the bounds are the useful range rather than the legal
+ * one, which is what a stepper wants. The write path clamps to exactly these,
+ * so a value the editor cannot reach is a value the brain will not store.
+ */
+export const SAMPLING_RANGES = {
+  temperature: { min: 0, max: 2, step: 0.05, precision: 2 },
+  topP: { min: 0, max: 1, step: 0.05, precision: 2 },
+  topK: { min: 0, max: 200, step: 1 },
+  minP: { min: 0, max: 1, step: 0.01, precision: 2 },
+  presencePenalty: { min: -2, max: 2, step: 0.05, precision: 2 },
+  repeatPenalty: { min: 0.5, max: 2, step: 0.01, precision: 2 },
+} as const;
+
+/** Tri-state preservation, in the order a cycle should offer it. */
+export const PRESERVE_REASONING_CYCLE = ["default", "on", "off"] as const;
+
+/** The stored value a cycle option maps to. */
+export function preserveReasoningFromOption(option: string): boolean | null {
+  return option === "on" ? true : option === "off" ? false : null;
+}
+
+/** The cycle option a stored value maps to. */
+export function preserveReasoningOption(value: boolean | null | undefined): string {
+  return value === true ? "on" : value === false ? "off" : "default";
 }
 
 /**
@@ -111,11 +159,23 @@ export function profileFieldDescriptors(
   const hasProjector = model?.components
     ? Boolean(projector?.available)
     : Boolean(model?.mmprojPath);
+  // The template exposes a thinking channel at all - the gate for both reasoning
+  // controls. Preservation used to be gated on `reasoningPreservation
+  // .templateArgument` instead, which is detected by grepping the chat template
+  // for a literal `preserve_thinking`/`preserve_reasoning` kwarg. Almost no
+  // template spells it that way: llama.cpp decides the same question by probing
+  // the rendered template, so it happily logs "chat template supports preserving
+  // reasoning, consider enabling it via --reasoning-preserve" for a model whose
+  // toggle Otto was hiding. The flag exists on every build we ship and defaults
+  // to the template's own behavior when absent, so offering it wherever there is
+  // reasoning to preserve costs nothing and stops hiding a working setting.
+  const hasReasoning = Boolean(model?.metadata?.reasoning || model?.reasoningPreservation);
   const fields: ProfileFieldDescriptor[] = [
     {
       key: "contextMultiplier",
       label: "Context multiplier",
       kind: "cycle",
+      description: "Stretches the context window past the model's native size with RoPE scaling.",
       options: CONTEXT_MULTIPLIERS,
       optionLabels: ["Off", "2×", "4×"],
       available: Boolean(model?.metadata?.contextLength),
@@ -125,6 +185,7 @@ export function profileFieldDescriptors(
       key: "contextSize",
       label: "Context",
       kind: "number",
+      description: "How many tokens of conversation the model can hold at once.",
       step: CONTEXT_STEP,
       min: MIN_CONTEXT_SIZE,
       max: contextLimit(model, profile?.contextMultiplier ?? 1),
@@ -134,6 +195,7 @@ export function profileFieldDescriptors(
       key: "cacheTypeK",
       label: "KV cache K",
       kind: "cycle",
+      description: "Precision of the cached keys; lower saves VRAM and costs a little accuracy.",
       options: CACHE_TYPE_CYCLE,
       available: true,
     },
@@ -141,6 +203,7 @@ export function profileFieldDescriptors(
       key: "cacheTypeV",
       label: "KV cache V",
       kind: "cycle",
+      description: "Precision of the cached values; lower saves VRAM and costs a little accuracy.",
       options: CACHE_TYPE_CYCLE,
       available: true,
     },
@@ -153,6 +216,7 @@ export function profileFieldDescriptors(
       key: "parallelSlots",
       label: "Parallel slots",
       kind: "number",
+      description: "How many chats the model serves at once, each taking a share of the context.",
       step: 1,
       min: 1,
       max: MAX_PARALLEL_SLOTS,
@@ -162,59 +226,125 @@ export function profileFieldDescriptors(
       key: "cachedChats",
       label: "Cached KVs",
       kind: "number",
+      description:
+        "How many idle chats keep their state in system RAM so returning to one skips a re-read.",
       step: 1,
       min: 0,
       max: MAX_CACHED_CHATS,
       available: true,
     },
-    { key: "flashAttention", label: "Flash attention", kind: "toggle", available: true },
+    {
+      key: "flashAttention",
+      label: "Flash attention",
+      kind: "toggle",
+      description: "A faster attention kernel, and what a quantised value cache requires.",
+      available: true,
+    },
+    // Bundle models expose the projector in the component section below. Keep
+    // the legacy profile field for hand-scanned single-file models, but do not
+    // render two controls that write the same vision setting for bundles. It
+    // belongs with the other options, right after flash attention.
+    ...(model?.components
+      ? []
+      : [
+          {
+            key: "vision",
+            label: "Vision",
+            kind: "toggle" as const,
+            description: "Loads the vision projector so the model can read images.",
+            available: hasProjector,
+            ...(hasProjector
+              ? {}
+              : {
+                  unavailableReason: projector
+                    ? "download the vision component first"
+                    : "no projector",
+                }),
+          },
+        ]),
     {
       key: "reasoningBudget",
       label: "Reasoning budget",
       kind: "cycle",
+      description: "Caps how many tokens the model may think before it is told to answer.",
       options: REASONING_BUDGET_CYCLE,
       optionLabels: ["Thinking Off", "512", "1024", "1536", "3072", "Unrestricted"],
       min: -1,
       available: true,
     },
+    // Extends the reasoning group, immediately after the budget it qualifies.
+    {
+      key: "preserveReasoning",
+      label: "Preserve reasoning",
+      kind: "cycle",
+      description: "Keeps earlier thinking in the history instead of only the latest reply's.",
+      options: [...PRESERVE_REASONING_CYCLE],
+      optionLabels: ["Template default", "On", "Off"],
+      optionValues: PRESERVE_REASONING_CYCLE.map(preserveReasoningFromOption),
+      available: hasReasoning,
+      ...(hasReasoning ? {} : { unavailableReason: "no thinking channel in this template" }),
+    },
     {
       key: "gpuLayers",
       label: "GPU layers",
       kind: "number",
+      description: "How many layers run on the GPU; any remainder runs on the CPU.",
       step: 1,
       min: 0,
       max: MAX_GPU_LAYERS,
       available: true,
     },
-  ];
-
-  if (model?.reasoningPreservation?.templateArgument) {
-    // Between reasoningBudget and gpuLayers: it extends the reasoning group.
-    fields.splice(8, 0, {
-      key: "preserveReasoning",
-      label: "Preserve reasoning",
-      kind: "toggle",
+    // Sampling. These change what the model writes rather than what it costs, so
+    // they sit after the hosting fields and contribute nothing to the budget.
+    {
+      key: "temperature",
+      label: "Temperature",
+      kind: "number",
+      description: "How adventurous each next-token choice is; lower is more predictable.",
+      ...SAMPLING_RANGES.temperature,
       available: true,
-    });
-  }
-
-  // Bundle models expose the projector in the component section below. Keep
-  // the legacy profile field for hand-scanned single-file models, but do not
-  // render two controls that write the same vision setting for bundles. It
-  // belongs with the other options, right after flash attention.
-  if (!model?.components) {
-    fields.splice(7, 0, {
-      key: "vision",
-      label: "Vision",
-      kind: "toggle",
-      available: hasProjector,
-      ...(hasProjector
-        ? {}
-        : {
-            unavailableReason: projector ? "download the vision component first" : "no projector",
-          }),
-    });
-  }
+    },
+    {
+      key: "topP",
+      label: "Top P",
+      kind: "number",
+      description: "Considers only the likeliest tokens whose probabilities add up to this share.",
+      ...SAMPLING_RANGES.topP,
+      available: true,
+    },
+    {
+      key: "topK",
+      label: "Top K",
+      kind: "number",
+      description: "Considers only this many of the likeliest tokens; 0 turns the limit off.",
+      ...SAMPLING_RANGES.topK,
+      available: true,
+    },
+    {
+      key: "minP",
+      label: "Min P",
+      kind: "number",
+      description: "Drops tokens less likely than this fraction of the best one; 0 turns it off.",
+      ...SAMPLING_RANGES.minP,
+      available: true,
+    },
+    {
+      key: "presencePenalty",
+      label: "Presence penalty",
+      kind: "number",
+      description: "Pushes toward new subjects by penalising tokens already used; 0 turns it off.",
+      ...SAMPLING_RANGES.presencePenalty,
+      available: true,
+    },
+    {
+      key: "repeatPenalty",
+      label: "Repetition penalty",
+      kind: "number",
+      description: "Discourages repeating recent tokens; 1 turns it off.",
+      ...SAMPLING_RANGES.repeatPenalty,
+      available: true,
+    },
+  ];
 
   return fields;
 }
@@ -485,6 +615,26 @@ export function sanitizeProfilePatch(
     (next as Record<string, unknown>)[key] = p[key];
   };
 
+  /**
+   * A sampler value: clamped to its useful range and rounded to the precision
+   * the editor advertises. Rounding matters as much as clamping - a stepper that
+   * added 0.05 six times sends 0.30000000000000004, and without this the profile
+   * would store that and hand it to llama-server on the command line.
+   */
+  const takeSampling = (key: keyof typeof SAMPLING_RANGES): void => {
+    if (!(key in p)) return;
+    const raw = p[key];
+    if (typeof raw !== "number" || !Number.isFinite(raw)) {
+      throw new Error(`${key} must be a number`);
+    }
+    const range = SAMPLING_RANGES[key];
+    const precision = "precision" in range ? range.precision : 0;
+    const rounded = Number(raw.toFixed(precision));
+    const clamped = clamp(rounded, range.min, range.max);
+    if (clamped !== rounded) adjustments.push(`${key} clamped to ${clamped}`);
+    (next as Record<string, unknown>)[key] = clamped;
+  };
+
   const takeCacheType = (key: string): void => {
     if (!(key in p)) return;
     const raw = p[key];
@@ -525,16 +675,29 @@ export function sanitizeProfilePatch(
     next.reasoningBudget = value;
   }
 
+  // Tri-state, and the third state is the point: null means "leave the template's
+  // own behavior alone", which is not the same as false ("trim the trace"). The
+  // string forms are accepted because the editor renders this as a cycle whose
+  // options are strings on the wire.
   if ("preserveReasoning" in p) {
-    if (typeof p.preserveReasoning !== "boolean") {
-      throw new Error("preserveReasoning must be a boolean");
-    }
-    if (!model?.reasoningPreservation?.templateArgument) {
-      adjustments.push("preserveReasoning ignored: this model does not support it");
+    const raw = p.preserveReasoning;
+    if (raw === null || raw === "default") {
+      next.preserveReasoning = null;
+    } else if (typeof raw === "boolean") {
+      next.preserveReasoning = raw;
+    } else if (raw === "on" || raw === "off") {
+      next.preserveReasoning = preserveReasoningFromOption(raw);
     } else {
-      next.preserveReasoning = p.preserveReasoning;
+      throw new Error('preserveReasoning must be a boolean, null, or one of "default"/"on"/"off"');
     }
   }
+
+  takeSampling("temperature");
+  takeSampling("topP");
+  takeSampling("topK");
+  takeSampling("minP");
+  takeSampling("presencePenalty");
+  takeSampling("repeatPenalty");
 
   // Vision is only real when the model actually has a projector paired with it.
   if ("vision" in p) {

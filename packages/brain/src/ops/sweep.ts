@@ -11,10 +11,25 @@ import type { Profile } from "../config/schema.js";
  * Thinking models default to an unrestricted budget (-1) and will happily burn
  * an entire token allowance reasoning, returning no content at all. The right
  * cap is model-specific, so measure it: run one long-horizon task per candidate
- * budget and score by delivered content per second.
+ * budget and take the largest budget that still delivers the whole task. See
+ * rankSweepResults for why "largest" and not "fastest".
  */
 
-export const DEFAULT_BUDGETS = [0, 512, 1536, 3072, -1];
+/**
+ * The candidates a sweep tries, in ascending order of thinking room.
+ *
+ * Capped at 1536 deliberately. The ranking prefers the largest budget that
+ * still delivers, so whatever sits at the top of this list is what a healthy
+ * thinking model gets recommended - the list itself is the ceiling, and 1536 is
+ * the value every hand-set profile has run on without trouble. Each extra
+ * candidate also costs a full model load plus a long generation, so the ladder
+ * earns its length. `-1` stays because a model that fails under every finite cap
+ * still needs an answer; it ranks last and wins only in that case.
+ */
+export const DEFAULT_BUDGETS = [0, 512, 1536, -1];
+
+/** llama.cpp's "no cap at all" sentinel, which a sweep must never recommend. */
+const UNRESTRICTED_BUDGET = -1;
 
 export const LONG_TASK =
   "Write a complete Python implementation of a thread-safe LRU cache with TTL " +
@@ -230,12 +245,7 @@ export async function sweep({
     }
   }
 
-  // Prefer runs that delivered every file; break ties on content per second.
-  const viable = results.filter((r) => !r.error && r.contentChars > 0);
-  const ranked = [...viable].sort((a, b) => {
-    if (b.filesDelivered !== a.filesDelivered) return b.filesDelivered - a.filesDelivered;
-    return b.contentPerSecond - a.contentPerSecond;
-  });
+  const ranked = rankSweepResults(results);
 
   return {
     results,
@@ -243,4 +253,49 @@ export async function sweep({
     ranked,
     sweptAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Rank a sweep's trials, best first. `ranked[0].budget` is the recommendation.
+ *
+ * Delivery decides first: a budget that dropped a file did not do the job.
+ * Among the budgets that delivered everything, prefer the **largest** - the most
+ * thinking room a model can have without failing to deliver.
+ *
+ * That tie used to break on content per second, which was backwards. LONG_TASK
+ * is pure output, so reasoning earns nothing on it and only costs wall clock:
+ * every budget large enough to finish delivered all four files, the tie-break
+ * therefore decided every sweep, and the smallest candidate won by construction
+ * - 0 included. That is how models ended up capped at 0 and 512, tight enough
+ * that llama-server guillotines an ordinary thought mid-sentence, injects
+ * `--reasoning-budget-message`, and the model's unfinished reasoning carries on
+ * over the content channel as user-visible prose. The sweep's job is to find the
+ * cap past which a model degenerates into reasoning forever, not the cap that
+ * types fastest. See the "reasoning budget makes thinking bleed into prose"
+ * finding in Otto Knowledge.
+ *
+ * `-1` is the one budget "largest" must not read as large: an unrestricted
+ * budget is the failure this package exists to prevent. It ranks below every
+ * finite cap and is recommended only when nothing else survived, which means a
+ * cap of any size broke the model.
+ */
+export function rankSweepResults(results: readonly SweepResult[]): SweepResult[] {
+  const viable = results.filter((result) => !result.error && result.contentChars > 0);
+  return [...viable].sort((a, b) => {
+    if (b.filesDelivered !== a.filesDelivered) {
+      return b.filesDelivered - a.filesDelivered;
+    }
+    const rankA = budgetRank(a.budget);
+    const rankB = budgetRank(b.budget);
+    if (rankA === rankB) {
+      return 0;
+    }
+    // Compared rather than subtracted: the sentinel's rank is -Infinity, and
+    // -Infinity - -Infinity is NaN, which would corrupt the whole sort.
+    return rankB > rankA ? 1 : -1;
+  });
+}
+
+function budgetRank(budget: number): number {
+  return budget === UNRESTRICTED_BUDGET ? Number.NEGATIVE_INFINITY : budget;
 }

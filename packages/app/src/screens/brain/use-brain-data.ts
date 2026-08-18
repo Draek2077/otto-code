@@ -6,7 +6,7 @@
  * which it is talking to; `capabilities` on the status says what the far side
  * can do, and that is the only branch.
  */
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { brainStatusQueryKey, PUSHED_BRAIN_STATUS_STALE_MS } from "@/data/brain-status";
 import { brainLogsQueryKey } from "@/data/brain-logs";
 import { useFetchQuery } from "@/data/query";
@@ -96,6 +96,38 @@ export function useBrainLogs(serverId: string, enabled: boolean) {
       return client.brainLogsTail(500);
     },
   });
+}
+
+/**
+ * Hold the live Brain log feed open while the Logs tab is mounted.
+ *
+ * The daemon pushes `brain_log_line_added` only to sockets that asked, so
+ * without this the tab would show the tail it fetched and then never advance.
+ * Turning it off on unmount is the point of the whole exercise: log lines are
+ * the one uncoalesced Brain push, and a client that is not looking at them
+ * should not be paying to receive, decrypt and validate every llama-server line.
+ *
+ * No repair is needed for the gap while unwatched - `useBrainLogs` re-tails the
+ * brain's durable ring buffer on mount, and push only appends from there.
+ */
+export function useBrainLogWatch(serverId: string, enabled: boolean) {
+  const client = useHostRuntimeClient(serverId);
+  const supported = useHostFeature(serverId, "brainLogWatch");
+  useEffect(() => {
+    if (!enabled || !supported || !client) {
+      return;
+    }
+    void client.brainLogsWatch(true).catch(() => {
+      // A daemon that dropped the request leaves the feed off; the tab still
+      // shows its tail, and the next mount tries again. Not worth a toast.
+    });
+    return () => {
+      void client.brainLogsWatch(false).catch(() => {
+        // Best effort. A socket that went away is already unsubscribed, since
+        // the daemon drops its watcher entry on detach.
+      });
+    };
+  }, [client, enabled, supported]);
 }
 
 /**

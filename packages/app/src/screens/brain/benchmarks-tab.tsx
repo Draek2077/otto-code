@@ -391,6 +391,22 @@ interface RunProfile {
   batchSize: number | null;
   ubatchSize: number | null;
   extraArgs: string[];
+  /**
+   * Schema 3+ profile fields. A record from before the profile-completeness
+   * change simply did not store them - null means "not recorded", not "the
+   * engine default", so the display omits the line rather than printing a
+   * confident value.
+   */
+  preserveReasoning: boolean | null;
+  contextMultiplier: number | null;
+  cachedChats: number | null;
+  temperature: number | null;
+  topP: number | null;
+  topK: number | null;
+  minP: number | null;
+  presencePenalty: number | null;
+  repeatPenalty: number | null;
+  hostingProfileId: string | null;
 }
 
 /**
@@ -493,6 +509,19 @@ function readProfile(raw: unknown): RunProfile | null {
     batchSize: readNumber(profile, "batchSize"),
     ubatchSize: readNumber(profile, "ubatchSize"),
     extraArgs: readStringArray(profile.extraArgs),
+    // Schema 3 onwards: the settings that landed after setup capture. Same
+    // rule as above - absent on older records, and `preserveReasoning` is
+    // tri-state, so null reads as "the template's own default".
+    preserveReasoning: readBoolean(profile, "preserveReasoning"),
+    contextMultiplier: readNumber(profile, "contextMultiplier"),
+    cachedChats: readNumber(profile, "cachedChats"),
+    temperature: readNumber(profile, "temperature"),
+    topP: readNumber(profile, "topP"),
+    topK: readNumber(profile, "topK"),
+    minP: readNumber(profile, "minP"),
+    presencePenalty: readNumber(profile, "presencePenalty"),
+    repeatPenalty: readNumber(profile, "repeatPenalty"),
+    hostingProfileId: readString(profile, "hostingProfileId"),
   };
 }
 
@@ -648,7 +677,11 @@ function formatConfig(run: LatestRun): string {
   }
   const parts: string[] = [];
   if (profile.contextSize !== null) {
-    parts.push(`${profile.contextSize.toLocaleString()} ctx`);
+    parts.push(
+      profile.contextMultiplier !== null && profile.contextMultiplier > 1
+        ? `${profile.contextSize.toLocaleString()} ctx (x${profile.contextMultiplier})`
+        : `${profile.contextSize.toLocaleString()} ctx`,
+    );
   }
   if (profile.cacheTypeK && profile.cacheTypeV) {
     parts.push(`KV ${profile.cacheTypeK}/${profile.cacheTypeV}`);
@@ -662,11 +695,36 @@ function formatConfig(run: LatestRun): string {
         : `${profile.reasoningBudget.toLocaleString()} reasoning budget`,
     );
   }
+  if (profile.preserveReasoning === true) {
+    parts.push("reasoning preserved");
+  } else if (profile.preserveReasoning === false) {
+    parts.push("reasoning trimmed");
+  }
   if (profile.flashAttention !== null) {
     parts.push(profile.flashAttention ? "flash attention" : "no flash attention");
   }
   if (profile.parallelSlots !== null && profile.parallelSlots > 1) {
     parts.push(`${profile.parallelSlots} slots`);
+  }
+  if (profile.cachedChats !== null && profile.cachedChats > 0) {
+    parts.push(`${profile.cachedChats} cached`);
+  }
+  // The sampler is one line, and only the values the user moved: an untouched
+  // profile stores llama.cpp's defaults verbatim, and printing six of them on
+  // every row would bury the settings that actually explain a score.
+  const sampler: Array<[string, number | null, number]> = [
+    ["temp", profile.temperature, 0.8],
+    ["topP", profile.topP, 0.95],
+    ["topK", profile.topK, 40],
+    ["minP", profile.minP, 0.05],
+    ["pres", profile.presencePenalty, 0],
+    ["rep", profile.repeatPenalty, 1],
+  ];
+  const deviated = sampler
+    .filter(([, value, def]) => value !== null && value !== def)
+    .map(([name, value]) => `${name} ${value}`);
+  if (deviated.length > 0) {
+    parts.push(deviated.join(", "));
   }
   if (profile.batchSize !== null) {
     parts.push(`batch ${profile.batchSize.toLocaleString()}`);
@@ -676,6 +734,9 @@ function formatConfig(run: LatestRun): string {
   }
   if (profile.vision) {
     parts.push("vision");
+  }
+  if (profile.hostingProfileId) {
+    parts.push("hosting profile");
   }
   return parts.length > 0 ? parts.join(" · ") : (run.configKey ?? "Unknown configuration");
 }
@@ -819,6 +880,33 @@ const SETUP_CHECKS: SetupCheck[] = [
       key: "unbounded-reasoning",
       tone: "warn",
       text: "The reasoning budget was unlimited. A thinking model can spend the whole allowance reasoning and return no content, which scores as a failure.",
+    };
+  },
+
+  function contextExtendedPastNative(run) {
+    const multiplier = run.profile?.contextMultiplier ?? null;
+    if (multiplier === null || multiplier <= 1) {
+      return null;
+    }
+    return {
+      key: "rope-extended",
+      tone: "warn",
+      text: `Context was stretched past the native window with YaRN (x${multiplier} RoPE scaling). A score at an extrapolated context is not directly comparable to one at the model's native window.`,
+    };
+  },
+
+  function cachedChatsUnmeasured(run) {
+    const chats = run.profile?.cachedChats ?? null;
+    if (chats === null || chats <= 0) {
+      return null;
+    }
+    if (run.setup?.kvSource === "measured") {
+      return null;
+    }
+    return {
+      key: "cached-chats-unmeasured",
+      tone: "info",
+      text: `${chats} chat(s) were meant to park in system RAM, but without a measured KV cost llama.cpp's own cache limit applied instead.`,
     };
   },
 

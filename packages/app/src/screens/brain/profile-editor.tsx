@@ -37,6 +37,7 @@ import { Field, FormTextInput } from "@/components/ui/form-field";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import type { Theme } from "@/styles/theme";
@@ -105,6 +106,9 @@ function draftToOverrides(draft: Draft): Record<string, string> {
     // The prompt/template choice costs no VRAM, so it has nothing to say to the
     // budget preview and would only arrive there as the string "null".
     if ((EXTRA_DRAFT_KEYS as readonly string[]).includes(key)) continue;
+    // Nor does a null: a tri-state resting on "let the template decide" has no
+    // query-string spelling, and `String(null)` sends the literal text "null".
+    if (value === null) continue;
     overrides[key] = String(value);
   }
   return overrides;
@@ -161,7 +165,23 @@ function hostingProfileSummary(
 function formatFieldValue(field: BrainProfileField, value: number): string {
   if (field.key === "gpuLayers" && value >= (field.max ?? 999)) return "All";
   if (field.key === "cachedChats" && value <= 0) return "Default";
+  // A sampler reads as 0.80, not 0.8: a column of values that keep the same
+  // number of decimals is scannable, and one that gains and loses them is not.
+  const precision = field.precision ?? 0;
+  if (precision > 0) return value.toFixed(precision);
   return value.toLocaleString();
+}
+
+/**
+ * Snap a stepped value onto the field's precision.
+ *
+ * Binary floating point is why: 0.05 six times over is 0.30000000000000004, and
+ * without this the stepper displays that, sends it, and llama-server is launched
+ * with it. The brain rounds on write too - this keeps the number the user is
+ * looking at honest while they are still scrubbing.
+ */
+function roundToPrecision(value: number, precision: number): number {
+  return precision > 0 ? Number(value.toFixed(precision)) : Math.round(value);
 }
 
 function NumberField({
@@ -178,7 +198,11 @@ function NumberField({
   const step = field.step ?? 1;
   const min = field.min ?? 0;
   const max = field.max ?? Number.MAX_SAFE_INTEGER;
-  const clamp = useCallback((next: number) => Math.max(min, Math.min(max, next)), [max, min]);
+  const precision = field.precision ?? 0;
+  const clamp = useCallback(
+    (next: number) => roundToPrecision(Math.max(min, Math.min(max, next)), precision),
+    [max, min, precision],
+  );
   const handleDecrease = useCallback(
     () => onChange(clamp(value - step)),
     [clamp, onChange, step, value],
@@ -224,8 +248,9 @@ function CycleField({
   disabled,
 }: {
   field: BrainProfileField;
-  value: string | number;
-  onChange: (next: string | number) => void;
+  /** The stored value, uncoerced: a tri-state needs its null and its booleans. */
+  value: DraftValue;
+  onChange: (next: DraftValue) => void;
   disabled: boolean;
 }) {
   const options = useMemo(
@@ -237,14 +262,27 @@ function CycleField({
     [field.optionLabels, field.options],
   );
 
+  // What each option stores, when that differs from the option itself: a
+  // tri-state keeps true/false/null behind the strings "on"/"off"/"default".
+  const optionValues = field.optionValues;
+  const selected = useMemo(() => {
+    if (!optionValues) return String(value);
+    const index = optionValues.findIndex((stored) => stored === value);
+    return index < 0 ? String(value) : String(field.options[index] ?? value);
+  }, [field.options, optionValues, value]);
+
   const handleChange = useCallback(
     (next: string) => {
       // Map the string the control hands back to the ORIGINAL option, so a
       // numeric budget stays a number rather than becoming "1536" on the wire.
       const index = options.findIndex((option) => option.value === next);
+      if (optionValues && index >= 0) {
+        onChange(optionValues[index] ?? null);
+        return;
+      }
       onChange(field.options[index] ?? next);
     },
-    [field.options, onChange, options],
+    [field.options, onChange, optionValues, options],
   );
 
   // SegmentedControl has no disabled state, so a read-only editor blocks the
@@ -258,7 +296,7 @@ function CycleField({
         size="sm"
         wrap
         options={options}
-        value={String(value)}
+        value={selected}
         onValueChange={handleChange}
         testID={`brain-field-${field.key}`}
       />
@@ -290,14 +328,10 @@ function FieldControl({
     );
   }
   if (field.kind === "cycle") {
-    return (
-      <CycleField
-        field={field}
-        value={typeof value === "boolean" ? String(value) : (value ?? "")}
-        onChange={onChange}
-        disabled={locked}
-      />
-    );
+    // Passed uncoerced: CycleField resolves the selected option against
+    // `optionValues` when the field declares one, and a `null` flattened to ""
+    // here would leave a tri-state showing nothing selected.
+    return <CycleField field={field} value={value ?? null} onChange={onChange} disabled={locked} />;
   }
   return (
     <NumberField
@@ -346,7 +380,21 @@ function FieldRow({
   return (
     <View style={styles.fieldRow}>
       <View style={styles.fieldLabelColumn}>
-        <Text style={styles.fieldLabel}>{field.label}</Text>
+        {field.description ? (
+          // The sentence comes from the brain with the field, so the tooltip
+          // describes the setting this brain actually has rather than the one
+          // the client was built against.
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Text style={styles.fieldLabel}>{field.label}</Text>
+            </TooltipTrigger>
+            <TooltipContent>
+              <Text style={styles.tooltipText}>{field.description}</Text>
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          <Text style={styles.fieldLabel}>{field.label}</Text>
+        )}
         {field.available ? null : (
           <Text style={styles.fieldUnavailable}>{field.unavailableReason ?? "unavailable"}</Text>
         )}
@@ -1156,6 +1204,11 @@ const styles = StyleSheet.create((theme) => ({
   fieldUnavailable: {
     fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
+  },
+  tooltipText: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foreground,
+    lineHeight: Math.round(theme.fontSize.xs * 1.4),
   },
   fieldControl: {
     alignItems: "flex-end",

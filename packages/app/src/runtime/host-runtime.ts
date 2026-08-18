@@ -477,6 +477,11 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
     : undefined;
   const appCapabilities = {
     [CLIENT_CAPS.selectiveAgentTimeline]: true,
+    // Safe to advertise against any daemon: an older one ignores the capability
+    // and keeps pushing every line, which is exactly the behaviour a client that
+    // cannot be gated needs. Only a daemon advertising features.brainLogWatch
+    // acts on it, and useBrainLogWatch gates the request on that flag.
+    [CLIENT_CAPS.brainLogWatch]: true,
     ...browserAutomationCapabilities,
   };
 

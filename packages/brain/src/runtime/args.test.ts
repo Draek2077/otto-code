@@ -30,6 +30,74 @@ test("emits only enabled component paths for llama.cpp", () => {
   assert.equal(args[args.indexOf("--model-draft") + 1], "/models/draft.gguf");
 });
 
+/** A profile carrying only what buildArgs needs, plus whatever a test varies. */
+function samplingProfile(overrides: Partial<Profile> = {}): Profile {
+  return {
+    modelPath: "/models/main.gguf",
+    contextSize: 8192,
+    cacheTypeK: "q8_0",
+    cacheTypeV: "q8_0",
+    flashAttention: true,
+    gpuLayers: 999,
+    vision: false,
+    reasoningBudget: 1536,
+    parallelSlots: 1,
+    extraArgs: [],
+    ...overrides,
+  } as Profile;
+}
+
+/** The value llama-server would receive for a flag, or undefined if unset. */
+function flagValue(args: string[], flag: string): string | undefined {
+  const at = args.indexOf(flag);
+  return at < 0 ? undefined : args[at + 1];
+}
+
+test("emits every sampler llama-server takes on the command line", () => {
+  const args = buildArgs(
+    samplingProfile({
+      temperature: 0.7,
+      topP: 0.9,
+      topK: 20,
+      minP: 0.02,
+      presencePenalty: 0.5,
+      repeatPenalty: 1.1,
+    }),
+    { port: 20800 },
+  );
+  assert.equal(flagValue(args, "--temp"), "0.7");
+  assert.equal(flagValue(args, "--top-p"), "0.9");
+  assert.equal(flagValue(args, "--top-k"), "20");
+  assert.equal(flagValue(args, "--min-p"), "0.02");
+  assert.equal(flagValue(args, "--presence-penalty"), "0.5");
+  assert.equal(flagValue(args, "--repeat-penalty"), "1.1");
+});
+
+// A sampler is only absent from the profile on a record written before the
+// fields existed. Emitting nothing leaves llama.cpp's own default in charge,
+// which is exactly what that older profile ran on.
+test("omits a sampler the profile does not carry", () => {
+  const args = buildArgs(samplingProfile(), { port: 20800 });
+  for (const flag of ["--temp", "--top-p", "--top-k", "--min-p", "--presence-penalty"]) {
+    assert.equal(args.includes(flag), false, `${flag} should not be emitted`);
+  }
+});
+
+test("emits reasoning preservation only on an explicit choice", () => {
+  const on = buildArgs(samplingProfile({ preserveReasoning: true }), { port: 20800 });
+  assert.ok(on.includes("--reasoning-preserve"));
+  assert.ok(!on.includes("--no-reasoning-preserve"));
+
+  const off = buildArgs(samplingProfile({ preserveReasoning: false }), { port: 20800 });
+  assert.ok(off.includes("--no-reasoning-preserve"));
+  assert.ok(!off.includes("--reasoning-preserve"));
+
+  // Null is the third state: leave the template's own behavior alone.
+  const untouched = buildArgs(samplingProfile({ preserveReasoning: null }), { port: 20800 });
+  assert.ok(!untouched.includes("--reasoning-preserve"));
+  assert.ok(!untouched.includes("--no-reasoning-preserve"));
+});
+
 test("passes the configured llama.cpp log verbosity", () => {
   const profile = {
     modelPath: "/models/main.gguf",
@@ -168,4 +236,29 @@ test("does not size the cache from an unmeasured model", () => {
   // a byte budget here would reserve a number nobody measured.
   const args = buildArgs(cacheProfile({ cachedChats: 4 }), { port: 20800 }, CACHE_MODEL, null);
   assert.ok(!args.includes("--cache-ram"));
+});
+
+// --- Slot save/erase path -----------------------------------------------------
+
+test("emits --slot-save-path only when a slot-save directory is given", () => {
+  const profile = {
+    modelPath: "/models/main.gguf",
+    contextSize: 8192,
+    cacheTypeK: "q8_0",
+    cacheTypeV: "q8_0",
+    flashAttention: true,
+    gpuLayers: 999,
+    vision: false,
+    reasoningBudget: 1536,
+    parallelSlots: 2,
+    extraArgs: [],
+  } as Profile;
+
+  const withPath = buildArgs(profile, { port: 20800, slotSavePath: "/tmp/slot-saves" });
+  const i = withPath.indexOf("--slot-save-path");
+  assert.ok(i >= 0, "the flag is emitted when a directory is given");
+  assert.equal(withPath[i + 1], "/tmp/slot-saves");
+
+  const without = buildArgs(profile, { port: 20800 });
+  assert.ok(!without.includes("--slot-save-path"), "absent by default (pre-fix behavior)");
 });

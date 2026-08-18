@@ -500,6 +500,64 @@ export function pinSlot(body: Buffer, slotId: number | null): Buffer {
 }
 
 /**
+ * Wipe one llama-server slot's retained KV state, and RESOLVE only once the
+ * engine has acknowledged the wipe.
+ *
+ * This is the engine-side half of the scheduler's OWNERSHIP fix. The engine
+ * never clears a released slot's prompt, so a slot handed to a different chat
+ * would keep the previous chat's KV and bleed its topics into the new chat's
+ * thinking. The router erases the slot the moment the scheduler hands it off;
+ * the engine's task queue runs in arrival order, so resolving on the
+ * acknowledgment is what guarantees the clean state sits in the queue ahead of
+ * the completion the scheduler posts right after.
+ *
+ * The route is `POST /slots?action=erase&id_slot=N` - llama.cpp's own slot
+ * action. It answers 200 `{id, id_slot, n_erased}` on success and a
+ * `NOT_SUPPORTED` error when the server was not launched with a slot-save path;
+ * either way this resolves (never rejects), because an erase that cannot be
+ * performed degrades to the old behavior rather than failing the completion.
+ *
+ * NOTE: `action` and `id_slot` MUST travel in the query string, not the JSON
+ * body. llama-server's `POST /slots` handler reads both via `req.get_param()`,
+ * which is built only from query + path params (b10441 tools/server/server-http.cpp,
+ * `server_http_req::params` = "path_params + query_params"; the body is a
+ * separate field the handler never parses for this route). A body-only request
+ * reaches `std::stoi("")` and answers 400 "Invalid slot ID" - the erase then
+ * silently no-ops and the bleed survives. The body must stay empty for the
+ * same reason `handle_slots_erase` ignores it entirely.
+ */
+export function eraseSlot(host: string, port: number, slotId: number): Promise<void> {
+  return new Promise((resolve) => {
+    const req = http.request(
+      {
+        host,
+        port,
+        path: `/slots?action=erase&id_slot=${slotId}`,
+        method: "POST",
+        timeout: 3000,
+      },
+      (res) => {
+        res.resume();
+        res.on("end", () => resolve());
+      },
+    );
+    req.on("timeout", () => req.destroy());
+    req.on("error", () => resolve());
+    req.end();
+  });
+}
+
+/**
+ * The eraser the scheduler needs, bound to one engine endpoint. Extracted so
+ * the router (which builds its own scheduler) and the service (which builds a
+ * shared one and passes it in) hand the scheduler the SAME transport rather
+ * than each spelling the request.
+ */
+export function createSlotEraser(host: string, port: number): (slotId: number) => Promise<void> {
+  return (slotId) => eraseSlot(host, port, slotId);
+}
+
+/**
  * Forward a buffered completion body to the resident llama-server and stream the
  * reply back, teeing non-streaming bodies for classification. Resolves once the
  * client response is fully concluded (it owns the response in every outcome,
@@ -1002,6 +1060,10 @@ export function createRouter({
   // Inference time dwarfs localhost connection setup, so isolate each request
   // instead of letting a second client inherit a stale upstream connection.
   const agent = new http.Agent({ keepAlive: false, maxSockets: 32 });
+  // Erase an engine slot's KV when it is handed to a different chat. The
+  // endpoint is the engine's own, on the private port - never on the public
+  // one - so a remote client cannot wipe a chat's cache out from under it.
+  const eraseSlot = createSlotEraser(supervisor.host, supervisor.internalPort);
   const scheduler =
     suppliedScheduler ??
     (loadModel
@@ -1010,6 +1072,7 @@ export function createRouter({
           loadModel,
           logger: (m) => logger?.warn?.(m),
           onChange: statusEvents ? () => statusEvents.notify() : null,
+          eraseSlot,
         })
       : null);
 
@@ -1017,9 +1080,16 @@ export function createRouter({
   // either a different model is now resident, or the same one just picked up an
   // edited profile (e.g. a lowered reasoning budget). Either way the recent
   // window is stale, so start it clean rather than let old records blame a
-  // config that is no longer running.
+  // config that is no longer running. The scheduler's slot owners go the same
+  // way: the engine's slots do not survive the relaunch, so a stale owner entry
+  // would make the next admission erase a FRESH slot or mistake a keyless job
+  // for one it owns. The model-switch case is cleared by the scheduler itself;
+  // this catches the relaunch that keeps the same model resident.
   supervisor.on("state", ({ state }: { state: string }) => {
-    if (state === "starting") telemetry.reset();
+    if (state === "starting") {
+      telemetry.reset();
+      scheduler?.forgetSlots();
+    }
   });
 
   // GPU total VRAM is static hardware, so it is queried once at startup and
