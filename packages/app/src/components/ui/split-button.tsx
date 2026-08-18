@@ -43,12 +43,20 @@ function useSplitButtonContext(componentName: string): SplitButtonContextValue {
 export function SplitButton({
   children,
   hasMenu = true,
+  filled = false,
   style,
   ...props
 }: PropsWithChildren<
   Omit<ViewProps, "style"> & {
     /** Set false when the primary action has no secondary menu. */
     hasMenu?: boolean;
+    /**
+     * Paint the opaque surface2 fill on the frame, with the frame's radius
+     * owned by this component (see `filledFrame`). Callers that need a
+     * different tint still pass `backgroundColor` through `style`, which
+     * merges last.
+     */
+    filled?: boolean;
     style?: StyleProp<ViewStyle>;
   }
 >) {
@@ -60,7 +68,7 @@ export function SplitButton({
 
   return (
     <SplitButtonContext.Provider value={value}>
-      <View {...props} style={[styles.frame, style]}>
+      <View {...props} style={[styles.frame, filled && styles.filledFrame, style]}>
         {children}
       </View>
     </SplitButtonContext.Provider>
@@ -157,6 +165,16 @@ const styles = StyleSheet.create((theme) => ({
   frame: {
     flexDirection: "row",
     alignItems: "stretch",
+  },
+  filledFrame: {
+    // The frame's border and radius live on the segments (each paints its own
+    // arc), so a bare frame background is a SQUARE box that pokes out past the
+    // segments' border arc at the four corners - dark notches on a rounded
+    // button. The fill's radius must therefore be owned here, where the
+    // segments' corner radius is known; caller `style` can still override the
+    // tint, but not the shape.
+    backgroundColor: theme.colors.surface2,
+    borderRadius: theme.borderRadius.md,
   },
   primary: {
     borderWidth: theme.borderWidth[1],

@@ -131,7 +131,7 @@ export function SplitStartButton({
   }, [dismissTasks, taskIds]);
 
   return (
-    <SplitButton style={styles.splitButton}>
+    <SplitButton filled style={styles.splitButton}>
       <SplitButtonPrimary
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
@@ -300,8 +300,9 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
     // Opaque, deliberately un-tinted: the button has to separate from the
     // washed row behind it, and a wash on a wash would erase it. Its accent
-    // chrome is what makes it read as the action inside a blue card.
-    backgroundColor: theme.colors.surface2,
+    // chrome is what makes it read as the action inside a blue card. The
+    // surface2 fill + radius come from <SplitButton filled> so the fill's
+    // corners track the segments' border arc (see filledFrame there).
   },
   primary: {
     flexDirection: "row",
