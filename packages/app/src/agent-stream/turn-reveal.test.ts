@@ -406,6 +406,104 @@ describe("TurnRevealTicker", () => {
     assert.ok(ticker.getRevealed() > 400 && ticker.getRevealed() < 440);
   });
 
+  it("does not re-type on a canonical replace that re-derives the turn key", () => {
+    // The regression behind a4d11cda2's 30s grace: a canonical timeline
+    // replace lands on a LIVE visible chat while the agent is still running,
+    // re-derives item ids, and so hands the ticker a DIFFERENT turnKey for the
+    // SAME logical turn. The old `target <= 600 ? 0 : target` reset re-ran on
+    // every oscillation and re-typed the message - often an OLDER one, when
+    // the boundary briefly landed on an older user row (the low-water target
+    // heuristic missed that leg because the dip GROWS the target).
+    //
+    // This drives the REAL computeLiveTurnReveal / findTurnBoundary so the
+    // turnKey re-derivation and the target growth are both exercised.
+    const run = (
+      tail: readonly StreamItem[],
+      head: readonly StreamItem[],
+      running: boolean,
+      settled: string | null,
+    ) => computeLiveTurnReveal({ running, tail, head, settledTurnKey: settled });
+
+    // Steady state: turn 2 is the running one, fully revealed.
+    const steadyTail = [
+      user("u1", "first question"),
+      assistant("a1", "first answer "),
+      user("u2", "second question"),
+      assistant("a2", "second answer "),
+    ];
+    const steady = run(steadyTail, [assistant("a3", "live tail")], true, "u1");
+    assert.equal(steady.turnKey, "u2");
+    const ticker = new TurnRevealTicker({ turnKey: steady.turnKey, target: steady.totalChars });
+    ticker.update({ turnKey: steady.turnKey, target: steady.totalChars, enabled: true });
+    // Converged.
+    for (let i = 0; i < 200 && ticker.getRevealed() < steady.totalChars; i += 1) {
+      ticker.tick();
+    }
+    assert.equal(ticker.getRevealed(), steady.totalChars);
+
+    // A canonical replace rebuilds the items under freshly derived ids. The
+    // latest user row briefly reads as optimistic/absent, so the boundary
+    // lands on the OLDER user row (u1) and the target GROWS to include the
+    // older reply. Same logical turn, new key, larger target.
+    const replacedTail = [
+      user("u1_rebuilt", "first question"),
+      assistant("a1_rebuilt", "first answer "),
+      user("u2_rebuilt", "second question"),
+      assistant("a2_rebuilt", "second answer "),
+    ];
+    // Mid-replace the rebuilt user row has not been confirmed yet, so it reads
+    // as optimistic and findTurnBoundary skips it - the axis falls back to the
+    // OLDER row and the target grows to include the older reply.
+    const dip = run(
+      [replacedTail[0], replacedTail[1]],
+      [
+        user("u2_rebuilt", "second question", true),
+        replacedTail[3],
+        assistant("a3_rebuilt", "live tail"),
+      ],
+      true,
+      "u1",
+    );
+    // The key changed (re-derived) ...
+    assert.notEqual(dip.turnKey, steady.turnKey);
+    // ... and the target grew because the axis now starts at the older row.
+    assert.ok(
+      dip.totalChars > steady.totalChars,
+      `dip ${dip.totalChars} <= steady ${steady.totalChars}`,
+    );
+
+    // THE FIX: this is a re-identification, not a fresh turn (the agent never
+    // went idle), so it must SNAP - not reset to 0 and re-type the older reply.
+    ticker.update({ turnKey: dip.turnKey, target: dip.totalChars, enabled: true });
+    assert.equal(ticker.getRevealed(), dip.totalChars);
+
+    // The replace settles back to the current turn's boundary (yet another
+    // freshly derived id) and the target shrinks again. Also a re-identification.
+    const settled = run(replacedTail, [assistant("a3_rebuilt2", "live tail")], true, "u1");
+    assert.notEqual(settled.turnKey, dip.turnKey);
+    assert.ok(settled.totalChars < dip.totalChars);
+    ticker.update({ turnKey: settled.turnKey, target: settled.totalChars, enabled: true });
+    assert.equal(ticker.getRevealed(), settled.totalChars);
+  });
+
+  it("still types a genuine new turn from zero after an idle beat", () => {
+    // The original chat-switch behavior must survive: a fresh turn is always
+    // preceded by the previous turn ENDING (an enabled:false / idle beat), so
+    // the key change onto the new user row resets to 0 and the reply types
+    // from its first character.
+    const ticker = new TurnRevealTicker({ turnKey: "u1", target: 5000 });
+    ticker.update({ turnKey: "u1", target: 5000, enabled: true });
+    // The previous turn finishes: agent idle, the view reports the stable
+    // "idle" key with the finished turn latched.
+    ticker.update({ turnKey: "idle", target: 0, enabled: false });
+    // The next user row lands under a fresh key while running.
+    ticker.update({ turnKey: "u2", target: 0, enabled: true });
+    assert.equal(ticker.getRevealed(), 0);
+    ticker.update({ turnKey: "u2", target: 400, enabled: true });
+    ticker.tick();
+    assert.ok(ticker.getRevealed() > 0 && ticker.getRevealed() < 400);
+  });
+
   it("notifies subscribers only when a tick moves the position", () => {
     const ticker = new TurnRevealTicker({ turnKey: "u1", target: 0 });
     let notified = 0;

@@ -8,8 +8,8 @@ const MIN_CHARS_PER_TICK = 2;
 // steady stream reveals a few characters at a time and reads as continuous
 // typing while bursts type faster.
 const BACKLOG_CATCHUP_DIVISOR = 8;
-// Typing rate ceiling (~4k chars/s at 32ms ticks). Without it the
-// proportional step makes a whole-message burst - Fable's safety-buffered
+// Typing rate ceiling (~4k chars/s at 32ms ticks). Without it
+// the proportional step makes a whole-message burst - Fable's safety-buffered
 // stream delivers most of a message at once - converge in ~8 ticks, which
 // reads as an instant dump instead of typing.
 const MAX_CHARS_PER_TICK = 128;
@@ -180,6 +180,34 @@ export class TurnRevealTicker {
   private turnKey: string;
   private wasVisible = true;
   private pendingReturnSnap = false;
+  /**
+   * Whether the key currently held in `this.turnKey` was ever observed in a
+   * DISABLED state (agent not running) while we held it.
+   *
+   * This is the discriminator between a GENUINE NEW TURN and a CANONICAL
+   * REPLACE re-identification. The two look identical in (turnKey, target)
+   * space - both change the key, both can carry a small or a large target -
+   * because `turnKey` is the boundary user line's *derived* id, which a
+   * canonical timeline replace re-derives (the docs say it: "a canonical
+   * timeline replace rebuilds a finished turn's items with freshly derived
+   * ids"), and the target depends on where the boundary lands, which during a
+   * replace can briefly be an OLDER user line (so the target GROWS to include
+   * the older reply's text - the case a target-size heuristic misses).
+   *
+   * What separates them is the agent's status history. A genuine new turn is
+   * always preceded by the previous turn ENDING: the status flips to
+   * non-running, the view hands the ticker the stable "idle" key (target 0,
+   * enabled false), and the next user row lands under a FRESH key. A canonical
+   * replace arrives while the agent is STILL RUNNING - the key changes but we
+   * never observed the outgoing key in a disabled state.
+   *
+   * So: on a key change, if the key we are LEAVING was ever seen disabled,
+   * the incoming key is a genuine new turn (we crossed a status boundary) and
+   * we reset to 0 so the reply types out. If not, the incoming key is a
+   * re-identification of the same logical turn (a canonical replace) and we
+   * SNAP to the target, never re-typing.
+   */
+  private keyWasDisabled = false;
   private readonly isOnScreen: () => boolean;
   private readonly listeners = new Set<() => void>();
 
@@ -230,9 +258,25 @@ export class TurnRevealTicker {
     // A caller with no panel context (transcript dialog, tests) is always on.
     const visible = params.visible ?? true;
     const dataSettled = params.dataSettled ?? true;
+
     if (params.turnKey !== this.turnKey) {
+      // Decide by STATUS HISTORY, not target size. If the key we are leaving
+      // was ever observed disabled (agent idle), we crossed a real turn
+      // boundary - the incoming key is a fresh turn, reset to 0 so the reply
+      // types from its first character. If it was never disabled, the key
+      // change came from a canonical replace re-deriving ids while the agent
+      // was still running - snap to the target so the already-typed text
+      // (which may include an OLDER turn's reply, if the boundary briefly
+      // landed on an older row) is never re-typed.
+      const isFreshTurn = this.keyWasDisabled && params.target <= NEW_TURN_SNAP_THRESHOLD_CHARS;
+      this.revealed = isFreshTurn ? 0 : params.target;
+      this.keyWasDisabled = false;
       this.turnKey = params.turnKey;
-      this.revealed = params.target <= NEW_TURN_SNAP_THRESHOLD_CHARS ? 0 : params.target;
+    }
+    if (!params.enabled) {
+      // The agent went idle under this key: it now stands for a settled turn.
+      // Latch it so the next key change reads as a fresh turn.
+      this.keyWasDisabled = true;
     }
     this.target = params.target;
     if (visible && !this.wasVisible) {

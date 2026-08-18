@@ -519,6 +519,38 @@ describe("processTimelineResponse", () => {
     expect(getUserTexts(result.tail)).toHaveLength(0);
   });
 
+  it("never rewinds a live head that extends the canonical row on a replace", () => {
+    // A canonical replace lands on a chat whose turn is STILL RUNNING (the
+    // viewed-timeline grace window keeps canonical pages arriving for the whole
+    // turn). The live head holds more text than canonical has caught up to.
+    // Truncating it back to the canonical prefix shrinks the reveal's target,
+    // which walks its paced position backwards and re-types the same stretch on
+    // every page - the "message replays over and over mid-turn" regression.
+    const liveText = "Canonical part. Live continuation the daemon has not echoed yet.";
+
+    const result = processTimelineResponse({
+      ...baseTimelineInput,
+      currentTail: [],
+      currentHead: [makeAssistantItem(liveText, "live-head")],
+      currentCursor: { epoch: "old-epoch", startSeq: 1, endSeq: 5 },
+      payload: {
+        ...baseTimelineInput.payload,
+        reset: true,
+        epoch: "epoch-1",
+        startCursor: { seq: 10 },
+        endCursor: { seq: 10 },
+        entries: [makeTimelineEntry(10, "Canonical part.")],
+      },
+    });
+
+    // The overlap is de-duplicated (exactly one assistant item), and it carries
+    // the LONGER live text - never the truncated canonical prefix.
+    const assistantTexts = [...result.tail, ...result.head]
+      .filter((item) => item.kind === "assistant_message")
+      .map((item) => item.text);
+    expect(assistantTexts).toEqual([liveText]);
+  });
+
   it("treats a stale epoch reset as a replacement with the new epoch window", () => {
     const oldTail: StreamItem[] = [makeAssistantItem("old epoch message", "old-assistant")];
     const oldHead: StreamItem[] = [makeAssistantItem("old live head", "old-head")];
@@ -1189,6 +1221,80 @@ describe("processTimelineResponse", () => {
         .filter((item) => item.kind === "assistant_message" || item.kind === "user_message")
         .map((item) => item.text),
     ).toEqual(["Earlier answer", "New prompt", "Live response", "Missed answer", "Remote prompt"]);
+  });
+
+  it("does not duplicate a thought when several canonical rows cover it", () => {
+    // A canonical page can carry more than one row for a single thought. Only
+    // the first is a prefix of the live text; once it has been applied, the
+    // next row fails the `startsWith` guard and used to fall through to the
+    // forward path, which APPENDS it as a delta and duplicates the thought.
+    const live = processAgentStreamEvents({
+      events: [
+        makeStreamReducerEvent(makeTimelineEvent("Hello", "reasoning"), 1),
+        makeStreamReducerEvent(makeTimelineEvent(" world", "reasoning"), 2),
+      ],
+      currentTail: [],
+      currentHead: [],
+      currentCursor: undefined,
+      currentAgent: null,
+    });
+
+    const result = processTimelineResponse({
+      ...baseTimelineInput,
+      currentTail: live.tail,
+      currentHead: live.head,
+      currentCursor: live.cursor ?? { epoch: "epoch-1", startSeq: 1, endSeq: 2 },
+      payload: {
+        ...baseTimelineInput.payload,
+        epoch: "epoch-1",
+        startCursor: { seq: 1 },
+        endCursor: { seq: 3 },
+        entries: [
+          makeTimelineEntry(1, "Hello world", "reasoning", 3),
+          makeTimelineEntry(1, "Hello world and more", "reasoning", 3),
+        ],
+      },
+    });
+
+    expect(
+      [...result.tail, ...result.head].filter((item) => item.kind === "thought").map((i) => i.text),
+    ).toEqual(["Hello world and more"]);
+  });
+
+  it("does not duplicate a thought when a later canonical row stops overlapping", () => {
+    // The same defect with a row that is not an extension at all: it must still
+    // replace the thought it belongs to, not concatenate onto it
+    // ("Hello worldworld tail").
+    const live = processAgentStreamEvents({
+      events: [
+        makeStreamReducerEvent(makeTimelineEvent("Hello", "reasoning"), 1),
+        makeStreamReducerEvent(makeTimelineEvent(" world", "reasoning"), 2),
+      ],
+      currentTail: [],
+      currentHead: [],
+      currentCursor: undefined,
+      currentAgent: null,
+    });
+
+    const result = processTimelineResponse({
+      ...baseTimelineInput,
+      currentTail: live.tail,
+      currentHead: live.head,
+      currentCursor: live.cursor ?? { epoch: "epoch-1", startSeq: 1, endSeq: 2 },
+      payload: {
+        ...baseTimelineInput.payload,
+        epoch: "epoch-1",
+        startCursor: { seq: 1 },
+        endCursor: { seq: 3 },
+        entries: [
+          makeTimelineEntry(1, "Hello world", "reasoning", 3),
+          makeTimelineEntry(1, "world tail", "reasoning", 3),
+        ],
+      },
+    });
+
+    const thoughts = [...result.tail, ...result.head].filter((item) => item.kind === "thought");
+    expect(thoughts.map((i) => i.text)).toEqual(["world tail"]);
   });
 
   it("does not move a prompt or its live answer around catch-up history", () => {
