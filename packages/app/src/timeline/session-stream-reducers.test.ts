@@ -954,6 +954,55 @@ describe("processTimelineResponse", () => {
     ]);
   });
 
+  // A thought used to split in two here, with nothing rendered between the
+  // halves, at whatever character the model happened to be mid-word on. The
+  // whitespace chunk flushed the head (a different streamable lane) and was then
+  // dropped for having no visible text, so the next reasoning delta opened a
+  // fresh block. Providers emit a blank line right after a closing think tag,
+  // and a reasoning budget that forces one mid-thought emits several per turn.
+  it("keeps one thought when a blank assistant chunk lands between reasoning deltas", () => {
+    const result = processAgentStreamEvents({
+      events: [
+        makeStreamReducerEvent(makeTimelineEvent("figure out what the", "reasoning"), 1),
+        makeStreamReducerEvent(makeAssistantTimelineEvent("\n\n"), 2),
+        makeStreamReducerEvent(makeTimelineEvent(" other agent did.", "reasoning"), 3),
+      ],
+      currentTail: [],
+      currentHead: [],
+      currentCursor: undefined,
+      currentAgent: null,
+    });
+
+    const items = [...result.tail, ...result.head];
+    const thoughts = items.filter((item) => item.kind === "thought");
+    expect(thoughts).toHaveLength(1);
+    expect(thoughts[0]?.text).toBe("figure out what the other agent did.");
+    // The blank chunk stays invisible: it must not become an empty message row.
+    expect(items.filter((item) => item.kind === "assistant_message")).toHaveLength(0);
+  });
+
+  // The guard is only for chunks that vanish. Real prose still separates two
+  // thoughts, because that genuinely is a new lane.
+  it("still splits thoughts around assistant prose", () => {
+    const result = processAgentStreamEvents({
+      events: [
+        makeStreamReducerEvent(makeTimelineEvent("first thought", "reasoning"), 1),
+        makeStreamReducerEvent(makeAssistantTimelineEvent("Visible prose."), 2),
+        makeStreamReducerEvent(makeTimelineEvent("second thought", "reasoning"), 3),
+      ],
+      currentTail: [],
+      currentHead: [],
+      currentCursor: undefined,
+      currentAgent: null,
+    });
+
+    expect([...result.tail, ...result.head].map((item) => item.kind)).toEqual([
+      "thought",
+      "assistant_message",
+      "thought",
+    ]);
+  });
+
   it("does not replay a reasoning prefix when catch-up completes an earlier tool call", () => {
     const live = processAgentStreamEvents({
       events: [

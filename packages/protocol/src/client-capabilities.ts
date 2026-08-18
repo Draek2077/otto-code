@@ -24,6 +24,12 @@ export const CLIENT_CAPS = {
   // 2027-02-14. Older clients do not know the presence-change notification, so
   // the daemon sends it only after this capability is advertised.
   communicationsPresenceUpdates: "communications_presence_updates",
+  // COMPAT(brainLogWatch): added in v0.8.13, remove gate after 2027-02-17.
+  // Brain log lines are pushed only to sockets that asked for them. A client
+  // advertising this defaults to NOT watching and turns the feed on when the
+  // Logs tab opens; a client without it keeps the old unconditional feed,
+  // because it has no way to ask and would otherwise lose live logs entirely.
+  brainLogWatch: "brain_log_watch",
   browserHost: "browser_host",
 } as const;
 

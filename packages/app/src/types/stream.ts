@@ -1383,6 +1383,17 @@ export function flushHeadToTail(tail: StreamItem[], head: StreamItem[]): StreamI
  * Determine if the head should be flushed based on incoming event kind.
  * Flush when a different streamable lane starts, including a new identified assistant message.
  */
+/**
+ * Whether a timeline event carries text a reader would actually see. Mirrors
+ * `normalizeChunk().hasContent`, which is what decides whether the item is kept.
+ */
+function incomingTextIsVisible(event: AgentStreamEventPayload): boolean {
+  if (event.type !== "timeline" || !("text" in event.item) || typeof event.item.text !== "string") {
+    return true;
+  }
+  return normalizeChunk(event.item.text).hasContent;
+}
+
 function shouldFlushHead(input: {
   head: StreamItem[];
   incomingKind: StreamItem["kind"] | null;
@@ -1415,6 +1426,24 @@ function shouldFlushHead(input: {
 
   if (!lastStreamable) {
     return true;
+  }
+
+  // An assistant chunk that carries no visible text is about to be DROPPED by
+  // appendAssistantMessage (its `!hasContent` guard) unless it can extend an
+  // assistant message already in head. Flushing for an item that never arrives
+  // is what splits a thought in two: the head commits to tail, the whitespace
+  // evaporates, and the next reasoning delta finds an empty head and opens a
+  // second Thinking block mid-sentence with nothing rendered between them.
+  // Providers emit exactly this: the first thing after a closing think tag is
+  // almost always a blank line, so the two rules have to agree about what counts
+  // as an item. See appendAssistantMessage; changing the drop rule there means
+  // changing this.
+  if (
+    incomingKind === "assistant_message" &&
+    lastStreamable.kind !== "assistant_message" &&
+    !incomingTextIsVisible(event)
+  ) {
+    return false;
   }
 
   // If incoming kind is different from current head's streamable kind, flush

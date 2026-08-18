@@ -2705,7 +2705,25 @@ export const BrainProfileSchema = z
     vision: z.boolean().default(false),
     enabledComponents: z.array(z.string()).optional(),
     reasoningBudget: z.number().default(0),
-    preserveReasoning: z.boolean().optional(),
+    /**
+     * Tri-state: true keeps the reasoning trace across the whole history, false
+     * trims it to the last assistant message, null/absent leaves the chat
+     * template's own default in charge. Nullable rather than plain optional
+     * because "the template decides" is a real stored state, not a missing one.
+     */
+    // COMPAT(brainPreserveReasoningTriState): widened from boolean in v0.8.11.
+    preserveReasoning: z.boolean().nullable().optional(),
+    /**
+     * Sampler settings, all optional: a brain older than these fields simply
+     * does not send them, and the editor renders whatever `fields` describes.
+     */
+    // COMPAT(brainSamplerProfile): added in v0.8.11, drop the gate when floor >= v0.8.11.
+    temperature: z.number().optional(),
+    topP: z.number().optional(),
+    topK: z.number().optional(),
+    minP: z.number().optional(),
+    presencePenalty: z.number().optional(),
+    repeatPenalty: z.number().optional(),
     parallelSlots: z.number().default(1),
     /** Chats whose KV state may be parked in host RAM; 0 = the engine default. */
     cachedChats: z.number().default(0),
@@ -2739,11 +2757,24 @@ export const BrainProfileFieldSchema = z
     key: z.string(),
     label: z.string().default(""),
     kind: z.string().default("number"),
+    /** One sentence on what the field does, for the client's tooltip. */
+    // COMPAT(brainFieldDescription): added in v0.8.11, drop the gate when floor >= v0.8.11.
+    description: z.string().nullable().optional(),
     step: z.number().nullable().optional(),
     min: z.number().nullable().optional(),
     max: z.number().nullable().optional(),
+    /** Decimal places the value carries; absent means an integer. */
+    // COMPAT(brainFieldPrecision): added in v0.8.11, drop the gate when floor >= v0.8.11.
+    precision: z.number().nullable().optional(),
     options: z.array(z.union([z.string(), z.number()])).default([]),
     optionLabels: z.array(z.string()).default([]),
+    /**
+     * What each option stores, index-aligned with `options`. Absent means the
+     * option is itself the value; present when the stored value cannot be an
+     * option, as for a true/false/null tri-state.
+     */
+    // COMPAT(brainFieldOptionValues): added in v0.8.11, drop the gate when floor >= v0.8.11.
+    optionValues: z.array(z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
     available: z.boolean().default(true),
     unavailableReason: z.string().nullable().optional(),
   })
@@ -3080,6 +3111,35 @@ export const BrainLogsTailResponseSchema = z.object({
     state: z.string().nullable().default(null),
     command: z.string().nullable().default(null),
     error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+/**
+ * Declare whether this client wants live Brain log lines pushed to it.
+ *
+ * Log lines are the one Brain push with no coalescing - the Logs tab exists to
+ * show the exact ordered stream, so the daemon cannot merge them the way it
+ * merges status snapshots. That makes them the heaviest Brain feed on the wire,
+ * and until this request existed every connected client paid for them whether or
+ * not the Logs tab was open. A phone on the relay paid the worst of it: decrypt,
+ * parse and validate every llama-server line only for the client to drop it,
+ * because `applyBrainLogLineAdded` no-ops when the Logs query holds no data.
+ *
+ * Watching is per socket, not per session, so a desktop with the Logs tab open
+ * does not turn the feed on for the same account's phone. Nothing is lost by not
+ * watching: the brain owns the durable ring buffer, so opening the tab tails it
+ * (`brain.logs.tail.request`) and the push only appends from there.
+ */
+export const BrainLogsWatchRequestSchema = z.object({
+  type: z.literal("brain.logs.watch.request"),
+  watching: z.boolean(),
+  requestId: z.string(),
+});
+export const BrainLogsWatchResponseSchema = z.object({
+  type: z.literal("brain.logs.watch.response"),
+  payload: z.object({
+    watching: z.boolean(),
     requestId: z.string(),
   }),
 });
@@ -7803,6 +7863,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   BrainModelRenameRequestSchema,
   BrainModelRenameResetRequestSchema,
   BrainLogsTailRequestSchema,
+  BrainLogsWatchRequestSchema,
   UpdateAgentRequestMessageSchema,
   ProjectRenameRequestSchema,
   KanbanProjectTargetSetRequestSchema,
@@ -8382,6 +8443,13 @@ export const ServerInfoStatusPayloadSchema = z
         brainStatusPush: z.boolean().optional(),
         // COMPAT(brainLogPush): added in v0.8.10, drop the gate when daemon floor >= v0.8.10.
         brainLogPush: z.boolean().optional(),
+        // COMPAT(brainLogWatch): added in v0.8.13, drop the gate when daemon
+        // floor >= v0.8.13. The daemon serves `brain.logs.watch.request` and
+        // pushes `brain_log_line_added` only to sockets that asked for it. A
+        // client that sees this false must not advertise the matching client
+        // capability: on an older daemon the feed is unconditional, and the
+        // watch request it would rely on is unroutable.
+        brainLogWatch: z.boolean().optional(),
         // COMPAT(agentForkContext): added in v0.1.102, remove gate after 2026-12-28.
         agentForkContext: z.boolean().optional(),
         // COMPAT(providerRemove): added in v0.1.105, drop the gate when daemon floor >= v0.1.105.
@@ -13065,6 +13133,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   BrainModelRenameResponseSchema,
   BrainModelRenameResetResponseSchema,
   BrainLogsTailResponseSchema,
+  BrainLogsWatchResponseSchema,
   AgentArchivedMessageSchema,
   CloseItemsResponseSchema,
   CheckoutStatusResponseSchema,
@@ -14118,6 +14187,8 @@ export type BrainModelRenameResetRequest = z.infer<typeof BrainModelRenameResetR
 export type BrainModelRenameResetResponse = z.infer<typeof BrainModelRenameResetResponseSchema>;
 export type BrainLogsTailRequest = z.infer<typeof BrainLogsTailRequestSchema>;
 export type BrainLogsTailResponse = z.infer<typeof BrainLogsTailResponseSchema>;
+export type BrainLogsWatchRequest = z.infer<typeof BrainLogsWatchRequestSchema>;
+export type BrainLogsWatchResponse = z.infer<typeof BrainLogsWatchResponseSchema>;
 export type KillTerminalRequest = z.infer<typeof KillTerminalRequestSchema>;
 export type KillTerminalResponse = z.infer<typeof KillTerminalResponseSchema>;
 export type CaptureTerminalRequest = z.infer<typeof CaptureTerminalRequestSchema>;

@@ -1692,22 +1692,6 @@ interface ActiveTurn {
   roundText: string;
   /** Reasoning/thinking text streamed in the current model round. */
   roundReasoning: string;
-  /**
-   * One-delta hold for the reasoning-bleed repair. OpenAI-compatible servers
-   * (llama-server in particular) split thinking/content on the model's think
-   * markers; when the model emits a spurious close tag mid-thought, the rest
-   * of the reasoning arrives on the `content` channel, rendering as
-   * Thinking → stray prose → Thinking. While a reasoning block is open and no
-   * settled prose has been emitted this round, the FIRST content delta is
-   * held here instead of streamed. The next event decides:
-   *   - `reasoning` arrives  → it was a leak; re-emit as reasoning (one block).
-   *   - `content`/tool/round-end → it was genuine prose; flush it.
-   * Once prose settles, the guard is off for the rest of the round, so a
-   * legitimate reasoning → content → reasoning interleaving is never touched.
-   */
-  heldContent: string | null;
-  /** True once prose has been emitted as assistant_message this round. */
-  contentSettled: boolean;
   /** Assistant text across all rounds of the turn. */
   finalTextParts: string[];
   pendingToolCalls: Map<number, AccumulatedToolCall>;
@@ -3114,8 +3098,6 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       abort: new AbortController(),
       roundText: "",
       roundReasoning: "",
-      heldContent: null,
-      contentSettled: false,
       finalTextParts: [],
       pendingToolCalls: new Map(),
       finishReason: null,
@@ -3296,8 +3278,6 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       // tool round gets interrupted.
       turn.roundText = "";
       turn.roundReasoning = "";
-      turn.heldContent = null;
-      turn.contentSettled = false;
 
       if (toolCalls.length === 0) {
         return;
@@ -3782,8 +3762,6 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     turn.assistantMessageId = randomUUID();
     turn.roundText = "";
     turn.roundReasoning = "";
-    turn.heldContent = null;
-    turn.contentSettled = false;
     turn.pendingToolCalls = new Map();
     turn.finishReason = null;
 
@@ -3839,10 +3817,6 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
         throw new Error("Interrupted");
       }
     }
-    // The stream ended without the wire flipping back to reasoning: whatever
-    // is still held was prose. Settle it before the round closes so no text
-    // is lost.
-    this.settleHeldContentAsProse(turn);
   }
 
   /**
@@ -3910,20 +3884,6 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     }
     const delta = parseStreamChunk(parsed);
     if (delta.reasoning) {
-      if (turn.heldContent !== null) {
-        // The wire flipped back to reasoning: the held content delta was
-        // reasoning bleeding out on the content channel (a spurious think
-        // close tag). Fold it back so the thought stays one block.
-        const held = turn.heldContent;
-        turn.heldContent = null;
-        turn.roundReasoning += held;
-        this.emit({
-          type: "timeline",
-          provider: this.provider,
-          turnId: turn.turnId,
-          item: { type: "reasoning", text: held },
-        });
-      }
       turn.roundReasoning += delta.reasoning;
       this.emit({
         type: "timeline",
@@ -3932,46 +3892,30 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
         item: { type: "reasoning", text: delta.reasoning },
       });
     }
+    // Channels are rendered as the wire reports them. A content delta is prose,
+    // always, even while the server is still flip-flopping between its thinking
+    // and content channels mid-round. Reclassifying content as reasoning was
+    // tried (a one-delta look-ahead hold, withdrawn) and is not survivable: on a
+    // wire that alternates reasoning/content per delta - exactly the shape the
+    // repair existed for - every content delta gets folded into the thought, the
+    // round ends with `roundText` empty, and runToolLoop returns on a round with
+    // no text and no tool call. The turn dies on a thinking block having said and
+    // done nothing. Prose is never worth guessing about: a misrendered thought is
+    // cosmetic, a swallowed answer ends the turn.
     if (delta.content) {
-      if (turn.heldContent !== null) {
-        // Content continues after the held delta → it was genuine prose.
-        this.settleHeldContentAsProse(turn);
-        turn.roundText += delta.content;
-        turn.contentSettled = true;
-        this.emit({
-          type: "timeline",
-          provider: this.provider,
-          turnId: turn.turnId,
-          item: {
-            type: "assistant_message",
-            text: delta.content,
-            messageId: turn.assistantMessageId,
-          },
-        });
-      } else if (turn.roundReasoning.length > 0 && !turn.contentSettled) {
-        // First content delta while a reasoning block is still open: hold it
-        // for a one-delta look-ahead instead of streaming it as prose.
-        turn.heldContent = delta.content;
-      } else {
-        turn.roundText += delta.content;
-        turn.contentSettled = true;
-        this.emit({
-          type: "timeline",
-          provider: this.provider,
-          turnId: turn.turnId,
-          item: {
-            type: "assistant_message",
-            text: delta.content,
-            messageId: turn.assistantMessageId,
-          },
-        });
-      }
+      turn.roundText += delta.content;
+      this.emit({
+        type: "timeline",
+        provider: this.provider,
+        turnId: turn.turnId,
+        item: {
+          type: "assistant_message",
+          text: delta.content,
+          messageId: turn.assistantMessageId,
+        },
+      });
     }
     for (const toolCallDelta of delta.toolCalls) {
-      if (turn.heldContent !== null) {
-        // A tool call leaves the reasoning phase; the held delta was prose.
-        this.settleHeldContentAsProse(turn);
-      }
       const existing = turn.pendingToolCalls.get(toolCallDelta.index) ?? {
         id: "",
         name: "",
@@ -4000,31 +3944,6 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       this.accumulateBilledUsage(turn, delta.usage);
       this.emitStreamUsageUpdated(turn);
     }
-  }
-
-  /**
-   * Flush a held content delta as prose. Called when the wire proves the held
-   * text was genuine content (another content delta, a tool call, or the
-   * stream ending) rather than reasoning bleeding out on the content channel.
-   */
-  private settleHeldContentAsProse(turn: ActiveTurn): void {
-    if (turn.heldContent === null) {
-      return;
-    }
-    const text = turn.heldContent;
-    turn.heldContent = null;
-    turn.roundText += text;
-    turn.contentSettled = true;
-    this.emit({
-      type: "timeline",
-      provider: this.provider,
-      turnId: turn.turnId,
-      item: {
-        type: "assistant_message",
-        text,
-        messageId: turn.assistantMessageId,
-      },
-    });
   }
 
   /**
@@ -4141,9 +4060,6 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     this.repairDanglingToolCalls();
     const billedUsage = this.buildBilledUsageSnapshot(turn);
     if (turn.abort.signal.aborted) {
-      // A user interrupt can land while a content delta is held; settle it so
-      // the partial-text preservation below includes it.
-      this.settleHeldContentAsProse(turn);
       this.emit({
         type: "turn_canceled",
         provider: this.provider,

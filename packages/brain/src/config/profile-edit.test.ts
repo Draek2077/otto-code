@@ -57,7 +57,7 @@ describe("nativeContextLimit", () => {
 });
 
 describe("profileFieldDescriptors", () => {
-  it("offers the context multiplier and nine hosting fields", () => {
+  it("offers the hosting fields, then the samplers", () => {
     const keys = profileFieldDescriptors(makeModel()).map((f) => f.key);
     expect(keys).toEqual([
       "contextMultiplier",
@@ -69,8 +69,49 @@ describe("profileFieldDescriptors", () => {
       "flashAttention",
       "vision",
       "reasoningBudget",
+      "preserveReasoning",
       "gpuLayers",
+      "temperature",
+      "topP",
+      "topK",
+      "minP",
+      "presencePenalty",
+      "repeatPenalty",
     ]);
+  });
+
+  it("describes every field, so a client never has to write its own tooltip", () => {
+    for (const field of profileFieldDescriptors(makeModel())) {
+      expect(field.description, `${field.key} has no description`).toBeTruthy();
+    }
+  });
+
+  it("gives every sampler a bounded range the editor can step through", () => {
+    const samplers = ["temperature", "topP", "topK", "minP", "presencePenalty", "repeatPenalty"];
+    for (const key of samplers) {
+      const field = profileFieldDescriptors(makeModel()).find((f) => f.key === key);
+      expect(field, key).toBeDefined();
+      expect(typeof field?.min, key).toBe("number");
+      expect(typeof field?.max, key).toBe("number");
+      expect(field?.step, key).toBeGreaterThan(0);
+      expect(field?.max, key).toBeGreaterThan(field?.min ?? 0);
+    }
+  });
+
+  // The old gate was `reasoningPreservation.templateArgument`, a regex hit on the
+  // chat template that almost no template produces - so the control was hidden on
+  // models whose template llama.cpp itself reports as supporting preservation.
+  it("offers preserve reasoning whenever the template has a thinking channel", () => {
+    const thinking = profileFieldDescriptors(
+      makeModel({ metadata: { arch: "qwen3", contextLength: 32768, reasoning: true } }),
+    ).find((f) => f.key === "preserveReasoning");
+    expect(thinking?.available).toBe(true);
+    expect(thinking?.options).toEqual(["default", "on", "off"]);
+
+    const noThinking = profileFieldDescriptors(makeModel()).find(
+      (f) => f.key === "preserveReasoning",
+    );
+    expect(noThinking?.available).toBe(false);
   });
 
   it("marks vision unavailable without a projector, and available with one", () => {
@@ -113,7 +154,14 @@ describe("profileFieldDescriptors", () => {
       "cachedChats",
       "flashAttention",
       "reasoningBudget",
+      "preserveReasoning",
       "gpuLayers",
+      "temperature",
+      "topP",
+      "topK",
+      "minP",
+      "presencePenalty",
+      "repeatPenalty",
     ]);
   });
 
@@ -122,17 +170,20 @@ describe("profileFieldDescriptors", () => {
     expect(field?.max).toBe(32768);
   });
 
-  it("offers preserve reasoning only when the model template declares it", () => {
+  it("keeps a template-declared preservation default as the profile's starting value", () => {
     const model = makeModel({
       reasoningPreservation: { templateArgument: "preserve_thinking", default: true },
     });
     expect(
       profileFieldDescriptors(model).find((field) => field.key === "preserveReasoning"),
-    ).toEqual(expect.objectContaining({ kind: "toggle", available: true }));
+    ).toEqual(expect.objectContaining({ kind: "cycle", available: true }));
     expect(defaultProfile(model).preserveReasoning).toBe(true);
-    expect(
-      profileFieldDescriptors(makeModel()).some((field) => field.key === "preserveReasoning"),
-    ).toBe(false);
+  });
+
+  // Null, not false: a profile nobody has touched must launch exactly as it did
+  // before the setting existed, which means emitting no preservation flag.
+  it("defaults preservation to the template's own behavior", () => {
+    expect(defaultProfile(makeModel()).preserveReasoning).toBeNull();
   });
 });
 
@@ -150,22 +201,64 @@ describe("sanitizeProfilePatch", () => {
     expect(adjustments).toEqual([]);
   });
 
-  it("persists preserve reasoning only for a supporting template", () => {
+  it("stores preserve reasoning as a tri-state, from either spelling", () => {
     const model = makeModel({
       reasoningPreservation: { templateArgument: "preserve_thinking" },
     });
-    const enabled = sanitizeProfilePatch(makeProfile(model), { preserveReasoning: true }, model);
-    expect(enabled.profile.preserveReasoning).toBe(true);
-    expect(enabled.adjustments).toEqual([]);
+    const base = makeProfile(model);
 
-    const unsupported = sanitizeProfilePatch(
-      makeProfile(makeModel()),
-      { preserveReasoning: true },
-      makeModel(),
+    expect(
+      sanitizeProfilePatch(base, { preserveReasoning: true }, model).profile.preserveReasoning,
+    ).toBe(true);
+    expect(
+      sanitizeProfilePatch(base, { preserveReasoning: "off" }, model).profile.preserveReasoning,
+    ).toBe(false);
+    // The third state is not "false": it means leave the template's own default.
+    expect(
+      sanitizeProfilePatch(base, { preserveReasoning: "default" }, model).profile.preserveReasoning,
+    ).toBeNull();
+    expect(
+      sanitizeProfilePatch(base, { preserveReasoning: null }, model).profile.preserveReasoning,
+    ).toBeNull();
+  });
+
+  it("rejects a preserve reasoning value that is neither state nor spelling", () => {
+    const model = makeModel();
+    expect(() =>
+      sanitizeProfilePatch(makeProfile(model), { preserveReasoning: "maybe" }, model),
+    ).toThrow(/preserveReasoning/u);
+  });
+
+  it("clamps samplers to their range and reports it", () => {
+    const model = makeModel();
+    const { profile, adjustments } = sanitizeProfilePatch(
+      makeProfile(model),
+      { temperature: 9, topP: 0.4, minP: -1, repeatPenalty: 5 },
+      model,
     );
-    expect(unsupported.adjustments).toEqual([
-      "preserveReasoning ignored: this model does not support it",
+    expect(profile.temperature).toBe(2);
+    expect(profile.topP).toBe(0.4);
+    expect(profile.minP).toBe(0);
+    expect(profile.repeatPenalty).toBe(2);
+    expect(adjustments).toEqual([
+      "temperature clamped to 2",
+      "minP clamped to 0",
+      "repeatPenalty clamped to 2",
     ]);
+  });
+
+  // A stepper that adds 0.05 six times sends 0.30000000000000004. Without the
+  // rounding that lands in the profile and then on llama-server's command line.
+  it("rounds a sampler to the precision the editor advertises", () => {
+    const model = makeModel();
+    const { profile, adjustments } = sanitizeProfilePatch(
+      makeProfile(model),
+      { temperature: 0.30000000000000004, topK: 40.6 },
+      model,
+    );
+    expect(profile.temperature).toBe(0.3);
+    expect(profile.topK).toBe(41);
+    expect(adjustments).toEqual([]);
   });
 
   it("clamps a context above the model's native window and reports it", () => {

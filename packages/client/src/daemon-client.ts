@@ -218,6 +218,7 @@ import type {
   BrainInventoryModel,
   BrainJob,
   BrainLogsTailResponse,
+  BrainLogsWatchResponse,
   BrainModelBudgetGetResponse,
   BrainModelDeleteResponse,
   BrainModelLoadResponse,
@@ -7811,6 +7812,25 @@ export class DaemonClient {
       throw new Error(payload.error);
     }
     return payload;
+  }
+
+  /**
+   * Turn the live Brain log feed on or off for this socket.
+   *
+   * Only meaningful against a daemon advertising `features.brainLogWatch`; older
+   * daemons push every line regardless, and the request would go unrouted.
+   * Watching is per socket, so this does not affect the same account's other
+   * connected clients.
+   */
+  async brainLogsWatch(
+    watching: boolean,
+    requestId?: string,
+  ): Promise<BrainLogsWatchResponse["payload"]> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.logs.watch.request", watching },
+      responseType: "brain.logs.watch.response",
+    });
   }
 
   async getSpeechSettingsOptions(

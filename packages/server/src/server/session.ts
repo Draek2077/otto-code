@@ -978,6 +978,14 @@ export class Session {
   private readonly viewedTimelineAgentIdsBySource = new Map<object, Set<string>>();
   private readonly clientCapabilitiesBySource = new Map<object, ReadonlySet<ClientCapability>>();
   private readonly defaultTimelineSubscriptionSource = {};
+  /**
+   * Sockets that asked for live Brain log lines, by source.
+   *
+   * Empty is the resting state, and it means "send nothing" only for clients
+   * that advertise `brainLogWatch` - see `emitBrainLogLine`, where a client
+   * without the capability still gets the legacy unconditional feed.
+   */
+  private readonly brainLogWatcherSources = new Set<object>();
   private unsubscribeTerminalWorkspaceContributionEvents: (() => void) | null = null;
   private unsubscribeGitOperationLog: (() => void) | null = null;
   private readonly agentUpdates: AgentUpdatesService;
@@ -1696,9 +1704,43 @@ export class Session {
 
   clearAgentTimelineSubscription(source: object): void {
     this.clientCapabilitiesBySource.delete(source);
+    this.brainLogWatcherSources.delete(source);
     if (this.viewedTimelineAgentIdsBySource.delete(source)) {
       this.rebuildViewedTimelineAgentIds();
     }
+  }
+
+  /**
+   * Deliver one Brain log line to the sockets that asked for it.
+   *
+   * Mirrors `forwardAgentStream`: per-source when the connection has per-source
+   * routing, whole-session otherwise. A source that has not advertised
+   * `brainLogWatch` cannot ask for the feed and cannot be expected to live
+   * without it, so it keeps receiving every line.
+   */
+  emitBrainLogLine(line: string): void {
+    const message: SessionOutboundMessage = {
+      type: "status",
+      payload: { status: "brain_log_line_added", line },
+    };
+    if (this.clientCapabilitiesBySource.size === 0 || !this.onMessageToSource) {
+      if (!this.supports(CLIENT_CAPS.brainLogWatch) || this.brainLogWatcherSources.size > 0) {
+        this.emit(message);
+      }
+      return;
+    }
+    for (const [source, capabilities] of this.clientCapabilitiesBySource) {
+      if (capabilities.has(CLIENT_CAPS.brainLogWatch) && !this.brainLogWatcherSources.has(source)) {
+        continue;
+      }
+      this.onMessageToSource(source, message);
+    }
+  }
+
+  private setBrainLogWatching(source: object | undefined, watching: boolean): void {
+    const watchSource = source ?? this.defaultTimelineSubscriptionSource;
+    if (watching) this.brainLogWatcherSources.add(watchSource);
+    else this.brainLogWatcherSources.delete(watchSource);
   }
 
   private replaceAgentTimelineSubscription(source: object | undefined, agentIds: string[]): void {
@@ -2947,6 +2989,16 @@ export class Session {
         const response: SessionOutboundMessage = {
           type: "agent.timeline.set_subscription.response",
           payload: { agentIds, requestId: msg.requestId },
+        };
+        if (source && this.onMessageToSource) this.onMessageToSource(source, response);
+        else this.emit(response);
+        return undefined;
+      }
+      case "brain.logs.watch.request": {
+        this.setBrainLogWatching(source, msg.watching);
+        const response: SessionOutboundMessage = {
+          type: "brain.logs.watch.response",
+          payload: { watching: msg.watching, requestId: msg.requestId },
         };
         if (source && this.onMessageToSource) this.onMessageToSource(source, response);
         else this.emit(response);

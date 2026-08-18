@@ -5,6 +5,7 @@ import { join, resolve as resolvePath } from "path";
 import pino from "pino";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
+import { CLIENT_CAPS } from "@otto-code/protocol/client-capabilities";
 import { PARENT_AGENT_ID_LABEL } from "@otto-code/protocol/agent-labels";
 import type { WorkspaceDescriptorPayload } from "@otto-code/protocol/messages";
 import {
@@ -230,6 +231,8 @@ interface SessionForTestOptions {
   downloadTokenStore?: SessionOptions["downloadTokenStore"];
   messages?: unknown[];
   binaryMessages?: Uint8Array[];
+  clientCapabilities?: SessionOptions["clientCapabilities"];
+  onMessageToSource?: SessionOptions["onMessageToSource"];
 }
 
 function createSessionForTest(options: SessionForTestOptions = {}): Session {
@@ -280,6 +283,8 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     // is not exercising the scope check itself.
     scopes: ["*"],
     onMessage: (message) => messages.push(message),
+    ...(options.clientCapabilities ? { clientCapabilities: options.clientCapabilities } : {}),
+    ...(options.onMessageToSource ? { onMessageToSource: options.onMessageToSource } : {}),
     onBinaryMessage: createBinaryMessageHandler(options.binaryMessages),
     logger,
     downloadTokenStore: options.downloadTokenStore ?? asDownloadTokenStore(),
@@ -4825,5 +4830,112 @@ describe("agent config setters", () => {
         error: "thinking boom",
       },
     });
+  });
+});
+
+describe("brain log watch", () => {
+  const CAPABLE = { [CLIENT_CAPS.brainLogWatch]: true };
+
+  function logLines(messages: unknown[]): string[] {
+    return messages
+      .filter(
+        (message): message is { type: "status"; payload: { status: string; line: string } } =>
+          typeof message === "object" &&
+          message !== null &&
+          (message as { type?: unknown }).type === "status" &&
+          (message as { payload?: { status?: unknown } }).payload?.status ===
+            "brain_log_line_added",
+      )
+      .map((message) => message.payload.line);
+  }
+
+  test("keeps pushing to a client that cannot ask", () => {
+    // No brainLogWatch capability means no way to turn the feed on, so gating it
+    // would silently break the Logs tab on every older client.
+    const messages: unknown[] = [];
+    const session = createSessionForTest({ messages });
+
+    session.emitBrainLogLine("srv  log_server_r: request");
+
+    expect(logLines(messages)).toEqual(["srv  log_server_r: request"]);
+  });
+
+  test("sends nothing to a capable client that has not asked", () => {
+    const messages: unknown[] = [];
+    const session = createSessionForTest({ messages, clientCapabilities: CAPABLE });
+
+    session.emitBrainLogLine("srv  log_server_r: request");
+
+    expect(logLines(messages)).toEqual([]);
+  });
+
+  test("follows watch on and back off", async () => {
+    const messages: unknown[] = [];
+    const session = createSessionForTest({ messages, clientCapabilities: CAPABLE });
+
+    await session.handleMessage({
+      type: "brain.logs.watch.request",
+      watching: true,
+      requestId: "watch-on",
+    });
+    session.emitBrainLogLine("while watching");
+
+    await session.handleMessage({
+      type: "brain.logs.watch.request",
+      watching: false,
+      requestId: "watch-off",
+    });
+    session.emitBrainLogLine("after unwatching");
+
+    expect(logLines(messages)).toEqual(["while watching"]);
+  });
+
+  test("watches per socket, so one client's Logs tab does not feed another", async () => {
+    // The case the whole change exists for: a desktop with the Logs tab open
+    // must not turn the feed on for the same account's phone.
+    const desktop = {};
+    const phone = {};
+    const delivered: Array<{ source: object; line: string }> = [];
+    const session = createSessionForTest({
+      clientCapabilities: CAPABLE,
+      onMessageToSource: (source, message) => {
+        if (message.type === "status" && message.payload.status === "brain_log_line_added") {
+          delivered.push({ source, line: message.payload.line });
+        }
+      },
+    });
+    session.updateClientCapabilities(CAPABLE, desktop);
+    session.updateClientCapabilities(CAPABLE, phone);
+
+    await session.handleMessage(
+      { type: "brain.logs.watch.request", watching: true, requestId: "watch-desktop" },
+      desktop,
+    );
+    session.emitBrainLogLine("only the desktop asked");
+
+    expect(delivered).toEqual([{ source: desktop, line: "only the desktop asked" }]);
+  });
+
+  test("drops a watcher when its socket detaches", async () => {
+    const socket = {};
+    const delivered: string[] = [];
+    const session = createSessionForTest({
+      clientCapabilities: CAPABLE,
+      onMessageToSource: (_source, message) => {
+        if (message.type === "status" && message.payload.status === "brain_log_line_added") {
+          delivered.push(message.payload.line);
+        }
+      },
+    });
+    session.updateClientCapabilities(CAPABLE, socket);
+    await session.handleMessage(
+      { type: "brain.logs.watch.request", watching: true, requestId: "watch-on" },
+      socket,
+    );
+
+    session.clearAgentTimelineSubscription(socket);
+    session.emitBrainLogLine("after detach");
+
+    expect(delivered).toEqual([]);
   });
 });

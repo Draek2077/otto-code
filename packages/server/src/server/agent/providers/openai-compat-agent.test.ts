@@ -470,20 +470,22 @@ describe("OpenAICompatAgentClient", () => {
     ]);
   });
 
-  // Reasoning-bleed repair: OpenAI-compatible servers (llama-server in
-  // particular) split thinking/content on the model's think markers. When the
-  // model emits a spurious close tag mid-thought, the rest of the reasoning
-  // arrives on the `content` channel. Without the repair the timeline renders
-  // Thinking → stray prose → Thinking (two live thought blocks). With it, the
-  // first content delta after an open reasoning block is held for one delta:
-  // if the wire flips back to reasoning_content it was a leak and folds into
-  // the thought; otherwise it settles as genuine prose.
-  test("folds a content delta back into reasoning when the stream flips back to thinking", async () => {
+  // Reasoning bleed: OpenAI-compatible servers (llama-server in particular)
+  // split thinking/content on the model's think markers, so a spurious close
+  // tag mid-thought puts the rest of the reasoning on the `content` channel and
+  // the timeline renders Thinking → stray prose → Thinking. The bleed is
+  // cosmetic and the wire is the only source of truth we have: content is prose,
+  // even on a wire that keeps flipping back to thinking. A repair that
+  // reclassified content as reasoning was tried and withdrawn - on this exact
+  // shape it folded away every content delta, leaving the round with no text and
+  // no tool call, which ends the turn on a thinking block. Prose must survive.
+  test("keeps content as prose on a stream that flips back to thinking", async () => {
     const endpoint = await startInterleaveEndpoint([
       reasoningDelta("step one "),
       reasoningDelta("step two "),
       contentDelta("For user "),
-      reasoningDelta("messages the answer is yes"),
+      reasoningDelta("second thoughts "),
+      contentDelta("messages the answer is yes"),
     ]);
     const client = createClient(endpoint.baseUrl);
     const session = await client.createSession({
@@ -501,17 +503,18 @@ describe("OpenAICompatAgentClient", () => {
     );
     const reasoningItems = timelineItems.filter((item) => item.type === "reasoning");
     const messageItems = timelineItems.filter((item) => item.type === "assistant_message");
-    // No stray prose: the leaked content delta was re-emitted as reasoning,
-    // and nothing was lost (the fold preserves the text).
-    expect(messageItems.length).toBe(0);
+    // Every channel lands where the wire put it, and the turn ends with the
+    // model's answer rather than with an empty thought.
     expect(reasoningItems.map((item) => item.text).join("")).toBe(
-      "step one step two For user messages the answer is yes",
+      "step one step two second thoughts ",
     );
-    // No assistant text settled for the round.
-    expect(result.finalText).toBe("");
+    expect(messageItems.map((item) => item.text).join("")).toBe(
+      "For user messages the answer is yes",
+    );
+    expect(result.finalText).toBe("For user messages the answer is yes");
   });
 
-  test("settles a held content delta as prose when content continues", async () => {
+  test("streams prose that follows a thought, first delta included", async () => {
     const endpoint = await startInterleaveEndpoint([
       reasoningDelta("thinking "),
       contentDelta("Hello"),
@@ -563,7 +566,7 @@ describe("OpenAICompatAgentClient", () => {
     expect(result.finalText).toBe("Hello world");
   });
 
-  test("settles a held content delta as prose when a tool call follows", async () => {
+  test("keeps a one-delta preamble as prose when a tool call follows", async () => {
     const args = JSON.stringify({ path: "note.txt", content: "hello tools" });
     const endpoint = await startInterleaveEndpoint(
       [
@@ -592,8 +595,8 @@ describe("OpenAICompatAgentClient", () => {
     const reasoningItems = timelineItems.filter((item) => item.type === "reasoning");
     const messageItems = timelineItems.filter((item) => item.type === "assistant_message");
     const toolItems = timelineItems.filter((item) => item.type === "tool_call");
-    // The prose before the tool call settled as an assistant message; the
-    // reasoning stayed one block; the tool call still executed.
+    // The single prose delta before the tool call reached the user as an
+    // assistant message, and the tool call still executed.
     expect(reasoningItems.map((item) => item.text).join("")).toBe("planning ");
     expect(messageItems.map((item) => item.text).join("")).toBe("Writing the note now. done");
     expect(toolItems.map((item) => item.status)).toEqual(["running", "completed"]);

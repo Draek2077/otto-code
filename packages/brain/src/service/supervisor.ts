@@ -1,4 +1,6 @@
 import http from "node:http";
+import path from "node:path";
+import { mkdirSync } from "node:fs";
 import { spawn, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 
@@ -167,6 +169,17 @@ export class Supervisor extends EventEmitter {
       throw new Error(this.lastError);
     }
     const runtime = this.runtime;
+    // The engine's slot save/erase directory, under the brain's home so it
+    // survives across model relaunches (the dir is persistent; the engine only
+    // ever uses it for the `action=erase` the scheduler issues on a handoff,
+    // which never writes a file). Created before the args are built because
+    // llama.cpp validates it exists at launch and throws otherwise.
+    const slotSavePath = path.join(this.paths.root, "slot-saves");
+    try {
+      mkdirSync(slotSavePath, { recursive: true });
+    } catch {
+      /* the engine then starts without slot actions - the pre-fix behavior */
+    }
     const launchProfile = resolveHostingProfileForLaunch(
       this.paths,
       this.getProfilesStore(),
@@ -182,7 +195,12 @@ export class Supervisor extends EventEmitter {
 
     const args = buildArgs(
       { ...launchProfile, modelPath: model.modelPath, mmprojPath: model.mmprojPath },
-      { port: this.internalPort, host: this.host, logVerbosity: this.logVerbosity },
+      {
+        port: this.internalPort,
+        host: this.host,
+        logVerbosity: this.logVerbosity,
+        slotSavePath,
+      },
       model,
       // The prompt-cache budget is derived from measured KV bytes/token, so the
       // launch boundary is where it has to be resolved - nothing downstream of

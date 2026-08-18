@@ -962,13 +962,15 @@ export class VoiceAssistantWebSocketServer {
             }),
           );
         },
+        // Not `broadcast`: log lines are uncoalesced and per llama-server line,
+        // so an unconditional fanout made every connected client - including a
+        // phone on the relay that never opened the Logs tab - decrypt, parse and
+        // validate each one just to drop it. Each session delivers only to the
+        // sockets that asked (see Session.emitBrainLogLine).
         onLogLine: (line) => {
-          this.broadcast(
-            wrapSessionMessage({
-              type: "status",
-              payload: { status: "brain_log_line_added", line },
-            }),
-          );
+          for (const session of this.listTrustedSessions()) {
+            session.emitBrainLogLine(line);
+          }
         },
         // Availability tracks the SELECTED brain, so repointing at an older
         // host has to walk the feature flag back down. Clients read the new
@@ -2177,6 +2179,11 @@ export class VoiceAssistantWebSocketServer {
         // floor >= v0.8.10. A capable Brain publishes each durable log line
         // through the daemon instead of waiting for the Logs tab's next poll.
         brainLogPush: this.brainManager?.supportsLogEvents() === true,
+        // COMPAT(brainLogWatch): added in v0.8.13, drop the gate when daemon
+        // floor >= v0.8.13. Unconditionally true: this is a daemon routing
+        // capability, not a property of the brain on the far side, so it holds
+        // even while no brain is configured.
+        brainLogWatch: true,
         // COMPAT(brainManage): added in v0.7.5, remove gate after 2026-07-30
         // once daemon floor >= v0.7.5. Daemon drives the brain's model/runtime
         // verbs (scan/catalog/runtime list) and long jobs (pull/runtime

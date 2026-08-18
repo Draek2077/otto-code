@@ -14,6 +14,17 @@ export interface ServeTarget {
   host?: string;
   /** llama.cpp log threshold; 3 preserves its upstream default Info output. */
   logVerbosity?: number;
+  /**
+   * A directory the engine may use for its slot save/restore/erase actions
+   * (`POST /slots`). Passing it is what UNLOCKS the `action=erase` route:
+   * llama.cpp refuses every `POST /slots` action when `--slot-save-path` is not
+   * set, and the scheduler's cross-chat KV-bleed fix erases a slot's retained
+   * KV the moment it is handed to a different chat. The directory must exist -
+   * the engine validates it at launch and throws otherwise - so the caller
+   * creates it. Absent (null) means the engine's own default: slot actions
+   * disabled, which is the pre-fix behavior.
+   */
+  slotSavePath?: string | null;
 }
 
 /**
@@ -53,7 +64,7 @@ export function buildEnv(
  */
 export function buildArgs(
   profile: Profile,
-  { port, host = "127.0.0.1", logVerbosity = 3 }: ServeTarget,
+  { port, host = "127.0.0.1", logVerbosity = 3, slotSavePath = null }: ServeTarget,
   model?: Model,
   calibration?: Calibration | null,
 ): string[] {
@@ -79,6 +90,16 @@ export function buildArgs(
     String(logVerbosity),
   ];
 
+  // A slot-save directory unlocks the engine's `POST /slots` actions - the
+  // `action=erase` the scheduler needs to wipe a slot's retained KV before it
+  // is handed to a different chat (see OWNERSHIP in scheduler.ts). Without it
+  // llama.cpp refuses every slot action with "start it with --slot-save-path".
+  // The directory must already exist: the engine validates it at launch and
+  // throws otherwise, so the caller creates it before building the args.
+  if (slotSavePath) {
+    args.push("--slot-save-path", slotSavePath);
+  }
+
   if (profile.vision && profile.mmprojPath) {
     args.push("--mmproj", profile.mmprojPath);
   }
@@ -93,6 +114,32 @@ export function buildArgs(
     args.push("--reasoning-budget", String(profile.reasoningBudget));
     if (profile.reasoningBudgetMessage) {
       args.push("--reasoning-budget-message", profile.reasoningBudgetMessage);
+    }
+  }
+
+  // Whether the reasoning trace stays in the whole history or is trimmed to the
+  // last assistant message. Emitted only on an explicit choice: llama-server's
+  // own default is the template's, and there is no third flag spelling for "do
+  // what the template says" - the absence of the flag IS that state.
+  if (profile.preserveReasoning === true) {
+    args.push("--reasoning-preserve");
+  } else if (profile.preserveReasoning === false) {
+    args.push("--no-reasoning-preserve");
+  }
+
+  // Sampler settings. Always emitted, because the profile stores llama.cpp's own
+  // defaults verbatim, so an untouched profile produces the run it always did
+  // while the values stay visible and editable rather than implicit.
+  for (const [flag, value] of [
+    ["--temp", profile.temperature],
+    ["--top-p", profile.topP],
+    ["--top-k", profile.topK],
+    ["--min-p", profile.minP],
+    ["--presence-penalty", profile.presencePenalty],
+    ["--repeat-penalty", profile.repeatPenalty],
+  ] as const) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      args.push(flag, String(value));
     }
   }
 

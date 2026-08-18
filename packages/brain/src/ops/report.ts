@@ -79,6 +79,51 @@ function formatGiB(bytes: number | null): string {
   return bytes ? `${(bytes / 1024 ** 3).toFixed(1)} GB` : "-";
 }
 
+// The sampler defaults come from `configKey`'s own constant: the report and
+// the grouping key must agree on what counts as "the engine default", or the
+// report would print settings the key says were never changed.
+const SAMPLER_DEFAULTS: Record<string, number> = results.ENGINE_SAMPLER_DEFAULTS;
+
+/**
+ * The schema-3 profile settings that changed what a run was measured with,
+ * as a short human line. Returns "" when nothing deviates from the engine
+ * defaults, so an untouched run prints exactly what it always did. Older
+ * records that predate these fields store `null` for every one, which also
+ * collapses to "" - the report never guesses a value it was not given.
+ */
+function formatProfileExtras(record: RunRecord): string {
+  const p = record.profile;
+  if (!p) return "";
+  const parts: string[] = [];
+  if (p.contextMultiplier !== null && p.contextMultiplier > 1) {
+    parts.push(`x${p.contextMultiplier} ctx`);
+  }
+  if (p.cachedChats !== null && p.cachedChats > 0) {
+    parts.push(`${p.cachedChats} cached`);
+  }
+  if (p.preserveReasoning === true) parts.push("reasoning preserved");
+  else if (p.preserveReasoning === false) parts.push("reasoning trimmed");
+  // Each entry pairs the display name with the `SAMPLER_DEFAULTS` key the
+  // default is looked up by - the two deliberately differ (see `configKey`).
+  const sampler: Array<[string, number | null, string]> = [
+    ["temp", p.temperature, "temperature"],
+    ["topP", p.topP, "topP"],
+    ["topK", p.topK, "topK"],
+    ["minP", p.minP, "minP"],
+    ["pres", p.presencePenalty, "presencePenalty"],
+    ["rep", p.repeatPenalty, "repeatPenalty"],
+  ];
+  // `typeof` rather than a null check: a record from before the sampler was
+  // stored carries `undefined` for every one of these, and that must read as
+  // "not recorded", not as a deviation.
+  const deviated = sampler
+    .filter(([, value, key]) => typeof value === "number" && value !== SAMPLER_DEFAULTS[key])
+    .map(([name, value]) => `${name} ${value}`);
+  if (deviated.length > 0) parts.push(deviated.join(", "));
+  if (p.hostingProfileId) parts.push("hosting profile");
+  return parts.join(" · ");
+}
+
 /**
  * Per-model score card: each task labelled directly with its weight, then the
  * weighted Overall on its own row so the headline number reads as the sum of its
@@ -122,6 +167,7 @@ function groupedBars(
       record.model.quant,
       `ctx ${(record.profile?.contextSize || 0).toLocaleString()}`,
       `rb ${record.profile?.reasoningBudget}`,
+      formatProfileExtras(record),
     ]
       .filter(Boolean)
       .join(" · ");
@@ -405,6 +451,7 @@ function build(records: RunRecord[], allRuns: RunRecord[] = records): string {
         `<tr><td>${escapeHtml(r.model.displayName)}</td><td>${escapeHtml(r.model.quant || "-")}</td>` +
         `<td class="num">${(r.profile?.contextSize || 0).toLocaleString()}</td>` +
         `<td class="num">${r.profile?.reasoningBudget ?? "-"}</td>` +
+        `<td class="muted">${escapeHtml(formatProfileExtras(r) || "-")}</td>` +
         `${cells}<td class="num strong">${(r.overall * 100).toFixed(0)}%</td>` +
         `<td class="num">${formatGiB(r.vramBytes)}</td>` +
         `<td class="muted">${escapeHtml(r.ranAt.slice(0, 16).replace("T", " "))}</td></tr>`
@@ -596,7 +643,7 @@ function build(records: RunRecord[], allRuns: RunRecord[] = records): string {
     <h2>All runs</h2>
     <div class="scroll">
       <table>
-        <thead><tr><th>Model</th><th>Quant</th><th class="num">Context</th><th class="num">Reasoning</th>
+        <thead><tr><th>Model</th><th>Quant</th><th class="num">Context</th><th class="num">Reasoning</th><th>Settings</th>
           ${columns.map((c) => `<th class="num">${escapeHtml(c.category)}<span class="wt">×${weightOf.get(c.id) ?? "?"}</span></th>`).join("")}
           <th class="num">Overall<span class="wt">wtd</span></th><th class="num">VRAM</th><th>Run at</th></tr></thead>
         <tbody>${tableRows}</tbody>
