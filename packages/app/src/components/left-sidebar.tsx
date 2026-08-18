@@ -157,6 +157,7 @@ interface MobileSidebarProps extends SidebarSharedProps {
 
 interface DesktopSidebarProps extends SidebarSharedProps {
   insetsTop: number;
+  insetsBottom: number;
   isOpen: boolean;
   handleViewMore: () => void;
   handleViewSchedules: () => void;
@@ -372,6 +373,7 @@ export const LeftSidebar = memo(function LeftSidebar() {
       <DesktopSidebar
         {...sharedProps}
         insetsTop={insets.top}
+        insetsBottom={insets.bottom}
         isOpen={isOpen}
         handleOpenProject={handleOpenProjectDesktop}
         handleHome={handleHomeDesktop}
@@ -840,6 +842,7 @@ function DesktopSidebar({
   handleAddHost,
   handleOpenHostSettings,
   insetsTop,
+  insetsBottom,
   isOpen,
   handleViewMore,
   handleViewSchedules,
@@ -927,9 +930,15 @@ function DesktopSidebar({
     () => [staticStyles.desktopSidebar, slideStyle],
     [slideStyle],
   );
+  // Without paddingBottom, the pinned SidebarFooter (Home/Settings/Brain icons)
+  // sits flush with the container's bottom edge and lands under the 3-button
+  // Android nav bar in landscape/tablet layouts, where it can't be tapped.
   const desktopSidebarBorderStyle = useMemo(
-    () => [styles.desktopSidebarBorder, { flex: 1, paddingTop: insetsTop }],
-    [insetsTop],
+    () => [
+      styles.desktopSidebarBorder,
+      { flex: 1, paddingTop: insetsTop, paddingBottom: insetsBottom },
+    ],
+    [insetsTop, insetsBottom],
   );
   const resizeHandleStyle = useMemo(
     () => [styles.resizeHandle, isWeb && ({ cursor: "col-resize" } as object)],
