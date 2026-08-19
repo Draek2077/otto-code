@@ -11,3 +11,6 @@ node_modules/
 
 # Isolated dev environment (OTTO_HOME + Electron userData) created by scripts/dev.sh
 .dev/
+
+# Local Python venv for the Zoom Recorder helper build (scripts/before-pack.js)
+.venv-zoom-recorder/

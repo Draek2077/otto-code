@@ -390,6 +390,9 @@ jobs:
           EP_GH_IGNORE_TIME: true
           OTTO_DESKTOP_SMOKE: "1"
           OTTO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
+          # Use the system Python installed above; this skips the before-pack
+          # hook's venv provisioning (which would install the deps a second time).
+          OTTO_ZOOM_RECORDER_PYTHON: python
         run: |
           set -euo pipefail
           build_args=(-- --publish never --linux --x64)
@@ -492,6 +495,9 @@ jobs:
           EP_GH_IGNORE_TIME: true
           OTTO_DESKTOP_SMOKE: "1"
           OTTO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
+          # Use the system Python installed above; this skips the before-pack
+          # hook's venv provisioning (which would install the deps a second time).
+          OTTO_ZOOM_RECORDER_PYTHON: python
         run: |
           set -euo pipefail
           build_args=(-- --publish never --win --x64 --arm64)

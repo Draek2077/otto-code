@@ -14,7 +14,7 @@ import { useMutation } from "@tanstack/react-query";
 import type { ProjectKanbanTarget } from "@otto-code/protocol/messages";
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
-import { SettingsSection } from "@/screens/settings/settings-section";
+import { SettingsGroup } from "@/screens/settings/settings-group";
 import { settingsStyles } from "@/styles/settings";
 import { useKanbanBoardFeature } from "@/kanban/kanban-hooks";
 import { useSessionStore } from "@/stores/session-store";
@@ -128,56 +128,61 @@ export function ProjectKanbanSection({ serverId, projectId, client }: ProjectKan
       : t("settings.project.kanban.githubBoardPlaceholder");
 
   return (
-    <SettingsSection
+    <SettingsGroup
       title={t("settings.project.kanban.sectionTitle")}
-      testID="project-kanban-section"
+      info={t("settings.project.kanban.description")}
+      testID="project-kanban-group"
     >
-      <Text style={settingsStyles.rowHint}>{t("settings.project.kanban.description")}</Text>
-      <View style={settingsStyles.rowResponsive}>
-        <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>{t("settings.project.kanban.adapter")}</Text>
+      <View style={settingsStyles.card}>
+        <View style={settingsStyles.rowResponsive}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>{t("settings.project.kanban.adapter")}</Text>
+          </View>
+          <View style={settingsStyles.rowControlGroup}>
+            <SegmentedControl<KanbanAdapterChoice>
+              options={adapterOptions(t)}
+              value={adapter}
+              onValueChange={handleAdapterChange}
+              size="sm"
+              testID="project-kanban-adapter"
+            />
+          </View>
         </View>
-        <View style={settingsStyles.rowControlGroup}>
-          <SegmentedControl<KanbanAdapterChoice>
-            options={adapterOptions(t)}
-            value={adapter}
-            onValueChange={handleAdapterChange}
-            size="sm"
-            testID="project-kanban-adapter"
-          />
+        {adapter !== "none" ? (
+          <View style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>{boardLabel}</Text>
+              <Text style={settingsStyles.rowHint}>{boardHint}</Text>
+              {draft.kind === "blocked" ? (
+                <Text style={settingsStyles.rowError} testID="project-kanban-board-error">
+                  {t("settings.project.kanban.jiraBoardRequired")}
+                </Text>
+              ) : null}
+              {mutation.isError ? (
+                <Text style={settingsStyles.rowError} testID="project-kanban-save-error">
+                  {t("settings.project.kanban.saveError")}
+                </Text>
+              ) : null}
+            </View>
+            <TextInput
+              value={boardDraft}
+              onChangeText={setBoardDraft}
+              onBlur={handleCommitBoard}
+              onSubmitEditing={handleCommitBoard}
+              placeholder={boardPlaceholder}
+              placeholderTextColor={styles.placeholderColor.color}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={styles.boardInput}
+              testID="project-kanban-board-input"
+            />
+          </View>
+        ) : null}
+        <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+          <Text style={settingsStyles.rowHint}>{t("settings.project.kanban.credentialsHint")}</Text>
         </View>
       </View>
-      {adapter !== "none" ? (
-        <View style={settingsStyles.row}>
-          <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>{boardLabel}</Text>
-            <Text style={settingsStyles.rowHint}>{boardHint}</Text>
-            {draft.kind === "blocked" ? (
-              <Text style={settingsStyles.rowError} testID="project-kanban-board-error">
-                {t("settings.project.kanban.jiraBoardRequired")}
-              </Text>
-            ) : null}
-            {mutation.isError ? (
-              <Text style={settingsStyles.rowError} testID="project-kanban-save-error">
-                {t("settings.project.kanban.saveError")}
-              </Text>
-            ) : null}
-          </View>
-          <TextInput
-            value={boardDraft}
-            onChangeText={setBoardDraft}
-            onBlur={handleCommitBoard}
-            onSubmitEditing={handleCommitBoard}
-            placeholder={boardPlaceholder}
-            placeholderTextColor={styles.placeholderColor.color}
-            autoCapitalize="none"
-            autoCorrect={false}
-            testID="project-kanban-board-input"
-          />
-        </View>
-      ) : null}
-      <Text style={settingsStyles.rowHint}>{t("settings.project.kanban.credentialsHint")}</Text>
-    </SettingsSection>
+    </SettingsGroup>
   );
 }
 
@@ -197,5 +202,16 @@ function adapterOptions(t: (key: string) => string): SegmentedControlOption<Kanb
 const styles = StyleSheet.create((theme) => ({
   placeholderColor: {
     color: theme.colors.foregroundMuted,
+  },
+  boardInput: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    paddingVertical: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface2,
+    minWidth: { xs: "100%", sm: 220 },
   },
 }));

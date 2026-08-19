@@ -19,6 +19,26 @@ export interface CheckoutStatusClient {
 // (applyCheckoutStatusUpdateFromEvent) and query fetches (fetchCheckoutStatus). Both run
 // the dirty-state reactions, so they hold regardless of which screens are mounted.
 
+/**
+ * Whether a status payload is a measurement that failed rather than an answer.
+ *
+ * The daemon answers a status request it could not complete with a well-formed
+ * `isGit: false` payload carrying the error (checkout-session `handleStatusRequest`),
+ * because the wire shape has no third state. That payload is indistinguishable from
+ * "this directory is not a repository" to every consumer downstream, and `isGit` is
+ * the single switch the whole Git and PR control cluster hangs off - `buildGitActions`
+ * returns nothing for a non-git checkout, so the split button unmounts entirely.
+ *
+ * Treating it as an answer is what makes the controls vanish and stay vanished: this
+ * cache is push-driven with `staleTime: Infinity` and no refetch on mount, focus, or
+ * reconnect, so one failed measurement (a git command timeout, a spawn failure, a
+ * transient lock) is cached as truth for the life of the app. `NOT_GIT_REPO` is the
+ * one code that really is an answer.
+ */
+function isFailedMeasurement(payload: CheckoutStatusPayload): boolean {
+  return payload.error != null && payload.error.code !== "NOT_GIT_REPO";
+}
+
 export async function fetchCheckoutStatus({
   client,
   serverId,
@@ -29,6 +49,11 @@ export async function fetchCheckoutStatus({
   cwd: string;
 }): Promise<CheckoutStatusPayload> {
   const payload = await client.getCheckoutStatus(cwd);
+  if (isFailedMeasurement(payload)) {
+    // Rejecting keeps the last known-good status in the cache and lets the query
+    // retry, instead of caching "not a repository" forever.
+    throw new Error(payload.error?.message ?? "Checkout status is unavailable.");
+  }
   expireStaleDiffModeOverrides({ serverId, cwd, isDirty: payload.isGit && payload.isDirty });
   return payload;
 }
@@ -43,6 +68,11 @@ export function applyCheckoutStatusUpdateFromEvent({
   message: CheckoutStatusUpdate;
 }): void {
   const { payload } = message;
+  if (isFailedMeasurement(payload)) {
+    // Same reasoning as the fetch door: a push whose git block is a failed
+    // measurement must not overwrite good state with "not a repository".
+    return;
+  }
   if (carriesFreshGitState(queryClient, serverId, payload)) {
     queryClient.setQueryData(checkoutStatusQueryKey(serverId, payload.cwd), payload);
     expireStaleDiffModeOverrides({

@@ -24,7 +24,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { View } from "react-native";
+import { useWindowDimensions, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -116,6 +116,10 @@ import { useColorScheme } from "@/hooks/use-color-scheme";
 import { applyAppearance } from "@/screens/settings/appearance/apply-appearance";
 import { applyColorScheme } from "@/screens/settings/appearance/apply-color-scheme";
 import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
+import {
+  canDesktopAppSidebarShare,
+  resolveDesktopAppContentMinimum,
+} from "@/components/desktop-sidebar-layout";
 import { installWebScrollbarStyles } from "@/styles/install-web-scrollbar-styles";
 import type { LightThemeName, DarkThemeName } from "@/styles/theme";
 import type { HostProfile } from "@/types/host-connection";
@@ -569,9 +573,35 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   useActiveWorktreeNewAction();
   useGlobalNewWorkspaceAction();
 
+  // On a desktop-width window the sidebar is not unconditional: it only renders
+  // if it can take its width without pushing the content below its own minimum.
+  // A half-screen window with Settings or the Explorer open is the case that
+  // matters, and there app navigation yields rather than squeezing the content.
+  const isDesktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
+  const isDesktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
+  const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
+  const explorerWidth = usePanelStore((state) => state.explorerWidth);
+  const { width: viewportWidth } = useWindowDimensions();
+  const appContentMinimumWidth = resolveDesktopAppContentMinimum({
+    isSettingsRoute: pathname.includes("/settings"),
+    isWorkspaceExplorerOpen: pathname.includes("/workspace/") && isDesktopFileExplorerOpen,
+    requestedExplorerWidth: explorerWidth,
+    viewportWidth,
+  });
+  const desktopSidebarRendered =
+    !isCompactLayout &&
+    chromeEnabled &&
+    !isFocusModeEnabled &&
+    isDesktopAgentListOpen &&
+    canDesktopAppSidebarShare({
+      contentMinimumWidth: appContentMinimumWidth,
+      requestedSidebarWidth: sidebarWidth,
+      viewportWidth,
+    });
+
   const sidebarChrome = (
     <SidebarChrome
-      showSidebar={chromeEnabled && (isCompactLayout || !isFocusModeEnabled)}
+      showSidebar={isCompactLayout ? chromeEnabled : desktopSidebarRendered}
       keyboardShortcutsEnabled={keyboardShortcutsEnabled}
     />
   );

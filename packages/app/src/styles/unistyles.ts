@@ -23,7 +23,12 @@ StyleSheet.configure({
   breakpoints: {
     xs: 0,
     sm: 576,
-    md: 768,
+    // 720, not Bootstrap's 768, so a half-screen window on a 14-inch Mac
+    // (1512 logical points, so 756 wide) stays in desktop mode instead of
+    // collapsing to the mobile sidebar. Upstream set this in #1983; the fork
+    // lost it in a merge, which took the whole half-screen desktop layout with
+    // it. See e2e/sidebar-workspace.spec.ts "Half-screen desktop layout".
+    md: 720,
     lg: 992,
     xl: 1200,
   },

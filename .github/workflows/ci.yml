@@ -20,116 +20,19 @@ env:
   # postinstall download from NuGet is large enough to make npm ci flaky.
   ONNXRUNTIME_NODE_INSTALL: skip
 
+# Every job runs on every push. There used to be a `changes` job
+# (dorny/paths-filter) gating the rest, and the skip was wired as a per-step
+# `if:` guard, so an unaffected commit ran a single `echo` and the job reported
+# **success**. All eight Playwright shards would go green having executed zero
+# tests. The result: between 2026-08-07 and 2026-08-18, 80 consecutive CI runs
+# produced 55 failures, 22 cancellations and 3 "successes" - and all 3 of those
+# successes had skipped Playwright entirely. A continuously red suite was
+# indistinguishable from a healthy one, and 0.8.10 shipped on a cancelled run.
+#
+# If you reinstate path filtering to save runner minutes, put the condition on
+# the *job* (`if:` at job level), never on its steps: a filtered job must report
+# `skipped`, never `success`.
 jobs:
-  changes:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      quality: ${{ steps.filter.outputs.shared != 'false' || steps.filter.outputs.quality != 'false' }}
-      server: ${{ steps.filter.outputs.shared != 'false' || steps.filter.outputs.server != 'false' }}
-      desktop: ${{ steps.filter.outputs.shared != 'false' || steps.filter.outputs.desktop != 'false' }}
-      desktop_package: ${{ steps.filter.outputs.shared != 'false' || steps.filter.outputs.desktop_package != 'false' }}
-      app: ${{ steps.filter.outputs.shared != 'false' || steps.filter.outputs.app != 'false' }}
-      android_native: ${{ steps.filter.outputs.shared != 'false' || steps.filter.outputs.android_native != 'false' }}
-      sdk: ${{ steps.filter.outputs.shared != 'false' || steps.filter.outputs.sdk != 'false' }}
-      playwright: ${{ steps.filter.outputs.shared != 'false' || steps.filter.outputs.playwright != 'false' }}
-      relay: ${{ steps.filter.outputs.shared != 'false' || steps.filter.outputs.relay != 'false' }}
-      cli: ${{ steps.filter.outputs.shared != 'false' || steps.filter.outputs.cli != 'false' }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-
-      - name: Detect affected CI jobs
-        id: filter
-        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
-        with:
-          filters: |
-            shared:
-              - '.github/workflows/ci.yml'
-              - '.github/actions/**'
-              - '.mise.toml'
-              - '.tool-versions'
-              - 'package.json'
-              - 'package-lock.json'
-              - 'patches/**'
-              - 'scripts/**'
-              - 'tsconfig.json'
-              - 'tsconfig.base.json'
-              - 'vitest.config.ts'
-            quality:
-              - 'packages/**'
-              - '*.cjs'
-              - '*.js'
-              - '*.json'
-              - '*.mjs'
-              - '*.ts'
-            server:
-              - 'packages/app/e2e/fixtures/recording.*'
-              - 'packages/client/**'
-              - 'packages/cli/src/**'
-              - 'packages/highlight/**'
-              - 'packages/protocol/**'
-              - 'packages/relay/**'
-              - 'packages/server/**'
-            desktop:
-              - 'packages/app/**'
-              - 'packages/cli/**'
-              - 'packages/client/**'
-              - 'packages/desktop/**'
-              - 'packages/expo-two-way-audio/**'
-              - 'packages/highlight/**'
-              - 'packages/protocol/**'
-              - 'packages/relay/**'
-              - 'packages/server/**'
-            desktop_package:
-              - '.github/workflows/ci.yml'
-              - 'packages/desktop/**'
-              - 'packages/expo-two-way-audio/**'
-              - 'vendor/agent-flow/LICENSE'
-            app:
-              - 'packages/app/**'
-              - 'packages/client/**'
-              - 'packages/expo-two-way-audio/**'
-              - 'packages/highlight/**'
-              - 'packages/protocol/**'
-              - 'packages/relay/**'
-            android_native:
-              - '.github/workflows/ci.yml'
-              - 'packages/app/android/**'
-              - 'packages/expo-two-way-audio/**'
-              - 'vendor/agent-flow/LICENSE'
-            sdk:
-              - 'packages/client/**'
-              - 'packages/protocol/**'
-              - 'packages/relay/**'
-            playwright:
-              - 'packages/app/**'
-              - 'packages/client/**'
-              - 'packages/expo-two-way-audio/**'
-              - 'packages/highlight/**'
-              - 'packages/protocol/**'
-              - 'packages/relay/**'
-              - 'packages/server/**'
-            relay:
-              - 'packages/relay/**'
-            cli:
-              - 'nix/**'
-              - 'packages/app/e2e/global-setup.ts'
-              - 'packages/cli/**'
-              - 'packages/client/**'
-              - 'packages/desktop/src/daemon/runtime-paths.ts'
-              - 'packages/highlight/**'
-              - 'packages/protocol/**'
-              - 'packages/relay/**'
-              - 'packages/server/**'
-
-      - name: Validate CI workflow
-        run: node --test scripts/ci-workflow.test.mjs
-
   format:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -152,12 +55,7 @@ jobs:
         run: npx oxfmt --check .
 
   lint:
-    needs: changes
-    if: >-
-      ${{ !cancelled() &&
-          (github.event_name == 'workflow_dispatch' ||
-           needs.changes.result != 'success' ||
-           needs.changes.outputs.quality != 'false') }}
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -190,12 +88,7 @@ jobs:
         run: npm run lint
 
   typecheck:
-    needs: changes
-    if: >-
-      ${{ !cancelled() &&
-          (github.event_name == 'workflow_dispatch' ||
-           needs.changes.result != 'success' ||
-           needs.changes.outputs.quality != 'false') }}
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -223,7 +116,6 @@ jobs:
           npm pack --dry-run --ignore-scripts --workspace=@otto-code/server
 
   server-tests:
-    needs: changes
     if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
@@ -238,43 +130,29 @@ jobs:
     timeout-minutes: 30
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
-      RUN_TESTS: >-
-        ${{ github.event_name == 'workflow_dispatch' ||
-            needs.changes.result != 'success' ||
-            needs.changes.outputs.server != 'false' }}
     steps:
-      - name: Skip unaffected server tests
-        if: env.RUN_TESTS != 'true'
-        run: echo "No server changes detected."
-
       - uses: actions/checkout@v7.0.1
-        if: env.RUN_TESTS == 'true'
         with:
           fetch-depth: 0
 
       - uses: actions/setup-node@v7
-        if: env.RUN_TESTS == 'true'
         with:
           node-version: "24"
           cache: "npm"
 
       - name: Fetch origin/main (worktree tests)
-        if: env.RUN_TESTS == 'true'
         run: git fetch --no-tags origin main:refs/remotes/origin/main
 
       - name: Install dependencies
-        if: env.RUN_TESTS == 'true'
         run: node scripts/npm-retry.mjs ci
       - name: Install agent CLIs for provider tests
-        if: env.RUN_TESTS == 'true'
         run: node scripts/npm-retry.mjs install -g @anthropic-ai/claude-code opencode-ai
 
       - name: Build server dependencies
-        if: env.RUN_TESTS == 'true'
         run: npm run build:server-deps
 
       - name: Run server tests
-        if: env.RUN_TESTS == 'true' && matrix.os != 'windows-latest'
+        if: matrix.os != 'windows-latest'
         run: npm run test --workspace=@otto-code/server
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -289,7 +167,7 @@ jobs:
       # worker topology. Worker threads are not viable either: Node 24 aborts
       # in fs-event.c while the suite starts its watcher.
       - name: Run server tests (Windows)
-        if: env.RUN_TESTS == 'true' && matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
           $attempts = 2
@@ -310,14 +188,13 @@ jobs:
 
       # DIAG(windows-fork-crash): dump the ledger so the job log carries it.
       - name: Print worker kill diagnostics
-        if: always() && env.RUN_TESTS == 'true' && matrix.os == 'windows-latest'
+        if: always() && matrix.os == 'windows-latest'
         shell: pwsh
         run: |
           $diag = Join-Path $env:RUNNER_TEMP 'kill-diag.jsonl'
           if (Test-Path $diag) { Get-Content $diag } else { Write-Host 'no kill-diag file was written' }
 
   desktop-tests:
-    needs: changes
     if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
@@ -328,30 +205,19 @@ jobs:
     permissions:
       contents: read
     env:
-      RUN_TESTS: >-
-        ${{ github.event_name == 'workflow_dispatch' ||
-            needs.changes.result != 'success' ||
-            needs.changes.outputs.desktop != 'false' }}
     steps:
-      - name: Skip unaffected desktop tests
-        if: env.RUN_TESTS != 'true'
-        run: echo "No desktop changes detected."
-
       - uses: actions/checkout@v7.0.1
-        if: env.RUN_TESTS == 'true'
 
       - uses: actions/setup-node@v7
-        if: env.RUN_TESTS == 'true'
         with:
           node-version: "24"
           cache: "npm"
 
       - name: Install dependencies with retry
-        if: env.RUN_TESTS == 'true'
         run: node scripts/npm-retry.mjs ci
 
       - name: Setup Python for Linux recorder packaging
-        if: env.RUN_TESTS == 'true' && matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest'
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -359,33 +225,31 @@ jobs:
           cache-dependency-path: packages/desktop/resources/zoom-recorder/requirements-build.txt
 
       - name: Install Zoom Recorder build dependencies
-        if: env.RUN_TESTS == 'true' && matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest'
         run: python -m pip install -r packages/desktop/resources/zoom-recorder/requirements-build.txt
       - name: Build server stack
-        if: env.RUN_TESTS == 'true'
         run: npm run build:server
 
       - name: Run desktop tests
-        if: env.RUN_TESTS == 'true'
         run: npm run test --workspace=@otto-code/desktop
 
       - name: Build app dependencies for desktop E2E
-        if: env.RUN_TESTS == 'true' && matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest'
         run: npm run build:app-deps
 
       - name: Install virtual display
-        if: env.RUN_TESTS == 'true' && matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install -y xvfb xauth
 
       - name: Run real Electron browser tab bridge E2E
-        if: env.RUN_TESTS == 'true' && matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest'
         run: npm run test:e2e:browser-tab-bridge --workspace=@otto-code/desktop
         env:
           OTTO_TAB_BRIDGE_E2E_ARTIFACT_DIR: ${{ runner.temp }}/browser-tab-bridge-e2e
 
       - name: Upload browser tab bridge diagnostics
         uses: actions/upload-artifact@v7
-        if: env.RUN_TESTS == 'true' && failure() && matrix.os == 'ubuntu-latest'
+        if: failure() && matrix.os == 'ubuntu-latest'
         with:
           name: browser-tab-bridge-e2e
           path: ${{ runner.temp }}/browser-tab-bridge-e2e
@@ -393,23 +257,18 @@ jobs:
           retention-days: 7
 
       - name: Build and smoke unpacked desktop app
-        if: >-
-          env.RUN_TESTS == 'true' && matrix.os == 'ubuntu-latest' &&
-          (github.event_name == 'workflow_dispatch' ||
-           needs.changes.result != 'success' ||
-           needs.changes.outputs.desktop_package != 'false')
+        if: matrix.os == 'ubuntu-latest'
         run: npm run build:desktop -- --publish never --linux --x64 --dir
         env:
           EP_GH_IGNORE_TIME: true
           OTTO_DESKTOP_SMOKE: "1"
           OTTO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
+          # Use the system Python installed above; this skips the before-pack
+          # hook's venv provisioning (which would install the deps a second time).
+          OTTO_ZOOM_RECORDER_PYTHON: python
 
       - name: Upload packaged smoke diagnostics
-        if: >-
-          env.RUN_TESTS == 'true' && failure() && matrix.os == 'ubuntu-latest' &&
-          (github.event_name == 'workflow_dispatch' ||
-           needs.changes.result != 'success' ||
-           needs.changes.outputs.desktop_package != 'false')
+        if: failure() && matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v7
         with:
           name: desktop-packaged-smoke-linux-x64
@@ -418,12 +277,7 @@ jobs:
           retention-days: 7
 
   app-tests:
-    needs: changes
-    if: >-
-      ${{ !cancelled() &&
-          (github.event_name == 'workflow_dispatch' ||
-           needs.changes.result != 'success' ||
-           needs.changes.outputs.app != 'false') }}
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -449,12 +303,7 @@ jobs:
         run: npm run test --workspace=@otto-code/app
 
   android-native-tests:
-    needs: changes
-    if: >-
-      ${{ !cancelled() &&
-          (github.event_name == 'workflow_dispatch' ||
-           needs.changes.result != 'success' ||
-           needs.changes.outputs.android_native != 'false') }}
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -495,12 +344,7 @@ jobs:
           --no-daemon
 
   sdk-tests:
-    needs: changes
-    if: >-
-      ${{ !cancelled() &&
-          (github.event_name == 'workflow_dispatch' ||
-           needs.changes.result != 'success' ||
-           needs.changes.outputs.sdk != 'false') }}
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -528,7 +372,6 @@ jobs:
         run: npm run typecheck:examples --workspace=@otto-code/client
 
   playwright:
-    needs: changes
     if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
@@ -566,57 +409,43 @@ jobs:
       # The margin is wide because the cap covers job setup (install, browsers,
       # two builds) as well as the run itself.
       E2E_GLOBAL_TIMEOUT_MINUTES: "55"
-      RUN_TESTS: >-
-        ${{ github.event_name == 'workflow_dispatch' ||
-            needs.changes.result != 'success' ||
-            needs.changes.outputs.playwright != 'false' }}
     steps:
-      - name: Skip unaffected Playwright tests
-        if: env.RUN_TESTS != 'true'
-        run: echo "No Playwright changes detected."
-
       - uses: actions/checkout@v7.0.1
-        if: env.RUN_TESTS == 'true'
 
       - uses: actions/setup-node@v7
-        if: env.RUN_TESTS == 'true'
         with:
           node-version: "24"
           cache: "npm"
 
       - name: Install dependencies with retry
-        if: env.RUN_TESTS == 'true'
         run: node scripts/npm-retry.mjs ci
       - name: Install Playwright browsers
-        if: env.RUN_TESTS == 'true'
         timeout-minutes: 10
         run: npx playwright install chromium
 
       - name: Build app dependencies
-        if: env.RUN_TESTS == 'true'
         run: npm run build:app-deps
 
       - name: Build server stack
-        if: env.RUN_TESTS == 'true'
         run: npm run build:server
 
       - name: Install agent CLIs for provider tests
-        if: env.RUN_TESTS == 'true' && !matrix.desktop
+        if: ${{ !matrix.desktop }}
         run: node scripts/npm-retry.mjs install -g @anthropic-ai/claude-code @openai/codex@0.105.0 opencode-ai
 
       - name: Run Playwright E2E tests
-        if: env.RUN_TESTS == 'true' && !matrix.desktop
+        if: ${{ !matrix.desktop }}
         run: npm run test:e2e --workspace=@otto-code/app -- --shard=${{ matrix.shard }}/8
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
       - name: Run desktop-overlay Playwright tests
-        if: env.RUN_TESTS == 'true' && matrix.desktop
+        if: ${{ matrix.desktop }}
         run: npm run test:e2e:desktop --workspace=@otto-code/app
 
       - name: Upload test artifacts
         uses: actions/upload-artifact@v7
-        if: env.RUN_TESTS == 'true' && failure()
+        if: failure()
         with:
           name: playwright-results-${{ matrix.shard }}
           path: |
@@ -625,12 +454,7 @@ jobs:
           retention-days: 7
 
   relay-tests:
-    needs: changes
-    if: >-
-      ${{ !cancelled() &&
-          (github.event_name == 'workflow_dispatch' ||
-           needs.changes.result != 'success' ||
-           needs.changes.outputs.relay != 'false') }}
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -653,7 +477,6 @@ jobs:
         run: npm run test --workspace=@otto-code/relay
 
   cli-tests:
-    needs: changes
     if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
@@ -664,38 +487,24 @@ jobs:
     timeout-minutes: 25
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
-      RUN_TESTS: >-
-        ${{ github.event_name == 'workflow_dispatch' ||
-            needs.changes.result != 'success' ||
-            needs.changes.outputs.cli != 'false' }}
     steps:
-      - name: Skip unaffected CLI tests
-        if: env.RUN_TESTS != 'true'
-        run: echo "No CLI changes detected."
-
       - uses: actions/checkout@v7.0.1
-        if: env.RUN_TESTS == 'true'
 
       - uses: actions/setup-node@v7
-        if: env.RUN_TESTS == 'true'
         with:
           node-version: "24"
           cache: "npm"
 
       - name: Install dependencies
-        if: env.RUN_TESTS == 'true'
         run: node scripts/npm-retry.mjs ci
 
       - name: Build server stack
-        if: env.RUN_TESTS == 'true'
         run: npm run build:server
 
       - name: Install agent CLIs for provider tests
-        if: env.RUN_TESTS == 'true'
         run: node scripts/npm-retry.mjs install -g @anthropic-ai/claude-code @openai/codex@0.105.0 opencode-ai
 
       - name: Run CLI tests
-        if: env.RUN_TESTS == 'true'
         run: npm run test --workspace=@otto-code/cli
         env:
           OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0"

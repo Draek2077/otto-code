@@ -936,7 +936,16 @@ async function getRebaseHeadBranch(cwd: string): Promise<string | null> {
   return results.find((result): result is string => result !== null) ?? null;
 }
 
-async function getWorktreeRoot(cwd: string, context?: CheckoutContext): Promise<string | null> {
+/**
+ * The worktree root, or null when git says this is not a repository.
+ *
+ * Throws when the measurement itself failed (timeout, spawn failure, a killed
+ * process). Callers that only need a best-effort root use `getWorktreeRoot`,
+ * which flattens both cases to null; callers deciding whether a workspace *is*
+ * a git checkout must not, because reporting "not a repository" on a transient
+ * failure retracts the entire Git and PR control cluster from the client.
+ */
+async function measureWorktreeRoot(cwd: string, context?: CheckoutContext): Promise<string | null> {
   try {
     const { stdout } = await runGitCommand(["rev-parse", "--show-toplevel"], {
       cwd,
@@ -944,6 +953,22 @@ async function getWorktreeRoot(cwd: string, context?: CheckoutContext): Promise<
       logger: context?.logger,
     });
     return parseGitRevParsePath(stdout);
+  } catch (error) {
+    if (isGitError(error)) {
+      return null;
+    }
+    // A directory that no longer exists is an answer, not a failed measurement:
+    // git cannot even be spawned there, and the workspace really has no checkout.
+    if (!existsSync(cwd)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function getWorktreeRoot(cwd: string, context?: CheckoutContext): Promise<string | null> {
+  try {
+    return await measureWorktreeRoot(cwd, context);
   } catch {
     return null;
   }
@@ -1940,7 +1965,10 @@ async function inspectCheckoutContext(
   context?: CheckoutContext,
 ): Promise<CheckoutInspectionContext | null> {
   try {
-    const root = await getWorktreeRoot(cwd, context);
+    // Deliberately the throwing variant: this decides `isGit` for the whole
+    // workspace, so a failed measurement must surface as an error rather than
+    // as a confident "not a repository".
+    const root = await measureWorktreeRoot(cwd, context);
     if (!root) {
       return null;
     }

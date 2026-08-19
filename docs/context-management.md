@@ -217,28 +217,35 @@ the tab shows is a file that can actually arrive, and nothing can arrive that th
 
 Five decisions carry it, and each one is a way it could have silently broken:
 
-- **The file lands at the round boundary, as its own system message.** Not in the tool's result -
+- **The file lands at the round boundary, as its own message.** Not in the tool's result -
   `pruneToolOutputs` truncates aged tool results, so the rules would decay into a
   `[... chars pruned ...]` marker while the model still believed it was following them. Not spliced
   in the moment the tool ran either: that puts a message between an assistant `tool_calls` message
   and its `tool` results, which strict OpenAI-compatible servers reject. After the round's tool
   results and before the next request is built, the conversation is wire-valid and the model sees the
   file on the very next round - the first moment it could act on it anyway.
+- **It rides as a user message, never a system one.** A system message is what it is semantically,
+  and it is unusable on the wire: Qwen and GLM chat templates raise
+  `System message must be at the beginning` from Jinja for any system message after the first turn,
+  which llama.cpp returns as a 500 on that request and every one after it. The conversation is
+  poisoned for the rest of the session, so the user gets a dead chat rather than a degraded one. The
+  framing line above the file carries the meaning the role no longer does, and appending at the tail
+  leaves the cached prefix (system prompt, tool catalog, history) intact. Exactly one system message,
+  at index 0, is a wire invariant of this provider; `expectSystemMessageOnlyAtHead` pins it.
 - **A touched path contributes its whole chain below cwd, outermost first.** Editing
   `packages/app/src/foo.ts` is working under `packages/app` too, and the most specific file lands
   last so it reads as the most authoritative, matching the fixed chain's order.
 - **First visit wins, keyed case-insensitively on Windows** (`contextPathKey`, shared with the
   graph). A subtree touched twenty times loads once.
-- **Compaction pins them.** `serializeConversationForCompaction` drops system messages, so an
-  injected file caught in the summarize region would be neither summarized nor kept - it would simply
-  stop existing. They are lifted out of both regions and re-inserted directly under the rebuilt
-  system prompt.
+- **Compaction pins them.** A summary of a rules file is not a rules file: an injected file caught in
+  the summarize region would come back as a sentence about itself while the model went on believing
+  it still had the rules. They are lifted out of both regions and re-inserted verbatim after the
+  rebuilt system prompt, summary and ack, next to the retained tail.
 - **Rewind un-injects, resume does not.** The conversation is the record: `subtreeInstructionDir` on
   the message is the injection's identity, the already-injected set is rebuilt from `this.messages`
   after every rewrite, and a rewind past an injection makes that subtree loadable again - what is not
-  in the conversation is not being followed. A resumed session keeps the marked messages (the one
-  exception to "rebuild the system prompt, drop the restored one") and therefore does not inject a
-  second copy.
+  in the conversation is not being followed. A resumed session keeps the marked messages and
+  therefore does not inject a second copy; only the persisted system prompt is dropped and rebuilt.
 
 Which directories a tool call touched is answered by
 `providers/openai-compat-subtree-instructions.ts`, deliberately shape-agnostic: builtin tools name

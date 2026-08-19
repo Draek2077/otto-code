@@ -1,6 +1,60 @@
 import { useEffect, useState } from "react";
 import type { StreamItem } from "@/types/stream";
+import { isWeb } from "@/constants/platform";
 import { getIsAppVisible } from "@/utils/app-visibility";
+import { isElectronRuntime } from "@/desktop/host";
+import { invokeDesktopCommand } from "@/desktop/electron/invoke";
+
+// TEMP DIAGNOSTIC (2026-08-18): rolling in-memory trace for the tab-switch
+// replay report. On desktop it also auto-flushes to
+// $OTTO_HOME/reveal-traces/latest.json (see scheduleRevealTraceFlush below),
+// so reading it back needs no devtools/console step. On plain web (no desktop
+// bridge) it still needs the manual capture: run in the console
+//   copy(JSON.stringify(window.__revealTrace, null, 2))
+// Capped ring buffer so it never grows unbounded. Remove this once a root
+// cause lands.
+const REVEAL_TRACE_LIMIT = 20000;
+export function pushRevealTrace(entry: Record<string, unknown>): void {
+  if (!isWeb || typeof window === "undefined") return;
+  const globalWindow = window as unknown as { __revealTrace?: Record<string, unknown>[] };
+  const buffer = (globalWindow.__revealTrace ??= []);
+  buffer.push({ t: Date.now(), ...entry });
+  if (buffer.length > REVEAL_TRACE_LIMIT) {
+    buffer.splice(0, buffer.length - REVEAL_TRACE_LIMIT);
+  }
+  scheduleRevealTraceFlush();
+}
+
+// TEMP DIAGNOSTIC (2026-08-18): periodic best-effort flush of the reveal
+// trace buffer to disk, so a fresh session can read the file directly
+// instead of asking the user to run a console command mid-task. Runs at most
+// once per interval regardless of how often pushRevealTrace is called, and
+// skips the write entirely when the buffer hasn't grown since the last flush.
+const REVEAL_TRACE_FLUSH_INTERVAL_MS = 15_000;
+let revealTraceFlushTimer: ReturnType<typeof setInterval> | null = null;
+let revealTraceFlushedLength = 0;
+
+function scheduleRevealTraceFlush(): void {
+  if (revealTraceFlushTimer || typeof window === "undefined" || !isElectronRuntime()) return;
+  revealTraceFlushTimer = setInterval(() => {
+    void flushRevealTraceToDisk();
+  }, REVEAL_TRACE_FLUSH_INTERVAL_MS);
+}
+
+async function flushRevealTraceToDisk(): Promise<void> {
+  const globalWindow = window as unknown as { __revealTrace?: Record<string, unknown>[] };
+  const buffer = globalWindow.__revealTrace;
+  if (!buffer || buffer.length === 0 || buffer.length === revealTraceFlushedLength) return;
+  revealTraceFlushedLength = buffer.length;
+  try {
+    await invokeDesktopCommand("write_reveal_trace", {
+      contents: `${JSON.stringify(buffer, null, 2)}\n`,
+    });
+  } catch {
+    // Best-effort diagnostic flush - never let a write failure surface into
+    // the render path. The next interval retries.
+  }
+}
 
 const REVEAL_TICK_MS = 32;
 const MIN_CHARS_PER_TICK = 2;
@@ -210,14 +264,36 @@ export class TurnRevealTicker {
   private keyWasDisabled = false;
   private readonly isOnScreen: () => boolean;
   private readonly listeners = new Set<() => void>();
+  // TEMP DIAGNOSTIC (2026-08-18): traces the tab-switch replay report. Remove
+  // once a root cause lands - see .otto/knowledge for the finding this feeds.
+  private readonly debugLabel?: string;
 
-  constructor(params: { turnKey: string; target: number; isOnScreen?: () => boolean }) {
+  constructor(params: {
+    turnKey: string;
+    target: number;
+    isOnScreen?: () => boolean;
+    debugLabel?: string;
+  }) {
     this.turnKey = params.turnKey;
     this.target = params.target;
     // Mount caught-up: opening a screen mid-turn never replays history.
     this.revealed = params.target;
     // Injected rather than imported so the ticker stays a pure unit under test.
     this.isOnScreen = params.isOnScreen ?? (() => true);
+    this.debugLabel = params.debugLabel;
+    if (this.debugLabel) {
+      // eslint-disable-next-line no-console
+      console.info(
+        `[reveal-trace:${this.debugLabel}] CONSTRUCT key=${this.turnKey} target=${this.target} revealed=${this.revealed}`,
+      );
+      pushRevealTrace({
+        label: this.debugLabel,
+        event: "CONSTRUCT",
+        key: this.turnKey,
+        target: this.target,
+        revealed: this.revealed,
+      });
+    }
   }
 
   /**
@@ -258,6 +334,16 @@ export class TurnRevealTicker {
     // A caller with no panel context (transcript dialog, tests) is always on.
     const visible = params.visible ?? true;
     const dataSettled = params.dataSettled ?? true;
+    const before = this.debugLabel
+      ? {
+          revealed: this.revealed,
+          target: this.target,
+          turnKey: this.turnKey,
+          wasVisible: this.wasVisible,
+          pendingReturnSnap: this.pendingReturnSnap,
+          keyWasDisabled: this.keyWasDisabled,
+        }
+      : undefined;
 
     if (params.turnKey !== this.turnKey) {
       // Decide by STATUS HISTORY, not target size. If the key we are leaving
@@ -291,6 +377,35 @@ export class TurnRevealTicker {
     if (this.pendingReturnSnap && dataSettled) {
       this.pendingReturnSnap = false;
     }
+    if (before && this.debugLabel) {
+      // eslint-disable-next-line no-console
+      console.info(
+        `[reveal-trace:${this.debugLabel}] UPDATE` +
+          ` in{key=${params.turnKey} target=${params.target} enabled=${params.enabled} visible=${visible} dataSettled=${dataSettled}}` +
+          ` before{revealed=${before.revealed} target=${before.target} key=${before.turnKey} wasVisible=${before.wasVisible} pendingReturnSnap=${before.pendingReturnSnap} keyWasDisabled=${before.keyWasDisabled}}` +
+          ` after{revealed=${this.revealed} target=${this.target} key=${this.turnKey} wasVisible=${this.wasVisible} pendingReturnSnap=${this.pendingReturnSnap} keyWasDisabled=${this.keyWasDisabled}}`,
+      );
+      pushRevealTrace({
+        label: this.debugLabel,
+        event: "UPDATE",
+        in: {
+          key: params.turnKey,
+          target: params.target,
+          enabled: params.enabled,
+          visible,
+          dataSettled,
+        },
+        before,
+        after: {
+          revealed: this.revealed,
+          target: this.target,
+          key: this.turnKey,
+          wasVisible: this.wasVisible,
+          pendingReturnSnap: this.pendingReturnSnap,
+          keyWasDisabled: this.keyWasDisabled,
+        },
+      });
+    }
   }
 
   tick = (): void => {
@@ -303,6 +418,20 @@ export class TurnRevealTicker {
     const next = this.isOnScreen() ? nextRevealLength(this.revealed, this.target) : this.target;
     if (next === this.revealed) {
       return;
+    }
+    if (this.debugLabel) {
+      // eslint-disable-next-line no-console
+      console.info(
+        `[reveal-trace:${this.debugLabel}] TICK key=${this.turnKey} revealed=${this.revealed}->${next} target=${this.target}`,
+      );
+      pushRevealTrace({
+        label: this.debugLabel,
+        event: "TICK",
+        key: this.turnKey,
+        revealedFrom: this.revealed,
+        revealedTo: next,
+        target: this.target,
+      });
     }
     this.revealed = next;
     for (const listener of this.listeners) {
@@ -380,6 +509,8 @@ export function useTurnRevealTicker(params: {
   enabled: boolean;
   visible?: boolean;
   dataSettled?: boolean;
+  // TEMP DIAGNOSTIC (2026-08-18): see TurnRevealTicker.debugLabel.
+  debugLabel?: string;
 }): TurnRevealTicker {
   const [ticker] = useState(() => new TurnRevealTicker({ ...params, isOnScreen: getIsAppVisible }));
   ticker.update(params);

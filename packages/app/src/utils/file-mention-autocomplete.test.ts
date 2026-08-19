@@ -50,10 +50,32 @@ describe("findActiveFileMention", () => {
   });
 });
 
+// The quoted, escaped form is the intended user-visible representation of a
+// file mention (see formatQuotedFileMentionPath for why): the composer shows
+// exactly what the agent receives, and copy/rewind/history never diverge from
+// it. These tests pin that contract, including the escaping that keeps the
+// path unambiguous for the model.
 describe("formatQuotedFileMentionPath", () => {
   it("quotes workspace-relative paths using file mention escaping", () => {
     expect(formatQuotedFileMentionPath('src/changed "file".ts')).toBe(
       '"src/changed \\"file\\".ts"',
+    );
+  });
+
+  it("escapes backslashes before double quotes", () => {
+    expect(formatQuotedFileMentionPath("src\\dir\\file.ts")).toBe('"src\\\\dir\\\\file.ts"');
+  });
+
+  it("escapes backslashes that directly precede quotes", () => {
+    // Input dir\"file.ts -> backslash first, then quote: dir\\\"file.ts,
+    // wrapped -> "dir\\\"file.ts". Order matters: a quote-first pass would
+    // turn the backslash into part of the quote's escape.
+    expect(formatQuotedFileMentionPath('dir\\"file.ts')).toBe('"dir\\\\\\"file.ts"');
+  });
+
+  it("leaves plain relative paths unquoted in content, only wrapped", () => {
+    expect(formatQuotedFileMentionPath("src/components/chat.tsx")).toBe(
+      '"src/components/chat.tsx"',
     );
   });
 });

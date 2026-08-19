@@ -57,6 +57,7 @@ import {
 } from "@/components/sidebar/use-sidebar-reveal-controller";
 import { useSidebarRowAnchor } from "@/components/sidebar/use-sidebar-row-anchor";
 import { workspaceRowKey } from "@/components/sidebar/sidebar-row-anchors";
+import { PinnedSectionHeader } from "@/components/sidebar/pinned-section-header";
 
 // Themed icon wrappers
 const foregroundMutedColorMapping = (theme: Theme) => ({
@@ -83,6 +84,7 @@ const ThemedCircleCheck = withUnistyles(CircleCheck);
 const ThemedCircleDot = withUnistyles(CircleDot);
 interface StatusWorkspaceListProps {
   groups: StatusGroup[];
+  pinnedWorkspaces: SidebarWorkspaceEntry[];
   projectNamesByKey: Map<string, string>;
   shortcutIndexByWorkspaceKey: Map<string, number>;
   showShortcutBadges: boolean;
@@ -93,6 +95,7 @@ interface StatusWorkspaceListProps {
 
 export function SidebarStatusWorkspaceList({
   groups,
+  pinnedWorkspaces,
   projectNamesByKey,
   shortcutIndexByWorkspaceKey,
   showShortcutBadges,
@@ -102,6 +105,11 @@ export function SidebarStatusWorkspaceList({
 }: StatusWorkspaceListProps) {
   const collapsedStatusGroupKeys = useSidebarCollapsedSectionsStore(
     (state) => state.collapsedStatusGroupKeys,
+  );
+
+  const pinnedCollapsed = useSidebarCollapsedSectionsStore((state) => state.collapsedPinned);
+  const togglePinnedCollapsed = useSidebarCollapsedSectionsStore(
+    (state) => state.togglePinnedCollapsed,
   );
 
   const statusShortcutIndex = showShortcutBadges ? shortcutIndexByWorkspaceKey : new Map();
@@ -116,6 +124,33 @@ export function SidebarStatusWorkspaceList({
     revealScrollRef,
   );
 
+  // Pinned chats are already filtered out of the status groups upstream, so the
+  // section is the only place they render in status mode. Shared by both scroll
+  // containers below so the two platform branches cannot drift apart.
+  const pinnedContent =
+    pinnedWorkspaces.length > 0 ? (
+      <View style={styles.pinnedSection} testID="sidebar-pinned-section">
+        <PinnedSectionHeader collapsed={pinnedCollapsed} onToggle={togglePinnedCollapsed} />
+        {pinnedCollapsed
+          ? null
+          : pinnedWorkspaces.map((workspace) => (
+              <StatusWorkspaceRow
+                key={workspace.workspaceKey}
+                workspace={workspace}
+                subtitle={buildStatusRowSubtitle({
+                  projectName: projectNamesByKey.get(workspace.projectKey) ?? "",
+                  hostLabel: showHostLabels
+                    ? (hostLabelByServerId.get(workspace.serverId) ?? workspace.serverId)
+                    : null,
+                })}
+                shortcutNumber={statusShortcutIndex.get(workspace.workspaceKey) ?? null}
+                showShortcutBadge={showShortcutBadges}
+                onWorkspacePress={onWorkspacePress}
+              />
+            ))}
+      </View>
+    ) : null;
+
   return (
     <View style={styles.container} ref={revealContainerRef}>
       {platformIsNative ? (
@@ -127,6 +162,7 @@ export function SidebarStatusWorkspaceList({
           maintainVisibleContentPosition={SIDEBAR_STATUS_LIST_MAINTAIN_VISIBLE_CONTENT_POSITION}
           testID="sidebar-status-list-scroll"
         >
+          {pinnedContent}
           <StatusGroupList
             groups={groups}
             collapsedStatusGroupKeys={collapsedStatusGroupKeys}
@@ -149,6 +185,7 @@ export function SidebarStatusWorkspaceList({
           maintainVisibleContentPosition={SIDEBAR_STATUS_LIST_MAINTAIN_VISIBLE_CONTENT_POSITION}
           testID="sidebar-status-list-scroll"
         >
+          {pinnedContent}
           <StatusGroupList
             groups={groups}
             collapsedStatusGroupKeys={collapsedStatusGroupKeys}
@@ -713,6 +750,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   list: {
     flex: 1,
+  },
+  pinnedSection: {
+    marginBottom: theme.spacing[1],
   },
   listContent: {
     paddingHorizontal: theme.spacing[2],

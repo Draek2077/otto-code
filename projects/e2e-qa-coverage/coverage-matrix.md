@@ -205,6 +205,7 @@ someone to run it by hand.
 | Push CTA reconcile: CTA returns after commit → re-dirty (CI-green; Windows-local EPERM noise) | 🟡     | `git-cta-push-reconcile.spec.ts`            | T1   | P1  |
 | Bitbucket Cloud forge parity (PR pane against Bitbucket fixtures)                             | ❌     | mirror `pr-pane` with Bitbucket fixture set | T1   | P2  |
 | Commit diff panel (open a commit, render its diff)                                            | 🟡     | `commit-diff-panel.spec.ts`                 | T1   | -   |
+| Conventional commit type selector (opens, and prefixes the manual commit message)             | ✅     | `commit-type-selector.verify.spec.ts`       | T1   | -   |
 
 ## 11. Settings & i18n
 

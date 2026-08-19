@@ -1,13 +1,6 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactElement,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { Linking, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import type { PressableStateCallbackType } from "react-native";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -18,6 +11,9 @@ import { useSessionStore } from "@/stores/session-store";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { COMPACT_CONTROL_HEIGHT } from "@/components/ui/control-geometry";
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
+import { HostPicker, HostStatusDotSlot } from "@/components/hosts/host-picker";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,6 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Check,
+  ChevronDown,
   ExternalLink,
   ListChevronsUpDown,
   MoreVertical,
@@ -59,96 +56,24 @@ interface KanbanSelection {
   boardId: string | null;
 }
 
-/**
- * Material symbol icons are SVGs that paint with an explicit color. The color
- * comes from the resolved style token (a string, not a hook), so this stays a
- * plain component and never reaches for `useUnistyles`.
- */
-function KanbanIcon({
-  icon: Icon,
-  size,
-  color,
-}: {
-  icon: IconComponent;
-  size: number;
-  color: string;
-}): ReactElement {
-  return <Icon size={size} color={color} />;
-}
-
-// ── Host + project pickers ──────────────────────────────────────────────────
-
-interface PickerChipProps {
-  label: string;
-  isSelected: boolean;
-  /** Stable id the parent's `onSelect` is called with when the chip is pressed. */
-  id: string;
-  onSelect: (id: string) => void;
-  testID: string;
+interface KanbanHostProject {
+  serverId: string;
+  projectId: string;
+  projectKey: string | null;
+  projectName: string;
+  hasTarget: boolean;
 }
 
 /**
- * A single selectable chip in a picker row. The chip owns its press binding
- * (built from the stable `onSelect` + `id`), so the parent never has to hand
- * down an inline closure - the screen-level lint rule keeps those out of JSX.
+ * Owns host -> project -> board selection state and its auto-select effects,
+ * isolated from KanbanScreen so the screen component itself stays under the
+ * complexity budget. Mirrors the state machine documented in
+ * kanban-screen-state.ts: host picker -> project picker -> board.
  */
-function PickerChip({ label, isSelected, id, onSelect, testID }: PickerChipProps): ReactElement {
-  const handlePress = useCallback(() => onSelect(id), [onSelect, id]);
-  const chipStyle = useCallback(
-    ({ pressed }: { pressed: boolean }) => [
-      styles.pickerChip,
-      isSelected ? styles.pickerChipSelected : null,
-      pressed ? styles.pickerChipPressed : null,
-    ],
-    [isSelected],
-  );
-  return (
-    <Pressable
-      testID={testID}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={handlePress}
-      style={chipStyle}
-    >
-      <Text style={styles.pickerChipText} numberOfLines={1}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-interface PickerRowProps {
-  label: string;
-  children: ReactNode;
-  testID: string;
-}
-
-function PickerRow({ label, children, testID }: PickerRowProps): ReactElement {
-  return (
-    <View style={styles.pickerRow} testID={testID}>
-      <Text style={styles.pickerLabel}>{label}</Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.pickerScroll}
-        contentContainerStyle={styles.pickerScrollContent}
-      >
-        {children}
-      </ScrollView>
-    </View>
-  );
-}
-
-// ── Screen ──────────────────────────────────────────────────────────────────
-
-export function KanbanScreen(): ReactElement {
-  const { t } = useTranslation();
-  const router = useRouter();
-  const hosts = useHosts();
-  const sessions = useSessionStore((state) => state.sessions);
-  const { projects, refetch: refetchProjects } = useProjects();
-
-  const [refreshKey, setRefreshKey] = useState(0);
+function useKanbanSelectionState(
+  kanbanHosts: { serverId: string; label: string }[],
+  projects: ReturnType<typeof useProjects>["projects"],
+) {
   const [selectedHost, setSelectedHost] = useState<string | null>(null);
   // Last selection per host, kept in component state only (no persisted
   // setting in this phase). Switching hosts and back restores the choice.
@@ -171,29 +96,9 @@ export function KanbanScreen(): ReactElement {
 
   const selectHost = useCallback((hostId: string) => setSelectedHost(hostId), []);
 
-  // ── Derive the kanban-capable host list ──────────────────────────────────
-  const kanbanHosts = useMemo(
-    () =>
-      hosts.filter((host) => {
-        const session = sessions[host.serverId];
-        return (
-          session?.serverInfo?.features?.kanbanBoard === true &&
-          getHostRuntimeStore().getClient(host.serverId) !== null
-        );
-      }),
-    [hosts, sessions],
-  );
-
-  // ── Derive projects for the selected host ────────────────────────────────
   const hostProjects = useMemo(() => {
     if (!selectedHost) return [];
-    const entries: {
-      serverId: string;
-      projectId: string;
-      projectKey: string | null;
-      projectName: string;
-      hasTarget: boolean;
-    }[] = [];
+    const entries: KanbanHostProject[] = [];
     for (const project of projects) {
       for (const hostEntry of project.hosts) {
         if (hostEntry.serverId === selectedHost) {
@@ -247,7 +152,7 @@ export function KanbanScreen(): ReactElement {
     [selectedHost],
   );
 
-  // ── Auto-select host ──────────────────────────────────────────────────────
+  // Auto-select host when exactly one is kanban-capable.
   useEffect(() => {
     if (
       kanbanHosts.length === 1 &&
@@ -257,9 +162,8 @@ export function KanbanScreen(): ReactElement {
     }
   }, [kanbanHosts, selectedHost]);
 
-  // ── Auto-select project when host changes ─────────────────────────────────
-  // Restores the host's last selection if it still exists; otherwise picks the
-  // first project.
+  // Auto-select project when the host changes: restores the host's last
+  // selection if it still exists, otherwise picks the first project.
   useEffect(() => {
     if (!selectedHost) return;
     const existing = selections[selectedHost];
@@ -279,18 +183,52 @@ export function KanbanScreen(): ReactElement {
     });
   }, [selectedHost, hostProjects, hostProjectMap, selections, updateSelection]);
 
-  // ── Fetch boards for the selected project ─────────────────────────────────
-  const selectedServerId = selection?.serverId ?? null;
-  const selectedProjectId = selection?.projectId ?? null;
-  const selectedProjectKey = selection?.projectKey ?? null;
+  return {
+    selectedHost,
+    selection,
+    hostProjects,
+    hostProjectMap,
+    selectHost,
+    selectProject,
+    selectBoard,
+    updateSelection,
+  };
+}
 
+/**
+ * Fetches boards for the selected project, keeps the sticky board selection in
+ * sync with the fetched list, and resolves the screen's body state. Isolated
+ * from KanbanScreen for the same reason as useKanbanSelectionState.
+ */
+function useKanbanBoardResolution(input: {
+  kanbanHosts: { serverId: string; label: string }[];
+  selectedHost: string | null;
+  selection: KanbanSelection | null;
+  hostProjects: KanbanHostProject[];
+  hostProjectMap: Map<string, KanbanHostProject>;
+  updateSelection: (hostId: string, next: KanbanSelection | null) => void;
+  refreshKey: number;
+}) {
+  const {
+    kanbanHosts,
+    selectedHost,
+    selection,
+    hostProjects,
+    hostProjectMap,
+    updateSelection,
+    refreshKey,
+  } = input;
   const {
     boards,
     isLoading: boardsLoading,
     error: boardsError,
-  } = useKanbanBoards(selectedServerId, selectedProjectId, selectedProjectKey, refreshKey);
+  } = useKanbanBoards(
+    selection?.serverId ?? null,
+    selection?.projectId ?? null,
+    selection?.projectKey ?? null,
+    refreshKey,
+  );
 
-  // ── Auto-select board ─────────────────────────────────────────────────────
   // Default to the first board; keep a manual choice sticky while it is still
   // in the list.
   useEffect(() => {
@@ -305,15 +243,11 @@ export function KanbanScreen(): ReactElement {
     }
   }, [boards, selection, selectedHost, updateSelection]);
 
-  // ── Resolve the board's provider from the daemon's board ref ─────────────
-  const selectedBoardRef = useMemo(
-    () =>
-      selection?.boardId ? (boards.find((b) => b.boardId === selection.boardId) ?? null) : null,
-    [boards, selection],
-  );
-  const boardProviderId = selectedBoardRef?.providerId ?? null;
+  const boardProviderId = useMemo(() => {
+    if (!selection?.boardId) return null;
+    return boards.find((b) => b.boardId === selection.boardId)?.providerId ?? null;
+  }, [boards, selection]);
 
-  // ── State machine ─────────────────────────────────────────────────────────
   // The daemon answers an unconfigured project with KANBAN_NOT_CONFIGURED.
   // Treat that as the unconfigured state, not a board error, so a stale
   // descriptor still lands on the watermark rather than a raw error message.
@@ -339,6 +273,281 @@ export function KanbanScreen(): ReactElement {
     boardCount: boards.length,
   });
 
+  return { boards, boardProviderId, state };
+}
+
+/**
+ * Material symbol icons are SVGs that paint with an explicit color. The color
+ * comes from the resolved style token (a string, not a hook), so this stays a
+ * plain component and never reaches for `useUnistyles`.
+ */
+function KanbanIcon({
+  icon: Icon,
+  size,
+  color,
+}: {
+  icon: IconComponent;
+  size: number;
+  color: string;
+}): ReactElement {
+  return <Icon size={size} color={color} />;
+}
+
+// ── Host + project + board pickers ──────────────────────────────────────────
+//
+// The three pickers below all follow the same filter-chip pattern used by
+// HostFilter/ProjectFilter (Sessions, Schedules, Artifacts): a compact
+// Pressable trigger anchoring a Combobox-based popover. Unlike HostFilter,
+// none of these carry an "all" option - the Kanban screen always resolves to
+// exactly one host, project, and board.
+
+interface FilterTriggerProps {
+  label: string;
+  accessibilityLabel: string;
+  onPress: () => void;
+  isOpen: boolean;
+  triggerRef: React.RefObject<View | null>;
+  testID: string;
+}
+
+function FilterTrigger({
+  label,
+  accessibilityLabel,
+  onPress,
+  isOpen,
+  triggerRef,
+  testID,
+}: FilterTriggerProps): ReactElement {
+  const triggerStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.filterTrigger,
+      (Boolean(hovered) || pressed || isOpen) && styles.filterTriggerActive,
+    ],
+    [isOpen],
+  );
+  return (
+    <View ref={triggerRef} collapsable={false}>
+      <Pressable
+        onPress={onPress}
+        style={triggerStyle}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        testID={testID}
+      >
+        <Text style={styles.filterTriggerText} numberOfLines={1}>
+          {label}
+        </Text>
+        <ChevronDown size={14} color={styles.chevron.color} />
+      </Pressable>
+    </View>
+  );
+}
+
+interface KanbanHostFilterProps {
+  hosts: { serverId: string; label: string }[];
+  selectedHost: string;
+  onSelectHost: (serverId: string) => void;
+}
+
+/**
+ * Same trigger chrome as FilterTrigger, plus the host status dot - kept as its
+ * own Pressable (rather than a `leading` slot on FilterTrigger) so the trigger
+ * never takes a JSX element as a prop.
+ */
+function KanbanHostFilter({
+  hosts,
+  selectedHost,
+  onSelectHost,
+}: KanbanHostFilterProps): ReactElement {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<View>(null);
+  const handleOpen = useCallback(() => setOpen(true), []);
+  const selectedLabel = hosts.find((host) => host.serverId === selectedHost)?.label ?? "";
+  const hostOptionTestID = useCallback((serverId: string) => `kanban-host-${serverId}`, []);
+  const triggerStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.filterTrigger,
+      (Boolean(hovered) || pressed || open) && styles.filterTriggerActive,
+    ],
+    [open],
+  );
+
+  return (
+    <HostPicker
+      hosts={hosts}
+      value={selectedHost}
+      onSelect={onSelectHost}
+      open={open}
+      onOpenChange={setOpen}
+      anchorRef={anchorRef}
+      searchable={hosts.length > 6}
+      title={t("kanban.host")}
+      desktopPlacement="bottom-start"
+      hostOptionTestID={hostOptionTestID}
+    >
+      <View ref={anchorRef} collapsable={false}>
+        <Pressable
+          onPress={handleOpen}
+          style={triggerStyle}
+          accessibilityRole="button"
+          accessibilityLabel={`${t("kanban.host")}: ${selectedLabel}`}
+          testID="kanban-host-filter-trigger"
+        >
+          <HostStatusDotSlot serverId={selectedHost} />
+          <Text style={styles.filterTriggerText} numberOfLines={1}>
+            {selectedLabel}
+          </Text>
+          <ChevronDown size={14} color={styles.chevron.color} />
+        </Pressable>
+      </View>
+    </HostPicker>
+  );
+}
+
+interface KanbanProjectFilterProps {
+  options: { id: string; label: string }[];
+  value: string;
+  onChange: (projectId: string) => void;
+}
+
+function KanbanProjectFilter({ options, value, onChange }: KanbanProjectFilterProps): ReactElement {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<View>(null);
+  const handleOpen = useCallback(() => setOpen(true), []);
+  const comboboxOptions = useMemo<ComboboxOption[]>(
+    () => options.map((option) => ({ id: option.id, label: option.label })),
+    [options],
+  );
+  const handleSelect = useCallback(
+    (id: string) => {
+      onChange(id);
+      setOpen(false);
+    },
+    [onChange],
+  );
+  const selectedLabel = options.find((option) => option.id === value)?.label ?? "";
+
+  return (
+    <>
+      <FilterTrigger
+        label={selectedLabel}
+        accessibilityLabel={`${t("kanban.project")}: ${selectedLabel}`}
+        onPress={handleOpen}
+        isOpen={open}
+        triggerRef={anchorRef}
+        testID="kanban-project-filter-trigger"
+      />
+      <Combobox
+        options={comboboxOptions}
+        value={value}
+        onSelect={handleSelect}
+        searchable={comboboxOptions.length > 6}
+        title={t("kanban.project")}
+        open={open}
+        onOpenChange={setOpen}
+        anchorRef={anchorRef}
+        desktopPlacement="bottom-start"
+      />
+    </>
+  );
+}
+
+interface KanbanBoardFilterProps {
+  options: { id: string; label: string }[];
+  value: string;
+  onChange: (boardId: string) => void;
+}
+
+function KanbanBoardFilter({ options, value, onChange }: KanbanBoardFilterProps): ReactElement {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<View>(null);
+  const handleOpen = useCallback(() => setOpen(true), []);
+  const comboboxOptions = useMemo<ComboboxOption[]>(
+    () => options.map((option) => ({ id: option.id, label: option.label })),
+    [options],
+  );
+  const handleSelect = useCallback(
+    (id: string) => {
+      onChange(id);
+      setOpen(false);
+    },
+    [onChange],
+  );
+  const selectedLabel = options.find((option) => option.id === value)?.label ?? "";
+
+  return (
+    <>
+      <FilterTrigger
+        label={selectedLabel}
+        accessibilityLabel={`${t("kanban.board")}: ${selectedLabel}`}
+        onPress={handleOpen}
+        isOpen={open}
+        triggerRef={anchorRef}
+        testID="kanban-board-filter-trigger"
+      />
+      <Combobox
+        options={comboboxOptions}
+        value={value}
+        onSelect={handleSelect}
+        searchable={comboboxOptions.length > 6}
+        title={t("kanban.board")}
+        open={open}
+        onOpenChange={setOpen}
+        anchorRef={anchorRef}
+        desktopPlacement="bottom-start"
+      />
+    </>
+  );
+}
+
+// ── Screen ──────────────────────────────────────────────────────────────────
+
+export function KanbanScreen(): ReactElement {
+  const { t } = useTranslation();
+  const router = useRouter();
+  const hosts = useHosts();
+  const sessions = useSessionStore((state) => state.sessions);
+  const { projects, refetch: refetchProjects } = useProjects();
+
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // ── Derive the kanban-capable host list ──────────────────────────────────
+  const kanbanHosts = useMemo(
+    () =>
+      hosts.filter((host) => {
+        const session = sessions[host.serverId];
+        return (
+          session?.serverInfo?.features?.kanbanBoard === true &&
+          getHostRuntimeStore().getClient(host.serverId) !== null
+        );
+      }),
+    [hosts, sessions],
+  );
+
+  const {
+    selectedHost,
+    selection,
+    hostProjects,
+    hostProjectMap,
+    selectHost,
+    selectProject,
+    selectBoard,
+    updateSelection,
+  } = useKanbanSelectionState(kanbanHosts, projects);
+
+  const { boards, boardProviderId, state } = useKanbanBoardResolution({
+    kanbanHosts,
+    selectedHost,
+    selection,
+    hostProjects,
+    hostProjectMap,
+    updateSelection,
+    refreshKey,
+  });
+
   // ── Refresh ───────────────────────────────────────────────────────────────
   const handleRefresh = useCallback(() => {
     setRefreshKey((key) => key + 1);
@@ -359,56 +568,48 @@ export function KanbanScreen(): ReactElement {
     [handleRefresh, t],
   );
 
+  const showHostFilter = kanbanHosts.length > 1;
+  const showProjectFilter = Boolean(selectedHost) && hostProjects.length > 1;
+  const showBoardFilter = state.kind === "board" && boards.length > 1;
+  const showFilterRow = showHostFilter || showProjectFilter || showBoardFilter;
+
+  const projectFilterOptions = useMemo(
+    () => hostProjects.map((project) => ({ id: project.projectId, label: project.projectName })),
+    [hostProjects],
+  );
+  const boardFilterOptions = useMemo(
+    () => boards.map((board) => ({ id: board.boardId, label: board.title })),
+    [boards],
+  );
+
   return (
     <View style={styles.container}>
       <MenuHeader title={t("kanban.title")} rightContent={refreshButton} />
 
-      {/* Host picker: hidden when there is exactly one kanban-capable host */}
-      {kanbanHosts.length > 1 ? (
-        <PickerRow label={t("kanban.host")} testID="kanban-picker-host">
-          {kanbanHosts.map((host) => (
-            <PickerChip
-              key={host.serverId}
-              label={host.label}
-              isSelected={selectedHost === host.serverId}
-              id={host.serverId}
-              onSelect={selectHost}
-              testID={`kanban-host-${host.serverId}`}
+      {showFilterRow ? (
+        <View style={styles.controlsRow} testID="kanban-controls-row">
+          {showHostFilter ? (
+            <KanbanHostFilter
+              hosts={kanbanHosts}
+              selectedHost={selectedHost ?? ""}
+              onSelectHost={selectHost}
             />
-          ))}
-        </PickerRow>
-      ) : null}
-
-      {/* Project picker: shown when a host is selected and has >1 project */}
-      {selectedHost && hostProjects.length > 1 ? (
-        <PickerRow label={t("kanban.project")} testID="kanban-picker-project">
-          {hostProjects.map((project) => (
-            <PickerChip
-              key={project.projectId}
-              label={project.projectName}
-              isSelected={selection?.projectId === project.projectId}
-              id={project.projectId}
-              onSelect={selectProject}
-              testID={`kanban-project-${project.projectId}`}
+          ) : null}
+          {showProjectFilter ? (
+            <KanbanProjectFilter
+              options={projectFilterOptions}
+              value={selection?.projectId ?? ""}
+              onChange={selectProject}
             />
-          ))}
-        </PickerRow>
-      ) : null}
-
-      {/* Board picker: shown when the project resolves to >1 board */}
-      {state.kind === "board" && boards.length > 1 ? (
-        <PickerRow label={t("kanban.board")} testID="kanban-picker-board">
-          {boards.map((board) => (
-            <PickerChip
-              key={board.boardId}
-              label={board.title}
-              isSelected={selection?.boardId === board.boardId}
-              id={board.boardId}
-              onSelect={selectBoard}
-              testID={`kanban-board-${board.boardId}`}
+          ) : null}
+          {showBoardFilter ? (
+            <KanbanBoardFilter
+              options={boardFilterOptions}
+              value={selection?.boardId ?? ""}
+              onChange={selectBoard}
             />
-          ))}
-        </PickerRow>
+          ) : null}
+        </View>
       ) : null}
 
       {state.kind === "board" && selection?.boardId && boardProviderId ? (
@@ -1087,50 +1288,44 @@ const styles = StyleSheet.create((theme) => ({
     textAlign: "center",
     maxWidth: 360,
   },
-  picker: {
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    paddingTop: theme.spacing[3],
-    paddingBottom: theme.spacing[2],
+  // Host/project/board filters share one row, matching the Sessions/Schedules
+  // controls row (docs/design.md filter-bar convention).
+  controlsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: theme.spacing[3],
+    paddingHorizontal: {
+      xs: theme.spacing[3],
+      md: theme.spacing[6],
+    },
+    paddingVertical: theme.spacing[3],
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
   },
-  pickerRow: {
+  filterTrigger: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    paddingBottom: theme.spacing[1],
-  },
-  pickerLabel: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.semibold,
-    width: 64,
-  },
-  pickerScroll: {
-    flexShrink: 1,
-  },
-  pickerScrollContent: {
-    gap: theme.spacing[2],
-  },
-  pickerChip: {
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[1],
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.surface1,
+    backgroundColor: theme.colors.surface2,
+    borderRadius: theme.borderRadius.md,
     borderWidth: 1,
     borderColor: theme.colors.border,
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[1],
+    minHeight: COMPACT_CONTROL_HEIGHT,
+    maxWidth: 240,
   },
-  pickerChipSelected: {
-    backgroundColor: theme.colors.surface2,
+  filterTriggerActive: {
     borderColor: theme.colors.borderAccent,
   },
-  pickerChipPressed: {
-    backgroundColor: theme.colors.surface3,
-  },
-  pickerChipText: {
+  filterTriggerText: {
+    flexShrink: 1,
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
-    maxWidth: 200,
+  },
+  chevron: {
+    color: theme.colors.foregroundMuted,
   },
   board: {
     flex: 1,

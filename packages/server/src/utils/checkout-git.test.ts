@@ -249,6 +249,35 @@ describe("checkout git utilities", () => {
     );
   });
 
+  it("reports a non-git directory as a non-git checkout", async () => {
+    const nonGitDir = join(tempDir, "facts-not-git");
+    mkdirSync(nonGitDir, { recursive: true });
+
+    await expect(getCheckoutSnapshotFacts(nonGitDir, { ottoHome })).resolves.toEqual({
+      isGit: false,
+    });
+  });
+
+  it("reports a directory that no longer exists as a non-git checkout", async () => {
+    const goneDir = join(tempDir, "facts-deleted");
+
+    await expect(getCheckoutSnapshotFacts(goneDir, { ottoHome })).resolves.toEqual({
+      isGit: false,
+    });
+  });
+
+  it("throws rather than claiming non-git when the measurement itself fails", async () => {
+    // A corrupt gitfile makes `rev-parse` fail with something other than "not a
+    // git repository", standing in for the transient failures (command timeout,
+    // spawn failure) that must not retract the workspace's git identity: the
+    // client hangs the entire Git and PR control cluster off `isGit`.
+    const brokenRepo = join(tempDir, "facts-broken-gitfile");
+    mkdirSync(brokenRepo, { recursive: true });
+    writeFileSync(join(brokenRepo, ".git"), "garbage");
+
+    await expect(getCheckoutSnapshotFacts(brokenRepo, { ottoHome })).rejects.toThrow();
+  });
+
   it("returns null for getCurrentBranch in a repo with no commits", async () => {
     const emptyRepo = join(tempDir, "empty-repo");
     mkdirSync(emptyRepo, { recursive: true });

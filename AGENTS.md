@@ -102,6 +102,11 @@ See [docs/development.md](docs/development.md) for full setup, build sync requir
 
 ## Critical rules
 
+- **Temporary files for a job live in `.tmp/`.** When you create a script, a diff, or any
+  other throwaway file to do a task - a helper script, a scratch diff, a generated report, test
+  output piped to a file, a scratch fixture - write it inside `.tmp/` at the repo root, never
+  loose in the repo. `.tmp/` is already gitignored, so nothing you scratch there can leak into a
+  commit. Delete it when the job is done.
 - **Commits carry one author: Philippe, and no AI attribution.** Every commit in this repo is
   authored and committed as `Draekz <draekz@gmail.com>`. Never add a `Co-Authored-By:` trailer for
   Claude or any other model, never add a "Generated with Claude Code" line, and never mention Claude

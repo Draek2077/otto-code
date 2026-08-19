@@ -4,6 +4,12 @@
 
 - Node.js (see `.tool-versions` for exact version)
 - npm workspaces (comes with Node)
+- Python 3 on PATH (`python3`, `python`, or the Windows `py` launcher), needed only for
+  desktop packaging: the electron-builder before-pack hook freezes the Zoom Recorder helper
+  with PyInstaller. The hook provisions its own venv (`packages/desktop/.venv-zoom-recorder`)
+  with the pinned dependencies from `resources/zoom-recorder/requirements-build.txt`, so no
+  manual pip install is required. Set `OTTO_ZOOM_RECORDER_PYTHON` to use a different
+  interpreter instead (that skips the venv, so it must already have the requirements).
 
 ### Windows: npm script shell
 

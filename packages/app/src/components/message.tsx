@@ -69,6 +69,7 @@ import { textEffectActivityForToolName } from "@/agent-stream/action-grouping";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { BubbleCornerSheen } from "@/components/bubble-corner-sheen";
 import {
+  createSharedMarkdownRules,
   MarkdownRenderer,
   withMarkdownLinkColor,
   type MarkdownStyles,
@@ -454,11 +455,6 @@ export const chatMessageBubbleStylesheet = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surfaceUserBubble,
     borderTopRightRadius: theme.borderRadius.sm,
   },
-  text: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-    ...(isWeb ? { lineHeight: 20, overflowWrap: "anywhere" as const } : {}),
-  },
 }));
 
 export function ChatMessageBubble({
@@ -511,6 +507,41 @@ function UserMessageImagePill({ image, onOpen, accessibilityLabel }: UserMessage
     </ChatImageContextMenuTarget>
   );
 }
+
+/**
+ * User prompts render through the same Markdown pipeline as assistant text, so
+ * a pasted fence is a real highlighted code block instead of literal backticks.
+ * The parser is deliberately barer than the assistant's: `typographer` stays
+ * OFF so quotes, dashes and apostrophes render exactly as typed. The composer
+ * inserts file mentions as quoted, backslash-escaped paths
+ * (`formatQuotedFileMentionPath`), and smart quotes would show the user
+ * something they did not write. Plugins (footnotes, task lists, math, alerts)
+ * are left off: prompts don't use them, and every one is parse cost per bubble.
+ *
+ * Display is not the sent text. `TurnCopyButton` and `RewindMenu` read the raw
+ * `message` string, so copy, rewind and the agent all keep byte fidelity no
+ * matter what this renders.
+ */
+const userMessageMarkdownParser = MarkdownIt({ linkify: true });
+
+const userMessageMarkdownStylesheet = StyleSheet.create((theme) => ({
+  // Every block owns its bottom margin, so the last one stacks on the bubble's
+  // own padding: a trailing paragraph or fence leaves 12 + 8 under the text
+  // against 8 above it. Pulling the body up by that block margin restores the
+  // bubble's symmetric inset.
+  body: {
+    marginBottom: -theme.spacing[3],
+  },
+}));
+
+const userMessageMarkdownRules: RenderRules = {
+  ...createSharedMarkdownRules(),
+  body: (node: ASTNode, children: ReactNode[], _parent: ASTNode[], styles: MarkdownStyles) => (
+    <View key={node.key} style={[styles.body, userMessageMarkdownStylesheet.body]}>
+      {children}
+    </View>
+  ),
+};
 
 export const UserMessage = memo(function UserMessage({
   serverId,
@@ -627,9 +658,13 @@ export const UserMessage = memo(function UserMessage({
             </View>
           ) : null}
           {hasText ? (
-            <Text selectable style={chatMessageBubbleStylesheet.text}>
-              {message}
-            </Text>
+            <MarkdownRenderer
+              text={message}
+              markdownit={userMessageMarkdownParser}
+              rules={userMessageMarkdownRules}
+              enableHtmlish={false}
+              remoteImages="altText"
+            />
           ) : null}
         </ChatMessageBubble>
         {hasText ? (

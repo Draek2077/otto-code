@@ -1380,6 +1380,7 @@ export const useSessionStore = create<SessionStore>()(
           const nextRateLimits = new Map(session.agentRateLimits);
           const nextDismissedRateLimits = new Map(session.dismissedRateLimits);
           const nextSentPromptHistory = new Map(session.sentPromptHistory);
+          const nextQueuedMessages = new Map(session.queuedMessages);
 
           let changed = false;
           for (const agentId of agentIds) {
@@ -1403,6 +1404,7 @@ export const useSessionStore = create<SessionStore>()(
                 nextRateLimits.delete(agentId),
                 nextDismissedRateLimits.delete(agentId),
                 nextSentPromptHistory.delete(agentId),
+                nextQueuedMessages.delete(agentId),
               ].some(Boolean) || changed;
           }
           if (!changed) {
@@ -1427,6 +1429,7 @@ export const useSessionStore = create<SessionStore>()(
                 agentRateLimits: nextRateLimits,
                 dismissedRateLimits: nextDismissedRateLimits,
                 sentPromptHistory: nextSentPromptHistory,
+                queuedMessages: nextQueuedMessages,
               },
             },
           };

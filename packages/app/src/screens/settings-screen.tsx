@@ -3093,7 +3093,7 @@ export default function SettingsScreen({
           activeHostServerId={activeHostServerId}
           layout="desktop"
         />
-        <View style={desktopStyles.contentPane}>
+        <View style={desktopStyles.contentPane} testID="settings-detail-pane">
           {/* Pane-scoped page fade: the app-wide RouteFadeContainer treats all
               /settings* routes as one page on desktop (see
               use-route-transition-key.ts), so section changes fade only this

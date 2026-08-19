@@ -169,6 +169,41 @@ The general rule, for the next feature that persists an attachment nobody sends:
 off a draft, a queued message or the workspace attachment store, it needs a reference in
 `runAttachmentGc` or it will be deleted, quickly and silently.
 
+## Both sides of chat parse, with different parsers
+
+The user's own bubble renders through `MarkdownRenderer` too, not as plain text: a prompt with a
+fence gets the same highlighted code block the agent's reply gets, from the same
+`createSharedMarkdownRules()`. The plain `<Text>` it used until then was inherited from upstream,
+never a decision.
+
+It does **not** share the assistant's parser, and that is the part to preserve:
+
+|               | Assistant                                | User                          |
+| ------------- | ---------------------------------------- | ----------------------------- |
+| `typographer` | on                                       | **off**                       |
+| Plugins       | task lists, footnotes, alerts, math      | none                          |
+| Rules         | the `message.tsx` copy (file-link aware) | `createSharedMarkdownRules()` |
+
+`typographer` is the load-bearing difference. It rewrites `"` into curly quotes, `--` into an en
+dash and `...` into an ellipsis. That is right for prose a model wrote and wrong for text a person
+typed, because the composer's file-mention autocomplete inserts a quoted, backslash-escaped path
+(`formatQuotedFileMentionPath`), and smart quotes would show the user a mention they did not write.
+Reuse the assistant's parser here and file mentions go curly; the straight-quote assertion in
+`e2e/user-message-contract.ui-contract.spec.ts` is the tripwire.
+
+The assistant's bespoke rules are also deliberately not reused: their `code_inline` and `link` rules
+resolve file paths through `useAssistantFileLinkActions`, which the user bubble has no workspace
+context for.
+
+**Rendering is not the message.** `TurnCopyButton` and `RewindMenu` read the raw `message` string,
+so copy, rewind and the text the agent receives keep byte fidelity no matter what the bubble draws.
+Anything that starts feeding those the rendered output breaks the contract that makes markdown in a
+user bubble safe at all.
+
+One layout note: the user bubble has its own padding, and markdown blocks each own a bottom margin,
+so the last block's margin stacks on it. The `body` rule override in `message.tsx` pulls the block
+back by exactly that margin to keep the bubble's inset symmetric.
+
 ## Fences: one dispatch point
 
 A fence info string that means something other than "highlight this as code" is resolved in exactly

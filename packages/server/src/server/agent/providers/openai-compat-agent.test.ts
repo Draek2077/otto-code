@@ -4033,15 +4033,25 @@ async function makeSubtreeWorkspace(): Promise<string> {
   return cwd;
 }
 
-function systemContents(request: RecordedRequest | undefined): string[] {
+function instructionContents(request: RecordedRequest | undefined): string[] {
   return (request?.messages ?? [])
-    .filter((message) => message.role === "system")
-    .map((message) => String(message.content));
+    .map((message) => String(message.content))
+    .filter((content) => content.includes("Never use em-dashes"));
 }
 
 function countInstructionMessages(request: RecordedRequest | undefined): number {
-  return systemContents(request).filter((content) => content.includes("Never use em-dashes"))
-    .length;
+  return instructionContents(request).length;
+}
+
+/**
+ * The wire invariant every request must hold: exactly one system message, at
+ * index 0. Chat templates that raise "System message must be at the beginning"
+ * (Qwen, GLM) turn a later one into a 500 on this and every following round.
+ */
+function expectSystemMessageOnlyAtHead(request: RecordedRequest | undefined): void {
+  const roles = (request?.messages ?? []).map((message) => message.role);
+  expect(roles[0]).toBe("system");
+  expect(roles.lastIndexOf("system")).toBe(0);
 }
 
 describe("OpenAICompatAgentSession subtree instructions", () => {
@@ -4060,16 +4070,17 @@ describe("OpenAICompatAgentSession subtree instructions", () => {
     // Round 1 could not have carried it - the agent had not gone there yet.
     expect(countInstructionMessages(endpoint.requests[0])).toBe(0);
     expect(countInstructionMessages(endpoint.requests[1])).toBe(1);
-    const injected = systemContents(endpoint.requests[1]).find((content) =>
-      content.includes("Never use em-dashes"),
-    );
+    const injected = instructionContents(endpoint.requests[1])[0];
     expect(injected).toContain('<instructions path="packages/app/AGENTS.md">');
 
     // After the tool result, never spliced between an assistant tool_calls
     // message and its results - strict servers reject that ordering.
     const roles = (endpoint.requests[1]?.messages ?? []).map((message) => message.role);
-    expect(roles.at(-1)).toBe("system");
+    expect(roles.at(-1)).toBe("user");
     expect(roles.at(-2)).toBe("tool");
+    // And it rides as a user message, because a system message here is what
+    // Qwen and GLM templates reject outright.
+    expectSystemMessageOnlyAtHead(endpoint.requests[1]);
 
     await session.close();
   });
@@ -4114,10 +4125,9 @@ describe("OpenAICompatAgentSession subtree instructions", () => {
   });
 
   /**
-   * The failure this pins: `serializeConversationForCompaction` drops system
-   * messages, so an injected file caught in the summarize region would be
-   * neither summarized nor kept - the model would silently lose rules it was
-   * still following.
+   * The failure this pins: an injected file caught in the summarize region
+   * comes back as a sentence about itself instead of the rules, so the model
+   * silently loses rules it was still following.
    */
   test("keeps injected instructions through compaction", async () => {
     const endpoint = await startSubtreeToolEndpoint(["packages/app/notes.txt"]);
@@ -4135,11 +4145,14 @@ describe("OpenAICompatAgentSession subtree instructions", () => {
 
     const lastRequest = endpoint.requests.at(-1);
     expect(countInstructionMessages(lastRequest)).toBe(1);
-    // Pinned directly under the rebuilt system prompt, ahead of the summary.
+    // Re-pinned verbatim, and the rebuilt conversation still carries exactly
+    // one system message at the head.
+    expectSystemMessageOnlyAtHead(lastRequest);
     const roles = (lastRequest?.messages ?? []).map((message) => message.role);
-    expect(roles[0]).toBe("system");
-    expect(roles[1]).toBe("system");
-    expect(String(lastRequest?.messages?.[1]?.content)).toContain("Never use em-dashes");
+    // system, summary, ack, instructions - the rules sit next to the retained
+    // tail rather than stacked ahead of the summary.
+    expect(roles.slice(0, 4)).toEqual(["system", "user", "assistant", "user"]);
+    expect(String(lastRequest?.messages?.[3]?.content)).toContain("Never use em-dashes");
 
     await session.close();
   });

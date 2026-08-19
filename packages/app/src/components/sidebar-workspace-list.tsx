@@ -56,6 +56,9 @@ import {
   type ScrollToCapable,
 } from "./sidebar/use-sidebar-reveal-controller";
 import { useSidebarRowAnchor } from "./sidebar/use-sidebar-row-anchor";
+import { PinnedSectionHeader } from "./sidebar/pinned-section-header";
+import type { PinnedSidebarGroups } from "@/hooks/use-sidebar-pins";
+import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
 import { projectRowKey, workspaceRowKey } from "./sidebar/sidebar-row-anchors";
 import { mergeRefs } from "@/utils/merge-refs";
 import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
@@ -226,6 +229,7 @@ function selectionForSelectedWorkspace(
 
 interface SidebarWorkspaceListProps {
   statusGroups: StatusGroup[];
+  pinnedGroups: PinnedSidebarGroups;
   projects: SidebarProjectEntry[];
   workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
   projectNamesByKey: Map<string, string>;
@@ -2315,6 +2319,7 @@ const MemoProjectBlock = memo(ProjectBlock, areProjectBlockPropsEqual);
 
 export function SidebarWorkspaceList({
   statusGroups,
+  pinnedGroups,
   projects,
   workspaceEntriesByKey,
   projectNamesByKey,
@@ -2346,6 +2351,8 @@ export function SidebarWorkspaceList({
     groupMode === "status" ? (
       <SidebarStatusModeWrapper
         statusGroups={statusGroups}
+        pinnedGroups={pinnedGroups}
+        workspaceEntriesByKey={workspaceEntriesByKey}
         projectNamesByKey={projectNamesByKey}
         shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
         onWorkspacePress={onWorkspacePress}
@@ -2355,6 +2362,7 @@ export function SidebarWorkspaceList({
     ) : (
       <ProjectModeList
         projects={projects}
+        pinnedGroups={pinnedGroups}
         workspaceEntriesByKey={workspaceEntriesByKey}
         collapsedProjectKeys={collapsedProjectKeys}
         onToggleProjectCollapsed={onToggleProjectCollapsed}
@@ -2375,6 +2383,8 @@ export function SidebarWorkspaceList({
 
 function SidebarStatusModeWrapper({
   statusGroups,
+  pinnedGroups,
+  workspaceEntriesByKey,
   projectNamesByKey,
   shortcutIndexByWorkspaceKey: _projectShortcutIndex,
   onWorkspacePress,
@@ -2382,6 +2392,8 @@ function SidebarStatusModeWrapper({
   showHostLabels,
 }: {
   statusGroups: StatusGroup[];
+  pinnedGroups: PinnedSidebarGroups;
+  workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
   projectNamesByKey: Map<string, string>;
   shortcutIndexByWorkspaceKey: Map<string, number>;
   onWorkspacePress?: () => void;
@@ -2390,9 +2402,20 @@ function SidebarStatusModeWrapper({
 }) {
   const showShortcutBadges = useShowShortcutBadges();
 
+  // Status rows need the full entry (status bucket, diff stat), while the pin
+  // projection only carries placements, so resolve each pinned key back to its entry.
+  const pinnedWorkspaces = useMemo(
+    () =>
+      pinnedGroups.pinnedChats
+        .map((placement) => workspaceEntriesByKey.get(placement.workspaceKey))
+        .filter((entry): entry is SidebarWorkspaceEntry => entry != null),
+    [pinnedGroups.pinnedChats, workspaceEntriesByKey],
+  );
+
   return (
     <SidebarStatusWorkspaceList
       groups={statusGroups}
+      pinnedWorkspaces={pinnedWorkspaces}
       projectNamesByKey={projectNamesByKey}
       shortcutIndexByWorkspaceKey={_projectShortcutIndex}
       showShortcutBadges={showShortcutBadges}
@@ -2405,6 +2428,7 @@ function SidebarStatusModeWrapper({
 
 function ProjectModeList({
   projects,
+  pinnedGroups,
   workspaceEntriesByKey,
   collapsedProjectKeys,
   onToggleProjectCollapsed,
@@ -2651,8 +2675,59 @@ function ProjectModeList({
     ],
   );
 
+  const { pinnedChats, unpinnedProjects } = pinnedGroups;
+  const pinnedCollapsed = useSidebarCollapsedSectionsStore((state) => state.collapsedPinned);
+  const togglePinnedCollapsed = useSidebarCollapsedSectionsStore(
+    (state) => state.togglePinnedCollapsed,
+  );
+
+  const renderPinnedChat = useCallback(
+    (workspace: SidebarWorkspacePlacement) => {
+      // A hoisted chat loses its project context, so surface the project name (plus
+      // the host when the sidebar spans multiple hosts) as the subtitle.
+      const hostLabel = showHostLabels
+        ? (hostLabelByServerId.get(workspace.serverId) ?? workspace.serverId)
+        : null;
+      return (
+        <MemoWorkspaceRowItem
+          key={workspace.workspaceKey}
+          workspace={workspace}
+          workspaceEntry={workspaceEntriesByKey.get(workspace.workspaceKey) ?? null}
+          subtitle={hostLabel ? `${workspace.projectName} · ${hostLabel}` : workspace.projectName}
+          shortcutNumber={shortcutIndexByWorkspaceKey.get(workspace.workspaceKey) ?? null}
+          showShortcutBadge={showShortcutBadges}
+          canCopyBranchName={workspace.projectKind === "git"}
+          isCreating={creatingWorkspaceIds.has(workspace.workspaceId)}
+          selectionEnabled={selectionEnabled}
+          activeWorkspaceSelection={activeWorkspaceSelection}
+          onWorkspacePress={onWorkspacePress}
+        />
+      );
+    },
+    [
+      activeWorkspaceSelection,
+      creatingWorkspaceIds,
+      hostLabelByServerId,
+      onWorkspacePress,
+      selectionEnabled,
+      shortcutIndexByWorkspaceKey,
+      showHostLabels,
+      showShortcutBadges,
+      workspaceEntriesByKey,
+    ],
+  );
+
   const content = (
     <>
+      {/* Pinned chats are hoisted out of their projects and rendered above the list.
+          The section unmounts entirely once nothing is pinned, which is what tells
+          the user (and the pin specs) that the last chat was unpinned. */}
+      {pinnedChats.length > 0 ? (
+        <View style={styles.pinnedSection} testID="sidebar-pinned-section">
+          <PinnedSectionHeader collapsed={pinnedCollapsed} onToggle={togglePinnedCollapsed} />
+          {pinnedCollapsed ? null : pinnedChats.map(renderPinnedChat)}
+        </View>
+      ) : null}
       {projects.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyTitle} testID="sidebar-project-empty-state">
@@ -2666,7 +2741,7 @@ function ProjectModeList({
       ) : (
         <DraggableList
           testID="sidebar-project-list"
-          data={projects}
+          data={unpinnedProjects}
           keyExtractor={projectKeyExtractor}
           renderItem={renderProject}
           onDragEnd={handleProjectDragEnd}
@@ -2726,6 +2801,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   projectListContainer: {
     width: "100%",
+  },
+  pinnedSection: {
+    marginBottom: theme.spacing[1],
   },
   // Rows own the 2px inter-item gap via marginBottom; the block adds nothing extra.
   projectBlock: {},

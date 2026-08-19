@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   app: {
@@ -77,61 +77,113 @@ function createWatcher(): EventEmitter & {
   return Object.assign(watcher, { kill });
 }
 
-describe("Zoom Recorder quit shutdown", () => {
-  it("waits for the watcher to exit and leaves no status poll behind", async () => {
-    vi.useFakeTimers();
-    try {
-      mocks.spawn.mockClear();
-      const watcher = createWatcher();
-      const taskkill = new EventEmitter();
-      mocks.spawn.mockReturnValueOnce(watcher).mockImplementationOnce(() => {
-        completeTaskkill(taskkill, watcher);
-        return taskkill;
-      });
+/** Queues the watcher spawn and the taskkill spawn that the Windows shutdown path makes. */
+function primeSpawnForWindowsShutdown(): ReturnType<typeof createWatcher> {
+  const watcher = createWatcher();
+  const taskkill = new EventEmitter();
+  mocks.spawn.mockReturnValueOnce(watcher).mockImplementationOnce(() => {
+    completeTaskkill(taskkill, watcher);
+    return taskkill;
+  });
+  return watcher;
+}
 
-      await enableZoomRecorder();
-      expect(mocks.spawn).toHaveBeenCalledTimes(1);
-
-      const shutdown = shutdownZoomRecorderForQuit();
-      await vi.runAllTimersAsync();
-      await shutdown;
-
-      expect(watcher.kill).not.toHaveBeenCalled();
-      expect(watcher.exitCode).toBe(0);
-      expect(vi.getTimerCount()).toBe(0);
-    } finally {
-      vi.useRealTimers();
+/**
+ * stopProcess() branches on process.platform, so a suite that leaves the platform
+ * alone asserts whatever the machine happens to be. That is how this suite passed
+ * on Windows and failed on the Linux CI runner. Pin the platform per test.
+ */
+async function withPlatform(platform: NodeJS.Platform, run: () => Promise<void>): Promise<void> {
+  const original = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: platform, configurable: true });
+  try {
+    await run();
+  } finally {
+    if (original) {
+      Object.defineProperty(process, "platform", original);
     }
+  }
+}
+
+describe("Zoom Recorder quit shutdown", () => {
+  beforeEach(() => {
+    // mockClear() keeps queued *Once implementations, so an unconsumed taskkill
+    // stub from a previous test would be handed to the next enableZoomRecorder()
+    // as its watcher. mockReset() drops the queue with the call record.
+    mocks.spawn.mockReset();
+  });
+
+  it("waits for the watcher to exit and leaves no status poll behind", async () => {
+    await withPlatform("win32", async () => {
+      vi.useFakeTimers();
+      try {
+        const watcher = primeSpawnForWindowsShutdown();
+
+        await enableZoomRecorder();
+        expect(mocks.spawn).toHaveBeenCalledTimes(1);
+
+        const shutdown = shutdownZoomRecorderForQuit();
+        await vi.runAllTimersAsync();
+        await shutdown;
+
+        expect(watcher.kill).not.toHaveBeenCalled();
+        expect(watcher.exitCode).toBe(0);
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it("terminates the Windows bootstrap process tree", async () => {
-    vi.useFakeTimers();
-    try {
-      mocks.spawn.mockClear();
-      const watcher = createWatcher();
-      const taskkill = new EventEmitter();
-      mocks.spawn.mockReturnValueOnce(watcher).mockImplementationOnce(() => {
-        completeTaskkill(taskkill, watcher);
-        return taskkill;
-      });
+    await withPlatform("win32", async () => {
+      vi.useFakeTimers();
+      try {
+        const watcher = primeSpawnForWindowsShutdown();
 
-      await enableZoomRecorder();
+        await enableZoomRecorder();
 
-      const shutdown = shutdownZoomRecorderForQuit();
-      await vi.runAllTimersAsync();
-      await shutdown;
+        const shutdown = shutdownZoomRecorderForQuit();
+        await vi.runAllTimersAsync();
+        await shutdown;
 
-      expect(watcher.kill).not.toHaveBeenCalled();
-      expect(mocks.spawn).toHaveBeenNthCalledWith(
-        2,
-        "taskkill",
-        ["/pid", "1234", "/t", "/f"],
-        expect.objectContaining({ stdio: "ignore", windowsHide: true }),
-      );
-      expect(watcher.exitCode).toBe(0);
-      expect(vi.getTimerCount()).toBe(0);
-    } finally {
-      vi.useRealTimers();
-    }
+        expect(watcher.kill).not.toHaveBeenCalled();
+        expect(mocks.spawn).toHaveBeenNthCalledWith(
+          2,
+          "taskkill",
+          ["/pid", "1234", "/t", "/f"],
+          expect.objectContaining({ stdio: "ignore", windowsHide: true }),
+        );
+        expect(watcher.exitCode).toBe(0);
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  it("signals the helper directly on POSIX instead of shelling out to taskkill", async () => {
+    await withPlatform("linux", async () => {
+      vi.useFakeTimers();
+      try {
+        const watcher = createWatcher();
+        mocks.spawn.mockReturnValueOnce(watcher);
+
+        await enableZoomRecorder();
+        expect(mocks.spawn).toHaveBeenCalledTimes(1);
+
+        const shutdown = shutdownZoomRecorderForQuit();
+        await vi.runAllTimersAsync();
+        await shutdown;
+
+        // POSIX has no taskkill: the helper is signalled through the child handle.
+        expect(watcher.kill).toHaveBeenCalled();
+        expect(mocks.spawn).toHaveBeenCalledTimes(1);
+        expect(watcher.exitCode).toBe(0);
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });

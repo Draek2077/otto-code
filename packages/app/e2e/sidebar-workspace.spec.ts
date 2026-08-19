@@ -18,6 +18,13 @@ function getWorkspaceRowTestId(workspaceId: string): string {
   return `sidebar-workspace-row-${getServerId()}:${workspaceId}`;
 }
 
+// Tab alignment defaults to Vertical on a fresh install, so the workspace tab
+// strip is the rail, not the horizontal row. Match either, the way
+// helpers/workspace-tabs.ts does.
+function workspaceTabsStrip(page: import("@playwright/test").Page) {
+  return page.getByTestId("workspace-tabs-row").or(page.getByTestId("workspace-tabs-rail"));
+}
+
 async function openWorkspaceFromSidebar(
   page: import("@playwright/test").Page,
   workspaceId: string,
@@ -199,11 +206,15 @@ test.describe("Half-screen desktop layout", () => {
 
   test("yields app navigation to the settings split", async ({ page }) => {
     await gotoAppShell(page);
-    await page.getByTestId("sidebar-settings").click();
+    await page.locator('[data-testid="sidebar-settings"]:visible').first().click();
 
     await expect(page.getByTestId("settings-sidebar")).toBeVisible();
     await expect(page.getByTestId("settings-detail-pane")).toBeVisible();
-    await expect(page.getByTestId("sidebar-settings")).not.toBeVisible();
+    // Probe a control the app sidebar alone owns. `sidebar-settings` is not one:
+    // the Settings screen renders the same shared SidebarFooterNavRow in its own
+    // footer, so a visible `sidebar-settings` survives precisely because app
+    // navigation yielded, which is the opposite of what this asserts.
+    await expect(page.getByTestId("sidebar-global-new-workspace")).not.toBeVisible();
   });
 
   test("yields app navigation to the Explorer", async ({ page }) => {
@@ -222,7 +233,7 @@ test.describe("Half-screen desktop layout", () => {
       await expect(page.getByTestId("explorer-close")).toBeVisible();
       await expect(page.getByTestId("sidebar-global-new-workspace")).not.toBeVisible();
 
-      const centerBounds = await page.getByTestId("workspace-tabs-row").first().boundingBox();
+      const centerBounds = await workspaceTabsStrip(page).first().boundingBox();
       const headerGlyphBounds = await page.getByTestId("menu-button").boundingBox();
       const tabGlyphBounds = await page
         .locator('[data-testid^="workspace-tab-"]')
@@ -239,10 +250,7 @@ test.describe("Half-screen desktop layout", () => {
       );
 
       await expect
-        .poll(
-          async () =>
-            (await page.getByTestId("workspace-tabs-row").first().boundingBox())?.width ?? 0,
-        )
+        .poll(async () => (await workspaceTabsStrip(page).first().boundingBox())?.width ?? 0)
         .toBeGreaterThanOrEqual(400);
 
       await page.getByTestId("explorer-close").click();

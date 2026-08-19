@@ -459,13 +459,30 @@ const COMPAT_TOOL_PROMPT_DESCRIPTIONS: Record<CompatToolSpec["kind"], string> = 
 const MAX_INJECTED_SUBTREE_INSTRUCTIONS = 20;
 
 /**
- * One line of framing above an injected file. A system message appearing
- * mid-conversation is otherwise unexplained, and a local model that cannot tell
- * why it arrived is a model that may treat it as a user turn to answer.
+ * One line of framing above an injected file. The message rides as a user
+ * message (see `injectPendingSubtreeInstructions` for why it cannot be a system
+ * one), so the framing is load-bearing rather than decorative: without it a
+ * model reads the file as something the user just typed and answers it.
  */
 const SUBTREE_INSTRUCTION_PREAMBLE =
   "You have started working in a directory with its own instructions. They apply " +
-  "for the rest of this session, alongside the ones you already have.";
+  "for the rest of this session, alongside the ones you already have. This is not " +
+  "a request to answer - continue the work you were doing.";
+
+/**
+ * An injected subdirectory instruction file, whatever role carries it.
+ *
+ * `subtreeInstructionDir` is the identity; the role is transport. Every rule
+ * that treats these differently from real conversation - pinning through
+ * compaction, rebuilding the injected set, keeping them out of the replayed
+ * transcript - keys on this and never on the role.
+ */
+function isInjectedSubtreeInstruction(message: ChatMessage): message is InjectedSubtreeInstruction {
+  return (
+    (message.role === "system" || message.role === "user") &&
+    message.subtreeInstructionDir !== undefined
+  );
+}
 
 /** Timeline error note for a tool call denied by dontAsk instead of prompted. */
 const DONT_ASK_DENIAL_NOTE = "Denied by Don't Ask mode";
@@ -535,6 +552,11 @@ type ChatMessage =
   | { role: "assistant"; content: string; tool_calls?: ToolCallPayload[]; reasoning?: string }
   | { role: "tool"; content: string; tool_call_id: string; images?: PromptImage[] };
 
+/** A message that carries an injected subdirectory instruction file. */
+type InjectedSubtreeInstruction = Extract<ChatMessage, { role: "system" | "user" }> & {
+  subtreeInstructionDir: string;
+};
+
 /**
  * A tool call's reply: text always, plus any images to feed back as vision
  * parts. `isError` mirrors the timeline status (failed vs completed) and is the
@@ -570,12 +592,18 @@ function parseSlashCommandInput(text: string): { commandName: string; args: stri
  * Which restored messages survive session construction.
  *
  * The session prompt is rebuilt from the live config, so a persisted copy of it
- * is dropped - but an injected subdirectory instruction file is also a system
- * message, and it is a rule the model was already following. Dropping that on
- * resume would silently change how the session behaves halfway through a task.
+ * is dropped. Injected subdirectory instructions are user messages and are kept
+ * by that same rule - they are rules the model was already following, and
+ * dropping them on resume would silently change how the session behaves
+ * halfway through a task.
+ *
+ * A system-role instruction file can only come from a session persisted by the
+ * build that injected them as system messages. Those conversations are the ones
+ * that 500 against a strict chat template, so dropping them here is the repair:
+ * the file re-injects the next time the agent touches that subtree.
  */
 function isRetainedOnRestore(message: ChatMessage): boolean {
-  return message.role !== "system" || message.subtreeInstructionDir !== undefined;
+  return message.role !== "system";
 }
 
 function toWireMessage(message: ChatMessage): Record<string, unknown> {
@@ -2121,6 +2149,10 @@ export class OpenAICompatAgentSession implements AgentSession {
   private rebuildEventHistory(): void {
     this.eventHistory.length = 0;
     for (const [index, message] of this.messages.entries()) {
+      // An injected instruction file rides as a user message but was never
+      // typed by anyone; replaying it would put an AGENTS.md in the transcript
+      // as if the user had pasted it.
+      if (isInjectedSubtreeInstruction(message)) continue;
       if (message.role === "user") {
         if (!message.content) continue;
         this.eventHistory.push({
@@ -2567,15 +2599,13 @@ export class OpenAICompatAgentSession implements AgentSession {
     //
     //    Injected subdirectory instructions come out of both regions and are
     //    re-inserted verbatim below. They are rules the model is following, not
-    //    conversation: `serializeConversationForCompaction` drops system
-    //    messages, so an injected file that fell in the summarize region would
-    //    be neither summarized nor kept - it would simply stop existing, and the
-    //    model would go on believing it still applies.
+    //    conversation, and a summary of a rules file is not a rules file: left
+    //    in the summarize region an injected AGENTS.md would come back as a
+    //    sentence about itself, and the model would go on believing it still
+    //    had the rules.
     const keepFromIndex = this.computeCompactionKeepFromIndex();
-    const pinned = this.messages.filter(
-      (message) => message.role === "system" && message.subtreeInstructionDir !== undefined,
-    );
-    const isPinned = new Set(pinned);
+    const pinned = this.messages.filter(isInjectedSubtreeInstruction);
+    const isPinned = new Set<ChatMessage>(pinned);
     const summarizeRegion = this.messages
       .slice(1, keepFromIndex)
       .filter((message) => !isPinned.has(message));
@@ -2642,7 +2672,6 @@ export class OpenAICompatAgentSession implements AgentSession {
     //    the retained recent tail, untouched.
     this.messages.length = 0;
     this.messages.push({ role: "system", content: this.buildSystemPrompt(this.config) });
-    this.messages.push(...pinned);
     this.messages.push({
       role: "user",
       content: summary,
@@ -2652,6 +2681,11 @@ export class OpenAICompatAgentSession implements AgentSession {
     // Assistant ack keeps the roles alternating so the next user turn doesn't
     // sit directly after the synthetic summary user message.
     this.messages.push({ role: "assistant", content: "Conversation history has been compacted." });
+    // Pinned instructions land after the ack rather than under the system
+    // prompt: they are user messages now, and stacking them ahead of the
+    // summary would put three user messages in a row at the head of every
+    // compacted conversation.
+    this.messages.push(...pinned);
     this.messages.push(...keptRegion);
     this.reindexInjectedSubtreeInstructions();
 
@@ -3624,8 +3658,16 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
         this.subtreeDirsWithoutInstructions.add(contextPathKey(dir));
         continue;
       }
+      // Deliberately a user message, not a system one. Many chat templates -
+      // Qwen and GLM among them - raise "System message must be at the
+      // beginning" from Jinja when a system message appears after the first
+      // turn, which llama.cpp surfaces as a 500 on every subsequent request:
+      // the conversation is poisoned for the rest of the session, and the user
+      // sees a dead chat rather than a degraded one. A tail user message is
+      // valid on every template, and it appends, so the cached prefix (system
+      // prompt + tool catalog + history) survives the injection intact.
       const message: ChatMessage = {
-        role: "system",
+        role: "user",
         content: `${SUBTREE_INSTRUCTION_PREAMBLE}\n\n${loaded.text}`,
         subtreeInstructionDir: dir,
       };
@@ -3660,10 +3702,8 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
   private reindexInjectedSubtreeInstructions(): void {
     this.injectedSubtreeDirs.clear();
     for (const message of this.messages) {
-      if (message.role !== "system") continue;
-      const dir = message.subtreeInstructionDir;
-      if (dir === undefined) continue;
-      this.injectedSubtreeDirs.set(contextPathKey(dir), message);
+      if (!isInjectedSubtreeInstruction(message)) continue;
+      this.injectedSubtreeDirs.set(contextPathKey(message.subtreeInstructionDir), message);
     }
   }
 
@@ -4279,6 +4319,12 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     // results before the loop moved on.
     for (let index = this.messages.length - 1; index >= 0; index -= 1) {
       const message = this.messages[index]!;
+      // An injected instruction file is a user message the tool loop appended
+      // mid-round; it is not a turn boundary, so it must not stop the scan
+      // before the dangling assistant message it sits after.
+      if (isInjectedSubtreeInstruction(message)) {
+        continue;
+      }
       if (message.role === "user") {
         return;
       }

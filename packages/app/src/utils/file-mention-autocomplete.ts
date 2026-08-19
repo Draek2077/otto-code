@@ -40,6 +40,25 @@ export function findActiveFileMention(input: FindActiveFileMentionInput): FileMe
   return null;
 }
 
+/**
+ * The quoted, escaped form of a workspace-relative path.
+ *
+ * This is the agent-facing representation of a file mention, and it is
+ * deliberately the same text the user sees in the composer and the sent
+ * message bubble. Picking a file inserts `"src/components/chat.tsx"` verbatim;
+ * there is no separate display form. Keeping one form end-to-end preserves
+ * WYSIWYG: what the user typed is exactly what the agent receives, and copy,
+ * rewind, and history recall never reintroduce a form the user has not seen.
+ *
+ * The quotes and escaping exist for the model, not the UI: they make the path
+ * unambiguous when it contains spaces or other tokens the prose around it
+ * could be confused with (`open "src/changed \"file\".ts" next` parses as one
+ * path; without the quotes the agent cannot tell where the path ends).
+ *
+ * If a richer composer ever represents mentions as structured tokens, this is
+ * the function to apply at serialize time - and only then - so the token's
+ * display form can stay clean.
+ */
 export function formatQuotedFileMentionPath(relativePath: string): string {
   const safePath = relativePath.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   return `"${safePath}"`;

@@ -58,6 +58,7 @@ import {
 import { useSidebarModel } from "@/components/sidebar/sidebar-model";
 import { RetainedPanelActivity } from "@/components/retained-panel";
 import type { StatusGroup } from "@/hooks/sidebar-status-view-model";
+import type { PinnedSidebarGroups } from "@/hooks/use-sidebar-pins";
 import { type SidebarGroupMode } from "@/stores/sidebar-view-store";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useHosts } from "@/runtime/host-runtime";
@@ -106,6 +107,7 @@ type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
 interface SidebarSharedProps {
   theme: SidebarTheme;
   statusGroups: StatusGroup[];
+  pinnedGroups: PinnedSidebarGroups;
   projects: SidebarProjectEntry[];
   workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
   projectNamesByKey: Map<string, string>;
@@ -185,6 +187,7 @@ export const LeftSidebar = memo(function LeftSidebar() {
     isRevalidating,
     refreshAll,
     statusGroups,
+    pinnedGroups,
     collapsedProjectKeys,
     toggleProjectCollapsed,
     groupMode,
@@ -328,6 +331,7 @@ export const LeftSidebar = memo(function LeftSidebar() {
   const sharedProps = {
     theme,
     statusGroups,
+    pinnedGroups,
     projects,
     workspaceEntriesByKey,
     projectNamesByKey,
@@ -629,6 +633,7 @@ function SidebarFooter({
 function MobileSidebar({
   theme,
   statusGroups,
+  pinnedGroups,
   projects,
   workspaceEntriesByKey,
   projectNamesByKey,
@@ -792,6 +797,7 @@ function MobileSidebar({
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
             groupMode={groupMode}
             statusGroups={statusGroups}
+            pinnedGroups={pinnedGroups}
             projects={projects}
             workspaceEntriesByKey={workspaceEntriesByKey}
             projectNamesByKey={projectNamesByKey}
@@ -821,6 +827,7 @@ function MobileSidebar({
 function DesktopSidebar({
   theme,
   statusGroups,
+  pinnedGroups,
   projects,
   workspaceEntriesByKey,
   projectNamesByKey,
@@ -1019,6 +1026,7 @@ function DesktopSidebar({
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
             groupMode={groupMode}
             statusGroups={statusGroups}
+            pinnedGroups={pinnedGroups}
             projects={projects}
             workspaceEntriesByKey={workspaceEntriesByKey}
             projectNamesByKey={projectNamesByKey}

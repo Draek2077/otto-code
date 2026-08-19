@@ -112,6 +112,23 @@ async function createShellHome(): Promise<string> {
 }
 
 describe("login shell env retry behavior", () => {
+  it("skips resolution quietly on Windows (no login shell)", () => {
+    const env = createEnv(fakeHome);
+    const logger = new RecordingLoginShellLogger();
+
+    inheritLoginShellEnv({ env, logger, platform: "win32" });
+
+    expect(env.PATH).toBe(basePath);
+    expect(logger.warnings).toEqual([]);
+    expect(logger.infos.map((entry) => entry.message)).toEqual([
+      "[login-shell-env] skipped on Windows; keeping inherited env",
+    ]);
+    // No PATH dump on a platform where the inherited env is correct.
+    expect(logger.infos[0]?.fields).not.toHaveProperty("beforePath");
+    expect(logger.infos[0]?.fields).not.toHaveProperty("afterPath");
+    expect(logger.infos[0]?.fields).not.toHaveProperty("pathChanged");
+  });
+
   it("applies the interactive env without retrying", () => {
     const env = createEnv(fakeHome);
     const logger = new RecordingLoginShellLogger();

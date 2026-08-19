@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { existsSync as fsExistsSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -82,8 +83,44 @@ function spawnChild(name, command, args, options = {}) {
   return child;
 }
 
+// Windows has no POSIX process groups, and `detached: true` there does NOT mean
+// "new group" - it means "new console window", which is how Metro escaped into
+// its own cmd.exe popup that outlived both this runner and the app. So dev
+// children are spawned attached on Windows (output stays inline in the terminal
+// that started dev), and the tree is torn down with `taskkill /T` instead of a
+// group signal.
+const isWindows = process.platform === "win32";
+const terminated = new WeakSet();
+
 function killChild(child, signal) {
-  if (!child.pid || child.killed) {
+  if (!child.pid || child.killed || terminated.has(child)) {
+    return;
+  }
+
+  terminated.add(child);
+
+  if (isWindows) {
+    // /T walks the tree (cmd.exe -> npx -> node), /F is the escalation the
+    // POSIX side gets from the SIGKILL timer, so there is nothing to retry.
+    try {
+      const killer = spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+        stdio: "ignore",
+        windowsHide: true,
+      });
+      killer.on("error", () => {
+        try {
+          child.kill(signal);
+        } catch {
+          // Already gone.
+        }
+      });
+    } catch {
+      try {
+        child.kill(signal);
+      } catch {
+        // Already gone.
+      }
+    }
     return;
   }
 
@@ -95,6 +132,91 @@ function killChild(child, signal) {
     }
   } catch {
     // The child may have exited between the liveness check and the signal.
+  }
+}
+
+// The desktop app spawns the Otto daemon as a DETACHED grandchild
+// (packages/desktop/src/daemon/daemon-manager.ts: `detached: true` + `unref()`),
+// so it is not reachable by the process-group `kill(-pid)` stopAll() below.
+// That is intentional for the packaged app (the daemon outlives the window), but
+// in dev it means the daemon outlives this runner - the pre-`ba852fce8`
+// `concurrently --kill-others` launch tore it down with the tree. We restore that
+// guarantee by explicitly stopping the daemon on the way out, using the same
+// `daemon stop` CLI the app itself uses for quit (daemon-manager.ts
+// DESKTOP_DAEMON_STOP_CLI_ARGS), which walks the supervisor + worker + their
+// children. Dev-only: the packaged app is never launched through this runner.
+const CLI_STOP_ARGS = [
+  "daemon",
+  "stop",
+  "--json",
+  "--timeout",
+  "10",
+  "--force",
+  "--kill-timeout",
+  "10",
+];
+
+function resolveCliEntrypoint() {
+  const cliRoot = path.join(rootDir, "packages", "cli");
+  const distEntry = path.join(cliRoot, "dist", "index.js");
+  if (fsExistsSync(distEntry)) {
+    return { entry: distEntry, execArgv: [] };
+  }
+  return { entry: path.join(cliRoot, "src", "index.ts"), execArgv: ["--import", "tsx"] };
+}
+
+function runCli(args, timeoutMs) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+
+    let child;
+    try {
+      const { entry, execArgv } = resolveCliEntrypoint();
+      child = spawn(process.execPath, [...execArgv, entry, ...args], {
+        cwd: rootDir,
+        env: { ...process.env },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (error) {
+      console.error(`[daemon] ${error.message}`);
+      done({ ok: false });
+      return;
+    }
+
+    let output = "";
+    child.stdout?.on("data", (chunk) => (output += chunk.toString()));
+    child.stderr?.on("data", (chunk) => (output += chunk.toString()));
+    const timer = setTimeout(() => {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        // Already gone.
+      }
+      done({ ok: false, output });
+    }, timeoutMs);
+    timer.unref();
+    child.on("error", () => {
+      clearTimeout(timer);
+      done({ ok: false, output });
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      done({ ok: code === 0, output });
+    });
+  });
+}
+
+// Stop the detached daemon the way the app does on quit (same `daemon stop`
+// CLI, same args). Bounded so a wedged daemon can't hold the dev session open.
+async function stopDaemon() {
+  const result = await runCli(CLI_STOP_ARGS, 20_000);
+  if (!result.ok) {
+    console.warn("[daemon] daemon stop did not confirm clean; it may still be winding down");
   }
 }
 
@@ -116,10 +238,16 @@ function stopAll(signal) {
   forceKill.unref();
 
   const finish = setInterval(() => {
-    if (children.size === 0) {
-      clearInterval(finish);
-      process.exit(exitCode);
+    if (children.size !== 0) {
+      return;
     }
+    clearInterval(finish);
+    // Kill the children first, then stop the detached daemon (it is a
+    // grandchild that detached itself, so it survived the group kill above),
+    // then exit. Stopping after the app is gone keeps the app's own
+    // "daemon disappeared" handling from reacting mid-shutdown, and the
+    // app's quit-time stop is a no-op once the daemon is already down.
+    void stopDaemon().then(() => process.exit(exitCode));
   }, 50);
 }
 
@@ -168,10 +296,19 @@ const metroNodeOptions = [process.env.NODE_OPTIONS, "--max-old-space-size=8192"]
 // directly is not the fix either: Node refuses to spawn .cmd without a shell
 // (EINVAL, CVE-2024-27980). A shell is the supported route, and every argument
 // here is a literal this file controls, so there is nothing to escape.
+//
+// The shell must be named ("cmd.exe"), not `shell: true`: since Node 23.11 /
+// 24 passing args with a bare `shell: true` emits DEP0190 (unescaped argument
+// concatenation warning) on every launch. Naming the shell is exactly what
+// DEP0190 tells you to do, and on Windows `shell: true` resolves to cmd.exe
+// anyway, so behavior is identical.
 spawnChild("metro", "npx", ["expo", "start", "--port", String(expoPort)], {
   cwd: appDir,
-  detached: true,
-  ...(process.platform === "win32" ? { shell: true } : {}),
+  // Attached on Windows: `detached` gives the child its own console window, and
+  // Metro belongs inline in the dev terminal (and must die with it). On POSIX it
+  // is what makes the process group that stopAll() signals.
+  detached: !isWindows,
+  ...(isWindows ? { shell: "cmd.exe", windowsHide: true } : {}),
   env: {
     ...process.env,
     ...colorEnv,
@@ -192,7 +329,8 @@ try {
 
 if (!stopping) {
   spawnChild("electron", electron, [...electronArgs, desktopDir], {
-    detached: true,
+    detached: !isWindows,
+    ...(isWindows ? { windowsHide: true } : {}),
     env: {
       ...process.env,
       ...colorEnv,

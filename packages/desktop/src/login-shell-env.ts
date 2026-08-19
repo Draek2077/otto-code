@@ -393,6 +393,9 @@ function restoreElectronEnv({ env, savedRunAsNode, savedNoAttach }: RestoreElect
 
 function resolveShellEnv({ deps, timeoutMs }: ResolveShellEnvInput): ResolvedShellEnv {
   if (deps.platform === "win32") {
+    // Windows inherits the environment from the launching process - there is no
+    // login shell to resolve. The caller logs the fallback; keep it a one-line
+    // info (reason "win32") instead of a warn so a normal Windows dev start stays quiet.
     throw new ShellEnvError("login shell env is not resolved on Windows", { reason: "win32" });
   }
 
@@ -527,6 +530,15 @@ export function inheritLoginShellEnv(input: LoginShellEnvDependencies = {}): voi
         ? error.details
         : { reason: "throw", shell: deps.env.SHELL ?? undefined };
     const cause = error instanceof Error ? error.cause : undefined;
+    if (details.reason === "win32") {
+      // Not a failure: Windows has no login shell to resolve, and the inherited
+      // environment is exactly right. One quiet info line, no PATH dump.
+      deps.logger.info("[login-shell-env] skipped on Windows; keeping inherited env", {
+        durationMs: deps.now() - startedAt,
+        timeoutMs,
+      });
+      return;
+    }
     deps.logger.warn("[login-shell-env] failed; keeping inherited env", {
       ...details,
       durationMs: deps.now() - startedAt,

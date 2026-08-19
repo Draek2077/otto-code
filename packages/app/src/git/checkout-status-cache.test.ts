@@ -38,6 +38,23 @@ function checkoutStatus(overrides: Partial<CheckoutStatusPayload> = {}): Checkou
   } as CheckoutStatusPayload;
 }
 
+function notGitStatus(overrides: Partial<CheckoutStatusPayload> = {}): CheckoutStatusPayload {
+  return {
+    ...checkoutStatus(),
+    isGit: false,
+    repoRoot: null,
+    currentBranch: null,
+    isDirty: null,
+    baseRef: null,
+    aheadBehind: null,
+    aheadOfOrigin: null,
+    behindOfOrigin: null,
+    hasRemote: false,
+    remoteUrl: null,
+    ...overrides,
+  } as CheckoutStatusPayload;
+}
+
 function prStatus(overrides: Partial<CheckoutPrStatusPayload> = {}): CheckoutPrStatusPayload {
   return {
     cwd,
@@ -111,9 +128,44 @@ describe("fetchCheckoutStatus", () => {
 
     expect(useReviewDraftStore.getState().diffModeOverrides["review:scope"]).toBeDefined();
   });
+
+  it("rejects a failed measurement instead of caching it as a non-git checkout", async () => {
+    const client = {
+      getCheckoutStatus: vi.fn(async () =>
+        notGitStatus({ error: { code: "UNKNOWN", message: "Git command timed out" } }),
+      ),
+    };
+
+    await expect(fetchCheckoutStatus({ client, serverId, cwd })).rejects.toThrow(
+      "Git command timed out",
+    );
+  });
+
+  it("returns a genuine non-git checkout", async () => {
+    const answered = notGitStatus({ error: { code: "NOT_GIT_REPO", message: "not a repo" } });
+    const client = { getCheckoutStatus: vi.fn(async () => answered) };
+
+    await expect(fetchCheckoutStatus({ client, serverId, cwd })).resolves.toEqual(answered);
+  });
 });
 
 describe("applyCheckoutStatusUpdateFromEvent", () => {
+  it("keeps the cached status when a push carries a failed measurement", () => {
+    const queryClient = createQueryClient();
+    const good = checkoutStatus({ requestId: "push-good", isDirty: true });
+    queryClient.setQueryData(checkoutStatusQueryKey(serverId, cwd), good);
+
+    applyCheckoutStatusUpdateFromEvent({
+      queryClient,
+      serverId,
+      message: checkoutStatusUpdate(
+        notGitStatus({ error: { code: "UNKNOWN", message: "Git command timed out" } }),
+      ),
+    });
+
+    expect(queryClient.getQueryData(checkoutStatusQueryKey(serverId, cwd))).toEqual(good);
+  });
+
   it("writes the checkout status to the cache using the cwd from the payload", () => {
     const queryClient = createQueryClient();
     const pushed = checkoutStatus({ requestId: "push-1", isDirty: true });

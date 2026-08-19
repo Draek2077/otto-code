@@ -45,6 +45,7 @@ import { ProjectSearchPane } from "./project-search-pane";
 import { useProjectSearchFeature } from "@/editor/use-project-search-feature";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useWindowControlsPadding } from "@/utils/desktop-window";
+import { useHasOwnedWindowChromeObstruction } from "@/utils/window-chrome";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { RetainedPanelActivity } from "@/components/retained-panel";
 import { useSidebarSlide } from "@/hooks/use-sidebar-slide";
@@ -422,6 +423,18 @@ interface SidebarContentProps {
   onOpenFile?: (filePath: string, options?: { edit?: boolean; lineStart?: number }) => void;
 }
 
+/**
+ * The explorer needs its own close control unless native window controls
+ * already occupy the top-right corner. On a half-screen desktop window app
+ * navigation has yielded, so this is the only way back out of the explorer.
+ */
+export function shouldShowExplorerCloseButton(input: {
+  isMobile: boolean;
+  hasRightWindowControls: boolean;
+}): boolean {
+  return input.isMobile || !input.hasRightWindowControls;
+}
+
 function ExplorerSidebarContent({
   activeTab,
   onTabPress,
@@ -440,6 +453,12 @@ function ExplorerSidebarContent({
   const iconSize = useIconSize();
   const toast = useToast();
   const padding = useWindowControlsPadding("explorerSidebar");
+  // Without native controls in the top-right corner the explorer owns that
+  // corner, so it has to offer its own close affordance. On a half-screen
+  // desktop window app navigation has already yielded, and this is the only
+  // way back out of the explorer.
+  const hasRightWindowControls = useHasOwnedWindowChromeObstruction("top-right");
+  const showCloseButton = shouldShowExplorerCloseButton({ isMobile, hasRightWindowControls });
   // In User interface mode only the Files tab renders, so the PR/git query is
   // never needed - keep it from firing (a lens, not a lock: no dev-surface RPCs).
   const canQueryPullRequest = isDeveloperMode && isGit && Boolean(workspaceRoot);
@@ -575,11 +594,18 @@ function ExplorerSidebarContent({
           })}
         </View>
         <View style={styles.headerRightSection} onLayout={handleRightSectionLayout}>
-          {isMobile && (
-            <Pressable onPress={onClose} style={styles.closeButton}>
+          {showCloseButton ? (
+            <Pressable
+              onPress={onClose}
+              style={styles.closeButton}
+              testID="explorer-close"
+              accessibilityRole="button"
+              accessibilityLabel={t("workspace.tabs.explorer.close")}
+              hitSlop={8}
+            >
               <X size={iconSize.md} color={theme.colors.foregroundMuted} />
             </Pressable>
-          )}
+          ) : null}
         </View>
         {/* Invisible clones of the tab row - one icon+label, one label-only -
             whose natural widths decide which display tier the real tabs can

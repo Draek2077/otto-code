@@ -41,7 +41,11 @@ export function useCheckoutStatusQuery({
     // globally). `refreshOnMount` is reserved for UI affordances that need to
     // repair a missed push before deciding whether to render.
     refetchOnMount: refreshOnMount ? "always" : true,
-    refetchOnReconnect: false,
+    // Only bites when the query holds no successful data: `staleTime: Infinity`
+    // makes a good status permanently fresh, so this costs nothing in the healthy
+    // case. It is the recovery path for a workspace whose status measurement
+    // failed while the pane stayed mounted (see fetchCheckoutStatus).
+    refetchOnReconnect: true,
     refetchOnWindowFocus: false,
   });
 

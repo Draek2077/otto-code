@@ -87,6 +87,7 @@ import {
   computeLiveTurnReveal,
   findTurnBoundary,
   getGrowingAssistantItemId,
+  pushRevealTrace,
   type TurnRevealSpan,
   type TurnRevealTicker,
   StreamResumeGate,
@@ -126,6 +127,14 @@ import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/stores/worksp
 import { toErrorMessage } from "@/utils/error-messages";
 import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
 import { revealDirectoryInFiles, revealFileInFiles } from "@/git/changes-reveal";
+
+// TEMP DIAGNOSTIC (2026-08-19): length helper for the reveal-target pipeline
+// trace in AgentStreamView, kept outside the component so the diagnostic call
+// doesn't add branches to its own cyclomatic complexity. Remove alongside the
+// rest of the reveal-trace instrumentation once the root cause lands.
+function revealTraceLen(items: readonly StreamItem[] | undefined): number {
+  return items ? items.length : 0;
+}
 
 function renderLiveAuxiliaryNode(input: {
   pendingPermissions: ReactNode;
@@ -961,6 +970,30 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         settledTurnKey: settledTurnKeyRef.current,
       });
     }, [agent.status, displayedStreamItems, displayedStreamHead]);
+    // TEMP DIAGNOSTIC (2026-08-19): traces the reveal-target pipeline (raw
+    // store data -> frozen-while-inactive snapshot -> deferred value ->
+    // resume-gated value) feeding the ticker, on every render, to find why
+    // the computed target regresses for an unchanged turn key while fully
+    // visible. pushRevealTrace no-ops off web. Remove alongside the ticker's
+    // own reveal-trace instrumentation once the root cause lands - see
+    // .otto/knowledge for the finding.
+    pushRevealTrace({
+      label: agentId,
+      event: "PIPELINE",
+      isStreamVisible,
+      rawTailLen: streamItems.length,
+      rawHeadLen: revealTraceLen(streamHead),
+      effectiveTailLen: effectiveStreamItems.length,
+      effectiveHeadLen: revealTraceLen(effectiveStreamHead),
+      effectiveIsRawTail: effectiveStreamItems === streamItems,
+      deferredTailLen: deferredStreamItems.length,
+      deferredHeadLen: revealTraceLen(deferredStreamHead),
+      deferredIsEffectiveTail: deferredStreamItems === effectiveStreamItems,
+      displayedDataSettled: displayedStream.dataSettled,
+      displayedTailIsDeferred: displayedStreamItems === deferredStreamItems,
+      totalChars: liveTurnReveal.totalChars,
+      turnKey: liveTurnReveal.turnKey,
+    });
     const revealTicker = useTurnRevealTicker({
       turnKey: liveTurnReveal.turnKey,
       target: liveTurnReveal.totalChars,
@@ -974,6 +1007,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       // up. The ticker keeps its return-snap until that pair is equal, so the
       // first fresh target cannot be replayed as an away-period typing rush.
       dataSettled: displayedStream.dataSettled,
+      // TEMP DIAGNOSTIC (2026-08-18): tab-switch replay trace, remove after root cause lands.
+      debugLabel: agentId,
     });
 
     // The growing end of the live turn. An action after assistant prose closes

@@ -264,10 +264,16 @@ const CSP_SHARED_DIRECTIVES = [
 // Dev loads the Expo/Metro dev server, whose Fast Refresh relies on eval'd
 // source maps. The packaged app loads static otto:// assets and doesn't need it.
 const DEV_CONTENT_SECURITY_POLICY = [
-  "script-src 'self' 'unsafe-eval'",
+  // blob: allows the mic-capture AudioWorklet module to load from a Blob URL.
+  // Chromium governs worklet modules via script-src (not worker-src/worklet-src).
+  "script-src 'self' 'unsafe-eval' blob:",
   ...CSP_SHARED_DIRECTIVES,
 ].join("; ");
-const PROD_CONTENT_SECURITY_POLICY = ["script-src 'self'", ...CSP_SHARED_DIRECTIVES].join("; ");
+// blob: is required in prod script-src as well: the mic-capture AudioWorklet
+// loads from a Blob URL, and Chromium governs worklet modules via script-src.
+const PROD_CONTENT_SECURITY_POLICY = ["script-src 'self' blob:", ...CSP_SHARED_DIRECTIVES].join(
+  "; ",
+);
 
 function registerAppShellContentSecurityPolicy(): void {
   const csp = app.isPackaged ? PROD_CONTENT_SECURITY_POLICY : DEV_CONTENT_SECURITY_POLICY;
@@ -530,17 +536,23 @@ ipcMain.handle("otto:get-pending-open-project", (event) => {
   requireTrustedMainRenderer(event);
   const webContentsId = event.sender.id;
   const result = pendingOpenProjectStore.take(webContentsId);
-  log.info("[open-project] renderer requested pending path:", {
-    webContentsId,
-    pendingPath: result,
-  });
+  // The pull happens on every window mount and is null in the common case -
+  // only the deep-linked launch path is worth a log line.
+  if (result !== null || OTTO_DEBUG) {
+    log.info("[open-project] renderer requested pending path:", {
+      webContentsId,
+      pendingPath: result,
+    });
+  }
   return result;
 });
 ipcMain.handle("otto:get-pending-open-target", (event) => {
   requireTrustedMainRenderer(event);
   const webContentsId = event.sender.id;
   const result = pendingOpenProjectStore.takeTarget(webContentsId);
-  log.info("[open-target] renderer requested pending target:", { webContentsId, target: result });
+  if (result !== null || OTTO_DEBUG) {
+    log.info("[open-target] renderer requested pending target:", { webContentsId, target: result });
+  }
   return result;
 });
 

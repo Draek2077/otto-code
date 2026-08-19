@@ -60,6 +60,10 @@ import { removeManagedRuntimeWithElevation } from "../features/elevated-runtime-
 const DAEMON_LOG_FILENAME = "daemon.log";
 const PERFORMANCE_CAPTURES_DIRECTORY = "performance-captures";
 const MAX_PERFORMANCE_CAPTURE_BYTES = 20 * 1024 * 1024;
+// TEMP DIAGNOSTIC (2026-08-19): reveal-trace auto-flush, see writeRevealTrace.
+const REVEAL_TRACES_DIRECTORY = "reveal-traces";
+const REVEAL_TRACE_FILENAME = "latest.json";
+const MAX_REVEAL_TRACE_BYTES = 20 * 1024 * 1024;
 const STARTUP_POLL_INTERVAL_MS = 200;
 const STARTUP_POLL_MAX_ATTEMPTS = 150;
 const DETACHED_STARTUP_GRACE_MS = 1200;
@@ -159,6 +163,31 @@ async function writePerformanceCapture(args: Record<string, unknown> | undefined
   // even when a user stops several attempts in the same millisecond.
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const filePath = path.join(directory, `capture-${stamp}-${crypto.randomUUID()}.json`);
+  await writeFile(filePath, contents, "utf8");
+  return { path: filePath };
+}
+
+// TEMP DIAGNOSTIC (2026-08-19): auto-flush target for window.__revealTrace
+// (packages/app/src/agent-stream/turn-reveal.ts), so the reveal-target replay
+// investigation can read the buffer from disk with no devtools/console step
+// from the user. Overwrites one fixed file rather than accumulating captures
+// like writePerformanceCapture - this is a rolling live snapshot, not a
+// user-triggered archive. Remove alongside the rest of the reveal-trace
+// instrumentation once the root cause lands.
+async function writeRevealTrace(args: Record<string, unknown> | undefined): Promise<{
+  path: string;
+}> {
+  const contents = args?.contents;
+  if (typeof contents !== "string" || contents.length === 0) {
+    throw new Error("Reveal trace contents are required.");
+  }
+  if (Buffer.byteLength(contents, "utf8") > MAX_REVEAL_TRACE_BYTES) {
+    throw new Error("Reveal trace exceeds the 20 MiB limit.");
+  }
+
+  const directory = path.join(getOttoHome(), REVEAL_TRACES_DIRECTORY);
+  await mkdir(directory, { recursive: true });
+  const filePath = path.join(directory, REVEAL_TRACE_FILENAME);
   await writeFile(filePath, contents, "utf8");
   return { path: filePath };
 }
@@ -640,6 +669,7 @@ export function createDaemonCommandHandlers(options?: {
     desktop_daemon_logs: () => getDaemonLogs(),
     desktop_app_logs: () => getDesktopAppLogs(),
     write_performance_capture: (args) => writePerformanceCapture(args),
+    write_reveal_trace: (args) => writeRevealTrace(args),
     desktop_daemon_pairing: () => getDaemonPairing(),
     remove_managed_runtime_with_elevation: (args) =>
       removeManagedRuntimeWithElevation({
