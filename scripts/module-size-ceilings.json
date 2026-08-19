@@ -1,0 +1,26 @@
+{
+  "$comment": [
+    "Line-count ceilings for the modules where Otto feature code accumulates fastest.",
+    "",
+    "These are RATCHETS, not targets. A ceiling may only ever be LOWERED. When an extraction",
+    "wave moves code out of one of these files, lower its ceiling in the same commit so the",
+    "space cannot be reclaimed by the next feature.",
+    "",
+    "Raising a ceiling is not a normal action. If a change genuinely needs one raised, that is a",
+    "signal the feature wants its own module instead. See docs/architecture.md for the domain",
+    "structure Paseo uses (server/session/<domain>/, protocol/src/<domain>.ts) and prefer adding",
+    "a sibling module over growing one of these.",
+    "",
+    "Set 2026-08-19 at each file's then-current size."
+  ],
+  "ceilings": {
+    "packages/protocol/src/messages.ts": 13013,
+    "packages/server/src/server/session.ts": 12001,
+    "packages/client/src/daemon-client.ts": 9737,
+    "packages/app/src/screens/workspace/workspace-screen.tsx": 7836,
+    "packages/server/src/server/agent/agent-manager.ts": 7745,
+    "packages/server/src/server/agent/providers/claude/agent.ts": 7434,
+    "packages/server/src/server/agent/tools/otto-tools.ts": 6254,
+    "packages/app/src/git/diff-pane.tsx": 4193
+  }
+}

@@ -98,6 +98,7 @@
     "e2e:report": "npm run test:e2e:report --workspace=@otto-code/app",
     "acp:version-drift": "node scripts/check-acp-catalog-version-drift.mjs",
     "acp:version-drift:check": "node scripts/check-acp-catalog-version-drift.mjs --fail-on-drift",
+    "size:ceilings:check": "node scripts/check-module-size-ceilings.mjs",
     "acp:version-drift:update": "node scripts/check-acp-catalog-version-drift.mjs --update",
     "start": "npm run start --workspace=@otto-code/server",
     "android": "npm run android --workspace=@otto-code/app",
