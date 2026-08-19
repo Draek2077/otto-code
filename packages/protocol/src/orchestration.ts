@@ -717,3 +717,295 @@ function validateGraphNodeLoop(node: GraphNode): string[] {
   }
   return [];
 }
+
+// ── Orchestration runs (agent-orchestration) ────────────────────────────────
+// Daemon-owned multi-agent Run projection + control. Gated by
+// server_info.features.agentOrchestration. See projects/agent-orchestration.
+export const RunsGetSnapshotRequestSchema = z.object({
+  type: z.literal("runs.get_snapshot.request"),
+  requestId: z.string(),
+});
+
+export const RunsGetSnapshotResponseSchema = z.object({
+  type: z.literal("runs.get_snapshot.response"),
+  payload: z.object({
+    runs: z.array(RunSchema),
+    requestId: z.string(),
+  }),
+});
+
+// Single-run push, broadcast on every phase/status change. Clients merge by id.
+export const RunsUpdatedNotificationSchema = z.object({
+  type: z.literal("runs.updated.notification"),
+  payload: z.object({
+    run: RunSchema,
+  }),
+});
+
+// Answer an attended run's `gate` phase (approve or reject, with an optional
+// note). `accepted` is false when the run wasn't awaiting a gate.
+export const RunsGateRespondRequestSchema = z.object({
+  type: z.literal("runs.gate_respond.request"),
+  runId: z.string(),
+  phaseId: z.string(),
+  approved: z.boolean(),
+  note: z.string().optional(),
+  requestId: z.string(),
+});
+
+export const RunsGateRespondResponseSchema = z.object({
+  type: z.literal("runs.gate_respond.response"),
+  payload: z.object({
+    runId: z.string(),
+    accepted: z.boolean(),
+    requestId: z.string(),
+  }),
+});
+
+export const RunsCancelRequestSchema = z.object({
+  type: z.literal("runs.cancel.request"),
+  runId: z.string(),
+  requestId: z.string(),
+});
+
+export const RunsCancelResponseSchema = z.object({
+  type: z.literal("runs.cancel.response"),
+  payload: z.object({
+    runId: z.string(),
+    canceled: z.boolean(),
+    requestId: z.string(),
+  }),
+});
+
+// Delete every finished (done/failed/canceled) run from disk and memory.
+// Active/paused runs are left untouched. Gated by
+// server_info.features.runsClear.
+export const RunsClearRequestSchema = z.object({
+  type: z.literal("runs.clear.request"),
+  requestId: z.string(),
+});
+
+export const RunsClearResponseSchema = z.object({
+  type: z.literal("runs.clear.response"),
+  payload: z.object({
+    runIds: z.array(z.string()),
+    requestId: z.string(),
+  }),
+});
+
+// Delete one run by id. Terminal (done/failed/canceled) and draft runs only -
+// deleting an active run is refused so a cleanup click can't silently orphan
+// running agents; cancel it first. Gated by server_info.features.runsDelete.
+export const RunsDeleteRequestSchema = z.object({
+  type: z.literal("runs.delete.request"),
+  requestId: z.string(),
+  runId: z.string(),
+});
+
+export const RunsDeleteResponseSchema = z.object({
+  type: z.literal("runs.delete.response"),
+  payload: z.object({
+    // The deleted id, or absent when nothing was deleted (unknown or still
+    // active) - `error` then carries why.
+    runId: z.string().optional(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
+// Broadcast to every connected client (including the requester) so all
+// caches drop the same runs, mirroring runs.updated.notification's upsert.
+// Serves both runs.clear (many ids) and runs.delete (one).
+export const RunsClearedNotificationSchema = z.object({
+  type: z.literal("runs.cleared.notification"),
+  payload: z.object({
+    runIds: z.array(z.string()),
+  }),
+});
+
+// ── Orchestration graphs (user orchestrations) ──────────────────────────────
+// Host-level reusable graph templates + user-initiated orchestration start.
+// Gated by server_info.features.orchestrationGraphs. UI says "Orchestration"
+// and "Graph"; the wire keeps the short `runs.` namespace (see docs/glossary.md).
+// See projects/orchestration-graphs.
+export const RunsGraphsListRequestSchema = z.object({
+  type: z.literal("runs.graphs.list.request"),
+  requestId: z.string(),
+});
+
+export const RunsGraphsListResponseSchema = z.object({
+  type: z.literal("runs.graphs.list.response"),
+  payload: z.object({
+    graphs: z.array(OrchestrationGraphSchema),
+    requestId: z.string(),
+  }),
+});
+
+// Upsert a graph template (create when the id is new). Built-in graphs are
+// copy-on-edit daemon-side: saving over a builtIn id persists a user copy.
+export const RunsGraphsSaveRequestSchema = z.object({
+  type: z.literal("runs.graphs.save.request"),
+  graph: OrchestrationGraphSchema,
+  requestId: z.string(),
+});
+
+export const RunsGraphsSaveResponseSchema = z.object({
+  type: z.literal("runs.graphs.save.response"),
+  payload: z.object({
+    graph: OrchestrationGraphSchema.optional(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
+export const RunsGraphsDeleteRequestSchema = z.object({
+  type: z.literal("runs.graphs.delete.request"),
+  graphId: z.string(),
+  requestId: z.string(),
+});
+
+export const RunsGraphsDeleteResponseSchema = z.object({
+  type: z.literal("runs.graphs.delete.response"),
+  payload: z.object({
+    deleted: z.boolean(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
+// Broadcast after any save/delete so every client's graph cache converges,
+// mirroring runs.updated.notification's role for runs.
+export const RunsGraphsChangedNotificationSchema = z.object({
+  type: z.literal("runs.graphs.changed.notification"),
+  payload: z.object({
+    graphs: z.array(OrchestrationGraphSchema),
+  }),
+});
+
+// ── Prompt templates ────────────────────────────────────────────────────────
+// Host-level reusable prompts and snippets a graph node can bind to. Same shape
+// as the graph trio above, for the same reason: one store, list/save/delete,
+// plus a full-list push so every client converges.
+export const RunsTemplatesListRequestSchema = z.object({
+  type: z.literal("runs.templates.list.request"),
+  requestId: z.string(),
+});
+
+export const RunsTemplatesListResponseSchema = z.object({
+  type: z.literal("runs.templates.list.response"),
+  payload: z.object({
+    templates: z.array(PromptTemplateSchema),
+    requestId: z.string(),
+  }),
+});
+
+export const RunsTemplatesSaveRequestSchema = z.object({
+  type: z.literal("runs.templates.save.request"),
+  template: PromptTemplateSchema,
+  requestId: z.string(),
+});
+
+export const RunsTemplatesSaveResponseSchema = z.object({
+  type: z.literal("runs.templates.save.response"),
+  payload: z.object({
+    template: PromptTemplateSchema.optional(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
+export const RunsTemplatesDeleteRequestSchema = z.object({
+  type: z.literal("runs.templates.delete.request"),
+  templateId: z.string(),
+  requestId: z.string(),
+});
+
+export const RunsTemplatesDeleteResponseSchema = z.object({
+  type: z.literal("runs.templates.delete.response"),
+  payload: z.object({
+    deleted: z.boolean(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
+export const RunsTemplatesChangedNotificationSchema = z.object({
+  type: z.literal("runs.templates.changed.notification"),
+  payload: z.object({
+    templates: z.array(PromptTemplateSchema),
+  }),
+});
+
+// Start (or draft) a user-initiated orchestration from the New Orchestration
+// dialog. `flavor` is an open vocabulary: "ai" (prompt-and-go - the daemon
+// spawns an orchestrator agent that declares its own plan via start_run) or
+// "graph" (deterministic - the daemon executes `graphId` with `graphInputs`).
+// `draft: true` creates the record without executing (the designer flow);
+// `runId` executes an existing draft in place - or, with `draft: true`, re-saves
+// that draft in place (Edit Orchestration).
+export const RunsStartRequestSchema = z.object({
+  type: z.literal("runs.start.request"),
+  flavor: z.string(),
+  cwd: z.string(),
+  workspaceId: z.string().optional(),
+  title: z.string().optional(),
+  description: z.string().optional(),
+  // Orchestrator seat when the active team doesn't fill it: a personality, or
+  // a bare provider/model pair.
+  orchestratorPersonalityId: z.string().optional(),
+  orchestratorProvider: z.string().optional(),
+  orchestratorModel: z.string().optional(),
+  orchestratorThinkingOptionId: z.string().optional(),
+  prompt: z.string().optional(),
+  graphId: z.string().optional(),
+  graphInputs: z.record(z.string(), z.string()).optional(),
+  draft: z.boolean().optional(),
+  runId: z.string().optional(),
+  requestId: z.string(),
+});
+
+export const RunsStartResponseSchema = z.object({
+  type: z.literal("runs.start.response"),
+  payload: z.object({
+    runId: z.string().optional(),
+    // The root/orchestrator agent whose chat the client navigates to, and the
+    // workspace the daemon resolved it into (the dialog only knows a project
+    // target's cwd).
+    agentId: z.string().optional(),
+    workspaceId: z.string().optional(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
+export type RunsGraphsListRequest = z.infer<typeof RunsGraphsListRequestSchema>;
+export type RunsGraphsListResponse = z.infer<typeof RunsGraphsListResponseSchema>;
+export type RunsGraphsSaveRequest = z.infer<typeof RunsGraphsSaveRequestSchema>;
+export type RunsGraphsSaveResponse = z.infer<typeof RunsGraphsSaveResponseSchema>;
+export type RunsGraphsDeleteRequest = z.infer<typeof RunsGraphsDeleteRequestSchema>;
+export type RunsGraphsDeleteResponse = z.infer<typeof RunsGraphsDeleteResponseSchema>;
+export type RunsGraphsChangedNotification = z.infer<typeof RunsGraphsChangedNotificationSchema>;
+export type RunsTemplatesListRequest = z.infer<typeof RunsTemplatesListRequestSchema>;
+export type RunsTemplatesListResponse = z.infer<typeof RunsTemplatesListResponseSchema>;
+export type RunsTemplatesSaveRequest = z.infer<typeof RunsTemplatesSaveRequestSchema>;
+export type RunsTemplatesSaveResponse = z.infer<typeof RunsTemplatesSaveResponseSchema>;
+export type RunsTemplatesDeleteRequest = z.infer<typeof RunsTemplatesDeleteRequestSchema>;
+export type RunsTemplatesDeleteResponse = z.infer<typeof RunsTemplatesDeleteResponseSchema>;
+export type RunsTemplatesChangedNotification = z.infer<
+  typeof RunsTemplatesChangedNotificationSchema
+>;
+export type RunsStartRequest = z.infer<typeof RunsStartRequestSchema>;
+export type RunsStartResponse = z.infer<typeof RunsStartResponseSchema>;
+
+export type RunsGetSnapshotRequest = z.infer<typeof RunsGetSnapshotRequestSchema>;
+export type RunsGetSnapshotResponse = z.infer<typeof RunsGetSnapshotResponseSchema>;
+export type RunsUpdatedNotification = z.infer<typeof RunsUpdatedNotificationSchema>;
+export type RunsGateRespondRequest = z.infer<typeof RunsGateRespondRequestSchema>;
+export type RunsGateRespondResponse = z.infer<typeof RunsGateRespondResponseSchema>;
+export type RunsCancelRequest = z.infer<typeof RunsCancelRequestSchema>;
+export type RunsCancelResponse = z.infer<typeof RunsCancelResponseSchema>;
+export type RunsClearRequest = z.infer<typeof RunsClearRequestSchema>;
+export type RunsClearResponse = z.infer<typeof RunsClearResponseSchema>;
+export type RunsDeleteRequest = z.infer<typeof RunsDeleteRequestSchema>;
+export type RunsDeleteResponse = z.infer<typeof RunsDeleteResponseSchema>;
+export type RunsClearedNotification = z.infer<typeof RunsClearedNotificationSchema>;

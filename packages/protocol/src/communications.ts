@@ -227,3 +227,291 @@ export type CommunicationHomeSection = z.infer<typeof CommunicationHomeSectionSc
 export type CommunicationNotification = z.infer<typeof CommunicationNotificationSchema>;
 export type CommunicationsInboxHome = z.infer<typeof CommunicationsInboxHomeSchema>;
 export type CommunicationsOverview = z.infer<typeof CommunicationsOverviewSchema>;
+
+// Communications is a daemon-owned, provider-neutral integration family. The
+// first contract intentionally exposes only a compact read projection; OAuth,
+// message send, and provider-specific controls arrive only after the Zoom proof
+// demonstrates that this boundary is reliable. Gated by features.communications.
+export const CommunicationsGetOverviewRequestSchema = z.object({
+  type: z.literal("communications.get_overview.request"),
+  requestId: z.string(),
+});
+
+export const CommunicationsGetOverviewResponseSchema = z.object({
+  type: z.literal("communications.get_overview.response"),
+  payload: z.object({
+    overview: CommunicationsOverviewSchema,
+    requestId: z.string(),
+  }),
+});
+
+export type CommunicationsGetOverviewRequest = z.infer<
+  typeof CommunicationsGetOverviewRequestSchema
+>;
+export type CommunicationsGetOverviewResponse = z.infer<
+  typeof CommunicationsGetOverviewResponseSchema
+>;
+
+// A connected provider's title-bar home is more detailed than the global
+// overview and is independently capability-gated by communicationsChatHome.
+export const CommunicationsInboxGetHomeRequestSchema = z.object({
+  type: z.literal("communications.inbox.get_home.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+});
+
+export const CommunicationsInboxGetHomeResponseSchema = z.object({
+  type: z.literal("communications.inbox.get_home.response"),
+  payload: z.object({
+    home: CommunicationsInboxHomeSchema,
+    requestId: z.string(),
+  }),
+});
+
+export type CommunicationsInboxGetHomeRequest = z.infer<
+  typeof CommunicationsInboxGetHomeRequestSchema
+>;
+export type CommunicationsInboxGetHomeResponse = z.infer<
+  typeof CommunicationsInboxGetHomeResponseSchema
+>;
+
+// COMPAT(communicationsInboxSearch): added in v0.8.11, remove gate after
+// 2027-02-15. Destination search is a new capability and newer clients must
+// not issue this request to older hosts.
+export const CommunicationsInboxSearchRequestSchema = z.object({
+  type: z.literal("communications.inbox.search.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+  query: z.string().trim().min(2).max(100),
+});
+
+export const CommunicationsInboxSearchResponseSchema = z.object({
+  type: z.literal("communications.inbox.search.response"),
+  payload: z.object({
+    results: z.array(CommunicationSearchResultSchema),
+    requestId: z.string(),
+  }),
+});
+
+export type CommunicationsInboxSearchRequest = z.infer<
+  typeof CommunicationsInboxSearchRequestSchema
+>;
+export type CommunicationsInboxSearchResponse = z.infer<
+  typeof CommunicationsInboxSearchResponseSchema
+>;
+
+// COMPAT(communicationsFavorites): added in v0.8.11, remove gate after
+// 2027-02-15. A host without provider-native favorite mutations must not
+// receive this request from a newer frontend.
+export const CommunicationsInboxSetFavoriteRequestSchema = z.object({
+  type: z.literal("communications.inbox.set_favorite.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+  conversationId: z.string().trim().min(1),
+  favorite: z.boolean(),
+});
+
+export const CommunicationsInboxSetFavoriteResponseSchema = z.object({
+  type: z.literal("communications.inbox.set_favorite.response"),
+  payload: z.object({
+    // Return fresh daemon-owned Home state, not renderer-local toggle intent.
+    home: CommunicationsInboxHomeSchema,
+    requestId: z.string(),
+  }),
+});
+
+export type CommunicationsInboxSetFavoriteResponse = z.infer<
+  typeof CommunicationsInboxSetFavoriteResponseSchema
+>;
+
+// COMPAT(communicationsRoomNotifications): added in v0.8.11, remove gate after
+// 2027-02-15. Acknowledgement is daemon-local and must not be sent to old hosts.
+export const CommunicationsInboxNotificationsAcknowledgeRequestSchema = z.object({
+  type: z.literal("communications.inbox.notifications.acknowledge.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+  notificationIds: z.array(z.string().trim().min(1)).optional(),
+  conversationId: z.string().trim().min(1).optional(),
+  clearAll: z.boolean().optional(),
+});
+
+export const CommunicationsInboxNotificationsAcknowledgeResponseSchema = z.object({
+  type: z.literal("communications.inbox.notifications.acknowledge.response"),
+  payload: z.object({ home: CommunicationsInboxHomeSchema, requestId: z.string() }),
+});
+
+export type CommunicationsInboxNotificationsAcknowledgeResponse = z.infer<
+  typeof CommunicationsInboxNotificationsAcknowledgeResponseSchema
+>;
+
+export const CommunicationsInboxGetPresenceRequestSchema = z.object({
+  type: z.literal("communications.inbox.get_presence.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+});
+
+export const CommunicationsInboxGetPresenceResponseSchema = z.object({
+  type: z.literal("communications.inbox.get_presence.response"),
+  payload: z.object({ presence: CommunicationPresenceSchema, requestId: z.string() }),
+});
+
+// COMPAT(communicationsPresenceUpdates): added in v0.8.11, remove gate after
+// 2027-02-14. The daemon publishes the authoritative status queue and cooldown
+// state to capable frontends, so an open popup never has to be closed and
+// reopened to observe a retry, completion, or failure.
+export const CommunicationsInboxPresenceChangedNotificationSchema = z.object({
+  type: z.literal("communications.inbox.presence.changed.notification"),
+  payload: z.object({ presence: CommunicationPresenceSchema }),
+});
+
+export const CommunicationsInboxSetPresenceRequestSchema = z.object({
+  type: z.literal("communications.inbox.set_presence.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+  status: CommunicationPresenceStatusSchema,
+});
+
+export const CommunicationsInboxSetPresenceResponseSchema = z.object({
+  type: z.literal("communications.inbox.set_presence.response"),
+  payload: z.object({ presence: CommunicationPresenceSchema, requestId: z.string() }),
+});
+
+// The Chat availability toggle is separate from provider presence: disabling
+// Otto Chat must not discard the user's provider authorization or impersonate
+// an unsupported native presence value. Gated by communicationsChatAvailability.
+export const CommunicationsInboxSetEnabledRequestSchema = z.object({
+  type: z.literal("communications.inbox.set_enabled.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+  enabled: z.boolean(),
+});
+
+export const CommunicationsInboxSetEnabledResponseSchema = z.object({
+  type: z.literal("communications.inbox.set_enabled.response"),
+  payload: z.object({ presence: CommunicationPresenceSchema, requestId: z.string() }),
+});
+
+export type CommunicationsInboxGetPresenceResponse = z.infer<
+  typeof CommunicationsInboxGetPresenceResponseSchema
+>;
+export type CommunicationsInboxPresenceChangedNotification = z.infer<
+  typeof CommunicationsInboxPresenceChangedNotificationSchema
+>;
+export type CommunicationsInboxSetPresenceResponse = z.infer<
+  typeof CommunicationsInboxSetPresenceResponseSchema
+>;
+export type CommunicationsInboxSetEnabledResponse = z.infer<
+  typeof CommunicationsInboxSetEnabledResponseSchema
+>;
+
+export const CommunicationsInboxGetMessagesRequestSchema = z.object({
+  type: z.literal("communications.inbox.get_messages.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+  conversationId: z.string().trim().min(1),
+});
+
+export const CommunicationsInboxGetMessagesResponseSchema = z.object({
+  type: z.literal("communications.inbox.get_messages.response"),
+  payload: z.object({
+    messages: z.array(CommunicationMessageSchema),
+    requestId: z.string(),
+  }),
+});
+
+export const CommunicationsInboxSendMessageRequestSchema = z.object({
+  type: z.literal("communications.inbox.send_message.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+  conversationId: z.string().trim().min(1),
+  text: z.string().trim().min(1),
+});
+
+export const CommunicationsInboxSendMessageResponseSchema = z.object({
+  type: z.literal("communications.inbox.send_message.response"),
+  payload: z.object({
+    message: CommunicationMessageSchema,
+    requestId: z.string(),
+  }),
+});
+
+export type CommunicationsInboxGetMessagesRequest = z.infer<
+  typeof CommunicationsInboxGetMessagesRequestSchema
+>;
+export type CommunicationsInboxGetMessagesResponse = z.infer<
+  typeof CommunicationsInboxGetMessagesResponseSchema
+>;
+export type CommunicationsInboxSendMessageRequest = z.infer<
+  typeof CommunicationsInboxSendMessageRequestSchema
+>;
+export type CommunicationsInboxSendMessageResponse = z.infer<
+  typeof CommunicationsInboxSendMessageResponseSchema
+>;
+
+// COMPAT(communicationsRooms): added in v0.8.11, remove gate after 2027-02-15.
+// Room operations are deliberately a separate, provider-neutral surface. Older
+// hosts must never receive them from newer popup or workspace-tab renderers.
+export const CommunicationsRoomGetRequestSchema = z.object({
+  type: z.literal("communications.room.get.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+  conversationId: z.string().trim().min(1),
+});
+
+export const CommunicationsRoomGetResponseSchema = z.object({
+  type: z.literal("communications.room.get.response"),
+  payload: z.object({ room: CommunicationRoomSchema, requestId: z.string() }),
+});
+
+export const CommunicationsRoomThreadGetRequestSchema = z.object({
+  type: z.literal("communications.room.thread.get.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+  conversationId: z.string().trim().min(1),
+  parentMessageId: z.string().trim().min(1),
+});
+
+export const CommunicationsRoomThreadGetResponseSchema = z.object({
+  type: z.literal("communications.room.thread.get.response"),
+  payload: z.object({ messages: z.array(CommunicationMessageSchema), requestId: z.string() }),
+});
+
+export const CommunicationsRoomMessageSendRequestSchema = z.object({
+  type: z.literal("communications.room.message.send.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+  conversationId: z.string().trim().min(1),
+  text: z.string().trim().min(1),
+  parentMessageId: z.string().trim().min(1).nullable().optional(),
+});
+
+export const CommunicationsRoomMessageSendResponseSchema = z.object({
+  type: z.literal("communications.room.message.send.response"),
+  payload: z.object({ message: CommunicationMessageSchema, requestId: z.string() }),
+});
+
+export const CommunicationsRoomReactionSetRequestSchema = z.object({
+  type: z.literal("communications.room.reaction.set.request"),
+  requestId: z.string(),
+  providerId: z.string().trim().min(1),
+  conversationId: z.string().trim().min(1),
+  messageId: z.string().trim().min(1),
+  emoji: z.string().trim().min(1),
+  active: z.boolean(),
+});
+
+export const CommunicationsRoomReactionSetResponseSchema = z.object({
+  type: z.literal("communications.room.reaction.set.response"),
+  payload: z.object({ message: CommunicationMessageSchema, requestId: z.string() }),
+});
+
+export type CommunicationsRoomGetResponse = z.infer<typeof CommunicationsRoomGetResponseSchema>;
+export type CommunicationsRoomThreadGetResponse = z.infer<
+  typeof CommunicationsRoomThreadGetResponseSchema
+>;
+export type CommunicationsRoomMessageSendResponse = z.infer<
+  typeof CommunicationsRoomMessageSendResponseSchema
+>;
+export type CommunicationsRoomReactionSetResponse = z.infer<
+  typeof CommunicationsRoomReactionSetResponseSchema
+>;

@@ -75,3 +75,97 @@ export type IntegrationAuthorizationOverview = z.infer<
 export type IntegrationAuthorizationMethodOption = z.infer<
   typeof IntegrationAuthorizationMethodOptionSchema
 >;
+
+// Settings pages use this generic, daemon-owned projection to render reusable
+// integration connection state. OAuth drivers and API-key entry remain outside
+// the wire contract until their provider-specific implementation exists.
+// Gated by features.integrationAuthorization.
+export const IntegrationsAuthorizationGetOverviewRequestSchema = z.object({
+  type: z.literal("integrations.authorization.get_overview.request"),
+  requestId: z.string(),
+});
+
+export const IntegrationsAuthorizationGetOverviewResponseSchema = z.object({
+  type: z.literal("integrations.authorization.get_overview.response"),
+  payload: z.object({
+    overview: IntegrationAuthorizationOverviewSchema,
+    requestId: z.string(),
+  }),
+});
+
+export type IntegrationsAuthorizationGetOverviewRequest = z.infer<
+  typeof IntegrationsAuthorizationGetOverviewRequestSchema
+>;
+export type IntegrationsAuthorizationGetOverviewResponse = z.infer<
+  typeof IntegrationsAuthorizationGetOverviewResponseSchema
+>;
+
+/**
+ * List daemon-supported, nonsecret authorization methods for integration
+ * settings. Availability is explicit so a client never offers a flow the host
+ * has not implemented yet. Gated by features.integrationAuthorization.
+ */
+export const IntegrationsAuthorizationGetMethodsRequestSchema = z.object({
+  type: z.literal("integrations.authorization.get_methods.request"),
+  requestId: z.string(),
+  integrationId: z.string().optional(),
+});
+
+export const IntegrationsAuthorizationGetMethodsResponseSchema = z.object({
+  type: z.literal("integrations.authorization.get_methods.response"),
+  payload: z.object({
+    methods: z.array(IntegrationAuthorizationMethodOptionSchema),
+    requestId: z.string(),
+  }),
+});
+
+export type IntegrationsAuthorizationGetMethodsRequest = z.infer<
+  typeof IntegrationsAuthorizationGetMethodsRequestSchema
+>;
+export type IntegrationsAuthorizationGetMethodsResponse = z.infer<
+  typeof IntegrationsAuthorizationGetMethodsResponseSchema
+>;
+
+/**
+ * Starts a daemon-owned browser sign-in through the registered integration
+ * driver. Authorization codes and credentials remain daemon-only.
+ * Gated by features.integrationAuthorizationBrowserFlow.
+ */
+export const IntegrationsAuthorizationStartBrowserRequestSchema = z.object({
+  type: z.literal("integrations.authorization.start_browser.request"),
+  requestId: z.string(),
+  integrationId: z.string(),
+  connectionId: z.string(),
+});
+
+export const IntegrationsAuthorizationStartBrowserResponseSchema = z.object({
+  type: z.literal("integrations.authorization.start_browser.response"),
+  payload: z.object({
+    authorizationUrl: z.string().url().nullable(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export type IntegrationsAuthorizationStartBrowserResponse = z.infer<
+  typeof IntegrationsAuthorizationStartBrowserResponseSchema
+>;
+
+/** Starts the configured daemon-owned Zoom PKCE browser flow. */
+export const IntegrationsZoomStartAuthorizationRequestSchema = z.object({
+  type: z.literal("integrations.zoom.start_authorization.request"),
+  requestId: z.string(),
+});
+
+export const IntegrationsZoomStartAuthorizationResponseSchema = z.object({
+  type: z.literal("integrations.zoom.start_authorization.response"),
+  payload: z.object({
+    authorizationUrl: z.string().url().nullable(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export type IntegrationsZoomStartAuthorizationResponse = z.infer<
+  typeof IntegrationsZoomStartAuthorizationResponseSchema
+>;

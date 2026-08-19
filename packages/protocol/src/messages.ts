@@ -1,5 +1,123 @@
 import { z } from "zod";
 import {
+  LspServersListRequestSchema,
+  LspServerStopRequestSchema,
+  LspActivityChangedStatusPayloadSchema,
+  LspDiagnosticsChangedStatusPayloadSchema,
+  LspServersListResponseSchema,
+  LspServerStopResponseSchema,
+  CodeListFilesRequestSchema,
+  CodeSymbolsRequestSchema,
+  CodeOutlineRequestSchema,
+  CodeDefinitionRequestSchema,
+  CodeDocumentSyncRequestSchema,
+  CodeDocumentCloseRequestSchema,
+  CodeHoverRequestSchema,
+  CodeReferencesRequestSchema,
+  CodeRenamePreviewRequestSchema,
+  CodeRenameApplyRequestSchema,
+  CodeRenameUndoRequestSchema,
+  CodeSolutionListRequestSchema,
+  CodeSolutionGetTreeRequestSchema,
+  CodeSolutionLoadProjectRequestSchema,
+  CodeListFilesResponseSchema,
+  CodeSymbolsResponseSchema,
+  CodeDefinitionResponseSchema,
+  CodeDocumentSyncResponseSchema,
+  CodeDocumentCloseResponseSchema,
+  CodeHoverResponseSchema,
+  CodeReferencesResponseSchema,
+  CodeRenamePreviewResponseSchema,
+  CodeRenameUndoResponseSchema,
+  CodeRenameApplyResponseSchema,
+  CodeSolutionListResponseSchema,
+  CodeSolutionGetTreeResponseSchema,
+  CodeSolutionLoadProjectResponseSchema,
+  CodeOutlineResponseSchema,
+} from "./code-intelligence.js";
+import {
+  ContextReportChangedSchema,
+  ContextReportGetRequestMessageSchema,
+  ContextReportGetResponseMessageSchema,
+  ContextPromptPreviewGetRequestMessageSchema,
+  ContextPromptPreviewGetResponseMessageSchema,
+  ContextEdgeConvertRequestMessageSchema,
+  ContextEdgeConvertResponseMessageSchema,
+  ContextFindingsFixRequestMessageSchema,
+  ContextFindingsFixResponseMessageSchema,
+} from "./context.js";
+import {
+  CommunicationsGetOverviewRequestSchema,
+  CommunicationsGetOverviewResponseSchema,
+  CommunicationsInboxGetHomeRequestSchema,
+  CommunicationsInboxGetHomeResponseSchema,
+  CommunicationsInboxSearchRequestSchema,
+  CommunicationsInboxSearchResponseSchema,
+  CommunicationsInboxSetFavoriteRequestSchema,
+  CommunicationsInboxSetFavoriteResponseSchema,
+  CommunicationsInboxNotificationsAcknowledgeRequestSchema,
+  CommunicationsInboxNotificationsAcknowledgeResponseSchema,
+  CommunicationsInboxGetPresenceRequestSchema,
+  CommunicationsInboxGetPresenceResponseSchema,
+  CommunicationsInboxPresenceChangedNotificationSchema,
+  CommunicationsInboxSetPresenceRequestSchema,
+  CommunicationsInboxSetPresenceResponseSchema,
+  CommunicationsInboxSetEnabledRequestSchema,
+  CommunicationsInboxSetEnabledResponseSchema,
+  CommunicationsInboxGetMessagesRequestSchema,
+  CommunicationsInboxGetMessagesResponseSchema,
+  CommunicationsInboxSendMessageRequestSchema,
+  CommunicationsInboxSendMessageResponseSchema,
+  CommunicationsRoomGetRequestSchema,
+  CommunicationsRoomGetResponseSchema,
+  CommunicationsRoomThreadGetRequestSchema,
+  CommunicationsRoomThreadGetResponseSchema,
+  CommunicationsRoomMessageSendRequestSchema,
+  CommunicationsRoomMessageSendResponseSchema,
+  CommunicationsRoomReactionSetRequestSchema,
+  CommunicationsRoomReactionSetResponseSchema,
+} from "./communications.js";
+import {
+  IntegrationsAuthorizationGetOverviewRequestSchema,
+  IntegrationsAuthorizationGetOverviewResponseSchema,
+  IntegrationsAuthorizationGetMethodsRequestSchema,
+  IntegrationsAuthorizationGetMethodsResponseSchema,
+  IntegrationsAuthorizationStartBrowserRequestSchema,
+  IntegrationsAuthorizationStartBrowserResponseSchema,
+  IntegrationsZoomStartAuthorizationRequestSchema,
+  IntegrationsZoomStartAuthorizationResponseSchema,
+} from "./integration-authorization.js";
+import {
+  RunsGetSnapshotRequestSchema,
+  RunsGetSnapshotResponseSchema,
+  RunsUpdatedNotificationSchema,
+  RunsGateRespondRequestSchema,
+  RunsGateRespondResponseSchema,
+  RunsCancelRequestSchema,
+  RunsCancelResponseSchema,
+  RunsClearRequestSchema,
+  RunsClearResponseSchema,
+  RunsDeleteRequestSchema,
+  RunsDeleteResponseSchema,
+  RunsClearedNotificationSchema,
+  RunsGraphsListRequestSchema,
+  RunsGraphsListResponseSchema,
+  RunsGraphsSaveRequestSchema,
+  RunsGraphsSaveResponseSchema,
+  RunsGraphsDeleteRequestSchema,
+  RunsGraphsDeleteResponseSchema,
+  RunsGraphsChangedNotificationSchema,
+  RunsTemplatesListRequestSchema,
+  RunsTemplatesListResponseSchema,
+  RunsTemplatesSaveRequestSchema,
+  RunsTemplatesSaveResponseSchema,
+  RunsTemplatesDeleteRequestSchema,
+  RunsTemplatesDeleteResponseSchema,
+  RunsTemplatesChangedNotificationSchema,
+  RunsStartRequestSchema,
+  RunsStartResponseSchema,
+} from "./orchestration.js";
+import {
   PersonalityMemoryListRequestMessageSchema,
   PersonalityMemoryListResponseMessageSchema,
   PersonalityMemoryUpdateRequestMessageSchema,
@@ -104,7 +222,6 @@ import {
   BrainSweepResponseSchema,
 } from "./brain.js";
 import { TerminalActivitySchema } from "./terminal-activity.js";
-import { OrchestrationGraphSchema, PromptTemplateSchema, RunSchema } from "./orchestration.js";
 import { ArtifactMetadataSchema } from "./artifacts/types.js";
 import {
   ArtifactListRequestSchema,
@@ -151,19 +268,6 @@ import {
   STALL_GUARD_MAX_THRESHOLD,
 } from "./provider-config.js";
 import { TOOL_CALL_ICON_NAMES } from "./agent-types.js";
-import {
-  CommunicationMessageSchema,
-  CommunicationRoomSchema,
-  CommunicationSearchResultSchema,
-  CommunicationsInboxHomeSchema,
-  CommunicationsOverviewSchema,
-  CommunicationPresenceSchema,
-  CommunicationPresenceStatusSchema,
-} from "./communications.js";
-import {
-  IntegrationAuthorizationMethodOptionSchema,
-  IntegrationAuthorizationOverviewSchema,
-} from "./integration-authorization.js";
 import {
   ChatCreateRequestSchema,
   ChatListRequestSchema,
@@ -2667,388 +2771,6 @@ export type ConnectorsOauthDisconnectResponse = z.infer<
 >;
 export type ConnectorsOauthStatusMessage = z.infer<typeof ConnectorsOauthStatusMessageSchema>;
 
-// Communications is a daemon-owned, provider-neutral integration family. The
-// first contract intentionally exposes only a compact read projection; OAuth,
-// message send, and provider-specific controls arrive only after the Zoom proof
-// demonstrates that this boundary is reliable. Gated by features.communications.
-export const CommunicationsGetOverviewRequestSchema = z.object({
-  type: z.literal("communications.get_overview.request"),
-  requestId: z.string(),
-});
-
-export const CommunicationsGetOverviewResponseSchema = z.object({
-  type: z.literal("communications.get_overview.response"),
-  payload: z.object({
-    overview: CommunicationsOverviewSchema,
-    requestId: z.string(),
-  }),
-});
-
-export type CommunicationsGetOverviewRequest = z.infer<
-  typeof CommunicationsGetOverviewRequestSchema
->;
-export type CommunicationsGetOverviewResponse = z.infer<
-  typeof CommunicationsGetOverviewResponseSchema
->;
-
-// A connected provider's title-bar home is more detailed than the global
-// overview and is independently capability-gated by communicationsChatHome.
-export const CommunicationsInboxGetHomeRequestSchema = z.object({
-  type: z.literal("communications.inbox.get_home.request"),
-  requestId: z.string(),
-  providerId: z.string().trim().min(1),
-});
-
-export const CommunicationsInboxGetHomeResponseSchema = z.object({
-  type: z.literal("communications.inbox.get_home.response"),
-  payload: z.object({
-    home: CommunicationsInboxHomeSchema,
-    requestId: z.string(),
-  }),
-});
-
-export type CommunicationsInboxGetHomeRequest = z.infer<
-  typeof CommunicationsInboxGetHomeRequestSchema
->;
-export type CommunicationsInboxGetHomeResponse = z.infer<
-  typeof CommunicationsInboxGetHomeResponseSchema
->;
-
-// COMPAT(communicationsInboxSearch): added in v0.8.11, remove gate after
-// 2027-02-15. Destination search is a new capability and newer clients must
-// not issue this request to older hosts.
-export const CommunicationsInboxSearchRequestSchema = z.object({
-  type: z.literal("communications.inbox.search.request"),
-  requestId: z.string(),
-  providerId: z.string().trim().min(1),
-  query: z.string().trim().min(2).max(100),
-});
-
-export const CommunicationsInboxSearchResponseSchema = z.object({
-  type: z.literal("communications.inbox.search.response"),
-  payload: z.object({
-    results: z.array(CommunicationSearchResultSchema),
-    requestId: z.string(),
-  }),
-});
-
-export type CommunicationsInboxSearchRequest = z.infer<
-  typeof CommunicationsInboxSearchRequestSchema
->;
-export type CommunicationsInboxSearchResponse = z.infer<
-  typeof CommunicationsInboxSearchResponseSchema
->;
-
-// COMPAT(communicationsFavorites): added in v0.8.11, remove gate after
-// 2027-02-15. A host without provider-native favorite mutations must not
-// receive this request from a newer frontend.
-export const CommunicationsInboxSetFavoriteRequestSchema = z.object({
-  type: z.literal("communications.inbox.set_favorite.request"),
-  requestId: z.string(),
-  providerId: z.string().trim().min(1),
-  conversationId: z.string().trim().min(1),
-  favorite: z.boolean(),
-});
-
-export const CommunicationsInboxSetFavoriteResponseSchema = z.object({
-  type: z.literal("communications.inbox.set_favorite.response"),
-  payload: z.object({
-    // Return fresh daemon-owned Home state, not renderer-local toggle intent.
-    home: CommunicationsInboxHomeSchema,
-    requestId: z.string(),
-  }),
-});
-
-export type CommunicationsInboxSetFavoriteResponse = z.infer<
-  typeof CommunicationsInboxSetFavoriteResponseSchema
->;
-
-// COMPAT(communicationsRoomNotifications): added in v0.8.11, remove gate after
-// 2027-02-15. Acknowledgement is daemon-local and must not be sent to old hosts.
-export const CommunicationsInboxNotificationsAcknowledgeRequestSchema = z.object({
-  type: z.literal("communications.inbox.notifications.acknowledge.request"),
-  requestId: z.string(),
-  providerId: z.string().trim().min(1),
-  notificationIds: z.array(z.string().trim().min(1)).optional(),
-  conversationId: z.string().trim().min(1).optional(),
-  clearAll: z.boolean().optional(),
-});
-
-export const CommunicationsInboxNotificationsAcknowledgeResponseSchema = z.object({
-  type: z.literal("communications.inbox.notifications.acknowledge.response"),
-  payload: z.object({ home: CommunicationsInboxHomeSchema, requestId: z.string() }),
-});
-
-export type CommunicationsInboxNotificationsAcknowledgeResponse = z.infer<
-  typeof CommunicationsInboxNotificationsAcknowledgeResponseSchema
->;
-
-export const CommunicationsInboxGetPresenceRequestSchema = z.object({
-  type: z.literal("communications.inbox.get_presence.request"),
-  requestId: z.string(),
-  providerId: z.string().trim().min(1),
-});
-
-export const CommunicationsInboxGetPresenceResponseSchema = z.object({
-  type: z.literal("communications.inbox.get_presence.response"),
-  payload: z.object({ presence: CommunicationPresenceSchema, requestId: z.string() }),
-});
-
-// COMPAT(communicationsPresenceUpdates): added in v0.8.11, remove gate after
-// 2027-02-14. The daemon publishes the authoritative status queue and cooldown
-// state to capable frontends, so an open popup never has to be closed and
-// reopened to observe a retry, completion, or failure.
-export const CommunicationsInboxPresenceChangedNotificationSchema = z.object({
-  type: z.literal("communications.inbox.presence.changed.notification"),
-  payload: z.object({ presence: CommunicationPresenceSchema }),
-});
-
-export const CommunicationsInboxSetPresenceRequestSchema = z.object({
-  type: z.literal("communications.inbox.set_presence.request"),
-  requestId: z.string(),
-  providerId: z.string().trim().min(1),
-  status: CommunicationPresenceStatusSchema,
-});
-
-export const CommunicationsInboxSetPresenceResponseSchema = z.object({
-  type: z.literal("communications.inbox.set_presence.response"),
-  payload: z.object({ presence: CommunicationPresenceSchema, requestId: z.string() }),
-});
-
-// The Chat availability toggle is separate from provider presence: disabling
-// Otto Chat must not discard the user's provider authorization or impersonate
-// an unsupported native presence value. Gated by communicationsChatAvailability.
-export const CommunicationsInboxSetEnabledRequestSchema = z.object({
-  type: z.literal("communications.inbox.set_enabled.request"),
-  requestId: z.string(),
-  providerId: z.string().trim().min(1),
-  enabled: z.boolean(),
-});
-
-export const CommunicationsInboxSetEnabledResponseSchema = z.object({
-  type: z.literal("communications.inbox.set_enabled.response"),
-  payload: z.object({ presence: CommunicationPresenceSchema, requestId: z.string() }),
-});
-
-export type CommunicationsInboxGetPresenceResponse = z.infer<
-  typeof CommunicationsInboxGetPresenceResponseSchema
->;
-export type CommunicationsInboxPresenceChangedNotification = z.infer<
-  typeof CommunicationsInboxPresenceChangedNotificationSchema
->;
-export type CommunicationsInboxSetPresenceResponse = z.infer<
-  typeof CommunicationsInboxSetPresenceResponseSchema
->;
-export type CommunicationsInboxSetEnabledResponse = z.infer<
-  typeof CommunicationsInboxSetEnabledResponseSchema
->;
-
-export const CommunicationsInboxGetMessagesRequestSchema = z.object({
-  type: z.literal("communications.inbox.get_messages.request"),
-  requestId: z.string(),
-  providerId: z.string().trim().min(1),
-  conversationId: z.string().trim().min(1),
-});
-
-export const CommunicationsInboxGetMessagesResponseSchema = z.object({
-  type: z.literal("communications.inbox.get_messages.response"),
-  payload: z.object({
-    messages: z.array(CommunicationMessageSchema),
-    requestId: z.string(),
-  }),
-});
-
-export const CommunicationsInboxSendMessageRequestSchema = z.object({
-  type: z.literal("communications.inbox.send_message.request"),
-  requestId: z.string(),
-  providerId: z.string().trim().min(1),
-  conversationId: z.string().trim().min(1),
-  text: z.string().trim().min(1),
-});
-
-export const CommunicationsInboxSendMessageResponseSchema = z.object({
-  type: z.literal("communications.inbox.send_message.response"),
-  payload: z.object({
-    message: CommunicationMessageSchema,
-    requestId: z.string(),
-  }),
-});
-
-export type CommunicationsInboxGetMessagesRequest = z.infer<
-  typeof CommunicationsInboxGetMessagesRequestSchema
->;
-export type CommunicationsInboxGetMessagesResponse = z.infer<
-  typeof CommunicationsInboxGetMessagesResponseSchema
->;
-export type CommunicationsInboxSendMessageRequest = z.infer<
-  typeof CommunicationsInboxSendMessageRequestSchema
->;
-export type CommunicationsInboxSendMessageResponse = z.infer<
-  typeof CommunicationsInboxSendMessageResponseSchema
->;
-
-// COMPAT(communicationsRooms): added in v0.8.11, remove gate after 2027-02-15.
-// Room operations are deliberately a separate, provider-neutral surface. Older
-// hosts must never receive them from newer popup or workspace-tab renderers.
-export const CommunicationsRoomGetRequestSchema = z.object({
-  type: z.literal("communications.room.get.request"),
-  requestId: z.string(),
-  providerId: z.string().trim().min(1),
-  conversationId: z.string().trim().min(1),
-});
-
-export const CommunicationsRoomGetResponseSchema = z.object({
-  type: z.literal("communications.room.get.response"),
-  payload: z.object({ room: CommunicationRoomSchema, requestId: z.string() }),
-});
-
-export const CommunicationsRoomThreadGetRequestSchema = z.object({
-  type: z.literal("communications.room.thread.get.request"),
-  requestId: z.string(),
-  providerId: z.string().trim().min(1),
-  conversationId: z.string().trim().min(1),
-  parentMessageId: z.string().trim().min(1),
-});
-
-export const CommunicationsRoomThreadGetResponseSchema = z.object({
-  type: z.literal("communications.room.thread.get.response"),
-  payload: z.object({ messages: z.array(CommunicationMessageSchema), requestId: z.string() }),
-});
-
-export const CommunicationsRoomMessageSendRequestSchema = z.object({
-  type: z.literal("communications.room.message.send.request"),
-  requestId: z.string(),
-  providerId: z.string().trim().min(1),
-  conversationId: z.string().trim().min(1),
-  text: z.string().trim().min(1),
-  parentMessageId: z.string().trim().min(1).nullable().optional(),
-});
-
-export const CommunicationsRoomMessageSendResponseSchema = z.object({
-  type: z.literal("communications.room.message.send.response"),
-  payload: z.object({ message: CommunicationMessageSchema, requestId: z.string() }),
-});
-
-export const CommunicationsRoomReactionSetRequestSchema = z.object({
-  type: z.literal("communications.room.reaction.set.request"),
-  requestId: z.string(),
-  providerId: z.string().trim().min(1),
-  conversationId: z.string().trim().min(1),
-  messageId: z.string().trim().min(1),
-  emoji: z.string().trim().min(1),
-  active: z.boolean(),
-});
-
-export const CommunicationsRoomReactionSetResponseSchema = z.object({
-  type: z.literal("communications.room.reaction.set.response"),
-  payload: z.object({ message: CommunicationMessageSchema, requestId: z.string() }),
-});
-
-export type CommunicationsRoomGetResponse = z.infer<typeof CommunicationsRoomGetResponseSchema>;
-export type CommunicationsRoomThreadGetResponse = z.infer<
-  typeof CommunicationsRoomThreadGetResponseSchema
->;
-export type CommunicationsRoomMessageSendResponse = z.infer<
-  typeof CommunicationsRoomMessageSendResponseSchema
->;
-export type CommunicationsRoomReactionSetResponse = z.infer<
-  typeof CommunicationsRoomReactionSetResponseSchema
->;
-
-// Settings pages use this generic, daemon-owned projection to render reusable
-// integration connection state. OAuth drivers and API-key entry remain outside
-// the wire contract until their provider-specific implementation exists.
-// Gated by features.integrationAuthorization.
-export const IntegrationsAuthorizationGetOverviewRequestSchema = z.object({
-  type: z.literal("integrations.authorization.get_overview.request"),
-  requestId: z.string(),
-});
-
-export const IntegrationsAuthorizationGetOverviewResponseSchema = z.object({
-  type: z.literal("integrations.authorization.get_overview.response"),
-  payload: z.object({
-    overview: IntegrationAuthorizationOverviewSchema,
-    requestId: z.string(),
-  }),
-});
-
-export type IntegrationsAuthorizationGetOverviewRequest = z.infer<
-  typeof IntegrationsAuthorizationGetOverviewRequestSchema
->;
-export type IntegrationsAuthorizationGetOverviewResponse = z.infer<
-  typeof IntegrationsAuthorizationGetOverviewResponseSchema
->;
-
-/**
- * List daemon-supported, nonsecret authorization methods for integration
- * settings. Availability is explicit so a client never offers a flow the host
- * has not implemented yet. Gated by features.integrationAuthorization.
- */
-export const IntegrationsAuthorizationGetMethodsRequestSchema = z.object({
-  type: z.literal("integrations.authorization.get_methods.request"),
-  requestId: z.string(),
-  integrationId: z.string().optional(),
-});
-
-export const IntegrationsAuthorizationGetMethodsResponseSchema = z.object({
-  type: z.literal("integrations.authorization.get_methods.response"),
-  payload: z.object({
-    methods: z.array(IntegrationAuthorizationMethodOptionSchema),
-    requestId: z.string(),
-  }),
-});
-
-export type IntegrationsAuthorizationGetMethodsRequest = z.infer<
-  typeof IntegrationsAuthorizationGetMethodsRequestSchema
->;
-export type IntegrationsAuthorizationGetMethodsResponse = z.infer<
-  typeof IntegrationsAuthorizationGetMethodsResponseSchema
->;
-
-/**
- * Starts a daemon-owned browser sign-in through the registered integration
- * driver. Authorization codes and credentials remain daemon-only.
- * Gated by features.integrationAuthorizationBrowserFlow.
- */
-export const IntegrationsAuthorizationStartBrowserRequestSchema = z.object({
-  type: z.literal("integrations.authorization.start_browser.request"),
-  requestId: z.string(),
-  integrationId: z.string(),
-  connectionId: z.string(),
-});
-
-export const IntegrationsAuthorizationStartBrowserResponseSchema = z.object({
-  type: z.literal("integrations.authorization.start_browser.response"),
-  payload: z.object({
-    authorizationUrl: z.string().url().nullable(),
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
-});
-
-export type IntegrationsAuthorizationStartBrowserResponse = z.infer<
-  typeof IntegrationsAuthorizationStartBrowserResponseSchema
->;
-
-/** Starts the configured daemon-owned Zoom PKCE browser flow. */
-export const IntegrationsZoomStartAuthorizationRequestSchema = z.object({
-  type: z.literal("integrations.zoom.start_authorization.request"),
-  requestId: z.string(),
-});
-
-export const IntegrationsZoomStartAuthorizationResponseSchema = z.object({
-  type: z.literal("integrations.zoom.start_authorization.response"),
-  payload: z.object({
-    authorizationUrl: z.string().url().nullable(),
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
-});
-
-export type IntegrationsZoomStartAuthorizationResponse = z.infer<
-  typeof IntegrationsZoomStartAuthorizationResponseSchema
->;
-
 export const SpeechSettingsGetOptionsRequestSchema = z.object({
   type: z.literal("speech.settings.get_options.request"),
   requestId: z.string(),
@@ -3770,241 +3492,6 @@ export const SuggestedTasksChangedSchema = z.object({
   }),
 });
 
-// Context Management - the daemon's accounting of everything a provider sends
-// before the user types (see docs/context-management.md).
-//
-// Two distinctions carry the whole feature and must not be collapsed on the
-// wire: an `import` edge is inlined into the request while a `reference` edge
-// costs only its link text, and `costClass` separates weight that rides every
-// request from weight that loads only when the agent touches an area.
-//
-// All numbers are estimates (chars/4) and `confidence` says how much to trust
-// the file set: `exact` when Otto composed the payload itself, `convention`
-// when resolved from a provider's documented layout, `unverified` for
-// subprocess-owned agents we cannot see into.
-// COMPAT(contextManagement): added in v0.6.5, drop the gate when daemon floor >= v0.6.5.
-export const ContextScopeSchema = z.enum([
-  "enterprise",
-  "global",
-  "project",
-  "local",
-  "subdirectory",
-  "runtime",
-]);
-
-export const ContextCategorySchema = z.enum([
-  "context_files",
-  "memory_index",
-  "skills_roster",
-  "mcp_tools",
-  "otto_injected",
-  "system_prompt",
-]);
-
-export const ContextCostClassSchema = z.enum(["fixed", "conditional", "referenced"]);
-
-export const ContextSeveritySchema = z.enum(["ok", "notice", "warn", "critical"]);
-
-export const ContextConfidenceSchema = z.enum(["exact", "convention", "unverified"]);
-
-// Per-category disclosure of how well the daemon can see a provider's payload.
-// `not_visible` is the reason this exists: a CLI-backed provider composes its
-// own preset and hands MCP servers to a subprocess, so those categories are
-// unmeasurable rather than empty, and the row has to be able to say which.
-export const ContextCategoryVisibilitySchema = z.enum([
-  "exact",
-  "convention",
-  "unverified",
-  "not_visible",
-]);
-
-export const ContextFindingKindSchema = z.enum([
-  "dead_import",
-  "dead_reference",
-  "duplicate_across_scope",
-  "duplicate_within_file",
-  "oversized_memory_entry",
-  "import_cycle",
-  "depth_capped",
-]);
-
-export const ContextRangeSchema = z.object({
-  start: z.number(),
-  end: z.number(),
-});
-
-export const ContextFindingSchema = z.object({
-  kind: ContextFindingKindSchema,
-  message: z.string(),
-  range: ContextRangeSchema.optional(),
-  relatedNodeIds: z.array(z.string()).optional(),
-  // The node this finding is about. Redundant while the finding sits on its
-  // node, load-bearing once the report flattens them all into one list - that
-  // list is the "Issues" tab, and without this a row cannot say where it came
-  // from or take you there.
-  nodeId: z.string().optional(),
-  // 1-based line of `range.start` in that node's file, so the fix list can jump
-  // the editor without the client re-reading bytes to count newlines.
-  line: z.number().optional(),
-  // Last line of the range, so the client can select the whole offending span
-  // rather than dropping a cursor at the top of it.
-  lineEnd: z.number().optional(),
-  // True for kinds a mechanical delete can resolve on its own (dead links, a
-  // duplicate block) - false/absent for kinds that need judgment (which side
-  // of an import cycle to cut, how to split an oversized entry). Computed
-  // server-side, once, in `locateFinding` - the only place that knows the kind
-  // vocabulary, so the fix-all button never has to guess.
-  fixable: z.boolean().optional(),
-  // The exact text at `range` when the file was scanned. `context.findings.fix`
-  // verifies this still matches before deleting, the same staleness guard
-  // `context.edge.convert` uses for `rawTarget`.
-  snippet: z.string().optional(),
-});
-
-export const ContextNodeSchema = z.object({
-  id: z.string(),
-  path: z.string(),
-  relPath: z.string(),
-  scope: ContextScopeSchema,
-  category: ContextCategorySchema,
-  costClass: ContextCostClassSchema,
-  bytes: z.number(),
-  estTokens: z.number(),
-  // Extra parents that also reach this node. The node is listed and counted
-  // exactly once; these render as a dimmed "also imported by" chip.
-  alsoImportedByNodeIds: z.array(z.string()),
-  findings: z.array(ContextFindingSchema),
-});
-
-export const ContextEdgeSchema = z.object({
-  fromNodeId: z.string(),
-  // Null when the target could not be resolved - pairs with a dead_* finding.
-  toNodeId: z.string().nullable(),
-  kind: z.enum(["import", "reference"]),
-  rawTarget: z.string(),
-  // Byte range of the whole reference token in the parent file, which is what
-  // makes "Always load" <-> "Link only" a single-span edit.
-  range: ContextRangeSchema,
-});
-
-export const ContextCategoryTotalSchema = z.object({
-  category: ContextCategorySchema,
-  estTokens: z.number(),
-  sharePercent: z.number(),
-  severity: ContextSeveritySchema,
-  // COMPAT(contextCategoryVisibility): added in v0.7.1, drop the optionality
-  // when the floor is >= v0.7.1. An older client ignores the field and still
-  // gets correct totals; a newer client seeing it absent renders no badge.
-  visibility: ContextCategoryVisibilitySchema.optional(),
-});
-
-export const ContextReportSchema = z.object({
-  workspaceId: z.string(),
-  provider: z.string(),
-  // The window the report was evaluated against - from the active model, or
-  // the client's what-if picker. Severity is meaningless without it.
-  windowTokens: z.number(),
-  scannedAt: z.string(),
-  confidence: ContextConfidenceSchema,
-  supported: z.boolean(),
-  supportsImports: z.boolean(),
-  nodes: z.array(ContextNodeSchema),
-  edges: z.array(ContextEdgeSchema),
-  categoryTotals: z.array(ContextCategoryTotalSchema),
-  fixedTotal: z.number(),
-  conditionalTotal: z.number(),
-  referencedTotal: z.number(),
-  workingRoom: z.number(),
-  aggregateSeverity: ContextSeveritySchema,
-  findings: z.array(ContextFindingSchema),
-  // Which personality this report was evaluated FOR. Context became
-  // personality-specific once personalities accrue memory, so a report is only
-  // interpretable alongside the identity it was measured against.
-  // COMPAT(personalityMemory): additive; absent = the pre-memory, personality-agnostic report.
-  personalityId: z.string().optional(),
-  // That personality's injected memory brief, in tokens. Folded into the
-  // `otto_injected` category total rather than a new category: ContextCategory
-  // is a z.enum travelling daemon->client, so a new member would make a new
-  // daemon's report unparseable by an older client.
-  personalityMemoryTokens: z.number().optional(),
-  // COMPAT(projectKnowledge): additive; repo-owned knowledge is folded into
-  // otto_injected, while this field keeps its recurring cost inspectable.
-  projectKnowledgeTokens: z.number().optional(),
-});
-
-// Pushed with the full current report whenever a watched context file changes.
-// Full-report reconciliation, same idiom as suggested_tasks_changed.
-export const ContextReportChangedSchema = z.object({
-  type: z.literal("context_report_changed"),
-  payload: z.object({
-    workspaceId: z.string(),
-    report: ContextReportSchema.nullable(),
-  }),
-});
-
-// `provider` and `windowTokens` are the what-if pickers: omitted means "the
-// active agent's provider and its model's real window".
-export const ContextReportGetRequestMessageSchema = z.object({
-  type: z.literal("context.report.get.request"),
-  requestId: z.string(),
-  workspaceId: z.string(),
-  provider: z.string().optional(),
-  windowTokens: z.number().optional(),
-  // "Evaluate as if this personality were running here": folds that
-  // personality's injected memory brief into the report's fixed weight. Omitted
-  // means the personality-agnostic report.
-  personalityId: z.string().optional(),
-});
-
-export const ContextReportGetResponseMessageSchema = z.object({
-  type: z.literal("context.report.get.response"),
-  payload: z.object({
-    requestId: z.string(),
-    report: ContextReportSchema.nullable(),
-  }),
-});
-
-// One readable block of the assembled prompt. `text` is absent exactly when
-// `visibility` is "not_visible" - the provider composes that part internally and
-// Otto has nothing to show, which the section states rather than hides.
-export const ContextPromptSectionSchema = z.object({
-  category: ContextCategorySchema,
-  label: z.string(),
-  visibility: ContextCategoryVisibilitySchema,
-  text: z.string().optional(),
-  estTokens: z.number(),
-});
-
-export const ContextPromptPreviewSchema = z.object({
-  sections: z.array(ContextPromptSectionSchema),
-  estTokens: z.number(),
-});
-
-// Read-only by design: there is no matching write RPC. Editing happens per file
-// through the existing file pane, against the real file rather than a
-// concatenation of several.
-export const ContextPromptPreviewGetRequestMessageSchema = z.object({
-  type: z.literal("context.prompt.preview.get.request"),
-  requestId: z.string(),
-  workspaceId: z.string(),
-  provider: z.string().optional(),
-  windowTokens: z.number().optional(),
-  personalityId: z.string().optional(),
-  // Assemble only this category. The tab reads one section at a time - the user
-  // clicked a row in the tree - and assembling the rest would re-read every
-  // context file on disk to build text nobody asked to see. Omitted means all,
-  // which is what an older client sends.
-  category: ContextCategorySchema.optional(),
-});
-
-export const ContextPromptPreviewGetResponseMessageSchema = z.object({
-  type: z.literal("context.prompt.preview.get.response"),
-  payload: z.object({
-    requestId: z.string(),
-    preview: ContextPromptPreviewSchema.nullable(),
-  }),
-});
-
 // Repo-owned project knowledge is canonical Markdown under `.otto/knowledge`,
 // with daemon-owned writes so worktrees resolve to one store and every truth
 // change retains its timeline evidence.
@@ -4229,56 +3716,6 @@ export const ProjectKnowledgeDeleteResponseMessageSchema = z.object({
     requestId: z.string(),
     deleted: z.boolean(),
     error: z.string().optional(),
-  }),
-});
-
-// Converts one edge between "always loaded" and "link only". Server-side
-// because the parent file may live outside the workspace root.
-export const ContextEdgeConvertRequestMessageSchema = z.object({
-  type: z.literal("context.edge.convert.request"),
-  requestId: z.string(),
-  workspaceId: z.string(),
-  // The parent file holding the reference - its `ContextNode.path`, not its
-  // id: ids are case-folded on Windows and are not safe to write through.
-  filePath: z.string(),
-  rawTarget: z.string(),
-  range: ContextRangeSchema,
-  target: z.enum(["import", "reference"]),
-});
-
-export const ContextEdgeConvertResponseMessageSchema = z.object({
-  type: z.literal("context.edge.convert.response"),
-  payload: z.object({
-    requestId: z.string(),
-    ok: z.boolean(),
-    error: z.string().optional(),
-  }),
-});
-
-// Deletes every mechanically-fixable finding's range in one pass - the
-// "Fix all" button in the Issues tab. Each item names the file, the range the
-// scan flagged, and the snippet expected there; a file that changed since the
-// scan is skipped rather than corrupted (charter §7.5).
-export const ContextFindingsFixRequestMessageSchema = z.object({
-  type: z.literal("context.findings.fix.request"),
-  requestId: z.string(),
-  workspaceId: z.string(),
-  findings: z.array(
-    z.object({
-      filePath: z.string(),
-      range: ContextRangeSchema,
-      snippet: z.string(),
-    }),
-  ),
-});
-
-export const ContextFindingsFixResponseMessageSchema = z.object({
-  type: z.literal("context.findings.fix.response"),
-  payload: z.object({
-    requestId: z.string(),
-    fixedCount: z.number(),
-    failedCount: z.number(),
-    errors: z.array(z.string()),
   }),
 });
 
@@ -4650,286 +4087,6 @@ export const CheckoutGitLogAppendedNotificationSchema = z.object({
     entries: z.array(GitOperationLogEntrySchema),
   }),
 });
-
-// ── Orchestration runs (agent-orchestration) ────────────────────────────────
-// Daemon-owned multi-agent Run projection + control. Gated by
-// server_info.features.agentOrchestration. See projects/agent-orchestration.
-export const RunsGetSnapshotRequestSchema = z.object({
-  type: z.literal("runs.get_snapshot.request"),
-  requestId: z.string(),
-});
-export const RunsGetSnapshotResponseSchema = z.object({
-  type: z.literal("runs.get_snapshot.response"),
-  payload: z.object({
-    runs: z.array(RunSchema),
-    requestId: z.string(),
-  }),
-});
-
-// Single-run push, broadcast on every phase/status change. Clients merge by id.
-export const RunsUpdatedNotificationSchema = z.object({
-  type: z.literal("runs.updated.notification"),
-  payload: z.object({
-    run: RunSchema,
-  }),
-});
-
-// Answer an attended run's `gate` phase (approve or reject, with an optional
-// note). `accepted` is false when the run wasn't awaiting a gate.
-export const RunsGateRespondRequestSchema = z.object({
-  type: z.literal("runs.gate_respond.request"),
-  runId: z.string(),
-  phaseId: z.string(),
-  approved: z.boolean(),
-  note: z.string().optional(),
-  requestId: z.string(),
-});
-export const RunsGateRespondResponseSchema = z.object({
-  type: z.literal("runs.gate_respond.response"),
-  payload: z.object({
-    runId: z.string(),
-    accepted: z.boolean(),
-    requestId: z.string(),
-  }),
-});
-
-export const RunsCancelRequestSchema = z.object({
-  type: z.literal("runs.cancel.request"),
-  runId: z.string(),
-  requestId: z.string(),
-});
-export const RunsCancelResponseSchema = z.object({
-  type: z.literal("runs.cancel.response"),
-  payload: z.object({
-    runId: z.string(),
-    canceled: z.boolean(),
-    requestId: z.string(),
-  }),
-});
-
-// Delete every finished (done/failed/canceled) run from disk and memory.
-// Active/paused runs are left untouched. Gated by
-// server_info.features.runsClear.
-export const RunsClearRequestSchema = z.object({
-  type: z.literal("runs.clear.request"),
-  requestId: z.string(),
-});
-export const RunsClearResponseSchema = z.object({
-  type: z.literal("runs.clear.response"),
-  payload: z.object({
-    runIds: z.array(z.string()),
-    requestId: z.string(),
-  }),
-});
-
-// Delete one run by id. Terminal (done/failed/canceled) and draft runs only -
-// deleting an active run is refused so a cleanup click can't silently orphan
-// running agents; cancel it first. Gated by server_info.features.runsDelete.
-export const RunsDeleteRequestSchema = z.object({
-  type: z.literal("runs.delete.request"),
-  requestId: z.string(),
-  runId: z.string(),
-});
-export const RunsDeleteResponseSchema = z.object({
-  type: z.literal("runs.delete.response"),
-  payload: z.object({
-    // The deleted id, or absent when nothing was deleted (unknown or still
-    // active) - `error` then carries why.
-    runId: z.string().optional(),
-    error: z.string().optional(),
-    requestId: z.string(),
-  }),
-});
-
-// Broadcast to every connected client (including the requester) so all
-// caches drop the same runs, mirroring runs.updated.notification's upsert.
-// Serves both runs.clear (many ids) and runs.delete (one).
-export const RunsClearedNotificationSchema = z.object({
-  type: z.literal("runs.cleared.notification"),
-  payload: z.object({
-    runIds: z.array(z.string()),
-  }),
-});
-
-// ── Orchestration graphs (user orchestrations) ──────────────────────────────
-// Host-level reusable graph templates + user-initiated orchestration start.
-// Gated by server_info.features.orchestrationGraphs. UI says "Orchestration"
-// and "Graph"; the wire keeps the short `runs.` namespace (see docs/glossary.md).
-// See projects/orchestration-graphs.
-export const RunsGraphsListRequestSchema = z.object({
-  type: z.literal("runs.graphs.list.request"),
-  requestId: z.string(),
-});
-export const RunsGraphsListResponseSchema = z.object({
-  type: z.literal("runs.graphs.list.response"),
-  payload: z.object({
-    graphs: z.array(OrchestrationGraphSchema),
-    requestId: z.string(),
-  }),
-});
-
-// Upsert a graph template (create when the id is new). Built-in graphs are
-// copy-on-edit daemon-side: saving over a builtIn id persists a user copy.
-export const RunsGraphsSaveRequestSchema = z.object({
-  type: z.literal("runs.graphs.save.request"),
-  graph: OrchestrationGraphSchema,
-  requestId: z.string(),
-});
-export const RunsGraphsSaveResponseSchema = z.object({
-  type: z.literal("runs.graphs.save.response"),
-  payload: z.object({
-    graph: OrchestrationGraphSchema.optional(),
-    error: z.string().optional(),
-    requestId: z.string(),
-  }),
-});
-
-export const RunsGraphsDeleteRequestSchema = z.object({
-  type: z.literal("runs.graphs.delete.request"),
-  graphId: z.string(),
-  requestId: z.string(),
-});
-export const RunsGraphsDeleteResponseSchema = z.object({
-  type: z.literal("runs.graphs.delete.response"),
-  payload: z.object({
-    deleted: z.boolean(),
-    error: z.string().optional(),
-    requestId: z.string(),
-  }),
-});
-
-// Broadcast after any save/delete so every client's graph cache converges,
-// mirroring runs.updated.notification's role for runs.
-export const RunsGraphsChangedNotificationSchema = z.object({
-  type: z.literal("runs.graphs.changed.notification"),
-  payload: z.object({
-    graphs: z.array(OrchestrationGraphSchema),
-  }),
-});
-
-// ── Prompt templates ────────────────────────────────────────────────────────
-// Host-level reusable prompts and snippets a graph node can bind to. Same shape
-// as the graph trio above, for the same reason: one store, list/save/delete,
-// plus a full-list push so every client converges.
-export const RunsTemplatesListRequestSchema = z.object({
-  type: z.literal("runs.templates.list.request"),
-  requestId: z.string(),
-});
-export const RunsTemplatesListResponseSchema = z.object({
-  type: z.literal("runs.templates.list.response"),
-  payload: z.object({
-    templates: z.array(PromptTemplateSchema),
-    requestId: z.string(),
-  }),
-});
-
-export const RunsTemplatesSaveRequestSchema = z.object({
-  type: z.literal("runs.templates.save.request"),
-  template: PromptTemplateSchema,
-  requestId: z.string(),
-});
-export const RunsTemplatesSaveResponseSchema = z.object({
-  type: z.literal("runs.templates.save.response"),
-  payload: z.object({
-    template: PromptTemplateSchema.optional(),
-    error: z.string().optional(),
-    requestId: z.string(),
-  }),
-});
-
-export const RunsTemplatesDeleteRequestSchema = z.object({
-  type: z.literal("runs.templates.delete.request"),
-  templateId: z.string(),
-  requestId: z.string(),
-});
-export const RunsTemplatesDeleteResponseSchema = z.object({
-  type: z.literal("runs.templates.delete.response"),
-  payload: z.object({
-    deleted: z.boolean(),
-    error: z.string().optional(),
-    requestId: z.string(),
-  }),
-});
-
-export const RunsTemplatesChangedNotificationSchema = z.object({
-  type: z.literal("runs.templates.changed.notification"),
-  payload: z.object({
-    templates: z.array(PromptTemplateSchema),
-  }),
-});
-
-// Start (or draft) a user-initiated orchestration from the New Orchestration
-// dialog. `flavor` is an open vocabulary: "ai" (prompt-and-go - the daemon
-// spawns an orchestrator agent that declares its own plan via start_run) or
-// "graph" (deterministic - the daemon executes `graphId` with `graphInputs`).
-// `draft: true` creates the record without executing (the designer flow);
-// `runId` executes an existing draft in place - or, with `draft: true`, re-saves
-// that draft in place (Edit Orchestration).
-export const RunsStartRequestSchema = z.object({
-  type: z.literal("runs.start.request"),
-  flavor: z.string(),
-  cwd: z.string(),
-  workspaceId: z.string().optional(),
-  title: z.string().optional(),
-  description: z.string().optional(),
-  // Orchestrator seat when the active team doesn't fill it: a personality, or
-  // a bare provider/model pair.
-  orchestratorPersonalityId: z.string().optional(),
-  orchestratorProvider: z.string().optional(),
-  orchestratorModel: z.string().optional(),
-  orchestratorThinkingOptionId: z.string().optional(),
-  prompt: z.string().optional(),
-  graphId: z.string().optional(),
-  graphInputs: z.record(z.string(), z.string()).optional(),
-  draft: z.boolean().optional(),
-  runId: z.string().optional(),
-  requestId: z.string(),
-});
-export const RunsStartResponseSchema = z.object({
-  type: z.literal("runs.start.response"),
-  payload: z.object({
-    runId: z.string().optional(),
-    // The root/orchestrator agent whose chat the client navigates to, and the
-    // workspace the daemon resolved it into (the dialog only knows a project
-    // target's cwd).
-    agentId: z.string().optional(),
-    workspaceId: z.string().optional(),
-    error: z.string().optional(),
-    requestId: z.string(),
-  }),
-});
-
-export type RunsGraphsListRequest = z.infer<typeof RunsGraphsListRequestSchema>;
-export type RunsGraphsListResponse = z.infer<typeof RunsGraphsListResponseSchema>;
-export type RunsGraphsSaveRequest = z.infer<typeof RunsGraphsSaveRequestSchema>;
-export type RunsGraphsSaveResponse = z.infer<typeof RunsGraphsSaveResponseSchema>;
-export type RunsGraphsDeleteRequest = z.infer<typeof RunsGraphsDeleteRequestSchema>;
-export type RunsGraphsDeleteResponse = z.infer<typeof RunsGraphsDeleteResponseSchema>;
-export type RunsGraphsChangedNotification = z.infer<typeof RunsGraphsChangedNotificationSchema>;
-export type RunsTemplatesListRequest = z.infer<typeof RunsTemplatesListRequestSchema>;
-export type RunsTemplatesListResponse = z.infer<typeof RunsTemplatesListResponseSchema>;
-export type RunsTemplatesSaveRequest = z.infer<typeof RunsTemplatesSaveRequestSchema>;
-export type RunsTemplatesSaveResponse = z.infer<typeof RunsTemplatesSaveResponseSchema>;
-export type RunsTemplatesDeleteRequest = z.infer<typeof RunsTemplatesDeleteRequestSchema>;
-export type RunsTemplatesDeleteResponse = z.infer<typeof RunsTemplatesDeleteResponseSchema>;
-export type RunsTemplatesChangedNotification = z.infer<
-  typeof RunsTemplatesChangedNotificationSchema
->;
-export type RunsStartRequest = z.infer<typeof RunsStartRequestSchema>;
-export type RunsStartResponse = z.infer<typeof RunsStartResponseSchema>;
-
-export type RunsGetSnapshotRequest = z.infer<typeof RunsGetSnapshotRequestSchema>;
-export type RunsGetSnapshotResponse = z.infer<typeof RunsGetSnapshotResponseSchema>;
-export type RunsUpdatedNotification = z.infer<typeof RunsUpdatedNotificationSchema>;
-export type RunsGateRespondRequest = z.infer<typeof RunsGateRespondRequestSchema>;
-export type RunsGateRespondResponse = z.infer<typeof RunsGateRespondResponseSchema>;
-export type RunsCancelRequest = z.infer<typeof RunsCancelRequestSchema>;
-export type RunsCancelResponse = z.infer<typeof RunsCancelResponseSchema>;
-export type RunsClearRequest = z.infer<typeof RunsClearRequestSchema>;
-export type RunsClearResponse = z.infer<typeof RunsClearResponseSchema>;
-export type RunsDeleteRequest = z.infer<typeof RunsDeleteRequestSchema>;
-export type RunsDeleteResponse = z.infer<typeof RunsDeleteResponseSchema>;
-export type RunsClearedNotification = z.infer<typeof RunsClearedNotificationSchema>;
 
 // Namespaced successor to checkout_commit_request: per-file selection and
 // structured errors. Gated by server_info.features.checkoutGitCommit; the flat
@@ -6009,216 +5166,6 @@ export const FileWatchUnsubscribeRequestSchema = z.object({
   type: z.literal("file.watch.unsubscribe.request"),
   cwd: z.string(),
   path: z.string(),
-  requestId: z.string(),
-});
-
-// ctags-style navigation (no LSP). All three are daemon RPCs so the client
-// never touches the filesystem; the symbol index is name-based and honest.
-export const CodeListFilesRequestSchema = z.object({
-  type: z.literal("code.list_files.request"),
-  cwd: z.string(),
-  requestId: z.string(),
-});
-
-export const CodeSymbolsRequestSchema = z.object({
-  type: z.literal("code.symbols.request"),
-  cwd: z.string(),
-  name: z.string(),
-  requestId: z.string(),
-});
-
-export const CodeOutlineRequestSchema = z.object({
-  type: z.literal("code.outline.request"),
-  cwd: z.string(),
-  path: z.string(),
-  requestId: z.string(),
-});
-
-/**
- * LSP-backed code intelligence (projects/lsp-code-intelligence). Distinct from the
- * ctags `code.symbols` RPC above in the only way that matters: it carries a
- * **position**, so the daemon can resolve the reference under the cursor instead of
- * matching a name.
- *
- * Line and column are **1-based** here, matching `CodeSymbolLocation` and the rest of
- * Otto. LSP itself is 0-based; that conversion is the daemon's business and does not
- * reach the wire.
- */
-export const CodeDefinitionRequestSchema = z.object({
-  type: z.literal("code.definition.request"),
-  cwd: z.string(),
-  path: z.string(),
-  line: z.number().int().positive(),
-  column: z.number().int().positive(),
-  requestId: z.string(),
-});
-
-/**
- * The editor's current buffer text, so definitions resolve against unsaved edits
- * rather than stale disk content. Sent debounced, not per keystroke.
- */
-export const CodeDocumentSyncRequestSchema = z.object({
-  type: z.literal("code.document.sync.request"),
-  cwd: z.string(),
-  path: z.string(),
-  text: z.string(),
-  requestId: z.string(),
-});
-
-export const CodeDocumentCloseRequestSchema = z.object({
-  type: z.literal("code.document.close.request"),
-  cwd: z.string(),
-  path: z.string(),
-  requestId: z.string(),
-});
-
-/**
- * The rest of the position-based code-intelligence family. All three carry a 1-based
- * position like `code.definition`, and all three are answered against the mirrored
- * buffer rather than the file on disk.
- */
-export const CodeHoverRequestSchema = z.object({
-  type: z.literal("code.hover.request"),
-  cwd: z.string(),
-  path: z.string(),
-  line: z.number().int().positive(),
-  column: z.number().int().positive(),
-  requestId: z.string(),
-});
-
-export const CodeReferencesRequestSchema = z.object({
-  type: z.literal("code.references.request"),
-  cwd: z.string(),
-  path: z.string(),
-  line: z.number().int().positive(),
-  column: z.number().int().positive(),
-  requestId: z.string(),
-});
-
-/**
- * A rename **dry run**. Deliberately not "do the rename": the daemon computes every edit
- * and returns them for the user to audit, because a rename's blast radius is the whole
- * project. Nothing is written by this request.
- */
-export const CodeRenamePreviewRequestSchema = z.object({
-  type: z.literal("code.rename.preview.request"),
-  cwd: z.string(),
-  path: z.string(),
-  line: z.number().int().positive(),
-  column: z.number().int().positive(),
-  newName: z.string().min(1),
-  requestId: z.string(),
-});
-
-/**
- * Execute a rename the user has audited. **The edits are deliberately NOT on this request.**
- *
- * The client sends back only the `planId` it was shown; the daemon recomputes the plan and
- * refuses unless the identity matches. A request that carried its own edit list would be a
- * remote arbitrary-write primitive wearing a rename's name - any client could post any text
- * at any path. This shape makes the daemon's own language server the sole author of what
- * gets written, and the plan id the proof that the user saw it.
- */
-export const CodeRenameApplyRequestSchema = z.object({
-  type: z.literal("code.rename.apply.request"),
-  cwd: z.string(),
-  path: z.string(),
-  line: z.number().int().positive(),
-  column: z.number().int().positive(),
-  newName: z.string().min(1),
-  /** From the preview response. Identity of the exact plan the user approved. */
-  planId: z.string().min(1),
-  requestId: z.string(),
-});
-
-/**
- * Undo a run. Carries only the run's id - the daemon holds the before-images.
- *
- * Declared here, with the other inbound rename schemas, rather than beside its response
- * further down: `SessionInboundMessageSchema` is a top-level const, so a schema it names
- * must already be initialized when that line runs. Below the union it is a
- * ReferenceError at import time, not a type error.
- */
-export const CodeRenameUndoRequestSchema = z.object({
-  type: z.literal("code.rename.undo.request"),
-  cwd: z.string(),
-  runId: z.string().min(1),
-  requestId: z.string(),
-});
-
-/**
- * Live language-server state for the Daemon → Code screen. Separate from the daemon
- * config RPCs because none of it is configuration: which servers this machine can
- * actually supply, and which are running right now.
- *
- * Omit `cwd` for the host-wide answer, which is what the settings screen asks for: every
- * row this daemon knows, resolved against the rungs a host has (bundled, PATH). Passing a
- * `cwd` additionally probes that workspace's `node_modules/.bin`, since a server can be
- * present in one project and absent from another. Optional rather than removed because
- * older clients still send it.
- *
- * COMPAT(lspHostServers): `cwd` became optional in v0.7.3; gate lives in
- * features.lspHostServers.
- */
-export const LspServersListRequestSchema = z.object({
-  type: z.literal("lsp.servers.list.request"),
-  cwd: z.string().optional(),
-  requestId: z.string(),
-});
-
-/** Stop one running server, so a user who suspects it of hogging memory can kill it. */
-export const LspServerStopRequestSchema = z.object({
-  type: z.literal("lsp.server.stop.request"),
-  rootPath: z.string(),
-  serverId: z.string(),
-  requestId: z.string(),
-});
-
-/**
- * The Solution view (projects/solution-view). A second lens on the Files module showing the tree
- * as the build system sees it rather than as the filesystem lays it out.
- *
- * **Independent of the LSP family above, despite sharing the `code.` domain.** There is no
- * project-structure request in the Language Server Protocol - not one Otto has yet to wire, one
- * that does not exist - so this subsystem builds its own model through Microsoft's solution
- * libraries. Turning C# code intelligence off does not turn this off, and vice versa.
- *
- * Discovery is separate from loading on purpose: `list` decides whether the switcher appears at
- * all, so it runs for every workspace and must stay cheap (a directory walk, no process). Only
- * `get_tree` reaches the .NET sidecar.
- *
- * COMPAT(solutionView): added in v0.6.8; gate lives in features.solutionView.
- */
-export const CodeSolutionListRequestSchema = z.object({
-  type: z.literal("code.solution.list.request"),
-  cwd: z.string(),
-  requestId: z.string(),
-});
-
-/**
- * One solution's organisation: folders, the projects inside them, and the configurations. No file
- * membership - that is `load_project`, paid per project on expand, because evaluating fifty
- * projects to render a collapsed tree is the cost this design exists to avoid.
- */
-export const CodeSolutionGetTreeRequestSchema = z.object({
-  type: z.literal("code.solution.get_tree.request"),
-  cwd: z.string(),
-  /** Workspace-relative, as reported by `list`. */
-  solutionPath: z.string(),
-  requestId: z.string(),
-});
-
-/**
- * One project's evaluated file membership. `solutionPath` scopes the sidecar instance so two
- * solutions in one repo never share a warm `ProjectCollection` - and so Phase 4 has the selection
- * it needs for `--solution`.
- */
-export const CodeSolutionLoadProjectRequestSchema = z.object({
-  type: z.literal("code.solution.load_project.request"),
-  cwd: z.string(),
-  solutionPath: z.string(),
-  /** Workspace-relative, or absolute when the solution names a project outside the workspace. */
-  projectPath: z.string(),
   requestId: z.string(),
 });
 
@@ -7621,71 +6568,6 @@ export const DaemonConfigChangedStatusPayloadSchema = z
   .object({
     status: z.literal("daemon_config_changed"),
     config: MutableDaemonConfigSchema,
-  })
-  .passthrough();
-
-/**
- * Which workspaces currently have a language server starting up or indexing. Sent as
- * the whole busy set rather than per-workspace transitions: the only consumer is a
- * spinner, so an idempotent snapshot cannot drift out of sync the way a missed
- * transition would.
- *
- * Separate from the workspace status bucket on purpose - indexing is not the workspace
- * "working", and folding it in would mislabel a quiet workspace as busy with agent work.
- */
-export const LspActivityChangedStatusPayloadSchema = z
-  .object({
-    status: z.literal("lsp_activity_changed"),
-    /** Absolute workspace roots with language-server work in flight. */
-    busyRoots: z.array(z.string()),
-  })
-  .passthrough();
-
-/**
- * Compiler severity, named rather than numbered. LSP uses 1–4; a magic number on the
- * wire would have every consumer re-deriving which one is a warning.
- */
-export const CodeDiagnosticSeveritySchema = z.enum(["error", "warning", "info", "hint"]);
-
-/** One problem the language server reported, 1-based like every other position. */
-export const CodeDiagnosticSchema = z.object({
-  line: z.number().int().positive(),
-  column: z.number().int().positive(),
-  endLine: z.number().int().positive(),
-  endColumn: z.number().int().positive(),
-  severity: CodeDiagnosticSeveritySchema,
-  message: z.string(),
-  /** Who says so - `ts`, `pyright`, a linter behind the server. */
-  source: z.string().optional(),
-  /** The server's own code for the rule or error, e.g. TypeScript's `2345`. */
-  code: z.string().optional(),
-  /** Documentation for that rule, when the server offers one - oxlint does. */
-  codeHref: z.string().optional(),
-  /** Which registry row published it, so two servers on one file stay attributable. */
-  serverId: z.string().optional(),
-});
-
-/**
- * Diagnostics for one open document, pushed unsolicited.
- *
- * This is the one part of code intelligence that is not request/response:
- * `textDocument/publishDiagnostics` arrives whenever the server has recomputed, which is
- * whenever it feels like it. So it is a status broadcast, and the payload is the document's
- * **whole** current set - never a delta. A missed delta would leave a stale squiggle on a
- * line the user already fixed, and an idempotent snapshot cannot drift.
- *
- * Only documents a client has synced produce these. A server may know about every file in
- * the project; pushing all of it would be unbounded, and nothing can render a marker in a
- * file that is not open.
- */
-export const LspDiagnosticsChangedStatusPayloadSchema = z
-  .object({
-    status: z.literal("lsp_diagnostics_changed"),
-    /** Workspace root the document belongs to. */
-    cwd: z.string(),
-    /** Absolute path of the document these describe. */
-    path: z.string(),
-    diagnostics: z.array(CodeDiagnosticSchema),
   })
   .passthrough();
 
@@ -10526,475 +9408,6 @@ export const FileWatchUnsubscribeResponseSchema = z.object({
   }),
 });
 
-export const CodeListFilesResponseSchema = z.object({
-  type: z.literal("code.list_files.response"),
-  payload: z.object({
-    cwd: z.string(),
-    files: z.array(z.string()),
-    truncated: z.boolean(),
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
-});
-
-export const CodeSymbolKindSchema = z.enum(["function", "class", "type", "variable", "property"]);
-
-export const CodeSymbolLocationSchema = z.object({
-  path: z.string(),
-  name: z.string(),
-  kind: CodeSymbolKindSchema,
-  line: z.number().int().positive(),
-  column: z.number().int().positive(),
-});
-
-export const CodeSymbolsResponseSchema = z.object({
-  type: z.literal("code.symbols.response"),
-  payload: z.object({
-    cwd: z.string(),
-    name: z.string(),
-    locations: z.array(CodeSymbolLocationSchema),
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
-});
-
-/** 1-based, like `CodeSymbolLocation`. The end pair is present when the server gave a range. */
-export const CodeDefinitionLocationSchema = z.object({
-  path: z.string(),
-  line: z.number().int().positive(),
-  column: z.number().int().positive(),
-  endLine: z.number().int().positive().optional(),
-  endColumn: z.number().int().positive().optional(),
-  /**
-   * Which registry row answered (`typescript`, `csharp`, …). The multi-hit picker
-   * shows it, so a user looking at two candidates can tell whether a language server
-   * resolved them or the name index guessed - which changes how much to trust the
-   * list. Absent from old daemons.
-   */
-  serverId: z.string().optional(),
-});
-
-/**
- * Three-valued on purpose. `unavailable` (no server for this language on the host) and
- * `indexing` (the server is up but still building its project model) are different
- * answers to the user, and neither is "not found" - reporting either as an empty
- * result is how a working feature reads as broken.
- */
-export const CodeDefinitionStatusSchema = z.enum(["ok", "indexing", "unavailable"]);
-
-export const CodeDefinitionResponseSchema = z.object({
-  type: z.literal("code.definition.response"),
-  payload: z.object({
-    cwd: z.string(),
-    path: z.string(),
-    status: CodeDefinitionStatusSchema,
-    locations: z.array(CodeDefinitionLocationSchema),
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
-});
-
-export const CodeDocumentSyncResponseSchema = z.object({
-  type: z.literal("code.document.sync.response"),
-  payload: z.object({
-    cwd: z.string(),
-    path: z.string(),
-    ok: z.boolean(),
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
-});
-
-export const CodeDocumentCloseResponseSchema = z.object({
-  type: z.literal("code.document.close.response"),
-  payload: z.object({
-    cwd: z.string(),
-    path: z.string(),
-    ok: z.boolean(),
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
-});
-
-/** 1-based, like every other position on the wire. */
-export const CodeHoverRangeSchema = z.object({
-  line: z.number().int().positive(),
-  column: z.number().int().positive(),
-  endLine: z.number().int().positive(),
-  endColumn: z.number().int().positive(),
-});
-
-export const CodeHoverResponseSchema = z.object({
-  type: z.literal("code.hover.response"),
-  payload: z.object({
-    cwd: z.string(),
-    path: z.string(),
-    status: CodeDefinitionStatusSchema,
-    /** Markdown, or null when the server had nothing to say about this position. */
-    markdown: z.string().nullable(),
-    range: CodeHoverRangeSchema.nullable(),
-    serverId: z.string().nullable(),
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
-});
-
-export const CodeReferencesResponseSchema = z.object({
-  type: z.literal("code.references.response"),
-  payload: z.object({
-    cwd: z.string(),
-    path: z.string(),
-    status: CodeDefinitionStatusSchema,
-    locations: z.array(CodeDefinitionLocationSchema),
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
-});
-
-export const CodeRenameEditSchema = z.object({
-  line: z.number().int().positive(),
-  column: z.number().int().positive(),
-  endLine: z.number().int().positive(),
-  endColumn: z.number().int().positive(),
-  newText: z.string(),
-  /**
-   * The text this edit expects to replace. Carried so the dry run can show what is being
-   * changed rather than only what it becomes - and, on the daemon side, so the run can tell
-   * that a file moved under the plan. For a rename this is always one identifier.
-   */
-  oldText: z.string().default(""),
-});
-
-export const CodeRenameFilePlanSchema = z.object({
-  path: z.string(),
-  edits: z.array(CodeRenameEditSchema),
-});
-
-export const CodeRenamePreviewResponseSchema = z.object({
-  type: z.literal("code.rename.preview.response"),
-  payload: z.object({
-    cwd: z.string(),
-    path: z.string(),
-    newName: z.string(),
-    status: CodeDefinitionStatusSchema,
-    /** Sorted by path, and by position within each file, so an audit reads in order. */
-    files: z.array(CodeRenameFilePlanSchema),
-    /** Blast radius, so the dry-run tab can lead with it. */
-    fileCount: z.number().int().nonnegative(),
-    editCount: z.number().int().nonnegative(),
-    /**
-     * Identity of this exact plan, echoed back on apply. Computed by the daemon so there is
-     * one definition of "the same plan" rather than two that can drift apart.
-     */
-    planId: z.string().default(""),
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
-});
-
-/**
- * Five-valued, because the ways a rename can fail to happen are things a user needs told
- * apart: still loading, no server, the plan moved, or the server pointed outside the
- * workspace. Collapsing them into one failure is how "nothing happened" becomes unexplainable.
- */
-/**
- * Whether the run HAPPENED - deliberately not whether everything applied.
- *
- * A run where two of fourteen edits no longer fit is still a run that took place, and the
- * twelve that landed are real. Collapsing that into a failure would hide them, and hiding a
- * write is the one thing an auditable edit surface must never do. Per-edit fate lives in the
- * file outcomes; `complete` is the single-glance answer.
- */
-export const CodeRenameApplyStatusSchema = z.enum(["ok", "expired", "escaped"]);
-
-export const CodeRenameFileOutcomeKindSchema = z.enum(["applied", "partial", "failed"]);
-
-/** What happened to one file in a run. */
-export const CodeRenameFileOutcomeSchema = z.object({
-  path: z.string(),
-  kind: CodeRenameFileOutcomeKindSchema,
-  appliedEdits: z.number().int().nonnegative(),
-  skippedEdits: z.number().int().nonnegative(),
-  /** Why, whenever anything was skipped or the file failed outright. */
-  reason: z.string().nullable(),
-});
-
-export const CodeRenameUndoStatusSchema = z.enum(["ok", "expired"]);
-
-export const CodeRenameUndoFileKindSchema = z.enum(["restored", "changedSince", "failed"]);
-
-/**
- * What happened to one file during an undo. `changedSince` is the important one: the file was
- * edited after the run, so restoring would have destroyed that work and it was left alone.
- */
-export const CodeRenameUndoFileSchema = z.object({
-  path: z.string(),
-  kind: CodeRenameUndoFileKindSchema,
-  reason: z.string().nullable(),
-});
-
-export const CodeRenameUndoResponseSchema = z.object({
-  type: z.literal("code.rename.undo.response"),
-  payload: z.object({
-    cwd: z.string(),
-    runId: z.string(),
-    status: CodeRenameUndoStatusSchema,
-    files: z.array(CodeRenameUndoFileSchema),
-    restoredFiles: z.number().int().nonnegative(),
-    /** True only when every file the run wrote was put back. */
-    complete: z.boolean(),
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
-});
-
-export const CodeRenameApplyResponseSchema = z.object({
-  type: z.literal("code.rename.apply.response"),
-  payload: z.object({
-    cwd: z.string(),
-    path: z.string(),
-    newName: z.string(),
-    status: CodeRenameApplyStatusSchema,
-    /** Identity of this run, for undo. Null when nothing ran. */
-    runId: z.string().nullable(),
-    files: z.array(CodeRenameFileOutcomeSchema),
-    appliedFiles: z.number().int().nonnegative(),
-    appliedEdits: z.number().int().nonnegative(),
-    skippedEdits: z.number().int().nonnegative(),
-    /** True only when every planned edit landed. */
-    complete: z.boolean(),
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
-});
-
-export const LspLanguageStateSchema = z.object({
-  id: z.string(),
-  enabled: z.boolean(),
-  /** Whether the host can actually supply this server right now. */
-  installed: z.boolean(),
-  running: z.boolean(),
-  /** Which discovery rung supplied it (`workspaceBin` / `bundled` / `path`), or null. */
-  rung: z.string().nullable(),
-  bin: z.string(),
-  /**
-   * Every rung this row can ever be supplied from, in resolution order. A row whose only
-   * rung is `workspaceBin` is supplied by the project it runs in and by nothing else, so
-   * `installed: false` from a host-wide check means "the project brings it", not "missing".
-   */
-  discovery: z.array(z.string()).optional(),
-  /** Absolute path to the resolved executable, so the toolchain behind a row is nameable. */
-  path: z.string().nullable().optional(),
-  extensions: z.array(z.string()),
-  /** Plain-words index cost, so the toggle states its own price. */
-  indexCost: z.string(),
-  /**
-   * How to install a missing server on the host, resolved by the daemon. Optional: an older
-   * daemon sends nothing, and the client renders nothing extra when it is absent. A row with
-   * no install route (project-supplied) is `null`, not an empty object.
-   */
-  install: z
-    .object({
-      /** Ordered argv steps; each `display` is the exact text the user reads and confirms. */
-      steps: z.array(
-        z.object({
-          command: z.string(),
-          args: z.array(z.string()),
-          display: z.string(),
-          note: z.string().nullable(),
-        }),
-      ),
-      /** Manual route: an official installer link instead of a command. */
-      url: z.string().nullable(),
-    })
-    .nullable()
-    .optional(),
-});
-
-export const LspRunningServerSchema = z.object({
-  rootPath: z.string(),
-  serverId: z.string(),
-  uptimeMs: z.number(),
-  lastUsedAt: z.number(),
-});
-
-export const LspServersListResponseSchema = z.object({
-  type: z.literal("lsp.servers.list.response"),
-  payload: z.object({
-    cwd: z.string(),
-    languages: z.array(LspLanguageStateSchema),
-    running: z.array(LspRunningServerSchema),
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
-});
-
-export const LspServerStopResponseSchema = z.object({
-  type: z.literal("lsp.server.stop.response"),
-  payload: z.object({
-    rootPath: z.string(),
-    serverId: z.string(),
-    ok: z.boolean(),
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
-});
-
-/**
- * Solution view responses (projects/solution-view).
- *
- * COMPAT(solutionView): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
- */
-export const SolutionFormatSchema = z.enum(["sln", "slnx"]);
-
-/** One solution a workspace contains. Enough to populate the switcher's picker, nothing more. */
-export const SolutionRefSchema = z.object({
-  /** Workspace-relative, forward slashes - the identity used by every later request. */
-  path: z.string(),
-  /** File name without the extension, which is what a .NET developer calls the solution. */
-  name: z.string(),
-  format: SolutionFormatSchema,
-});
-
-export const CodeSolutionListResponseSchema = z.object({
-  type: z.literal("code.solution.list.response"),
-  payload: z.object({
-    cwd: z.string(),
-    /**
-     * Empty means the switcher never appears and the Files tab behaves exactly as it does today.
-     * That is also what a disabled feature, a host with no .NET SDK, and a workspace with no
-     * solution all return - the client has one silent case to handle, not four.
-     */
-    solutions: z.array(SolutionRefSchema),
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
-});
-
-/**
- * Solution structure is flat on the wire with parent links, not nested.
- *
- * A recursive payload would have to be walked to be used, and every consumer would write that
- * walk again; the file explorer already turns a flat listing plus an expanded-path set into rows,
- * so this hands it the same shape it already consumes.
- */
-export const SolutionTreeFolderSchema = z.object({
-  /** Solution-internal, e.g. `/Src/`. Folders are virtual: they have no filesystem location. */
-  path: z.string(),
-  name: z.string(),
-  parentPath: z.string().nullable(),
-});
-
-export const SolutionTreeProjectSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  /**
-   * Workspace-relative when the project sits inside the workspace, absolute (forward-slashed)
-   * when it does not. `outsideWorkspace` says which, so nothing has to guess by inspecting the
-   * string.
-   */
-  path: z.string(),
-  /**
-   * A project the solution names outside the workspace root. Shown and opened like any other -
-   * the solution file is the authority naming it, so this is not free browsing - but editing one
-   * warns, and it is absent from every git surface. See docs/solution-view.md.
-   */
-  outsideWorkspace: z.boolean(),
-  /** The solution folder containing it, or null for a project at the solution root. */
-  folderPath: z.string().nullable(),
-  /** Project type GUID, lowercased. Absent on old daemons. */
-  typeId: z.string().optional(),
-});
-
-export const CodeSolutionGetTreeResponseSchema = z.object({
-  type: z.literal("code.solution.get_tree.response"),
-  payload: z.object({
-    cwd: z.string(),
-    solutionPath: z.string(),
-    name: z.string().default(""),
-    format: SolutionFormatSchema.default("sln"),
-    folders: z.array(SolutionTreeFolderSchema),
-    projects: z.array(SolutionTreeProjectSchema),
-    /** Solution configurations and platforms - first-class .NET concepts no CLI surfaces. */
-    buildTypes: z.array(z.string()),
-    platforms: z.array(z.string()),
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
-});
-
-/**
- * Three-valued for the same reason the code-intelligence family is: "the host cannot supply
- * this", "MSBuild refused this project", and "here are its files" are different things to tell a
- * user, and reporting the first two as an empty file list is how a working feature reads as
- * broken. One project that fails must not blank the tree, so this status is per project.
- */
-export const SolutionProjectStatusSchema = z.enum(["ok", "failed", "unavailable"]);
-
-/**
- * One entry in a project's evaluated membership, flat with parent links like the folders above.
- *
- * `isImplicit` is what a filesystem tree structurally cannot show and what Phase 2 turns on: an
- * item contributed by the SDK's default globs is one that creating the file already adds, while
- * an item the project file itself declares needs a real `.csproj` edit.
- */
-export const SolutionProjectNodeSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("directory"),
-    id: z.string(),
-    parentId: z.string().nullable(),
-    name: z.string(),
-    path: z.string(),
-    outsideWorkspace: z.boolean(),
-  }),
-  z.object({
-    kind: z.literal("file"),
-    id: z.string(),
-    parentId: z.string().nullable(),
-    name: z.string(),
-    path: z.string(),
-    outsideWorkspace: z.boolean(),
-    /** `Compile`, `Content`, `EmbeddedResource`, … - MSBuild's own item type. */
-    itemType: z.string(),
-    isImplicit: z.boolean(),
-  }),
-]);
-
-export const SolutionPackageReferenceSchema = z.object({
-  name: z.string(),
-  version: z.string().nullable(),
-});
-
-export const CodeSolutionLoadProjectResponseSchema = z.object({
-  type: z.literal("code.solution.load_project.response"),
-  payload: z.object({
-    cwd: z.string(),
-    solutionPath: z.string(),
-    projectPath: z.string(),
-    status: SolutionProjectStatusSchema,
-    nodes: z.array(SolutionProjectNodeSchema),
-    projectReferences: z.array(z.string()),
-    packageReferences: z.array(SolutionPackageReferenceSchema),
-    targetFrameworks: z.array(z.string()),
-    outputType: z.string().nullable(),
-    isSdkStyle: z.boolean(),
-    /** MSBuild's own message when `status` is `failed`, verbatim. */
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
-});
-
-export const CodeOutlineResponseSchema = z.object({
-  type: z.literal("code.outline.response"),
-  payload: z.object({
-    cwd: z.string(),
-    path: z.string(),
-    symbols: z.array(CodeSymbolLocationSchema),
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
-});
-
 export const FileSearchMatchSchema = z.object({
   /** 1-based line number. */
   line: z.number().int().positive(),
@@ -12062,19 +10475,6 @@ export type AgentBackgroundTaskClearResponseMessage = z.infer<
 export type SuggestedTaskInfo = z.infer<typeof SuggestedTaskInfoSchema>;
 export type SuggestedTaskState = z.infer<typeof SuggestedTaskStateSchema>;
 export type SuggestedTasksChanged = z.infer<typeof SuggestedTasksChangedSchema>;
-export type ContextRange = z.infer<typeof ContextRangeSchema>;
-export type ContextScope = z.infer<typeof ContextScopeSchema>;
-export type ContextCategory = z.infer<typeof ContextCategorySchema>;
-export type ContextCategoryVisibility = z.infer<typeof ContextCategoryVisibilitySchema>;
-export type ContextCostClass = z.infer<typeof ContextCostClassSchema>;
-export type ContextSeverity = z.infer<typeof ContextSeveritySchema>;
-export type ContextConfidence = z.infer<typeof ContextConfidenceSchema>;
-export type ContextFinding = z.infer<typeof ContextFindingSchema>;
-export type ContextNode = z.infer<typeof ContextNodeSchema>;
-export type ContextEdge = z.infer<typeof ContextEdgeSchema>;
-export type ContextCategoryTotal = z.infer<typeof ContextCategoryTotalSchema>;
-export type ContextReport = z.infer<typeof ContextReportSchema>;
-export type ContextReportChanged = z.infer<typeof ContextReportChangedSchema>;
 export type TasksSuggestedStartMode = z.infer<typeof TasksSuggestedStartModeSchema>;
 export type TasksSuggestedStartResponseMessage = z.infer<
   typeof TasksSuggestedStartResponseMessageSchema
@@ -12159,7 +10559,6 @@ export type ProviderUsageListResponseMessage = z.infer<
 >;
 export type ActivityCounters = z.infer<typeof ActivityCountersSchema>;
 export type StatsActivityGetResponseMessage = z.infer<typeof StatsActivityGetResponseMessageSchema>;
-export type ContextReportGetResponseMessage = z.infer<typeof ContextReportGetResponseMessageSchema>;
 export type ProjectKnowledgeListResponseMessage = z.infer<
   typeof ProjectKnowledgeListResponseMessageSchema
 >;
@@ -12186,20 +10585,6 @@ export type ProjectKnowledgeRootApplyResponseMessage = z.infer<
 >;
 export type ProjectKnowledgeDeleteResponseMessage = z.infer<
   typeof ProjectKnowledgeDeleteResponseMessageSchema
->;
-export type ContextPromptSection = z.infer<typeof ContextPromptSectionSchema>;
-export type ContextPromptPreview = z.infer<typeof ContextPromptPreviewSchema>;
-export type ContextPromptPreviewGetRequestMessage = z.infer<
-  typeof ContextPromptPreviewGetRequestMessageSchema
->;
-export type ContextPromptPreviewGetResponseMessage = z.infer<
-  typeof ContextPromptPreviewGetResponseMessageSchema
->;
-export type ContextEdgeConvertResponseMessage = z.infer<
-  typeof ContextEdgeConvertResponseMessageSchema
->;
-export type ContextFindingsFixResponseMessage = z.infer<
-  typeof ContextFindingsFixResponseMessageSchema
 >;
 export type StatsActivityResetRequestMessage = z.infer<
   typeof StatsActivityResetRequestMessageSchema
@@ -12577,66 +10962,8 @@ export type FileSearchSummary = FileSearchResponse["payload"];
 export type FileReplaceRequest = z.infer<typeof FileReplaceRequestSchema>;
 export type FileReplaceResponse = z.infer<typeof FileReplaceResponseSchema>;
 export type FileReplaceFileResult = z.infer<typeof FileReplaceFileResultSchema>;
-export type CodeListFilesRequest = z.infer<typeof CodeListFilesRequestSchema>;
-export type CodeListFilesResponse = z.infer<typeof CodeListFilesResponseSchema>;
-export type CodeSymbolsRequest = z.infer<typeof CodeSymbolsRequestSchema>;
-export type CodeSymbolsResponse = z.infer<typeof CodeSymbolsResponseSchema>;
-export type CodeOutlineRequest = z.infer<typeof CodeOutlineRequestSchema>;
-export type CodeOutlineResponse = z.infer<typeof CodeOutlineResponseSchema>;
-export type CodeSymbolLocation = z.infer<typeof CodeSymbolLocationSchema>;
-export type CodeSymbolKind = z.infer<typeof CodeSymbolKindSchema>;
-export type CodeDefinitionRequest = z.infer<typeof CodeDefinitionRequestSchema>;
-export type CodeDefinitionResponse = z.infer<typeof CodeDefinitionResponseSchema>;
-export type CodeDefinitionLocation = z.infer<typeof CodeDefinitionLocationSchema>;
-export type CodeDefinitionStatus = z.infer<typeof CodeDefinitionStatusSchema>;
-export type CodeDocumentSyncRequest = z.infer<typeof CodeDocumentSyncRequestSchema>;
-export type CodeDocumentSyncResponse = z.infer<typeof CodeDocumentSyncResponseSchema>;
-export type CodeDocumentCloseRequest = z.infer<typeof CodeDocumentCloseRequestSchema>;
-export type CodeDocumentCloseResponse = z.infer<typeof CodeDocumentCloseResponseSchema>;
-export type CodeHoverRequest = z.infer<typeof CodeHoverRequestSchema>;
-export type CodeHoverResponse = z.infer<typeof CodeHoverResponseSchema>;
-export type CodeHoverRange = z.infer<typeof CodeHoverRangeSchema>;
-export type CodeReferencesRequest = z.infer<typeof CodeReferencesRequestSchema>;
-export type CodeReferencesResponse = z.infer<typeof CodeReferencesResponseSchema>;
-export type CodeRenamePreviewRequest = z.infer<typeof CodeRenamePreviewRequestSchema>;
-export type CodeRenamePreviewResponse = z.infer<typeof CodeRenamePreviewResponseSchema>;
-export type CodeRenameApplyRequest = z.infer<typeof CodeRenameApplyRequestSchema>;
-export type CodeRenameApplyResponse = z.infer<typeof CodeRenameApplyResponseSchema>;
-export type CodeRenameApplyStatus = z.infer<typeof CodeRenameApplyStatusSchema>;
-export type CodeRenameFileOutcome = z.infer<typeof CodeRenameFileOutcomeSchema>;
-export type CodeRenameUndoRequest = z.infer<typeof CodeRenameUndoRequestSchema>;
-export type CodeRenameUndoResponse = z.infer<typeof CodeRenameUndoResponseSchema>;
-export type CodeRenameUndoStatus = z.infer<typeof CodeRenameUndoStatusSchema>;
-export type CodeRenameUndoFile = z.infer<typeof CodeRenameUndoFileSchema>;
-export type CodeRenameEdit = z.infer<typeof CodeRenameEditSchema>;
-export type CodeRenameFilePlan = z.infer<typeof CodeRenameFilePlanSchema>;
-export type LspServersListRequest = z.infer<typeof LspServersListRequestSchema>;
-export type LspServersListResponse = z.infer<typeof LspServersListResponseSchema>;
-export type LspServerStopRequest = z.infer<typeof LspServerStopRequestSchema>;
-export type LspServerStopResponse = z.infer<typeof LspServerStopResponseSchema>;
-export type LspLanguageState = z.infer<typeof LspLanguageStateSchema>;
-export type LspRunningServer = z.infer<typeof LspRunningServerSchema>;
 export type MutableLspConfig = z.infer<typeof MutableLspConfigSchema>;
 export type MutableDotnetSolutionConfig = z.infer<typeof MutableDotnetSolutionConfigSchema>;
-export type SolutionFormat = z.infer<typeof SolutionFormatSchema>;
-export type SolutionRef = z.infer<typeof SolutionRefSchema>;
-export type SolutionTreeFolder = z.infer<typeof SolutionTreeFolderSchema>;
-export type SolutionTreeProject = z.infer<typeof SolutionTreeProjectSchema>;
-export type SolutionProjectStatus = z.infer<typeof SolutionProjectStatusSchema>;
-export type SolutionProjectNode = z.infer<typeof SolutionProjectNodeSchema>;
-export type SolutionPackageReference = z.infer<typeof SolutionPackageReferenceSchema>;
-export type CodeSolutionListRequest = z.infer<typeof CodeSolutionListRequestSchema>;
-export type CodeSolutionListResponse = z.infer<typeof CodeSolutionListResponseSchema>;
-export type CodeSolutionGetTreeRequest = z.infer<typeof CodeSolutionGetTreeRequestSchema>;
-export type CodeSolutionGetTreeResponse = z.infer<typeof CodeSolutionGetTreeResponseSchema>;
-export type CodeSolutionLoadProjectRequest = z.infer<typeof CodeSolutionLoadProjectRequestSchema>;
-export type CodeSolutionLoadProjectResponse = z.infer<typeof CodeSolutionLoadProjectResponseSchema>;
-export type LspActivityChangedStatusPayload = z.infer<typeof LspActivityChangedStatusPayloadSchema>;
-export type CodeDiagnosticSeverity = z.infer<typeof CodeDiagnosticSeveritySchema>;
-export type CodeDiagnostic = z.infer<typeof CodeDiagnosticSchema>;
-export type LspDiagnosticsChangedStatusPayload = z.infer<
-  typeof LspDiagnosticsChangedStatusPayloadSchema
->;
 export type RestartServerRequestMessage = z.infer<typeof RestartServerRequestMessageSchema>;
 export type ShutdownServerRequestMessage = z.infer<typeof ShutdownServerRequestMessageSchema>;
 export type ClearAgentAttentionMessage = z.infer<typeof ClearAgentAttentionMessageSchema>;
@@ -13071,3 +11398,305 @@ export type {
   MeetingsTranscriptsListResponse,
   MeetingsTranscriptsUpdateResponse,
 } from "./meetings.js";
+
+export {
+  RunsGetSnapshotRequestSchema,
+  RunsGetSnapshotResponseSchema,
+  RunsUpdatedNotificationSchema,
+  RunsGateRespondRequestSchema,
+  RunsGateRespondResponseSchema,
+  RunsCancelRequestSchema,
+  RunsCancelResponseSchema,
+  RunsClearRequestSchema,
+  RunsClearResponseSchema,
+  RunsDeleteRequestSchema,
+  RunsDeleteResponseSchema,
+  RunsClearedNotificationSchema,
+  RunsGraphsListRequestSchema,
+  RunsGraphsListResponseSchema,
+  RunsGraphsSaveRequestSchema,
+  RunsGraphsSaveResponseSchema,
+  RunsGraphsDeleteRequestSchema,
+  RunsGraphsDeleteResponseSchema,
+  RunsGraphsChangedNotificationSchema,
+  RunsTemplatesListRequestSchema,
+  RunsTemplatesListResponseSchema,
+  RunsTemplatesSaveRequestSchema,
+  RunsTemplatesSaveResponseSchema,
+  RunsTemplatesDeleteRequestSchema,
+  RunsTemplatesDeleteResponseSchema,
+  RunsTemplatesChangedNotificationSchema,
+  RunsStartRequestSchema,
+  RunsStartResponseSchema,
+} from "./orchestration.js";
+export type {
+  RunsGraphsListRequest,
+  RunsGraphsListResponse,
+  RunsGraphsSaveRequest,
+  RunsGraphsSaveResponse,
+  RunsGraphsDeleteRequest,
+  RunsGraphsDeleteResponse,
+  RunsGraphsChangedNotification,
+  RunsTemplatesListRequest,
+  RunsTemplatesListResponse,
+  RunsTemplatesSaveRequest,
+  RunsTemplatesSaveResponse,
+  RunsTemplatesDeleteRequest,
+  RunsTemplatesDeleteResponse,
+  RunsTemplatesChangedNotification,
+  RunsStartRequest,
+  RunsStartResponse,
+  RunsGetSnapshotRequest,
+  RunsGetSnapshotResponse,
+  RunsUpdatedNotification,
+  RunsGateRespondRequest,
+  RunsGateRespondResponse,
+  RunsCancelRequest,
+  RunsCancelResponse,
+  RunsClearRequest,
+  RunsClearResponse,
+  RunsDeleteRequest,
+  RunsDeleteResponse,
+  RunsClearedNotification,
+} from "./orchestration.js";
+
+export {
+  IntegrationsAuthorizationGetOverviewRequestSchema,
+  IntegrationsAuthorizationGetOverviewResponseSchema,
+  IntegrationsAuthorizationGetMethodsRequestSchema,
+  IntegrationsAuthorizationGetMethodsResponseSchema,
+  IntegrationsAuthorizationStartBrowserRequestSchema,
+  IntegrationsAuthorizationStartBrowserResponseSchema,
+  IntegrationsZoomStartAuthorizationRequestSchema,
+  IntegrationsZoomStartAuthorizationResponseSchema,
+} from "./integration-authorization.js";
+export type {
+  IntegrationsAuthorizationGetOverviewRequest,
+  IntegrationsAuthorizationGetOverviewResponse,
+  IntegrationsAuthorizationGetMethodsRequest,
+  IntegrationsAuthorizationGetMethodsResponse,
+  IntegrationsAuthorizationStartBrowserResponse,
+  IntegrationsZoomStartAuthorizationResponse,
+} from "./integration-authorization.js";
+
+export {
+  CommunicationsGetOverviewRequestSchema,
+  CommunicationsGetOverviewResponseSchema,
+  CommunicationsInboxGetHomeRequestSchema,
+  CommunicationsInboxGetHomeResponseSchema,
+  CommunicationsInboxSearchRequestSchema,
+  CommunicationsInboxSearchResponseSchema,
+  CommunicationsInboxSetFavoriteRequestSchema,
+  CommunicationsInboxSetFavoriteResponseSchema,
+  CommunicationsInboxNotificationsAcknowledgeRequestSchema,
+  CommunicationsInboxNotificationsAcknowledgeResponseSchema,
+  CommunicationsInboxGetPresenceRequestSchema,
+  CommunicationsInboxGetPresenceResponseSchema,
+  CommunicationsInboxPresenceChangedNotificationSchema,
+  CommunicationsInboxSetPresenceRequestSchema,
+  CommunicationsInboxSetPresenceResponseSchema,
+  CommunicationsInboxSetEnabledRequestSchema,
+  CommunicationsInboxSetEnabledResponseSchema,
+  CommunicationsInboxGetMessagesRequestSchema,
+  CommunicationsInboxGetMessagesResponseSchema,
+  CommunicationsInboxSendMessageRequestSchema,
+  CommunicationsInboxSendMessageResponseSchema,
+  CommunicationsRoomGetRequestSchema,
+  CommunicationsRoomGetResponseSchema,
+  CommunicationsRoomThreadGetRequestSchema,
+  CommunicationsRoomThreadGetResponseSchema,
+  CommunicationsRoomMessageSendRequestSchema,
+  CommunicationsRoomMessageSendResponseSchema,
+  CommunicationsRoomReactionSetRequestSchema,
+  CommunicationsRoomReactionSetResponseSchema,
+} from "./communications.js";
+export type {
+  CommunicationsGetOverviewRequest,
+  CommunicationsGetOverviewResponse,
+  CommunicationsInboxGetHomeRequest,
+  CommunicationsInboxGetHomeResponse,
+  CommunicationsInboxSearchRequest,
+  CommunicationsInboxSearchResponse,
+  CommunicationsInboxSetFavoriteResponse,
+  CommunicationsInboxNotificationsAcknowledgeResponse,
+  CommunicationsInboxGetPresenceResponse,
+  CommunicationsInboxPresenceChangedNotification,
+  CommunicationsInboxSetPresenceResponse,
+  CommunicationsInboxSetEnabledResponse,
+  CommunicationsInboxGetMessagesRequest,
+  CommunicationsInboxGetMessagesResponse,
+  CommunicationsInboxSendMessageRequest,
+  CommunicationsInboxSendMessageResponse,
+  CommunicationsRoomGetResponse,
+  CommunicationsRoomThreadGetResponse,
+  CommunicationsRoomMessageSendResponse,
+  CommunicationsRoomReactionSetResponse,
+} from "./communications.js";
+
+export {
+  ContextScopeSchema,
+  ContextCategorySchema,
+  ContextCostClassSchema,
+  ContextSeveritySchema,
+  ContextConfidenceSchema,
+  ContextCategoryVisibilitySchema,
+  ContextFindingKindSchema,
+  ContextRangeSchema,
+  ContextFindingSchema,
+  ContextNodeSchema,
+  ContextEdgeSchema,
+  ContextCategoryTotalSchema,
+  ContextReportSchema,
+  ContextReportChangedSchema,
+  ContextReportGetRequestMessageSchema,
+  ContextReportGetResponseMessageSchema,
+  ContextPromptSectionSchema,
+  ContextPromptPreviewSchema,
+  ContextPromptPreviewGetRequestMessageSchema,
+  ContextPromptPreviewGetResponseMessageSchema,
+  ContextEdgeConvertRequestMessageSchema,
+  ContextEdgeConvertResponseMessageSchema,
+  ContextFindingsFixRequestMessageSchema,
+  ContextFindingsFixResponseMessageSchema,
+} from "./context.js";
+export type {
+  ContextRange,
+  ContextScope,
+  ContextCategory,
+  ContextCategoryVisibility,
+  ContextCostClass,
+  ContextSeverity,
+  ContextConfidence,
+  ContextFinding,
+  ContextNode,
+  ContextEdge,
+  ContextCategoryTotal,
+  ContextReport,
+  ContextReportChanged,
+  ContextReportGetResponseMessage,
+  ContextPromptSection,
+  ContextPromptPreview,
+  ContextPromptPreviewGetRequestMessage,
+  ContextPromptPreviewGetResponseMessage,
+  ContextEdgeConvertResponseMessage,
+  ContextFindingsFixResponseMessage,
+} from "./context.js";
+
+export {
+  SolutionFormatSchema,
+  SolutionRefSchema,
+  SolutionTreeFolderSchema,
+  SolutionTreeProjectSchema,
+  SolutionProjectStatusSchema,
+  SolutionProjectNodeSchema,
+  SolutionPackageReferenceSchema,
+  CodeListFilesRequestSchema,
+  CodeSymbolsRequestSchema,
+  CodeOutlineRequestSchema,
+  CodeDefinitionRequestSchema,
+  CodeDocumentSyncRequestSchema,
+  CodeDocumentCloseRequestSchema,
+  CodeHoverRequestSchema,
+  CodeReferencesRequestSchema,
+  CodeRenamePreviewRequestSchema,
+  CodeRenameApplyRequestSchema,
+  CodeRenameUndoRequestSchema,
+  CodeSolutionListRequestSchema,
+  CodeSolutionGetTreeRequestSchema,
+  CodeSolutionLoadProjectRequestSchema,
+  CodeDiagnosticSeveritySchema,
+  CodeDiagnosticSchema,
+  CodeListFilesResponseSchema,
+  CodeSymbolKindSchema,
+  CodeSymbolLocationSchema,
+  CodeSymbolsResponseSchema,
+  CodeDefinitionLocationSchema,
+  CodeDefinitionStatusSchema,
+  CodeDefinitionResponseSchema,
+  CodeDocumentSyncResponseSchema,
+  CodeDocumentCloseResponseSchema,
+  CodeHoverRangeSchema,
+  CodeHoverResponseSchema,
+  CodeReferencesResponseSchema,
+  CodeRenameEditSchema,
+  CodeRenameFilePlanSchema,
+  CodeRenamePreviewResponseSchema,
+  CodeRenameApplyStatusSchema,
+  CodeRenameFileOutcomeKindSchema,
+  CodeRenameFileOutcomeSchema,
+  CodeRenameUndoStatusSchema,
+  CodeRenameUndoFileKindSchema,
+  CodeRenameUndoFileSchema,
+  CodeRenameUndoResponseSchema,
+  CodeRenameApplyResponseSchema,
+  CodeSolutionListResponseSchema,
+  CodeSolutionGetTreeResponseSchema,
+  CodeSolutionLoadProjectResponseSchema,
+  CodeOutlineResponseSchema,
+  LspServersListRequestSchema,
+  LspServerStopRequestSchema,
+  LspActivityChangedStatusPayloadSchema,
+  LspDiagnosticsChangedStatusPayloadSchema,
+  LspLanguageStateSchema,
+  LspRunningServerSchema,
+  LspServersListResponseSchema,
+  LspServerStopResponseSchema,
+} from "./code-intelligence.js";
+export type {
+  SolutionFormat,
+  SolutionRef,
+  SolutionTreeFolder,
+  SolutionTreeProject,
+  SolutionProjectStatus,
+  SolutionProjectNode,
+  SolutionPackageReference,
+  CodeListFilesRequest,
+  CodeListFilesResponse,
+  CodeSymbolsRequest,
+  CodeSymbolsResponse,
+  CodeOutlineRequest,
+  CodeOutlineResponse,
+  CodeSymbolLocation,
+  CodeSymbolKind,
+  CodeDefinitionRequest,
+  CodeDefinitionResponse,
+  CodeDefinitionLocation,
+  CodeDefinitionStatus,
+  CodeDocumentSyncRequest,
+  CodeDocumentSyncResponse,
+  CodeDocumentCloseRequest,
+  CodeDocumentCloseResponse,
+  CodeHoverRequest,
+  CodeHoverResponse,
+  CodeHoverRange,
+  CodeReferencesRequest,
+  CodeReferencesResponse,
+  CodeRenamePreviewRequest,
+  CodeRenamePreviewResponse,
+  CodeRenameApplyRequest,
+  CodeRenameApplyResponse,
+  CodeRenameApplyStatus,
+  CodeRenameFileOutcome,
+  CodeRenameUndoRequest,
+  CodeRenameUndoResponse,
+  CodeRenameUndoStatus,
+  CodeRenameUndoFile,
+  CodeRenameEdit,
+  CodeRenameFilePlan,
+  CodeSolutionListRequest,
+  CodeSolutionListResponse,
+  CodeSolutionGetTreeRequest,
+  CodeSolutionGetTreeResponse,
+  CodeSolutionLoadProjectRequest,
+  CodeSolutionLoadProjectResponse,
+  CodeDiagnosticSeverity,
+  CodeDiagnostic,
+  LspServersListRequest,
+  LspServersListResponse,
+  LspServerStopRequest,
+  LspServerStopResponse,
+  LspLanguageState,
+  LspRunningServer,
+  LspActivityChangedStatusPayload,
+  LspDiagnosticsChangedStatusPayload,
+} from "./code-intelligence.js";
