@@ -13032,3 +13032,42 @@ export type {
   PersonalityMemoryStatsResponseMessage,
 } from "./personality-schemas.js";
 export { PERSONALITY_ROLES } from "./personality-schemas.js";
+
+// The Brain, Preview and Meetings schema modules own these, but messages.ts stays
+// the public import surface for everything it ever exported.
+export {
+  BrainBindAddressSchema,
+  BrainBudgetSchema,
+  BrainCalibrationInfoSchema,
+  BrainCapabilitiesSchema,
+  BrainCatalogModelSchema,
+  BrainDiskUsageSchema,
+  BrainEvalsSchema,
+  BrainHfSearchResultSchema,
+  BrainHostStatusSchema,
+  BrainHostingProfileSchema,
+  BrainInstalledModelSchema,
+  BrainInventoryModelSchema,
+  BrainJobKindSchema,
+  BrainJobSchema,
+  BrainJobStatusSchema,
+  BrainLogLineAddedStatusPayloadSchema,
+  BrainLogsWatchRequestSchema,
+  BrainModelScoreSchema,
+  BrainNetworkInfoSchema,
+  BrainProfileFieldSchema,
+  BrainProfileSchema,
+  BrainProfileWarningSchema,
+  BrainRemoteConfigSchema,
+  BrainRepoQuantSchema,
+  BrainRuntimeSchema,
+  BrainTailscaleInfoSchema,
+} from "./brain.js";
+export { EXTERNAL_PREVIEW_SERVER_ID_PREFIX, isExternalPreviewServerId } from "./preview.js";
+export type {
+  MeetingTranscript,
+  MeetingsTranscriptsCreateResponse,
+  MeetingsTranscriptsDeleteResponse,
+  MeetingsTranscriptsListResponse,
+  MeetingsTranscriptsUpdateResponse,
+} from "./meetings.js";
