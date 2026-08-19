@@ -37,6 +37,7 @@ import { CursorACPAgentClient } from "./providers/cursor-acp-agent.js";
 import { GenericACPAgentClient } from "./providers/generic-acp-agent.js";
 import { KiroACPAgentClient } from "./providers/kiro-acp-agent.js";
 import { OpenAICompatAgentClient, OPENAI_COMPAT_EXTENDS } from "./providers/openai-compat-agent.js";
+import { resolveProjectRootForCwd } from "./context-management/context-management-service.js";
 import { OpenCodeAgentClient } from "./providers/opencode-agent.js";
 import { OmpAgentClient } from "./providers/omp/agent.js";
 import type { OmpRuntime } from "./providers/omp/runtime.js";
@@ -187,6 +188,7 @@ const PROVIDER_CLIENT_FACTORIES: Record<string, ProviderClientFactory> = {
       logger,
       providerId: OTTO_BRAIN_PROVIDER_ID,
       label: OTTO_BRAIN_LABEL,
+      resolveProjectRoot: buildProjectRootResolver(options?.workspaceGitService),
       resolveEndpoint: () => resolveBrainEndpoint(options?.brainEndpoint),
       ottoToolGroups: options?.providerOverride?.ottoToolGroups,
       mcpServers: options?.providerOverride?.mcpServers,
@@ -207,6 +209,19 @@ const PROVIDER_CLIENT_FACTORIES: Record<string, ProviderClientFactory> = {
       managedProcesses: options?.managedProcesses,
     }),
 };
+
+/**
+ * Repo-root resolver for the payload-owning provider's tool loop, or null when
+ * the daemon has no git service to ask. Same resolution the spawn-time
+ * instruction loader uses (`bootstrap.ts`), so a file injected mid-session is
+ * headed with the same project-relative path it would have had at spawn.
+ */
+function buildProjectRootResolver(
+  workspaceGitService: Pick<WorkspaceGitService, "resolveRepoRoot"> | undefined,
+): ((cwd: string) => Promise<string>) | undefined {
+  if (!workspaceGitService) return undefined;
+  return (cwd) => resolveProjectRootForCwd(cwd, (dir) => workspaceGitService.resolveRepoRoot(dir));
+}
 
 export const OTTO_BRAIN_PROVIDER_ID = "otto-brain";
 const OTTO_BRAIN_LABEL = "Otto Brain";
@@ -705,7 +720,10 @@ function buildResolvedBuiltinProviders(
 function addDerivedProviders(
   resolvedProviders: Map<string, ResolvedProvider>,
   providerOverrides: Record<string, ProviderOverride>,
-  options: Pick<BuildProviderRegistryOptions, "managedProcesses" | "connectors">,
+  options: Pick<
+    BuildProviderRegistryOptions,
+    "managedProcesses" | "connectors" | "workspaceGitService"
+  >,
 ): void {
   for (const [providerId, override] of Object.entries(providerOverrides)) {
     if (resolvedProviders.has(providerId) || BUILTIN_PROVIDER_IDS.includes(providerId)) {
@@ -813,7 +831,10 @@ function addDerivedProviders(
 function resolveOpenAICompatProvider(
   providerId: string,
   override: ProviderOverride,
-  options: Pick<BuildProviderRegistryOptions, "managedProcesses" | "connectors">,
+  options: Pick<
+    BuildProviderRegistryOptions,
+    "managedProcesses" | "connectors" | "workspaceGitService"
+  >,
 ): ResolvedProvider {
   const label = override.label ?? providerId;
   return {
@@ -841,6 +862,7 @@ function resolveOpenAICompatProvider(
         providerId,
         label,
         env: override.env,
+        resolveProjectRoot: buildProjectRootResolver(options.workspaceGitService),
         ottoToolGroups: override.ottoToolGroups,
         mcpServers: override.mcpServers,
         connectors: options.connectors,
@@ -875,6 +897,7 @@ export function buildProviderRegistry(
   addDerivedProviders(resolvedProviders, providerOverrides, {
     managedProcesses: options?.managedProcesses,
     connectors: options?.connectors,
+    workspaceGitService: options?.workspaceGitService,
   });
 
   return Object.fromEntries(

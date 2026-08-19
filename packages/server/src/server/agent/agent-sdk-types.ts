@@ -241,7 +241,9 @@ export interface AgentCapabilityFlags {
    *
    * Two things key off it, and both are wrong if it is set without the
    * behaviour: `applyInstructionFiles` only loads context files for these
-   * providers (a CLI reads its own and would get them twice), and Context
+   * providers (a CLI reads its own and would get them twice) - as does the tool
+   * loop's subdirectory injection, which is the same gate on the conditional
+   * half - and Context
    * Management reports `system_prompt` and `mcp_tools` as `exact` rather than
    * `not_visible`. It is a capability rather than a provider-id test because
    * the OpenAI-compatible family has no single id - `otto-brain` is one member

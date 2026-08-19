@@ -27,6 +27,7 @@ import {
 } from "./markdown-refs.js";
 import {
   getProviderConvention,
+  type ContextLoadPoint,
   type ContextResolutionInput,
   type ProviderConvention,
 } from "./provider-conventions.js";
@@ -60,6 +61,22 @@ export interface ContextGraphScanResult {
   supportsImports: boolean;
   supported: boolean;
   /**
+   * Absolute paths the scan tested and found absent, where the file appearing
+   * would change what loads.
+   *
+   * A load point's candidates are here until one of them wins (an added
+   * `AGENTS.md` takes the slot from the `CLAUDE.md` that was standing in for
+   * it), as are import targets that did not resolve. Markdown link targets are
+   * not: a link is never inlined, so creating one changes a finding and not a
+   * byte of the prompt.
+   *
+   * This is what makes `instruction-files.ts` able to cache by mtime. Watching
+   * only the files that *did* resolve would miss the file that appears where
+   * there was none, which is the same silent staleness the whole runtime-only
+   * loading rule exists to prevent.
+   */
+  absentPaths: string[];
+  /**
    * Node text, in load order, for the nodes whose bytes came from a real file
    * read. Present only when `includeText` was requested: the loader needs the
    * bytes it is about to send, and everyone else only needs the sizes.
@@ -75,6 +92,16 @@ export interface ScanContextGraphOptions {
    * weight it is not about to send is pure latency at session start.
    */
   fixedOnly?: boolean;
+  /**
+   * Scan exactly these load points instead of the convention's own list, and
+   * nothing else - no subdirectory sweep, no roster.
+   *
+   * This is how one conditional subdirectory file gets read with the same
+   * import inlining, cycle guard and depth cap the fixed chain gets. The
+   * alternative was a second walk inside the injector, and a second walk is how
+   * the tab and the prompt start disagreeing (`instruction-files.ts`).
+   */
+  loadPoints?: readonly ContextLoadPoint[];
   /** Return `contents` alongside the graph. */
   includeText?: boolean;
   /** The provider drives its own request - see `getProviderConvention`. */
@@ -102,6 +129,7 @@ export async function scanContextGraph(
       nodes: [],
       edges: [],
       findings: [],
+      absentPaths: [],
       confidence: "unverified",
       supportsImports: false,
       supported: false,
@@ -110,10 +138,18 @@ export async function scanContextGraph(
 
   const builder = new GraphBuilder(input);
 
+  // An explicit `loadPoints` list is the whole scan: the caller is reading one
+  // named slot, so sweeping the repo and the roster around it would be work
+  // nobody asked for, sizing weight nobody is about to send.
+  const pointsOnly = options?.fixedOnly === true || options?.loadPoints !== undefined;
+
   // 1. Explicit load points, then 2. subdirectory files - see the seed helpers.
   //    Load order is what "first visit wins" means, so it must not be reordered.
-  const queue: PendingImport[] = await seedLoadPoints(builder, convention, input);
-  if (!options?.fixedOnly) {
+  const queue: PendingImport[] = await seedLoadPoints(
+    builder,
+    options?.loadPoints ?? convention.resolveLoadPoints(input),
+  );
+  if (!pointsOnly) {
     queue.push(...(await seedSubdirectoryFiles(builder, convention, input)));
   }
 
@@ -132,7 +168,7 @@ export async function scanContextGraph(
   }
 
   // 4. Skills and subagents - see `addRoster`.
-  if (!options?.fixedOnly) {
+  if (!pointsOnly) {
     await addRoster(builder, convention, input);
   }
 
@@ -145,6 +181,7 @@ export async function scanContextGraph(
     nodes: builder.nodes(),
     edges: builder.edges(),
     findings: builder.allFindings(),
+    absentPaths: builder.absentPaths(),
     confidence: convention.confidence,
     supportsImports: convention.supportsImports,
     supported: true,
@@ -161,11 +198,10 @@ export async function scanContextGraph(
  */
 async function seedLoadPoints(
   builder: GraphBuilder,
-  convention: ProviderConvention,
-  input: ContextResolutionInput,
+  points: readonly ContextLoadPoint[],
 ): Promise<PendingImport[]> {
   const seeds: PendingImport[] = [];
-  for (const point of convention.resolveLoadPoints(input)) {
+  for (const point of points) {
     const candidates = [point.path, ...(point.fallbackPaths ?? [])];
     for (const candidate of candidates) {
       const node = await builder.addFile({
@@ -199,12 +235,12 @@ async function seedSubdirectoryFiles(
   input: ContextResolutionInput,
 ): Promise<PendingImport[]> {
   const root = convention.resolveSubdirectoryScanRoot(input);
-  if (!root || !convention.subdirectoryFileName) return [];
+  if (!root || convention.subdirectoryFileNames.length === 0) return [];
 
   const seeds: PendingImport[] = [];
   for (const filePath of await findSubdirectoryContextFiles(
     root,
-    convention.subdirectoryFileName,
+    convention.subdirectoryFileNames,
   )) {
     const node = await builder.addFile({
       absolutePath: filePath,
@@ -298,6 +334,9 @@ async function processRef(params: {
   // package names stay quiet.
   const exists = targetPath ? await isReadableFile(targetPath) : false;
   if (!targetPath || !exists) {
+    // Recorded whether or not it is flagged: `@some-package` is not a finding,
+    // but a file that later appears at that path would still change the load.
+    if (targetPath) builder.recordAbsentPath(targetPath);
     if (isMarkdownTarget(ref.rawTarget)) {
       builder.addFinding(current.fromNodeId, {
         kind: "dead_import",
@@ -380,6 +419,7 @@ interface AddFileInput {
 
 class GraphBuilder {
   private readonly nodesByKey = new Map<string, ContextNode>();
+  private readonly absentPathSet = new Set<string>();
   private readonly textByNodeId = new Map<string, string>();
   private readonly parentByNodeId = new Map<string, string>();
   private readonly edgeList: ContextEdge[] = [];
@@ -388,8 +428,7 @@ class GraphBuilder {
 
   /** Case-insensitive on Windows, where the same file has many spellings. */
   private key(absolutePath: string): string {
-    const resolved = path.resolve(absolutePath);
-    return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+    return contextPathKey(absolutePath);
   }
 
   findByPath(absolutePath: string): ContextNode | undefined {
@@ -410,7 +449,10 @@ class GraphBuilder {
       text = await fs.readFile(input.absolutePath, "utf8");
     } catch {
       // Absent candidates are the norm, not an error: conventions describe
-      // where a file *would* live.
+      // where a file *would* live. Which is exactly why the path is worth
+      // reporting - `absentPaths` is how a cache learns that a file appearing
+      // here changes the answer.
+      this.recordAbsentPath(input.absolutePath);
       return null;
     }
 
@@ -466,6 +508,14 @@ class GraphBuilder {
     }
     if (path.isAbsolute(cleaned)) return path.resolve(cleaned);
     return path.resolve(path.dirname(fromPath), cleaned);
+  }
+
+  recordAbsentPath(absolutePath: string): void {
+    this.absentPathSet.add(path.resolve(absolutePath));
+  }
+
+  absentPaths(): string[] {
+    return [...this.absentPathSet];
   }
 
   addEdge(edge: ContextEdge): void {
@@ -579,6 +629,20 @@ class GraphBuilder {
   }
 }
 
+/**
+ * A path's identity for dedupe purposes: resolved, and case-insensitive on
+ * Windows where two spellings name one file.
+ *
+ * Exported because the graph is not the only thing that must not visit a
+ * directory twice: the tool loop's subtree injector keys its already-injected
+ * set the same way, and a second spelling of a directory it already read would
+ * inject those instructions all over again.
+ */
+export function contextPathKey(absolutePath: string): string {
+  const resolved = path.resolve(absolutePath);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
 async function isReadableFile(absolutePath: string): Promise<boolean> {
   try {
     const stats = await fs.stat(absolutePath);
@@ -668,7 +732,18 @@ export function extractFrontmatter(text: string): string | null {
   return match ? (match[1] ?? null) : null;
 }
 
-async function findSubdirectoryContextFiles(root: string, fileName: string): Promise<string[]> {
+/**
+ * Every directory under `root` carrying one of `fileNames`, at most one file per
+ * directory: the names are an ordered preference list, so a directory holding
+ * both `AGENTS.md` and `CLAUDE.md` contributes only the first. That is the same
+ * one-slot-several-spellings rule the fixed load points follow, and it is what
+ * stops this sweep and the injector from picking different files for the same
+ * directory.
+ */
+async function findSubdirectoryContextFiles(
+  root: string,
+  fileNames: readonly string[],
+): Promise<string[]> {
   const matches: string[] = [];
 
   async function walk(dir: string, depth: number): Promise<void> {
@@ -681,17 +756,17 @@ async function findSubdirectoryContextFiles(root: string, fileName: string): Pro
     } catch {
       return;
     }
+    // The root's own file is a fixed load point, not a conditional one.
+    if (path.resolve(dir) !== path.resolve(root)) {
+      const present = new Set(entries.filter((entry) => entry.isFile()).map((entry) => entry.name));
+      const winner = fileNames.find((name) => present.has(name));
+      if (winner) matches.push(path.join(dir, winner));
+    }
     for (const entry of entries) {
       if (matches.length >= SUBDIRECTORY_SCAN_MAX_MATCHES) return;
-      if (entry.isDirectory()) {
-        if (SKIP_DIRECTORIES.has(entry.name) || entry.name.startsWith(".")) continue;
-        await walk(path.join(dir, entry.name), depth + 1);
-        continue;
-      }
-      // The root's own file is a fixed load point, not a conditional one.
-      if (entry.name === fileName && path.resolve(dir) !== path.resolve(root)) {
-        matches.push(path.join(dir, entry.name));
-      }
+      if (!entry.isDirectory()) continue;
+      if (SKIP_DIRECTORIES.has(entry.name) || entry.name.startsWith(".")) continue;
+      await walk(path.join(dir, entry.name), depth + 1);
     }
   }
 

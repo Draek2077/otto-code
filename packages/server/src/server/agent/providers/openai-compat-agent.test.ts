@@ -3939,3 +3939,273 @@ describe("isUneventfulToolResult", () => {
     expect(isUneventfulToolResult("[Uneventful result elided]")).toBe(false);
   });
 });
+
+/**
+ * Endpoint for the subtree-instruction tests: every streamed round emits one
+ * `read_file` call for the next path in `paths`, and the round after the last
+ * one answers with text. Non-streaming requests (compaction) get a summary, so
+ * one endpoint covers the injection, dedupe, compaction and rewind cases.
+ */
+async function startSubtreeToolEndpoint(
+  paths: readonly (string | null)[],
+): Promise<TestEndpoint & { requests: RecordedRequest[] }> {
+  const requests: RecordedRequest[] = [];
+  let streamedRounds = 0;
+  const server = createServer((req, res) => {
+    if (req.method === "GET" && req.url === "/v1/models") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ data: [{ id: "test-model-a" }] }));
+      return;
+    }
+    if (req.method === "POST" && req.url === "/v1/chat/completions") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", () => {
+        const request = JSON.parse(body) as RecordedRequest & { stream?: boolean };
+        requests.push(request);
+        if (request.stream !== true) {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              choices: [{ message: { role: "assistant", content: "Summary of the work so far." } }],
+              usage: { prompt_tokens: 100, completion_tokens: 50 },
+            }),
+          );
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        const nextPath = paths[streamedRounds] ?? null;
+        streamedRounds += 1;
+        if (nextPath === null) {
+          res.write(sseChunk({ choices: [{ delta: { content: "Done." } }] }));
+          res.write(sseChunk({ choices: [{ delta: {}, finish_reason: "stop" }] }));
+        } else {
+          res.write(
+            sseChunk({
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: `call_${streamedRounds}`,
+                        function: {
+                          name: "read_file",
+                          arguments: JSON.stringify({ path: nextPath }),
+                        },
+                      },
+                    ],
+                  },
+                  finish_reason: "tool_calls",
+                },
+              ],
+            }),
+          );
+        }
+        res.write("data: [DONE]\n\n");
+        res.end();
+      });
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+
+  servers.push(server);
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const { port } = server.address() as AddressInfo;
+  return { server, baseUrl: `http://127.0.0.1:${port}`, requests };
+}
+
+/** A workspace whose `packages/app` subtree carries its own instructions. */
+async function makeSubtreeWorkspace(): Promise<string> {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "otto-compat-subtree-"));
+  tempWorkspaces.push(cwd);
+  const appDir = path.join(cwd, "packages", "app");
+  await fs.mkdir(appDir, { recursive: true });
+  await fs.writeFile(path.join(appDir, "AGENTS.md"), "Never use em-dashes in app code.", "utf8");
+  await fs.writeFile(path.join(appDir, "notes.txt"), "app notes", "utf8");
+  await fs.writeFile(path.join(cwd, "root.txt"), "root notes", "utf8");
+  return cwd;
+}
+
+function systemContents(request: RecordedRequest | undefined): string[] {
+  return (request?.messages ?? [])
+    .filter((message) => message.role === "system")
+    .map((message) => String(message.content));
+}
+
+function countInstructionMessages(request: RecordedRequest | undefined): number {
+  return systemContents(request).filter((content) => content.includes("Never use em-dashes"))
+    .length;
+}
+
+describe("OpenAICompatAgentSession subtree instructions", () => {
+  test("injects a touched subtree's AGENTS.md at the round boundary", async () => {
+    const endpoint = await startSubtreeToolEndpoint(["packages/app/notes.txt"]);
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: await makeSubtreeWorkspace(),
+      model: "test-model-a",
+      modeId: "bypassPermissions",
+    });
+
+    await session.run("Read the app notes");
+
+    // Round 1 could not have carried it - the agent had not gone there yet.
+    expect(countInstructionMessages(endpoint.requests[0])).toBe(0);
+    expect(countInstructionMessages(endpoint.requests[1])).toBe(1);
+    const injected = systemContents(endpoint.requests[1]).find((content) =>
+      content.includes("Never use em-dashes"),
+    );
+    expect(injected).toContain('<instructions path="packages/app/AGENTS.md">');
+
+    // After the tool result, never spliced between an assistant tool_calls
+    // message and its results - strict servers reject that ordering.
+    const roles = (endpoint.requests[1]?.messages ?? []).map((message) => message.role);
+    expect(roles.at(-1)).toBe("system");
+    expect(roles.at(-2)).toBe("tool");
+
+    await session.close();
+  });
+
+  test("loads a subtree once however many times it is touched", async () => {
+    const endpoint = await startSubtreeToolEndpoint([
+      "packages/app/notes.txt",
+      "packages/app/notes.txt",
+      "packages/app",
+    ]);
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: await makeSubtreeWorkspace(),
+      model: "test-model-a",
+      modeId: "bypassPermissions",
+    });
+
+    await session.run("Read the app notes three times");
+
+    expect(endpoint.requests.length).toBe(4);
+    expect(countInstructionMessages(endpoint.requests.at(-1))).toBe(1);
+
+    await session.close();
+  });
+
+  test("does not inject for a file that sits directly in the workspace root", async () => {
+    const endpoint = await startSubtreeToolEndpoint(["root.txt"]);
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: await makeSubtreeWorkspace(),
+      model: "test-model-a",
+      modeId: "bypassPermissions",
+    });
+
+    await session.run("Read the root notes");
+
+    expect(countInstructionMessages(endpoint.requests.at(-1))).toBe(0);
+
+    await session.close();
+  });
+
+  /**
+   * The failure this pins: `serializeConversationForCompaction` drops system
+   * messages, so an injected file caught in the summarize region would be
+   * neither summarized nor kept - the model would silently lose rules it was
+   * still following.
+   */
+  test("keeps injected instructions through compaction", async () => {
+    const endpoint = await startSubtreeToolEndpoint(["packages/app/notes.txt"]);
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: await makeSubtreeWorkspace(),
+      model: "test-model-a",
+      modeId: "bypassPermissions",
+    });
+
+    await session.run("Read the app notes");
+    await session.run("/compact");
+    await session.run("What now?");
+
+    const lastRequest = endpoint.requests.at(-1);
+    expect(countInstructionMessages(lastRequest)).toBe(1);
+    // Pinned directly under the rebuilt system prompt, ahead of the summary.
+    const roles = (lastRequest?.messages ?? []).map((message) => message.role);
+    expect(roles[0]).toBe("system");
+    expect(roles[1]).toBe("system");
+    expect(String(lastRequest?.messages?.[1]?.content)).toContain("Never use em-dashes");
+
+    await session.close();
+  });
+
+  test("rewinding past an injection drops it and lets it load again", async () => {
+    // Round 1 answers plainly; the second turn is the one that goes near the
+    // subtree, so the rewind target is a user message that precedes it. The
+    // fourth round goes back to the same subtree, after the rewind.
+    const endpoint = await startSubtreeToolEndpoint([
+      null,
+      "packages/app/notes.txt",
+      null,
+      "packages/app/notes.txt",
+    ]);
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: await makeSubtreeWorkspace(),
+      model: "test-model-a",
+      modeId: "bypassPermissions",
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.run("First question");
+    await session.run("Read the app notes");
+    expect(countInstructionMessages(endpoint.requests.at(-1))).toBe(1);
+
+    const messageIds = events.flatMap((event) =>
+      event.type === "timeline" && event.item.type === "user_message" && event.item.messageId
+        ? [event.item.messageId]
+        : [],
+    );
+    await session.revertConversation?.({ messageId: messageIds[1]! });
+
+    await session.run("Read the app notes again");
+    // The rules left with the turn that loaded them, so the reopened turn
+    // starts without them...
+    expect(countInstructionMessages(endpoint.requests[3])).toBe(0);
+    // ...and touching the subtree again loads them again, which is the correct
+    // answer: what is not in the conversation is not being followed.
+    expect(countInstructionMessages(endpoint.requests[4])).toBe(1);
+
+    await session.close();
+  });
+
+  test("a resumed session keeps its injected instructions and does not add them twice", async () => {
+    const endpoint = await startSubtreeToolEndpoint(["packages/app/notes.txt"]);
+    const client = createClient(endpoint.baseUrl);
+    const cwd = await makeSubtreeWorkspace();
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd,
+      model: "test-model-a",
+      modeId: "bypassPermissions",
+    });
+
+    await session.run("Read the app notes");
+    const handle = session.describePersistence();
+    await session.close();
+
+    const resumed = await client.resumeSession(handle!, { cwd });
+    await resumed.run("Anything else?");
+
+    expect(countInstructionMessages(endpoint.requests.at(-1))).toBe(1);
+
+    await resumed.close();
+  });
+});

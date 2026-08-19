@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { homedir } from "node:os";
 import type { Dispatcher } from "undici";
 import type { Logger } from "pino";
 import type {
@@ -84,6 +85,12 @@ import { PreviewStartGate, type PreviewStartCheck } from "./openai-compat-previe
 import type { McpServerConfig } from "../agent-sdk-types.js";
 import type { ManagedProcessRegistry } from "../../managed-processes/managed-processes.js";
 import { stripInternalOttoMcpServer } from "../runtime-mcp-config.js";
+import { contextPathKey } from "../context-management/context-graph-scanner.js";
+import { loadSubdirectoryInstructionFile } from "../context-management/instruction-files.js";
+import {
+  extractToolPathCandidates,
+  resolveTouchedSubtreeDirectories,
+} from "./openai-compat-subtree-instructions.js";
 import type {
   ConnectorConfig,
   McpToolPermissionMode,
@@ -442,6 +449,24 @@ const COMPAT_TOOL_PROMPT_DESCRIPTIONS: Record<CompatToolSpec["kind"], string> = 
   network: "Wants to fetch content from the web",
 };
 
+/**
+ * Ceiling on subdirectory instruction files injected into one session. A repo
+ * where an agent roams thirty directories is a repo where the conditional
+ * weight has quietly become fixed weight; the cap keeps a pathological
+ * conversation bounded, and the Context Management tab is where the user sees
+ * what the subtrees cost before they hit it.
+ */
+const MAX_INJECTED_SUBTREE_INSTRUCTIONS = 20;
+
+/**
+ * One line of framing above an injected file. A system message appearing
+ * mid-conversation is otherwise unexplained, and a local model that cannot tell
+ * why it arrived is a model that may treat it as a user turn to answer.
+ */
+const SUBTREE_INSTRUCTION_PREAMBLE =
+  "You have started working in a directory with its own instructions. They apply " +
+  "for the rest of this session, alongside the ones you already have.";
+
 /** Timeline error note for a tool call denied by dontAsk instead of prompted. */
 const DONT_ASK_DENIAL_NOTE = "Denied by Don't Ask mode";
 
@@ -487,12 +512,20 @@ type ChatMessage =
    * attachments, on a tool message they are image content parts a tool returned
    * (e.g. browser_screenshot). When present, the wire message uses OpenAI's
    * content-array vision format instead of a bare string.
+   *
+   * subtreeInstructionDir marks a system message the tool loop injected because
+   * the agent started working under that directory. It is the message's
+   * identity, not decoration: compaction pins these, rewind drops the ones it
+   * truncated away, and resume rebuilds the already-injected set from it. An
+   * identity kept in a side map instead would not survive persistence, and the
+   * next tool call would inject the same file a second time.
    */
   | {
       role: "system" | "user";
       content: string;
       messageId?: string;
       isCompactionSummary?: boolean;
+      subtreeInstructionDir?: string;
       images?: PromptImage[];
     }
   // reasoning is the round's accumulated thinking text, kept only so a
@@ -531,6 +564,18 @@ function parseSlashCommandInput(text: string): { commandName: string; args: stri
   const rawArgs =
     firstWhitespaceIdx === -1 ? "" : withoutPrefix.slice(firstWhitespaceIdx + 1).trim();
   return { commandName, args: rawArgs.length > 0 ? rawArgs : null };
+}
+
+/**
+ * Which restored messages survive session construction.
+ *
+ * The session prompt is rebuilt from the live config, so a persisted copy of it
+ * is dropped - but an injected subdirectory instruction file is also a system
+ * message, and it is a rule the model was already following. Dropping that on
+ * resume would silently change how the session behaves halfway through a task.
+ */
+function isRetainedOnRestore(message: ChatMessage): boolean {
+  return message.role !== "system" || message.subtreeInstructionDir !== undefined;
 }
 
 function toWireMessage(message: ChatMessage): Record<string, unknown> {
@@ -683,6 +728,13 @@ export interface OpenAICompatAgentClientOptions {
    */
   maxRoundTextChars?: number | null;
   managedProcesses?: ManagedProcessRegistry | null;
+  /**
+   * Repo root for a working directory, used by the tool loop to head an
+   * injected subdirectory instruction file with a path a human recognises.
+   * Optional: without it the workspace is its own root, which is what a
+   * non-git workspace is anyway.
+   */
+  resolveProjectRoot?: (cwd: string) => Promise<string>;
   /**
    * Endpoint source for providers the daemon configures itself (otto-brain),
    * replacing the OPENAI_BASE_URL/OPENAI_API_KEY env pair. Called per request so
@@ -1304,6 +1356,8 @@ function restoreMessages(metadata: Record<string, unknown> | undefined): ChatMes
     if (role === "system" || role === "user") {
       const messageId = typeof record.messageId === "string" ? record.messageId : undefined;
       const isCompactionSummary = record.isCompactionSummary === true;
+      const subtreeInstructionDir =
+        typeof record.subtreeInstructionDir === "string" ? record.subtreeInstructionDir : undefined;
       const images = parsePromptImages(record.images);
       return [
         {
@@ -1311,6 +1365,7 @@ function restoreMessages(metadata: Record<string, unknown> | undefined): ChatMes
           content,
           ...(messageId ? { messageId } : {}),
           ...(isCompactionSummary ? { isCompactionSummary: true } : {}),
+          ...(subtreeInstructionDir ? { subtreeInstructionDir } : {}),
           ...(images.length > 0 ? { images } : {}),
         },
       ];
@@ -1394,6 +1449,7 @@ export class OpenAICompatAgentClient implements AgentClient {
   private readonly managedProcesses: ManagedProcessRegistry | null;
   private readonly endpointResolver: (() => ResolvedEndpoint) | null;
   private readonly reasoningEffortMode: "levels" | "toggle";
+  private readonly projectRootResolver: ((cwd: string) => Promise<string>) | null;
 
   constructor(options: OpenAICompatAgentClientOptions) {
     this.provider = options.providerId;
@@ -1411,6 +1467,7 @@ export class OpenAICompatAgentClient implements AgentClient {
     this.managedProcesses = options.managedProcesses ?? null;
     this.endpointResolver = options.resolveEndpoint ?? null;
     this.reasoningEffortMode = options.reasoningEffortMode ?? "levels";
+    this.projectRootResolver = options.resolveProjectRoot ?? null;
   }
 
   /**
@@ -1642,6 +1699,7 @@ export class OpenAICompatAgentClient implements AgentClient {
       actionBreaker: this.actionBreaker,
       maxRoundTextChars: this.maxRoundTextChars,
       managedProcesses: this.managedProcesses,
+      ...(this.projectRootResolver ? { resolveProjectRoot: this.projectRootResolver } : {}),
     });
   }
 
@@ -1679,6 +1737,7 @@ export class OpenAICompatAgentClient implements AgentClient {
       actionBreaker: this.actionBreaker,
       maxRoundTextChars: this.maxRoundTextChars,
       managedProcesses: this.managedProcesses,
+      ...(this.projectRootResolver ? { resolveProjectRoot: this.projectRootResolver } : {}),
     });
   }
 }
@@ -1903,6 +1962,36 @@ export class OpenAICompatAgentSession implements AgentSession {
   private lastContextTokens: number | null = null;
   /** Session config stored so the system prompt can be rebuilt after compaction. */
   private readonly config: AgentSessionConfig;
+  /**
+   * See OpenAICompatAgentClientOptions.resolveProjectRoot. Held as
+   * possibly-undefined rather than normalized to null: the constructor is at
+   * the complexity ceiling, and one more `??` is not worth an extracted helper.
+   */
+  private readonly projectRootResolver: ((cwd: string) => Promise<string>) | undefined;
+  /**
+   * Path tokens seen in this round's successful tool calls, waiting for the
+   * round boundary to be resolved into directories. Raw strings, not
+   * directories: resolving them touches the filesystem, and the tool loop's
+   * hot path should not.
+   */
+  private readonly pendingSubtreePathCandidates = new Set<string>();
+  /**
+   * Directories whose instruction file is already in the conversation, keyed by
+   * `contextPathKey` so Windows cannot inject one directory twice under two
+   * spellings. First visit wins: a subtree touched twenty times loads once.
+   *
+   * Derived from `this.messages`, never independent of it - see
+   * `reindexInjectedSubtreeInstructions`, which is what makes rewind, compaction
+   * and resume agree with it.
+   */
+  private readonly injectedSubtreeDirs = new Map<string, ChatMessage>();
+  /**
+   * Directories already found to carry no instruction file. Session-scoped and
+   * never rebuilt from the conversation - unlike an injection, "there is
+   * nothing here" leaves no trace in the messages, and re-deriving it would
+   * mean walking the same empty directories again on every rewind.
+   */
+  private readonly subtreeDirsWithoutInstructions = new Set<string>();
 
   /** This session's endpoint; see OpenAICompatAgentClient.endpoint. */
   private endpoint(): ResolvedEndpoint {
@@ -1930,6 +2019,8 @@ export class OpenAICompatAgentSession implements AgentSession {
     managedProcesses?: ManagedProcessRegistry | null;
     /** See OpenAICompatAgentClientOptions.resolveEndpoint. */
     resolveEndpoint?: () => ResolvedEndpoint;
+    /** See OpenAICompatAgentClientOptions.resolveProjectRoot. */
+    resolveProjectRoot?: (cwd: string) => Promise<string>;
   }) {
     this.provider = options.providerId;
     this.label = options.label;
@@ -1940,6 +2031,7 @@ export class OpenAICompatAgentSession implements AgentSession {
     this.id = options.sessionId;
     this.cwd = options.config.cwd;
     this.config = options.config;
+    this.projectRootResolver = options.resolveProjectRoot;
     this.ottoTools = options.ottoTools ?? null;
     this.ottoToolGroups = options.ottoToolGroups ?? null;
     this.previewStartGate = this.ottoTools?.getTool("preview_start")
@@ -2005,9 +2097,13 @@ export class OpenAICompatAgentSession implements AgentSession {
     this.maxRoundTextChars = resolveMaxRoundTextChars(options.maxRoundTextChars);
 
     // The system message is always rebuilt so cwd/mode/config changes take
-    // effect on resume; restored copies of it are dropped first.
-    this.messages = options.messages.filter((message) => message.role !== "system");
+    // effect on resume; restored copies of it are dropped first. Injected
+    // subdirectory instructions are system messages too, and are kept: they are
+    // rules the model was already following, and dropping them on resume would
+    // silently change how the session behaves halfway through a task.
+    this.messages = options.messages.filter(isRetainedOnRestore);
     this.messages.unshift({ role: "system", content: this.buildSystemPrompt(options.config) });
+    this.reindexInjectedSubtreeInstructions();
 
     this.rebuildEventHistory();
   }
@@ -2468,9 +2564,24 @@ export class OpenAICompatAgentSession implements AgentSession {
 
     // 2. Split at the keep-recent boundary. keepFromIndex is the first message
     //    (after the system prompt at index 0) that stays verbatim.
+    //
+    //    Injected subdirectory instructions come out of both regions and are
+    //    re-inserted verbatim below. They are rules the model is following, not
+    //    conversation: `serializeConversationForCompaction` drops system
+    //    messages, so an injected file that fell in the summarize region would
+    //    be neither summarized nor kept - it would simply stop existing, and the
+    //    model would go on believing it still applies.
     const keepFromIndex = this.computeCompactionKeepFromIndex();
-    const summarizeRegion = this.messages.slice(1, keepFromIndex);
-    const keptRegion = this.messages.slice(keepFromIndex);
+    const pinned = this.messages.filter(
+      (message) => message.role === "system" && message.subtreeInstructionDir !== undefined,
+    );
+    const isPinned = new Set(pinned);
+    const summarizeRegion = this.messages
+      .slice(1, keepFromIndex)
+      .filter((message) => !isPinned.has(message));
+    const keptRegion = this.messages
+      .slice(keepFromIndex)
+      .filter((message) => !isPinned.has(message));
 
     if (summarizeRegion.length === 0) {
       // Nothing old enough to summarize (conversation already within the
@@ -2531,6 +2642,7 @@ export class OpenAICompatAgentSession implements AgentSession {
     //    the retained recent tail, untouched.
     this.messages.length = 0;
     this.messages.push({ role: "system", content: this.buildSystemPrompt(this.config) });
+    this.messages.push(...pinned);
     this.messages.push({
       role: "user",
       content: summary,
@@ -2541,6 +2653,7 @@ export class OpenAICompatAgentSession implements AgentSession {
     // sit directly after the synthetic summary user message.
     this.messages.push({ role: "assistant", content: "Conversation history has been compacted." });
     this.messages.push(...keptRegion);
+    this.reindexInjectedSubtreeInstructions();
 
     // Post-compaction context size. Must count the rebuilt system prompt and
     // the tool schemas - both are re-sent with every request - or the ring
@@ -3374,10 +3487,14 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
           tool_call_id: call.id,
           ...(pushed.images && pushed.images.length > 0 ? { images: pushed.images } : {}),
         });
+        this.noteSubtreeInstructionCandidates(call, pushed);
       }
       if (turn.abort.signal.aborted) {
         throw new Error("Interrupted");
       }
+      // Round boundary: every tool result for the round is on the conversation,
+      // nothing is in flight, and the next round has not been built yet.
+      await this.injectPendingSubtreeInstructions(turn);
     }
     this.emit({
       type: "timeline",
@@ -3429,6 +3546,125 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       },
     });
     return { text: this.buildRepairPrompt(name, argsJson, resultOutcome.text) };
+  }
+
+  /**
+   * Note the path-ish tokens of one successful tool call, for the round
+   * boundary to resolve.
+   *
+   * Only successful calls: a denied, blocked or failed call did not reach the
+   * subtree, and paying for a subdirectory's rules because the model asked for
+   * something it was refused is weight with nothing behind it.
+   */
+  private noteSubtreeInstructionCandidates(
+    call: AccumulatedToolCall,
+    outcome: ToolCallOutcome,
+  ): void {
+    if (outcome.isError === true) return;
+    if (this.injectedSubtreeDirs.size >= MAX_INJECTED_SUBTREE_INSTRUCTIONS) return;
+    let args: unknown;
+    try {
+      args = call.argumentsJson ? JSON.parse(call.argumentsJson) : {};
+    } catch {
+      // Malformed arguments already came back as a tool error, so this is
+      // unreachable in practice; ignoring it beats throwing inside the loop.
+      return;
+    }
+    for (const candidate of extractToolPathCandidates(args)) {
+      this.pendingSubtreePathCandidates.add(candidate);
+    }
+  }
+
+  /**
+   * Inject the instruction files of any newly touched subtree, once per
+   * directory, at the round boundary.
+   *
+   * **Why here and not where the tool ran.** Two other placements were
+   * available and both are wrong. Appending the file to the tool's own result
+   * attributes the repo's rules to a tool's output, and `pruneToolOutputs`
+   * truncates aged tool results during compaction - the rules would decay into
+   * a "[... chars pruned ...]" marker while the model still believed it was
+   * following them. Splicing a message in the moment the tool ran puts it
+   * between an assistant `tool_calls` message and its `tool` results, which
+   * strict OpenAI-compatible servers reject outright. The round boundary is
+   * after every tool result for the round is pushed and before the next
+   * request is built: the conversation is wire-valid at that instant, and the
+   * model sees the file on the very next round, which is the first moment it
+   * could act on it anyway.
+   *
+   * Never throws: a subtree whose instructions cannot be read is a subtree
+   * without extra rules, not a failed turn.
+   */
+  private async injectPendingSubtreeInstructions(turn: ActiveTurn): Promise<void> {
+    if (this.pendingSubtreePathCandidates.size === 0) return;
+    const candidates = [...this.pendingSubtreePathCandidates];
+    this.pendingSubtreePathCandidates.clear();
+
+    const directories = await resolveTouchedSubtreeDirectories({ candidates, cwd: this.cwd });
+    const fresh = directories.filter((dir) => {
+      const key = contextPathKey(dir);
+      return !this.injectedSubtreeDirs.has(key) && !this.subtreeDirsWithoutInstructions.has(key);
+    });
+    if (fresh.length === 0) return;
+
+    const projectRoot = await this.resolveProjectRoot();
+    for (const dir of fresh) {
+      if (this.injectedSubtreeDirs.size >= MAX_INJECTED_SUBTREE_INSTRUCTIONS) return;
+      const loaded = await loadSubdirectoryInstructionFile({
+        dir,
+        cwd: this.cwd,
+        projectRoot,
+        homeDir: homedir(),
+        env: process.env,
+        ...(this.logger ? { logger: this.logger } : {}),
+      });
+      if (!loaded.text) {
+        // No instruction file here. Remembering that costs one Set entry and
+        // stops every later touch of the same directory from re-walking it.
+        this.subtreeDirsWithoutInstructions.add(contextPathKey(dir));
+        continue;
+      }
+      const message: ChatMessage = {
+        role: "system",
+        content: `${SUBTREE_INSTRUCTION_PREAMBLE}\n\n${loaded.text}`,
+        subtreeInstructionDir: dir,
+      };
+      this.messages.push(message);
+      this.injectedSubtreeDirs.set(contextPathKey(dir), message);
+      this.logger?.debug(
+        { turnId: turn.turnId, dir, paths: loaded.paths },
+        "Injected subdirectory instruction file",
+      );
+    }
+  }
+
+  /** The workspace's repo root, or the workspace itself when there is no resolver. */
+  private async resolveProjectRoot(): Promise<string> {
+    if (!this.projectRootResolver) return this.cwd;
+    try {
+      return await this.projectRootResolver(this.cwd);
+    } catch {
+      return this.cwd;
+    }
+  }
+
+  /**
+   * Rebuild the already-injected set from the conversation.
+   *
+   * The conversation is the record, so every operation that rewrites
+   * `this.messages` - resume, rewind, compaction - ends here rather than
+   * maintaining the map itself. Rewind past an injection makes that subtree
+   * injectable again, which is the correct answer: the rules are no longer in
+   * the conversation, so the model is no longer following them.
+   */
+  private reindexInjectedSubtreeInstructions(): void {
+    this.injectedSubtreeDirs.clear();
+    for (const message of this.messages) {
+      if (message.role !== "system") continue;
+      const dir = message.subtreeInstructionDir;
+      if (dir === undefined) continue;
+      this.injectedSubtreeDirs.set(contextPathKey(dir), message);
+    }
   }
 
   private parseToolCallArgs(
@@ -4477,6 +4713,8 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     const retained = sanitizeRestoredMessages(this.messages.slice(0, index));
     this.messages.length = 0;
     this.messages.push(...retained);
+    // Whatever was truncated away is injectable again; whatever survived is not.
+    this.reindexInjectedSubtreeInstructions();
     this.rebuildEventHistory();
     this.lastContextTokens = null;
   }

@@ -11,6 +11,7 @@
  */
 
 import path from "node:path";
+import { resolveOmpDiagnosticPaths } from "../providers/omp/provider-config.js";
 import { resolveEnabledPluginRoots } from "./plugin-roots.js";
 import type {
   ContextCategory,
@@ -72,8 +73,13 @@ export interface ProviderConvention {
    * behavior.
    */
   resolveSubdirectoryScanRoot(input: ContextResolutionInput): string | null;
-  /** Filename the provider looks for in subdirectories. */
-  subdirectoryFileName: string | null;
+  /**
+   * Filenames the provider looks for in a subdirectory, in order. One slot per
+   * directory: the first spelling that exists takes it and the rest are never
+   * read, exactly as `ContextLoadPoint.fallbackPaths` works for the fixed load
+   * points. Empty when the provider has no subdirectory behavior.
+   */
+  subdirectoryFileNames: readonly string[];
 }
 
 /**
@@ -159,7 +165,7 @@ const CLAUDE_CONVENTION: ProviderConvention = {
     return projectRoot;
   },
 
-  subdirectoryFileName: "CLAUDE.md",
+  subdirectoryFileNames: ["CLAUDE.md"],
 };
 
 /**
@@ -237,7 +243,7 @@ const CODEX_CONVENTION: ProviderConvention = {
     return projectRoot;
   },
 
-  subdirectoryFileName: "AGENTS.md",
+  subdirectoryFileNames: ["AGENTS.md"],
 };
 
 /**
@@ -291,7 +297,139 @@ const OPENCODE_CONVENTION: ProviderConvention = {
     return projectRoot;
   },
 
-  subdirectoryFileName: "AGENTS.md",
+  subdirectoryFileNames: ["AGENTS.md"],
+};
+
+/**
+ * OMP ("Oh My Pi") runs a context-file discovery pass of its own, and it is the
+ * widest one in this registry: eleven providers - its own `.omp/`, plus Claude,
+ * Codex, Gemini, OpenCode, Cursor, GitHub, Windsurf, Cline and VS Code - each
+ * nominate a candidate, and all of them are enabled by default (`disabledProviders`
+ * defaults to empty).
+ *
+ * The part that matters for the report is that they do **not** stack. Discovery
+ * keys a context file by `user` or `project:<depth-from-cwd>`, and one slot
+ * holds one file: the highest-priority provider that has a candidate there wins
+ * and the rest are marked shadowed and never sent. That is precisely
+ * `ContextLoadPoint.fallbackPaths` - several spellings, first hit takes the
+ * slot - so each slot below lists its spellings in the measured priority order.
+ *
+ * Measured, not inferred (finding `omp-pi-instruction-file-discovery`): the
+ * request payloads were captured verbatim off an `omp` 16.3.6 subprocess and the
+ * slots peeled back one candidate at a time to establish each order. Confidence
+ * is `convention` rather than `unverified` because that evidence exists, and
+ * cannot be `exact` because OMP composes the request, not Otto - a newer OMP may
+ * reorder its providers without Otto knowing.
+ */
+
+/**
+ * Per-directory spellings at **cwd**, in measured priority order. The Claude,
+ * Gemini and GitHub candidates appear only here: their loaders join their
+ * directory onto cwd itself rather than walking, so an ancestor's `.claude/` is
+ * never read.
+ */
+const OMP_CWD_CONTEXT_SPELLINGS = [
+  path.join(".omp", "AGENTS.md"),
+  path.join(".claude", "CLAUDE.md"),
+  "AGENTS.md",
+  path.join(".gemini", "GEMINI.md"),
+  path.join(".github", "copilot-instructions.md"),
+] as const;
+
+/**
+ * Per-directory spellings at every directory **above** cwd. Only two survive
+ * the walk: the plain `AGENTS.md` chain, and `.omp/AGENTS.md`, whose loader does
+ * walk toward the repo root.
+ */
+const OMP_ANCESTOR_CONTEXT_SPELLINGS = [path.join(".omp", "AGENTS.md"), "AGENTS.md"] as const;
+
+/**
+ * The single `user`-level slot, in measured priority order. OMP's own global
+ * file wins it; failing that OMP happily adopts another harness's global, which
+ * is worth showing rather than hiding - a user who has never opened OMP can
+ * still be paying for `~/.claude/CLAUDE.md` in every OMP request.
+ */
+function resolveOmpGlobalSpellings(input: ContextResolutionInput): string[] {
+  const { homeDir, env } = input;
+  const { agentDir } = resolveOmpDiagnosticPaths(env, homeDir);
+  return [
+    path.join(agentDir, "AGENTS.md"),
+    path.join(homeDir, ".claude", "CLAUDE.md"),
+    path.join(homeDir, ".codex", "AGENTS.md"),
+    path.join(homeDir, ".gemini", "GEMINI.md"),
+    path.join(homeDir, ".config", "opencode", "AGENTS.md"),
+  ];
+}
+
+/** One slot, several spellings: the first that exists on disk takes it. */
+function ompLoadPoint(candidates: string[], scope: ContextScope): ContextLoadPoint | null {
+  const [primary, ...fallbackPaths] = candidates;
+  if (!primary) return null;
+  return {
+    path: primary,
+    fallbackPaths,
+    scope,
+    category: "context_files",
+    costClass: "fixed",
+  };
+}
+
+const OMP_CONVENTION: ProviderConvention = {
+  provider: "omp",
+  confidence: "convention",
+  supportsImports: true,
+  // `MAX_AT_IMPORT_DEPTH` in the shipped binary, and confirmed live: a two-hop
+  // `@import` chain arrived fully inlined. Cycle-guarded, and skipped inside
+  // fenced and inline code, exactly as this scan treats it.
+  importDepthCap: 5,
+
+  resolveLoadPoints(input): ContextLoadPoint[] {
+    const { cwd, projectRoot } = input;
+    const points: ContextLoadPoint[] = [];
+
+    // Prompt order, as captured: project root first, then each directory down
+    // toward cwd, then the global file last. `ancestorsBetween` walks upward
+    // and includes cwd, which is the reverse of what the prompt shows.
+    const descending = [projectRoot, ...ancestorsBetween(cwd, projectRoot).toReversed()];
+    for (const dir of descending) {
+      const spellings =
+        path.resolve(dir) === path.resolve(cwd)
+          ? OMP_CWD_CONTEXT_SPELLINGS
+          : OMP_ANCESTOR_CONTEXT_SPELLINGS;
+      const point = ompLoadPoint(
+        spellings.map((name) => path.join(dir, name)),
+        dir === projectRoot ? "project" : "subdirectory",
+      );
+      if (point) points.push(point);
+    }
+
+    const globalPoint = ompLoadPoint(resolveOmpGlobalSpellings(input), "global");
+    if (globalPoint) points.push(globalPoint);
+
+    return points;
+  },
+
+  // OMP does have skills and subagents, and they were not measured - this is the
+  // same empty list Codex and OpenCode report, and it makes `skills_roster` a
+  // floor for OMP too rather than a claim. Inventing roots would put a number on
+  // a category nothing verified.
+  resolveSkillRoots(): string[] {
+    return [];
+  },
+
+  resolveAgentRoots(): string[] {
+    return [];
+  },
+
+  // Nothing below cwd loads, ever - measured: an `AGENTS.md` one directory under
+  // cwd never appeared in the payload, on the first turn or after tool use. The
+  // walk only ever climbs. A conditional row here would be weight that cannot
+  // arrive.
+  resolveSubdirectoryScanRoot(): string | null {
+    return null;
+  },
+
+  subdirectoryFileNames: [],
 };
 
 /**
@@ -331,11 +469,25 @@ function resolveOttoHomeDir({ env, homeDir }: ContextResolutionInput): string {
  * carrying both (this one, where `CLAUDE.md` is a single `@AGENTS.md` line)
  * loads `AGENTS.md` once.
  *
- * No subdirectory scan root. Files below cwd are genuinely not loaded yet, and
- * a `conditional` row for weight that never arrives is the kind of number
- * `docs/context-management.md` exists to forbid. It becomes a root the same
- * change that teaches the tool loop to inject them.
+ * The subdirectory scan root is **cwd**, not the project root, and that is not
+ * a shortcut: everything from the project root down to cwd is already a fixed
+ * load point above, so what remains conditional is exactly the subtree below
+ * cwd. That makes the two halves complements rather than overlapping sets - the
+ * tool loop's injector (`openai-compat-subtree-instructions.ts`) injects a file
+ * only when a tool touches a directory under cwd, so every `conditional` row
+ * the tab shows is a file that can actually arrive, and no file can arrive that
+ * the tab never showed.
  */
+/**
+ * The per-directory spellings, in order, shared by the fixed load points below
+ * and the conditional subdirectory slot. One constant so a directory cannot be
+ * read as `AGENTS.md` by one half of the system and `CLAUDE.md` by the other.
+ *
+ * Declared ahead of the convention that reads it: a `const` referenced during
+ * the module's own initialization has to already be initialized.
+ */
+const OPENAI_COMPAT_CONTEXT_FILE_NAMES = ["AGENTS.md", "CLAUDE.md"] as const;
+
 const OPENAI_COMPAT_CONVENTION: ProviderConvention = {
   provider: OPENAI_COMPAT_CONTEXT_FAMILY,
   confidence: "exact",
@@ -388,17 +540,62 @@ const OPENAI_COMPAT_CONVENTION: ProviderConvention = {
     return [];
   },
 
-  resolveSubdirectoryScanRoot(): string | null {
-    return null;
+  resolveSubdirectoryScanRoot({ cwd }): string | null {
+    return cwd;
   },
 
-  subdirectoryFileName: null,
+  subdirectoryFileNames: OPENAI_COMPAT_CONTEXT_FILE_NAMES,
 };
 
+/**
+ * The load point for one subdirectory, built from the same
+ * `subdirectoryFileNames` list the scan sweeps with.
+ *
+ * This exists so the injector never assembles a load point of its own: the
+ * report's conditional rows and the file the tool loop injects have to be the
+ * same resolution of the same directory, or the tab is describing a session
+ * that does not exist. Returns null for a provider with no subdirectory
+ * behavior.
+ */
+export function resolveSubdirectoryLoadPoint(
+  convention: ProviderConvention,
+  dir: string,
+): ContextLoadPoint | null {
+  const [primary, ...alternates] = convention.subdirectoryFileNames;
+  if (!primary) return null;
+  const fallbackPaths = alternates.map((name) => path.join(dir, name));
+  return {
+    path: path.join(dir, primary),
+    ...(fallbackPaths.length > 0 ? { fallbackPaths } : {}),
+    scope: "subdirectory",
+    category: "context_files",
+    costClass: "conditional",
+  };
+}
+
+/**
+ * `pi` is missing on purpose, not by oversight.
+ *
+ * OMP is a Pi fork and shares Pi's RPC protocol and `PI_*` environment
+ * variables, which makes it tempting to hand Pi the OMP convention. That would
+ * be a guess: OMP bills itself as the maximalist fork and the entire
+ * eleven-provider discovery pass above is exactly the kind of surface a fork
+ * adds. Pi is described upstream as the *minimal* terminal agent, the `pi`
+ * binary is not installed on any host this was investigated from, and no vendor
+ * doc was read - so whether Pi reads `AGENTS.md`, something else, or nothing is
+ * genuinely unknown.
+ *
+ * No entry means `isContextScanSupported("pi")` stays false and the tab says it
+ * cannot see, which is the true statement. Copying OMP's entry to make the tab
+ * look populated would report file weight Pi may never send. The finding
+ * `omp-pi-instruction-file-discovery` carries the capture harness that settles
+ * this in one run on a host that has `pi`.
+ */
 const CONVENTIONS = new Map<string, ProviderConvention>([
   [CLAUDE_CONVENTION.provider, CLAUDE_CONVENTION],
   [CODEX_CONVENTION.provider, CODEX_CONVENTION],
   [OPENCODE_CONVENTION.provider, OPENCODE_CONVENTION],
+  [OMP_CONVENTION.provider, OMP_CONVENTION],
   [OPENAI_COMPAT_CONVENTION.provider, OPENAI_COMPAT_CONVENTION],
 ]);
 

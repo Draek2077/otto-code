@@ -28,6 +28,7 @@ function scan(nodes: ContextNode[]): ContextGraphScanResult {
     nodes,
     edges: [],
     findings: [],
+    absentPaths: [],
     confidence: "convention",
     supportsImports: true,
     supported: true,

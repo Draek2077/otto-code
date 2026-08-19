@@ -165,15 +165,77 @@ imports are appended after their parent rather than spliced in at the `@` token 
 model cannot tell whose rule it is reading, and "the AGENTS.md in `packages/app` says X" is a thing
 agents are routinely asked to reason about.
 
-**Files below cwd are not loaded yet.** Claude reads a subdirectory `CLAUDE.md` lazily once the agent
-touches that subtree; matching that means injecting mid-turn, with its own dedupe and compaction
-story. Until that exists the openai-compat convention returns no subdirectory scan root, so the tab
-does not show `conditional` weight that would never actually arrive.
+**Files below cwd load conditionally, from the tool loop.** Claude reads a subdirectory `CLAUDE.md`
+lazily once the agent touches that subtree, and the daemon now does the same for the payload-owning
+family: when a tool call reads, edits or runs something under a directory below cwd, that directory's
+`AGENTS.md` (`CLAUDE.md` as the per-directory fallback, same one-slot rule) joins the conversation
+once and stays for the session. The scan root is therefore **cwd, not the project root** - everything
+above cwd is already fixed weight - which makes the two halves complements: every `conditional` row
+the tab shows is a file that can actually arrive, and nothing can arrive that the tab never showed.
+`instruction-files.test.ts` pins both directions.
+
+Five decisions carry it, and each one is a way it could have silently broken:
+
+- **The file lands at the round boundary, as its own system message.** Not in the tool's result -
+  `pruneToolOutputs` truncates aged tool results, so the rules would decay into a
+  `[... chars pruned ...]` marker while the model still believed it was following them. Not spliced
+  in the moment the tool ran either: that puts a message between an assistant `tool_calls` message
+  and its `tool` results, which strict OpenAI-compatible servers reject. After the round's tool
+  results and before the next request is built, the conversation is wire-valid and the model sees the
+  file on the very next round - the first moment it could act on it anyway.
+- **A touched path contributes its whole chain below cwd, outermost first.** Editing
+  `packages/app/src/foo.ts` is working under `packages/app` too, and the most specific file lands
+  last so it reads as the most authoritative, matching the fixed chain's order.
+- **First visit wins, keyed case-insensitively on Windows** (`contextPathKey`, shared with the
+  graph). A subtree touched twenty times loads once.
+- **Compaction pins them.** `serializeConversationForCompaction` drops system messages, so an
+  injected file caught in the summarize region would be neither summarized nor kept - it would simply
+  stop existing. They are lifted out of both regions and re-inserted directly under the rebuilt
+  system prompt.
+- **Rewind un-injects, resume does not.** The conversation is the record: `subtreeInstructionDir` on
+  the message is the injection's identity, the already-injected set is rebuilt from `this.messages`
+  after every rewrite, and a rewind past an injection makes that subtree loadable again - what is not
+  in the conversation is not being followed. A resumed session keeps the marked messages (the one
+  exception to "rebuild the system prompt, drop the restored one") and therefore does not inject a
+  second copy.
+
+Which directories a tool call touched is answered by
+`providers/openai-compat-subtree-instructions.ts`, deliberately shape-agnostic: builtin tools name
+their target `path`, Otto and MCP tools have shapes the loop cannot know, and `run_command` hides its
+paths in a shell string, so every string argument is split on whitespace and any token carrying a
+path separator is a candidate. That test is exact rather than heuristic - a token with no separator
+can only name a file in cwd, whose directory holds no conditional weight.
 
 Loading is **runtime-only**, like personality memory and the knowledge catalog: it lands on the
 launch config and never on the stored one. Editing `AGENTS.md` therefore reaches the next session
 without rewriting any agent record, and the stored prompt stays comparable for the
 live-personality-switch ownership check.
+
+### The loader's cache is stamped by mtime, not by a clock
+
+Spawn, resume and reload all re-read the chain, and the scan around those few small files costs about
+20ms per session start (the file reads themselves are a fraction of a millisecond; the rest is the
+graph work around them). `instruction-files.ts` keeps the resolved text per workspace and revalidates
+it by stat-ing every path that fed the answer, which takes about 0.15ms.
+
+Three rules keep that from reverting somebody's rules:
+
+- **Absence is watched too.** `scanContextGraph` reports `absentPaths`, every path it tested and did
+  not find, so an `AGENTS.md` appearing where there was none invalidates the entry. Watching only the
+  files that did resolve would miss exactly that. Markdown link targets are excluded: a link is never
+  inlined, so a file appearing at one changes a finding and not a byte of the prompt.
+- **A file written moments ago is not cached at all.** Coarse filesystem timestamps, and writes that
+  land mid-scan, both produce an mtime that does not describe the bytes that were read. Both cost
+  only a cache miss, which is the direction this cache is allowed to be wrong in.
+- **It is not the `ContextManagementService` TTL, deliberately.** That 15 second cache holds a
+  report whose inputs include the live prompt and tool schemas, which no file stamp can describe, and
+  being slightly behind shows a stale number in a panel. This one holds the bytes that become the
+  session's rules, where a stale hit silently reverts an edit. Different value, different inputs,
+  different cost of being wrong. What they share is `scanContextGraph`, still the single resolver
+  both read through.
+
+The subtree loader is uncached on purpose: a session injects a given directory once and remembers it
+in the conversation, so there is no second read to save.
 
 ## Severity is a share of the window, never absolute tokens
 
