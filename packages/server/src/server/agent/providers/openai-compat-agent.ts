@@ -363,6 +363,11 @@ const CAPABILITIES: AgentCapabilityFlags = {
   // (browser_*, preview_*, agent management, …) directly rather than via an MCP
   // client the local model's runtime doesn't have. See ottoTools handling below.
   supportsNativeOttoTools: true,
+  // Nothing composes this request but us: no CLI reads the workspace's
+  // AGENTS.md on our behalf, and no subprocess hides its preset from the
+  // report. The daemon loads the context files (applyInstructionFiles) and
+  // Context Management measures the result exactly.
+  ownsContextPayload: true,
   supportsReasoningStream: true,
   supportsToolInvocations: true,
   supportsRewindConversation: true,
@@ -2242,7 +2247,16 @@ export class OpenAICompatAgentSession implements AgentSession {
     return parts.join("\n");
   }
 
-  private buildSystemPrompt(config: AgentSessionConfig): string {
+  /**
+   * The provider preset: the standing instructions Otto puts in front of the
+   * model before any personality, project or user text.
+   *
+   * Split out from `buildSystemPrompt` so Context Management can report it on
+   * its own. The rest of the system message is `otto_injected` weight the
+   * daemon already accounts for elsewhere, and folding the two together would
+   * bill the personality prompt twice.
+   */
+  private buildProviderPreset(): string {
     const parts = [
       [
         `You are a coding agent running inside Otto against ${this.label}.`,
@@ -2253,10 +2267,37 @@ export class OpenAICompatAgentSession implements AgentSession {
         "When the task is complete, reply with a concise summary of what you did.",
       ].join("\n"),
       this.buildPreviewWorkflowPrompt(),
+    ];
+    return parts.filter((part): part is string => Boolean(part)).join("\n\n");
+  }
+
+  private buildSystemPrompt(config: AgentSessionConfig): string {
+    const parts = [
+      this.buildProviderPreset(),
       config.systemPrompt?.trim(),
       config.daemonAppendSystemPrompt?.trim(),
     ];
     return parts.filter((part): part is string => Boolean(part)).join("\n\n");
+  }
+
+  /**
+   * The two halves of the request Otto composes that no CLI-backed provider can
+   * hand back: its own preset, and the tool schemas actually offered to the
+   * model under this session's mode and workspace-access ceiling.
+   *
+   * Measured from the same calls the request is built from, so the Context
+   * Management rows are the real payload rather than a reconstruction of it.
+   */
+  describeContextPayload(): { systemPromptText: string; mcpToolsText: string } {
+    const toolsPayload = [
+      ...buildOpenAIToolsPayload(this.availableToolSpecs()),
+      ...this.buildOttoToolPayload(),
+      ...this.buildMcpToolPayload(),
+    ];
+    return {
+      systemPromptText: this.buildProviderPreset(),
+      mcpToolsText: JSON.stringify(toolsPayload),
+    };
   }
 
   /**

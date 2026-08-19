@@ -14,7 +14,7 @@ import { createServer as createHTTPServer, type IncomingMessage, type ServerResp
 import { constants, existsSync, unlinkSync } from "fs";
 import { open } from "fs/promises";
 import { randomUUID } from "node:crypto";
-import { hostname as getHostname } from "node:os";
+import { homedir, hostname as getHostname } from "node:os";
 import path from "node:path";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Logger } from "pino";
@@ -155,6 +155,8 @@ import { PersonalityStatsStore } from "./agent/personality-stats-store.js";
 import { PersonalityMemoryStore } from "./agent/personality-memory/personality-memory-store.js";
 import { PersonalityMemoryService } from "./agent/personality-memory/personality-memory-service.js";
 import { ProjectKnowledgeService } from "./agent/project-knowledge/project-knowledge-service.js";
+import { loadInstructionFiles } from "./agent/context-management/instruction-files.js";
+import { resolveProjectRootForCwd } from "./agent/context-management/context-management-service.js";
 import {
   ActivityStatsStore,
   type ActivityIncrementFn,
@@ -1392,6 +1394,24 @@ export async function createOttoDaemon(
       if (!cwd) return null;
       const brief = await projectKnowledge.briefForCwd(cwd);
       return brief.text || null;
+    },
+    // The repo's own AGENTS.md, for the providers that have no CLI of their own
+    // to read it. Same choke point as the two briefs above, so every spawn path
+    // gets it; the manager applies the `ownsContextPayload` gate so the
+    // CLI-backed providers are not sent their instructions a second time.
+    resolveInstructionFiles: async ({ cwd }) => {
+      if (!cwd) return null;
+      const projectRoot = await resolveProjectRootForCwd(cwd, (dir) =>
+        workspaceGitService.resolveRepoRoot(dir),
+      );
+      const loaded = await loadInstructionFiles({
+        cwd,
+        projectRoot,
+        homeDir: homedir(),
+        env: process.env,
+        logger,
+      });
+      return loaded.text;
     },
     onActivity: recordActivity,
     onUsageEvent: (event) => usageLogStore.append(event),

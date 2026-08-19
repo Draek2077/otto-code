@@ -1581,9 +1581,23 @@ export class Session {
             agent.config.systemPrompt,
             agent.config.daemonAppendSystemPrompt,
           );
+          // Only meaningful where Otto builds the request: a CLI-backed
+          // provider composes its preset in its own process and never hands it
+          // back, which is exactly what the `not_visible` rows disclose.
+          const ownsContextPayload = agent.capabilities.ownsContextPayload === true;
+          // The live session's real preset and tool schemas. Read per report
+          // rather than cached: the tool payload narrows with the session's
+          // mode and workspace-access ceiling, so a snapshot taken at spawn
+          // would misreport a chat that has since switched to plan mode.
+          const payload = ownsContextPayload
+            ? this.agentManager.describeAgentContextPayload(agent.id)
+            : null;
           return {
             provider: agent.provider,
+            ownsContextPayload,
             ...(injectedPromptText ? { injectedPromptText } : {}),
+            ...(payload?.systemPromptText ? { systemPromptText: payload.systemPromptText } : {}),
+            ...(payload?.mcpToolsText ? { mcpToolsText: payload.mcpToolsText } : {}),
           };
         }
 
@@ -1608,6 +1622,9 @@ export class Session {
           const injectedPromptText = composeSystemPromptParts(stored.config?.systemPrompt);
           return {
             provider: stored.provider,
+            ownsContextPayload:
+              this.agentManager.getProviderCapabilities(stored.provider)?.ownsContextPayload ===
+              true,
             ...(injectedPromptText ? { injectedPromptText } : {}),
           };
         }
@@ -1621,7 +1638,14 @@ export class Session {
         // "which agent does this user run"; no prompt text is claimed, because
         // none of it belongs to this workspace.
         const anywhere = persisted.sort(byRecency)[0];
-        if (anywhere) return { provider: anywhere.provider };
+        if (anywhere) {
+          return {
+            provider: anywhere.provider,
+            ownsContextPayload:
+              this.agentManager.getProviderCapabilities(anywhere.provider)?.ownsContextPayload ===
+              true,
+          };
+        }
         return null;
       },
     });

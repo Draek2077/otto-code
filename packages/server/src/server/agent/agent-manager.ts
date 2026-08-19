@@ -477,6 +477,13 @@ export interface AgentManagerOptions {
    * same repository knowledge before its first task turn.
    */
   resolveProjectKnowledgeBrief?: (params: { cwd: string | undefined }) => Promise<string | null>;
+  /**
+   * Resolves the workspace's `AGENTS.md` chain (with its `@import` graph
+   * inlined) into prompt-ready text, for providers whose request Otto composes
+   * itself. Injected rather than done inline because resolving the project root
+   * is a git question, and the agent manager has no business asking it.
+   */
+  resolveInstructionFiles?: (params: { cwd: string | undefined }) => Promise<string | null>;
   /** Fun-stats counters - see packages/server/src/server/activity-stats. */
   onActivity?: ActivityIncrementFn;
   /**
@@ -1473,6 +1480,7 @@ export class AgentManager {
   private onPersonalitySpawn?: (personalityId: string) => void;
   private resolvePersonalityMemoryBrief?: AgentManagerOptions["resolvePersonalityMemoryBrief"];
   private resolveProjectKnowledgeBrief?: AgentManagerOptions["resolveProjectKnowledgeBrief"];
+  private resolveInstructionFiles?: AgentManagerOptions["resolveInstructionFiles"];
   private onActivity?: ActivityIncrementFn;
   private onUsageEvent?: (event: UsageEvent) => void;
   private logger: Logger;
@@ -1490,6 +1498,7 @@ export class AgentManager {
     this.onPersonalitySpawn = options.onPersonalitySpawn;
     this.resolvePersonalityMemoryBrief = options.resolvePersonalityMemoryBrief;
     this.resolveProjectKnowledgeBrief = options.resolveProjectKnowledgeBrief;
+    this.resolveInstructionFiles = options.resolveInstructionFiles;
     this.onActivity = options.onActivity;
     this.onUsageEvent = options.onUsageEvent;
     this.mcpBaseUrl = options.mcpBaseUrl ?? null;
@@ -1836,6 +1845,19 @@ export class AgentManager {
    */
   getProviderCapabilities(provider: AgentProvider): AgentCapabilityFlags | null {
     return this.clients.get(provider)?.capabilities ?? null;
+  }
+
+  /**
+   * The preset and tool schemas one live agent will actually send, for Context
+   * Management. Null when the agent has no session yet, or when its provider
+   * composes the request in a subprocess and cannot report it.
+   */
+  describeAgentContextPayload(
+    agentId: string,
+  ): { systemPromptText: string; mcpToolsText: string } | null {
+    const agent = this.agents.get(agentId);
+    if (!agent || !("session" in agent)) return null;
+    return agent.session.describeContextPayload?.() ?? null;
   }
 
   async getProviderAvailability(provider: AgentProvider): Promise<ProviderAvailability> {
@@ -7430,15 +7452,20 @@ export class AgentManager {
       stripInternalOttoMcpServer(config),
       env ? { env } : {},
     );
-    const launchConfig = await this.applyProjectKnowledge(
-      await this.applyPersonalityMemory(
-        this.applyDaemonAppendSystemPrompt(
-          withRuntimeOttoMcpServer({
-            config: storedConfig,
-            agentId,
-            mcpBaseUrl: this.mcpBaseUrl,
-            mcpAuthToken: this.mcpAuthToken,
-          }),
+    // Instruction files go on last, so the repo's own rules read as the most
+    // authoritative thing in the prompt - after the personality's identity, its
+    // lessons, and the knowledge catalog.
+    const launchConfig = await this.applyInstructionFiles(
+      await this.applyProjectKnowledge(
+        await this.applyPersonalityMemory(
+          this.applyDaemonAppendSystemPrompt(
+            withRuntimeOttoMcpServer({
+              config: storedConfig,
+              agentId,
+              mcpBaseUrl: this.mcpBaseUrl,
+              mcpAuthToken: this.mcpAuthToken,
+            }),
+          ),
         ),
       ),
     );
@@ -7494,6 +7521,38 @@ export class AgentManager {
     }
     const existing = systemPrompt?.trim();
     return existing ? `${existing}\n\n${brief}` : brief;
+  }
+
+  /**
+   * Load the workspace's `AGENTS.md` chain into the LAUNCH prompt, for the
+   * providers that have no process of their own to do it.
+   *
+   * Gated on `ownsContextPayload` rather than a provider name, and the gate is
+   * the whole correctness argument: Claude, Codex and OpenCode each read these
+   * files themselves, so loading them here too would send the repo's
+   * instructions twice and bill for both. A provider that does not compose its
+   * own request gets them from us; a provider that does is left alone.
+   *
+   * Runtime-only for the same reason as personality memory and the knowledge
+   * catalog: editing `AGENTS.md` must reach the next session without rewriting
+   * any agent record, and the stored prompt has to stay comparable for the
+   * live-personality-switch ownership check.
+   */
+  private async applyInstructionFiles(config: AgentSessionConfig): Promise<AgentSessionConfig> {
+    if (!this.resolveInstructionFiles) return config;
+    if (!this.getProviderCapabilities(config.provider)?.ownsContextPayload) return config;
+
+    let text: string | null;
+    try {
+      text = await this.resolveInstructionFiles({ cwd: config.cwd });
+    } catch (error) {
+      this.logger.warn({ err: error, cwd: config.cwd }, "Failed to load instruction files");
+      return config;
+    }
+    if (!text) return config;
+
+    const existing = config.systemPrompt?.trim();
+    return { ...config, systemPrompt: existing ? `${existing}\n\n${text}` : text };
   }
 
   /** Runtime-only, just like personality memory: the catalog is re-read on each session start. */

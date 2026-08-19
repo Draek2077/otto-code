@@ -59,6 +59,26 @@ export interface ContextGraphScanResult {
   confidence: ContextConfidence;
   supportsImports: boolean;
   supported: boolean;
+  /**
+   * Node text, in load order, for the nodes whose bytes came from a real file
+   * read. Present only when `includeText` was requested: the loader needs the
+   * bytes it is about to send, and everyone else only needs the sizes.
+   */
+  contents?: ContextFileContent[];
+}
+
+export interface ScanContextGraphOptions {
+  /**
+   * Resolve only fixed-weight load points and the imports they pull in,
+   * skipping the subdirectory sweep and the skills/subagents roster. The loader
+   * wants exactly the bytes that ride every request; walking a repo to size
+   * weight it is not about to send is pure latency at session start.
+   */
+  fixedOnly?: boolean;
+  /** Return `contents` alongside the graph. */
+  includeText?: boolean;
+  /** The provider drives its own request - see `getProviderConvention`. */
+  ownsContextPayload?: boolean;
 }
 
 interface PendingImport {
@@ -72,8 +92,11 @@ interface PendingImport {
 export async function scanContextGraph(
   provider: string,
   input: ContextResolutionInput,
+  options?: ScanContextGraphOptions,
 ): Promise<ContextGraphScanResult> {
-  const convention = getProviderConvention(provider);
+  const convention = getProviderConvention(provider, {
+    ownsContextPayload: options?.ownsContextPayload,
+  });
   if (!convention) {
     return {
       nodes: [],
@@ -87,50 +110,11 @@ export async function scanContextGraph(
 
   const builder = new GraphBuilder(input);
 
-  // 1. Explicit load points, in load order - this order is what "first visit
-  //    wins" means, so it must not be reordered.
-  const queue: PendingImport[] = [];
-  for (const point of convention.resolveLoadPoints(input)) {
-    const node = await builder.addFile({
-      absolutePath: point.path,
-      scope: point.scope,
-      category: point.category,
-      costClass: point.costClass,
-    });
-    if (!node) continue;
-    queue.push({
-      fromNodeId: node.id,
-      absolutePath: node.path,
-      depth: 0,
-      costClass: point.costClass,
-      scope: point.scope,
-    });
-  }
-
-  // 2. Subdirectory context files - conditional weight, discovered but never
-  //    counted as fixed.
-  const subdirectoryRoot = convention.resolveSubdirectoryScanRoot(input);
-  if (subdirectoryRoot && convention.subdirectoryFileName) {
-    const found = await findSubdirectoryContextFiles(
-      subdirectoryRoot,
-      convention.subdirectoryFileName,
-    );
-    for (const filePath of found) {
-      const node = await builder.addFile({
-        absolutePath: filePath,
-        scope: "subdirectory",
-        category: "context_files",
-        costClass: "conditional",
-      });
-      if (!node) continue;
-      queue.push({
-        fromNodeId: node.id,
-        absolutePath: node.path,
-        depth: 0,
-        costClass: "conditional",
-        scope: "subdirectory",
-      });
-    }
+  // 1. Explicit load points, then 2. subdirectory files - see the seed helpers.
+  //    Load order is what "first visit wins" means, so it must not be reordered.
+  const queue: PendingImport[] = await seedLoadPoints(builder, convention, input);
+  if (!options?.fixedOnly) {
+    queue.push(...(await seedSubdirectoryFiles(builder, convention, input)));
   }
 
   // 3. Walk the graph. Imports inherit their parent's cost class; references
@@ -147,12 +131,117 @@ export async function scanContextGraph(
     }
   }
 
-  // 4. Skills and subagents - only the frontmatter rides every request; the
-  //    body loads on invocation, so sizing the whole file would overstate it
-  //    badly. Plugin-contributed rosters count the same as hand-written ones:
-  //    the model is told about them identically, and the user's lever (disable
-  //    the plugin) only makes sense if the weight is visible first.
+  // 4. Skills and subagents - see `addRoster`.
+  if (!options?.fixedOnly) {
+    await addRoster(builder, convention, input);
+  }
+
+  // 5. Content checks run last, once every file has been read - they compare
+  //    files against each other, so they cannot be folded into the walk.
+  const contents = builder.fileContents();
+  collectContentFindings(contents);
+
+  return {
+    nodes: builder.nodes(),
+    edges: builder.edges(),
+    findings: builder.allFindings(),
+    confidence: convention.confidence,
+    supportsImports: convention.supportsImports,
+    supported: true,
+    ...(options?.includeText ? { contents } : {}),
+  };
+}
+
+/**
+ * Step 1: the provider's explicit load points, in load order.
+ *
+ * A load point may name several spellings of the same slot (`AGENTS.md` with a
+ * `CLAUDE.md` fallback). The first candidate that exists takes the slot and the
+ * alternates are never read - one slot, one file, counted once.
+ */
+async function seedLoadPoints(
+  builder: GraphBuilder,
+  convention: ProviderConvention,
+  input: ContextResolutionInput,
+): Promise<PendingImport[]> {
+  const seeds: PendingImport[] = [];
+  for (const point of convention.resolveLoadPoints(input)) {
+    const candidates = [point.path, ...(point.fallbackPaths ?? [])];
+    for (const candidate of candidates) {
+      const node = await builder.addFile({
+        absolutePath: candidate,
+        scope: point.scope,
+        category: point.category,
+        costClass: point.costClass,
+      });
+      if (!node) continue;
+      seeds.push({
+        fromNodeId: node.id,
+        absolutePath: node.path,
+        depth: 0,
+        costClass: point.costClass,
+        scope: point.scope,
+      });
+      break;
+    }
+  }
+  return seeds;
+}
+
+/**
+ * Step 2: context files below the scan root. Conditional weight - discovered so
+ * the report can show it, never counted as fixed, because it reaches the model
+ * only once the agent works in that subtree.
+ */
+async function seedSubdirectoryFiles(
+  builder: GraphBuilder,
+  convention: ProviderConvention,
+  input: ContextResolutionInput,
+): Promise<PendingImport[]> {
+  const root = convention.resolveSubdirectoryScanRoot(input);
+  if (!root || !convention.subdirectoryFileName) return [];
+
+  const seeds: PendingImport[] = [];
+  for (const filePath of await findSubdirectoryContextFiles(
+    root,
+    convention.subdirectoryFileName,
+  )) {
+    const node = await builder.addFile({
+      absolutePath: filePath,
+      scope: "subdirectory",
+      category: "context_files",
+      costClass: "conditional",
+    });
+    if (!node) continue;
+    seeds.push({
+      fromNodeId: node.id,
+      absolutePath: node.path,
+      depth: 0,
+      costClass: "conditional",
+      scope: "subdirectory",
+    });
+  }
+  return seeds;
+}
+
+/**
+ * Step 4 of the scan, extracted so `scanContextGraph` stays under the
+ * complexity ceiling: skills and subagents, from the provider's own roots and
+ * from every enabled plugin.
+ *
+ * Only the frontmatter rides every request - the body loads on invocation, so
+ * sizing the whole file would overstate it badly. Plugin-contributed rosters
+ * count the same as hand-written ones: the model is told about them
+ * identically, and the user's lever (disable the plugin) only makes sense if
+ * the weight is visible first.
+ */
+async function addRoster(
+  builder: GraphBuilder,
+  convention: ProviderConvention,
+  input: ContextResolutionInput,
+): Promise<void> {
   const pluginRoots = (await convention.resolvePluginRoots?.(input)) ?? [];
+
   const skillRoots = [
     ...convention.resolveSkillRoots(input),
     ...pluginRoots.map((root) => path.join(root, "skills")),
@@ -172,19 +261,6 @@ export async function scanContextGraph(
       await addRosterEntry(builder, agentFile, agentRoot, input);
     }
   }
-
-  // 5. Content checks run last, once every file has been read - they compare
-  //    files against each other, so they cannot be folded into the walk.
-  collectContentFindings(builder.fileContents());
-
-  return {
-    nodes: builder.nodes(),
-    edges: builder.edges(),
-    findings: builder.allFindings(),
-    confidence: convention.confidence,
-    supportsImports: convention.supportsImports,
-    supported: true,
-  };
 }
 
 /**

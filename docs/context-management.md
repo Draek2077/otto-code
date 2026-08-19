@@ -60,7 +60,7 @@ The tree root is **"Sent before you type"**. Context files are one branch of six
 
 | Category        | Source                                                                            | Otto's visibility                        |
 | --------------- | --------------------------------------------------------------------------------- | ---------------------------------------- |
-| `context_files` | the CLAUDE.md / AGENTS.md graph plus imports                                      | convention scan                          |
+| `context_files` | the CLAUDE.md / AGENTS.md graph plus imports                                      | convention scan; exact for openai-compat |
 | `memory_index`  | `MEMORY.md` (entries are recalled, **not** fixed)                                 | convention scan                          |
 | `skills_roster` | name + description per skill **and per subagent**                                 | filesystem scan                          |
 | `mcp_tools`     | tool JSON schemas per connected server                                            | daemon-known                             |
@@ -107,14 +107,73 @@ on screen; do not model around it.
 ### Per-provider resolution, confidence-tagged
 
 `provider-conventions.ts` is a registry (`getProviderConvention`, `isContextScanSupported`), with
-entries for **Claude**, **Codex** and **OpenCode**; anything else reports no scan rather than a
-guess. Each report carries `confidence: "exact" | "convention" | "unverified"`, and a convention
-that has not been differentially measured must never be presented as fact.
+entries for **Claude**, **Codex**, **OpenCode** and the **OpenAI-compatible family**; anything else
+reports no scan rather than a guess. Each report carries
+`confidence: "exact" | "convention" | "unverified"`, and a convention that has not been
+differentially measured must never be presented as fact.
 
 **openai-compat is the reference provider, not the excluded one.** It is the only provider where
 Otto builds the payload itself and therefore knows it exactly - which makes it the ground truth
 every convention-based estimate is validated against. (The predecessor charter marked it "not
 applicable"; that was backwards.)
+
+Its entry is the only one in the registry that is not a description of a subprocess. The other three
+say what Claude, Codex and OpenCode do behind Otto's back; this one is read by
+`loadInstructionFiles`, which is what actually builds the prompt. **The scan and the request are two
+readings of one resolver**, which is the whole reason its confidence can say `exact`. Change the load
+order in `provider-conventions.ts` and you change what the model receives; there is no second list to
+keep in step.
+
+**Selection is by capability, never by provider id.** The family has no single id at runtime -
+`otto-brain` is one member, and every user-configured endpoint mints an id of its own - so the
+adapter's `ownsContextPayload` capability is what routes a provider to this convention and unlocks
+the `exact` rows. The predecessor test was `provider === "openai-compat"`, which matched nothing that
+runs: no provider is registered under that id, so both exact rows read `not_visible` on every host,
+including the one provider Otto measures completely.
+
+### Who loads the instruction files
+
+Every CLI-backed provider reads its own: Claude walks its `CLAUDE.md` chain, Codex and OpenCode
+merge `AGENTS.md` from their config directory down to the working directory. The OpenAI-compatible
+family has no process of its own to do it, so **the daemon loads them**
+(`context-management/instruction-files.ts`, applied at the spawn choke point as
+`applyInstructionFiles`).
+
+The gate is `ownsContextPayload`, and it is the correctness argument, not a convenience: loading
+these files for a provider that already reads them would send the repo's instructions twice and bill
+for both. A provider that composes its own request is left alone.
+
+What gets loaded, in prompt order:
+
+1. `$OTTO_HOME/AGENTS.md` - machine-wide, Otto's own. Deliberately **not** `~/.claude/CLAUDE.md` or
+   `~/.codex/AGENTS.md`: silently inheriting another harness's global file imports its token weight
+   into sessions the user never pointed at it.
+2. `<project root>/AGENTS.md`.
+3. Each directory from the project root down to cwd, outermost first, so the most specific
+   instructions land last and read as the most authoritative.
+
+At each of those, `AGENTS.md` wins and `CLAUDE.md` is a **per-directory fallback**. One slot, several
+spellings: a repo that only ever wrote `CLAUDE.md` still gets its rules, and a repo carrying both
+(this one, where `CLAUDE.md` is a single `@AGENTS.md` line) loads `AGENTS.md` once rather than twice.
+The mechanism is `ContextLoadPoint.fallbackPaths`; the first candidate that exists takes the slot and
+the alternates are never read.
+
+`@imports` are inlined recursively, cycle-guarded and depth-capped, exactly as the scan describes
+them. Markdown links are not: they cost their link text, and the model reads the target with a file
+tool only if it decides to. Each file is wrapped in an `<instructions path="…">` block, because
+imports are appended after their parent rather than spliced in at the `@` token - without the path a
+model cannot tell whose rule it is reading, and "the AGENTS.md in `packages/app` says X" is a thing
+agents are routinely asked to reason about.
+
+**Files below cwd are not loaded yet.** Claude reads a subdirectory `CLAUDE.md` lazily once the agent
+touches that subtree; matching that means injecting mid-turn, with its own dedupe and compaction
+story. Until that exists the openai-compat convention returns no subdirectory scan root, so the tab
+does not show `conditional` weight that would never actually arrive.
+
+Loading is **runtime-only**, like personality memory and the knowledge catalog: it lands on the
+launch config and never on the stored one. Editing `AGENTS.md` therefore reaches the next session
+without rewriting any agent record, and the stored prompt stays comparable for the
+live-personality-switch ownership check.
 
 ## Severity is a share of the window, never absolute tokens
 

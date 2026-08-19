@@ -63,6 +63,14 @@ export interface WorkspaceContextRuntime {
    * in its own process and never hands it back.
    */
   systemPromptText?: string;
+  /**
+   * Otto composes this provider's whole request in-process. Mirrors the
+   * adapter's `ownsContextPayload` capability, and it is what selects the
+   * payload-owning convention and unlocks the `exact` category rows - a
+   * provider-id test cannot, because the OpenAI-compatible family mints a fresh
+   * id per configured endpoint.
+   */
+  ownsContextPayload?: boolean;
 }
 
 export interface ContextManagementServiceDeps {
@@ -189,7 +197,8 @@ export class ContextManagementService {
     if (runtime?.systemPromptText) {
       runtimeTokensByCategory.system_prompt = estimateTokens(runtime.systemPromptText.length);
     }
-    const visibilityByCategory = resolveCategoryVisibility({ provider, runtime });
+    const conventionLookup = { ownsContextPayload: runtime?.ownsContextPayload };
+    const visibilityByCategory = resolveCategoryVisibility({ runtime });
 
     // A personality's memory brief is prompt text Otto composes and injects, so
     // it belongs in `otto_injected` rather than a category of its own -
@@ -214,7 +223,7 @@ export class ContextManagementService {
     }
     const projectKnowledgeFields = projectKnowledgeTokens > 0 ? { projectKnowledgeTokens } : {};
 
-    if (!isContextScanSupported(provider)) {
+    if (!isContextScanSupported(provider, conventionLookup)) {
       // Not a failure: some providers genuinely ingest no project files, and
       // saying so is useful signal. We still report what Otto injects.
       const empty = evaluateContext({
@@ -245,12 +254,16 @@ export class ContextManagementService {
 
     let scan;
     try {
-      scan = await scanContextGraph(provider, {
-        cwd: location.cwd,
-        projectRoot: location.projectRoot,
-        homeDir,
-        env: process.env,
-      });
+      scan = await scanContextGraph(
+        provider,
+        {
+          cwd: location.cwd,
+          projectRoot: location.projectRoot,
+          homeDir,
+          env: process.env,
+        },
+        conventionLookup,
+      );
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       this.deps.logger.warn({ err, workspaceId, provider }, "Context graph scan failed");
@@ -362,20 +375,26 @@ export class ContextManagementService {
 /**
  * What Otto can honestly claim to see, per category, for one provider.
  *
- * Otto owns the whole payload for `openai-compat`, which makes it the only
- * provider whose preset and tool schemas are measurable - and the ground truth
- * every convention-based estimate is validated against. Every CLI-backed
+ * Otto owns the whole payload for the OpenAI-compatible family, which makes it
+ * the only family whose preset and tool schemas are measurable - and the ground
+ * truth every convention-based estimate is validated against. Every CLI-backed
  * provider assembles its own preset and hands its MCP servers to a subprocess,
  * so those two categories are unmeasurable there. Saying so on the row is the
  * point: a user comparing providers should be able to see *where* the numbers
  * stop being complete, rather than inferring it from a missing line.
+ *
+ * This keys off the adapter's `ownsContextPayload` capability, never a provider
+ * id. It used to test `provider === "openai-compat"`, which matched nothing
+ * that runs: there is no provider registered under that id. `otto-brain` is an
+ * OpenAI-compatible client, and each user-configured endpoint mints an id of
+ * its own, so both rows read `not_visible` on every host - including the one
+ * provider Otto measures exactly.
  */
 function resolveCategoryVisibility(params: {
-  provider: string;
   runtime: WorkspaceContextRuntime | null;
 }): Partial<Record<ContextCategory, ContextCategoryVisibility>> {
-  const { provider, runtime } = params;
-  const ownsPayload = provider === "openai-compat";
+  const { runtime } = params;
+  const ownsPayload = runtime?.ownsContextPayload === true;
 
   return {
     // Otto composes personality, team and daemon-append text itself, on every

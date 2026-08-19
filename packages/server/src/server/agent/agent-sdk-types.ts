@@ -234,6 +234,20 @@ export interface AgentCapabilityFlags {
    * contract as above: never set this true without the enforcement behind it.
    */
   supportsWorkspaceAccessNone?: boolean;
+  /**
+   * Otto composes this provider's whole request in-process, so it owns the
+   * parts a CLI-backed provider assembles behind our back: the preset, the tool
+   * schemas, and the workspace's `AGENTS.md` chain.
+   *
+   * Two things key off it, and both are wrong if it is set without the
+   * behaviour: `applyInstructionFiles` only loads context files for these
+   * providers (a CLI reads its own and would get them twice), and Context
+   * Management reports `system_prompt` and `mcp_tools` as `exact` rather than
+   * `not_visible`. It is a capability rather than a provider-id test because
+   * the OpenAI-compatible family has no single id - `otto-brain` is one member
+   * and every user-configured endpoint mints its own.
+   */
+  ownsContextPayload?: boolean;
   supportsReasoningStream: boolean;
   supportsToolInvocations: boolean;
   supportsRewindConversation?: boolean;
@@ -992,6 +1006,16 @@ export interface AgentSession {
    * Resolves null when the provider has no live handle to report from.
    */
   getContextUsage?(): Promise<AgentContextUsage | null>;
+  /**
+   * The parts of the request Otto composes itself, as the text it will send:
+   * the provider preset, and the tool schemas offered under this session's
+   * current mode and workspace-access ceiling.
+   *
+   * Present only on adapters with `ownsContextPayload`. A CLI-backed provider
+   * builds both in its own process and has nothing to hand back, which is what
+   * Context Management discloses as `not_visible` rather than reporting zero.
+   */
+  describeContextPayload?(): { systemPromptText: string; mcpToolsText: string };
   setModel?(modelId: string | null): Promise<void>;
   setThinkingOption?(thinkingOptionId: string | null): Promise<void | AgentProviderNotice>;
   setFeature?(featureId: string, value: unknown): Promise<void>;

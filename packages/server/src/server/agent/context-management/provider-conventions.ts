@@ -30,6 +30,14 @@ export interface ContextResolutionInput {
 
 export interface ContextLoadPoint {
   path: string;
+  /**
+   * Alternate spellings of the *same* load point, tried in order when `path`
+   * does not exist. This is one slot with several possible filenames, not
+   * several slots: the first candidate that exists wins and the rest are never
+   * read. That distinction is what keeps a repo carrying both `AGENTS.md` and
+   * `CLAUDE.md` from paying for its instructions twice.
+   */
+  fallbackPaths?: string[];
   scope: ContextScope;
   category: ContextCategory;
   costClass: ContextCostClass;
@@ -286,16 +294,134 @@ const OPENCODE_CONVENTION: ProviderConvention = {
   subdirectoryFileName: "AGENTS.md",
 };
 
+/**
+ * Provider id under which every payload-owning provider reports. The
+ * OpenAI-compatible family has no single id at runtime - `otto-brain` is one
+ * member and every user-configured endpoint mints its own - so the family, not
+ * the id, is what selects this convention.
+ */
+export const OPENAI_COMPAT_CONTEXT_FAMILY = "openai-compat";
+
+/**
+ * `$OTTO_HOME`, resolved from the scan input rather than through
+ * `resolveOttoHome()`. That helper creates the directory as a side effect,
+ * which a resolver asked only *where a file would live* has no business doing -
+ * and which would have every test scan touch the real `~/.otto`.
+ */
+function resolveOttoHomeDir({ env, homeDir }: ContextResolutionInput): string {
+  const raw = env.OTTO_HOME;
+  if (!raw) return path.join(homeDir, ".otto");
+  if (raw === "~") return homeDir;
+  if (raw.startsWith("~/")) return path.resolve(homeDir, raw.slice(2));
+  return path.resolve(raw);
+}
+
+/**
+ * The one entry in this registry that is not a guess.
+ *
+ * Every convention above describes what a subprocess does behind Otto's back,
+ * which is why they carry `convention` or `unverified`. This one describes what
+ * `loadInstructionFiles` does in this process, from this same function - the
+ * scan and the prompt are two readings of one resolver, so the report is
+ * `exact` by construction rather than by promise. Changing the load order here
+ * changes what the model receives; there is no second list to keep in step.
+ *
+ * `AGENTS.md` is the name, with `CLAUDE.md` as a per-directory fallback: a repo
+ * that only ever wrote `CLAUDE.md` still gets its instructions, and a repo
+ * carrying both (this one, where `CLAUDE.md` is a single `@AGENTS.md` line)
+ * loads `AGENTS.md` once.
+ *
+ * No subdirectory scan root. Files below cwd are genuinely not loaded yet, and
+ * a `conditional` row for weight that never arrives is the kind of number
+ * `docs/context-management.md` exists to forbid. It becomes a root the same
+ * change that teaches the tool loop to inject them.
+ */
+const OPENAI_COMPAT_CONVENTION: ProviderConvention = {
+  provider: OPENAI_COMPAT_CONTEXT_FAMILY,
+  confidence: "exact",
+  supportsImports: true,
+  // Matches Claude's cap so a repo's `@import` graph behaves the same whichever
+  // of the two loads it. Exceeding it produces a `depth_capped` finding.
+  importDepthCap: 5,
+
+  resolveLoadPoints(input): ContextLoadPoint[] {
+    const { cwd, projectRoot } = input;
+    const points: ContextLoadPoint[] = [
+      {
+        path: path.join(resolveOttoHomeDir(input), "AGENTS.md"),
+        scope: "global",
+        category: "context_files",
+        costClass: "fixed",
+      },
+      {
+        path: path.join(projectRoot, "AGENTS.md"),
+        fallbackPaths: [path.join(projectRoot, "CLAUDE.md")],
+        scope: "project",
+        category: "context_files",
+        costClass: "fixed",
+      },
+    ];
+
+    // Outermost first, so the most specific instructions land last and read as
+    // the most authoritative. `ancestorsBetween` walks cwd upward, which is the
+    // opposite of what a prompt wants.
+    for (const dir of ancestorsBetween(cwd, projectRoot).toReversed()) {
+      points.push({
+        path: path.join(dir, "AGENTS.md"),
+        fallbackPaths: [path.join(dir, "CLAUDE.md")],
+        scope: "subdirectory",
+        category: "context_files",
+        costClass: "fixed",
+      });
+    }
+
+    return points;
+  },
+
+  // No on-disk skill or subagent roster: this provider's tool advertisement is
+  // the Otto catalog, which `mcp_tools` already measures exactly.
+  resolveSkillRoots(): string[] {
+    return [];
+  },
+
+  resolveAgentRoots(): string[] {
+    return [];
+  },
+
+  resolveSubdirectoryScanRoot(): string | null {
+    return null;
+  },
+
+  subdirectoryFileName: null,
+};
+
 const CONVENTIONS = new Map<string, ProviderConvention>([
   [CLAUDE_CONVENTION.provider, CLAUDE_CONVENTION],
   [CODEX_CONVENTION.provider, CODEX_CONVENTION],
   [OPENCODE_CONVENTION.provider, OPENCODE_CONVENTION],
+  [OPENAI_COMPAT_CONVENTION.provider, OPENAI_COMPAT_CONVENTION],
 ]);
 
-export function getProviderConvention(provider: string): ProviderConvention | null {
+export interface ProviderConventionLookup {
+  /**
+   * The provider drives its own request, so it resolves through the
+   * payload-owning convention whatever its id happens to be. Comes from the
+   * adapter's `ownsContextPayload` capability, never from a name.
+   */
+  ownsContextPayload?: boolean;
+}
+
+export function getProviderConvention(
+  provider: string,
+  lookup?: ProviderConventionLookup,
+): ProviderConvention | null {
+  if (lookup?.ownsContextPayload) return OPENAI_COMPAT_CONVENTION;
   return CONVENTIONS.get(provider) ?? null;
 }
 
-export function isContextScanSupported(provider: string): boolean {
-  return CONVENTIONS.has(provider);
+export function isContextScanSupported(
+  provider: string,
+  lookup?: ProviderConventionLookup,
+): boolean {
+  return getProviderConvention(provider, lookup) !== null;
 }

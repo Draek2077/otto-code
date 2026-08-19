@@ -22,6 +22,12 @@ Claude first-party model metadata lives in `packages/server/src/server/agent/pro
 
 Otto tools are not implemented as MCP tools internally. They live in a shared tool catalog under `packages/server/src/server/agent/tools/`; MCP is only the fallback adapter. A provider that can register runtime tools directly should set `supportsNativeOttoTools: true` and consume `launchContext.ottoTools` in `createSession`/`resumeSession`. When native tools are present, `AgentManager` strips the internal Otto MCP server from the provider launch config so the provider does not receive the same tools twice. Providers that only know MCP should keep `supportsMcpServers: true` and let the daemon inject `/mcp/agents`.
 
+## Instruction files: `ownsContextPayload`
+
+Set `ownsContextPayload: true` only when Otto composes the whole request in-process, as the OpenAI-compatible family does. It means two things, and both are wrong if you set the flag without the behaviour behind it.
+
+The daemon loads the workspace's `AGENTS.md` chain into the launch prompt for these providers (`applyInstructionFiles`), because they have no process of their own to read it. A CLI-backed provider reads its own instruction files, so setting this on one would send the repo's rules twice and bill for both. The flag is also what lets Context Management report `system_prompt` and `mcp_tools` as `exact` rather than `not_visible`, which is only honest if the session can hand those back through `AgentSession.describeContextPayload()`. It is a capability rather than a provider-id test because the OpenAI-compatible family has no single id: `otto-brain` is one member and every user-configured endpoint mints its own. See [context-management.md](context-management.md).
+
 Pi is a process-backed provider. Otto requires the user to have the `pi` binary installed and talks to it through `pi --mode rpc`; the server package does not embed Pi's SDK/runtime packages.
 
 Otto's per-agent and daemon-wide system prompts are passed to Pi with `--append-system-prompt`, so Pi keeps its default coding prompt while receiving Otto's additional instructions.
