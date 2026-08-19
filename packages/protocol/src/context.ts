@@ -341,3 +341,41 @@ export type ContextEdgeConvertResponseMessage = z.infer<
 export type ContextFindingsFixResponseMessage = z.infer<
   typeof ContextFindingsFixResponseMessageSchema
 >;
+
+export const AgentContextGetUsageRequestMessageSchema = z.object({
+  type: z.literal("agent.context.get_usage.request"),
+  agentId: z.string(),
+  requestId: z.string(),
+});
+
+export const AgentContextUsageCategorySchema = z.object({
+  /** Provider-supplied display label, e.g. "Messages", "System prompt". Not translated. */
+  name: z.string(),
+  tokens: z.number(),
+  /** Deferred content (e.g. on-demand tool schemas) is not counted in totalTokens. */
+  isDeferred: z.boolean().optional(),
+});
+
+export const AgentContextUsageSchema = z.object({
+  categories: z.array(AgentContextUsageCategorySchema),
+  totalTokens: z.number(),
+  maxTokens: z.number(),
+});
+
+export const AgentContextGetUsageResponseMessageSchema = z.object({
+  type: z.literal("agent.context.get_usage.response"),
+  payload: z.object({
+    requestId: z.string(),
+    agentId: z.string(),
+    /** Null when the agent's provider cannot report a context breakdown. */
+    usage: AgentContextUsageSchema.nullable(),
+  }),
+});
+
+export type AgentContextUsageCategory = z.infer<typeof AgentContextUsageCategorySchema>;
+
+export type AgentContextUsage = z.infer<typeof AgentContextUsageSchema>;
+
+export type AgentContextGetUsageResponseMessage = z.infer<
+  typeof AgentContextGetUsageResponseMessageSchema
+>;

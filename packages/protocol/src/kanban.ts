@@ -278,3 +278,45 @@ export type KanbanTaskLinkResponse = z.infer<typeof KanbanTaskLinkResponseSchema
  * server package.
  */
 export const KANBAN_NOT_CONFIGURED = "No kanban board is configured for this project.";
+
+// Which tracking board a project shows on the Kanban screen. A pointer, never a
+// credential: `boardId` is equivalent to a URL, so it rides in the clear and
+// lives in the project record next to the display name. Credentials stay
+// host-scoped (the gh CLI for GitHub, the Atlassian account for Jira).
+// A null `boardId` on the github adapter means "derive the boards from this
+// project's git remote"; jira always needs an explicit board id.
+export const ProjectKanbanTargetSchema = z
+  .object({
+    adapter: z.enum(["github", "jira"]),
+    boardId: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+export type ProjectKanbanTarget = z.infer<typeof ProjectKanbanTargetSchema>;
+
+export const KanbanProjectTargetSetRequestSchema = z.object({
+  type: z.literal("kanban.project.target.set.request"),
+  projectId: z.string().min(1),
+  // Null clears the target and returns the project to "no board configured".
+  target: ProjectKanbanTargetSchema.nullable(),
+  requestId: z.string(),
+});
+
+export const KanbanProjectTargetSetResponsePayloadSchema = z.object({
+  requestId: z.string(),
+  projectId: z.string(),
+  accepted: z.boolean(),
+  // The normalized target the daemon actually stored: a pasted board URL comes
+  // back as the parsed id, so the settings form can show what was saved.
+  target: ProjectKanbanTargetSchema.nullable(),
+  error: z.string().nullable(),
+});
+
+export const KanbanProjectTargetSetResponseSchema = z.object({
+  type: z.literal("kanban.project.target.set.response"),
+  payload: KanbanProjectTargetSetResponsePayloadSchema,
+});
+
+export type KanbanProjectTargetSetResponse = z.infer<typeof KanbanProjectTargetSetResponseSchema>;
+
+export type KanbanProjectTargetSetRequest = z.infer<typeof KanbanProjectTargetSetRequestSchema>;

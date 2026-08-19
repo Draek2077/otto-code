@@ -50,3 +50,148 @@ export function normalizeGitHostingProviderId(
 ): GitHostingProviderId | null {
   return isGitHostingProviderId(value) ? value : null;
 }
+
+// COMPAT(hostingAttachments): added in v0.7.6, remove after 2027-02-01.
+// These were the provider-neutral successors to github_pr/github_issue. The
+// forge merge replaced them with forge_change_request/forge_issue, so no
+// current client sends them - they stay accepted (protocol contract) purely so
+// a client from before that merge can still attach a PR or an issue. The
+// daemon renders them at
+// server/src/server/agent/prompt-attachments.ts; retire both halves together.
+export const HostingPrAttachmentSchema = z.object({
+  type: z.literal("hosting_pr"),
+  mimeType: z.literal("application/otto-hosting-pr"),
+  provider: GitHostingProviderIdWireSchema,
+  number: z.number().int().positive(),
+  title: z.string(),
+  url: z.string(),
+  body: z.string().nullable().optional(),
+  baseRefName: z.string().nullable().optional(),
+  headRefName: z.string().nullable().optional(),
+});
+
+export const HostingIssueAttachmentSchema = z.object({
+  type: z.literal("hosting_issue"),
+  mimeType: z.literal("application/otto-hosting-issue"),
+  provider: GitHostingProviderIdWireSchema,
+  number: z.number().int().positive(),
+  title: z.string(),
+  url: z.string(),
+  body: z.string().nullable().optional(),
+});
+
+// Provider-neutral successor to github_search_request. Resolves the project's
+// configured hosting provider from cwd. Gated by server_info
+// features.gitHostingProviders.
+export const HostingSearchKindSchema = z.enum(["issue", "pr"]);
+
+export const HostingSearchRequestSchema = z.object({
+  type: z.literal("hosting.search.request"),
+  cwd: z.string(),
+  query: z.string(),
+  limit: z.number().int().min(1).max(50).optional(),
+  kinds: z.array(HostingSearchKindSchema).optional(),
+  requestId: z.string(),
+});
+
+// Reports whether a host-level provider's credentials are valid - drives the
+// connection-status row in the host Git providers settings section.
+export const HostingAuthStatusRequestSchema = z.object({
+  type: z.literal("hosting.auth_status.request"),
+  provider: GitHostingProviderIdWireSchema,
+  requestId: z.string(),
+});
+
+// Repository enumeration for the clone picker, and owner enumeration for the
+// "create a new remote" form. Both are host-level (no repo cwd exists yet), so
+// they address a provider directly instead of resolving one from a checkout.
+export const HostingListRepositoriesRequestSchema = z.object({
+  type: z.literal("hosting.list_repositories.request"),
+  provider: GitHostingProviderIdWireSchema,
+  // Substring filter applied by the provider where it supports one.
+  query: z.string().optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+  requestId: z.string(),
+});
+
+export const HostingListOwnersRequestSchema = z.object({
+  type: z.literal("hosting.list_owners.request"),
+  provider: GitHostingProviderIdWireSchema,
+  requestId: z.string(),
+});
+
+export const HostingRepositorySummarySchema = z.object({
+  // Provider-unique identifier, e.g. "owner/name" or "workspace/slug".
+  fullName: z.string(),
+  name: z.string(),
+  owner: z.string(),
+  cloneUrl: z.string(),
+  isPrivate: z.boolean(),
+  description: z.string().nullable(),
+  // ISO-8601. Clients sort most-recent-first when present.
+  updatedAt: z.string().nullable(),
+});
+
+export const HostingOwnerSummarySchema = z.object({
+  // Value to send back as `owner` when creating a repository.
+  id: z.string(),
+  label: z.string(),
+  // Open string: providers name this differently (org, workspace, team).
+  kind: z.string(),
+});
+
+// COMPAT(projectScaffold): added in v0.6.9.
+export const HostingListRepositoriesResponseSchema = z.object({
+  type: z.literal("hosting.list_repositories.response"),
+  payload: z.object({
+    requestId: z.string(),
+    provider: GitHostingProviderIdWireSchema,
+    repositories: z.array(HostingRepositorySummarySchema),
+    error: z.string().nullable(),
+  }),
+});
+
+// COMPAT(projectScaffold): added in v0.6.9.
+export const HostingListOwnersResponseSchema = z.object({
+  type: z.literal("hosting.list_owners.response"),
+  payload: z.object({
+    requestId: z.string(),
+    provider: GitHostingProviderIdWireSchema,
+    owners: z.array(HostingOwnerSummarySchema),
+    error: z.string().nullable(),
+  }),
+});
+
+export const HostingAuthStatusResponseSchema = z.object({
+  type: z.literal("hosting.auth_status.response"),
+  payload: z.object({
+    provider: GitHostingProviderIdWireSchema,
+    authenticated: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export type HostingRepositorySummary = z.infer<typeof HostingRepositorySummarySchema>;
+
+export type HostingOwnerSummary = z.infer<typeof HostingOwnerSummarySchema>;
+
+export type HostingListRepositoriesResponse = z.infer<typeof HostingListRepositoriesResponseSchema>;
+
+export type HostingListOwnersResponse = z.infer<typeof HostingListOwnersResponseSchema>;
+
+export type HostingSearchKind = z.infer<typeof HostingSearchKindSchema>;
+
+export type HostingSearchRequest = z.infer<typeof HostingSearchRequestSchema>;
+
+export type HostingAuthStatusRequest = z.infer<typeof HostingAuthStatusRequestSchema>;
+
+export type HostingAuthStatusResponse = z.infer<typeof HostingAuthStatusResponseSchema>;
+
+export type HostingPrAttachment = z.infer<typeof HostingPrAttachmentSchema>;
+
+export type HostingIssueAttachment = z.infer<typeof HostingIssueAttachmentSchema>;
+
+export type HostingListRepositoriesRequest = z.infer<typeof HostingListRepositoriesRequestSchema>;
+
+export type HostingListOwnersRequest = z.infer<typeof HostingListOwnersRequestSchema>;
