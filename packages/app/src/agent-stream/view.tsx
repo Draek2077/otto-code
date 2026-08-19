@@ -136,6 +136,16 @@ function revealTraceLen(items: readonly StreamItem[] | undefined): number {
   return items ? items.length : 0;
 }
 
+// The entry arrives as a thunk, and the `__DEV__` gate lives here rather than
+// at the call site, for two reasons: the call site is a render body, so an
+// eagerly built entry object would be allocated on every render of the stream
+// view even though release builds discard it; and keeping the branch in this
+// helper leaves AgentStreamView's own complexity budget alone.
+function traceRevealPipeline(entry: () => Record<string, unknown>): void {
+  if (typeof __DEV__ === "undefined" || !__DEV__) return;
+  pushRevealTrace(entry());
+}
+
 function renderLiveAuxiliaryNode(input: {
   pendingPermissions: ReactNode;
   turnFooter: ReactNode;
@@ -974,10 +984,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     // store data -> frozen-while-inactive snapshot -> deferred value ->
     // resume-gated value) feeding the ticker, on every render, to find why
     // the computed target regresses for an unchanged turn key while fully
-    // visible. pushRevealTrace no-ops off web. Remove alongside the ticker's
-    // own reveal-trace instrumentation once the root cause lands - see
-    // .otto/knowledge for the finding.
-    pushRevealTrace({
+    // visible. Dev-only and lazily built - see traceRevealPipeline. Remove
+    // alongside the ticker's own reveal-trace instrumentation once the root
+    // cause lands - see .otto/knowledge for the finding.
+    traceRevealPipeline(() => ({
       label: agentId,
       event: "PIPELINE",
       isStreamVisible,
@@ -993,7 +1003,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       displayedTailIsDeferred: displayedStreamItems === deferredStreamItems,
       totalChars: liveTurnReveal.totalChars,
       turnKey: liveTurnReveal.turnKey,
-    });
+    }));
     const revealTicker = useTurnRevealTicker({
       turnKey: liveTurnReveal.turnKey,
       target: liveTurnReveal.totalChars,

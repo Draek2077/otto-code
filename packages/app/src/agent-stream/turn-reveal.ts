@@ -13,9 +13,23 @@ import { invokeDesktopCommand } from "@/desktop/electron/invoke";
 //   copy(JSON.stringify(window.__revealTrace, null, 2))
 // Capped ring buffer so it never grows unbounded. Remove this once a root
 // cause lands.
+//
+// Dev builds only. This is not cheap enough to ship: the trace is fed from the
+// stream view's render body and from the ticker's 32ms tick, and on desktop it
+// re-serializes the entire buffer to disk every 15 seconds for the life of the
+// session. Metro dead-code-strips the calls when `__DEV__` is false, matching
+// the DEBUG_REVEAL gate in use-sidebar-reveal-controller.ts.
+//
+// Read through `typeof` rather than bound at module scope: this module is
+// imported directly by unit tests, which do not define `__DEV__`. Metro still
+// substitutes the identifier and strips the branch in release builds.
+function revealTraceEnabled(): boolean {
+  return typeof __DEV__ !== "undefined" && __DEV__;
+}
+
 const REVEAL_TRACE_LIMIT = 20000;
 export function pushRevealTrace(entry: Record<string, unknown>): void {
-  if (!isWeb || typeof window === "undefined") return;
+  if (!revealTraceEnabled() || !isWeb || typeof window === "undefined") return;
   const globalWindow = window as unknown as { __revealTrace?: Record<string, unknown>[] };
   const buffer = (globalWindow.__revealTrace ??= []);
   buffer.push({ t: Date.now(), ...entry });
@@ -280,7 +294,11 @@ export class TurnRevealTicker {
     this.revealed = params.target;
     // Injected rather than imported so the ticker stays a pure unit under test.
     this.isOnScreen = params.isOnScreen ?? (() => true);
-    this.debugLabel = params.debugLabel;
+    // One gate for every trace site below: the console.info calls, the `before`
+    // snapshot allocation in update(), and the per-tick trace all hang off this
+    // being set, so clearing it here disarms them in release builds no matter
+    // what the caller passes.
+    this.debugLabel = revealTraceEnabled() ? params.debugLabel : undefined;
     if (this.debugLabel) {
       // eslint-disable-next-line no-console
       console.info(
