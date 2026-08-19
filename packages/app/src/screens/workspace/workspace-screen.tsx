@@ -49,7 +49,6 @@ import {
   CopyX,
   Ellipsis,
   EllipsisVertical,
-  Explore,
   FileText,
   FolderOpen,
   Globe,
@@ -58,6 +57,8 @@ import {
   Import as ImportIcon,
   MarkUnreadChatAlt,
   MoreHorizontal,
+  PanelRight,
+  PanelRightClose,
   Pencil,
   Play,
   RotateCw,
@@ -403,7 +404,8 @@ const ThemedStar = withUnistyles(Star);
 const ThemedStarFilled = withUnistyles(StarFilled);
 const ThemedContextualToken = withUnistyles(ContextualToken);
 const ThemedBookOpen = withUnistyles(BookOpen);
-const ThemedExplore = withUnistyles(Explore);
+const ThemedPanelRight = withUnistyles(PanelRight);
+const ThemedPanelRightClose = withUnistyles(PanelRightClose);
 const ThemedPlay = withUnistyles(Play);
 
 interface DynamicProviderIconProps {
@@ -456,7 +458,7 @@ const MENU_CONTEXT_ICON = <ThemedContextualToken uniProps={mutedMdMapping} />;
 const MENU_KNOWLEDGE_ICON = <ThemedBookOpen uniProps={mutedMdMapping} />;
 // Leading icons for the compact-fit fallback items (see
 // resolveCompactHeaderActions): same glyphs as the header buttons they replace.
-const MENU_EXPLORER_ICON = <ThemedExplore uniProps={mutedMdMapping} />;
+const MENU_EXPLORER_ICON = <ThemedPanelRight uniProps={mutedMdMapping} />;
 const MENU_PLAY_ICON = <ThemedPlay uniProps={mutedMdMapping} />;
 const GATED_WORKSPACE_HEADER_LEFT = <SidebarMenuToggle />;
 
@@ -1413,9 +1415,9 @@ function GitCheckoutExplorerToggle({
             return (
               <View style={styles.explorerToggleShortcutDiscoveryAnchor}>
                 {isExplorerOpen ? (
-                  <ThemedExplore uniProps={accentMdMapping} />
+                  <ThemedPanelRightClose uniProps={accentMdMapping} />
                 ) : (
-                  <ThemedExplore uniProps={inactiveMapping} />
+                  <ThemedPanelRight uniProps={inactiveMapping} />
                 )}
                 {diffStat && showDiffStat ? (
                   <DiffStat
@@ -1450,7 +1452,7 @@ function GitCheckoutExplorerToggle({
   );
 }
 
-// The plain Explore toggle (no git-aware diff badge) used to open/close the
+// The plain explorer toggle (no git-aware diff badge) used to open/close the
 // explorer sidebar. Developer mode uses it for non-git checkouts; User interface
 // mode always uses it, since that mode shows a Files-only explorer.
 function PlainExplorerToggle({
@@ -1490,9 +1492,9 @@ function PlainExplorerToggle({
       >
         {({ hovered }) =>
           isExplorerOpen ? (
-            <ThemedExplore size={headerActionIconSize.lg} uniProps={accentColorMapping} />
+            <ThemedPanelRightClose size={headerActionIconSize.lg} uniProps={accentColorMapping} />
           ) : (
-            <ThemedExplore
+            <ThemedPanelRight
               size={headerActionIconSize.lg}
               uniProps={hovered ? foregroundColorMapping : mutedColorMapping}
             />
@@ -1519,9 +1521,9 @@ function PlainExplorerToggle({
     >
       {({ hovered }) =>
         isExplorerOpen ? (
-          <ThemedExplore uniProps={accentMdMapping} />
+          <ThemedPanelRightClose uniProps={accentMdMapping} />
         ) : (
-          <ThemedExplore uniProps={hovered ? foregroundMdMapping : mutedMdMapping} />
+          <ThemedPanelRight uniProps={hovered ? foregroundMdMapping : mutedMdMapping} />
         )
       }
     </HeaderToggleButton>
@@ -3686,30 +3688,34 @@ function WorkspaceHeaderTitleBar({
   onOpenUrlInBrowserTab,
 }: WorkspaceHeaderTitleBarProps) {
   const containerStyle = useMemo(() => [styles.headerTitleContainer, HEADER_LABEL_DRAG_STYLE], []);
-  // Match the Explorer toggle's icon sizing so the mobile Play button beside the
-  // "..." menu shares the same chrome and glyph size.
+  // Match the Explorer toggle's icon sizing so the mobile Play button in the
+  // action strip shares the same chrome and glyph size.
   const headerActionIconSize = useIconSize(1.5);
   return (
     <View style={containerStyle} dataSet={HEADER_LABEL_DRAG_DATASET}>
-      {isLoading ? (
-        <View style={styles.headerTitleTextGroup}>
-          <View style={styles.headerTitleSkeleton} />
-        </View>
-      ) : (
-        <View style={styles.headerTitleTextGroup}>
-          <ScreenTitle testID="workspace-header-title">{title}</ScreenTitle>
-          {showSubtitle ? (
-            <Text
-              testID="workspace-header-subtitle"
-              style={styles.headerProjectTitle}
-              numberOfLines={1}
-            >
-              {subtitle}
-            </Text>
-          ) : null}
-        </View>
-      )}
-      <View style={styles.compactHeaderMenuCluster}>
+      {/* The "..." menu belongs to the workspace it acts on, so it rides with the
+          title rather than drifting to the far edge with the action strip: this
+          lead group takes the row's spare width, and the labels inside it stay
+          shrink-first so the trigger is never the thing that gets clipped. */}
+      <View style={styles.headerTitleLead}>
+        {isLoading ? (
+          <View style={styles.headerTitleTextGroup}>
+            <View style={styles.headerTitleSkeleton} />
+          </View>
+        ) : (
+          <View style={styles.headerTitleTextGroup}>
+            <ScreenTitle testID="workspace-header-title">{title}</ScreenTitle>
+            {showSubtitle ? (
+              <Text
+                testID="workspace-header-subtitle"
+                style={styles.headerProjectTitle}
+                numberOfLines={1}
+              >
+                {subtitle}
+              </Text>
+            ) : null}
+          </View>
+        )}
         <WorkspaceHeaderMenu
           normalizedServerId={normalizedServerId}
           normalizedWorkspaceId={normalizedWorkspaceId}
@@ -3747,6 +3753,8 @@ function WorkspaceHeaderTitleBar({
           onOpenContextManagement={onOpenContextManagement}
           onOpenProjectKnowledge={onOpenProjectKnowledge}
         />
+      </View>
+      <View style={styles.compactHeaderMenuCluster}>
         <WorkspaceTeamChatButton
           serverId={normalizedServerId}
           workspaceId={normalizedWorkspaceId}
@@ -6687,10 +6695,10 @@ function WorkspaceScreenContent({
               >
                 {({ hovered }) => {
                   if (isExplorerOpen) {
-                    return <ThemedExplore uniProps={accentMdMapping} />;
+                    return <ThemedPanelRightClose uniProps={accentMdMapping} />;
                   }
                   return (
-                    <ThemedExplore uniProps={hovered ? foregroundMdMapping : mutedMdMapping} />
+                    <ThemedPanelRight uniProps={hovered ? foregroundMdMapping : mutedMdMapping} />
                   );
                 }}
               </HeaderToggleButton>
@@ -6714,11 +6722,14 @@ function WorkspaceScreenContent({
                 {({ hovered }) => {
                   if (isExplorerOpen) {
                     return (
-                      <ThemedExplore size={headerActionIconSize.lg} uniProps={accentColorMapping} />
+                      <ThemedPanelRightClose
+                        size={headerActionIconSize.lg}
+                        uniProps={accentColorMapping}
+                      />
                     );
                   }
                   return (
-                    <ThemedExplore
+                    <ThemedPanelRight
                       size={headerActionIconSize.lg}
                       uniProps={hovered ? foregroundColorMapping : mutedColorMapping}
                     />
@@ -6729,7 +6740,7 @@ function WorkspaceScreenContent({
           </>
         ) : (
           <>
-            {/* User interface mode: a plain Explore toggle for the Files-only
+            {/* User interface mode: a plain explorer toggle for the Files-only
                 explorer (no git-aware diff badge). Desktop + mobile. */}
             {headerActionFit.showPlainExplorer ? (
               <PlainExplorerToggle
@@ -7165,6 +7176,21 @@ const styles = StyleSheet.create((theme) => ({
     },
     overflow: "hidden",
   },
+  // Title labels plus the "..." menu. This group absorbs the row's spare width
+  // (the text group inside it no longer does), which is what keeps the menu
+  // beside the labels while the rest of the action strip stays right-aligned.
+  headerTitleLead: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    gap: {
+      xs: theme.spacing[1],
+      md: theme.spacing[2],
+    },
+  },
   headerTitleTextGroup: {
     // Compact floors the project/workspace labels so the action strip can never
     // squeeze them out entirely - `fitCompactHeaderActions` reserves the same
@@ -7175,7 +7201,7 @@ const styles = StyleSheet.create((theme) => ({
     },
     overflow: "hidden",
     flexShrink: 1,
-    flexGrow: 1,
+    flexGrow: 0,
     flexDirection: {
       xs: "column",
       md: "row",
@@ -7541,8 +7567,8 @@ const styles = StyleSheet.create((theme) => ({
     // containers). This cluster sits flush against headerRight, which lives in a
     // different container, so no shared container-gap spans that seam - the
     // trailing padding supplies that one standard gap itself. Compact drops it:
-    // the "..."/Visualizer/Play/Explorer run is a single flush strip there, so
-    // the doubled touch targets fit without crowding the title.
+    // the Visualizer/Play/Explorer run is a single flush strip there, so the
+    // doubled touch targets fit without crowding the title.
     paddingRight: {
       xs: 0,
       md: theme.spacing[2],

@@ -224,6 +224,7 @@ export const Palette = createMaterialSymbolIcon("Palette");
 export const PanelLeft = createMaterialSymbolIcon("PanelLeft");
 export const PanelLeftClose = createMaterialSymbolIcon("PanelLeftClose");
 export const PanelRight = createMaterialSymbolIcon("PanelRight");
+export const PanelRightClose = createMaterialSymbolIcon("PanelRightClose");
 export const Paperclip = createMaterialSymbolIcon("Paperclip");
 export const Pause = createMaterialSymbolIcon("Pause");
 export const Pencil = createMaterialSymbolIcon("Pencil");

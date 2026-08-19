@@ -166,6 +166,7 @@
   "PanelLeft": "left_panel_open",
   "PanelLeftClose": "left_panel_close",
   "PanelRight": "right_panel_open",
+  "PanelRightClose": "right_panel_close",
   "Paperclip": "attach_file",
   "Pause": "pause",
   "Pencil": "edit",

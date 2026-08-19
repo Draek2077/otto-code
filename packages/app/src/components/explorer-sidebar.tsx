@@ -45,7 +45,6 @@ import { ProjectSearchPane } from "./project-search-pane";
 import { useProjectSearchFeature } from "@/editor/use-project-search-feature";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useWindowControlsPadding } from "@/utils/desktop-window";
-import { useHasOwnedWindowChromeObstruction } from "@/utils/window-chrome";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { RetainedPanelActivity } from "@/components/retained-panel";
 import { useSidebarSlide } from "@/hooks/use-sidebar-slide";
@@ -424,15 +423,28 @@ interface SidebarContentProps {
 }
 
 /**
- * The explorer needs its own close control unless native window controls
- * already occupy the top-right corner. On a half-screen desktop window app
- * navigation has yielded, so this is the only way back out of the explorer.
+ * Compact always shows it: the explorer is a full-screen overlay there, so it
+ * has to offer its own way out.
+ *
+ * On desktop the deciding fact is whether the OS window controls sit in this
+ * corner. When they do - the Electron app on Windows and Linux, whose explorer
+ * header runs directly under them - a second X beside the system close button
+ * reads as a duplicate and invites the wrong click. Hide it there and let the
+ * title-bar Explorer toggle close the pane. Everywhere else the corner is ours
+ * and the button is the direct way out: the web shell, macOS (traffic lights
+ * are top-left), fullscreen, and the half-screen desktop layout.
+ *
+ * `windowControlsRightInset` is `useWindowControlsPadding("explorerSidebar").right`,
+ * which is non-zero exactly when those controls are overhead. Deliberately not
+ * `utils/window-chrome.tsx`: that module is UNWIRED(windowChrome) with its
+ * provider mounted nowhere, so its corner query answered false on every
+ * platform and this button rendered under the system close button.
  */
 export function shouldShowExplorerCloseButton(input: {
   isMobile: boolean;
-  hasRightWindowControls: boolean;
+  windowControlsRightInset: number;
 }): boolean {
-  return input.isMobile || !input.hasRightWindowControls;
+  return input.isMobile || input.windowControlsRightInset <= 0;
 }
 
 function ExplorerSidebarContent({
@@ -453,12 +465,10 @@ function ExplorerSidebarContent({
   const iconSize = useIconSize();
   const toast = useToast();
   const padding = useWindowControlsPadding("explorerSidebar");
-  // Without native controls in the top-right corner the explorer owns that
-  // corner, so it has to offer its own close affordance. On a half-screen
-  // desktop window app navigation has already yielded, and this is the only
-  // way back out of the explorer.
-  const hasRightWindowControls = useHasOwnedWindowChromeObstruction("top-right");
-  const showCloseButton = shouldShowExplorerCloseButton({ isMobile, hasRightWindowControls });
+  const showCloseButton = shouldShowExplorerCloseButton({
+    isMobile,
+    windowControlsRightInset: padding.right,
+  });
   // In User interface mode only the Files tab renders, so the PR/git query is
   // never needed - keep it from firing (a lens, not a lock: no dev-surface RPCs).
   const canQueryPullRequest = isDeveloperMode && isGit && Boolean(workspaceRoot);
