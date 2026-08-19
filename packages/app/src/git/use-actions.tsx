@@ -453,7 +453,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   const runPush = useCheckoutGitActionsStore((s) => s.push);
   const runPullAndPush = useCheckoutGitActionsStore((s) => s.pullAndPush);
   const runFetch = useCheckoutGitActionsStore((s) => s.fetch);
-  // COMPAT(gitFetchControl): added in v0.8.12, drop the gate when daemon floor >= v0.8.12.
+  // COMPAT(gitFetchControl): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
   const gitFetchEnabled = useSessionStore(
     (s) => s.sessions[serverId]?.serverInfo?.features?.gitFetchControl === true,
   );

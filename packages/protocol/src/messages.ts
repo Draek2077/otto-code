@@ -894,7 +894,7 @@ export const MutableDaemonConfigSchema = z
     }),
     autoArchiveAfterMerge: z.boolean().default(false),
     // Host-owned because the daemon runs the network operation for every connected client.
-    // COMPAT(gitFetchControl): added in v0.8.12, drop the gate when daemon floor >= v0.8.12.
+    // COMPAT(gitFetchControl): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
     gitFetch: MutableGitFetchConfigSchema.optional(),
     // Drop the "Merge into <base>" action from the client's source-control menu
     // (and stop promoting it to the primary CTA) for a pull-request-only
@@ -3786,7 +3786,7 @@ export type CommunicationsInboxGetHomeResponse = z.infer<
   typeof CommunicationsInboxGetHomeResponseSchema
 >;
 
-// COMPAT(communicationsInboxSearch): added in v0.8.13, remove gate after
+// COMPAT(communicationsInboxSearch): added in v0.8.11, remove gate after
 // 2027-02-15. Destination search is a new capability and newer clients must
 // not issue this request to older hosts.
 export const CommunicationsInboxSearchRequestSchema = z.object({
@@ -3811,7 +3811,7 @@ export type CommunicationsInboxSearchResponse = z.infer<
   typeof CommunicationsInboxSearchResponseSchema
 >;
 
-// COMPAT(communicationsFavorites): added in v0.8.14, remove gate after
+// COMPAT(communicationsFavorites): added in v0.8.11, remove gate after
 // 2027-02-15. A host without provider-native favorite mutations must not
 // receive this request from a newer frontend.
 export const CommunicationsInboxSetFavoriteRequestSchema = z.object({
@@ -3835,7 +3835,7 @@ export type CommunicationsInboxSetFavoriteResponse = z.infer<
   typeof CommunicationsInboxSetFavoriteResponseSchema
 >;
 
-// COMPAT(communicationsRoomNotifications): added in v0.8.15, remove gate after
+// COMPAT(communicationsRoomNotifications): added in v0.8.11, remove gate after
 // 2027-02-15. Acknowledgement is daemon-local and must not be sent to old hosts.
 export const CommunicationsInboxNotificationsAcknowledgeRequestSchema = z.object({
   type: z.literal("communications.inbox.notifications.acknowledge.request"),
@@ -3866,7 +3866,7 @@ export const CommunicationsInboxGetPresenceResponseSchema = z.object({
   payload: z.object({ presence: CommunicationPresenceSchema, requestId: z.string() }),
 });
 
-// COMPAT(communicationsPresenceUpdates): added in v0.8.12, remove gate after
+// COMPAT(communicationsPresenceUpdates): added in v0.8.11, remove gate after
 // 2027-02-14. The daemon publishes the authoritative status queue and cooldown
 // state to capable frontends, so an open popup never has to be closed and
 // reopened to observe a retry, completion, or failure.
@@ -3959,7 +3959,7 @@ export type CommunicationsInboxSendMessageResponse = z.infer<
   typeof CommunicationsInboxSendMessageResponseSchema
 >;
 
-// COMPAT(communicationsRooms): added in v0.8.15, remove gate after 2027-02-15.
+// COMPAT(communicationsRooms): added in v0.8.11, remove gate after 2027-02-15.
 // Room operations are deliberately a separate, provider-neutral surface. Older
 // hosts must never receive them from newer popup or workspace-tab renderers.
 export const CommunicationsRoomGetRequestSchema = z.object({
@@ -8349,7 +8349,7 @@ export const ServerInfoStatusPayloadSchema = z
         rewind: z.boolean().optional(),
         // COMPAT(checkoutRefresh): added in v0.1.86, remove gate after 2026-11-29.
         checkoutRefresh: z.boolean().optional(),
-        // COMPAT(gitFetchControl): added in v0.8.12, remove gate after 2027-02-14.
+        // COMPAT(gitFetchControl): added in v0.8.11, remove gate after 2027-02-14.
         gitFetchControl: z.boolean().optional(),
         // COMPAT(kanbanBoard): added in v0.8.11, drop the gate when floor >= v0.8.11.
         // The provider-agnostic Kanban board surface is present (kanban.*
@@ -8443,8 +8443,8 @@ export const ServerInfoStatusPayloadSchema = z
         brainStatusPush: z.boolean().optional(),
         // COMPAT(brainLogPush): added in v0.8.10, drop the gate when daemon floor >= v0.8.10.
         brainLogPush: z.boolean().optional(),
-        // COMPAT(brainLogWatch): added in v0.8.13, drop the gate when daemon
-        // floor >= v0.8.13. The daemon serves `brain.logs.watch.request` and
+        // COMPAT(brainLogWatch): added in v0.8.11, drop the gate when daemon
+        // floor >= v0.8.11. The daemon serves `brain.logs.watch.request` and
         // pushes `brain_log_line_added` only to sockets that asked for it. A
         // client that sees this false must not advertise the matching client
         // capability: on an older daemon the feed is unconditional, and the
@@ -8682,34 +8682,34 @@ export const ServerInfoStatusPayloadSchema = z
         // The daemon owns the provider-neutral communications overview. An old
         // host must not receive a communications RPC from a newer frontend.
         communications: z.boolean().optional(),
-        // COMPAT(communicationsChatHome): added in v0.8.12, remove gate after 2027-02-14.
+        // COMPAT(communicationsChatHome): added in v0.8.11, remove gate after 2027-02-14.
         // A host that lacks this projection must not receive the detailed Chat
         // Home request from a newer frontend.
         communicationsChatHome: z.boolean().optional(),
-        // COMPAT(communicationsInboxSearch): added in v0.8.13, remove gate after
+        // COMPAT(communicationsInboxSearch): added in v0.8.11, remove gate after
         // 2027-02-15. A host without destination search must not receive its RPC.
         communicationsInboxSearch: z.boolean().optional(),
-        // COMPAT(communicationsFavorites): added in v0.8.14, remove gate after
+        // COMPAT(communicationsFavorites): added in v0.8.11, remove gate after
         // 2027-02-15. The host owns provider-native favorite reads and writes.
         communicationsFavorites: z.boolean().optional(),
-        // COMPAT(communicationsPresence): added in v0.8.12, remove gate after 2027-02-14.
+        // COMPAT(communicationsPresence): added in v0.8.11, remove gate after 2027-02-14.
         // A host that lacks daemon-owned presence must not receive presence RPCs.
         communicationsPresence: z.boolean().optional(),
-        // COMPAT(communicationsChatAvailability): added in v0.8.12, remove gate after 2027-02-14.
+        // COMPAT(communicationsChatAvailability): added in v0.8.11, remove gate after 2027-02-14.
         // A host that lacks daemon-owned Chat availability must not receive its toggle RPC.
         communicationsChatAvailability: z.boolean().optional(),
-        // COMPAT(communicationsPresenceChangeTiming): added in v0.8.12, remove gate after 2027-02-14.
+        // COMPAT(communicationsPresenceChangeTiming): added in v0.8.11, remove gate after 2027-02-14.
         // The daemon publishes authoritative provider presence-change cooldowns.
         communicationsPresenceChangeTiming: z.boolean().optional(),
-        // COMPAT(communicationsPresenceUpdates): added in v0.8.12, remove gate after 2027-02-14.
+        // COMPAT(communicationsPresenceUpdates): added in v0.8.11, remove gate after 2027-02-14.
         // A capable client receives daemon-owned presence queue transitions and
         // cooldown updates without polling its popup.
         communicationsPresenceUpdates: z.boolean().optional(),
-        // COMPAT(communicationsRooms): added in v0.8.15, remove gate after 2027-02-15.
+        // COMPAT(communicationsRooms): added in v0.8.11, remove gate after 2027-02-15.
         // A room carries thread and reaction semantics an older daemon cannot
         // safely emulate through the legacy flat inbox message RPCs.
         communicationsRooms: z.boolean().optional(),
-        // COMPAT(communicationsRoomNotifications): added in v0.8.15, remove gate after 2027-02-15.
+        // COMPAT(communicationsRoomNotifications): added in v0.8.11, remove gate after 2027-02-15.
         // Acknowledgement mutates daemon-local state and older hosts do not know this RPC.
         communicationsRoomNotifications: z.boolean().optional(),
         // COMPAT(meetingTranscripts): added in v0.8.11, remove gate after 2027-02-13.

@@ -1203,7 +1203,7 @@ const DEFAULT_GIT_FETCH_CONFIG = { enabled: true, intervalSeconds: 180 } as cons
 function GitFetchCard({ serverId }: { serverId: string }) {
   const isConnected = useHostRuntimeIsConnected(serverId);
   const { config, patchConfig } = useDaemonConfig(serverId);
-  // COMPAT(gitFetchControl): added in v0.8.12, drop the gate when daemon floor >= v0.8.12.
+  // COMPAT(gitFetchControl): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
   const isSupported = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.gitFetchControl === true,
   );

@@ -1910,7 +1910,7 @@ export class VoiceAssistantWebSocketServer {
         rewind: true,
         // COMPAT(checkoutRefresh): added in v0.1.86, remove gate after 2026-11-29.
         checkoutRefresh: true,
-        // COMPAT(gitFetchControl): added in v0.8.12, remove gate after 2027-02-14.
+        // COMPAT(gitFetchControl): added in v0.8.11, remove gate after 2027-02-14.
         gitFetchControl: true,
         // COMPAT(workspaceMultiplicity): added in v0.1.97, drop the gate when floor >= v0.1.97
         workspaceMultiplicity: true,
@@ -2071,23 +2071,23 @@ export class VoiceAssistantWebSocketServer {
         connectorOauth: true,
         // COMPAT(communications): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
         communications: true,
-        // COMPAT(communicationsChatHome): added in v0.8.12, remove gate after 2027-02-14.
+        // COMPAT(communicationsChatHome): added in v0.8.11, remove gate after 2027-02-14.
         communicationsChatHome: true,
-        // COMPAT(communicationsInboxSearch): added in v0.8.13, remove gate after 2027-02-15.
+        // COMPAT(communicationsInboxSearch): added in v0.8.11, remove gate after 2027-02-15.
         communicationsInboxSearch: true,
-        // COMPAT(communicationsFavorites): added in v0.8.14, remove gate after 2027-02-15.
+        // COMPAT(communicationsFavorites): added in v0.8.11, remove gate after 2027-02-15.
         communicationsFavorites: true,
-        // COMPAT(communicationsRooms): added in v0.8.15, remove gate after 2027-02-15.
+        // COMPAT(communicationsRooms): added in v0.8.11, remove gate after 2027-02-15.
         communicationsRooms: true,
-        // COMPAT(communicationsRoomNotifications): added in v0.8.15, remove gate after 2027-02-15.
+        // COMPAT(communicationsRoomNotifications): added in v0.8.11, remove gate after 2027-02-15.
         communicationsRoomNotifications: true,
-        // COMPAT(communicationsPresence): added in v0.8.12, remove gate after 2027-02-14.
+        // COMPAT(communicationsPresence): added in v0.8.11, remove gate after 2027-02-14.
         communicationsPresence: true,
-        // COMPAT(communicationsChatAvailability): added in v0.8.12, remove gate after 2027-02-14.
+        // COMPAT(communicationsChatAvailability): added in v0.8.11, remove gate after 2027-02-14.
         communicationsChatAvailability: true,
-        // COMPAT(communicationsPresenceChangeTiming): added in v0.8.12, remove gate after 2027-02-14.
+        // COMPAT(communicationsPresenceChangeTiming): added in v0.8.11, remove gate after 2027-02-14.
         communicationsPresenceChangeTiming: true,
-        // COMPAT(communicationsPresenceUpdates): added in v0.8.12, remove gate after 2027-02-14.
+        // COMPAT(communicationsPresenceUpdates): added in v0.8.11, remove gate after 2027-02-14.
         communicationsPresenceUpdates: true,
         // COMPAT(meetingTranscripts): added in v0.8.11, remove gate after 2027-02-13.
         meetingTranscripts: true,
@@ -2179,8 +2179,8 @@ export class VoiceAssistantWebSocketServer {
         // floor >= v0.8.10. A capable Brain publishes each durable log line
         // through the daemon instead of waiting for the Logs tab's next poll.
         brainLogPush: this.brainManager?.supportsLogEvents() === true,
-        // COMPAT(brainLogWatch): added in v0.8.13, drop the gate when daemon
-        // floor >= v0.8.13. Unconditionally true: this is a daemon routing
+        // COMPAT(brainLogWatch): added in v0.8.11, drop the gate when daemon
+        // floor >= v0.8.11. Unconditionally true: this is a daemon routing
         // capability, not a property of the brain on the far side, so it holds
         // even while no brain is configured.
         brainLogWatch: true,
