@@ -54,6 +54,15 @@ jobs:
       - name: Check formatting
         run: npx oxfmt --check .
 
+      # This runs here, in the first job, because it is the only check that can
+      # catch a workflow GitHub refuses to start at all. It used to live in the
+      # `changes` job; that job was deleted on 2026-08-18 and the step went with
+      # it, and the same commit left a valueless `env:` key behind. GitHub
+      # rejected the file, every push since produced zero jobs and a 0s
+      # failure, and nothing said so louder than a red X.
+      - name: Validate CI workflow
+        run: node --test scripts/ci-workflow.test.mjs
+
   lint:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
@@ -204,7 +213,6 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-    env:
     steps:
       - uses: actions/checkout@v7.0.1
 

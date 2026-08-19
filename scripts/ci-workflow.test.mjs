@@ -112,6 +112,46 @@ test("Android native CI compiles and tests the wake-word distribution", () => {
   assert.match(job, /gradle\/actions\/setup-gradle@/);
   assert.match(job, /:otto-code-expo-two-way-audio:testDebugUnitTest/);
   assert.match(job, /WakeWordHandoffBufferTest/);
+});
 
-  assert.match(workflow, /android_native:\n(?:.|\n)*packages\/expo-two-way-audio\/\*\*/);
+// GitHub validates the whole workflow before it creates a single job. When it
+// refuses, the run fails in 0s with no jobs, no check runs, and no annotation
+// naming a line: the CI signal disappears without going red anywhere that
+// points at a cause. That is how a valueless `env:` key, left behind on
+// 2026-08-18 when a job's only variable was deleted, stopped CI dead for two
+// pushes. Every YAML parser accepts such a key as null, so nothing but an
+// explicit check finds it.
+test("no workflow key is declared without a value", () => {
+  const all = readFileSync(workflowPath, "utf8").split("\n");
+  // Scoped to `jobs:`. Under `on:`, an event name with no configuration
+  // (`merge_group:`, `workflow_dispatch:`) is valid and common; inside a job an
+  // empty mapping is what GitHub rejects.
+  const jobsAt = all.findIndex((line) => line === "jobs:");
+  assert.ok(jobsAt >= 0, "no jobs: block found");
+  const lines = all.slice(jobsAt);
+  const offenders = [];
+
+  lines.forEach((line, index) => {
+    const match = /^(\s*)([a-zA-Z][\w-]*):\s*$/.exec(line);
+    if (!match) return;
+    const [, indent, key] = match;
+
+    // A key that opens a block is followed by something more indented; a
+    // valueless one is followed by a sibling or an outdent. List items count as
+    // a value, since `steps:` legitimately precedes a `- ` at any indent.
+    const next = lines
+      .slice(index + 1)
+      .find((candidate) => candidate.trim() !== "" && !candidate.trim().startsWith("#"));
+    if (next === undefined) return;
+    if (next.trim().startsWith("- ")) return;
+
+    const nextIndent = next.length - next.trimStart().length;
+    if (nextIndent <= indent.length) offenders.push(`line ${jobsAt + index + 1}: ${key}`);
+  });
+
+  assert.deepEqual(
+    offenders,
+    [],
+    "a mapping key with no value makes GitHub reject the entire workflow at startup",
+  );
 });
