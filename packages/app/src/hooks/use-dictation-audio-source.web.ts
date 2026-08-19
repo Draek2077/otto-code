@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { parsePcm16Wav } from "@/utils/pcm16-wav";
 import { isElectronRuntime } from "@/desktop/host";
+import {
+  MicCaptureProcessor,
+  createMicCaptureWorkletModule,
+  type MicCaptureFrameEvent,
+} from "@/voice/mic-capture-worklet";
 
 import type {
   DictationAudioSource,
@@ -100,12 +105,14 @@ function safeDisconnectNode(node: AudioNode | null): void {
 }
 
 function disconnectDictationAudioGraph(graph: {
-  processor: ScriptProcessorNode | null;
+  processor: ScriptProcessorNode | MicCaptureProcessor | null;
   source: AudioNode | null;
   gain: AudioNode | null;
   stream: MediaStream | null;
 }): void {
-  if (graph.processor) {
+  if (graph.processor instanceof MicCaptureProcessor) {
+    graph.processor.dispose();
+  } else if (graph.processor) {
     try {
       graph.processor.onaudioprocess = null;
     } catch {
@@ -123,6 +130,57 @@ function disconnectDictationAudioGraph(graph: {
         // no-op
       }
     });
+  }
+}
+
+function buildDictationScriptProcessorFallback(
+  context: AudioContext,
+  source: MediaStreamAudioSourceNode,
+  gain: GainNode,
+  handleFrame: (rms: number, pcm: Uint8Array) => void,
+): ScriptProcessorNode {
+  const processor = context.createScriptProcessor(4096, 1, 1);
+  processor.onaudioprocess = (event) => {
+    const input = event.inputBuffer.getChannelData(0);
+    let sumSquares = 0;
+    for (let i = 0; i < input.length; i++) {
+      const sample = input[i];
+      sumSquares += sample * sample;
+    }
+    const rms = Math.sqrt(sumSquares / Math.max(1, input.length));
+    const pcm16 = resampleToPcm16(input, context.sampleRate, 16000);
+    handleFrame(rms, new Uint8Array(pcm16.buffer, pcm16.byteOffset, pcm16.byteLength));
+  };
+  source.connect(processor);
+  processor.connect(gain);
+  return processor;
+}
+
+async function createDictationCaptureProcessor(
+  context: AudioContext,
+  source: MediaStreamAudioSourceNode,
+  gain: GainNode,
+  handleFrame: (rms: number, pcm: Uint8Array) => void,
+  onError: (err: Error) => void,
+): Promise<ScriptProcessorNode | MicCaptureProcessor> {
+  if (typeof context.audioWorklet === "undefined" || typeof AudioWorkletNode === "undefined") {
+    return buildDictationScriptProcessorFallback(context, source, gain, handleFrame);
+  }
+  let micProcessor: MicCaptureProcessor | undefined;
+  try {
+    const url = await createMicCaptureWorkletModule(context);
+    micProcessor = new MicCaptureProcessor(context, source, url, onError);
+    micProcessor.onaudioprocess = (event: MicCaptureFrameEvent) => {
+      handleFrame(event.rms, event.inputBuffer.getChannelData(0));
+    };
+    micProcessor.connect(gain);
+    return micProcessor;
+  } catch {
+    // AudioWorklet unsupported or module load failed - fall back below. Dispose
+    // a partially-built worklet node so it never keeps delivering frames
+    // alongside the fallback.
+    micProcessor?.dispose();
+    return buildDictationScriptProcessorFallback(context, source, gain, handleFrame);
   }
 }
 
@@ -182,7 +240,7 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
     stream: MediaStream | null;
     context: AudioContext | null;
     source: MediaStreamAudioSourceNode | null;
-    processor: ScriptProcessorNode | null;
+    processor: ScriptProcessorNode | MicCaptureProcessor | null;
     gain: GainNode | null;
     pending: Int16Array;
     started: boolean;
@@ -282,7 +340,6 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
 
     try {
       const source = context.createMediaStreamSource(stream);
-      const processor = context.createScriptProcessor(4096, 1, 1);
       const gain = context.createGain();
       gain.gain.value = 0;
 
@@ -292,22 +349,14 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
       refs.current.started = true;
       refs.current.mode = "pcm";
 
-      processor.onaudioprocess = (event) => {
+      const handleFrame = (rms: number, pcm: Uint8Array) => {
         if (!refs.current.started) {
           return;
         }
-        const input = event.inputBuffer.getChannelData(0);
-
-        let sumSquares = 0;
-        for (let i = 0; i < input.length; i++) {
-          const sample = input[i];
-          sumSquares += sample * sample;
-        }
-        const rms = Math.sqrt(sumSquares / Math.max(1, input.length));
         const normalized = Math.min(1, Math.max(0, rms * 2));
         setVolume(normalized);
 
-        const next = resampleToPcm16(input, context.sampleRate, outputRate);
+        const next = new Int16Array(pcm.buffer, pcm.byteOffset, Math.floor(pcm.byteLength / 2));
         refs.current.pending = concatInt16(refs.current.pending, next);
 
         while (refs.current.pending.length >= chunkSamples) {
@@ -317,8 +366,16 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
         }
       };
 
-      source.connect(processor);
-      processor.connect(gain);
+      const processor = await createDictationCaptureProcessor(
+        context,
+        source,
+        gain,
+        handleFrame,
+        (err) => {
+          onErrorRef.current?.(err);
+        },
+      );
+
       gain.connect(context.destination);
 
       refs.current = {

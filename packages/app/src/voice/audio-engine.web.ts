@@ -6,6 +6,12 @@ import type {
   AudioPlaybackSource,
 } from "@/voice/audio-engine-types";
 import { clampGain } from "@/voice/audio-gain";
+import {
+  CAPTURE_TARGET_SAMPLE_RATE,
+  MicCaptureProcessor,
+  createMicCaptureWorkletModule,
+  type MicCaptureFrameEvent,
+} from "@/voice/mic-capture-worklet";
 
 interface QueuedAudio {
   audio: AudioPlaybackSource;
@@ -108,7 +114,7 @@ export function createAudioEngine(
     captureContext: AudioContext | null;
     stream: MediaStream | null;
     source: MediaStreamAudioSourceNode | null;
-    processor: ScriptProcessorNode | null;
+    processor: ScriptProcessorNode | MicCaptureProcessor | null;
     gain: GainNode | null;
     started: boolean;
     muted: boolean;
@@ -267,8 +273,16 @@ export function createAudioEngine(
   // touching the AudioContext or the `started`/watchdog state. Used both for a
   // full stop and for an in-place rebuild during watchdog recovery.
   function teardownCaptureNodes(): void {
+    if (refs.processor instanceof MicCaptureProcessor) {
+      refs.processor.dispose();
+    } else if (refs.processor) {
+      try {
+        refs.processor.disconnect();
+      } catch {
+        // Ignore best-effort teardown errors.
+      }
+    }
     try {
-      refs.processor?.disconnect();
       refs.source?.disconnect();
       refs.gain?.disconnect();
     } catch {
@@ -306,6 +320,50 @@ export function createAudioEngine(
     }
   }
 
+  // Shared by both capture paths: the worklet delivers pre-resampled 16 kHz
+  // PCM16 bytes and a precomputed RMS; the ScriptProcessor fallback computes
+  // the same two values itself before calling in. Proof of life is updated
+  // even while muted (audio still flows; mute only suppresses the upstream
+  // send), so muting never looks like a stall to the watchdog.
+  function handleCaptureFrame(rms: number, pcm: Uint8Array): void {
+    if (!refs.started) {
+      return;
+    }
+    refs.lastCaptureTickAt = Date.now();
+    const normalized = Math.min(1, Math.max(0, rms * 2));
+    callbacks.onVolumeLevel(normalized);
+
+    if (refs.muted) {
+      return;
+    }
+
+    callbacks.onCaptureData(pcm);
+  }
+
+  function buildScriptProcessorFallback(
+    context: AudioContext,
+    source: MediaStreamAudioSourceNode,
+    gain: GainNode,
+  ): ScriptProcessorNode {
+    const processor = context.createScriptProcessor(4096, 1, 1);
+    processor.onaudioprocess = (event) => {
+      const input = event.inputBuffer.getChannelData(0);
+      let sumSquares = 0;
+      for (let i = 0; i < input.length; i += 1) {
+        const sample = input[i];
+        sumSquares += sample * sample;
+      }
+      const rms = Math.sqrt(sumSquares / Math.max(1, input.length));
+      handleCaptureFrame(
+        rms,
+        resampleToPcm16(input, context.sampleRate, CAPTURE_TARGET_SAMPLE_RATE),
+      );
+    };
+    source.connect(processor);
+    processor.connect(gain);
+    return processor;
+  }
+
   // (Re)build the mic → processor → gain graph on the capture context. Shared by
   // startCapture and the watchdog's recovery path. Sets `started` and seeds the
   // liveness clock; the caller owns validation and the watchdog lifecycle.
@@ -320,35 +378,35 @@ export function createAudioEngine(
       },
     });
     const source = context.createMediaStreamSource(stream);
-    const processor = context.createScriptProcessor(4096, 1, 1);
     const gain = context.createGain();
     gain.gain.value = 0;
 
-    processor.onaudioprocess = (event) => {
-      if (!refs.started) {
-        return;
+    let processor: ScriptProcessorNode | MicCaptureProcessor;
+    if (typeof context.audioWorklet !== "undefined" && typeof AudioWorkletNode !== "undefined") {
+      let micProcessor: MicCaptureProcessor | undefined;
+      try {
+        const url = await createMicCaptureWorkletModule(context);
+        micProcessor = new MicCaptureProcessor(context, source, url, (error) => {
+          callbacks.onError?.(error);
+        });
+        micProcessor.onaudioprocess = (event: MicCaptureFrameEvent) => {
+          handleCaptureFrame(event.rms, event.inputBuffer.getChannelData(0));
+        };
+        micProcessor.connect(gain);
+        processor = micProcessor;
+      } catch {
+        // AudioWorklet unsupported or module load failed (e.g. blocked blob:
+        // worker-src) - fall back to the deprecated but universal node. Dispose
+        // a partially-built worklet node so it never keeps delivering frames
+        // alongside the fallback.
+        micProcessor?.dispose();
+        processor = buildScriptProcessorFallback(context, source, gain);
       }
-      // Proof of life for the watchdog - updated even while muted (audio still
-      // flows; mute only suppresses the upstream send), so muting never looks
-      // like a stall.
-      refs.lastCaptureTickAt = Date.now();
+    } else {
+      processor = buildScriptProcessorFallback(context, source, gain);
+    }
 
-      const input = event.inputBuffer.getChannelData(0);
-      let sumSquares = 0;
-      for (let i = 0; i < input.length; i += 1) {
-        const sample = input[i];
-        sumSquares += sample * sample;
-      }
-      const rms = Math.sqrt(sumSquares / Math.max(1, input.length));
-      const normalized = Math.min(1, Math.max(0, rms * 2));
-      callbacks.onVolumeLevel(normalized);
-
-      if (refs.muted) {
-        return;
-      }
-
-      callbacks.onCaptureData(resampleToPcm16(input, context.sampleRate, 16000));
-    };
+    gain.connect(context.destination);
 
     // A track that ends (device change/unplug/OS reclaim) will never emit audio
     // again - recover immediately rather than waiting out the stall window.
@@ -363,10 +421,6 @@ export function createAudioEngine(
         { once: true },
       );
     }
-
-    source.connect(processor);
-    processor.connect(gain);
-    gain.connect(context.destination);
 
     refs.started = true;
     refs.lastCaptureTickAt = Date.now();
