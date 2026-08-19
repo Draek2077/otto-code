@@ -249,6 +249,7 @@ import { PushTokenStore } from "./push/token-store.js";
 import type { DevServerManager } from "./preview/dev-server-manager.js";
 import { BrainSession } from "./session/brain/brain-session.js";
 import { CommunicationsSession } from "./session/communications/communications-session.js";
+import { RunsSession } from "./session/runs/runs-session.js";
 import type { BrainManager } from "./brain/brain-manager.js";
 import type { BrainOpsManager } from "./brain/brain-ops-manager.js";
 import { readLaunchConfig, LaunchConfigError } from "./preview/launch-config.js";
@@ -300,40 +301,7 @@ import type { RunService } from "./orchestration/run-service.js";
 import type { GraphStore } from "./orchestration/graph-store.js";
 import type { NodeOutputStore } from "./orchestration/node-output.js";
 import type { PromptTemplateStore } from "./orchestration/prompt-template-store.js";
-import {
-  startUserOrchestration,
-  type StartUserOrchestrationInput,
-} from "./orchestration/user-orchestration.js";
 
-// Map the wire message onto the orchestration input, dropping absent optionals
-// (exactOptionalPropertyTypes). Module-level so the RPC handler stays under
-// the complexity ceiling.
-function buildStartUserOrchestrationInput(
-  msg: Extract<SessionInboundMessage, { type: "runs.start.request" }>,
-): StartUserOrchestrationInput {
-  return {
-    flavor: msg.flavor,
-    cwd: msg.cwd,
-    ...(msg.workspaceId !== undefined ? { workspaceId: msg.workspaceId } : {}),
-    ...(msg.title !== undefined ? { title: msg.title } : {}),
-    ...(msg.description !== undefined ? { description: msg.description } : {}),
-    ...(msg.orchestratorPersonalityId !== undefined
-      ? { orchestratorPersonalityId: msg.orchestratorPersonalityId }
-      : {}),
-    ...(msg.orchestratorProvider !== undefined
-      ? { orchestratorProvider: msg.orchestratorProvider }
-      : {}),
-    ...(msg.orchestratorModel !== undefined ? { orchestratorModel: msg.orchestratorModel } : {}),
-    ...(msg.orchestratorThinkingOptionId !== undefined
-      ? { orchestratorThinkingOptionId: msg.orchestratorThinkingOptionId }
-      : {}),
-    ...(msg.prompt !== undefined ? { prompt: msg.prompt } : {}),
-    ...(msg.graphId !== undefined ? { graphId: msg.graphId } : {}),
-    ...(msg.graphInputs !== undefined ? { graphInputs: msg.graphInputs } : {}),
-    ...(msg.draft !== undefined ? { draft: msg.draft } : {}),
-    ...(msg.runId !== undefined ? { runId: msg.runId } : {}),
-  };
-}
 import type { GitHostingResolver } from "../services/git-hosting/resolver.js";
 import {
   createGitHubService,
@@ -856,10 +824,6 @@ export class Session {
   private readonly solutionService: SolutionService;
 
   private agentManager: AgentManager;
-  private readonly runService: RunService | null | undefined;
-  private readonly graphStore: GraphStore | null | undefined;
-  private readonly nodeOutputStore: NodeOutputStore | null | undefined;
-  private readonly promptTemplateStore: PromptTemplateStore | null | undefined;
   private readonly agentStorage: AgentStorage;
   private readonly projectRegistry: ProjectRegistry;
   private readonly workspaceRegistry: WorkspaceRegistry;
@@ -947,6 +911,7 @@ export class Session {
   private readonly previewDevServers: DevServerManager | null;
   private readonly brainSession: BrainSession;
   private readonly communicationsSession: CommunicationsSession;
+  private readonly runsSession: RunsSession;
   private readonly brainManager: BrainManager | null;
   private readonly brainOpsManager: BrainOpsManager | null;
   private readonly providerSnapshotManager: ProviderSnapshotManager;
@@ -1133,10 +1098,6 @@ export class Session {
       },
     });
     this.agentManager = agentManager;
-    this.runService = runService;
-    this.graphStore = graphStore;
-    this.nodeOutputStore = nodeOutputStore;
-    this.promptTemplateStore = promptTemplateStore;
     this.agentStorage = agentStorage;
     this.projectRegistry = projectRegistry;
     this.workspaceRegistry = workspaceRegistry;
@@ -1462,6 +1423,31 @@ export class Session {
     });
     this.providerSnapshotManager = providerSnapshotManager;
     this.agentAutoTitle = this.resolveAgentAutoTitle(agentAutoTitle);
+    this.runsSession = new RunsSession({
+      host: {
+        emit: (msg) => this.emit(msg),
+        createOttoWorktree: (input, worktreeOptions) =>
+          this.createOttoWorktreeWorkflow(input, worktreeOptions),
+        scheduleAutoTitle: (request) =>
+          this.agentAutoTitle.schedule({
+            ...request,
+            currentSelection: this.getFocusedAgentSelectionForCwd(request.cwd),
+          }),
+      },
+      runService,
+      graphStore,
+      nodeOutputStore,
+      promptTemplateStore,
+      agentManager: this.agentManager,
+      agentStorage: this.agentStorage,
+      terminalManager: this.terminalManager,
+      providerSnapshotManager: this.providerSnapshotManager,
+      daemonConfigStore: this.daemonConfigStore,
+      agentUpdates: this.agentUpdates,
+      ottoHome: this.ottoHome,
+      worktreesRoot: this.worktreesRoot,
+      logger: this.sessionLogger,
+    });
     this.getActivityRollups = getActivityRollups;
     this.getUsageLogPage = getUsageLogPage;
     this.resetActivityStats = resetActivityStats;
@@ -2565,6 +2551,7 @@ export class Session {
       this.dispatchTerminalMessage(msg) ??
       this.dispatchChatScheduleLoopMessage(msg) ??
       this.dispatchArtifactMessage(msg) ??
+      this.runsSession.dispatch(msg) ??
       this.dispatchMiscMessage(msg)
     );
   }
@@ -2883,7 +2870,8 @@ export class Session {
         worktreesRoot: this.worktreesRoot,
         terminalManager: this.terminalManager,
         providerSnapshotManager: this.providerSnapshotManager,
-        createOttoWorktree: (input, options) => this.createOttoWorktreeWorkflow(input, options),
+        createOttoWorktree: (input, worktreeOptions) =>
+          this.createOttoWorktreeWorkflow(input, worktreeOptions),
         // No-op today: the explicit `title` below makes createAgentCommand skip
         // auto-titling (explicitTitle guard). Wired so a future caller that
         // omits the title still gets an AI-written chat name.
@@ -3683,36 +3671,6 @@ export class Session {
         return this.checkoutSession.handleCheckoutGitFileBlameRequest(msg);
       case "checkout.git.get_file_origin.request":
         return this.checkoutSession.handleCheckoutGitFileOriginRequest(msg);
-      case "runs.get_snapshot.request": {
-        this.handleRunsGetSnapshotRequest(msg);
-        return undefined;
-      }
-      case "runs.gate_respond.request": {
-        this.handleRunsGateRespondRequest(msg);
-        return undefined;
-      }
-      case "runs.cancel.request": {
-        this.handleRunsCancelRequest(msg);
-        return undefined;
-      }
-      case "runs.clear.request":
-        return this.handleRunsClearRequest(msg);
-      case "runs.delete.request":
-        return this.handleRunsDeleteRequest(msg);
-      case "runs.graphs.list.request":
-        return this.handleRunsGraphsListRequest(msg);
-      case "runs.graphs.save.request":
-        return this.handleRunsGraphsSaveRequest(msg);
-      case "runs.graphs.delete.request":
-        return this.handleRunsGraphsDeleteRequest(msg);
-      case "runs.templates.list.request":
-        return this.handleRunsTemplatesListRequest(msg);
-      case "runs.templates.save.request":
-        return this.handleRunsTemplatesSaveRequest(msg);
-      case "runs.templates.delete.request":
-        return this.handleRunsTemplatesDeleteRequest(msg);
-      case "runs.start.request":
-        return this.handleRunsStartRequest(msg);
       case "kanban.boards.list.request":
         return this.kanbanSession.handleBoardsListRequest(msg);
       case "kanban.board.get.request":
@@ -11302,281 +11260,6 @@ export class Session {
   /**
    * Emit a message to the client
    */
-  private handleRunsGetSnapshotRequest(
-    msg: Extract<SessionInboundMessage, { type: "runs.get_snapshot.request" }>,
-  ): void {
-    const runs = this.runService?.listRuns() ?? [];
-    this.emit({
-      type: "runs.get_snapshot.response",
-      payload: { runs, requestId: msg.requestId },
-    });
-  }
-
-  private handleRunsGateRespondRequest(
-    msg: Extract<SessionInboundMessage, { type: "runs.gate_respond.request" }>,
-  ): void {
-    const accepted =
-      this.runService?.respondToGate(msg.runId, {
-        approved: msg.approved,
-        ...(msg.note !== undefined ? { note: msg.note } : {}),
-      }) ?? false;
-    this.emit({
-      type: "runs.gate_respond.response",
-      payload: { runId: msg.runId, accepted, requestId: msg.requestId },
-    });
-  }
-
-  private handleRunsCancelRequest(
-    msg: Extract<SessionInboundMessage, { type: "runs.cancel.request" }>,
-  ): void {
-    const canceled = this.runService?.cancelRun(msg.runId) ?? false;
-    this.emit({
-      type: "runs.cancel.response",
-      payload: { runId: msg.runId, canceled, requestId: msg.requestId },
-    });
-  }
-
-  private async handleRunsClearRequest(
-    msg: Extract<SessionInboundMessage, { type: "runs.clear.request" }>,
-  ): Promise<void> {
-    const runIds = (await this.runService?.clearFinishedRuns()) ?? [];
-    this.emit({
-      type: "runs.clear.response",
-      payload: { runIds, requestId: msg.requestId },
-    });
-  }
-
-  private async handleRunsDeleteRequest(
-    msg: Extract<SessionInboundMessage, { type: "runs.delete.request" }>,
-  ): Promise<void> {
-    const result = (await this.runService?.deleteRun(msg.runId)) ?? {
-      deleted: false,
-      error: "Orchestration is not available on this host",
-    };
-    this.emit({
-      type: "runs.delete.response",
-      payload: {
-        ...(result.deleted ? { runId: msg.runId } : {}),
-        ...(result.error ? { error: result.error } : {}),
-        requestId: msg.requestId,
-      },
-    });
-  }
-
-  // ── Orchestration graphs (projects/orchestration-graphs) ──────────────────
-
-  private async handleRunsGraphsListRequest(
-    msg: Extract<SessionInboundMessage, { type: "runs.graphs.list.request" }>,
-  ): Promise<void> {
-    const graphs = (await this.graphStore?.list()) ?? [];
-    this.emit({
-      type: "runs.graphs.list.response",
-      payload: { graphs, requestId: msg.requestId },
-    });
-  }
-
-  private async handleRunsGraphsSaveRequest(
-    msg: Extract<SessionInboundMessage, { type: "runs.graphs.save.request" }>,
-  ): Promise<void> {
-    try {
-      if (!this.graphStore) {
-        throw new Error("Orchestration graphs are not available on this daemon.");
-      }
-      // A saved graph is user-owned: saving over a built-in id persists a plain
-      // copy (builtIn stripped), so starter graphs are copy-on-edit.
-      const { builtIn: _builtIn, ...rest } = msg.graph;
-      const now = new Date().toISOString();
-      const graph = {
-        ...rest,
-        createdAt: msg.graph.createdAt ?? now,
-        updatedAt: now,
-      };
-      await this.graphStore.save(graph);
-      this.emit({
-        type: "runs.graphs.save.response",
-        payload: { graph, requestId: msg.requestId },
-      });
-    } catch (error) {
-      this.emit({
-        type: "runs.graphs.save.response",
-        payload: {
-          error: error instanceof Error ? error.message : String(error),
-          requestId: msg.requestId,
-        },
-      });
-    }
-  }
-
-  private async handleRunsGraphsDeleteRequest(
-    msg: Extract<SessionInboundMessage, { type: "runs.graphs.delete.request" }>,
-  ): Promise<void> {
-    try {
-      if (!this.graphStore) {
-        throw new Error("Orchestration graphs are not available on this daemon.");
-      }
-      const existing = await this.graphStore.get(msg.graphId);
-      if (existing?.builtIn) {
-        throw new Error("Built-in starter graphs can't be deleted.");
-      }
-      await this.graphStore.delete(msg.graphId);
-      this.emit({
-        type: "runs.graphs.delete.response",
-        payload: { deleted: existing !== null, requestId: msg.requestId },
-      });
-    } catch (error) {
-      this.emit({
-        type: "runs.graphs.delete.response",
-        payload: {
-          deleted: false,
-          error: error instanceof Error ? error.message : String(error),
-          requestId: msg.requestId,
-        },
-      });
-    }
-  }
-
-  // ── Prompt templates (projects/orchestration-graphs) ──────────────────────
-
-  private async handleRunsTemplatesListRequest(
-    msg: Extract<SessionInboundMessage, { type: "runs.templates.list.request" }>,
-  ): Promise<void> {
-    const templates = (await this.promptTemplateStore?.list()) ?? [];
-    this.emit({
-      type: "runs.templates.list.response",
-      payload: { templates, requestId: msg.requestId },
-    });
-  }
-
-  private async handleRunsTemplatesSaveRequest(
-    msg: Extract<SessionInboundMessage, { type: "runs.templates.save.request" }>,
-  ): Promise<void> {
-    try {
-      if (!this.promptTemplateStore) {
-        throw new Error("Prompt templates are not available on this daemon.");
-      }
-      // Copy-on-edit, exactly as graphs do: saving over a bundled template
-      // persists a plain user-owned copy.
-      const { builtIn: _builtIn, ...rest } = msg.template;
-      const now = new Date().toISOString();
-      const template = {
-        ...rest,
-        createdAt: msg.template.createdAt ?? now,
-        updatedAt: now,
-      };
-      await this.promptTemplateStore.save(template);
-      this.emit({
-        type: "runs.templates.save.response",
-        payload: { template, requestId: msg.requestId },
-      });
-    } catch (error) {
-      this.emit({
-        type: "runs.templates.save.response",
-        payload: {
-          error: error instanceof Error ? error.message : String(error),
-          requestId: msg.requestId,
-        },
-      });
-    }
-  }
-
-  private async handleRunsTemplatesDeleteRequest(
-    msg: Extract<SessionInboundMessage, { type: "runs.templates.delete.request" }>,
-  ): Promise<void> {
-    try {
-      if (!this.promptTemplateStore) {
-        throw new Error("Prompt templates are not available on this daemon.");
-      }
-      const existing = await this.promptTemplateStore.get(msg.templateId);
-      if (existing?.builtIn) {
-        throw new Error("Bundled templates can't be deleted.");
-      }
-      await this.promptTemplateStore.delete(msg.templateId);
-      this.emit({
-        type: "runs.templates.delete.response",
-        payload: { deleted: existing !== null, requestId: msg.requestId },
-      });
-    } catch (error) {
-      this.emit({
-        type: "runs.templates.delete.response",
-        payload: {
-          deleted: false,
-          error: error instanceof Error ? error.message : String(error),
-          requestId: msg.requestId,
-        },
-      });
-    }
-  }
-
-  private async handleRunsStartRequest(
-    msg: Extract<SessionInboundMessage, { type: "runs.start.request" }>,
-  ): Promise<void> {
-    try {
-      if (!this.runService || !this.graphStore) {
-        throw new Error("Orchestrations are not available on this daemon.");
-      }
-      const result = await startUserOrchestration(
-        {
-          runService: this.runService,
-          graphStore: this.graphStore,
-          agentManager: this.agentManager,
-          createAgentDeps: {
-            agentManager: this.agentManager,
-            agentStorage: this.agentStorage,
-            logger: this.sessionLogger,
-            ottoHome: this.ottoHome,
-            ...(this.worktreesRoot ? { worktreesRoot: this.worktreesRoot } : {}),
-            terminalManager: this.terminalManager,
-            providerSnapshotManager: this.providerSnapshotManager,
-            createOttoWorktree: (input, options) => this.createOttoWorktreeWorkflow(input, options),
-            scheduleAutoTitle: (request) =>
-              this.agentAutoTitle.schedule({
-                ...request,
-                currentSelection: this.getFocusedAgentSelectionForCwd(request.cwd),
-              }),
-          },
-          logger: this.sessionLogger,
-          getPersonalityRoster: () =>
-            this.daemonConfigStore.get().agentPersonalities?.personalities ?? [],
-          getAgentTeams: () => this.daemonConfigStore.get().agentTeams,
-          listProviderEntries: (cwd) =>
-            this.providerSnapshotManager.listProviders({ cwd, wait: true }),
-          ...(this.nodeOutputStore ? { nodeOutputStore: this.nodeOutputStore } : {}),
-          ...(this.promptTemplateStore ? { promptTemplateStore: this.promptTemplateStore } : {}),
-        },
-        buildStartUserOrchestrationInput(msg),
-      );
-      // Surface the new orchestrator chat to every client immediately (same
-      // forwarding the suggested-task spawn path does), and report the
-      // workspace the daemon resolved it into so the client can navigate.
-      let workspaceId: string | undefined;
-      if (result.agentId) {
-        const snapshot = this.agentManager.getAgent(result.agentId);
-        if (snapshot) {
-          workspaceId = snapshot.workspaceId ?? undefined;
-          await this.agentUpdates.forwardLiveAgent(snapshot);
-        }
-      }
-      this.emit({
-        type: "runs.start.response",
-        payload: {
-          ...(result.runId ? { runId: result.runId } : {}),
-          ...(result.agentId ? { agentId: result.agentId } : {}),
-          ...(workspaceId ? { workspaceId } : {}),
-          requestId: msg.requestId,
-        },
-      });
-    } catch (error) {
-      this.sessionLogger.error({ err: error }, "runs.start failed");
-      this.emit({
-        type: "runs.start.response",
-        payload: {
-          error: error instanceof Error ? error.message : String(error),
-          requestId: msg.requestId,
-        },
-      });
-    }
-  }
-
   private emit(msg: SessionOutboundMessage): void {
     if (msg.type !== "rpc_error" && !isSessionRpcAllowed(this.scopes, msg.type)) {
       return;
