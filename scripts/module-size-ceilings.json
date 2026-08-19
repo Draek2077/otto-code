@@ -15,7 +15,7 @@
   ],
   "ceilings": {
     "packages/protocol/src/messages.ts": 8977,
-    "packages/server/src/server/session.ts": 12001,
+    "packages/server/src/server/session.ts": 11721,
     "packages/client/src/daemon-client.ts": 9737,
     "packages/app/src/screens/workspace/workspace-screen.tsx": 7836,
     "packages/server/src/server/agent/agent-manager.ts": 7745,
