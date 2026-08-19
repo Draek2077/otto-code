@@ -1,5 +1,35 @@
 import { z } from "zod";
 import {
+  PersonalityMemoryListRequestMessageSchema,
+  PersonalityMemoryListResponseMessageSchema,
+  PersonalityMemoryUpdateRequestMessageSchema,
+  PersonalityMemoryUpdateResponseMessageSchema,
+  PersonalityMemoryTransferRequestMessageSchema,
+  PersonalityMemoryTransferResponseMessageSchema,
+  PersonalityMemoryStatsRequestMessageSchema,
+  PersonalityMemoryStatsResponseMessageSchema,
+} from "./personality-schemas.js";
+import {
+  MeetingsTranscriptsListRequestSchema,
+  MeetingsTranscriptsListResponseSchema,
+  MeetingsTranscriptsCreateRequestSchema,
+  MeetingsTranscriptsCreateResponseSchema,
+  MeetingsTranscriptsUpdateRequestSchema,
+  MeetingsTranscriptsUpdateResponseSchema,
+  MeetingsTranscriptsDeleteRequestSchema,
+  MeetingsTranscriptsDeleteResponseSchema,
+} from "./meetings.js";
+import {
+  PreviewListConfigRequestSchema,
+  PreviewStartRequestSchema,
+  PreviewBindTabRequestSchema,
+  PreviewStopRequestSchema,
+  PreviewListConfigResponseSchema,
+  PreviewStartResponseSchema,
+  PreviewBindTabResponseSchema,
+  PreviewStopResponseSchema,
+} from "./preview.js";
+import {
   BrainLogsWatchRequestSchema,
   BrainLogLineAddedStatusPayloadSchema,
   BrainBenchRequestSchema,
@@ -522,32 +552,6 @@ export const MutableKanbanConfigSchema = z
   .passthrough();
 
 export type MutableKanbanConfig = z.infer<typeof MutableKanbanConfigSchema>;
-
-// Canonical personality roles, in display order. Kept as an exported const so
-// the daemon and app share one vocabulary, but the wire schema stores roles as
-// plain strings (below) - adding a role later must never break an older peer's
-// parsing. Consumers filter incoming role arrays to this known set. The retired
-// "worker" role is mapped to "coder" on the way in (see LEGACY_ROLE_ALIASES in
-// agent-personalities.ts) so personalities persisted before the split keep their
-// role rather than silently losing it.
-export const PERSONALITY_ROLES = [
-  // Surfaces - the interactive / host-facing entry points.
-  "chatter",
-  "artificer",
-  "scheduler",
-  // Thinking workers - read-only, return structured findings, never edit.
-  "researcher",
-  "planner",
-  "judger",
-  "advisor",
-  // Making workers - produce code, design, or short text.
-  "coder",
-  "designer",
-  "writer",
-  // Conductor - the sole role whose whole job is planning and driving a team.
-  "orchestrator",
-] as const;
-export type PersonalityRole = (typeof PERSONALITY_ROLES)[number];
 
 // Two glow colors for the personality's thinking spinner (BlobLoader glowA/glowB).
 const AgentPersonalitySpinnerSchema = z
@@ -2951,79 +2955,6 @@ export type CommunicationsRoomReactionSetResponse = z.infer<
   typeof CommunicationsRoomReactionSetResponseSchema
 >;
 
-// Daemon-owned, provider-neutral meeting transcript library. The initial
-// recorder is Zoom-specific, but the retained data model deliberately is not.
-// Gated by server_info.features.meetingTranscripts.
-export const MeetingTranscriptSchema = z.object({
-  id: z.string(),
-  provider: z.string(),
-  title: z.string(),
-  content: z.string(),
-  occurredAt: z.string(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
-
-export const MeetingsTranscriptsListRequestSchema = z.object({
-  type: z.literal("meetings.transcripts.list.request"),
-  requestId: z.string(),
-});
-
-export const MeetingsTranscriptsListResponseSchema = z.object({
-  type: z.literal("meetings.transcripts.list.response"),
-  payload: z.object({ requestId: z.string(), records: z.array(MeetingTranscriptSchema) }),
-});
-
-export const MeetingsTranscriptsCreateRequestSchema = z.object({
-  type: z.literal("meetings.transcripts.create.request"),
-  requestId: z.string(),
-  provider: z.string().min(1).max(48),
-  title: z.string().min(1).max(160),
-  content: z.string().min(1).max(5_000_000),
-  occurredAt: z.string().optional(),
-});
-
-export const MeetingsTranscriptsCreateResponseSchema = z.object({
-  type: z.literal("meetings.transcripts.create.response"),
-  payload: z.object({ requestId: z.string(), record: MeetingTranscriptSchema }),
-});
-
-export const MeetingsTranscriptsUpdateRequestSchema = z.object({
-  type: z.literal("meetings.transcripts.update.request"),
-  requestId: z.string(),
-  id: z.string(),
-  title: z.string().min(1).max(160).optional(),
-  content: z.string().min(1).max(5_000_000).optional(),
-});
-
-export const MeetingsTranscriptsUpdateResponseSchema = z.object({
-  type: z.literal("meetings.transcripts.update.response"),
-  payload: z.object({ requestId: z.string(), record: MeetingTranscriptSchema.nullable() }),
-});
-
-export const MeetingsTranscriptsDeleteRequestSchema = z.object({
-  type: z.literal("meetings.transcripts.delete.request"),
-  requestId: z.string(),
-  id: z.string(),
-});
-
-export const MeetingsTranscriptsDeleteResponseSchema = z.object({
-  type: z.literal("meetings.transcripts.delete.response"),
-  payload: z.object({ requestId: z.string(), deleted: z.boolean() }),
-});
-
-export type MeetingTranscript = z.infer<typeof MeetingTranscriptSchema>;
-export type MeetingsTranscriptsListResponse = z.infer<typeof MeetingsTranscriptsListResponseSchema>;
-export type MeetingsTranscriptsCreateResponse = z.infer<
-  typeof MeetingsTranscriptsCreateResponseSchema
->;
-export type MeetingsTranscriptsUpdateResponse = z.infer<
-  typeof MeetingsTranscriptsUpdateResponseSchema
->;
-export type MeetingsTranscriptsDeleteResponse = z.infer<
-  typeof MeetingsTranscriptsDeleteResponseSchema
->;
-
 // Settings pages use this generic, daemon-owned projection to render reusable
 // integration connection state. OAuth drivers and API-key entry remain outside
 // the wire contract until their provider-specific implementation exists.
@@ -4356,136 +4287,6 @@ export const ContextFindingsFixResponseMessageSchema = z.object({
 // See docs/agent-personalities.md § Memory.
 // ---------------------------------------------------------------------------
 
-// Plain strings on the wire, like personality roles and effort levels, so the
-// daemon can grow the vocabulary without breaking old peers. Logical values:
-// scope "project" | "global"; source "agent" | "user" | "review" | "transfer".
-export const PersonalityMemoryEntrySchema = z
-  .object({
-    id: z.string(),
-    text: z.string(),
-    scope: z.string(),
-    // Absolute, daemon-side. Present only on project-scoped entries.
-    projectRoot: z.string().optional(),
-    createdAt: z.string(),
-    updatedAt: z.string(),
-    source: z.string(),
-    // How many times the lesson has been restated. Drives injection order and
-    // is shown in the brief, because a repeatedly-relearned gotcha is stronger
-    // evidence than a one-off observation.
-    reinforcedCount: z.number().optional(),
-    transferredFrom: z.string().optional(),
-  })
-  .passthrough();
-
-export const PersonalityMemoryListRequestMessageSchema = z.object({
-  type: z.literal("personality.memory.list.request"),
-  requestId: z.string(),
-  personalityId: z.string(),
-  // Which project's lessons count as in-scope for the returned brief. Prefer
-  // `workspaceId` and let the daemon resolve the root: a client computing repo
-  // roots would disagree with the daemon the moment a worktree is involved.
-  workspaceId: z.string().optional(),
-  // Explicit root, for callers with no workspace. Ignored when `workspaceId`
-  // resolves. Omitted (with no workspace) means global lessons only.
-  projectRoot: z.string().optional(),
-});
-
-export const PersonalityMemoryListResponseMessageSchema = z.object({
-  type: z.literal("personality.memory.list.response"),
-  payload: z.object({
-    requestId: z.string(),
-    personalityId: z.string(),
-    personalityName: z.string(),
-    /** Whether this personality is accruing (the `memoryEnabled` switch). */
-    enabled: z.boolean(),
-    /** Every stored entry, including other projects' - the UI shows them all. */
-    entries: z.array(PersonalityMemoryEntrySchema),
-    // The EXACT text the daemon would inject for `projectRoot`, not a
-    // reconstruction. Memory is only trustworthy if it is inspectable, and the
-    // only way the shown text cannot drift from the injected text is for both
-    // to come from one composer.
-    brief: z.string(),
-    briefTokens: z.number(),
-    /** Entries the injection budget cut, so the UI can say so. */
-    briefOmittedCount: z.number().optional(),
-    // The root the brief was composed for, so the UI can tell a project-scoped
-    // entry that applies here from one belonging to another project. Without it
-    // every project entry looks the same and an empty brief next to a list of
-    // lessons reads as a bug. Absent when the request named no workspace.
-    projectRoot: z.string().optional(),
-  }),
-});
-
-// One write RPC covers add / edit / delete: no `entryId` = add a new lesson,
-// `drop: true` = forget one. The user-facing editing path from Context
-// Management (charter §2.4).
-export const PersonalityMemoryUpdateRequestMessageSchema = z.object({
-  type: z.literal("personality.memory.update.request"),
-  requestId: z.string(),
-  personalityId: z.string(),
-  entryId: z.string().optional(),
-  text: z.string().optional(),
-  scope: z.string().optional(),
-  // Which project a `scope: "project"` write binds to. Same rule as the list
-  // request: prefer `workspaceId` and let the daemon resolve the root, because a
-  // project-scoped entry whose root does not match the daemon's resolution is
-  // filtered out of every brief and is therefore stored but never sent.
-  workspaceId: z.string().optional(),
-  // Explicit root, for callers with no workspace. Ignored when `workspaceId`
-  // resolves.
-  projectRoot: z.string().optional(),
-  drop: z.boolean().optional(),
-});
-
-export const PersonalityMemoryUpdateResponseMessageSchema = z.object({
-  type: z.literal("personality.memory.update.response"),
-  payload: z.object({
-    requestId: z.string(),
-    ok: z.boolean(),
-    error: z.string().optional(),
-  }),
-});
-
-// Deleting a personality must never silently destroy what it learned, so the
-// delete flow resolves here first: `mode: "transfer"` moves the lessons to
-// `toPersonalityId` (merging near-duplicates), `mode: "delete"` discards them.
-export const PersonalityMemoryTransferRequestMessageSchema = z.object({
-  type: z.literal("personality.memory.transfer.request"),
-  requestId: z.string(),
-  fromPersonalityId: z.string(),
-  toPersonalityId: z.string().optional(),
-  mode: z.string(),
-});
-
-export const PersonalityMemoryTransferResponseMessageSchema = z.object({
-  type: z.literal("personality.memory.transfer.response"),
-  payload: z.object({
-    requestId: z.string(),
-    ok: z.boolean(),
-    /** Entries that landed as new rows in the destination. */
-    transferred: z.number().optional(),
-    /** Entries that merged into a lesson the destination already knew. */
-    merged: z.number().optional(),
-    error: z.string().optional(),
-  }),
-});
-
-// Per-personality lesson counts. Its own RPC over its own file, mirroring
-// agentPersonalities.get_stats - counts must not ride the daemon-config
-// broadcast, or every recorded lesson would fan a config change to every client.
-export const PersonalityMemoryStatsRequestMessageSchema = z.object({
-  type: z.literal("personality.memory.stats.request"),
-  requestId: z.string(),
-});
-
-export const PersonalityMemoryStatsResponseMessageSchema = z.object({
-  type: z.literal("personality.memory.stats.response"),
-  payload: z.object({
-    requestId: z.string(),
-    counts: z.record(z.string(), z.number()),
-  }),
-});
-
 // Aggregate outcome for a start/dismiss over one or more tasks. `succeeded`/
 // `failed` count the tasks acted on so the client can report "Started 3 tasks";
 // `error` collects any per-task failure messages (the failed tasks' chips stay).
@@ -5372,37 +5173,6 @@ export const CheckoutGithubGetCheckDetailsRequestSchema =
 export const CheckoutPrStatusRequestSchema = z.object({
   type: z.literal("checkout_pr_status_request"),
   cwd: z.string(),
-  requestId: z.string(),
-});
-
-/**
- * UI-initiated preview RPCs (the Preview toolbar button), distinct from the
- * agent-facing preview_* tools in packages/server/src/server/preview/preview-tools.ts.
- * Both sides drive the same DevServerManager; only the caller differs.
- */
-export const PreviewListConfigRequestSchema = z.object({
-  type: z.literal("preview.list_config.request"),
-  cwd: z.string(),
-  requestId: z.string(),
-});
-
-export const PreviewStartRequestSchema = z.object({
-  type: z.literal("preview.start.request"),
-  cwd: z.string(),
-  name: z.string(),
-  requestId: z.string(),
-});
-
-export const PreviewBindTabRequestSchema = z.object({
-  type: z.literal("preview.bind_tab.request"),
-  serverId: z.string(),
-  browserId: z.string(),
-  requestId: z.string(),
-});
-
-export const PreviewStopRequestSchema = z.object({
-  type: z.literal("preview.stop.request"),
-  serverId: z.string(),
   requestId: z.string(),
 });
 
@@ -10031,82 +9801,6 @@ export const CheckoutGithubSetAutoMergeResponseSchema = z.object({
   }),
 });
 
-export const PreviewConfiguredServerSchema = z.object({
-  name: z.string(),
-  port: z.number().int().positive(),
-});
-
-export const PreviewServerStatusSchema = z.enum(["starting", "running", "exited"]);
-
-export const PreviewRunningServerSchema = z.object({
-  serverId: z.string(),
-  name: z.string(),
-  url: z.string(),
-  port: z.number().int().positive(),
-  status: PreviewServerStatusSchema,
-});
-
-export const PreviewListConfigResponseSchema = z.object({
-  type: z.literal("preview.list_config.response"),
-  payload: z.object({
-    cwd: z.string(),
-    configured: z.boolean(),
-    servers: z.array(PreviewConfiguredServerSchema),
-    runningServers: z.array(PreviewRunningServerSchema).optional(),
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
-});
-
-// Preview servers the daemon did not spawn (port-probed from launch.json, e.g.
-// a dev server the user started by hand) are addressed by an "ext:<port>" id.
-// Stopping one tree-kills whatever process owns the port, so bulk cleanup paths
-// must skip external servers and only explicit user action may stop them.
-export const EXTERNAL_PREVIEW_SERVER_ID_PREFIX = "ext:";
-
-export function isExternalPreviewServerId(serverId: string): boolean {
-  return serverId.startsWith(EXTERNAL_PREVIEW_SERVER_ID_PREFIX);
-}
-
-export const PreviewServerSummaryPayloadSchema = z.object({
-  serverId: z.string(),
-  name: z.string(),
-  url: z.string(),
-  port: z.number().int().positive(),
-  status: z.enum(["starting", "running", "exited"]),
-  boundBrowserId: z.string().nullable(),
-});
-
-export const PreviewStartResponseSchema = z.object({
-  type: z.literal("preview.start.response"),
-  payload: z.object({
-    cwd: z.string(),
-    success: z.boolean(),
-    server: PreviewServerSummaryPayloadSchema.nullable(),
-    reused: z.boolean(),
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
-});
-
-export const PreviewBindTabResponseSchema = z.object({
-  type: z.literal("preview.bind_tab.response"),
-  payload: z.object({
-    success: z.boolean(),
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
-});
-
-export const PreviewStopResponseSchema = z.object({
-  type: z.literal("preview.stop.response"),
-  payload: z.object({
-    success: z.boolean(),
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
-});
-
 export const CheckoutCommitsListResponseSchema = z.object({
   type: z.literal("checkout.commits.list.response"),
   payload: z.object({
@@ -12507,19 +12201,6 @@ export type ContextEdgeConvertResponseMessage = z.infer<
 export type ContextFindingsFixResponseMessage = z.infer<
   typeof ContextFindingsFixResponseMessageSchema
 >;
-export type PersonalityMemoryEntryPayload = z.infer<typeof PersonalityMemoryEntrySchema>;
-export type PersonalityMemoryListResponseMessage = z.infer<
-  typeof PersonalityMemoryListResponseMessageSchema
->;
-export type PersonalityMemoryUpdateResponseMessage = z.infer<
-  typeof PersonalityMemoryUpdateResponseMessageSchema
->;
-export type PersonalityMemoryTransferResponseMessage = z.infer<
-  typeof PersonalityMemoryTransferResponseMessageSchema
->;
-export type PersonalityMemoryStatsResponseMessage = z.infer<
-  typeof PersonalityMemoryStatsResponseMessageSchema
->;
 export type StatsActivityResetRequestMessage = z.infer<
   typeof StatsActivityResetRequestMessageSchema
 >;
@@ -12747,18 +12428,6 @@ export type CheckoutForgeGetCheckDetailsRequest = z.infer<
 export type CheckoutGithubGetCheckDetailsRequest = z.infer<
   typeof CheckoutGithubGetCheckDetailsRequestSchema
 >;
-export type PreviewListConfigRequest = z.infer<typeof PreviewListConfigRequestSchema>;
-export type PreviewConfiguredServer = z.infer<typeof PreviewConfiguredServerSchema>;
-export type PreviewRunningServer = z.infer<typeof PreviewRunningServerSchema>;
-export type PreviewServerStatus = z.infer<typeof PreviewServerStatusSchema>;
-export type PreviewListConfigResponse = z.infer<typeof PreviewListConfigResponseSchema>;
-export type PreviewStartRequest = z.infer<typeof PreviewStartRequestSchema>;
-export type PreviewServerSummaryPayload = z.infer<typeof PreviewServerSummaryPayloadSchema>;
-export type PreviewStartResponse = z.infer<typeof PreviewStartResponseSchema>;
-export type PreviewBindTabRequest = z.infer<typeof PreviewBindTabRequestSchema>;
-export type PreviewBindTabResponse = z.infer<typeof PreviewBindTabResponseSchema>;
-export type PreviewStopRequest = z.infer<typeof PreviewStopRequestSchema>;
-export type PreviewStopResponse = z.infer<typeof PreviewStopResponseSchema>;
 export type CheckoutCheckDetails = z.infer<typeof CheckoutCheckDetailsSchema>;
 export type CheckoutGithubCheckDetails = z.infer<typeof CheckoutGithubCheckDetailsSchema>;
 export type CheckoutPipeline = z.infer<typeof CheckoutPipelineSchema>;
@@ -13301,3 +12970,65 @@ export type {
   BrainSweepResponse,
   BrainTailscaleInfo,
 } from "./brain.js";
+
+export {
+  PreviewListConfigRequestSchema,
+  PreviewStartRequestSchema,
+  PreviewBindTabRequestSchema,
+  PreviewStopRequestSchema,
+  PreviewConfiguredServerSchema,
+  PreviewServerStatusSchema,
+  PreviewRunningServerSchema,
+  PreviewListConfigResponseSchema,
+  PreviewServerSummaryPayloadSchema,
+  PreviewStartResponseSchema,
+  PreviewBindTabResponseSchema,
+  PreviewStopResponseSchema,
+} from "./preview.js";
+export type {
+  PreviewListConfigRequest,
+  PreviewConfiguredServer,
+  PreviewRunningServer,
+  PreviewServerStatus,
+  PreviewListConfigResponse,
+  PreviewStartRequest,
+  PreviewServerSummaryPayload,
+  PreviewStartResponse,
+  PreviewBindTabRequest,
+  PreviewBindTabResponse,
+  PreviewStopRequest,
+  PreviewStopResponse,
+} from "./preview.js";
+
+export {
+  MeetingTranscriptSchema,
+  MeetingsTranscriptsListRequestSchema,
+  MeetingsTranscriptsListResponseSchema,
+  MeetingsTranscriptsCreateRequestSchema,
+  MeetingsTranscriptsCreateResponseSchema,
+  MeetingsTranscriptsUpdateRequestSchema,
+  MeetingsTranscriptsUpdateResponseSchema,
+  MeetingsTranscriptsDeleteRequestSchema,
+  MeetingsTranscriptsDeleteResponseSchema,
+} from "./meetings.js";
+
+export {
+  PersonalityMemoryEntrySchema,
+  PersonalityMemoryListRequestMessageSchema,
+  PersonalityMemoryListResponseMessageSchema,
+  PersonalityMemoryUpdateRequestMessageSchema,
+  PersonalityMemoryUpdateResponseMessageSchema,
+  PersonalityMemoryTransferRequestMessageSchema,
+  PersonalityMemoryTransferResponseMessageSchema,
+  PersonalityMemoryStatsRequestMessageSchema,
+  PersonalityMemoryStatsResponseMessageSchema,
+} from "./personality-schemas.js";
+export type {
+  PersonalityRole,
+  PersonalityMemoryEntryPayload,
+  PersonalityMemoryListResponseMessage,
+  PersonalityMemoryUpdateResponseMessage,
+  PersonalityMemoryTransferResponseMessage,
+  PersonalityMemoryStatsResponseMessage,
+} from "./personality-schemas.js";
+export { PERSONALITY_ROLES } from "./personality-schemas.js";
