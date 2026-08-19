@@ -937,6 +937,8 @@ export const fr: TranslationResources = {
         closeBelow: "Fermer les onglets ci-dessous",
         closeLeft: "Près de la gauche",
         closeRight: "Près de la droite",
+        closeUp: "Fermer vers le haut",
+        closeDown: "Fermer vers le bas",
         closeOthers: "Fermer les autres onglets",
         reloadAgent: "Agent de rechargement",
         reloadAgentTooltip:

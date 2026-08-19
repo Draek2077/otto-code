@@ -919,6 +919,8 @@ export const zhCN: TranslationResources = {
         closeBelow: "关闭下方标签",
         closeLeft: "关闭左侧标签",
         closeRight: "关闭右侧标签",
+        closeUp: "向上关闭",
+        closeDown: "向下关闭",
         closeOthers: "关闭其他标签",
         reloadAgent: "重新加载 Agent",
         reloadAgentTooltip: "重新加载 Agent 以更新 skills、MCPs 或登录状态。",

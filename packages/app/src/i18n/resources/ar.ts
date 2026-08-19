@@ -924,6 +924,8 @@ export const ar: TranslationResources = {
         closeBelow: "إغلاق علامات التبويب أدناه",
         closeLeft: "بالقرب من اليسار",
         closeRight: "قريب من اليمين",
+        closeUp: "إغلاق للأعلى",
+        closeDown: "إغلاق للأسفل",
         closeOthers: "أغلق علامات التبويب الأخرى",
         reloadAgent: "إعادة تحميل الوكيل",
         reloadAgentTooltip: "قم بإعادة تحميل الوكيل لتحديث المهارات أو MCPs أو حالة تسجيل الدخول.",

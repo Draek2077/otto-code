@@ -937,6 +937,8 @@ export const ja: TranslationResources = {
         closeBelow: "下のタブを閉じる",
         closeLeft: "左のタブを閉じる",
         closeRight: "右のタブを閉じる",
+        closeUp: "上を閉じる",
+        closeDown: "下を閉じる",
         closeOthers: "他のタブを閉じる",
         reloadAgent: "エージェントを再読み込み",
         reloadAgentTooltip:

@@ -936,6 +936,8 @@ export const ru: TranslationResources = {
         closeBelow: "Закройте вкладки ниже",
         closeLeft: "Ближе к левому краю",
         closeRight: "Ближе к правому",
+        closeUp: "Закрыть выше",
+        closeDown: "Закрыть ниже",
         closeOthers: "Закрыть другие вкладки",
         reloadAgent: "Перезагрузить агент",
         reloadAgentTooltip: "Перезагрузите агента, чтобы обновить навыки, MCP или статус входа.",

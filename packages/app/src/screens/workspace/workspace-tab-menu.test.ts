@@ -92,6 +92,36 @@ describe("buildWorkspaceTabMenuEntries", () => {
     );
   });
 
+  it("uses vertical up/down labels for desktop menus in vertical orientation", () => {
+    const entries = buildWorkspaceTabMenuEntries({
+      surface: "desktop",
+      orientation: "vertical",
+      tab: createAgentTab(),
+      index: 1,
+      tabCount: 3,
+      menuTestIDBase: "workspace-tab-context-agent_123",
+      isDeveloperMode: false,
+      onCopyResumeCommand: vi.fn(),
+      onCopyTerminalId: vi.fn(),
+      onCopyAgentId: vi.fn(),
+      onCopyFilePath: vi.fn(),
+      onReloadAgent: vi.fn(),
+      onRenameTab: vi.fn(),
+      onCloseTab: vi.fn(),
+      onCloseTabsBefore: vi.fn(),
+      onCloseTabsAfter: vi.fn(),
+      onCloseOtherTabs: vi.fn(),
+    });
+
+    expect(entries.filter((entry) => entry.kind === "item").map((entry) => entry.label)).toEqual([
+      "Rename",
+      "Close up",
+      "Close down",
+      "Close other tabs",
+      "Close",
+    ]);
+  });
+
   it("omits the developer-only entries in User interface mode", () => {
     const entries = buildWorkspaceTabMenuEntries({
       surface: "desktop",

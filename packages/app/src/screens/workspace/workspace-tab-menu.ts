@@ -4,6 +4,7 @@ import { encodeFilePathForPathSegment, encodeWorkspaceIdForPathSegment } from "@
 import { buildDeterministicWorkspaceTabId } from "@/workspace-tabs/identity";
 
 export type WorkspaceTabMenuSurface = "desktop" | "mobile";
+export type WorkspaceTabMenuOrientation = "horizontal" | "vertical";
 
 export interface WorkspaceTabMenuLabels {
   copyResumeCommand: string;
@@ -16,6 +17,8 @@ export interface WorkspaceTabMenuLabels {
   closeBelow: string;
   closeLeft: string;
   closeRight: string;
+  closeUp: string;
+  closeDown: string;
   closeOthers: string;
   reloadAgent: string;
   reloadAgentTooltip: string;
@@ -35,6 +38,8 @@ export const DEFAULT_WORKSPACE_TAB_MENU_LABELS: WorkspaceTabMenuLabels = {
   closeBelow: i18n.t("workspace.tabs.menu.closeBelow"),
   closeLeft: i18n.t("workspace.tabs.menu.closeLeft"),
   closeRight: i18n.t("workspace.tabs.menu.closeRight"),
+  closeUp: i18n.t("workspace.tabs.menu.closeUp"),
+  closeDown: i18n.t("workspace.tabs.menu.closeDown"),
   closeOthers: i18n.t("workspace.tabs.menu.closeOthers"),
   reloadAgent: i18n.t("workspace.tabs.menu.reloadAgent"),
   reloadAgentTooltip: i18n.t("workspace.tabs.menu.reloadAgentTooltip"),
@@ -71,6 +76,7 @@ export type WorkspaceTabMenuEntry =
 
 interface BuildWorkspaceTabMenuEntriesInput {
   surface: WorkspaceTabMenuSurface;
+  orientation?: WorkspaceTabMenuOrientation;
   tab: WorkspaceTabDescriptor;
   index: number;
   tabCount: number;
@@ -100,6 +106,7 @@ interface BuildWorkspaceTabMenuEntriesInput {
 
 interface BuildWorkspaceDesktopTabActionsInput {
   tab: WorkspaceTabDescriptor;
+  orientation?: WorkspaceTabMenuOrientation;
   index: number;
   tabCount: number;
   isDeveloperMode: boolean;
@@ -126,26 +133,46 @@ export interface WorkspaceDesktopTabActions {
   closeButtonTestId: string;
 }
 
+// Close direction follows the axis the tabs stack along, not the surface. Mobile
+// stacks vertically (up/down), desktop horizontal stacks left/right, and desktop
+// vertical (the rail) stacks up/down.
+function isVerticalStack(
+  surface: WorkspaceTabMenuSurface,
+  orientation: WorkspaceTabMenuOrientation,
+): boolean {
+  return surface === "mobile" || orientation === "vertical";
+}
+
 function buildCloseBeforeLabel(
   surface: WorkspaceTabMenuSurface,
+  orientation: WorkspaceTabMenuOrientation,
   labels: WorkspaceTabMenuLabels,
 ): string {
-  return surface === "mobile" ? labels.closeAbove : labels.closeLeft;
+  if (surface === "mobile") return labels.closeAbove;
+  return orientation === "vertical" ? labels.closeUp : labels.closeLeft;
 }
 
 function buildCloseAfterLabel(
   surface: WorkspaceTabMenuSurface,
+  orientation: WorkspaceTabMenuOrientation,
   labels: WorkspaceTabMenuLabels,
 ): string {
-  return surface === "mobile" ? labels.closeBelow : labels.closeRight;
+  if (surface === "mobile") return labels.closeBelow;
+  return orientation === "vertical" ? labels.closeDown : labels.closeRight;
 }
 
-function buildCloseBeforeTestIDSuffix(surface: WorkspaceTabMenuSurface): string {
-  return surface === "mobile" ? "close-above" : "close-left";
+function buildCloseBeforeTestIDSuffix(
+  surface: WorkspaceTabMenuSurface,
+  orientation: WorkspaceTabMenuOrientation,
+): string {
+  return isVerticalStack(surface, orientation) ? "close-above" : "close-left";
 }
 
-function buildCloseAfterTestIDSuffix(surface: WorkspaceTabMenuSurface): string {
-  return surface === "mobile" ? "close-below" : "close-right";
+function buildCloseAfterTestIDSuffix(
+  surface: WorkspaceTabMenuSurface,
+  orientation: WorkspaceTabMenuOrientation,
+): string {
+  return isVerticalStack(surface, orientation) ? "close-below" : "close-right";
 }
 
 function getCloseButtonTestId(tab: WorkspaceTabDescriptor): string {
@@ -276,6 +303,7 @@ export function buildWorkspaceTabMenuEntries(
 ): WorkspaceTabMenuEntry[] {
   const {
     surface,
+    orientation = "horizontal",
     tab,
     index,
     tabCount,
@@ -415,10 +443,10 @@ export function buildWorkspaceTabMenuEntries(
     entries.push({
       kind: "item",
       key: "close-before",
-      label: buildCloseBeforeLabel(surface, labels),
+      label: buildCloseBeforeLabel(surface, orientation, labels),
       icon: "arrow-left-to-line",
       disabled: isFirstTab,
-      testID: `${menuTestIDBase}-${buildCloseBeforeTestIDSuffix(surface)}`,
+      testID: `${menuTestIDBase}-${buildCloseBeforeTestIDSuffix(surface, orientation)}`,
       onSelect: () => {
         void onCloseTabsBefore(tab.tabId);
       },
@@ -426,10 +454,10 @@ export function buildWorkspaceTabMenuEntries(
     entries.push({
       kind: "item",
       key: "close-after",
-      label: buildCloseAfterLabel(surface, labels),
+      label: buildCloseAfterLabel(surface, orientation, labels),
       icon: "arrow-right-to-line",
       disabled: isLastTab,
-      testID: `${menuTestIDBase}-${buildCloseAfterTestIDSuffix(surface)}`,
+      testID: `${menuTestIDBase}-${buildCloseAfterTestIDSuffix(surface, orientation)}`,
       onSelect: () => {
         void onCloseTabsAfter(tab.tabId);
       },
@@ -472,6 +500,7 @@ export function buildWorkspaceDesktopTabActions(
     contextMenuTestId,
     menuEntries: buildWorkspaceTabMenuEntries({
       surface: "desktop",
+      orientation: input.orientation,
       tab: input.tab,
       index: input.index,
       tabCount: input.tabCount,

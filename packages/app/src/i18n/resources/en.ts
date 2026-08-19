@@ -949,6 +949,8 @@ export const en = {
         closeBelow: "Close tabs below",
         closeLeft: "Close to the left",
         closeRight: "Close to the right",
+        closeUp: "Close up",
+        closeDown: "Close down",
         closeOthers: "Close other tabs",
         reloadAgent: "Reload chat",
         reloadAgentTooltip: "Reload chat to update skills, MCPs or login status.",

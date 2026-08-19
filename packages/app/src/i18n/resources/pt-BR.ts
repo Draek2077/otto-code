@@ -937,6 +937,8 @@ export const ptBR: TranslationResources = {
         closeBelow: "Fechar abas abaixo",
         closeLeft: "Fechar à esquerda",
         closeRight: "Fechar à direita",
+        closeUp: "Fechar acima",
+        closeDown: "Fechar abaixo",
         closeOthers: "Fechar outras abas",
         reloadAgent: "Recarregar agente",
         reloadAgentTooltip: "Recarregue o agente para atualizar skills, MCPs ou status de login.",

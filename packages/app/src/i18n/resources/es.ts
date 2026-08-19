@@ -936,6 +936,8 @@ export const es: TranslationResources = {
         closeBelow: "Cerrar pestañas a continuación",
         closeLeft: "Cerca de la izquierda",
         closeRight: "Cerca de la derecha",
+        closeUp: "Cerrar hacia arriba",
+        closeDown: "Cerrar hacia abajo",
         closeOthers: "Cerrar otras pestañas",
         reloadAgent: "Recargar agente",
         reloadAgentTooltip:

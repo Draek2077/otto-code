@@ -253,6 +253,8 @@ export function WorkspaceDesktopTabsRail({
       closeBelow: t("workspace.tabs.menu.closeBelow"),
       closeLeft: t("workspace.tabs.menu.closeLeft"),
       closeRight: t("workspace.tabs.menu.closeRight"),
+      closeUp: t("workspace.tabs.menu.closeUp"),
+      closeDown: t("workspace.tabs.menu.closeDown"),
       closeOthers: t("workspace.tabs.menu.closeOthers"),
       reloadAgent: t("workspace.tabs.menu.reloadAgent"),
       reloadAgentTooltip: t("workspace.tabs.menu.reloadAgentTooltip"),
