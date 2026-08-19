@@ -107,10 +107,51 @@ on screen; do not model around it.
 ### Per-provider resolution, confidence-tagged
 
 `provider-conventions.ts` is a registry (`getProviderConvention`, `isContextScanSupported`), with
-entries for **Claude**, **Codex**, **OpenCode** and the **OpenAI-compatible family**; anything else
-reports no scan rather than a guess. Each report carries
+entries for **Claude**, **Codex**, **OpenCode**, **OMP** and the **OpenAI-compatible family**;
+anything else reports no scan rather than a guess. Each report carries
 `confidence: "exact" | "convention" | "unverified"`, and a convention that has not been
 differentially measured must never be presented as fact.
+
+**Not being in the registry is a finding, not a gap.** `pi` is deliberately absent. OMP is a Pi fork
+and shares Pi's RPC protocol and `PI_*` environment variables, which makes it tempting to hand Pi
+OMP's entry - but OMP is the maximalist fork and its whole discovery pass is exactly the sort of
+surface a fork adds. Whether Pi reads `AGENTS.md`, something else, or nothing was never established,
+so the tab says it cannot see rather than reporting weight Pi may never send. Same rule as
+[the unmeasurable-category one above](#an-unmeasurable-category-is-a-row-not-a-gap): the honest empty
+report beats the populated guess.
+
+### OMP: candidates compete for a slot, they do not stack
+
+OMP runs the widest context-file discovery of any provider here. Eleven discovery providers - its
+own `.omp/`, plus Claude, Codex, Gemini, OpenCode, Cursor, GitHub, Windsurf, Cline and VS Code -
+each nominate a candidate, and all are enabled by default.
+
+They do not stack. Discovery keys a context file by `user` or `project:<depth from cwd>`, and **one
+slot holds one file**: the highest-priority provider with a candidate there wins and the rest are
+marked shadowed and never sent. That is `ContextLoadPoint.fallbackPaths` exactly, so the entry lists
+each slot's spellings in the measured priority order:
+
+| Slot      | Spellings, first hit wins                                                                                                       |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Global    | `<omp agent dir>/AGENTS.md`, `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md`, `~/.config/opencode/AGENTS.md` |
+| cwd       | `.omp/AGENTS.md`, `.claude/CLAUDE.md`, `AGENTS.md`, `.gemini/GEMINI.md`, `.github/copilot-instructions.md`                      |
+| Above cwd | `.omp/AGENTS.md`, `AGENTS.md`                                                                                                   |
+
+Three consequences worth keeping in mind. `.claude/CLAUDE.md` **outranks** the `AGENTS.md` beside it,
+which is the order most people would guess backwards. The Claude, Gemini and GitHub candidates exist
+only at cwd, because those loaders join their directory onto cwd rather than walking toward the repo
+root. And a user who has never opened OMP can still be paying for `~/.claude/CLAUDE.md` on every OMP
+request, because OMP adopts another harness's global when it has none of its own.
+
+Nothing below cwd ever loads - the walk only climbs - so OMP has no subdirectory scan root and no
+`conditional` rows. `@imports` are inlined recursively, cycle-guarded, capped at depth 5, and skipped
+inside fenced and inline code, which is the same treatment the scan gives them.
+
+Confidence is `convention`, not `unverified`: the orders above were established by capturing `omp`
+subprocess request payloads verbatim and peeling each slot back one candidate at a time (finding
+`omp-pi-instruction-file-discovery`). It cannot be `exact`, because OMP composes the request and a
+newer OMP can reorder its providers without Otto knowing. OMP's skills and subagents were **not**
+measured, so `skills_roster` stays a floor for OMP the same way it is for the other CLIs.
 
 **openai-compat is the reference provider, not the excluded one.** It is the only provider where
 Otto builds the payload itself and therefore knows it exactly - which makes it the ground truth
