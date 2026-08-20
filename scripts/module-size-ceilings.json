@@ -25,6 +25,6 @@
     "packages/app/src/components/combined-model-selector.tsx": 683,
     "packages/app/src/components/provider-diagnostic-sheet.tsx": 958,
     "packages/app/src/hooks/use-settings/storage.ts": 334,
-    "packages/app/src/styles/theme.ts": 296
+    "packages/app/src/styles/theme.ts": 284
   }
 }
