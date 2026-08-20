@@ -21,9 +21,11 @@ import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-
 import { useSolutionViewFeature } from "@/solution/use-solution-view-feature";
 import { useLspHostServersFeature } from "./use-lsp-host-servers-feature";
 import * as Clipboard from "expo-clipboard";
+import { useRouter } from "expo-router";
 import { useLastWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { useWorkspace } from "@/stores/session-store-hooks";
 import { confirmDialog } from "@/utils/confirm-dialog";
+import { resolveRunInTerminalOutcome } from "@/terminal/run-in-terminal-outcome";
 
 /**
  * Daemon → Code. These are processes on the daemon's machine, so the settings follow
@@ -395,6 +397,7 @@ function LspInstallBlock(props: {
   const { id, serverId, install, disabled } = props;
   const { t } = useTranslation();
   const toast = useToast();
+  const router = useRouter();
 
   // "Run in terminal" needs a daemon and a directory to run in: the host must be connected,
   // and the terminal opens in the user's last workspace on this host (a host screen has no
@@ -459,15 +462,38 @@ function LspInstallBlock(props: {
           workspaceId: runWorkspaceId ?? undefined,
         },
       );
-      if (!result.terminal && result.error) {
-        toast.error(result.error);
+      // Leave settings for the terminal that was just started. A two-step install
+      // needs the user at the prompt to type the second line, and even a one-step
+      // one is only "running" in a place they would otherwise have to go find.
+      const outcome = resolveRunInTerminalOutcome({
+        serverId,
+        terminal: result.terminal,
+        error: result.error,
+      });
+      if (outcome.kind === "error") {
+        toast.error(outcome.message ?? t("settings.host.code.install.terminalFailed"));
         return;
       }
-      toast.show(t("settings.host.code.install.terminalStarted"), { variant: "success" });
+      if (outcome.kind === "started") {
+        toast.show(t("settings.host.code.install.terminalStarted"), { variant: "success" });
+        return;
+      }
+      router.navigate(outcome.route);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));
     }
-  }, [client, hostConnected, runCwd, runWorkspaceId, id, install.steps, t, toast]);
+  }, [
+    client,
+    hostConnected,
+    runCwd,
+    runWorkspaceId,
+    id,
+    install.steps,
+    router,
+    serverId,
+    t,
+    toast,
+  ]);
 
   // A manual route is a link, not a command - no copy, no terminal, nothing to confirm.
   if (install.steps.length === 0) {
