@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   buildKeyboardShortcutHelpSections,
-  buildShortcutDiscoveryEntries,
   buildEffectiveBindings,
   getBindingIdForAction,
   getWorkspaceIndexJumpModifierKey,
@@ -10,6 +9,7 @@ import {
   type KeyboardShortcutContext,
   type ParsedShortcutBinding,
 } from "./keyboard-shortcuts";
+import { buildShortcutDiscoveryEntries } from "./shortcut-discovery";
 
 function keyboardEvent(overrides: Partial<KeyboardEvent>): KeyboardEvent {
   return {

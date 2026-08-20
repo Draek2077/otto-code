@@ -27,10 +27,8 @@ import {
   useShowShortcutDiscovery,
 } from "@/hooks/use-show-shortcut-badges";
 import { resolveKeyboardFocusScope } from "@/keyboard/focus-scope";
-import {
-  buildEffectiveBindings,
-  buildShortcutDiscoveryEntries,
-} from "@/keyboard/keyboard-shortcuts";
+import { buildEffectiveBindings } from "@/keyboard/keyboard-shortcuts";
+import { buildShortcutDiscoveryEntries } from "@/keyboard/shortcut-discovery";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { getShortcutOs } from "@/utils/shortcut-platform";
 
