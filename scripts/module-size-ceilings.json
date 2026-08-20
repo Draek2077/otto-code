@@ -28,6 +28,7 @@
     "packages/app/src/styles/theme.ts": 284,
     "packages/server/src/server/session/files/workspace-files-session.ts": 860,
     "packages/app/src/components/diff-viewer.tsx": 363,
-    "packages/server/src/server/daemon-config-store.ts": 394
+    "packages/server/src/server/daemon-config-store.ts": 394,
+    "packages/desktop/src/features/browser-automation/service.ts": 1814
   }
 }
