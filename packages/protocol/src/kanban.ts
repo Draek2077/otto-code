@@ -66,6 +66,49 @@ export type KanbanBoardRef = z.infer<typeof KanbanBoardRefSchema>;
 
 export const KanbanErrorSchema = z.string().nullable();
 
+/**
+ * One command in a remediation route, as argv - never a shell string.
+ *
+ * The daemon resolves the exact command (including any host flag), so the
+ * client only ever displays it, copies it, or runs it on explicit consent.
+ */
+export const KanbanRemediationStepSchema = z
+  .object({
+    command: z.string().min(1),
+    args: z.array(z.string()),
+    /** The literal text shown in the confirm dialog and copied to the clipboard. */
+    display: z.string().min(1),
+  })
+  .strict();
+
+/**
+ * A daemon-resolved recovery route for a failed Kanban call.
+ *
+ * Provider-neutral by construction: `reason` is an opaque key the client may
+ * localize and must tolerate not knowing (it falls back to `error`), and the
+ * steps are already-resolved argv. This exists because a provider's own error
+ * text can be actively misleading in Otto: GitHub tells the user to edit a
+ * personal access token, but the credential Otto sends is the gh CLI's OAuth
+ * token, which that page does not list. The daemon replaces that guidance
+ * rather than passing it through.
+ */
+export const KanbanRemediationSchema = z
+  .object({
+    reason: z.string().min(1),
+    /** The scopes or permissions the credential lacks, when the provider can name them. */
+    missingScopes: z.array(z.string()).optional(),
+    steps: z.array(KanbanRemediationStepSchema),
+    /** Documentation link for the manual route. */
+    url: z.string().url().optional(),
+  })
+  .strict();
+
+/** The gh CLI credential is missing the Projects v2 scopes. */
+export const KANBAN_REMEDIATION_GITHUB_SCOPES = "github-missing-scopes";
+
+export type KanbanRemediationStep = z.infer<typeof KanbanRemediationStepSchema>;
+export type KanbanRemediation = z.infer<typeof KanbanRemediationSchema>;
+
 export const KanbanBoardsListRequestSchema = z
   .object({
     type: z.literal("kanban.boards.list.request"),
@@ -93,6 +136,10 @@ export const KanbanBoardsListResponseSchema = z
       providerId: z.string().min(1),
       boards: z.array(KanbanBoardRefSchema),
       error: KanbanErrorSchema,
+      // COMPAT(kanbanRemediation): added in v0.8.12, drop the optional gate when
+      // floor >= v0.8.12. Present only when the daemon can name a recovery route
+      // for `error`; older daemons omit it and the client shows `error` alone.
+      remediation: KanbanRemediationSchema.nullable().optional(),
       requestId: z.string(),
     }),
   })
@@ -114,6 +161,10 @@ export const KanbanBoardGetResponseSchema = z
       providerId: z.string().min(1),
       board: KanbanBoardSchema.nullable(),
       error: KanbanErrorSchema,
+      // COMPAT(kanbanRemediation): added in v0.8.12, drop the optional gate when
+      // floor >= v0.8.12. Present only when the daemon can name a recovery route
+      // for `error`; older daemons omit it and the client shows `error` alone.
+      remediation: KanbanRemediationSchema.nullable().optional(),
       requestId: z.string(),
     }),
   })
@@ -139,6 +190,10 @@ export const KanbanCardMoveResponseSchema = z
       cardId: z.string().min(1),
       targetColumnId: z.string().min(1),
       error: KanbanErrorSchema,
+      // COMPAT(kanbanRemediation): added in v0.8.12, drop the optional gate when
+      // floor >= v0.8.12. Present only when the daemon can name a recovery route
+      // for `error`; older daemons omit it and the client shows `error` alone.
+      remediation: KanbanRemediationSchema.nullable().optional(),
       requestId: z.string(),
     }),
   })
@@ -165,6 +220,10 @@ export const KanbanCardCreateResponseSchema = z
       columnId: z.string().min(1),
       card: KanbanCardSchema.nullable(),
       error: KanbanErrorSchema,
+      // COMPAT(kanbanRemediation): added in v0.8.12, drop the optional gate when
+      // floor >= v0.8.12. Present only when the daemon can name a recovery route
+      // for `error`; older daemons omit it and the client shows `error` alone.
+      remediation: KanbanRemediationSchema.nullable().optional(),
       requestId: z.string(),
     }),
   })
@@ -191,6 +250,10 @@ export const KanbanTaskLinkResponseSchema = z
       columnId: z.string().min(1),
       card: KanbanCardSchema.nullable(),
       error: KanbanErrorSchema,
+      // COMPAT(kanbanRemediation): added in v0.8.12, drop the optional gate when
+      // floor >= v0.8.12. Present only when the daemon can name a recovery route
+      // for `error`; older daemons omit it and the client shows `error` alone.
+      remediation: KanbanRemediationSchema.nullable().optional(),
       requestId: z.string(),
     }),
   })

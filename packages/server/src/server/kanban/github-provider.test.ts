@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { KANBAN_REMEDIATION_GITHUB_SCOPES } from "@otto-code/protocol/kanban";
 import { GITHUB_UNASSIGNED_COLUMN_ID, GitHubProjectV2Provider } from "./github-provider.js";
+import { KanbanRemediationError } from "./kanban-remediation.js";
 
 /**
  * Builds a fetch stub that routes on the GraphQL document in the request body.
@@ -100,6 +102,59 @@ function makeBoardNode() {
   };
 }
 
+/**
+ * A provider whose board reads fail the way GitHub really fails them: the same
+ * insufficient-scope complaint repeated once per requested field, each one
+ * signed off with the personal access token settings link. The viewer probe in
+ * `initialize` succeeds, because `viewer { login }` needs no extra scope.
+ */
+function makeScopeFailureProvider(
+  options: {
+    message?: string;
+    type?: string;
+    grantedHeader?: string;
+    apiBaseUrl?: string;
+  } = {},
+) {
+  const fields = ["id", "title", "url"];
+  const message =
+    options.message ??
+    fields
+      .map(
+        (field) =>
+          "Your token has not been granted the required scopes to execute this query. " +
+          `The '${field}' field requires one of the following scopes: ['read:project'], ` +
+          "but your token has only been granted the: ['gist', 'read:org', 'repo', 'workflow'] " +
+          "scopes. Please modify your token's scopes at: https://github.com/settings/tokens.",
+      )
+      .join(" ");
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body ?? "{}")) as { query: string };
+    if (body.query.startsWith("query KanbanViewer ")) {
+      return new Response(JSON.stringify({ data: { viewer: { login: "octocat" } } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response(
+      JSON.stringify({
+        errors: [{ message, type: options.type ?? "INSUFFICIENT_SCOPES" }],
+      }),
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.grantedHeader ? { "X-OAuth-Scopes": options.grantedHeader } : {}),
+        },
+      },
+    );
+  };
+  return new GitHubProjectV2Provider({
+    fetch: fetchImpl,
+    ...(options.apiBaseUrl ? { apiBaseUrl: options.apiBaseUrl } : {}),
+  });
+}
+
 describe("GitHubProjectV2Provider", () => {
   it("lists the viewer's projects", async () => {
     const { provider } = makeProvider({
@@ -188,5 +243,75 @@ describe("GitHubProjectV2Provider", () => {
     await expect(provider.moveCard("PVT_1", "item-1", "opt-unknown")).rejects.toThrow(
       /Unknown column/,
     );
+  });
+
+  it("turns an insufficient-scopes response into a gh auth refresh remediation", async () => {
+    const provider = makeScopeFailureProvider();
+    await provider.initialize({ githubToken: "gho_test" });
+    const error = await provider.listBoards({}).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(KanbanRemediationError);
+    const remediation = (error as KanbanRemediationError).remediation;
+    expect(remediation.reason).toBe(KANBAN_REMEDIATION_GITHUB_SCOPES);
+    expect(remediation.missingScopes).toEqual(["read:project"]);
+    expect(remediation.steps).toEqual([
+      {
+        command: "gh",
+        args: ["auth", "refresh", "-s", "read:project,project"],
+        display: "gh auth refresh -s read:project,project",
+      },
+    ]);
+    // GitHub's own text points at the personal access token page, which is the
+    // wrong page for a gh CLI credential: none of it survives.
+    expect((error as Error).message).not.toContain("settings/tokens");
+    expect((error as Error).message).toContain("read:project");
+  });
+
+  it("reads the granted scopes from the response header when the message omits them", async () => {
+    const provider = makeScopeFailureProvider({
+      message:
+        "Your token has not been granted the required scopes to execute this query. " +
+        "The 'id' field requires one of the following scopes: ['read:project'].",
+      grantedHeader: "gist, read:org, repo, workflow, read:project",
+    });
+    await provider.initialize({ githubToken: "gho_test" });
+    const error = (await provider
+      .listBoards({})
+      .catch((e: unknown) => e)) as KanbanRemediationError;
+
+    // Already granted, so it is not reported missing; the command still asks
+    // for both scopes because the write half is what is actually absent.
+    expect(error.remediation.missingScopes).toBeUndefined();
+    expect(error.remediation.steps[0]?.display).toBe("gh auth refresh -s read:project,project");
+  });
+
+  it("targets the gh host for a GitHub Enterprise base url", async () => {
+    const provider = makeScopeFailureProvider({ apiBaseUrl: "https://ghe.example.com/api/v3" });
+    await provider.initialize({ githubToken: "gho_test" });
+    const error = (await provider
+      .listBoards({})
+      .catch((e: unknown) => e)) as KanbanRemediationError;
+
+    expect(error.remediation.steps[0]?.args).toEqual([
+      "auth",
+      "refresh",
+      "-h",
+      "ghe.example.com",
+      "-s",
+      "read:project,project",
+    ]);
+  });
+
+  it("leaves an unrelated GraphQL error as a plain error", async () => {
+    const provider = makeScopeFailureProvider({
+      message: "Something went wrong.",
+      type: "NOT_FOUND",
+    });
+    await provider.initialize({ githubToken: "gho_test" });
+    const error = await provider.listBoards({}).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(KanbanRemediationError);
+    expect((error as Error).message).toBe("Something went wrong.");
   });
 });

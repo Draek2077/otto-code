@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { KanbanBoard, KanbanBoardRef } from "@otto-code/protocol/kanban";
+import type { KanbanBoard, KanbanBoardRef, KanbanRemediation } from "@otto-code/protocol/kanban";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 
@@ -28,6 +28,8 @@ export function useKanbanBoards(
   boards: KanbanBoardRef[];
   isLoading: boolean;
   error: string | null;
+  /** The daemon's recovery route for `error`, when it can name one. */
+  remediation: KanbanRemediation | null;
 } {
   const client = useHostRuntimeClient(serverId ?? "");
   const isConnected = useHostRuntimeIsConnected(serverId ?? "");
@@ -37,17 +39,20 @@ export function useKanbanBoards(
   const [boards, setBoards] = useState<KanbanBoardRef[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [remediation, setRemediation] = useState<KanbanRemediation | null>(null);
 
   useEffect(() => {
     if (!enabled || !projectId || !client) {
       setBoards([]);
       setIsLoading(false);
       setError(null);
+      setRemediation(null);
       return;
     }
     let cancelled = false;
     setIsLoading(true);
     setError(null);
+    setRemediation(null);
     const load = async (): Promise<void> => {
       try {
         // providerId is an inert default: the project-scoped request is
@@ -60,6 +65,7 @@ export function useKanbanBoards(
         if (cancelled) return;
         setBoards(payload.boards ?? []);
         setError(payload.error);
+        setRemediation(payload.remediation ?? null);
       } catch (err: unknown) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : String(err));
@@ -73,7 +79,7 @@ export function useKanbanBoards(
     };
   }, [enabled, projectId, projectKey, client, refreshKey]);
 
-  return { boards, isLoading, error };
+  return { boards, isLoading, error, remediation };
 }
 
 /**
@@ -86,7 +92,12 @@ export function useKanbanBoard(
   providerId: string | null,
   boardId: string | null,
   refreshKey: number,
-): { board: KanbanBoard | null; isLoading: boolean; error: string | null } {
+): {
+  board: KanbanBoard | null;
+  isLoading: boolean;
+  error: string | null;
+  remediation: KanbanRemediation | null;
+} {
   const client = useHostRuntimeClient(serverId ?? "");
   const isConnected = useHostRuntimeIsConnected(serverId ?? "");
   const supported = useKanbanBoardFeature(serverId ?? "");
@@ -95,23 +106,27 @@ export function useKanbanBoard(
   const [board, setBoard] = useState<KanbanBoard | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [remediation, setRemediation] = useState<KanbanRemediation | null>(null);
 
   useEffect(() => {
     if (!enabled || !client || !providerId || !boardId) {
       setBoard(null);
       setIsLoading(false);
       setError(null);
+      setRemediation(null);
       return;
     }
     let cancelled = false;
     setIsLoading(true);
     setError(null);
+    setRemediation(null);
     const load = async (): Promise<void> => {
       try {
         const payload = await client.kanbanGetBoard(providerId, boardId);
         if (cancelled) return;
         setBoard(payload.board);
         setError(payload.error);
+        setRemediation(payload.remediation ?? null);
       } catch (err: unknown) {
         if (cancelled) return;
         setBoard(null);
@@ -126,5 +141,5 @@ export function useKanbanBoard(
     };
   }, [enabled, providerId, boardId, client, refreshKey]);
 
-  return { board, isLoading, error };
+  return { board, isLoading, error, remediation };
 }

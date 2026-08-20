@@ -1,4 +1,9 @@
 import type { KanbanBoard, KanbanBoardRef, KanbanCard } from "@otto-code/protocol/kanban";
+import {
+  KANBAN_REMEDIATION_GITHUB_SCOPES,
+  type KanbanRemediation,
+} from "@otto-code/protocol/kanban";
+import { KanbanRemediationError } from "./kanban-remediation.js";
 import type {
   KanbanBoardListContext,
   KanbanProvider,
@@ -425,6 +430,13 @@ export class GitHubProjectV2Provider implements KanbanProvider {
       throw new Error(`GitHub returned an empty response (HTTP ${response.status}).`);
     }
     if (!response.ok || (payload.errors && payload.errors.length > 0)) {
+      const scopeFailure = describeScopeFailure(payload.errors, response, this.apiBaseUrl);
+      if (scopeFailure) {
+        // GitHub repeats the same scope complaint once per requested field and
+        // signs it off with a link to the personal-access-token page, which is
+        // the wrong page for a gh CLI credential. Replace all of it.
+        throw new KanbanRemediationError(scopeFailure.message, scopeFailure.remediation);
+      }
       const message =
         payload.errors?.map((e) => e.message).join("; ") || `GitHub HTTP ${response.status}`;
       throw new Error(message);
@@ -434,6 +446,96 @@ export class GitHubProjectV2Provider implements KanbanProvider {
     }
     return payload.data;
   }
+}
+
+// ── Insufficient-scope detection ───────────────────────────────────────────
+
+/**
+ * Projects v2 lives behind its own scope, and the gh CLI's default login grant
+ * (`gist`, `read:org`, `repo`, `workflow`) does not include it. GitHub reports
+ * that per requested field, so one board read produces three near-identical
+ * errors, each ending in a link to the personal access token settings page.
+ * That link is a dead end here: Otto sends the gh CLI's OAuth token, which is
+ * not a PAT and is not listed on that page. The recovery is `gh auth refresh`,
+ * so the daemon detects the shape and hands the client that command instead.
+ */
+const SCOPE_FAILURE_PATTERN = /has not been granted the required scopes/i;
+const SCOPE_REQUIRED_PATTERN = /requires one of the following scopes: \[([^\]]*)\]/g;
+const SCOPE_GRANTED_PATTERN = /has only been granted the: \[([^\]]*)\]/;
+/** Read and write Projects v2 access, granted in one consent. */
+const PROJECT_SCOPES = ["read:project", "project"] as const;
+const GH_REFRESH_DOC_URL = "https://cli.github.com/manual/gh_auth_refresh";
+
+function parseScopeList(raw: string | undefined): string[] {
+  if (!raw) {
+    return [];
+  }
+  return raw
+    .split(",")
+    .map((scope) => scope.trim().replace(/^['"]|['"]$/g, ""))
+    .filter((scope) => scope.length > 0);
+}
+
+/**
+ * The gh CLI keys its credentials by host, and a GitHub Enterprise base URL
+ * (`https://ghe.example.com/api/v3`) needs `-h ghe.example.com` or the refresh
+ * targets github.com instead. The default base needs no flag.
+ */
+function ghHostFlag(apiBaseUrl: string): string[] {
+  let hostname: string;
+  try {
+    hostname = new URL(apiBaseUrl).hostname;
+  } catch {
+    return [];
+  }
+  if (hostname === "api.github.com" || hostname === "github.com") {
+    return [];
+  }
+  return ["-h", hostname.replace(/^api\./, "")];
+}
+
+function describeScopeFailure(
+  errors: GitHubGraphQLError[] | undefined,
+  response: Response,
+  apiBaseUrl: string,
+): { message: string; remediation: KanbanRemediation } | null {
+  const scopeErrors = (errors ?? []).filter(
+    (error) => error.type === "INSUFFICIENT_SCOPES" || SCOPE_FAILURE_PATTERN.test(error.message),
+  );
+  if (scopeErrors.length === 0) {
+    return null;
+  }
+  const joined = scopeErrors.map((error) => error.message).join(" ");
+  const required = new Set<string>();
+  for (const match of joined.matchAll(SCOPE_REQUIRED_PATTERN)) {
+    for (const scope of parseScopeList(match[1])) {
+      required.add(scope);
+    }
+  }
+  // The response header is the authoritative granted set; the error text is the
+  // fallback for a transport that strips it (a proxy, or a test double).
+  const granted = new Set(
+    parseScopeList(
+      response.headers.get("x-oauth-scopes") ?? SCOPE_GRANTED_PATTERN.exec(joined)?.[1],
+    ),
+  );
+  const missing = [...(required.size > 0 ? required : new Set(PROJECT_SCOPES))].filter(
+    (scope) => !granted.has(scope),
+  );
+  const args = ["auth", "refresh", ...ghHostFlag(apiBaseUrl), "-s", PROJECT_SCOPES.join(",")];
+  return {
+    message:
+      "The GitHub CLI credential is missing Projects access" +
+      (missing.length > 0 ? ` (${missing.join(", ")})` : "") +
+      ". Otto signs in to GitHub through the gh CLI, so the personal access token page GitHub" +
+      " links to does not apply: grant the scopes to the CLI instead.",
+    remediation: {
+      reason: KANBAN_REMEDIATION_GITHUB_SCOPES,
+      ...(missing.length > 0 ? { missingScopes: missing } : {}),
+      steps: [{ command: "gh", args, display: `gh ${args.join(" ")}` }],
+      url: GH_REFRESH_DOC_URL,
+    },
+  };
 }
 
 // ── Raw GraphQL response shapes (internal to normalization) ────────────────

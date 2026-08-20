@@ -3,6 +3,7 @@ import {
   type KanbanBoard,
   type KanbanBoardRef,
   type KanbanCard,
+  type KanbanRemediation,
 } from "@otto-code/protocol/kanban";
 import type {
   KanbanBoardGetRequest,
@@ -13,6 +14,7 @@ import type {
   SessionOutboundMessage,
 } from "@otto-code/protocol/messages";
 import { createKanbanRegistry, type KanbanRegistry } from "./kanban-registry.js";
+import { remediationOf } from "./kanban-remediation.js";
 import type { KanbanBoardListContext } from "./types.js";
 import type { MutableDaemonConfig } from "@otto-code/protocol/messages";
 
@@ -56,6 +58,12 @@ export interface KanbanSessionHost {
     info: (message: string) => void;
     error: (message: string, error?: unknown) => void;
   };
+  /**
+   * Registry factory. Injectable for the same reason the registry's own gh
+   * token resolver is: a test must never shell out to a real `gh` binary or
+   * reach GitHub. Production leaves it unset.
+   */
+  createRegistry?: (options: { readConfig: () => MutableDaemonConfig }) => KanbanRegistry;
 }
 
 export class KanbanSession {
@@ -65,7 +73,8 @@ export class KanbanSession {
 
   constructor(host: KanbanSessionHost) {
     this.host = host;
-    this.registry = createKanbanRegistry({ readConfig: host.readConfig });
+    const create = host.createRegistry ?? createKanbanRegistry;
+    this.registry = create({ readConfig: host.readConfig });
   }
 
   async handleBoardsListRequest(msg: KanbanBoardsListRequest): Promise<void> {
@@ -74,10 +83,14 @@ export class KanbanSession {
     // decides the provider, so the app's picker never has to know one exists.
     let providerId = msg.providerId;
     let context: KanbanBoardListContext = {};
-    const emit = (boards: KanbanBoardRef[], error: string | null) => {
+    const emit = (
+      boards: KanbanBoardRef[],
+      error: string | null,
+      remediation: KanbanRemediation | null = null,
+    ) => {
       this.host.emit({
         type: "kanban.boards.list.response",
-        payload: { providerId, boards, error, requestId: msg.requestId },
+        payload: { providerId, boards, error, remediation, requestId: msg.requestId },
       });
     };
 
@@ -114,18 +127,23 @@ export class KanbanSession {
       emit(await provider.listBoards(context), null);
     } catch (error) {
       this.host.log.error("kanban.boards.list failed", error);
-      emit([], describeError(error));
+      emit([], ...this.failure(providerId, error));
     }
   }
 
   async handleBoardGetRequest(msg: KanbanBoardGetRequest): Promise<void> {
-    const emit = (board: KanbanBoard | null, error: string | null) => {
+    const emit = (
+      board: KanbanBoard | null,
+      error: string | null,
+      remediation: KanbanRemediation | null = null,
+    ) => {
       this.host.emit({
         type: "kanban.board.get.response",
         payload: {
           providerId: msg.providerId,
           board,
           error,
+          remediation,
           requestId: msg.requestId,
         },
       });
@@ -140,12 +158,12 @@ export class KanbanSession {
       emit(await provider.getBoard(msg.boardId), null);
     } catch (error) {
       this.host.log.error("kanban.board.get failed", error);
-      emit(null, describeError(error));
+      emit(null, ...this.failure(msg.providerId, error));
     }
   }
 
   async handleCardMoveRequest(msg: KanbanCardMoveRequest): Promise<void> {
-    const emit = (error: string | null) => {
+    const emit = (error: string | null, remediation: KanbanRemediation | null = null) => {
       this.host.emit({
         type: "kanban.card.move.response",
         payload: {
@@ -154,6 +172,7 @@ export class KanbanSession {
           cardId: msg.cardId,
           targetColumnId: msg.targetColumnId,
           error,
+          remediation,
           requestId: msg.requestId,
         },
       });
@@ -169,12 +188,17 @@ export class KanbanSession {
       emit(null);
     } catch (error) {
       this.host.log.error("kanban.card.move failed", error);
-      emit(describeError(error));
+      emit(...this.failure(msg.providerId, error));
     }
   }
 
   async handleCardCreateRequest(msg: KanbanCardCreateRequest): Promise<void> {
-    const emit = (columnId: string, card: KanbanCard | null, error: string | null) => {
+    const emit = (
+      columnId: string,
+      card: KanbanCard | null,
+      error: string | null,
+      remediation: KanbanRemediation | null = null,
+    ) => {
       this.host.emit({
         type: "kanban.card.create.response",
         payload: {
@@ -183,6 +207,7 @@ export class KanbanSession {
           columnId,
           card,
           error,
+          remediation,
           requestId: msg.requestId,
         },
       });
@@ -201,12 +226,17 @@ export class KanbanSession {
       emit(msg.columnId ?? "default", card, null);
     } catch (error) {
       this.host.log.error("kanban.card.create failed", error);
-      emit(msg.columnId ?? "default", null, describeError(error));
+      emit(msg.columnId ?? "default", null, ...this.failure(msg.providerId, error));
     }
   }
 
   async handleTaskLinkRequest(msg: KanbanTaskLinkRequest): Promise<void> {
-    const emit = (columnId: string, card: KanbanCard | null, error: string | null) => {
+    const emit = (
+      columnId: string,
+      card: KanbanCard | null,
+      error: string | null,
+      remediation: KanbanRemediation | null = null,
+    ) => {
       this.host.emit({
         type: "kanban.task.link.response",
         payload: {
@@ -215,6 +245,7 @@ export class KanbanSession {
           columnId,
           card,
           error,
+          remediation,
           requestId: msg.requestId,
         },
       });
@@ -234,8 +265,25 @@ export class KanbanSession {
       emit(msg.columnId ?? "default", card, null);
     } catch (error) {
       this.host.log.error("kanban.task.link failed", error);
-      emit(msg.columnId ?? "default", null, describeError(error));
+      emit(msg.columnId ?? "default", null, ...this.failure(msg.providerId, error));
     }
+  }
+
+  /**
+   * Turns a provider failure into the wire's (error, remediation) pair.
+   *
+   * A remediable failure is always credential-shaped, and the user fixes it
+   * outside Otto: granting the scopes to the gh CLI mints a *new* token, so the
+   * initialized provider is left holding a credential that can never succeed.
+   * Dropping the initialization here means the next request re-reads it, and
+   * the user's retry after running the command actually works.
+   */
+  private failure(providerId: string, error: unknown): [string, KanbanRemediation | null] {
+    const remediation = remediationOf(error);
+    if (remediation) {
+      this.initializedProviders.delete(providerId);
+    }
+    return [describeError(error), remediation];
   }
 
   private async ensureInitialized(providerId: string): Promise<void> {

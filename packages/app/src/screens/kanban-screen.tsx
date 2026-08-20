@@ -31,10 +31,11 @@ import {
   type IconComponent,
 } from "@/components/icons/material-icons";
 import { useKanbanBoard, useKanbanBoards } from "@/kanban/kanban-hooks";
+import { KanbanRemediationBlock } from "@/screens/kanban-remediation-block";
 import { useProjects } from "@/hooks/use-projects";
 import { buildProjectSettingsRoute } from "@/utils/host-routes";
 import { KANBAN_NOT_CONFIGURED } from "@otto-code/protocol/kanban";
-import type { KanbanCard, KanbanColumn } from "@otto-code/protocol/kanban";
+import type { KanbanCard, KanbanColumn, KanbanRemediation } from "@otto-code/protocol/kanban";
 import { resolveKanbanScreenBodyState, type KanbanScreenBodyState } from "./kanban-screen-state";
 
 // ── Shared types ────────────────────────────────────────────────────────────
@@ -61,6 +62,8 @@ interface KanbanHostProject {
   projectId: string;
   projectKey: string | null;
   projectName: string;
+  /** The project's root directory on this host; the cwd a fix-it command runs in. */
+  repoRoot: string;
   hasTarget: boolean;
 }
 
@@ -108,6 +111,7 @@ function useKanbanSelectionState(
             projectKey: project.projectKey,
             projectName:
               hostEntry.projectCustomName ?? project.projectCustomName ?? project.projectName,
+            repoRoot: hostEntry.repoRoot,
             hasTarget: hostEntry.projectKanban !== null,
           });
         }
@@ -222,6 +226,7 @@ function useKanbanBoardResolution(input: {
     boards,
     isLoading: boardsLoading,
     error: boardsError,
+    remediation: boardsRemediation,
   } = useKanbanBoards(
     selection?.serverId ?? null,
     selection?.projectId ?? null,
@@ -273,7 +278,22 @@ function useKanbanBoardResolution(input: {
     boardCount: boards.length,
   });
 
-  return { boards, boardProviderId, state };
+  // Where a remediation command would run: the failing host, in the selected
+  // project's root. Null while nothing is selected, which hides the run action
+  // and leaves copy as the only route.
+  const remediationTarget = useMemo(() => {
+    if (!selection) return null;
+    const entry = hostProjectMap.get(selection.projectId);
+    return { serverId: selection.serverId, cwd: entry?.repoRoot ?? null };
+  }, [selection, hostProjectMap]);
+
+  return {
+    boards,
+    boardProviderId,
+    state,
+    remediation: daemonNotConfigured ? null : boardsRemediation,
+    remediationTarget,
+  };
 }
 
 /**
@@ -538,15 +558,16 @@ export function KanbanScreen(): ReactElement {
     updateSelection,
   } = useKanbanSelectionState(kanbanHosts, projects);
 
-  const { boards, boardProviderId, state } = useKanbanBoardResolution({
-    kanbanHosts,
-    selectedHost,
-    selection,
-    hostProjects,
-    hostProjectMap,
-    updateSelection,
-    refreshKey,
-  });
+  const { boards, boardProviderId, state, remediation, remediationTarget } =
+    useKanbanBoardResolution({
+      kanbanHosts,
+      selectedHost,
+      selection,
+      hostProjects,
+      hostProjectMap,
+      updateSelection,
+      refreshKey,
+    });
 
   // ── Refresh ───────────────────────────────────────────────────────────────
   const handleRefresh = useCallback(() => {
@@ -618,10 +639,13 @@ export function KanbanScreen(): ReactElement {
           serverId={selection.serverId}
           providerId={boardProviderId}
           boardId={selection.boardId}
+          remediationCwd={remediationTarget?.cwd ?? null}
         />
       ) : (
         renderKanbanScreenBody({
           state,
+          remediation,
+          remediationTarget,
           onOpenProjectSettings: (serverId: string, projectId: string) => {
             router.navigate(buildProjectSettingsRoute(serverId, projectId));
           },
@@ -636,6 +660,13 @@ export function KanbanScreen(): ReactElement {
 
 function renderKanbanScreenBody(input: {
   state: KanbanScreenBodyState;
+  /**
+   * The daemon's recovery route for a board error, when it named one. It rides
+   * beside the state rather than inside it: the state machine decides which
+   * body to show, and this decides what that body can offer.
+   */
+  remediation: KanbanRemediation | null;
+  remediationTarget: { serverId: string; cwd: string | null } | null;
   onOpenProjectSettings: (serverId: string, projectId: string) => void;
   t: (key: string, options?: Record<string, unknown>) => string;
 }): ReactElement | null {
@@ -677,6 +708,13 @@ function renderKanbanScreenBody(input: {
       <View style={styles.centered} testID="kanban-board-error">
         <Text style={styles.message}>{input.t("kanban.boardError")}</Text>
         <Text style={styles.messageSub}>{input.state.message}</Text>
+        {input.remediation && input.remediationTarget ? (
+          <KanbanRemediationBlock
+            serverId={input.remediationTarget.serverId}
+            cwd={input.remediationTarget.cwd}
+            remediation={input.remediation}
+          />
+        ) : null}
       </View>
     );
   }
@@ -727,13 +765,21 @@ function KanbanBoardView({
   serverId,
   providerId,
   boardId,
+  remediationCwd,
 }: {
   serverId: string;
   providerId: string;
   boardId: string;
+  /** Project root for a fix-it command; null leaves copy as the only route. */
+  remediationCwd: string | null;
 }): ReactElement {
   const [refreshKey, setRefreshKey] = useState(0);
-  const { board, isLoading, error } = useKanbanBoard(serverId, providerId, boardId, refreshKey);
+  const { board, isLoading, error, remediation } = useKanbanBoard(
+    serverId,
+    providerId,
+    boardId,
+    refreshKey,
+  );
   const client = getHostRuntimeStore().getClient(serverId);
 
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
@@ -783,6 +829,13 @@ function KanbanBoardView({
     return (
       <View style={styles.centered} testID="kanban-board-error">
         <Text style={styles.message}>{error ?? "Board unavailable"}</Text>
+        {remediation ? (
+          <KanbanRemediationBlock
+            serverId={serverId}
+            cwd={remediationCwd}
+            remediation={remediation}
+          />
+        ) : null}
       </View>
     );
   }
