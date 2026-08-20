@@ -5,7 +5,7 @@ title: "Untriaged UX and reliability backlog reported 2026-08-20"
 status: "proposed"
 tags: ["backlog","ux","reliability","triage"]
 created_at: "2026-08-20T06:49:19.807Z"
-updated_at: "2026-08-20T06:51:20.792Z"
+updated_at: "2026-08-20T07:06:31.503Z"
 ---
 # Untriaged UX and reliability backlog reported 2026-08-20
 
@@ -35,3 +35,8 @@ The following user-reported observations require implementation verification and
   kind: "evidence"
   summary: "User added a Meeting Notes popup layout requirement on 2026-08-20: row actions must share the final visible text line, not render in a separate footer below the row content. This is an unconfirmed requirement pending implementation review."
   source: "User report, 2026-08-20"
+- time: "2026-08-20T07:06:31.503Z"
+  kind: "evidence"
+  summary: "Implemented the first preview-annotation slice: rendered Markdown headings with markdown-it source maps open a note card and create a workspace-scoped `rendered_document` composer attachment containing path, heading level, source line range, rendered excerpt, and user note. Unsupported rendered paths intentionally expose no annotation action. Focused attachment serialization test, app typecheck, and targeted lint passed."
+  source: "Implementation 2026-08-20"
+  affects: ["file-preview-and-knowledge-articles-use-text-editor-canvas","chat-context-menu-target-resolution"]

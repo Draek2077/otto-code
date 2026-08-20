@@ -28,6 +28,7 @@ export function isWorkspaceAttachment(
     attachment?.kind === "chat_history" ||
     attachment?.kind === "meeting_transcript" ||
     attachment?.kind === "file_context" ||
+    attachment?.kind === "rendered_document" ||
     isPullRequestContextAttachment(attachment)
   );
 }
@@ -42,6 +43,7 @@ export function userAttachmentsOnly(
       attachment.kind !== "chat_history" &&
       attachment.kind !== "meeting_transcript" &&
       attachment.kind !== "file_context" &&
+      attachment.kind !== "rendered_document" &&
       !isPullRequestContextAttachment(attachment),
   );
 }
@@ -115,6 +117,27 @@ export function workspaceAttachmentToSubmitAttachment(
         "Workspace file attached as context by the user.",
         `Path: ${attachment.path}`,
         "Read this file for its current contents before responding.",
+      ].join("\n"),
+    };
+  }
+  if (attachment.kind === "rendered_document") {
+    return {
+      type: "text",
+      mimeType: "text/plain",
+      title: `Document annotation · ${attachment.path}:${attachment.locator.lineStart}`,
+      text: [
+        "Rendered workspace document item attached as context by the user.",
+        `Path: ${attachment.path}`,
+        `Source locator: heading level ${attachment.locator.level}, lines ${attachment.locator.lineStart}-${attachment.locator.lineEnd}`,
+        `Heading: ${attachment.locator.text}`,
+        "",
+        "Rendered excerpt:",
+        attachment.excerpt,
+        "",
+        "User note:",
+        attachment.comment,
+        "",
+        "Read the current workspace file before responding; this annotation identifies the rendered item the user meant.",
       ].join("\n"),
     };
   }

@@ -143,6 +143,25 @@ export interface FileContextAttachment {
   lineStart?: number;
 }
 
+/** A user annotation of a source-backed item in a rendered workspace document. */
+export interface RenderedDocumentContextAttachment {
+  kind: "rendered_document";
+  /** Stable within the current workspace attachment scope. */
+  id: string;
+  path: string;
+  locator: {
+    kind: "heading";
+    level: number;
+    lineStart: number;
+    lineEnd: number;
+    text: string;
+  };
+  /** The rendered item's source excerpt, retained so the prompt remains useful after edits. */
+  excerpt: string;
+  /** The user's reason for attaching the rendered item. */
+  comment: string;
+}
+
 export type WorkspaceComposerAttachment =
   | {
       kind: "browser_element";
@@ -152,6 +171,7 @@ export type WorkspaceComposerAttachment =
   | ChatHistoryContextAttachment
   | MeetingTranscriptContextAttachment
   | FileContextAttachment
+  | RenderedDocumentContextAttachment
   | {
       kind: "review";
       attachment: Extract<AgentAttachment, { type: "review" }>;

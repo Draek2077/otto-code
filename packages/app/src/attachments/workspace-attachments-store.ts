@@ -89,6 +89,7 @@ function getContextAttachmentKey(attachment: WorkspaceComposerAttachment): strin
     attachment.kind !== "chat_history" &&
     attachment.kind !== "meeting_transcript" &&
     attachment.kind !== "file_context" &&
+    attachment.kind !== "rendered_document" &&
     attachment.kind !== "forge.change_request_comment" &&
     attachment.kind !== "forge.change_request_review" &&
     attachment.kind !== "forge.change_request_check" &&

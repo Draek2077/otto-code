@@ -54,4 +54,29 @@ describe("workspace attachment utilities", () => {
       text: "GitHub pull request comment\n\nLooks good.",
     });
   });
+
+  it("preserves a rendered document annotation's source locator, excerpt, and user note", () => {
+    const attachment: ComposerAttachment = {
+      kind: "rendered_document",
+      id: "docs/design.md:heading:12:13",
+      path: "docs/design.md",
+      locator: { kind: "heading", level: 2, lineStart: 12, lineEnd: 13, text: "Tokens" },
+      excerpt: "## Tokens",
+      comment: "This budget is the important constraint.",
+    };
+
+    expect(isWorkspaceAttachment(attachment)).toBe(true);
+    const serialized = workspaceAttachmentToSubmitAttachment(attachment);
+    expect(serialized).toEqual({
+      type: "text",
+      mimeType: "text/plain",
+      title: "Document annotation · docs/design.md:12",
+      text: expect.stringContaining("Source locator: heading level 2, lines 12-13"),
+    });
+    expect(serialized).toMatchObject({ type: "text" });
+    if (!serialized || serialized.type !== "text") {
+      throw new Error("Expected a text attachment.");
+    }
+    expect(serialized.text).toContain("This budget is the important constraint.");
+  });
 });

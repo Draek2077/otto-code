@@ -23,7 +23,8 @@ export function getAttachmentKey(attachment: WorkspaceComposerAttachment): strin
   if (
     attachment.kind === "chat_history" ||
     attachment.kind === "meeting_transcript" ||
-    attachment.kind === "file_context"
+    attachment.kind === "file_context" ||
+    attachment.kind === "rendered_document"
   ) {
     return JSON.stringify({
       kind: attachment.kind,
@@ -65,6 +66,7 @@ function isSentContextAttachment(
     attachment.kind === "chat_history" ||
     attachment.kind === "meeting_transcript" ||
     attachment.kind === "file_context" ||
+    attachment.kind === "rendered_document" ||
     isPullRequestContextAttachment(attachment)
   );
 }

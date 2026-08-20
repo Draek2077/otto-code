@@ -66,6 +66,13 @@ import { recoverMisnestedMarkdownFence } from "./fence-recovery";
 
 export type MarkdownStyles = Record<string, TextStyle & ViewStyle & { [key: string]: unknown }>;
 
+export interface MarkdownHeadingAnnotationTarget {
+  level: number;
+  lineStart: number;
+  lineEnd: number;
+  text: string;
+}
+
 interface MarkdownWithStableRendererProps {
   children: ReactNode;
   style: ReturnType<typeof createMarkdownStyles> | ReturnType<typeof createCompactMarkdownStyles>;
@@ -92,6 +99,63 @@ const defaultMarkdownParser = applyMath(
     applyGithubAlerts(applyTaskListMarkers(MarkdownIt({ typographer: true, linkify: true }))),
   ),
 );
+
+/**
+ * Adds a press target only to headings whose markdown-it source map is known.
+ * Other rendered nodes deliberately remain unannotatable: a visual item is not
+ * useful context if we cannot honestly lead the agent back to its source.
+ */
+export function createMarkdownHeadingAnnotationRules(input: {
+  text: string;
+  onPress: (target: MarkdownHeadingAnnotationTarget) => void;
+}): RenderRules {
+  const targets = new Map<number, MarkdownHeadingAnnotationTarget>();
+  const tokens = defaultMarkdownParser.parse(input.text, {});
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (!token || token.type !== "heading_open" || !token.map || !/^h[1-6]$/.test(token.tag)) {
+      continue;
+    }
+    const inline = tokens[index + 1];
+    const level = Number.parseInt(token.tag.slice(1), 10);
+    if (!Number.isInteger(level) || !inline) {
+      continue;
+    }
+    targets.set(index, {
+      level,
+      lineStart: token.map[0] + 1,
+      lineEnd: token.map[1],
+      text: inline.content.trim(),
+    });
+  }
+
+  const rules = createSharedMarkdownRules();
+  for (const level of [1, 2, 3, 4, 5, 6]) {
+    rules[`heading${level}`] = (node, children, _parent, styles) => {
+      const target = targets.get(node.tokenIndex);
+      if (!target) {
+        return (
+          <View key={node.key} style={styles[`_VIEW_SAFE_heading${level}`]}>
+            {children}
+          </View>
+        );
+      }
+      return (
+        <Pressable
+          key={node.key}
+          accessibilityRole="button"
+          accessibilityLabel={`Annotate heading: ${target.text || `level ${level}`}`}
+          // eslint-disable-next-line react-perf/jsx-no-new-function-as-prop -- target is node-specific
+          onPress={() => input.onPress(target)}
+          style={styles[`_VIEW_SAFE_heading${level}`]}
+        >
+          {children}
+        </Pressable>
+      );
+    };
+  }
+  return rules;
+}
 
 /**
  * Past this many characters a document skips the html-ish splitter and

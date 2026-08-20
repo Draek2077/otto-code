@@ -1,22 +1,41 @@
-import React, { useCallback, useEffect, useImperativeHandle, useMemo, useRef } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { FileReadResult } from "@otto-code/client/internal/daemon-client";
 import {
   ScrollView as RNScrollView,
+  Pressable,
   Text,
+  TextInput,
   View,
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import { MarkdownRenderer } from "@/components/markdown/renderer";
+import {
+  createMarkdownHeadingAnnotationRules,
+  MarkdownRenderer,
+  type MarkdownHeadingAnnotationTarget,
+} from "@/components/markdown/renderer";
+import { Button } from "@/components/ui/button";
+import { X } from "@/components/icons/material-icons";
 import { HtmlFilePreview } from "@/components/html-file-preview";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { MarkdownTaskToggle } from "@/components/markdown/task-context";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useSessionStore, type ExplorerFile } from "@/stores/session-store";
+import {
+  useWorkspaceAttachmentScopeKey,
+  useWorkspaceAttachmentsStore,
+} from "@/attachments/workspace-attachments-store";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { highlightCode, type HighlightToken } from "@otto-code/highlight";
 import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
@@ -207,6 +226,7 @@ interface FilePreviewBodyProps {
   onPointerDownSync?: (pointer: PreviewPointerDown) => void;
   /** Ticking a rendered task list; `line` is already a line of the file. */
   onToggleTask?: MarkdownTaskToggle | null;
+  onAnnotateHeading?: (target: MarkdownHeadingAnnotationTarget, comment: string) => void;
 }
 
 function trimNonEmpty(value: string | null | undefined): string | null {
@@ -494,6 +514,7 @@ function FilePreviewUnavailable({ state }: Pick<FilePreviewBodyProps, "state">) 
   );
 }
 
+// eslint-disable-next-line complexity -- the existing preview renderer owns its platform/content branches.
 function FilePreviewBody({
   preview,
   state,
@@ -513,6 +534,7 @@ function FilePreviewBody({
   onScrolledSync,
   onPointerDownSync,
   onToggleTask = null,
+  onAnnotateHeading,
 }: FilePreviewBodyProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -537,6 +559,46 @@ function FilePreviewBody({
     () => resolveRenderedDocument(documentKind, effectiveContent),
     [documentKind, effectiveContent],
   );
+  const [annotationTarget, setAnnotationTarget] = useState<MarkdownHeadingAnnotationTarget | null>(
+    null,
+  );
+  // A translated rendered body (for example converted AsciiDoc) has no honest
+  // source map. Markdown's body offset is exact, including frontmatter.
+  const annotationLineOffset = renderedDocument?.bodyLineOffset ?? null;
+  // HTML-ish documents are split into independently parsed fragments by the
+  // renderer. Until those fragments retain their original offsets, withhold
+  // annotations rather than attach a heading after HTML to the wrong line.
+  const annotationSupported = Boolean(
+    renderedDocument &&
+    annotationLineOffset !== null &&
+    !(renderedDocument.enableHtmlish && /<\/?[a-z][^>]*>/i.test(renderedDocument.body)),
+  );
+  const annotationRules = useMemo(
+    () =>
+      renderedDocument && annotationSupported && onAnnotateHeading
+        ? createMarkdownHeadingAnnotationRules({
+            text: renderedDocument.body,
+            onPress: setAnnotationTarget,
+          })
+        : undefined,
+    [annotationSupported, onAnnotateHeading, renderedDocument],
+  );
+  const submitAnnotation = useCallback(
+    (comment: string) => {
+      if (!annotationTarget) return;
+      onAnnotateHeading?.(
+        {
+          ...annotationTarget,
+          lineStart: annotationTarget.lineStart + (annotationLineOffset ?? 0),
+          lineEnd: annotationTarget.lineEnd + (annotationLineOffset ?? 0),
+        },
+        comment,
+      );
+      setAnnotationTarget(null);
+    },
+    [annotationLineOffset, annotationTarget, onAnnotateHeading],
+  );
+  const cancelAnnotation = useCallback(() => setAnnotationTarget(null), []);
 
   /**
    * The renderer counts lines of the rendered body; the caller writes to the
@@ -785,11 +847,19 @@ function FilePreviewBody({
                   but it may show its own images, read back through the daemon. */}
               <MarkdownRenderer
                 text={body}
+                rules={annotationRules}
                 remoteImages="altText"
                 enableHtmlish={enableHtmlish}
                 workspaceImages={workspaceImages}
                 onToggleTask={handleToggleTask}
               />
+              {annotationTarget ? (
+                <RenderedDocumentAnnotationCard
+                  target={annotationTarget}
+                  onCancel={cancelAnnotation}
+                  onSubmit={submitAnnotation}
+                />
+              ) : null}
             </View>
           </RNScrollView>
           {scrollbar.overlay}
@@ -939,6 +1009,8 @@ function BinaryPreview({ file }: { file: ExplorerFile }) {
 
 export interface FilePreviewProps {
   serverId: string;
+  /** Present for normal workspace tabs; absent for viewer-only callers. */
+  workspaceId?: string | null;
   workspaceRoot: string;
   location: WorkspaceFileLocation;
   /** Soft-wrap long code lines instead of scrolling sideways. */
@@ -965,8 +1037,10 @@ export interface FilePreviewProps {
   onToggleTask?: MarkdownTaskToggle | null;
 }
 
+// eslint-disable-next-line complexity -- query, watch, and preview rendering remain one lifecycle owner.
 export function FilePreview({
   serverId,
+  workspaceId,
   workspaceRoot,
   location,
   wrapLines,
@@ -988,7 +1062,32 @@ export function FilePreview({
 
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   const normalizedWorkspaceRoot = useMemo(() => workspaceRoot.trim(), [workspaceRoot]);
+  const attachmentScopeKey = useWorkspaceAttachmentScopeKey({
+    serverId,
+    workspaceId,
+    cwd: normalizedWorkspaceRoot,
+  });
+  const focusedAgentId = useSessionStore(
+    (state) => state.sessions[serverId]?.focusedAgentId ?? null,
+  );
   const normalizedFilePath = useMemo(() => trimNonEmpty(location.path), [location.path]);
+  const handleAnnotateHeading = useCallback(
+    (target: MarkdownHeadingAnnotationTarget, comment: string) => {
+      if (!focusedAgentId || !normalizedFilePath || !comment.trim()) return;
+      useWorkspaceAttachmentsStore.getState().addWorkspaceAttachment({
+        scopeKey: attachmentScopeKey,
+        attachment: {
+          kind: "rendered_document",
+          id: `${normalizedFilePath}:heading:${target.lineStart}:${target.lineEnd}`,
+          path: normalizedFilePath,
+          locator: { kind: "heading", ...target },
+          excerpt: `#${"#".repeat(Math.max(0, target.level - 1))} ${target.text}`,
+          comment: comment.trim(),
+        },
+      });
+    },
+    [attachmentScopeKey, focusedAgentId, normalizedFilePath],
+  );
   const readTarget = useMemo(
     () =>
       normalizedFilePath
@@ -1116,10 +1215,69 @@ export function FilePreview({
         onScrolledSync={onScrolledSync}
         onPointerDownSync={onPointerDownSync}
         onToggleTask={onToggleTask}
+        onAnnotateHeading={focusedAgentId ? handleAnnotateHeading : undefined}
       />
     </View>
   );
 }
+
+function RenderedDocumentAnnotationCard({
+  target,
+  onCancel,
+  onSubmit,
+}: {
+  target: MarkdownHeadingAnnotationTarget;
+  onCancel: () => void;
+  onSubmit: (comment: string) => void;
+}) {
+  const [comment, setComment] = useState("");
+  const trimmed = comment.trim();
+  const handleSubmit = useCallback(() => onSubmit(trimmed), [onSubmit, trimmed]);
+  return (
+    <View style={styles.annotationCard} testID="file-preview-annotation-card">
+      <View style={styles.annotationHeader}>
+        <Text style={styles.annotationTitle}>Add to chat context</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Cancel annotation"
+          onPress={onCancel}
+        >
+          <ThemedAnnotationClose size={16} uniProps={annotationCloseIconMapping} />
+        </Pressable>
+      </View>
+      <Text numberOfLines={2} style={styles.annotationTarget}>
+        {target.text || `Heading at lines ${target.lineStart}-${target.lineEnd}`}
+      </Text>
+      <ThemedAnnotationInput
+        autoFocus
+        multiline
+        value={comment}
+        onChangeText={setComment}
+        placeholder="What should the agent know about this item?"
+        accessibilityLabel="Document annotation note"
+        style={styles.annotationInput}
+        uniProps={annotationInputMapping}
+      />
+      <View style={styles.annotationActions}>
+        <Button variant="ghost" size="sm" onPress={onCancel}>
+          Cancel
+        </Button>
+        <Button variant="default" size="sm" onPress={handleSubmit} disabled={!trimmed}>
+          Add to chat
+        </Button>
+      </View>
+    </View>
+  );
+}
+
+const ThemedAnnotationInput = withUnistyles(TextInput);
+const ThemedAnnotationClose = withUnistyles(X);
+const annotationInputMapping = (theme: { colors: { foregroundMuted: string } }) => ({
+  placeholderTextColor: theme.colors.foregroundMuted,
+});
+const annotationCloseIconMapping = (theme: { colors: { foregroundMuted: string } }) => ({
+  color: theme.colors.foregroundMuted,
+});
 
 const styles = StyleSheet.create((theme) => {
   return {
@@ -1130,6 +1288,27 @@ const styles = StyleSheet.create((theme) => {
       // file previews retain the same reading surface.
       backgroundColor: theme.colors.surfaceCode,
     },
+    annotationCard: {
+      margin: theme.spacing[3],
+      padding: theme.spacing[3],
+      borderRadius: theme.borderRadius.md,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.surface1,
+      gap: theme.spacing[2],
+    },
+    annotationHeader: { flexDirection: "row", alignItems: "center", gap: theme.spacing[2] },
+    annotationTitle: { flex: 1, color: theme.colors.foreground, fontWeight: "600" },
+    annotationTarget: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
+    annotationInput: {
+      minHeight: 72,
+      padding: theme.spacing[2],
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: theme.borderRadius.sm,
+      color: theme.colors.foreground,
+    },
+    annotationActions: { flexDirection: "row", justifyContent: "flex-end", gap: theme.spacing[2] },
     centerState: {
       flex: 1,
       alignItems: "center",

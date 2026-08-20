@@ -67,6 +67,9 @@ function getOpenAccessibilityLabel(
   if (attachment.kind === "file_context") {
     return "Open file context attachment";
   }
+  if (attachment.kind === "rendered_document") {
+    return "Open document annotation";
+  }
   return t("composer.attachments.openReview");
 }
 
@@ -86,6 +89,9 @@ function getRemoveAccessibilityLabel(
   if (attachment.kind === "file_context") {
     return "Remove file context attachment";
   }
+  if (attachment.kind === "rendered_document") {
+    return "Remove document annotation";
+  }
   return t("composer.attachments.removeReview");
 }
 
@@ -95,6 +101,9 @@ function getPillTestID(attachment: WorkspaceComposerAttachment): string {
   }
   if (attachment.kind === "file_context") {
     return "composer-file-context-attachment-pill";
+  }
+  if (attachment.kind === "rendered_document") {
+    return "composer-rendered-document-attachment-pill";
   }
   return "composer-review-attachment-pill";
 }
@@ -179,6 +188,7 @@ function useWorkspaceAttachmentBinding({
           selected.kind === "chat_history" ||
           selected.kind === "meeting_transcript" ||
           selected.kind === "file_context" ||
+          selected.kind === "rendered_document" ||
           isPullRequestContextAttachment(selected)
         ) {
           const selectedKey = getAttachmentKey(selected);
@@ -197,7 +207,9 @@ function useWorkspaceAttachmentBinding({
     ({ attachment }: OpenWorkspaceAttachmentInput) => {
       if (
         !isWorkspaceAttachment(attachment) ||
-        (attachment.kind !== "review" && attachment.kind !== "file_context")
+        (attachment.kind !== "review" &&
+          attachment.kind !== "file_context" &&
+          attachment.kind !== "rendered_document")
       ) {
         return false;
       }

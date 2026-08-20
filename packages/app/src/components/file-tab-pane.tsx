@@ -697,6 +697,7 @@ function PreviewOnlyView({
       ) : null}
       <FilePreview
         serverId={serverId}
+        workspaceId={workspaceId}
         workspaceRoot={workspaceRoot}
         location={location}
         wrapLines={wordWrap}
@@ -2066,6 +2067,7 @@ function EditorModeView({
           <View style={previewPaneStyle} testID="file-split-preview">
             <FilePreview
               serverId={serverId}
+              workspaceId={workspaceId}
               workspaceRoot={workspaceRoot}
               location={locationWithoutLines(location)}
               wrapLines={wordWrap}

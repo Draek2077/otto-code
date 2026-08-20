@@ -156,6 +156,14 @@ export function getWorkspaceAttachmentPillContent(
         : t("composer.attachments.fileContext"),
     };
   }
+  if (attachment.kind === "rendered_document") {
+    const fileName = attachment.path.split("/").findLast(Boolean) ?? attachment.path;
+    return {
+      icon: attachmentReviewIcon,
+      title: attachment.locator.text || fileName,
+      subtitle: `${fileName}:${attachment.locator.lineStart} · Document annotation`,
+    };
+  }
   return {
     icon: attachmentReviewIcon,
     title: t("message.attachments.review"),
