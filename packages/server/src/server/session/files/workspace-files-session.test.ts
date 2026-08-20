@@ -20,6 +20,7 @@ import {
   FileTransferOpcode,
   type FileTransferFrame,
 } from "@otto-code/protocol/binary-frames/index";
+import { CodeIntelligenceSession } from "../code-intelligence/code-intelligence-session.js";
 import {
   WorkspaceFilesSession,
   type WorkspaceFilesSessionHost,
@@ -55,9 +56,15 @@ function makeSubsystem(options: { hasBinaryChannel?: boolean; allowedRoots?: str
   // the sole known workspace lets the boundary guard pass for the happy-path
   // specs while still exercising it. Boundary-rejection specs pass a tighter set.
   const allowedRoots = options.allowedRoots ?? [realpathSync(tmpdir())];
+  // The code-navigation specs never reach a language server or the solution
+  // subsystem; invalidatePath is the only member the watcher ping touches.
+  const solutionService = {
+    invalidatePath: () => {},
+  } as unknown as import("../../solution-model/service.js").SolutionService;
   const subsystem = new WorkspaceFilesSession({
     host,
     downloadTokenStore: new DownloadTokenStore({ ttlMs: 60_000 }),
+    solutionService,
     ottoHome,
     logger: pino({ level: "silent" }),
     resolveAllowedRoots: async () => allowedRoots,
@@ -65,8 +72,17 @@ function makeSubsystem(options: { hasBinaryChannel?: boolean; allowedRoots?: str
     // deterministic polling path rather than platform fs.watch latency.
     watchOptions: { pollIntervalMs: 40, debounceMs: 10 },
   });
+  const codeIntelligence = new CodeIntelligenceSession({
+    host: { emit: (msg) => emitted.push(msg) },
+    lspService: {} as import("../../lsp/service.js").LspService,
+    solutionService,
+    symbolIndex: subsystem.symbolIndex,
+    assertCwdWithinKnownWorkspace: (cwd) => subsystem.assertCwdWithinKnownWorkspace(cwd),
+    logger: pino({ level: "silent" }),
+  });
   return {
     subsystem,
+    codeIntelligence,
     emitted,
     binary,
     ottoHome,
@@ -937,7 +953,7 @@ describe("WorkspaceFilesSession file.replace", () => {
 });
 
 async function listCodeFiles(
-  subsystem: WorkspaceFilesSession,
+  subsystem: CodeIntelligenceSession,
   emitted: SessionOutboundMessage[],
   cwd: string,
 ) {
@@ -964,9 +980,9 @@ describe("WorkspaceFilesSession code navigation", () => {
     writeFileSync(join(cwd, "readme.md"), "# hi\n");
     writeFileSync(join(cwd, "dist", "bundle.js"), "ignored\n");
     writeFileSync(join(cwd, ".git", "config"), "x\n");
-    const { subsystem, emitted } = makeSubsystem();
+    const { codeIntelligence, emitted } = makeSubsystem();
 
-    const payload = await listCodeFiles(subsystem, emitted, cwd);
+    const payload = await listCodeFiles(codeIntelligence, emitted, cwd);
     expect(payload.error).toBeNull();
     expect(payload.files).toEqual([".gitignore", "readme.md", "src/app.ts"]);
   });
@@ -975,9 +991,9 @@ describe("WorkspaceFilesSession code navigation", () => {
     const cwd = makeDir("workspace-files-symbols-");
     mkdirSync(join(cwd, "src"));
     writeFileSync(join(cwd, "src", "widget.ts"), "export function render() {}\nconst other = 1;\n");
-    const { subsystem, emitted } = makeSubsystem();
+    const { subsystem, codeIntelligence, emitted } = makeSubsystem();
 
-    await subsystem.handleCodeSymbolsRequest({
+    await codeIntelligence.handleCodeSymbolsRequest({
       type: "code.symbols.request",
       requestId: "req-symbols",
       cwd,
@@ -1009,7 +1025,7 @@ describe("WorkspaceFilesSession code navigation", () => {
     });
 
     emitted.length = 0;
-    await subsystem.handleCodeSymbolsRequest({
+    await codeIntelligence.handleCodeSymbolsRequest({
       type: "code.symbols.request",
       requestId: "req-symbols-2",
       cwd,
@@ -1025,9 +1041,9 @@ describe("WorkspaceFilesSession code navigation", () => {
   test("returns a single file's outline", async () => {
     const cwd = makeDir("workspace-files-outline-");
     writeFileSync(join(cwd, "mod.ts"), "class Alpha {}\nfunction beta() {}\nconst gamma = 3;\n");
-    const { subsystem, emitted } = makeSubsystem();
+    const { codeIntelligence, emitted } = makeSubsystem();
 
-    await subsystem.handleCodeOutlineRequest({
+    await codeIntelligence.handleCodeOutlineRequest({
       type: "code.outline.request",
       requestId: "req-outline",
       cwd,

@@ -251,6 +251,7 @@ import { BrainSession } from "./session/brain/brain-session.js";
 import { CommunicationsSession } from "./session/communications/communications-session.js";
 import { RunsSession } from "./session/runs/runs-session.js";
 import { ProjectKnowledgeSession } from "./session/project-knowledge/project-knowledge-session.js";
+import { CodeIntelligenceSession } from "./session/code-intelligence/code-intelligence-session.js";
 import type { BrainManager } from "./brain/brain-manager.js";
 import type { BrainOpsManager } from "./brain/brain-ops-manager.js";
 import { readLaunchConfig, LaunchConfigError } from "./preview/launch-config.js";
@@ -914,6 +915,7 @@ export class Session {
   private readonly communicationsSession: CommunicationsSession;
   private readonly runsSession: RunsSession;
   private readonly projectKnowledgeSession: ProjectKnowledgeSession;
+  private readonly codeIntelligenceSession: CodeIntelligenceSession;
   private readonly brainManager: BrainManager | null;
   private readonly brainOpsManager: BrainOpsManager | null;
   private readonly providerSnapshotManager: ProviderSnapshotManager;
@@ -1078,10 +1080,8 @@ export class Session {
         hasBinaryChannel: () => this.onBinaryMessage !== null,
       },
       downloadTokenStore,
-      lspService,
-      // A service with the feature off is the correct fallback: a harness that constructs no
-      // solution service gets a Solution view that reports no solutions, which is exactly what a
-      // daemon with the switch off does.
+      // For the watcher's solution-cache invalidation only; the Solution RPCs live
+      // in the CodeIntelligenceSession below.
       solutionService: this.solutionService,
       ottoHome,
       logger: this.sessionLogger,
@@ -1098,6 +1098,19 @@ export class Session {
           ...projects.map((project) => project.rootPath),
         ];
       },
+    });
+    this.codeIntelligenceSession = new CodeIntelligenceSession({
+      host: { emit: (msg) => this.emit(msg) },
+      lspService,
+      // A service with the feature off is the correct fallback: a harness that constructs no
+      // solution service gets a Solution view that reports no solutions, which is exactly what a
+      // daemon with the switch off does.
+      solutionService: this.solutionService,
+      symbolIndex: this.workspaceFilesSession.symbolIndex,
+      // The files session owns the workspace boundary; both domains refuse identically.
+      assertCwdWithinKnownWorkspace: (cwd) =>
+        this.workspaceFilesSession.assertCwdWithinKnownWorkspace(cwd),
+      logger: this.sessionLogger,
     });
     this.agentManager = agentManager;
     this.agentStorage = agentStorage;
@@ -4162,55 +4175,7 @@ export class Session {
       case "file.replace.request":
         return this.workspaceFilesSession.handleFileReplaceRequest(msg);
       default:
-        return this.dispatchCodeIntelligenceMessage(msg);
-    }
-  }
-
-  /**
-   * The code-intelligence half: the ctags index (`code.symbols`/`code.outline`) and the
-   * language-server family. Split from the file dispatcher above purely so neither
-   * switch grows past the complexity cap - one flat switch of every file-ish RPC was
-   * over it.
-   */
-  private dispatchCodeIntelligenceMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    switch (msg.type) {
-      case "code.list_files.request":
-        return this.workspaceFilesSession.handleCodeListFilesRequest(msg);
-      case "code.symbols.request":
-        return this.workspaceFilesSession.handleCodeSymbolsRequest(msg);
-      case "code.definition.request":
-        return this.workspaceFilesSession.handleCodeDefinitionRequest(msg);
-      case "code.document.sync.request":
-        return this.workspaceFilesSession.handleCodeDocumentSyncRequest(msg);
-      case "code.document.close.request":
-        return this.workspaceFilesSession.handleCodeDocumentCloseRequest(msg);
-      case "code.hover.request":
-        return this.workspaceFilesSession.handleCodeHoverRequest(msg);
-      case "code.references.request":
-        return this.workspaceFilesSession.handleCodeReferencesRequest(msg);
-      case "code.rename.preview.request":
-        return this.workspaceFilesSession.handleCodeRenamePreviewRequest(msg);
-      case "code.rename.apply.request":
-        return this.workspaceFilesSession.handleCodeRenameApplyRequest(msg);
-      case "code.rename.undo.request":
-        return this.workspaceFilesSession.handleCodeRenameUndoRequest(msg);
-      case "lsp.servers.list.request":
-        return this.workspaceFilesSession.handleLspServersListRequest(msg);
-      case "lsp.server.stop.request":
-        return this.workspaceFilesSession.handleLspServerStopRequest(msg);
-      case "code.outline.request":
-        return this.workspaceFilesSession.handleCodeOutlineRequest(msg);
-      // The Solution view. Under `code.` and dispatched here, but independent of everything
-      // above it: LSP has no project-structure request, so this reads solutions through its own
-      // subsystem and is unaffected by the C# row's on/off state.
-      case "code.solution.list.request":
-        return this.workspaceFilesSession.handleCodeSolutionListRequest(msg);
-      case "code.solution.get_tree.request":
-        return this.workspaceFilesSession.handleCodeSolutionGetTreeRequest(msg);
-      case "code.solution.load_project.request":
-        return this.workspaceFilesSession.handleCodeSolutionLoadProjectRequest(msg);
-      default:
-        return undefined;
+        return this.codeIntelligenceSession.dispatch(msg);
     }
   }
 
