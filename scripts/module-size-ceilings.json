@@ -23,6 +23,7 @@
     "packages/server/src/server/agent/tools/otto-tools.ts": 6254,
     "packages/app/src/git/diff-pane.tsx": 4193,
     "packages/app/src/components/combined-model-selector.tsx": 683,
-    "packages/app/src/components/provider-diagnostic-sheet.tsx": 958
+    "packages/app/src/components/provider-diagnostic-sheet.tsx": 958,
+    "packages/app/src/hooks/use-settings/storage.ts": 333
   }
 }
