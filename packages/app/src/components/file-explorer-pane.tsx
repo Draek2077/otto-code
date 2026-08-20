@@ -94,11 +94,17 @@ import { useFileMutationsFeature } from "@/file-explorer/use-file-mutations-feat
 import { useFileMutations } from "@/file-explorer/use-file-mutations";
 import { FileNameSheet, type FileNameSheetMode } from "@/file-explorer/file-name-sheet";
 import { filterVisibleExplorerEntries, isHiddenExplorerPath } from "@/file-explorer/visibility";
+import { planExpandedPathSync } from "@/file-explorer/expanded-paths";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { revealFileInChanges, revealFileInFiles, useChangedFilePaths } from "@/git/changes-reveal";
 import { openFileHistoryTab } from "@/git/file-history/open-file-history-tab";
 import { isNative, isWeb } from "@/constants/platform";
+
+type RequestDirectoryListing = (
+  path: string,
+  opts?: { recordHistory?: boolean; setCurrentPath?: boolean; surfaceErrors?: boolean },
+) => Promise<boolean>;
 
 const SORT_OPTIONS: { value: SortOption }[] = [
   { value: "name" },
@@ -794,19 +800,61 @@ export function FileExplorerPane({
   });
 
   const hasInitializedRef = useRef(false);
+  // Listings this pane has already asked for while restoring expansion, so a
+  // cascade pass triggered by an arriving sibling does not ask twice. Failures
+  // stay in the set: the user re-expands the folder, or refreshes, to retry.
+  const attemptedExpandedPathsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     hasInitializedRef.current = false;
+    attemptedExpandedPathsRef.current = new Set();
   }, [workspaceStateKey]);
 
   useEffect(() => {
     void initializeExplorer({
       hasWorkspaceScope,
       hasInitializedRef,
-      workspaceStateKey,
       requestDirectoryListing,
     });
   }, [hasWorkspaceScope, requestDirectoryListing, workspaceStateKey]);
+
+  // Persisted expansion is restored from the listings themselves, one level at a
+  // time, and forgotten where the listing says the folder is gone. See
+  // `planExpandedPathSync` for why replaying it blind was the bug.
+  useEffect(() => {
+    if (!hasWorkspaceScope || !workspaceStateKey) {
+      return;
+    }
+    const plan = planExpandedPathSync({
+      directories,
+      expandedPaths,
+      showHiddenFiles,
+      inFlightPaths: attemptedExpandedPathsRef.current,
+    });
+    if (plan.prune.length > 0) {
+      const prunedPaths = new Set(plan.prune);
+      setExpandedPathsForWorkspace(
+        workspaceStateKey,
+        Array.from(expandedPaths).filter((path) => !prunedPaths.has(path)),
+      );
+    }
+    for (const path of plan.request) {
+      attemptedExpandedPathsRef.current.add(path);
+      void requestDirectoryListing(path, {
+        recordHistory: false,
+        setCurrentPath: false,
+        surfaceErrors: false,
+      });
+    }
+  }, [
+    directories,
+    expandedPaths,
+    hasWorkspaceScope,
+    requestDirectoryListing,
+    setExpandedPathsForWorkspace,
+    showHiddenFiles,
+    workspaceStateKey,
+  ]);
 
   const handleToggleDirectory = useCallback(
     (entry: ExplorerEntry) =>
@@ -1093,22 +1141,22 @@ export function FileExplorerPane({
     setSortOption(SORT_OPTIONS[nextIndex].value);
   }, [sortOption, setSortOption]);
 
+  // Revealing hidden files re-runs the cascade effect through `showHiddenFiles`,
+  // which lists the hidden folders that were remembered but held back.
   const handleToggleHiddenFiles = useCallback(() => {
-    const willShow = !usePanelStore.getState().explorerShowHiddenFiles;
     toggleExplorerShowHiddenFiles();
-    if (willShow) {
-      requestPersistedExpandedPaths({ workspaceStateKey, requestDirectoryListing });
-    }
-  }, [requestDirectoryListing, toggleExplorerShowHiddenFiles, workspaceStateKey]);
+  }, [toggleExplorerShowHiddenFiles]);
 
   const refreshExplorer = useCallback(
     () =>
       refreshExplorerDirectories({
         hasWorkspaceScope,
+        directories,
         expandedPaths,
+        attemptedExpandedPathsRef,
         requestDirectoryListing,
       }),
-    [expandedPaths, hasWorkspaceScope, requestDirectoryListing],
+    [directories, expandedPaths, hasWorkspaceScope, requestDirectoryListing],
   );
   const { refetch: refetchExplorer, isFetching: isRefreshFetching } = useQuery({
     queryKey: ["fileExplorerRefresh", serverId, workspaceStateKey],
@@ -2202,16 +2250,11 @@ function TreeRowDispatcher({
 async function initializeExplorer({
   hasWorkspaceScope,
   hasInitializedRef,
-  workspaceStateKey,
   requestDirectoryListing,
 }: {
   hasWorkspaceScope: boolean;
   hasInitializedRef: RefObject<boolean>;
-  workspaceStateKey: string | null;
-  requestDirectoryListing: (
-    path: string,
-    opts?: { recordHistory?: boolean; setCurrentPath?: boolean },
-  ) => Promise<boolean>;
+  requestDirectoryListing: RequestDirectoryListing;
 }): Promise<void> {
   if (!hasWorkspaceScope || hasInitializedRef.current) {
     return;
@@ -2223,66 +2266,49 @@ async function initializeExplorer({
   });
   if (!succeeded) {
     hasInitializedRef.current = false;
-    return;
   }
-  requestPersistedExpandedPaths({ workspaceStateKey, requestDirectoryListing });
-}
-
-function requestPersistedExpandedPaths({
-  workspaceStateKey,
-  requestDirectoryListing,
-}: {
-  workspaceStateKey: string | null;
-  requestDirectoryListing: (
-    path: string,
-    opts?: { recordHistory?: boolean; setCurrentPath?: boolean },
-  ) => Promise<boolean>;
-}): void {
-  const showHiddenFiles = usePanelStore.getState().explorerShowHiddenFiles;
-  const persistedPaths = usePanelStore.getState().expandedPathsByWorkspace[workspaceStateKey ?? ""];
-  if (!persistedPaths) {
-    return;
-  }
-  for (const path of persistedPaths) {
-    if (path !== "." && (showHiddenFiles || !isHiddenExplorerPath(path))) {
-      void requestDirectoryListing(path, {
-        recordHistory: false,
-        setCurrentPath: false,
-      });
-    }
-  }
+  // Expansion below the root is restored by the cascade effect in the pane, off
+  // the listings as they arrive - nothing is requested from memory alone.
 }
 
 async function refreshExplorerDirectories({
   hasWorkspaceScope,
+  directories,
   expandedPaths,
+  attemptedExpandedPathsRef,
   requestDirectoryListing,
 }: {
   hasWorkspaceScope: boolean;
+  directories: Map<string, { path: string; entries: ExplorerEntry[] }>;
   expandedPaths: Set<string>;
-  requestDirectoryListing: (
-    path: string,
-    opts?: { recordHistory?: boolean; setCurrentPath?: boolean },
-  ) => Promise<boolean>;
+  attemptedExpandedPathsRef: RefObject<Set<string>>;
+  requestDirectoryListing: RequestDirectoryListing;
 }): Promise<null> {
   if (!hasWorkspaceScope) {
     return null;
   }
+  // Only listings we actually hold are re-fetched. A remembered path with no
+  // listing behind it is either not restored yet or gone from disk, and the
+  // cascade decides which - refreshing it here is how a deleted folder used to
+  // turn the whole pane into an ENOENT banner.
   const showHiddenFiles = usePanelStore.getState().explorerShowHiddenFiles;
   const directoryPaths = Array.from(expandedPaths).filter(
-    (path) => showHiddenFiles || !isHiddenExplorerPath(path),
+    (path) =>
+      path !== "." && directories.has(path) && (showHiddenFiles || !isHiddenExplorerPath(path)),
   );
-  if (!directoryPaths.includes(".")) {
-    directoryPaths.unshift(".");
-  }
-  await Promise.all(
-    directoryPaths.map((path) =>
+  // A refresh is the user asking again, so previously failed subtrees get
+  // another attempt through the cascade.
+  attemptedExpandedPathsRef.current = new Set();
+  await Promise.all([
+    requestDirectoryListing(".", { recordHistory: false, setCurrentPath: false }),
+    ...directoryPaths.map((path) =>
       requestDirectoryListing(path, {
         recordHistory: false,
         setCurrentPath: false,
+        surfaceErrors: false,
       }),
     ),
-  );
+  ]);
   return null;
 }
 

@@ -72,7 +72,18 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
   const requestDirectoryListing = useCallback(
     async (
       path: string,
-      options?: { recordHistory?: boolean; setCurrentPath?: boolean },
+      options?: {
+        recordHistory?: boolean;
+        setCurrentPath?: boolean;
+        /**
+         * Background listings (restoring persisted expansion, refreshing an
+         * already-open subtree) pass `false`: a subtree the user is not looking
+         * at must not replace the whole tree with an error banner. They report
+         * failure through the return value instead, and the caller decides
+         * whether to forget the path.
+         */
+        surfaceErrors?: boolean;
+      },
     ): Promise<boolean> => {
       if (!workspaceStateKey) {
         return false;
@@ -80,6 +91,7 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
       const normalizedPath = path && path.length > 0 ? path : ".";
       const shouldSetCurrentPath = options?.setCurrentPath ?? true;
       const shouldRecordHistory = options?.recordHistory ?? shouldSetCurrentPath;
+      const shouldSurfaceErrors = options?.surfaceErrors ?? true;
 
       updateExplorerState((state) => ({
         ...state,
@@ -136,10 +148,14 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
         updateExplorerState((state) => ({
           ...state,
           isLoading: false,
-          lastError:
-            error instanceof Error
-              ? error.message
-              : t("workspace.fileExplorer.errors.failedToListDirectory"),
+          ...(shouldSurfaceErrors
+            ? {
+                lastError:
+                  error instanceof Error
+                    ? error.message
+                    : t("workspace.fileExplorer.errors.failedToListDirectory"),
+              }
+            : {}),
           pendingRequest: null,
         }));
         return false;
