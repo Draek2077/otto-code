@@ -26,6 +26,7 @@
     "packages/app/src/components/provider-diagnostic-sheet.tsx": 958,
     "packages/app/src/hooks/use-settings/storage.ts": 334,
     "packages/app/src/styles/theme.ts": 284,
-    "packages/server/src/server/session/files/workspace-files-session.ts": 860
+    "packages/server/src/server/session/files/workspace-files-session.ts": 860,
+    "packages/app/src/components/diff-viewer.tsx": 363
   }
 }
