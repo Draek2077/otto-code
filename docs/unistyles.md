@@ -82,7 +82,7 @@ Keep the entries separate so each retains its Unistyles metadata. If composition
 JSX, create the array inside the component or in a `useMemo` that first runs when the component
 mounts-never at module evaluation time.
 
-[`useUnistyles()`](https://www.unistyl.es/v3/references/use-unistyles) is different. It gives React access to the current theme/runtime and can make a component re-render when those values change. Use it for values that must be rendered through React props, such as icon colors or small escape hatches. Do not expect direct reads from `UnistylesRuntime` to re-render a component; [issue #817](https://github.com/jpudysz/react-native-unistyles/issues/817) is a useful reminder of that invariant.
+[`useUnistyles()`](https://www.unistyl.es/v3/references/use-unistyles) is different. It gives React access to the current theme/runtime and re-renders the component when those values change - which is exactly why it is banned (see the top of this page): it turns theme updates into React re-renders. For values that must travel through React props, such as icon colors, wrap the leaf in `withUnistyles` and pass a `uniProps` mapping instead; that is the pattern the codebase uses (`ThemedX` wrappers plus `(theme) => ({ color: ... })` mappings). Do not expect direct reads from `UnistylesRuntime` to re-render a component; [issue #817](https://github.com/jpudysz/react-native-unistyles/issues/817) is a useful reminder of that invariant.
 
 ### A Theme Shadow Silently Drops `shadowOpacity` On Web
 
@@ -212,17 +212,7 @@ In practice the wrapper-`View` pattern is the one we use. Across the app, `withU
 
 In principle, [`withUnistyles`](https://www.unistyl.es/v3/references/with-unistyles) can also wrap a `ScrollView` to make `contentContainerStyle` theme-reactive via its [auto-mapping behavior for `style` and `contentContainerStyle`](https://www.unistyl.es/v3/references/with-unistyles#auto-mapping-for-style-and-contentcontainerstyle-props). We previously did this on the welcome screen and hit the `> *` child-selector leak documented below; we have since moved the welcome screen to the wrapper-`View` pattern. If you find yourself reaching for `withUnistyles(ScrollView)`, treat it as a smell and check whether a wrapper view works first.
 
-The smallest escape hatch is to use `useUnistyles()` and pass an inline value through React:
-
-```tsx
-const { theme } = useUnistyles();
-
-<ScrollView
-  contentContainerStyle={[styles.contentContainer, { backgroundColor: theme.colors.surface0 }]}
-/>;
-```
-
-Use this sparingly. It works because React re-renders the prop, but it gives up the main Unistyles native-update path for that value.
+Grandfathered files (the burn-down list in `.oxlintrc.json`) still contain the old escape hatch of calling `useUnistyles()` and passing an inline value through React. New code must not add it: it re-renders the component on every theme change and gives up the Unistyles native-update path for that value. Reach for the wrapper-`View` pattern above, or a `withUnistyles`-wrapped leaf with a `uniProps` mapping.
 
 ## `withUnistyles` And The `> *` Child-Selector Leak
 
@@ -278,21 +268,13 @@ Second sharp edge once you use the prop: RNW's `box-none` implementation resets 
 
 `@gorhom/bottom-sheet` can keep `BottomSheetModal` content mounted while the sheet is hidden. That matters during Otto's startup theme transition: a header node can be created under the initial adaptive theme, stay hidden, then appear later with stale native style values even though surrounding content has re-rendered correctly.
 
-We saw this in `AdaptiveModalSheet`: the body text and buttons were dark-theme-correct, but the shared sheet title opened with the initial light-theme text color on a dark sheet background. For tiny values in a reusable sheet header, prefer the inline escape hatch:
+We saw this in `AdaptiveModalSheet`: the body text and buttons were dark-theme-correct, but the shared sheet title opened with the initial light-theme text color on a dark sheet background. For tiny values in a reusable sheet header, route the stale theme-dependent value through React with a `withUnistyles`-wrapped leaf and a `uniProps` mapping (grandfathered files do this with the banned `useUnistyles()` hook; do not copy that form into new code). Keep layout and typography in `StyleSheet.create`; move only the stale theme-dependent value through React. If a larger subtree shows the same behavior, consider remounting the sheet on theme changes or moving the themed paint onto a wrapper that is mounted with the visible content.
 
-```tsx
-const { theme } = useUnistyles();
-
-<Text style={[styles.title, { color: theme.colors.foreground }]}>{title}</Text>;
-```
-
-Keep layout and typography in `StyleSheet.create`; move only the stale theme-dependent value through React. If a larger subtree shows the same behavior, consider remounting the sheet on theme changes or moving the themed paint onto a wrapper that is mounted with the visible content.
-
-The same rule applies to bottom-sheet component props such as `backgroundStyle` and `handleIndicatorStyle`: they are library props, not the direct React Native `style` prop Unistyles registers. Prefer a custom `backgroundComponent` that calls `useUnistyles()`, or pass a small inline object from the hook theme.
+The same rule applies to bottom-sheet component props such as `backgroundStyle` and `handleIndicatorStyle`: they are library props, not the direct React Native `style` prop Unistyles registers. Prefer a custom `backgroundComponent` wrapped in `withUnistyles`, mapping the themed values through `uniProps`.
 
 ## Memoized Style Objects
 
-When a third-party library receives a plain style object, it is outside Unistyles' native tracking path. Make sure any memo that builds that style object depends on the actual theme values it reads.
+When a third-party library receives a plain style object, it is outside Unistyles' native tracking path. Make sure any memo that builds that style object depends on the actual theme values it reads. (The examples below use `useUnistyles()` because they document existing grandfathered call sites; the dependency rule is what matters, and it applies wherever the theme object comes from.)
 
 Avoid indirect keys like this:
 
