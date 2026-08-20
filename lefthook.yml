@@ -12,6 +12,7 @@ pre-commit:
         - "vendor/**"
         - "**/*.gen.ts"
         - "**/*.gen.tsx"
+        - ".otto/knowledge/**"
         - "AGENTS.md"
         - "**/AGENTS.md"
       run: npm run format:check:files -- {staged_files}
