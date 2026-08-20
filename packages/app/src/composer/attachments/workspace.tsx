@@ -177,6 +177,7 @@ function useWorkspaceAttachmentBinding({
         if (
           selected.kind === "browser_element" ||
           selected.kind === "chat_history" ||
+          selected.kind === "meeting_transcript" ||
           selected.kind === "file_context" ||
           isPullRequestContextAttachment(selected)
         ) {

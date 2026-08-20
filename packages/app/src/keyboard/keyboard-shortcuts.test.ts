@@ -252,6 +252,18 @@ describe("keyboard-shortcuts", () => {
       action: "workspace.pane.split.down",
     },
     {
+      name: "matches Ctrl+Backslash to split pane right on non-mac platforms",
+      event: { key: "\\", code: "Backslash", ctrlKey: true },
+      context: { isMac: false },
+      action: "workspace.pane.split.right",
+    },
+    {
+      name: "matches Ctrl+Shift+Backslash to split pane down on non-mac platforms",
+      event: { key: "|", code: "Backslash", ctrlKey: true, shiftKey: true },
+      context: { isMac: false },
+      action: "workspace.pane.split.down",
+    },
+    {
       name: "matches Cmd+Shift+ArrowRight to focus pane right on macOS",
       event: { key: "ArrowRight", code: "ArrowRight", metaKey: true, shiftKey: true },
       context: { isMac: true },
@@ -608,11 +620,6 @@ describe("keyboard-shortcuts", () => {
       context: { commandCenterOpen: true },
     },
     {
-      name: "does not bind pane shortcuts on non-mac platforms",
-      event: { key: "\\", code: "Backslash", ctrlKey: true },
-      context: { isMac: false },
-    },
-    {
       name: "keeps Cmd+Shift+ArrowRight available for message input selection",
       event: { key: "ArrowRight", code: "ArrowRight", metaKey: true, shiftKey: true },
       context: { isMac: true, focusScope: "message-input" },
@@ -840,6 +847,8 @@ describe("keyboard-shortcut help sections", () => {
       expectedKeys: {
         "workspace-tab-jump-index": ["alt", "1-9"],
         "workspace-tab-close-current": ["ctrl", "W"],
+        "workspace-pane-split-right": ["mod", "\\"],
+        "workspace-pane-split-down": ["mod", "shift", "\\"],
       },
     },
     {

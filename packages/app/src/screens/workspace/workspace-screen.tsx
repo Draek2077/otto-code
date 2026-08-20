@@ -627,7 +627,10 @@ interface MobileWorkspaceTabSwitcherProps {
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
   onCopyTerminalId: (terminalId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
-  onCopyFilePath: (path: string) => Promise<void> | void;
+  onCopyFilePath: (
+    path: string,
+    target?: "filename" | "full-path" | "workspace-path",
+  ) => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
   onRenameTab: (tab: WorkspaceTabDescriptor) => void;
   onCloseTab: (tabId: string) => Promise<void> | void;
@@ -841,7 +844,10 @@ function MobileWorkspaceTabOption({
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
   onCopyTerminalId: (terminalId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
-  onCopyFilePath: (path: string) => Promise<void> | void;
+  onCopyFilePath: (
+    path: string,
+    target?: "filename" | "full-path" | "workspace-path",
+  ) => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
   onRenameTab: (tab: WorkspaceTabDescriptor) => void;
   onCloseTab: (tabId: string) => Promise<void> | void;
@@ -853,12 +859,18 @@ function MobileWorkspaceTabOption({
 }) {
   const { t } = useTranslation();
   const isDeveloperMode = useIsDeveloperMode();
+  const workspaceDirectory = useWorkspace(
+    normalizedServerId,
+    normalizedWorkspaceId,
+  )?.workspaceDirectory;
   const tabMenuLabels = useMemo<WorkspaceTabMenuLabels>(
     () => ({
       copyResumeCommand: t("workspace.tabs.menu.copyResumeCommand"),
       copyTerminalId: t("workspace.tabs.menu.copyTerminalId"),
       copyAgentId: t("workspace.tabs.menu.copyAgentId"),
-      copyFilePath: t("workspace.tabs.menu.copyFilePath"),
+      copyFilename: t("workspace.tabs.menu.copyFilename"),
+      copyFullPath: t("workspace.tabs.menu.copyFullPath"),
+      copyWorkspacePath: t("workspace.tabs.menu.copyWorkspacePath"),
       rename: t("workspace.tabs.menu.rename"),
       moveToWorkspace: t("workspace.tabs.menu.moveToWorkspace"),
       closeAbove: t("workspace.tabs.menu.closeAbove"),
@@ -882,6 +894,7 @@ function MobileWorkspaceTabOption({
     index: tabIndex,
     tabCount,
     menuTestIDBase,
+    workspaceDirectory,
     isDeveloperMode,
     onCopyResumeCommand,
     onCopyTerminalId,
@@ -4345,7 +4358,10 @@ function WorkspaceFallbackTabs({
   onCopyResumeCommand: (agentId: string) => void | Promise<void>;
   onCopyTerminalId: (terminalId: string) => void | Promise<void>;
   onCopyAgentId: (agentId: string) => void | Promise<void>;
-  onCopyFilePath: (path: string) => void | Promise<void>;
+  onCopyFilePath: (
+    path: string,
+    target?: "filename" | "full-path" | "workspace-path",
+  ) => void | Promise<void>;
   onReloadAgent: (agentId: string) => void | Promise<void>;
   onRenameTab: (tab: WorkspaceTabDescriptor) => void;
   onCloseTabsToLeft: (tabId: string) => void | Promise<void>;
@@ -5906,11 +5922,21 @@ function WorkspaceScreenContent({
   );
 
   const handleCopyFilePath = useCallback(
-    async (path: string) => {
+    async (path: string, target: "filename" | "full-path" | "workspace-path" = "full-path") => {
       if (!path) return;
       try {
         await Clipboard.setStringAsync(path);
-        toast.copied(t("workspace.tabs.toasts.filePathCopiedLabel"));
+        const copiedLabelKey =
+          target === "filename"
+            ? "workspace.tabs.toasts.filenameCopiedLabel"
+            : "workspace.tabs.toasts.filePathCopiedLabel";
+        toast.copied(
+          t(
+            target === "workspace-path"
+              ? "workspace.tabs.toasts.workspacePathCopiedLabel"
+              : copiedLabelKey,
+          ),
+        );
       } catch {
         toast.error(t("workspace.tabs.toasts.copyFailed"));
       }

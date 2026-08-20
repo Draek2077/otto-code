@@ -7,6 +7,7 @@ import {
   findDuplicateProjectPath,
   getNewProjectBlocker,
   previewProjectPath,
+  shouldShowDuplicateProjectPath,
   resolveRemoteRepositoryName,
   type NewProjectCapabilities,
   type NewProjectFormState,
@@ -303,6 +304,32 @@ describe("findDuplicateProjectPath", () => {
     expect(findDuplicateProjectPath({ targetPath: target, existingProjectPaths: existing })).toBe(
       "/src/thing",
     );
+  });
+});
+
+describe("shouldShowDuplicateProjectPath", () => {
+  it("does not turn its own successful registration into a visible conflict", () => {
+    expect(
+      shouldShowDuplicateProjectPath({
+        duplicateProjectPath: "/src/new-project",
+        isSubmitting: true,
+        hasSuccessfulSubmission: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowDuplicateProjectPath({
+        duplicateProjectPath: "/src/new-project",
+        isSubmitting: false,
+        hasSuccessfulSubmission: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldShowDuplicateProjectPath({
+        duplicateProjectPath: "/src/new-project",
+        isSubmitting: false,
+        hasSuccessfulSubmission: true,
+      }),
+    ).toBe(false);
   });
 });
 

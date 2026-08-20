@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildWorkspaceTabMenuEntries } from "@/screens/workspace/workspace-tab-menu";
+import {
+  buildWorkspaceTabMenuEntries,
+  getWorkspaceRelativeFilePath,
+} from "@/screens/workspace/workspace-tab-menu";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 
 function createAgentTab(): WorkspaceTabDescriptor {
@@ -355,7 +358,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
     expect(onRenameTab).toHaveBeenCalledWith(terminalTab);
   });
 
-  it("includes copy file path for file tabs", () => {
+  it("includes filename, full path, and workspace-relative path for file tabs", () => {
     const onCopyFilePath = vi.fn();
     const fileTab: WorkspaceTabDescriptor = {
       key: "file_abc",
@@ -366,6 +369,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
     const entries = buildWorkspaceTabMenuEntries({
       surface: "desktop",
       tab: fileTab,
+      workspaceDirectory: "/some",
       index: 0,
       tabCount: 1,
       menuTestIDBase: "workspace-tab-context-file_abc",
@@ -383,20 +387,68 @@ describe("buildWorkspaceTabMenuEntries", () => {
     });
 
     const labels = entries.filter((entry) => entry.kind === "item").map((entry) => entry.label);
-    expect(labels[0]).toBe("Copy file path");
+    expect(labels.slice(0, 3)).toEqual(["Copy filename", "Copy full path", "Copy workspace path"]);
     expect(labels).not.toContain("Copy resume command");
     expect(labels).not.toContain("Copy agent id");
     expect(labels).not.toContain("Rename");
     expect(labels).not.toContain("Reload agent");
 
-    const copyFilePathEntry = entries.find(
-      (entry) => entry.kind === "item" && entry.key === "copy-file-path",
+    const copyFilenameEntry = entries.find(
+      (entry) => entry.kind === "item" && entry.key === "copy-filename",
     );
-    if (!copyFilePathEntry || copyFilePathEntry.kind !== "item") {
-      throw new Error("Copy file path entry missing");
+    const copyFullPathEntry = entries.find(
+      (entry) => entry.kind === "item" && entry.key === "copy-full-path",
+    );
+    const copyWorkspacePathEntry = entries.find(
+      (entry) => entry.kind === "item" && entry.key === "copy-workspace-path",
+    );
+    if (
+      !copyFilenameEntry ||
+      copyFilenameEntry.kind !== "item" ||
+      !copyFullPathEntry ||
+      copyFullPathEntry.kind !== "item" ||
+      !copyWorkspacePathEntry ||
+      copyWorkspacePathEntry.kind !== "item"
+    ) {
+      throw new Error("File copy entries missing");
     }
-    copyFilePathEntry.onSelect();
-    expect(onCopyFilePath).toHaveBeenCalledWith("/some/path.ts");
+    copyFilenameEntry.onSelect();
+    copyFullPathEntry.onSelect();
+    copyWorkspacePathEntry.onSelect();
+    expect(onCopyFilePath).toHaveBeenNthCalledWith(1, "path.ts", "filename");
+    expect(onCopyFilePath).toHaveBeenNthCalledWith(2, "/some/path.ts", "full-path");
+    expect(onCopyFilePath).toHaveBeenNthCalledWith(3, "path.ts", "workspace-path");
+  });
+
+  it("omits the workspace path action when a file is outside the workspace", () => {
+    const entries = buildWorkspaceTabMenuEntries({
+      surface: "desktop",
+      tab: {
+        key: "file_outside",
+        tabId: "file_outside",
+        kind: "file",
+        target: { kind: "file", path: "/outside/path.ts", lineStart: 1, lineEnd: 1 },
+      },
+      workspaceDirectory: "/workspace",
+      index: 0,
+      tabCount: 1,
+      menuTestIDBase: "workspace-tab-context-file_outside",
+      isDeveloperMode: true,
+      onCopyResumeCommand: vi.fn(),
+      onCopyTerminalId: vi.fn(),
+      onCopyAgentId: vi.fn(),
+      onCopyFilePath: vi.fn(),
+      onReloadAgent: vi.fn(),
+      onRenameTab: vi.fn(),
+      onCloseTab: vi.fn(),
+      onCloseTabsBefore: vi.fn(),
+      onCloseTabsAfter: vi.fn(),
+      onCloseOtherTabs: vi.fn(),
+    });
+
+    expect(
+      entries.some((entry) => entry.kind === "item" && entry.key === "copy-workspace-path"),
+    ).toBe(false);
   });
 
   it("uses the same rename entry shape for agent and terminal tabs", () => {
@@ -539,5 +591,11 @@ describe("buildWorkspaceTabMenuEntries move-to-workspace entry", () => {
     });
 
     expect(labelsOf(entries)).not.toContain("Move to workspace…");
+  });
+});
+
+describe("getWorkspaceRelativeFilePath", () => {
+  it("preserves a workspace-relative path on Windows regardless of drive-letter casing", () => {
+    expect(getWorkspaceRelativeFilePath("C:\\Repo\\src\\app.ts", "c:\\repo")).toBe("src/app.ts");
   });
 });

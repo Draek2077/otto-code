@@ -177,7 +177,15 @@ export function resolveThinkingOptionId(args: {
       // to the model's honest default when a remembered value is unavailable.
     }
   }
-  return effectiveModel?.defaultThinkingOptionId ?? thinkingOptions[0]?.id ?? "";
+  // `ultracode` is an opt-in Claude workflow, not a normal effort level. A
+  // provider snapshot may advertise it as its default, but letting that become
+  // a fresh form's implicit value launches a different workflow without any
+  // user choice. Exact explicit selections returned above remain valid.
+  const advertisedDefault = effectiveModel?.defaultThinkingOptionId;
+  if (advertisedDefault && advertisedDefault.toLowerCase() !== "ultracode") {
+    return advertisedDefault;
+  }
+  return thinkingOptions.find((option) => option.id.toLowerCase() !== "ultracode")?.id ?? "";
 }
 
 const normalizeSelectedModeId = normalizeSelectedModelId;

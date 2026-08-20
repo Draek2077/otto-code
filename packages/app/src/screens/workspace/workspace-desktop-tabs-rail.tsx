@@ -58,7 +58,10 @@ interface WorkspaceDesktopTabsRailProps {
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
   onCopyTerminalId: (terminalId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
-  onCopyFilePath: (path: string) => Promise<void> | void;
+  onCopyFilePath: (
+    path: string,
+    target?: "filename" | "full-path" | "workspace-path",
+  ) => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
   onRenameTab: (tab: WorkspaceTabDescriptor) => void;
   onCloseTabsToLeft: (tabId: string) => Promise<void> | void;
@@ -246,7 +249,9 @@ export function WorkspaceDesktopTabsRail({
       copyResumeCommand: t("workspace.tabs.menu.copyResumeCommand"),
       copyTerminalId: t("workspace.tabs.menu.copyTerminalId"),
       copyAgentId: t("workspace.tabs.menu.copyAgentId"),
-      copyFilePath: t("workspace.tabs.menu.copyFilePath"),
+      copyFilename: t("workspace.tabs.menu.copyFilename"),
+      copyFullPath: t("workspace.tabs.menu.copyFullPath"),
+      copyWorkspacePath: t("workspace.tabs.menu.copyWorkspacePath"),
       rename: t("workspace.tabs.menu.rename"),
       moveToWorkspace: t("workspace.tabs.menu.moveToWorkspace"),
       closeAbove: t("workspace.tabs.menu.closeAbove"),

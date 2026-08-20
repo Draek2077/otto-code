@@ -25,6 +25,16 @@ function chatHistoryAttachment(): WorkspaceComposerAttachment {
   };
 }
 
+function meetingTranscriptAttachment(): WorkspaceComposerAttachment {
+  return {
+    kind: "meeting_transcript",
+    id: "meeting-1",
+    title: "Meeting notes",
+    content: "Discussed the release.",
+    occurredAt: "2026-08-20T12:00:00.000Z",
+  };
+}
+
 function pullRequestContextAttachment(): WorkspaceComposerAttachment {
   return {
     kind: "github.pull_request_comment",
@@ -66,6 +76,20 @@ describe("workspace composer attachment cleanup", () => {
     });
 
     removeSentContextAttachments([chatHistory, pullRequestContext, browserElement]);
+
+    expect(useWorkspaceAttachmentsStore.getState().attachmentsByScope[scopeKey]).toBeUndefined();
+  });
+
+  it("clears a dismissed meeting transcript from its scope", () => {
+    resetWorkspaceAttachmentsStore();
+    const scopeKey = buildDraftWorkspaceAttachmentScopeKey("draft-1");
+    const transcript = meetingTranscriptAttachment();
+    useWorkspaceAttachmentsStore.getState().setWorkspaceAttachments({
+      scopeKey,
+      attachments: [transcript],
+    });
+
+    removeSentContextAttachments([transcript]);
 
     expect(useWorkspaceAttachmentsStore.getState().attachmentsByScope[scopeKey]).toBeUndefined();
   });

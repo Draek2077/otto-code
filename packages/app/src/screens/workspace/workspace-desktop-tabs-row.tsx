@@ -119,6 +119,7 @@ import { PinnableMenuItem } from "@/workspace-pins/pinnable-menu-item";
 import { useMoveChatMenu } from "@/workspace/use-move-chat-menu";
 import type { PreviewConfiguredServer, PreviewRunningServer } from "@otto-code/protocol/messages";
 import { useSessionStore } from "@/stores/session-store";
+import { useWorkspace } from "@/stores/session-store-hooks";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAppVisible } from "@/hooks/use-app-visible";
 import { createWorkspaceBrowser, useBrowserStore } from "@/stores/browser-store";
@@ -1695,7 +1696,10 @@ interface WorkspaceDesktopTabsRowProps {
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
   onCopyTerminalId: (terminalId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
-  onCopyFilePath: (path: string) => Promise<void> | void;
+  onCopyFilePath: (
+    path: string,
+    target?: "filename" | "full-path" | "workspace-path",
+  ) => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
   onRenameTab: (tab: WorkspaceTabDescriptor) => void;
   onCloseTabsToLeft: (tabId: string) => Promise<void> | void;
@@ -2502,7 +2506,9 @@ export function WorkspaceDesktopTabsRow({
       copyResumeCommand: t("workspace.tabs.menu.copyResumeCommand"),
       copyTerminalId: t("workspace.tabs.menu.copyTerminalId"),
       copyAgentId: t("workspace.tabs.menu.copyAgentId"),
-      copyFilePath: t("workspace.tabs.menu.copyFilePath"),
+      copyFilename: t("workspace.tabs.menu.copyFilename"),
+      copyFullPath: t("workspace.tabs.menu.copyFullPath"),
+      copyWorkspacePath: t("workspace.tabs.menu.copyWorkspacePath"),
       rename: t("workspace.tabs.menu.rename"),
       moveToWorkspace: t("workspace.tabs.menu.moveToWorkspace"),
       closeAbove: t("workspace.tabs.menu.closeAbove"),
@@ -2762,7 +2768,10 @@ export interface ResolvedDesktopTabChipProps {
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
   onCopyTerminalId: (terminalId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
-  onCopyFilePath: (path: string) => Promise<void> | void;
+  onCopyFilePath: (
+    path: string,
+    target?: "filename" | "full-path" | "workspace-path",
+  ) => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
   onRenameTab: (tab: WorkspaceTabDescriptor) => void;
   onCloseTabsToLeft: (tabId: string) => Promise<void> | void;
@@ -2817,6 +2826,10 @@ export function ResolvedDesktopTabChip({
 }: ResolvedDesktopTabChipProps) {
   const { t } = useTranslation();
   const isDeveloperMode = useIsDeveloperMode();
+  const workspaceDirectory = useWorkspace(
+    normalizedServerId,
+    normalizedWorkspaceId,
+  )?.workspaceDirectory;
   const { onMoveToWorkspace, canMove } = useMoveChatMenu(normalizedServerId);
   const resolvedTab = useMemo(
     () =>
@@ -2825,6 +2838,7 @@ export function ResolvedDesktopTabChip({
         orientation,
         index,
         tabCount,
+        workspaceDirectory,
         isDeveloperMode,
         onCopyResumeCommand,
         onCopyTerminalId,
@@ -2863,6 +2877,7 @@ export function ResolvedDesktopTabChip({
       onReloadAgent,
       onRenameTab,
       tabCount,
+      workspaceDirectory,
     ],
   );
 

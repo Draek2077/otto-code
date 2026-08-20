@@ -5,12 +5,15 @@ import { buildDeterministicWorkspaceTabId } from "@/workspace-tabs/identity";
 
 export type WorkspaceTabMenuSurface = "desktop" | "mobile";
 export type WorkspaceTabMenuOrientation = "horizontal" | "vertical";
+export type FileTabCopyTarget = "filename" | "full-path" | "workspace-path";
 
 export interface WorkspaceTabMenuLabels {
   copyResumeCommand: string;
   copyAgentId: string;
   copyTerminalId: string;
-  copyFilePath: string;
+  copyFilename: string;
+  copyFullPath: string;
+  copyWorkspacePath: string;
   rename: string;
   moveToWorkspace: string;
   closeAbove: string;
@@ -31,7 +34,9 @@ export const DEFAULT_WORKSPACE_TAB_MENU_LABELS: WorkspaceTabMenuLabels = {
   copyResumeCommand: i18n.t("workspace.tabs.menu.copyResumeCommand"),
   copyAgentId: i18n.t("workspace.tabs.menu.copyAgentId"),
   copyTerminalId: i18n.t("workspace.tabs.menu.copyTerminalId"),
-  copyFilePath: i18n.t("workspace.tabs.menu.copyFilePath"),
+  copyFilename: i18n.t("workspace.tabs.menu.copyFilename"),
+  copyFullPath: i18n.t("workspace.tabs.menu.copyFullPath"),
+  copyWorkspacePath: i18n.t("workspace.tabs.menu.copyWorkspacePath"),
   rename: i18n.t("workspace.tabs.menu.rename"),
   moveToWorkspace: i18n.t("workspace.tabs.menu.moveToWorkspace"),
   closeAbove: i18n.t("workspace.tabs.menu.closeAbove"),
@@ -81,13 +86,14 @@ interface BuildWorkspaceTabMenuEntriesInput {
   index: number;
   tabCount: number;
   menuTestIDBase: string;
+  workspaceDirectory?: string | null;
   // User mode omits the developer-only entries (copy resume command, copy agent
   // id, copy file path, reload agent); tab-management entries stay.
   isDeveloperMode: boolean;
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
   onCopyTerminalId: (terminalId: string) => Promise<void> | void;
-  onCopyFilePath: (path: string) => Promise<void> | void;
+  onCopyFilePath: (path: string, target?: FileTabCopyTarget) => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
   onRenameTab: (tab: WorkspaceTabDescriptor) => void;
   onCloseTab: (tabId: string) => Promise<void> | void;
@@ -109,11 +115,12 @@ interface BuildWorkspaceDesktopTabActionsInput {
   orientation?: WorkspaceTabMenuOrientation;
   index: number;
   tabCount: number;
+  workspaceDirectory?: string | null;
   isDeveloperMode: boolean;
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
   onCopyTerminalId: (terminalId: string) => Promise<void> | void;
-  onCopyFilePath: (path: string) => Promise<void> | void;
+  onCopyFilePath: (path: string, target?: FileTabCopyTarget) => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
   onRenameTab: (tab: WorkspaceTabDescriptor) => void;
   onCloseTab: (tabId: string) => Promise<void> | void;
@@ -225,6 +232,33 @@ function getCloseButtonTestId(tab: WorkspaceTabDescriptor): string {
   return `workspace-file-close-${encodeFilePathForPathSegment(tab.target.path)}`;
 }
 
+function normalizeComparablePath(path: string): string {
+  return path.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+export function getWorkspaceRelativeFilePath(
+  filePath: string,
+  workspaceDirectory: string | null | undefined,
+): string | null {
+  if (!workspaceDirectory) return null;
+  const normalizedFilePath = normalizeComparablePath(filePath);
+  const normalizedWorkspaceDirectory = normalizeComparablePath(workspaceDirectory);
+  if (!normalizedFilePath || !normalizedWorkspaceDirectory) return null;
+
+  const isWindowsPath = /^[A-Za-z]:\//.test(normalizedWorkspaceDirectory);
+  const fileForComparison = isWindowsPath ? normalizedFilePath.toLowerCase() : normalizedFilePath;
+  const workspaceForComparison = isWindowsPath
+    ? normalizedWorkspaceDirectory.toLowerCase()
+    : normalizedWorkspaceDirectory;
+  if (!fileForComparison.startsWith(`${workspaceForComparison}/`)) return null;
+  return normalizedFilePath.slice(normalizedWorkspaceDirectory.length + 1);
+}
+
+function getFileName(filePath: string): string {
+  const normalized = normalizeComparablePath(filePath);
+  return normalized.slice(normalized.lastIndexOf("/") + 1);
+}
+
 function appendChatManagementMenuEntries(input: {
   tab: WorkspaceTabDescriptor;
   entries: WorkspaceTabMenuEntry[];
@@ -308,6 +342,7 @@ export function buildWorkspaceTabMenuEntries(
     index,
     tabCount,
     menuTestIDBase,
+    workspaceDirectory,
     isDeveloperMode,
     onCopyResumeCommand,
     onCopyAgentId,
@@ -372,16 +407,39 @@ export function buildWorkspaceTabMenuEntries(
 
   if (isDeveloperMode && tab.target.kind === "file") {
     const filePath = tab.target.path;
+    const workspaceRelativePath = getWorkspaceRelativeFilePath(filePath, workspaceDirectory);
     entries.push({
       kind: "item",
-      key: "copy-file-path",
-      label: labels.copyFilePath,
+      key: "copy-filename",
+      label: labels.copyFilename,
       icon: "copy",
-      testID: `${menuTestIDBase}-copy-file-path`,
+      testID: `${menuTestIDBase}-copy-filename`,
       onSelect: () => {
-        void onCopyFilePath(filePath);
+        void onCopyFilePath(getFileName(filePath), "filename");
       },
     });
+    entries.push({
+      kind: "item",
+      key: "copy-full-path",
+      label: labels.copyFullPath,
+      icon: "copy",
+      testID: `${menuTestIDBase}-copy-full-path`,
+      onSelect: () => {
+        void onCopyFilePath(filePath, "full-path");
+      },
+    });
+    if (workspaceRelativePath !== null) {
+      entries.push({
+        kind: "item",
+        key: "copy-workspace-path",
+        label: labels.copyWorkspacePath,
+        icon: "copy",
+        testID: `${menuTestIDBase}-copy-workspace-path`,
+        onSelect: () => {
+          void onCopyFilePath(workspaceRelativePath, "workspace-path");
+        },
+      });
+    }
   }
 
   // Chats only. A terminal is bound to its workspace's directory, so "move" would
@@ -505,6 +563,7 @@ export function buildWorkspaceDesktopTabActions(
       index: input.index,
       tabCount: input.tabCount,
       menuTestIDBase: contextMenuTestId,
+      workspaceDirectory: input.workspaceDirectory,
       isDeveloperMode: input.isDeveloperMode,
       onCopyResumeCommand: input.onCopyResumeCommand,
       onCopyAgentId: input.onCopyAgentId,

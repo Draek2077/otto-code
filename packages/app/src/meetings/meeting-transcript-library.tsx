@@ -385,37 +385,33 @@ function MeetingTranscriptRow({
           {record.title}
         </Text>
         <Text style={styles.rowDate}>{formatOccurredAt(record.occurredAt)}</Text>
-      </View>
-      <View style={styles.rowFooter}>
         {record.storage === "local" ? (
           <Text style={styles.rowStorage} numberOfLines={1}>
             {localTranscriptStorageLabel(record)}
           </Text>
-        ) : (
-          <View style={styles.rowFooterSpacer} />
-        )}
-        <View style={styles.rowActions}>
-          <ToolbarIconButton
-            label="View or edit meeting notes"
-            Icon={ThemedPencil}
-            onPress={viewEdit}
-            testID={`meeting-transcript-view-edit-${record.id}`}
-          />
-          <ToolbarIconButton
-            label="Add meeting notes to chat"
-            Icon={ThemedMessageSquarePlus}
-            onPress={add}
-            tone="accent"
-            testID={`meeting-transcript-add-to-chat-${record.id}`}
-          />
-          <ToolbarIconButton
-            label="Delete meeting notes"
-            Icon={ThemedTrash2}
-            onPress={remove}
-            tone="destructive"
-            testID={`meeting-transcript-delete-${record.id}`}
-          />
-        </View>
+        ) : null}
+      </View>
+      <View style={styles.rowActions}>
+        <ToolbarIconButton
+          label="View or edit meeting notes"
+          Icon={ThemedPencil}
+          onPress={viewEdit}
+          testID={`meeting-transcript-view-edit-${record.id}`}
+        />
+        <ToolbarIconButton
+          label="Add meeting notes to chat"
+          Icon={ThemedMessageSquarePlus}
+          onPress={add}
+          tone="accent"
+          testID={`meeting-transcript-add-to-chat-${record.id}`}
+        />
+        <ToolbarIconButton
+          label="Delete meeting notes"
+          Icon={ThemedTrash2}
+          onPress={remove}
+          tone="destructive"
+          testID={`meeting-transcript-delete-${record.id}`}
+        />
       </View>
     </View>
   );
@@ -444,19 +440,18 @@ const styles = StyleSheet.create((theme) => ({
   },
   list: { paddingTop: theme.spacing[1] },
   row: {
+    flexDirection: "row",
+    alignItems: "flex-end",
     gap: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
     borderBottomWidth: theme.borderWidth[1],
     borderBottomColor: theme.colors.border,
   },
-  rowCopy: { minWidth: 0, gap: theme.spacing[1] },
+  rowCopy: { flex: 1, minWidth: 0, gap: theme.spacing[1] },
   rowTitle: { color: theme.colors.foreground },
   rowDate: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.xs },
-  rowFooter: { flexDirection: "row", alignItems: "center", gap: theme.spacing[2] },
-  rowFooterSpacer: { flex: 1, minWidth: 0 },
   rowStorage: {
-    flex: 1,
     minWidth: 0,
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,

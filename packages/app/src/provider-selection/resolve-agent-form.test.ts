@@ -176,6 +176,37 @@ describe("resolveThinkingOptionId", () => {
     ).toBe("low");
   });
 
+  it("does not implicitly select Claude ultracode", () => {
+    const models: AgentModelDefinition[] = [
+      {
+        provider: "claude",
+        id: "claude-fable-5",
+        label: "Fable 5",
+        isDefault: true,
+        defaultThinkingOptionId: "ultracode",
+        thinkingOptions: [
+          { id: "high", label: "High" },
+          { id: "ultracode", label: "Ultracode", isDefault: true },
+        ],
+      },
+    ];
+
+    expect(
+      resolveThinkingOptionId({
+        availableModels: models,
+        modelId: "claude-fable-5",
+        requestedThinkingOptionId: "",
+      }),
+    ).toBe("high");
+    expect(
+      resolveThinkingOptionId({
+        availableModels: models,
+        modelId: "claude-fable-5",
+        requestedThinkingOptionId: "ultracode",
+      }),
+    ).toBe("ultracode");
+  });
+
   it("maps a remembered canonical effort onto a different model's options", () => {
     const models: AgentModelDefinition[] = [
       {

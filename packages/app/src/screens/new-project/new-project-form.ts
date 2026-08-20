@@ -179,6 +179,19 @@ export function findDuplicateProjectPath(input: {
   return match ?? null;
 }
 
+/** The successful open/create response updates the project store before route
+ * replacement unmounts the form. That newly registered project is not a user
+ * conflict, so it must not briefly render as one while the request is active. */
+export function shouldShowDuplicateProjectPath(input: {
+  duplicateProjectPath: string | null;
+  isSubmitting: boolean;
+  hasSuccessfulSubmission: boolean;
+}): boolean {
+  return (
+    input.duplicateProjectPath !== null && !input.isSubmitting && !input.hasSuccessfulSubmission
+  );
+}
+
 // Which separator to join with. The client cannot know the daemon's platform,
 // but the directory the user typed or browsed already tells us which convention
 // that host writes - so match it rather than picking one. Joining a Windows

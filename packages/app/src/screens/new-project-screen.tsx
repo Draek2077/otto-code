@@ -24,6 +24,7 @@ import {
   findDuplicateProjectPath,
   getNewProjectBlocker,
   previewProjectPath,
+  shouldShowDuplicateProjectPath,
   type NewProjectCapabilities,
   type NewProjectFormState,
   type NewProjectMode,
@@ -76,6 +77,7 @@ export function NewProjectScreen({
   // successful run.
   const [runningStep, setRunningStep] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasSuccessfulSubmission, setHasSuccessfulSubmission] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const client = useHostRuntimeClient(selectedServerId);
@@ -94,6 +96,7 @@ export function NewProjectScreen({
     <K extends keyof NewProjectFormState>(key: K, value: NewProjectFormState[K]) => {
       setForm((current) => ({ ...current, [key]: value }));
       setErrorMessage(null);
+      setHasSuccessfulSubmission(false);
     },
     [],
   );
@@ -127,10 +130,16 @@ export function NewProjectScreen({
     targetPath: pathPreview,
     existingProjectPaths,
   });
+  const showDuplicateProjectPath = shouldShowDuplicateProjectPath({
+    duplicateProjectPath,
+    isSubmitting,
+    hasSuccessfulSubmission,
+  });
 
   const handleModeChange = useCallback((mode: NewProjectMode) => {
     setRunningStep(null);
     setErrorMessage(null);
+    setHasSuccessfulSubmission(false);
     setForm((current) => ({ ...current, mode }));
   }, []);
 
@@ -156,6 +165,7 @@ export function NewProjectScreen({
       );
       return;
     }
+    setHasSuccessfulSubmission(true);
     // Back is right when the page was pushed from an entry point. On a direct
     // load (restored URL, deep link) there is nothing to go back to, so land on
     // the home screen rather than a dead end.
@@ -187,6 +197,7 @@ export function NewProjectScreen({
     // in the sidebar without waiting for a workspace refetch.
     upsertProject(selectedServerId, normalizeProjectDescriptor(payload.project));
     setHasHydratedWorkspaces(selectedServerId, true);
+    setHasSuccessfulSubmission(true);
     // A freshly scaffolded project has no workspace yet, so routing to one lands
     // on "Workspace not found". Hand off to New workspace with the project
     // preselected instead - creating a workspace is what you came here to do next.
@@ -215,6 +226,7 @@ export function NewProjectScreen({
       return;
     }
     setIsSubmitting(true);
+    setHasSuccessfulSubmission(false);
     setErrorMessage(null);
     setRunningStep(null);
     void (form.mode === "open" ? submitOpen() : submitScaffold())
@@ -306,7 +318,7 @@ export function NewProjectScreen({
 
             {/* A conflict, not a not-filled-in-yet field, so it reads as an
                 error rather than the muted blocker hint below. */}
-            {duplicateProjectPath ? (
+            {showDuplicateProjectPath ? (
               <Text style={styles.errorText} testID="new-project-duplicate">
                 {t("newProject.errors.alreadyAdded", { path: duplicateProjectPath })}
               </Text>
@@ -320,7 +332,7 @@ export function NewProjectScreen({
 
             {/* Naming the missing field beats a disabled button with no
                 explanation. */}
-            {blockerMessage && !duplicateProjectPath ? (
+            {blockerMessage && !showDuplicateProjectPath ? (
               <Text style={styles.blockerText} testID="new-project-blocker">
                 {blockerMessage}
               </Text>

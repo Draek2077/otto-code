@@ -623,7 +623,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     },
   },
 
-  // --- Pane management (mac only) ---
+  // --- Pane management ---
   {
     id: "workspace-pane-split-right-cmd-backslash",
     action: "workspace.pane.split.right",
@@ -641,6 +641,33 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     action: "workspace.pane.split.down",
     combo: "Cmd+Shift+\\",
     when: { mac: true, commandCenter: false },
+    help: {
+      id: "workspace-pane-split-down",
+      section: "tabs-panes",
+      label: "Split pane down",
+      keys: ["mod", "shift", "\\"],
+    },
+  },
+  // Keep the same directional pair on Windows/Linux. Ctrl+\\ is unclaimed in
+  // the effective registry, so these bindings do not displace an existing
+  // desktop command.
+  {
+    id: "workspace-pane-split-right-ctrl-backslash",
+    action: "workspace.pane.split.right",
+    combo: "Ctrl+\\",
+    when: { mac: false, commandCenter: false },
+    help: {
+      id: "workspace-pane-split-right",
+      section: "tabs-panes",
+      label: "Split pane right",
+      keys: ["mod", "\\"],
+    },
+  },
+  {
+    id: "workspace-pane-split-down-ctrl-shift-backslash",
+    action: "workspace.pane.split.down",
+    combo: "Ctrl+Shift+\\",
+    when: { mac: false, commandCenter: false },
     help: {
       id: "workspace-pane-split-down",
       section: "tabs-panes",

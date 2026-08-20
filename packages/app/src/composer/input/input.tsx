@@ -2092,6 +2092,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               onKeyPress={shouldHandleWebKeyPress ? handleDesktopKeyPress : undefined}
               onSelectionChange={handleSelectionChange}
               autoFocus={isWeb && autoFocus}
+              // Keep the browser's native spelling menu intact: Chromium owns
+              // correction suggestions and text selection for the textarea.
+              spellCheck
             />
             {inputScrollbar}
             <FocusHint

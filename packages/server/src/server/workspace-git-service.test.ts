@@ -908,6 +908,31 @@ describe("WorkspaceGitServiceImpl", () => {
     service.dispose();
   });
 
+  test("disabling automatic fetch makes a queued background callback a no-op", async () => {
+    const runGitFetch = vi.fn(async () => {});
+    const service = createService({ runGitFetch });
+
+    service.setActiveWorkspace(REPO_CWD);
+    const subscription = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
+    await vi.waitFor(() => expect(runGitFetch).toHaveBeenCalledTimes(1));
+
+    service.setFetchPolicy({ enabled: false, intervalSeconds: 180 });
+    // Simulate an interval callback that had already reached the event loop
+    // before setFetchPolicy cleared its timer.
+    const repoTarget = (service as unknown as { repoTargets: Map<string, unknown> }).repoTargets
+      .values()
+      .next().value;
+    (
+      service as unknown as { runBackgroundRepoFetch: (target: unknown) => void }
+    ).runBackgroundRepoFetch(repoTarget);
+    await flushPromises();
+
+    expect(runGitFetch).toHaveBeenCalledTimes(1);
+
+    subscription.unsubscribe();
+    service.dispose();
+  });
+
   test("explicit forced snapshot refresh recomputes github state and notifies listeners", async () => {
     const getPullRequestStatus = vi
       .fn<() => Promise<PullRequestStatusResult>>()

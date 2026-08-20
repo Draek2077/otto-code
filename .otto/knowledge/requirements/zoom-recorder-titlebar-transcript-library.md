@@ -3,11 +3,10 @@ id: "zoom-recorder-titlebar-transcript-library"
 kind: "requirement"
 title: "Zoom Recorder title-bar transcript library"
 status: "confirmed"
-tags: ["zoom", "recorder", "transcripts", "desktop-ui", "daemon-storage", "title-bar"]
+tags: ["zoom","recorder","transcripts","desktop-ui","daemon-storage","title-bar"]
 created_at: "2026-08-13T23:04:08.846Z"
-updated_at: "2026-08-15T06:52:37.495Z"
+updated_at: "2026-08-20T06:58:12.695Z"
 ---
-
 # Zoom Recorder title-bar transcript library
 
 <!-- compiled_truth -->
@@ -139,3 +138,7 @@ Selecting a transcript's view/edit action opens a dialog where its name and tran
   kind: "decision"
   summary: "The user explicitly removed Zoom branding from Meeting feature UI language and specified the unbranded Meeting status label."
   source: "Explicit user requirement, 2026-08-15"
+- time: "2026-08-20T06:58:12.695Z"
+  kind: "evidence"
+  summary: "Meeting-transcript dismissal had only suppressed the attachment in composer-local state; it did not remove the transcript from its scoped attachment store. Submission resets suppression, so the transcript returned after a later send. Explicit removal now deletes `meeting_transcript` context attachments from the store, matching chat history/file/browser context behavior. Transcript-row actions now occupy the same baseline row as the final text line rather than a separate footer. Focused app Vitest, repository typecheck, targeted lint, and format passed."
+  source: "Implementation verification, 2026-08-20"

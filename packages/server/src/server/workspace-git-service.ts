@@ -2603,6 +2603,16 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   }
 
   private runBackgroundRepoFetch(target: RepoGitTarget): void {
+    // Clearing an interval cannot retract a callback that the event loop has
+    // already queued. Re-check the live policy at execution time so disabling
+    // automatic fetch is an immediate hard stop rather than merely a request
+    // to stop future timer registrations.
+    if (
+      !this.fetchPolicy.enabled ||
+      ![...target.workspaceKeys].some((key) => key === this.activeWorkspaceCwd)
+    ) {
+      return;
+    }
     void this.fetchRepo(target).catch((error) => {
       this.logger.warn(
         { err: error, repoGitRoot: target.repoGitRoot, cwd: target.cwd },
