@@ -6,7 +6,7 @@
   "components/chat-seam-fade.tsx",
   "components/diff-viewer/diff-viewer-content.tsx",
   "components/explorer-sidebar.tsx",
-  "components/file-explorer-pane.tsx",
+  "components/file-explorer-entries.tsx",
   "components/headers/menu-header.tsx",
   "components/highlighted-content.tsx",
   "components/provider-sheet/provider-sheet-content.tsx",

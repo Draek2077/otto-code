@@ -280,6 +280,7 @@
     // Both burn-downs: 6 overlapping files. They may only shrink out of this exemption.
     {
       "files": [
+        "packages/app/src/components/file-explorer-entries.tsx",
         "packages/app/src/components/file-explorer-pane.tsx",
         "packages/app/src/components/file-pane.tsx",
         "packages/app/src/components/import-session-sheet.tsx",

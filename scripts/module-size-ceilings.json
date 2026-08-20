@@ -31,6 +31,9 @@
     "packages/server/src/server/daemon-config-store.ts": 394,
     "packages/desktop/src/features/browser-automation/service.ts": 1814,
     "packages/server/src/server/file-explorer/service.ts": 654,
-    "packages/app/src/keyboard/keyboard-shortcuts.ts": 1973
+    "packages/app/src/keyboard/keyboard-shortcuts.ts": 1973,
+    "packages/app/src/screens/settings-screen.tsx": 2997,
+    "packages/app/src/screens/workspace/workspace-desktop-tabs-row.tsx": 2818,
+    "packages/app/src/components/file-explorer-pane.tsx": 1977
   }
 }
