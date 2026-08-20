@@ -17,7 +17,7 @@
     "packages/protocol/src/messages.ts": 8998,
     "packages/server/src/server/session.ts": 11121,
     "packages/client/src/daemon-client.ts": 9737,
-    "packages/app/src/screens/workspace/workspace-screen.tsx": 7836,
+    "packages/app/src/screens/workspace/workspace-screen.tsx": 7848,
     "packages/server/src/server/agent/agent-manager.ts": 7745,
     "packages/server/src/server/agent/providers/claude/agent.ts": 7434,
     "packages/server/src/server/agent/tools/otto-tools.ts": 6254,
