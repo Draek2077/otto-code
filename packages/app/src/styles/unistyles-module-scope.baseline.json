@@ -9,7 +9,7 @@
   "components/file-explorer-pane.tsx",
   "components/headers/menu-header.tsx",
   "components/highlighted-content.tsx",
-  "components/provider-diagnostic-sheet.tsx",
+  "components/provider-sheet/provider-sheet-content.tsx",
   "components/sheet-seam-fade.tsx",
   "components/sheet-seam-fade.web.tsx",
   "components/sidebar-seam-shadow.tsx",
