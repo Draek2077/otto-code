@@ -250,6 +250,7 @@ import type { DevServerManager } from "./preview/dev-server-manager.js";
 import { BrainSession } from "./session/brain/brain-session.js";
 import { CommunicationsSession } from "./session/communications/communications-session.js";
 import { RunsSession } from "./session/runs/runs-session.js";
+import { ProjectKnowledgeSession } from "./session/project-knowledge/project-knowledge-session.js";
 import type { BrainManager } from "./brain/brain-manager.js";
 import type { BrainOpsManager } from "./brain/brain-ops-manager.js";
 import { readLaunchConfig, LaunchConfigError } from "./preview/launch-config.js";
@@ -912,6 +913,7 @@ export class Session {
   private readonly brainSession: BrainSession;
   private readonly communicationsSession: CommunicationsSession;
   private readonly runsSession: RunsSession;
+  private readonly projectKnowledgeSession: ProjectKnowledgeSession;
   private readonly brainManager: BrainManager | null;
   private readonly brainOpsManager: BrainOpsManager | null;
   private readonly providerSnapshotManager: ProviderSnapshotManager;
@@ -1592,6 +1594,17 @@ export class Session {
         }
         return null;
       },
+    });
+    this.projectKnowledgeSession = new ProjectKnowledgeSession({
+      host: {
+        emit: (msg) => this.emit(msg),
+        pushContextReport: (workspaceId) => this.pushContextReport(workspaceId),
+      },
+      projectKnowledge: this.projectKnowledge,
+      contextManagement: this.contextManagement,
+      workspaceRegistry: this.workspaceRegistry,
+      projectRegistry: this.projectRegistry,
+      workspaceGitService: this.workspaceGitService,
     });
 
     this.voiceSession = new VoiceSession({
@@ -4213,7 +4226,7 @@ export class Session {
   }
 
   private dispatchProviderMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    const projectKnowledgeMessage = this.dispatchProjectKnowledgeMessage(msg);
+    const projectKnowledgeMessage = this.projectKnowledgeSession.dispatch(msg);
     if (projectKnowledgeMessage) return projectKnowledgeMessage;
     const personalityMemoryMessage = this.dispatchPersonalityMemoryMessage(msg);
     if (personalityMemoryMessage) return personalityMemoryMessage;
@@ -4253,30 +4266,6 @@ export class Session {
     }
   }
 
-  private dispatchProjectKnowledgeMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    switch (msg.type) {
-      case "project.knowledge.list.request":
-        return this.handleProjectKnowledgeListRequest(msg);
-      case "project.knowledge.get.request":
-        return this.handleProjectKnowledgeGetRequest(msg);
-      case "project.knowledge.create.request":
-        return this.handleProjectKnowledgeCreateRequest(msg);
-      case "project.knowledge.apply.request":
-        return this.handleProjectKnowledgeApplyRequest(msg);
-      case "project.knowledge.status.request":
-        return this.handleProjectKnowledgeStatusRequest(msg);
-      case "project.knowledge.project.apply.request":
-        return this.handleProjectKnowledgeProjectApplyRequest(msg);
-      case "project.knowledge.reference.apply.request":
-        return this.handleProjectKnowledgeReferenceApplyRequest(msg);
-      case "project.knowledge.root.apply.request":
-        return this.handleProjectKnowledgeRootApplyRequest(msg);
-      case "project.knowledge.delete.request":
-        return this.handleProjectKnowledgeDeleteRequest(msg);
-      default:
-        return undefined;
-    }
-  }
   private dispatchPersonalityMemoryMessage(msg: SessionInboundMessage): Promise<void> | undefined {
     switch (msg.type) {
       case "personality.memory.list.request":
@@ -4577,243 +4566,6 @@ export class Session {
         },
       });
     }
-  }
-
-  private async projectKnowledgeCwd(workspaceId: string): Promise<string | null> {
-    return (await this.workspaceRegistry.get(workspaceId))?.cwd ?? null;
-  }
-  private async projectKnowledgeRoot(workspaceId: string): Promise<string | null> {
-    const workspace = await this.workspaceRegistry.get(workspaceId);
-    if (!workspace) return null;
-    const project = await this.projectRegistry.get(workspace.projectId);
-    return (
-      project?.rootPath ??
-      (await resolveProjectRootForCwd(workspace.cwd, (cwd) =>
-        this.workspaceGitService.resolveRepoRoot(cwd),
-      ))
-    );
-  }
-  private async handleProjectKnowledgeListRequest(
-    msg: Extract<SessionInboundMessage, { type: "project.knowledge.list.request" }>,
-  ): Promise<void> {
-    const root = await this.projectKnowledgeRoot(msg.workspaceId);
-    if (!this.projectKnowledge || !root) {
-      this.emit({
-        type: "project.knowledge.list.response",
-        payload: {
-          requestId: msg.requestId,
-          records: [],
-          rootPages: [],
-          findings: [],
-          brief: "",
-          briefTokens: 0,
-          includedIds: [],
-          omittedCount: 0,
-        },
-      });
-      return;
-    }
-    const view = await this.projectKnowledge.catalogViewAtRoot(root);
-    this.emit({
-      type: "project.knowledge.list.response",
-      payload: {
-        requestId: msg.requestId,
-        // Full Markdown and timeline stay pull-on-demand through get. A real
-        // charter corpus is otherwise large enough to time out the list RPC.
-        records: view.records,
-        rootPages: view.rootPages,
-        findings: view.findings,
-        brief: view.brief.text,
-        briefTokens: view.brief.estTokens,
-        includedIds: view.brief.includedIds,
-        omittedCount: view.brief.omittedCount,
-      },
-    });
-  }
-  private async handleProjectKnowledgeGetRequest(
-    msg: Extract<SessionInboundMessage, { type: "project.knowledge.get.request" }>,
-  ): Promise<void> {
-    const cwd = await this.projectKnowledgeCwd(msg.workspaceId);
-    this.emit({
-      type: "project.knowledge.get.response",
-      payload: {
-        requestId: msg.requestId,
-        record:
-          this.projectKnowledge && cwd
-            ? await this.projectKnowledge.get(cwd, msg.id, { includeInactive: true })
-            : null,
-      },
-    });
-  }
-  private async handleProjectKnowledgeCreateRequest(
-    msg: Extract<SessionInboundMessage, { type: "project.knowledge.create.request" }>,
-  ): Promise<void> {
-    const cwd = await this.projectKnowledgeCwd(msg.workspaceId);
-    if (!this.projectKnowledge || !cwd)
-      throw new Error("Project knowledge is unavailable for this workspace.");
-    const record = await this.projectKnowledge.record({
-      cwd,
-      ...(msg.id ? { id: msg.id } : {}),
-      kind: msg.kind,
-      title: msg.title,
-      statement: msg.statement,
-      ...(msg.evidence ? { evidence: msg.evidence } : {}),
-      ...(msg.tags ? { tags: msg.tags } : {}),
-      ...(msg.affects ? { affects: msg.affects } : {}),
-      ...(msg.status ? { status: msg.status } : {}),
-      ...(msg.deliveryStatus ? { deliveryStatus: msg.deliveryStatus } : {}),
-      ...(msg.progress ? { progress: msg.progress } : {}),
-      ...(msg.referenceDisposition ? { referenceDisposition: msg.referenceDisposition } : {}),
-      ...(msg.sourceUrl ? { sourceUrl: msg.sourceUrl } : {}),
-    });
-    this.contextManagement.invalidate(msg.workspaceId);
-    await this.pushContextReport(msg.workspaceId);
-    this.emit({
-      type: "project.knowledge.create.response",
-      payload: { requestId: msg.requestId, record },
-    });
-  }
-  private async handleProjectKnowledgeApplyRequest(
-    msg: Extract<SessionInboundMessage, { type: "project.knowledge.apply.request" }>,
-  ): Promise<void> {
-    const cwd = await this.projectKnowledgeCwd(msg.workspaceId);
-    if (!this.projectKnowledge || !cwd)
-      throw new Error("Project knowledge is unavailable for this workspace.");
-    const result =
-      msg.statement !== undefined
-        ? await this.projectKnowledge.updateTruth({
-            cwd,
-            id: msg.id,
-            statement: msg.statement,
-            reason: msg.provenanceText ?? "",
-            ...(msg.provenanceSource ? { source: msg.provenanceSource } : {}),
-            ...(msg.provenanceAffects ? { affects: msg.provenanceAffects } : {}),
-            ...(msg.expectedUpdatedAt ? { expectedUpdatedAt: msg.expectedUpdatedAt } : {}),
-          })
-        : await this.projectKnowledge.applyReviewedMutation({
-            cwd,
-            id: msg.id,
-            ...(msg.title !== undefined ? { title: msg.title } : {}),
-            ...(msg.evidence !== undefined ? { evidence: msg.evidence } : {}),
-            ...(msg.expectedUpdatedAt ? { expectedUpdatedAt: msg.expectedUpdatedAt } : {}),
-          });
-    if (result.record) {
-      this.contextManagement.invalidate(msg.workspaceId);
-      await this.pushContextReport(msg.workspaceId);
-    }
-    this.emit({
-      type: "project.knowledge.apply.response",
-      payload: {
-        requestId: msg.requestId,
-        record: result.record,
-        ...(result.error ? { error: result.error } : {}),
-      },
-    });
-  }
-  private async handleProjectKnowledgeStatusRequest(
-    msg: Extract<SessionInboundMessage, { type: "project.knowledge.status.request" }>,
-  ): Promise<void> {
-    const cwd = await this.projectKnowledgeCwd(msg.workspaceId);
-    if (!this.projectKnowledge || !cwd)
-      throw new Error("Project knowledge is unavailable for this workspace.");
-    const record = await this.projectKnowledge.setStatus(cwd, msg.id, msg.status, msg.reason);
-    if (record) {
-      this.contextManagement.invalidate(msg.workspaceId);
-      await this.pushContextReport(msg.workspaceId);
-    }
-    this.emit({
-      type: "project.knowledge.status.response",
-      payload: { requestId: msg.requestId, record },
-    });
-  }
-  private async handleProjectKnowledgeProjectApplyRequest(
-    msg: Extract<SessionInboundMessage, { type: "project.knowledge.project.apply.request" }>,
-  ): Promise<void> {
-    const cwd = await this.projectKnowledgeCwd(msg.workspaceId);
-    if (!this.projectKnowledge || !cwd)
-      throw new Error("Project knowledge is unavailable for this workspace.");
-    const result = await this.projectKnowledge.updateProject({
-      cwd,
-      id: msg.id,
-      ...(msg.deliveryStatus ? { deliveryStatus: msg.deliveryStatus } : {}),
-      ...(msg.progress !== undefined ? { progress: msg.progress } : {}),
-      reason: msg.reason,
-      ...(msg.expectedUpdatedAt ? { expectedUpdatedAt: msg.expectedUpdatedAt } : {}),
-    });
-    if (result.record) {
-      this.contextManagement.invalidate(msg.workspaceId);
-      await this.pushContextReport(msg.workspaceId);
-    }
-    this.emit({
-      type: "project.knowledge.project.apply.response",
-      payload: {
-        requestId: msg.requestId,
-        record: result.record,
-        ...(result.error ? { error: result.error } : {}),
-      },
-    });
-  }
-  private async handleProjectKnowledgeReferenceApplyRequest(
-    msg: Extract<SessionInboundMessage, { type: "project.knowledge.reference.apply.request" }>,
-  ): Promise<void> {
-    const cwd = await this.projectKnowledgeCwd(msg.workspaceId);
-    if (!this.projectKnowledge || !cwd)
-      throw new Error("Project knowledge is unavailable for this workspace.");
-    const result = await this.projectKnowledge.updateReference({
-      cwd,
-      id: msg.id,
-      ...(msg.disposition ? { disposition: msg.disposition } : {}),
-      ...(msg.sourceUrl !== undefined ? { sourceUrl: msg.sourceUrl } : {}),
-      reason: msg.reason,
-      ...(msg.expectedUpdatedAt ? { expectedUpdatedAt: msg.expectedUpdatedAt } : {}),
-    });
-    if (result.record) {
-      this.contextManagement.invalidate(msg.workspaceId);
-      await this.pushContextReport(msg.workspaceId);
-    }
-    this.emit({
-      type: "project.knowledge.reference.apply.response",
-      payload: {
-        requestId: msg.requestId,
-        record: result.record,
-        ...(result.error ? { error: result.error } : {}),
-      },
-    });
-  }
-  private async handleProjectKnowledgeRootApplyRequest(
-    msg: Extract<SessionInboundMessage, { type: "project.knowledge.root.apply.request" }>,
-  ): Promise<void> {
-    const cwd = await this.projectKnowledgeCwd(msg.workspaceId);
-    if (!this.projectKnowledge || !cwd)
-      throw new Error("Project knowledge is unavailable for this workspace.");
-    const page = await this.projectKnowledge.updateRoot({ cwd, slug: msg.slug, body: msg.body });
-    this.contextManagement.invalidate(msg.workspaceId);
-    await this.pushContextReport(msg.workspaceId);
-    this.emit({
-      type: "project.knowledge.root.apply.response",
-      payload: { requestId: msg.requestId, page },
-    });
-  }
-  private async handleProjectKnowledgeDeleteRequest(
-    msg: Extract<SessionInboundMessage, { type: "project.knowledge.delete.request" }>,
-  ): Promise<void> {
-    const cwd = await this.projectKnowledgeCwd(msg.workspaceId);
-    if (!this.projectKnowledge || !cwd)
-      throw new Error("Project knowledge is unavailable for this workspace.");
-    const result = await this.projectKnowledge.delete({
-      cwd,
-      id: msg.id,
-      reason: msg.reason,
-      ...(msg.expectedUpdatedAt ? { expectedUpdatedAt: msg.expectedUpdatedAt } : {}),
-    });
-    if (result.deleted) {
-      this.contextManagement.invalidate(msg.workspaceId);
-      await this.pushContextReport(msg.workspaceId);
-    }
-    this.emit({
-      type: "project.knowledge.delete.response",
-      payload: { requestId: msg.requestId, ...result },
-    });
   }
 
   private async handleContextEdgeConvertRequest(
