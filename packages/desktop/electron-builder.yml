@@ -84,6 +84,11 @@ files:
   - "!node_modules/@otto-code/**/*.test.*"
   - "!node_modules/@otto-code/**/*.spec.*"
   - "!node_modules/@otto-code/server/dist/server/web-ui/**"
+  # The .NET solution sidecar ships as an extraResource instead, so drop the copy that rides
+  # inside the server package. electron-builder strips every `.dll` from node_modules on
+  # non-Windows platforms, so keeping it here shipped two orphan `.json` files and no assemblies
+  # on Linux and macOS, and on Windows it would only duplicate the payload inside app.asar.
+  - "!node_modules/@otto-code/server/dist/dotnet-probe/**"
 asarUnpack:
   - dist/daemon/node-entrypoint-runner.js
   - node_modules/@otto-code/server/dist/server/terminal/shell-integration/**/*
@@ -94,6 +99,12 @@ asarUnpack:
 extraResources:
   - from: ../app/dist
     to: app-dist
+  # The .NET solution sidecar, which powers the Solution tree. It has to live outside both
+  # node_modules (electron-builder deletes `.dll` there on non-Windows platforms) and app.asar
+  # (`dotnet` is an ordinary child process and cannot read into the archive). Absent when the
+  # build machine has no .NET SDK, which electron-builder warns about and skips.
+  - from: ../server/dist/dotnet-probe
+    to: dotnet-probe
   - from: ../expo-two-way-audio/models/wake-word
     to: wake-word
   - from: ../expo-two-way-audio/wake-word-model.json

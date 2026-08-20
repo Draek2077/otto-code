@@ -269,6 +269,19 @@ const MutableLspConfigSchema = z
   .object({
     enabled: z.boolean().default(true),
     languages: z.record(z.string(), z.boolean()).default({}),
+    /**
+     * How much of a .NET workspace the C# server loads.
+     *
+     * `"solution"` names the workspace root's single solution with `csharp-ls -s`. `"allProjects"`
+     * passes nothing, leaving csharp-ls to glob every `.csproj` under the root - complete coverage,
+     * but it loads them one at a time (measured at ~4s each, so a 200-project repo is minutes, not
+     * seconds). Absent means `"solution"`.
+     *
+     * Deliberately carries NO `.default()`. The patch schema is `MutableLspConfigSchema.partial()`,
+     * and Zod keeps defaults through `.partial()`, so a default here would be injected into every
+     * unrelated `lsp` patch and deep-merge would silently reset the user's choice.
+     */
+    csharpProjectScope: z.enum(["solution", "allProjects"]).optional(),
     /** Hard LRU cap on simultaneously running servers, across all workspaces. */
     maxRunningServers: z.number().int().positive().default(6),
     idleMinutes: z.number().int().positive().default(10),

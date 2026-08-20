@@ -3614,6 +3614,11 @@ export const zhCN: TranslationResources = {
         solution: "Microsoft .NET 解决方案管理",
         solutionHint:
           "在文件标签页中添加解决方案视图，按构建系统看到的方式展示你的 .sln 或 .slnx。与上面的代码智能相互独立。默认关闭：它会运行一个 .NET 辅助进程并计算 MSBuild，且需要此主机上安装 .NET SDK。",
+        csharpScope: "C# 项目加载",
+        csharpScopeHint:
+          "C# 语言服务器加载 .NET 工作区的范围。“解决方案”使用工作区根目录中唯一的解决方案文件，它作为一个整体加载，速度快得多。“所有项目”会加载根目录下的每个 .csproj，因此不会遗漏任何内容，但它们逐个加载，大型仓库可能需要几分钟，悬停和转到定义才会响应。",
+        csharpScopeSolution: "解决方案",
+        csharpScopeAllProjects: "所有项目",
         languages: "语言",
         installed: "{{bin}} 已在{{rung}}中找到",
         notInstalled: "{{bin}} 未安装在此主机上",

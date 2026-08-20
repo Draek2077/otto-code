@@ -277,9 +277,17 @@ const HOVER_SCROLLBAR_ACTIVE_INSET_PX = (HOVER_SCROLLBAR_TRACK_PX - HOVER_SCROLL
 const HOVER_GRACE_MS = 120;
 // Re-ask cadence while a server reports itself still indexing.
 const HOVER_RETRY_MS = 400;
-// Stop re-asking eventually. A server that has been "indexing" this long is not going
-// to answer this hover, and a tooltip that spins forever is worse than one that leaves.
-const HOVER_RETRY_CEILING_MS = 15_000;
+/**
+ * Stop re-asking eventually, but measure patience against the server's own signal rather than a
+ * stopwatch. `warming` means the daemon can see work-done progress in flight, so the server is
+ * loading, not wedged - and how long that takes is a property of the project, not of us. A .NET
+ * solution of a few hundred projects takes tens of seconds to load; the old 15s ceiling was
+ * shorter than the daemon's own 20s request budget, so the first reply always arrived after the
+ * ceiling had passed and the tooltip closed having never retried once.
+ *
+ * This cap only catches a server that reports indexing forever, which is a bug in that server.
+ */
+const HOVER_RETRY_CEILING_MS = 5 * 60_000;
 const HOVER_SPINNER_PX = 11;
 
 // The glyph column, between the line numbers and the code.
@@ -1410,7 +1418,7 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
       // Without this, "Go to Definition" would run on wherever the caret
       // happened to be, not on the word under the pointer.
       ...(options.hoverProvider
-        ? [buildHoverTooltip(options.hoverProvider, () => activeTheme)]
+        ? [buildHoverTooltip(options.hoverProvider, () => activeTheme, options.path)]
         : []),
       // ORDER IS THE LAYOUT for gutters: CM6 renders them left to right in extension
       // order, so this mounting AFTER `lineNumbers()` is what puts the glyph column on
@@ -1895,6 +1903,7 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
 function buildHoverTooltip(
   provider: (position: { line: number; column: number }) => Promise<EditorHoverAnswer>,
   readTheme: () => EditorThemeSpec,
+  documentPath: string,
 ): Extension {
   return hoverTooltip(async (view, pos) => {
     // Problems come first, and from local state - they are already here, so they never
@@ -1926,7 +1935,11 @@ function buildHoverTooltip(
         return hoverTooltipAt(word, () => {
           const spec = readTheme();
           return {
-            dom: withDiagnostics(diagnostics, renderHoverContent(first.markdown, spec), spec),
+            dom: withDiagnostics(
+              diagnostics,
+              renderHoverContent(first.markdown, spec, documentPath),
+              spec,
+            ),
           };
         });
       }
@@ -1946,7 +1959,7 @@ function buildHoverTooltip(
     }
 
     return hoverTooltipAt(word, () =>
-      createFillingHoverView({ view, provider, position, pending, readTheme }),
+      createFillingHoverView({ view, provider, position, pending, readTheme, documentPath }),
     );
   });
 }
@@ -1979,6 +1992,8 @@ interface FillingHoverInput {
   /** The ask already in flight, so missing the grace period costs no extra request. */
   pending: Promise<EditorHoverAnswer>;
   readTheme: () => EditorThemeSpec;
+  /** Fallback grammar for a code segment the server left untagged. */
+  documentPath: string;
 }
 
 /**
@@ -1988,7 +2003,7 @@ interface FillingHoverInput {
  * over the code is the one outcome worse than no tooltip.
  */
 function createFillingHoverView(input: FillingHoverInput): TooltipView {
-  const { view, provider, position, pending, readTheme } = input;
+  const { view, provider, position, pending, readTheme, documentPath } = input;
   const host = createPendingHover(readTheme());
   const giveUpAt = Date.now() + HOVER_RETRY_CEILING_MS;
   let disposed = false;
@@ -2008,7 +2023,7 @@ function createFillingHoverView(input: FillingHoverInput): TooltipView {
       return;
     }
     if (answer.kind === "content") {
-      host.replaceWith(renderHoverContent(answer.markdown, readTheme()));
+      host.replaceWith(renderHoverContent(answer.markdown, readTheme(), documentPath));
       return;
     }
     if (answer.kind === "warming" && Date.now() < giveUpAt) {
@@ -2088,7 +2103,16 @@ function createPendingHover(spec: EditorThemeSpec): {
  * Built as DOM by hand because this module is bundled into the native webview: no React,
  * no app markdown pipeline, and no stylesheet from outside CM6.
  */
-function renderHoverContent(markdown: string, spec: EditorThemeSpec): HTMLElement {
+/**
+ * `documentPath` is the fallback grammar for a code segment the server did not tag. csharp-ls
+ * emits its signature as an untagged code span, and a signature in a `.cs` tab is C# - guessing
+ * that is strictly better than rendering it uncoloured next to a highlighted TypeScript hover.
+ */
+function renderHoverContent(
+  markdown: string,
+  spec: EditorThemeSpec,
+  documentPath: string,
+): HTMLElement {
   const root = document.createElement("div");
   root.className = "cm-otto-hover";
 
@@ -2100,7 +2124,9 @@ function renderHoverContent(markdown: string, spec: EditorThemeSpec): HTMLElemen
       root.appendChild(divider);
     }
     root.appendChild(
-      segment.kind === "code" ? renderHoverCode(segment, spec) : renderHoverProse(segment),
+      segment.kind === "code"
+        ? renderHoverCode(segment, spec, documentPath)
+        : renderHoverProse(segment),
     );
   });
 
@@ -2111,11 +2137,15 @@ function renderHoverContent(markdown: string, spec: EditorThemeSpec): HTMLElemen
  * The signature, highlighted with the same tokenizer and the same colours as the buffer
  * behind it - so a type in a hover is the colour that type is in the code.
  */
-function renderHoverCode(segment: HoverCodeSegment, spec: EditorThemeSpec): HTMLElement {
+function renderHoverCode(
+  segment: HoverCodeSegment,
+  spec: EditorThemeSpec,
+  documentPath: string,
+): HTMLElement {
   const pre = document.createElement("pre");
   pre.className = "cm-otto-hover-code";
 
-  const filename = filenameForHoverLanguage(segment.language);
+  const filename = filenameForHoverLanguage(segment.language) ?? documentPath;
   if (filename === null) {
     // An untagged or unsupported fence is still code: keep it mono, just uncoloured.
     pre.textContent = segment.text;

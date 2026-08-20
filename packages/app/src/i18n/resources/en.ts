@@ -3706,6 +3706,11 @@ export const en = {
         solution: "Microsoft .NET Solution Management",
         solutionHint:
           "Adds a Solution view to the Files tab, showing your .sln or .slnx as the build system sees it. Independent of code intelligence above. Off by default: it runs a .NET helper process and evaluates MSBuild, and it needs the .NET SDK on this host.",
+        csharpScope: "C# project loading",
+        csharpScopeHint:
+          "How much of a .NET workspace the C# language server loads. Solution names the one solution file in your workspace root, which loads as a single unit and is much faster. All projects loads every .csproj under the root, so nothing is missed, but they load one at a time and a large repository can take minutes before hover and go-to-definition answer.",
+        csharpScopeSolution: "Solution",
+        csharpScopeAllProjects: "All projects",
         languages: "Languages",
         installed: "{{bin}} found via {{rung}}",
         notInstalled: "{{bin}} is not installed on this host",

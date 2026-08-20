@@ -7,8 +7,10 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  DESKTOP_PACKAGE_DIR,
   PROBE_BUILD_DIR,
   PROBE_ENTRY_FILE,
+  PROBE_RESOURCE_DIR_NAME,
   SERVER_PACKAGE_ROOT,
   SERVER_PAYLOAD_DIR,
 } from "../../../../../../scripts/dotnet-probe-paths.mjs";
@@ -86,6 +88,65 @@ describe("payloadCandidates", () => {
 
   it("ignores a blank override rather than probing the working directory", () => {
     expect(payloadCandidates(emittedDir, "   ")).toEqual(payloadCandidates(emittedDir, undefined));
+  });
+
+  it("looks in the packaged app's resources before the copy inside the server package", () => {
+    // On Windows both exist, and only this one is outside `app.asar`. The assertion also pins
+    // the directory name `bootstrap.ts` hardcodes to the constant `electron-builder.yml` uses.
+    const resources = join(SERVER_PACKAGE_ROOT, "fake-resources");
+
+    expect(payloadCandidates(emittedDir, undefined, resources)[0]).toBe(
+      join(resources, PROBE_RESOURCE_DIR_NAME, PROBE_ENTRY_FILE),
+    );
+  });
+
+  it("ignores a blank resources path", () => {
+    expect(payloadCandidates(emittedDir, undefined, "")).toEqual(
+      payloadCandidates(emittedDir, undefined),
+    );
+  });
+
+  it("discards a payload inside app.asar, which dotnet cannot read", () => {
+    // `access` succeeds on this path in the daemon, because Electron patches fs, and then
+    // `dotnet` fails to load the assembly. Reporting the feature unavailable is the honest
+    // answer, so the candidate must never be offered at all.
+    const insideArchive = join("/opt/Otto/resources/app.asar", "dotnet-probe");
+
+    expect(payloadCandidates(emittedDir, insideArchive)).not.toContain(
+      join(insideArchive, PROBE_ENTRY_FILE),
+    );
+  });
+
+  it("keeps app.asar.unpacked, which is an ordinary directory", () => {
+    const unpacked = join("/opt/Otto/resources/app.asar.unpacked", "dotnet-probe");
+
+    expect(payloadCandidates(emittedDir, unpacked)).toContain(join(unpacked, PROBE_ENTRY_FILE));
+  });
+});
+
+describe("the packaged desktop app", () => {
+  /**
+   * The defect this pins: electron-builder's `getNodeModuleExcludedExts` deletes every `.dll`
+   * from `node_modules` on non-Windows platforms, so the payload riding inside the server package
+   * shipped as two orphan `.json` files and no assemblies in every released Linux and macOS
+   * build. `extraResources` is outside that filter and outside `app.asar`. Both halves are
+   * asserted against the same constants the daemon resolves, so moving one without the other
+   * fails here rather than in a release.
+   */
+  const config = readFileSync(join(DESKTOP_PACKAGE_DIR, "electron-builder.yml"), "utf8");
+
+  it("copies the payload into resources, where the daemon looks for it", () => {
+    const entries = [
+      ...config.matchAll(/-[ \t]+from:[ \t]*(\S+)[ \t]*\r?\n[ \t]+to:[ \t]*(\S+)/g),
+    ].map(([, from, to]) => ({ from: resolve(DESKTOP_PACKAGE_DIR, from), to }));
+
+    expect(entries.find((entry) => entry.from === SERVER_PAYLOAD_DIR)?.to).toBe(
+      PROBE_RESOURCE_DIR_NAME,
+    );
+  });
+
+  it("drops the node_modules copy rather than shipping a payload with its assemblies stripped", () => {
+    expect(config).toContain('"!node_modules/@otto-code/server/dist/dotnet-probe/**"');
   });
 });
 

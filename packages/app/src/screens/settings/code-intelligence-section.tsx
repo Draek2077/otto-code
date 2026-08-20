@@ -11,6 +11,7 @@ import type {
   LspServersSnapshot,
 } from "@otto-code/client/internal/daemon-client";
 import { SettingsSection } from "./settings-section";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { settingsStyles } from "@/styles/settings";
@@ -132,7 +133,21 @@ export function CodeIntelligenceSection({ serverId }: { serverId: string }) {
     [patchConfig, toast],
   );
 
+  const setCsharpProjectScope = useCallback(
+    (csharpProjectScope: "solution" | "allProjects") => {
+      void patchConfig({ lsp: { csharpProjectScope } })
+        .then(refresh)
+        .catch((error: unknown) => {
+          toast.error(error instanceof Error ? error.message : String(error));
+        });
+    },
+    [patchConfig, refresh, toast],
+  );
+
   const masterEnabled = config?.lsp?.enabled ?? true;
+  // Absent means "solution" - the wire field carries no default so an unrelated `lsp` patch
+  // cannot reset it (see the protocol schema), which leaves the fallback to be stated here.
+  const csharpProjectScope = config?.lsp?.csharpProjectScope ?? "solution";
   // Defaults OFF, and reads off on any daemon that has never heard of the setting. A feature that
   // spawns a process and evaluates MSBuild is opted into.
   const solutionManagementEnabled = config?.dotnetSolutionManagement?.enabled === true;
@@ -155,6 +170,11 @@ export function CodeIntelligenceSection({ serverId }: { serverId: string }) {
               testID="lsp-master-toggle-switch"
             />
           </View>
+          <CsharpProjectScopeRow
+            disabled={!masterEnabled}
+            value={csharpProjectScope}
+            onValueChange={setCsharpProjectScope}
+          />
           <SolutionManagementRow
             supported={solutionViewSupported}
             enabled={solutionManagementEnabled}
@@ -192,6 +212,50 @@ export function CodeIntelligenceSection({ serverId }: { serverId: string }) {
  *
  * Absent, not disabled, on a host that cannot serve it - there is nothing for a switch to do.
  */
+/**
+ * Which workspace the C# server loads, host-wide.
+ *
+ * A segmented control rather than a switch because neither option is "off": both load C#, they
+ * trade coverage against time. `allProjects` is csharp-ls's own glob mode, which is complete but
+ * loads each project separately, so the hint has to say so - a user picking it on a large
+ * repository is opting into minutes of indexing, and that must not be a surprise.
+ */
+function CsharpProjectScopeRow(props: {
+  disabled: boolean;
+  value: "solution" | "allProjects";
+  onValueChange: (value: "solution" | "allProjects") => void;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <View style={ROW_WITH_BORDER} testID="lsp-csharp-scope">
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>{t("settings.host.code.csharpScope")}</Text>
+        <Text style={settingsStyles.rowHint}>{t("settings.host.code.csharpScopeHint")}</Text>
+      </View>
+      <SegmentedControl
+        options={[
+          {
+            value: "solution",
+            label: t("settings.host.code.csharpScopeSolution"),
+            disabled: props.disabled,
+            testID: "lsp-csharp-scope-solution",
+          },
+          {
+            value: "allProjects",
+            label: t("settings.host.code.csharpScopeAllProjects"),
+            disabled: props.disabled,
+            testID: "lsp-csharp-scope-all",
+          },
+        ]}
+        value={props.value}
+        onValueChange={props.onValueChange}
+        testID="lsp-csharp-scope-control"
+      />
+    </View>
+  );
+}
+
 function SolutionManagementRow(props: {
   supported: boolean;
   enabled: boolean;

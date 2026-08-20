@@ -135,6 +135,91 @@ describe("server discovery", () => {
   });
 });
 
+/**
+ * The C# row is the one row whose args depend on the workspace, because csharp-ls left to its own
+ * discovery in a repo holding several solutions logs "no or multiple .sln files found" and falls
+ * back to loading every `.csproj` separately - measured at roughly 4s per project, so minutes on a
+ * large repo rather than the ~34s the same solution takes loaded as a unit.
+ */
+describe("the C# row's solution argument", () => {
+  const csharpRow = (): LspServerRow => {
+    const found = LSP_SERVER_ROWS.find((entry) => entry.id === "csharp");
+    if (found === undefined) {
+      throw new Error("the csharp row is missing from the registry");
+    }
+    // Discovery is irrelevant here and `csharp-ls` may not be installed on the machine running
+    // this, so borrow a bin the test can guarantee exists.
+    return { ...found, bin: "otto-nonexistent-language-server", discovery: ["workspaceBin"] };
+  };
+
+  async function resolvedArgs(
+    rootPath: string,
+    context: Parameters<typeof resolveServerCommand>[2],
+  ): Promise<readonly string[]> {
+    await installWorkspaceBin(rootPath, "otto-nonexistent-language-server");
+    const resolved = await resolveServerCommand(csharpRow(), rootPath, context);
+    if (resolved === null) {
+      throw new Error("expected the borrowed workspace bin to resolve");
+    }
+    return resolved.args;
+  }
+
+  it("names the one solution sitting in the workspace root", async () => {
+    const rootPath = await createRoot();
+    await writeFile(path.join(rootPath, "Thing.sln"), "");
+
+    expect(await resolvedArgs(rootPath, {})).toEqual(["-s", "Thing.sln"]);
+  });
+
+  it("says nothing when the root holds several, rather than guessing which half of the repo", async () => {
+    const rootPath = await createRoot();
+    await writeFile(path.join(rootPath, "One.sln"), "");
+    await writeFile(path.join(rootPath, "Two.sln"), "");
+
+    expect(await resolvedArgs(rootPath, {})).toEqual([]);
+  });
+
+  it("says nothing when the root holds none", async () => {
+    const rootPath = await createRoot();
+
+    expect(await resolvedArgs(rootPath, {})).toEqual([]);
+  });
+
+  it("ignores solutions nested below the root", async () => {
+    // csharp-ls searches recursively itself; a nested solution is a sub-project's, and naming it
+    // would be a guess. Only an unambiguous root solution is ours to name.
+    const rootPath = await createRoot();
+    await mkdir(path.join(rootPath, "apps"), { recursive: true });
+    await writeFile(path.join(rootPath, "apps", "Nested.sln"), "");
+
+    expect(await resolvedArgs(rootPath, {})).toEqual([]);
+  });
+
+  it("accepts .slnx, which .NET 10 emits instead of .sln", async () => {
+    const rootPath = await createRoot();
+    await writeFile(path.join(rootPath, "Thing.slnx"), "");
+
+    expect(await resolvedArgs(rootPath, {})).toEqual(["-s", "Thing.slnx"]);
+  });
+
+  it("stands aside under allProjects, which is the host asking for csharp-ls's own glob mode", async () => {
+    const rootPath = await createRoot();
+    await writeFile(path.join(rootPath, "Thing.sln"), "");
+
+    expect(await resolvedArgs(rootPath, { csharpProjectScope: "allProjects" })).toEqual([]);
+  });
+
+  it("leaves the host-wide question alone, which has no workspace to read", async () => {
+    // `rootPath` null is the settings screen asking whether this machine can supply the server.
+    const resolved = await resolveServerCommand(
+      { ...csharpRow(), discovery: ["path"], bin: "sh" },
+      null,
+    );
+
+    expect(resolved?.args).toEqual([]);
+  });
+});
+
 describe("install routes on the registry rows", () => {
   function routeFor(id: string) {
     const found = LSP_SERVER_ROWS.find((entry) => entry.id === id);

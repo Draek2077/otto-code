@@ -231,10 +231,25 @@ export function planLanguageServerSpawn(
 
 const STOP_GRACE_MS = 2000;
 
+/**
+ * Whether a reply counts as the server proving it can answer. An empty array and a null are what
+ * a still-warming server returns, so neither may latch `hasAnswered` - that is the whole point.
+ */
+function isRealAnswer(result: unknown): boolean {
+  if (result === null || result === undefined) {
+    return false;
+  }
+  return !Array.isArray(result) || result.length > 0;
+}
+
 export class LspConnection {
   private readonly spec: LspServerSpec;
   private readonly logger: Logger;
   private readonly requestTimeoutMs: number;
+  /** See `hasAnswered`. Latches on the first real reply and never clears for this process. */
+  private answered = false;
+  /** See `hasIndexed`. Latches on the first progress token and never clears for this process. */
+  private indexed = false;
   private readonly proc: ChildProcess;
   private readonly connection: MessageConnection;
   private exitInfo: LspExitInfo | null = null;
@@ -317,6 +332,17 @@ export class LspConnection {
       proc.once("error", (error) => reject(new LspSpawnError(spec.id, spec.command, error)));
     });
 
+    // A language server is allowed to die at any moment, and when it does, every pipe to it
+    // starts erroring. Node turns an 'error' event with no listener into an uncaught exception,
+    // so these listeners are what stop a crashing server from taking the daemon with it. The
+    // per-write guards in `notify`/`cancelQuietly` cover the promise-rejection half of the same
+    // hazard; this covers the event half.
+    for (const stream of [proc.stdin, proc.stdout, proc.stderr]) {
+      stream?.on("error", (error: unknown) => {
+        logger.debug({ err: error, lspServer: spec.id }, "language server pipe error");
+      });
+    }
+
     const connection = new LspConnection(options, proc);
     connection.tracked = tracked;
     connection.pipeStderr();
@@ -372,6 +398,32 @@ export class LspConnection {
     return this.progressTokens.size > 0;
   }
 
+  /**
+   * Whether this server has ever produced a real answer.
+   *
+   * `isIndexing` alone is not a readiness signal, because it is only true *while* the server is
+   * reporting work-done progress. csharp-ls loading a large solution reports nothing for its first
+   * moments and then, once "Finished loading" clears the last progress token, keeps returning null
+   * for several more seconds while it builds semantic models. In both of those windows a null
+   * hover was reported as a confident "nothing to say", which retracts the tooltip and stops the
+   * client re-asking - so a cold server's answer never arrived no matter how long the user waited.
+   *
+   * A server that has answered once is warm, and its nulls can be believed from then on.
+   */
+  get hasAnswered(): boolean {
+    return this.answered;
+  }
+
+  /**
+   * Whether this server has ever reported work-done progress, which is what marks it as the kind
+   * that builds a project model before it can answer. Servers that never index (the TypeScript
+   * server answers from the first request) are never treated as warming on this account, so their
+   * "nothing to say" stays exactly that.
+   */
+  get hasIndexed(): boolean {
+    return this.indexed;
+  }
+
   async request<R>(method: string, params: unknown, timeoutMs?: number): Promise<R> {
     if (this.exitInfo !== null) {
       throw new LspServerExitedError(this.spec.id, this.exitInfo);
@@ -387,16 +439,37 @@ export class LspConnection {
     let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<never>((_resolve, reject) => {
       timer = setTimeout(() => {
-        source.cancel();
+        this.cancelQuietly(source);
         reject(new LspRequestTimeoutError(this.spec.id, method, limitMs));
       }, limitMs);
     });
 
     try {
-      return await Promise.race([pending, timeout, this.exitedAsError<R>()]);
+      const result = await Promise.race([pending, timeout, this.exitedAsError<R>()]);
+      if (isRealAnswer(result)) {
+        this.answered = true;
+      }
+      return result;
     } finally {
       clearTimeout(timer);
       source.dispose();
+    }
+  }
+
+  /**
+   * Cancelling tells the server to stop work, but it is itself a WRITE - `$/cancelRequest` - so
+   * on a server that has already died it rejects with EPIPE from inside vscode-jsonrpc, where
+   * there is no promise for us to await. Skipping it once the process is gone is what keeps a
+   * routine timeout against a dead server from crashing the daemon.
+   */
+  private cancelQuietly(source: CancellationTokenSource): void {
+    if (this.exitInfo !== null) {
+      return;
+    }
+    try {
+      source.cancel();
+    } catch (error) {
+      this.logger.debug({ err: error, lspServer: this.spec.id }, "cancel failed");
     }
   }
 
@@ -404,7 +477,14 @@ export class LspConnection {
     if (this.exitInfo !== null) {
       throw new LspServerExitedError(this.spec.id, this.exitInfo);
     }
-    this.connection.sendNotification(method, params);
+    // The promise is deliberately caught, not discarded. A language server that just died
+    // leaves its stdin destroyed, so this write rejects with EPIPE - and an unhandled rejection
+    // takes the WHOLE DAEMON down, killing every agent, over a child process that was expected
+    // to be able to crash. `exitInfo` above is not enough: the process can die between that
+    // check and this write.
+    void this.connection.sendNotification(method, params).catch((error: unknown) => {
+      this.logger.debug({ err: error, lspServer: this.spec.id, method }, "notify failed");
+    });
   }
 
   async stop(): Promise<void> {
@@ -413,8 +493,26 @@ export class LspConnection {
     }
 
     try {
-      await this.connection.sendRequest("shutdown", null, this.cancelAfter(STOP_GRACE_MS));
-      this.connection.sendNotification("exit");
+      const shutdown = this.connection.sendRequest(
+        "shutdown",
+        null,
+        this.cancelAfter(STOP_GRACE_MS),
+      );
+      // Cancellation in LSP is COOPERATIVE: cancelling asks the server to give up, and a server
+      // that never answers never settles this promise. The token alone therefore cannot bound
+      // the wait, and `start` calls `stop` when a handshake fails - so without this race, a
+      // process that accepts a connection and then says nothing (a wrapper script, the wrong
+      // binary on PATH, a server wedged on a bad workspace) hangs the spawn path forever.
+      shutdown.catch(() => {
+        // Raced below; a late rejection must not escape as an unhandled rejection.
+      });
+      await Promise.race([
+        shutdown,
+        new Promise<void>((resolve) => setTimeout(resolve, STOP_GRACE_MS)),
+      ]);
+      void this.connection.sendNotification("exit").catch(() => {
+        // Stopping a server that already exited is the normal case, not a failure.
+      });
     } catch (error) {
       this.logger.debug({ err: error }, "language server shutdown handshake failed; killing");
     }
@@ -453,7 +551,9 @@ export class LspConnection {
         this.exitedAsError<unknown>(),
       ]);
       this.initializeResult = InitializeResultSchema.parse(raw);
-      this.connection.sendNotification("initialized", {});
+      void this.connection.sendNotification("initialized", {}).catch((error: unknown) => {
+        this.logger.debug({ err: error, lspServer: this.spec.id }, "initialized notify failed");
+      });
     } finally {
       clearTimeout(timer);
     }
@@ -518,6 +618,7 @@ export class LspConnection {
       const token = String(parsed.data.token);
       if (parsed.data.value.kind === "begin") {
         this.progressTokens.add(token);
+        this.indexed = true;
         this.reportActivity();
       } else if (parsed.data.value.kind === "end") {
         this.progressTokens.delete(token);
@@ -531,6 +632,9 @@ export class LspConnection {
         this.logger.debug({ params }, "unparseable publishDiagnostics");
         return;
       }
+      // Deliberately NOT treated as proof the server is warm: a server can publish diagnostics
+      // for the file you just opened while the rest of the project is still loading, and trusting
+      // that would put `hasAnswered` back to latching before the server can actually answer.
       this.reportDiagnostics(parsed.data);
     });
 
@@ -560,7 +664,9 @@ export class LspConnection {
 
   private cancelAfter(ms: number) {
     const source = new CancellationTokenSource();
-    setTimeout(() => source.cancel(), ms).unref();
+    // Same hazard as the request timeout: this fires while a server is shutting down, which is
+    // exactly when its stdin is likeliest to be gone. See `cancelQuietly`.
+    setTimeout(() => this.cancelQuietly(source), ms).unref();
     return source.token;
   }
 }

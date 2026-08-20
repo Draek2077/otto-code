@@ -1,6 +1,7 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { createOttoDaemon } from "./bootstrap.js";
+import { isSurvivablePipeError } from "./pipe-errors.js";
 import { loadConfig } from "./config.js";
 import { resolveOttoHome } from "./otto-home.js";
 import { createRootLogger } from "./logger.js";
@@ -358,6 +359,19 @@ async function main() {
   });
 
   process.on("unhandledRejection", (reason) => {
+    // A failed write to a child process's pipe is not a daemon bug, and must not be fatal.
+    // The daemon supervises subprocesses that are allowed to die - language servers, the .NET
+    // solution sidecar, terminals - and every one of them leaves a destroyed pipe behind when
+    // it goes. A crashing csharp-ls used to take the whole daemon down through this path,
+    // killing every agent and every terminal along with it, in a restart loop.
+    //
+    // This is the last line of defence, not the first: the LSP connection guards its own writes
+    // and listens on its pipes. It exists so that ONE unguarded write, anywhere, in any
+    // subsystem added later, can never again be fatal.
+    if (isSurvivablePipeError(reason)) {
+      logger.error({ err: reason }, "Pipe write failed after a child process went away");
+      return;
+    }
     logger.fatal({ err: reason }, "Unhandled promise rejection - daemon crashing");
     exitAfterPinoFlush();
   });

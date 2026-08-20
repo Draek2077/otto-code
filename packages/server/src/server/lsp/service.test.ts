@@ -169,8 +169,13 @@ describe("resolving a definition", () => {
     const filePath = path.join(rootPath, "a.ts");
     await service.syncDocument({ rootPath, filePath, text: "const nothing = 1;\n" });
 
-    // Warm the server, then put it into a work-done-progress window.
-    await service.definition({ rootPath, filePath, line: 1, column: 7 });
+    // Genuinely warm the server: a call that ANSWERS, which needs a document the stub can find
+    // `target` in. A call that came back empty would leave the server indistinguishable from one
+    // still building its project model - that is the whole point of `hasAnswered`, see
+    // `isWarming` in the service.
+    const warmPath = path.join(rootPath, "warm.ts");
+    await service.syncDocument({ rootPath, filePath: warmPath, text: DRAFT });
+    await service.definition({ rootPath, filePath: warmPath, line: 2, column: 7 });
     const [entry] = service.running();
     await service.requestOnServer(rootPath, entry.serverId, "stub/progress-begin");
 
@@ -180,6 +185,38 @@ describe("resolving a definition", () => {
     await service.requestOnServer(rootPath, entry.serverId, "stub/progress-end");
     const settled = await service.definition({ rootPath, filePath, line: 1, column: 7 });
     expect(settled.status).toBe("ok");
+  });
+
+  it("keeps reporting indexing after progress ends until the server has answered once", async () => {
+    // Progress ending is not readiness. csharp-ls logs "Finished loading solution" and clears its
+    // last progress token several seconds before it can answer anything, and reading that gap as
+    // "warm, nothing to say" is what retracted the tooltip and stopped the client re-asking.
+    const rootPath = await createRoot();
+    const service = createService([stubRow("stub")]);
+    const filePath = path.join(rootPath, "a.ts");
+    // A document the stub finds nothing in, so every call to it comes back empty and the server
+    // never latches as warm.
+    await service.syncDocument({ rootPath, filePath, text: "const nothing = 1;\n" });
+
+    await service.definition({ rootPath, filePath, line: 1, column: 7 });
+    const [entry] = service.running();
+    await service.requestOnServer(rootPath, entry.serverId, "stub/progress-begin");
+    await service.requestOnServer(rootPath, entry.serverId, "stub/progress-end");
+
+    // Indexed, no progress in flight, and has still never answered anything: not ready.
+    expect((await service.definition({ rootPath, filePath, line: 1, column: 7 })).status).toBe(
+      "indexing",
+    );
+
+    // One real answer settles it, and empty replies are believed from then on.
+    const warmPath = path.join(rootPath, "warm.ts");
+    await service.syncDocument({ rootPath, filePath: warmPath, text: DRAFT });
+    expect(
+      (await service.definition({ rootPath, filePath: warmPath, line: 2, column: 7 })).status,
+    ).toBe("ok");
+    expect((await service.definition({ rootPath, filePath, line: 1, column: 7 })).status).toBe(
+      "ok",
+    );
   });
 
   it("does not report indexing when it actually found something", async () => {
@@ -246,7 +283,11 @@ describe("hover", () => {
     const filePath = path.join(rootPath, "a.ts");
     await service.syncDocument({ rootPath, filePath, text: "const nothing = 1;\n" });
 
-    await service.hover({ rootPath, filePath, line: 1, column: 7 });
+    // Warm it with a hover that ANSWERS - an empty reply would leave the server indistinguishable
+    // from one still building its project model. See `isWarming` in the service.
+    const warmPath = path.join(rootPath, "warm.ts");
+    await service.syncDocument({ rootPath, filePath: warmPath, text: DRAFT });
+    await service.hover({ rootPath, filePath: warmPath, line: 2, column: 7 });
     const [entry] = service.running();
     await service.requestOnServer(rootPath, entry.serverId, "stub/progress-begin");
 
@@ -256,6 +297,32 @@ describe("hover", () => {
 
     await service.requestOnServer(rootPath, entry.serverId, "stub/progress-end");
     expect((await service.hover({ rootPath, filePath, line: 1, column: 7 })).status).toBe("ok");
+  });
+
+  it("reports indexing promptly when a loading server never answers at all", async () => {
+    // The regression this pins: a server loading a large project does not reply to hover until
+    // it finishes, so the daemon spent its whole 20s request budget discovering a fact the
+    // connection already knew, and only then said "indexing". The client's tooltip had given up
+    // by the time that landed, so a cold .NET solution load showed a 20s spinner and then
+    // nothing - never once reaching the retry path that exists for exactly this case.
+    const rootPath = await createRoot();
+    const service = createService([stubRow("stub")]);
+    const filePath = path.join(rootPath, "a.ts");
+    await service.syncDocument({ rootPath, filePath, text: DRAFT });
+
+    await service.hover({ rootPath, filePath, line: 2, column: 7 });
+    const [entry] = service.running();
+    await service.requestOnServer(rootPath, entry.serverId, "stub/progress-begin");
+    await service.requestOnServer(rootPath, entry.serverId, "stub/stop-answering");
+
+    const startedAt = Date.now();
+    const result = await service.hover({ rootPath, filePath, line: 2, column: 7 });
+    const elapsedMs = Date.now() - startedAt;
+
+    expect(result.status).toBe("indexing");
+    // Well under the 20s request budget: the point is that finding this out is cheap enough to
+    // poll, not that it eventually resolves.
+    expect(elapsedMs).toBeLessThan(10_000);
   });
 
   it("does not report indexing when the server actually answered", async () => {

@@ -3699,6 +3699,11 @@ export const ja: TranslationResources = {
         solution: "Microsoft .NET ソリューション管理",
         solutionHint:
           "ファイルタブにソリューションビューを追加し、.sln または .slnx をビルドシステムが見るとおりに表示します。上のコードインテリジェンスとは独立しています。既定ではオフです。有効にすると .NET ヘルパープロセスを起動して MSBuild を評価するため、このホストに .NET SDK が必要です。",
+        csharpScope: "C# プロジェクトの読み込み",
+        csharpScopeHint:
+          "C# 言語サーバーが .NET ワークスペースのどこまでを読み込むかを指定します。「ソリューション」はワークスペース直下にある単一のソリューションファイルを指定し、一括で読み込まれるためはるかに高速です。「すべてのプロジェクト」はルート配下のすべての .csproj を読み込むため取りこぼしがありませんが、1 つずつ読み込まれるので、大規模なリポジトリではホバーや定義へ移動が応答するまで数分かかることがあります。",
+        csharpScopeSolution: "ソリューション",
+        csharpScopeAllProjects: "すべてのプロジェクト",
         languages: "言語",
         installed: "{{bin}} を{{rung}}から検出しました",
         notInstalled: "{{bin}} はこのホストにインストールされていません",

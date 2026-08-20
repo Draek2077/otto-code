@@ -27,6 +27,7 @@ import {
 import {
   commandOnPath,
   resolveServerCommand,
+  type CsharpProjectScope,
   type LspInstallRoute,
   type LspServerRow,
 } from "./registry.js";
@@ -147,14 +148,39 @@ async function resolveLspInstall(
 export interface LspSettings {
   enabled: boolean;
   languages: Readonly<Record<string, boolean>>;
+  /** How much of a .NET workspace the C# server loads. Absent means `"solution"`. */
+  csharpProjectScope: CsharpProjectScope;
   maxRunningServers: number;
   idleMinutes: number;
   backgroundIdleMinutes: number;
 }
 
+/**
+ * How long to wait on a server that is reporting work-done progress before calling it "indexing".
+ * Short on purpose: the answer is a poll away, and the client holds the tooltip open across it.
+ */
+const INDEXING_PROBE_TIMEOUT_MS = 1_500;
+
+/**
+ * Whether a bound server's empty answer should be read as "not ready" rather than "nothing here".
+ *
+ * Progress in flight is the obvious case. The one that made hover look permanently broken is the
+ * second: a server that has never yet produced a real answer. csharp-ls reports no progress for
+ * its first moment, and then - having logged "Finished loading solution" and cleared its last
+ * progress token - keeps answering null for several more seconds while it builds semantic models.
+ * Both windows looked identical to a warm server with nothing to say, so the client retracted the
+ * tooltip and stopped asking, and the answer that arrived seconds later had nowhere to go.
+ */
+function isWarming(entry: BoundServer): boolean {
+  return (
+    entry.connection.isIndexing || (entry.connection.hasIndexed && !entry.connection.hasAnswered)
+  );
+}
+
 const DEFAULT_SETTINGS: LspSettings = {
   enabled: true,
   languages: {},
+  csharpProjectScope: "solution",
   maxRunningServers: 6,
   idleMinutes: 10,
   backgroundIdleMinutes: 2,
@@ -435,6 +461,7 @@ export class LspService {
     this.dotnetAvailable = dotnetAvailable;
     this.platform = platform;
     this.pool.setRowFilter((row) => this.isRowEnabled(row));
+    this.pool.setResolveContext(() => ({ csharpProjectScope: this.settings.csharpProjectScope }));
   }
 
   static create(options: LspServiceOptions): LspService {
@@ -560,7 +587,11 @@ export class LspService {
 
   /** Record the host's policy without touching anything already running. */
   setSettings(patch: Partial<LspSettings>): void {
-    this.settings = { ...this.settings, ...patch };
+    const merged = { ...this.settings, ...patch };
+    // The wire field is deliberately optional (no `.default()`, see the protocol schema), so
+    // absent - or explicitly undefined from a spread - has to land back on "solution" here
+    // rather than leave the scope unset.
+    this.settings = { ...merged, csharpProjectScope: merged.csharpProjectScope ?? "solution" };
     this.pool.setLimits({
       maxRunningServers: this.settings.maxRunningServers,
       idleMs: this.settings.idleMinutes * 60_000,
@@ -574,11 +605,23 @@ export class LspService {
    * has to mean off immediately, or the switch is decoration.
    */
   async applySettings(patch: Partial<LspSettings>): Promise<void> {
+    const previousScope = this.settings.csharpProjectScope;
     this.setSettings(patch);
 
     if (!this.settings.enabled) {
       await this.pool.stopAll();
       return;
+    }
+
+    // Spawn args are fixed for a process's life, so a scope change only reaches a server that
+    // has not started yet. Stopping the running C# servers is what makes the switch take effect
+    // now rather than whenever they happen to idle out; the next request respawns them.
+    if (this.settings.csharpProjectScope !== previousScope) {
+      for (const entry of this.running()) {
+        if (entry.serverId === "csharp") {
+          await this.pool.stopServer(entry.rootPath, entry.serverId);
+        }
+      }
     }
 
     const forbidden = new Set(
@@ -729,7 +772,7 @@ export class LspService {
     }
 
     const locations = dedupeLocations(answers.flatMap((answer) => answer.locations));
-    if (locations.length === 0 && bound.some((entry) => entry.connection.isIndexing)) {
+    if (locations.length === 0 && bound.some((entry) => isWarming(entry))) {
       return { status: "indexing", locations: [], error: null };
     }
 
@@ -778,7 +821,7 @@ export class LspService {
     // "Nothing to say" and "not warmed up yet" are the same empty reply on the wire,
     // and the client has to tell them apart: one retracts the tooltip, the other keeps
     // it open and asks again. Same rule as definition/references above.
-    if (bound.some((entry) => entry.connection.isIndexing)) {
+    if (bound.some((entry) => isWarming(entry))) {
       return { status: "indexing", markdown: null, range: null, serverId: null, error: null };
     }
 
@@ -820,7 +863,7 @@ export class LspService {
     // `fromFileUri` returned 2 hits in 1 file when the truth is 14 in 4 - a complete-looking
     // answer that was 7x short. So indexing outranks having results: the caller is told the
     // list is provisional and gets the partial set to show meanwhile.
-    if (bound.some((entry) => entry.connection.isIndexing)) {
+    if (bound.some((entry) => isWarming(entry))) {
       return { status: "indexing", locations, error: null };
     }
     return { status: "ok", locations, error: null };
@@ -849,7 +892,7 @@ export class LspService {
     // a half-loaded program under-reports it - "1 file, 2 edits" for something that touches
     // 4 files and 14 sites. Every other request degrades to a bad answer; this one degrades
     // to a destructive edit, so it does not get to guess.
-    if (bound.some((entry) => entry.connection.isIndexing)) {
+    if (bound.some((entry) => isWarming(entry))) {
       return {
         status: "indexing",
         files: [],
@@ -924,12 +967,22 @@ export class LspService {
     extra?: Record<string, unknown>,
   ): Promise<unknown | undefined> {
     try {
-      return await entry.connection.request<unknown>(method, {
-        textDocument: { uri: this.documents.uriFor(query.filePath) },
-        // LSP is 0-based; the wire is 1-based.
-        position: { line: query.line - 1, character: query.column - 1 },
-        ...extra,
-      });
+      return await entry.connection.request<unknown>(
+        method,
+        {
+          textDocument: { uri: this.documents.uriFor(query.filePath) },
+          // LSP is 0-based; the wire is 1-based.
+          position: { line: query.line - 1, character: query.column - 1 },
+          ...extra,
+        },
+        // A server loading a project may not answer at all until it finishes, and finding that
+        // out must not cost the full request budget: the caller reports "indexing" the moment
+        // this returns nothing, and the client polls. Spending 20s to learn a fact the
+        // connection already knows is what left the hover tooltip spinning through a cold
+        // solution load and then closing with nothing. Servers that *do* answer while indexing
+        // (TypeScript does) still answer inside this budget, so they are unaffected.
+        isWarming(entry) ? INDEXING_PROBE_TIMEOUT_MS : undefined,
+      );
     } catch (error) {
       this.logger.debug(
         { err: error, lspServer: entry.serverId, method },

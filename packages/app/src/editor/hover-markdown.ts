@@ -28,12 +28,69 @@ export type HoverSegment = HoverCodeSegment | HoverProseSegment;
 const FENCE = /^\s*```(\S*)\s*$/;
 
 /**
+ * A run that is nothing but one inline code span, and the code inside it.
+ *
+ * Not every server fences its signature. csharp-ls 0.16.0 - the release a .NET 8 host is pinned
+ * to - emits the signature as a DOUBLE-backtick code span and no fence at all:
+ * `` `` int Thing.Count `` ``. Read as prose that rendered uncoloured, and `plainProse`'s
+ * single-backtick strip left the outer ticks behind, so a C# hover was a drab string in strange
+ * quotes next to TypeScript's syntax-highlighted block. Same Otto, same renderer - only the shape
+ * of the markdown differed.
+ *
+ * CommonMark allows any run length as the delimiter and strips one leading/trailing space, which
+ * is exactly the form csharp-ls emits.
+ */
+const CODE_SPAN = /^(`+)([\s\S]+?)\1$/;
+
+function asCodeSpan(text: string): string | null {
+  const match = CODE_SPAN.exec(text.trim());
+  if (match === null) {
+    return null;
+  }
+  const inner = match[2].trim();
+  // A span containing a backtick run of its own is not a simple signature; leave it as prose.
+  return inner.length === 0 || inner.includes("`") ? null : inner;
+}
+
+/**
  * Split hover markdown into fenced code and prose runs, in order. Blank-only runs are
  * dropped so a fence surrounded by whitespace does not produce empty sections.
  *
  * An unterminated fence - servers do emit them - is treated as running to the end
  * rather than discarded, because the signature is usually the thing inside it.
  */
+/**
+ * Peel leading paragraphs that are wholly a code span off an unfenced run, leaving the rest as
+ * one prose block.
+ *
+ * Only LEADING ones: a server that fences nothing puts its signature first and its documentation
+ * after, and splitting the documentation on every blank line as well would scatter dividers
+ * through a paragraph that was always meant to read as one.
+ */
+function splitUnfenced(text: string): HoverSegment[] {
+  const segments: HoverSegment[] = [];
+  let rest = text;
+
+  for (;;) {
+    const split = rest.search(/\n\s*\n/);
+    const head = split === -1 ? rest : rest.slice(0, split);
+    const span = asCodeSpan(head);
+    if (span === null) {
+      break;
+    }
+    segments.push({ kind: "code", language: "", text: span });
+    if (split === -1) {
+      return segments;
+    }
+    rest = rest.slice(split).replace(/^\s*\n\s*\n/, "");
+  }
+
+  if (rest.trim().length > 0) {
+    segments.push({ kind: "prose", text: rest });
+  }
+  return segments;
+}
+
 export function parseHoverMarkdown(markdown: string): HoverSegment[] {
   const segments: HoverSegment[] = [];
   let buffer: string[] = [];
@@ -46,7 +103,7 @@ export function parseHoverMarkdown(markdown: string): HoverSegment[] {
       return;
     }
     if (fenceLanguage === null) {
-      segments.push({ kind: "prose", text });
+      segments.push(...splitUnfenced(text));
       return;
     }
     segments.push({ kind: "code", language: fenceLanguage, text });
@@ -73,11 +130,15 @@ export function parseHoverMarkdown(markdown: string): HoverSegment[] {
  * dropping them.
  */
 export function plainProse(text: string): string {
-  return text
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/(^|\W)_([^_]+)_(?=\W|$)/g, "$1$2")
-    .replace(/`([^`]+)`/g, "$1")
-    .trim();
+  return (
+    text
+      .replace(/\*\*([^*]+)\*\*/g, "$1")
+      .replace(/(^|\W)_([^_]+)_(?=\W|$)/g, "$1$2")
+      // Any delimiter run, not just one backtick. The single-tick form left the outer ticks of a
+      // ``double-backtick`` span sitting in the tooltip, which is what "strange quotes" was.
+      .replace(/(`+)([\s\S]*?)\1/g, (_match, _ticks: string, inner: string) => inner.trim())
+      .trim()
+  );
 }
 
 /**

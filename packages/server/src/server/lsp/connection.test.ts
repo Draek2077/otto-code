@@ -125,6 +125,37 @@ describe("LspConnection requests", () => {
     expect(result).toEqual({ echoed: { value: "still alive" } });
   });
 
+  /**
+   * The requirement these pin: whatever the host environment supplies as a "language server",
+   * the DAEMON survives it. A crashing csharp-ls once took the whole daemon down - every agent,
+   * every terminal - in a restart loop, because a write to its dead pipe rejected with nobody
+   * listening. What the server is, and why it failed, must not be the daemon's problem.
+   */
+  it.each([
+    ["binary noise that never speaks LSP", "garbage"],
+    ["a process that spits bytes and dies", "garbage-then-die"],
+    ["a process that exits before saying anything", "exit-immediately"],
+  ])("survives %s", async (_label, mode) => {
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown): void => {
+      rejections.push(reason);
+    };
+    process.on("unhandledRejection", onRejection);
+
+    try {
+      // Rejecting is correct - there is no usable server. Throwing something the caller can
+      // handle is the contract; escaping as an unhandled rejection is the bug.
+      await expect(startStub({ mode, initializeTimeoutMs: 400 })).rejects.toThrow();
+
+      // Give anything in flight a turn of the loop to surface before asserting it did not.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      expect(rejections).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onRejection);
+    }
+  });
+
   it("rejects in-flight and later requests once the server exits", async () => {
     const connection = await startStub();
 

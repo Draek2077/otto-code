@@ -3738,6 +3738,11 @@ export const es: TranslationResources = {
         solution: "Gestión de soluciones de Microsoft .NET",
         solutionHint:
           "Añade una vista Solución a la pestaña de archivos, que muestra tu .sln o .slnx tal y como lo ve el sistema de compilación. Es independiente de la inteligencia de código de arriba. Desactivada por defecto: ejecuta un proceso auxiliar de .NET y evalúa MSBuild, y necesita el SDK de .NET en este host.",
+        csharpScope: "Carga de proyectos C#",
+        csharpScopeHint:
+          "Cuánto de un espacio de trabajo .NET carga el servidor de lenguaje C#. Solución usa el único archivo de solución en la raíz del espacio de trabajo, que se carga como una sola unidad y es mucho más rápido. Todos los proyectos carga cada .csproj bajo la raíz, así que no se omite nada, pero se cargan de uno en uno y un repositorio grande puede tardar minutos hasta que el cursor flotante e Ir a la definición respondan.",
+        csharpScopeSolution: "Solución",
+        csharpScopeAllProjects: "Todos los proyectos",
         languages: "Lenguajes",
         installed: "{{bin}} encontrado en {{rung}}",
         notInstalled: "{{bin}} no está instalado en este host",

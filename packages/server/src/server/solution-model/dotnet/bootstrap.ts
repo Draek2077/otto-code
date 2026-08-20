@@ -18,6 +18,13 @@ import { fileURLToPath } from "node:url";
  */
 
 const ENTRY_FILE = "OttoDotnetProbe.dll";
+/**
+ * The payload's directory inside the packaged desktop app's `resources`, written by an
+ * `extraResources` entry in `packages/desktop/electron-builder.yml`. Hardcoded here for the same
+ * reason `ENTRY_FILE` is: this module has to work from inside a published package, where
+ * `scripts/dotnet-probe-paths.mjs` does not exist. `bootstrap.test.ts` pins it to that constant.
+ */
+const RESOURCE_DIR_NAME = "dotnet-probe";
 /** Refuse a payload whose shape we cannot read rather than guess at it. */
 export const SUPPORTED_PROTOCOL_VERSION = 1;
 
@@ -88,8 +95,9 @@ function findPackageRoot(start: string): string | null {
 }
 
 /**
- * Candidate payload locations, most specific first: an explicit override, the payload as the
- * server package ships it, then the sibling workspace package a repo checkout builds in place.
+ * Candidate payload locations, most specific first: an explicit override, the packaged desktop
+ * app's `resources`, the payload as the server package ships it, then the sibling workspace
+ * package a repo checkout builds in place. Candidates inside `app.asar` are discarded outright.
  *
  * **Both derived candidates hang off the server package root, the directory holding
  * `package.json`, never off a count of `..` segments from this module.** The count was the bug.
@@ -108,7 +116,11 @@ function findPackageRoot(start: string): string | null {
  *
  * Exported for that test; production has one caller, `findPayload`.
  */
-export function payloadCandidates(moduleDir: string, override: string | undefined): string[] {
+export function payloadCandidates(
+  moduleDir: string,
+  override: string | undefined,
+  resourcesPath?: string | undefined,
+): string[] {
   const candidates: string[] = [];
 
   const explicit = override?.trim();
@@ -116,21 +128,45 @@ export function payloadCandidates(moduleDir: string, override: string | undefine
     candidates.push(join(explicit, ENTRY_FILE));
   }
 
+  // The packaged desktop app, and the only candidate it can satisfy: electron-builder deletes
+  // every `.dll` under `node_modules` on non-Windows platforms, so the copy inside the server
+  // package is not merely unspawnable there, it is absent. Ahead of the package-root candidate
+  // because on Windows both exist and only this one is outside `app.asar`.
+  if (resourcesPath !== undefined && resourcesPath.length > 0) {
+    candidates.push(join(resourcesPath, RESOURCE_DIR_NAME, ENTRY_FILE));
+  }
+
   const packageRoot = findPackageRoot(moduleDir);
   if (packageRoot !== null) {
-    // The published layout, and the only candidate a tarball or the installed app can satisfy.
+    // The published layout, and the only candidate a tarball can satisfy.
     candidates.push(join(packageRoot, "dist", "dotnet-probe", ENTRY_FILE));
     // A repo checkout, where the sidecar is a sibling workspace package built in place.
     candidates.push(join(dirname(packageRoot), "dotnet-probe", "dist", ENTRY_FILE));
   }
 
-  return candidates;
+  // `dotnet` is an ordinary child process with no asar support, so a payload inside the archive
+  // passes `access` through Electron's patched fs and then fails at assembly load. Discarding it
+  // here keeps the deliberate "unavailable" message rather than trading it for a spawn error.
+  return candidates.filter((candidate) => !isInsideAsar(candidate));
+}
+
+/** True when any path segment is exactly `app.asar`, which `app.asar.unpacked` is not. */
+function isInsideAsar(candidate: string): boolean {
+  return candidate.split(/[/\\]/).includes("app.asar");
 }
 
 async function findPayload(): Promise<string | null> {
   const here = dirname(fileURLToPath(import.meta.url));
 
-  for (const candidate of payloadCandidates(here, process.env.OTTO_DOTNET_PROBE_DIR)) {
+  // Electron sets `resourcesPath` in every process it starts, including the `ELECTRON_RUN_AS_NODE`
+  // child this daemon runs as. It is absent under plain Node, which is the tarball case.
+  const { resourcesPath } = process as { resourcesPath?: string };
+
+  for (const candidate of payloadCandidates(
+    here,
+    process.env.OTTO_DOTNET_PROBE_DIR,
+    resourcesPath,
+  )) {
     try {
       await access(candidate, constants.R_OK);
       return candidate;

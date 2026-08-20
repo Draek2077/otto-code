@@ -1,4 +1,4 @@
-import { access, constants } from "node:fs/promises";
+import { access, constants, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -13,6 +13,14 @@ import { fileURLToPath } from "node:url";
  */
 
 export type LspDiscoveryRung = "workspaceBin" | "bundled" | "path";
+
+/** How much of a .NET workspace the C# server loads. See `lsp.csharpProjectScope`. */
+export type CsharpProjectScope = "solution" | "allProjects";
+
+/** Host settings a row may need to derive its args. Absent fields take the row's own default. */
+export interface LspResolveContext {
+  csharpProjectScope?: CsharpProjectScope;
+}
 
 /**
  * One step of installing a missing server on the daemon's host: an argv array, never a
@@ -54,6 +62,13 @@ export interface LspServerRow {
   bin: string;
   /** `{root}` is replaced with the workspace root at resolve time. */
   args: readonly string[];
+  /**
+   * Extra args derived from the workspace, appended after `args` at resolve time. For the one
+   * case a static row cannot express: a server whose own project discovery gives a materially
+   * worse answer than the workspace can supply. Skipped for the host-wide question, which has
+   * no workspace to read.
+   */
+  argsForRoot?: (rootPath: string, context: LspResolveContext) => Promise<readonly string[]>;
   discovery: readonly LspDiscoveryRung[];
   /** How to install the server on the host, or absent when only the project can supply it. */
   install?: LspInstallRoute;
@@ -146,6 +161,11 @@ export const LSP_SERVER_ROWS: readonly LspServerRow[] = [
     extensions: [".cs", ".csx"],
     bin: "csharp-ls",
     args: [],
+    // Name the root solution when there is exactly one. Left to itself in a repo holding
+    // several, csharp-ls logs "no or multiple .sln files found" and falls back to globbing
+    // every `.csproj` in the tree, which in a monorepo means loading hundreds of projects
+    // one at a time, with no solution graph, and hover spins until it gives up.
+    argsForRoot: rootSolutionArgs,
     discovery: ["path"],
     defaultEnabled: true,
     // A .NET global tool: the process is a `dotnet` host, and it loads projects through
@@ -276,6 +296,7 @@ export function rowsForPath(filePath: string): readonly LspServerRow[] {
 export async function resolveServerCommand(
   row: LspServerRow,
   rootPath: string | null,
+  context: LspResolveContext = {},
 ): Promise<ResolvedLspServer | null> {
   for (const rung of row.discovery) {
     if (rung === "workspaceBin" && rootPath === null) {
@@ -283,7 +304,12 @@ export async function resolveServerCommand(
     }
     const command = await resolveRung(rung, row.bin, rootPath ?? "");
     if (command !== null) {
-      return { command, args: substituteRoot(row.args, rootPath ?? ""), rung };
+      const derived = rootPath === null ? [] : ((await row.argsForRoot?.(rootPath, context)) ?? []);
+      return {
+        command,
+        args: [...substituteRoot(row.args, rootPath ?? ""), ...derived],
+        rung,
+      };
     }
   }
   return null;
@@ -294,6 +320,48 @@ export async function resolveServerCommand(
  * `C:\ws` + `/node_modules` - one arg with both separators, which the servers
  * consuming these probe paths handle inconsistently.
  */
+const SOLUTION_EXTENSIONS = new Set([".sln", ".slnx"]);
+
+/**
+ * `-s <file>` when the workspace root holds exactly one solution, nothing otherwise.
+ *
+ * Skipped entirely under `csharpProjectScope: "allProjects"`, which is the host asking for
+ * csharp-ls's own glob-everything mode: complete coverage of the root at a cost of loading each
+ * project separately.
+ *
+ * Only the root directory is read, never a walk: nested solutions belong to sub-projects and
+ * naming one of those would be a guess about which half of the repo the user meant. Zero
+ * solutions and several are the same answer - say nothing and let csharp-ls decide - because
+ * the only case Otto knows better than the server is the unambiguous one.
+ *
+ * The path stays relative, which is what `--solution` documents ("relative to CWD") and what the
+ * pool spawns with (`cwd: rootPath`). `.slnx` is included because .NET 10's `dotnet new sln`
+ * emits it; see docs/code-intelligence.md.
+ */
+async function rootSolutionArgs(
+  rootPath: string,
+  context: LspResolveContext,
+): Promise<readonly string[]> {
+  if (context.csharpProjectScope === "allProjects") {
+    return [];
+  }
+
+  let entries;
+  try {
+    entries = await readdir(rootPath, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const solutions = entries
+    .filter(
+      (entry) => entry.isFile() && SOLUTION_EXTENSIONS.has(path.extname(entry.name).toLowerCase()),
+    )
+    .map((entry) => entry.name);
+
+  return solutions.length === 1 ? ["-s", solutions[0]] : [];
+}
+
 function substituteRoot(args: readonly string[], rootPath: string): readonly string[] {
   const normalizedRoot = rootPath.replace(/\\/g, "/");
   return args.map((arg) => arg.replaceAll("{root}", normalizedRoot));

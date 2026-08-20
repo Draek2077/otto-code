@@ -5,6 +5,7 @@ import {
   indexRowsByExtension,
   LSP_SERVER_ROWS,
   resolveServerCommand,
+  type LspResolveContext,
   type LspServerRow,
 } from "./registry.js";
 import { documentKey } from "./uri.js";
@@ -127,6 +128,7 @@ export class LspServerPool {
   private readonly logger: Logger;
   private limits: LspPoolLimits;
   private rowFilter: LspRowFilter = () => true;
+  private resolveContext: () => LspResolveContext = () => ({});
   private readonly rowsById: Map<string, LspServerRow>;
   private readonly rowsByExtension: Map<string, LspServerRow[]>;
   private readonly now: () => number;
@@ -163,6 +165,15 @@ export class LspServerPool {
    */
   setRowFilter(filter: LspRowFilter): void {
     this.rowFilter = filter;
+  }
+
+  /**
+   * Host settings a row consults to derive its spawn args. Read at spawn, never cached, so a
+   * setting change reaches the next server started - the running ones keep the args they were
+   * spawned with, which is why the service stops them when the setting changes.
+   */
+  setResolveContext(context: () => LspResolveContext): void {
+    this.resolveContext = context;
   }
 
   setLimits(limits: Partial<LspPoolLimits>): void {
@@ -317,7 +328,7 @@ export class LspServerPool {
   private async start(key: string, rootPath: string, row: LspServerRow): Promise<LspConnection> {
     await this.enforceRunningCap(key);
 
-    const resolved = await resolveServerCommand(row, rootPath);
+    const resolved = await resolveServerCommand(row, rootPath, this.resolveContext());
     if (resolved === null) {
       // Absence is a fact about this machine, not a failure to back off from.
       this.entries.delete(key);

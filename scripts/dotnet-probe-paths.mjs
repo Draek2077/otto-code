@@ -40,3 +40,22 @@ export const SERVER_DIST_DIR = join(SERVER_PACKAGE_ROOT, "dist");
  * with a green build.
  */
 export const SERVER_PAYLOAD_DIR = join(SERVER_DIST_DIR, "dotnet-probe");
+
+export const DESKTOP_PACKAGE_DIR = join(REPO_ROOT, "packages", "desktop");
+
+/**
+ * Where the packaged desktop app carries the payload: `resources/dotnet-probe`, written by an
+ * `extraResources` entry in `electron-builder.yml`.
+ *
+ * The copy inside the server package cannot serve the desktop app, for two independent reasons.
+ * electron-builder deletes every `.dll` from `node_modules` on non-Windows platforms
+ * (`getNodeModuleExcludedExts` in app-builder-lib), so on Linux and macOS the payload's four
+ * assemblies are stripped while their two `.json` siblings ship, which is exactly what a released
+ * build contained. And even unstripped it would sit inside `app.asar`, which Node can read
+ * through Electron's patched fs but `dotnet`, an ordinary child process, cannot.
+ *
+ * `extraResources` is outside both filters. `bootstrap.ts` hardcodes this directory name for the
+ * same reason it hardcodes the entry file - it cannot import `scripts/` from a published package -
+ * and `bootstrap.test.ts` pins both sides against these constants.
+ */
+export const PROBE_RESOURCE_DIR_NAME = "dotnet-probe";

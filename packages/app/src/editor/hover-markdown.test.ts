@@ -96,3 +96,54 @@ describe("language to parser filename", () => {
     expect(filenameForHoverLanguage("brainfuck")).toBeNull();
   });
 });
+
+/**
+ * The payloads below are verbatim from csharp-ls 0.16.0 against a real solution. It emits no
+ * fences at all: the signature is a double-backtick code span, so a C# hover rendered as drab
+ * prose with the outer ticks still showing, right next to TypeScript's highlighted block.
+ */
+describe("an unfenced signature, the shape csharp-ls emits", () => {
+  it("treats a run that is wholly a code span as the signature", () => {
+    expect(
+      parseHoverMarkdown("`` int GroupMessageService.PatientCommunicationBatchSize ``"),
+    ).toEqual<HoverSegment[]>([
+      { kind: "code", language: "", text: "int GroupMessageService.PatientCommunicationBatchSize" },
+    ]);
+  });
+
+  it("splits the signature from the documentation that follows it", () => {
+    const markdown =
+      "`` ConversationEntryControllerService ``\n\nThis service implements controller specific logic.";
+
+    expect(parseHoverMarkdown(markdown)).toEqual<HoverSegment[]>([
+      { kind: "code", language: "", text: "ConversationEntryControllerService" },
+      { kind: "prose", text: "This service implements controller specific logic." },
+    ]);
+  });
+
+  it("handles a single-backtick span too, which other servers use", () => {
+    expect(parseHoverMarkdown("`const spec: any`")).toEqual<HoverSegment[]>([
+      { kind: "code", language: "", text: "const spec: any" },
+    ]);
+  });
+
+  it("leaves prose that merely contains a code span as prose", () => {
+    const markdown = "Returns the `id` of the record.";
+
+    expect(parseHoverMarkdown(markdown)).toEqual<HoverSegment[]>([
+      { kind: "prose", text: markdown },
+    ]);
+  });
+});
+
+describe("plainProse and inline code delimiters", () => {
+  it("strips a double-backtick span without leaving the outer ticks", () => {
+    // The bug this pins: the old single-backtick strip turned "`` X ``" into "` X `", which is
+    // the "strange quotes" a C# hover showed.
+    expect(plainProse("`` GroupMessageService ``")).toBe("GroupMessageService");
+  });
+
+  it("still strips a single-backtick span", () => {
+    expect(plainProse("the `id` field")).toBe("the id field");
+  });
+});
