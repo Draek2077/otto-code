@@ -1,12 +1,28 @@
 # Changelog
 
-## Unreleased
+## 0.8.11 - 2026-08-19
 
 ### Added
 
 - Kanban boards are reached by picking a host and a project, and the project's board is chosen in that project's settings
 - GitHub boards sign in with the GitHub CLI, and Jira boards use the Atlassian account credential shared with Bitbucket
 - Jira boards show the board's real columns, and moving a card transitions the issue
+- Use Zoom Team Chat from Otto, including conversations, presence, notifications, favorites, and search
+- Record meetings locally and browse saved transcripts from the desktop app
+- Tune local Brain models with sampling controls, cached chats, clearer live status, and on-demand log streaming
+- Choose how often Otto fetches Git repositories and trigger a manual fetch when needed
+- Install a missing language server directly from Otto, or copy its install command
+- Choose a conventional commit type when committing from the Changes panel
+- Let Android follow the device’s rotation setting
+
+### Fixed
+
+- OpenAI-compatible chats no longer break when a model leaves an unexpected system message in the conversation
+- Local Brain workloads share available model slots reliably across concurrent chats
+- C# language-server crashes no longer take down the daemon, and cold hovers recover reliably
+- Microphone capture now uses the current browser audio API
+- Chat replay no longer re-types messages after a live correction
+- Native desktop layouts keep the vertical tab rail available outside split views
 
 ## 0.8.10 - 2026-08-13
 
