@@ -14,7 +14,7 @@
     "Set 2026-08-19 at each file's then-current size."
   ],
   "ceilings": {
-    "packages/protocol/src/messages.ts": 8998,
+    "packages/protocol/src/messages.ts": 8624,
     "packages/server/src/server/session.ts": 11121,
     "packages/client/src/daemon-client.ts": 9737,
     "packages/app/src/screens/workspace/workspace-screen.tsx": 7848,
@@ -27,6 +27,7 @@
     "packages/app/src/hooks/use-settings/storage.ts": 334,
     "packages/app/src/styles/theme.ts": 284,
     "packages/server/src/server/session/files/workspace-files-session.ts": 860,
-    "packages/app/src/components/diff-viewer.tsx": 363
+    "packages/app/src/components/diff-viewer.tsx": 363,
+    "packages/server/src/server/daemon-config-store.ts": 394
   }
 }
