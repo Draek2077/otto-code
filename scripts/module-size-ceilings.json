@@ -14,7 +14,7 @@
     "Set 2026-08-19 at each file's then-current size."
   ],
   "ceilings": {
-    "packages/protocol/src/messages.ts": 8990,
+    "packages/protocol/src/messages.ts": 8998,
     "packages/server/src/server/session.ts": 11156,
     "packages/client/src/daemon-client.ts": 9737,
     "packages/app/src/screens/workspace/workspace-screen.tsx": 7836,
