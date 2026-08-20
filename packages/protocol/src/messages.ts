@@ -8673,6 +8673,14 @@ export const ServerInfoStatusPayloadSchema = z
         // on this so an old daemon (which ignores the field) shows "Update the
         // host" instead of a switch that does nothing.
         openaiCompatActionBreaker: z.boolean().optional(),
+        // COMPAT(openaiCompatMidSessionUpdates): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
+        // Set when the daemon honors the provider-level `midSessionContextUpdates`
+        // switch for openai-compat agents (whether the tool loop may add context,
+        // today a subdirectory instruction file, after the conversation starts).
+        // The client gates the Agents-tab control on this so an old daemon (which
+        // ignores the field and always injects) shows "Update the host" instead of
+        // a switch that does nothing.
+        openaiCompatMidSessionUpdates: z.boolean().optional(),
         // COMPAT(mcpToolGroups): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
         // Set when the daemon honors `mcp.toolGroups` - per-group gating of the
         // Otto tool catalog on the MCP (Claude) path. Old daemons register every

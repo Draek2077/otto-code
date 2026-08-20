@@ -3920,6 +3920,11 @@ export const ja: TranslationResources = {
         maxToolRoundsValue: "{{rounds}} 回",
         maxToolRoundsRequiresUpdate:
           "ツール呼び出しラウンドの上限を設定するにはホストを更新してください。",
+        midSessionUpdatesLabel: "セッション中のコンテキスト更新",
+        midSessionUpdatesHint:
+          "エージェントがサブフォルダーで初めて作業するとき、そのフォルダー独自の AGENTS.md を読み込めるようにします。オフにすると、会話にはあなたとモデルが入れたものだけが残ります。ローカルのコンテキストウィンドウが小さいときにとくに効きます。",
+        midSessionUpdatesRequiresUpdate:
+          "セッション中のコンテキスト更新を設定するにはホストを更新してください。",
         actionBreakerLabel: "アクションサーキットブレーカー",
         actionBreakerHint:
           "ツールアクションが同じ方法で何度も失敗するときは、繰り返しを止め、モデルにアプローチの修正を求めます。",

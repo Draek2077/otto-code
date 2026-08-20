@@ -683,6 +683,7 @@ const DAEMON_CONFIG_SCHEMA_DEFAULTS = {
     notifyOnFinishDefault: true,
     todoNudge: true,
     todoReconcileOnIdle: true,
+    stallGuardThreshold: 15,
   },
   hideMergeIntoBaseAction: false,
   // Attachment retention (docs/attachment-lifecycle.md) defaults to the

@@ -3939,6 +3939,11 @@ export const ptBR: TranslationResources = {
         maxToolRoundsValue: "{{rounds}} rodadas",
         maxToolRoundsRequiresUpdate:
           "Atualize o host para configurar o máximo de rodadas de chamadas de ferramentas.",
+        midSessionUpdatesLabel: "Atualizações de contexto durante a sessão",
+        midSessionUpdatesHint:
+          "Permite que o agente carregue o AGENTS.md da própria subpasta na primeira vez que trabalha nela. Desative para manter na conversa apenas o que você e o modelo colocaram nela, o que importa mais com uma janela de contexto local pequena.",
+        midSessionUpdatesRequiresUpdate:
+          "Atualize o host para configurar as atualizações de contexto durante a sessão.",
         actionBreakerLabel: "Disjuntor de ação",
         actionBreakerHint:
           "Quando uma ação de ferramenta continua falhando da mesma forma, para de repeti-la e pede ao modelo para corrigir sua abordagem.",

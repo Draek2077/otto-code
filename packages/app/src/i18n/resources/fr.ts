@@ -3974,6 +3974,11 @@ export const fr: TranslationResources = {
         maxToolRoundsValue: "{{rounds}} tours",
         maxToolRoundsRequiresUpdate:
           "Mettez à jour l'hôte pour configurer le nombre maximal de tours d'appels d'outils.",
+        midSessionUpdatesLabel: "Mises à jour du contexte en cours de session",
+        midSessionUpdatesHint:
+          "Autorise l'agent à charger le AGENTS.md propre à un sous-dossier la première fois qu'il y travaille. Désactivez cette option pour que la conversation ne contienne que ce que vous et le modèle y avez mis, ce qui compte surtout avec une petite fenêtre de contexte locale.",
+        midSessionUpdatesRequiresUpdate:
+          "Mettez à jour l'hôte pour configurer les mises à jour du contexte en cours de session.",
         actionBreakerLabel: "Disjoncteur d'actions",
         actionBreakerHint:
           "Quand une action d'outil échoue de la même façon à plusieurs reprises, cessez de la répéter et demandez au modèle de corriger son approche.",

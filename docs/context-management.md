@@ -215,7 +215,7 @@ above cwd is already fixed weight - which makes the two halves complements: ever
 the tab shows is a file that can actually arrive, and nothing can arrive that the tab never showed.
 `instruction-files.test.ts` pins both directions.
 
-Five decisions carry it, and each one is a way it could have silently broken:
+Six decisions carry it, and each one is a way it could have silently broken:
 
 - **The file lands at the round boundary, as its own message.** Not in the tool's result -
   `pruneToolOutputs` truncates aged tool results, so the rules would decay into a
@@ -246,6 +246,19 @@ Five decisions carry it, and each one is a way it could have silently broken:
   after every rewrite, and a rewind past an injection makes that subtree loadable again - what is not
   in the conversation is not being followed. A resumed session keeps the marked messages and
   therefore does not inject a second copy; only the persisted system prompt is dropped and rebuilt.
+  A conversation written by the build that injected these as system messages comes back **rewritten
+  to user role**, not dropped: the rules stay in force mid-task, the poisoned message is gone, and
+  the next persistence snapshot heals the file on disk.
+
+**The whole mechanism is switchable per provider.** `"midSessionContextUpdates": false` on the
+provider entry, or the **Mid-session context updates** switch in the provider's **Agents** tab, stops
+the loop from collecting touched paths at all, so nothing is resolved, read or appended and a tool
+call costs one boolean instead of an arguments parse. It defaults to on. The switch exists for a
+small local context window, where a few thousand tokens of rules arriving unannounced mid-task cost
+more than the rules are worth, and it governs anything the loop wants to add to a conversation after
+it starts rather than this loader alone. Providers whose conversation Otto does not own are
+unaffected either way: an ACP/CLI provider reads its own instruction files in its own process, and
+the spawn-time chain above is gated on `ownsContextPayload` for exactly that reason.
 
 Which directories a tool call touched is answered by
 `providers/openai-compat-subtree-instructions.ts`, deliberately shape-agnostic: builtin tools name

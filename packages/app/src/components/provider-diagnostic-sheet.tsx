@@ -483,7 +483,8 @@ type ProviderSheetFeature =
   | "modelTierOverrides"
   | "savedProviderEndpoints"
   | "openaiCompatMaxToolRounds"
-  | "openaiCompatActionBreaker";
+  | "openaiCompatActionBreaker"
+  | "openaiCompatMidSessionUpdates";
 
 /** Read one daemon capability gate off the connected host's server_info. */
 function useProviderSheetFeature(serverId: string, feature: ProviderSheetFeature): boolean {
@@ -884,6 +885,15 @@ function readProviderActionBreaker(entry: Record<string, unknown> | null): {
 }
 
 /**
+ * Whether the daemon-hosted tool loop may add context to a conversation after
+ * it started. Absent means on: that is the shipped behavior, and the switch
+ * exists to turn it off for a small local context window.
+ */
+function readProviderMidSessionContextUpdates(entry: Record<string, unknown> | null): boolean {
+  return entry?.["midSessionContextUpdates"] !== false;
+}
+
+/**
  * Agent-behavior defaults for daemon-hosted providers (openai-compatible):
  * the default Auto-compact level applied to new chats, whether each chat shows
  * its own Auto-compact selector, and the per-turn max tool-rounds safety valve.
@@ -893,6 +903,7 @@ function ProviderAgentsSection({
   configEntry,
   supportsMaxToolRounds,
   supportsActionBreaker,
+  supportsMidSessionUpdates,
   patchConfig,
   refresh,
 }: {
@@ -900,6 +911,7 @@ function ProviderAgentsSection({
   configEntry: Record<string, unknown> | null;
   supportsMaxToolRounds: boolean;
   supportsActionBreaker: boolean;
+  supportsMidSessionUpdates: boolean;
   patchConfig: (patch: MutableDaemonConfigPatch) => Promise<unknown>;
   refresh: (providers?: AgentProvider[]) => Promise<void>;
 }) {
@@ -1038,6 +1050,22 @@ function ProviderAgentsSection({
     [patchConfig, provider, refresh, t, actionBreaker.enabled],
   );
 
+  const midSessionContextUpdates = readProviderMidSessionContextUpdates(configEntry);
+
+  const handleMidSessionUpdatesChange = useCallback(
+    (next: boolean) => {
+      setSaving(true);
+      setError(null);
+      void patchConfig({ providers: { [provider]: { midSessionContextUpdates: next } } })
+        .then(() => refresh([provider]))
+        .catch((err) => {
+          setError(err instanceof Error ? err.message : t("settings.providers.agents.saveFailed"));
+        })
+        .finally(() => setSaving(false));
+    },
+    [patchConfig, provider, refresh, t],
+  );
+
   // NumberStepperField owns its text, so a blank or garbage entry reads as the
   // default rather than 0 (which is below the breaker's minimum).
   const handleActionBreakerThresholdText = useCallback(
@@ -1141,6 +1169,28 @@ function ProviderAgentsSection({
           ) : (
             <Text style={sheetStyles.mutedText}>
               {t("settings.providers.agents.actionBreakerRequiresUpdate")}
+            </Text>
+          )}
+          {supportsMidSessionUpdates ? (
+            <View style={sheetStyles.toolGroupRow}>
+              <View style={sheetStyles.switchLabelGroup}>
+                <Text style={sheetStyles.formLabel}>
+                  {t("settings.providers.agents.midSessionUpdatesLabel")}
+                </Text>
+                <Text style={sheetStyles.mutedText}>
+                  {t("settings.providers.agents.midSessionUpdatesHint")}
+                </Text>
+              </View>
+              <Switch
+                value={midSessionContextUpdates}
+                onValueChange={handleMidSessionUpdatesChange}
+                disabled={saving}
+                testID="provider-mid-session-updates"
+              />
+            </View>
+          ) : (
+            <Text style={sheetStyles.mutedText}>
+              {t("settings.providers.agents.midSessionUpdatesRequiresUpdate")}
             </Text>
           )}
           {error ? <Text style={sheetStyles.errorText}>{error}</Text> : null}
@@ -1765,6 +1815,11 @@ export function ProviderDiagnosticSheet({
   // COMPAT(openaiCompatMaxToolRounds): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
   const supportsMaxToolRounds = useProviderSheetFeature(serverId, "openaiCompatMaxToolRounds");
   const supportsActionBreaker = useProviderSheetFeature(serverId, "openaiCompatActionBreaker");
+  // COMPAT(openaiCompatMidSessionUpdates): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
+  const supportsMidSessionUpdates = useProviderSheetFeature(
+    serverId,
+    "openaiCompatMidSessionUpdates",
+  );
   const savedEndpoints = useMemo(
     () => config?.savedProviderEndpoints ?? EMPTY_SAVED_ENDPOINTS,
     [config?.savedProviderEndpoints],
@@ -1994,6 +2049,7 @@ export function ProviderDiagnosticSheet({
               configEntry={providerConfigEntry}
               supportsMaxToolRounds={supportsMaxToolRounds}
               supportsActionBreaker={supportsActionBreaker}
+              supportsMidSessionUpdates={supportsMidSessionUpdates}
               patchConfig={patchConfig}
               refresh={refresh}
             />

@@ -2063,6 +2063,8 @@ export class VoiceAssistantWebSocketServer {
         openaiCompatMaxToolRounds: true,
         // COMPAT(openaiCompatActionBreaker): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
         openaiCompatActionBreaker: true,
+        // COMPAT(openaiCompatMidSessionUpdates): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
+        openaiCompatMidSessionUpdates: true,
         // COMPAT(mcpToolGroups): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
         mcpToolGroups: true,
         // COMPAT(connectors): added in v0.7.5, drop the gate when daemon floor >= v0.7.5.

@@ -180,35 +180,47 @@ const PROVIDER_CLIENT_FACTORIES: Record<string, ProviderClientFactory> = {
     }),
   mock: (logger) => new MockLoadTestAgentClient(logger),
   "mock-slow": () => new MockSlowProviderClient(),
-  // The local AI host. An OpenAI-compatible client like any custom endpoint,
-  // except the URL and credential come from the brain settings rather than
-  // provider config, so there is nothing for the operator to configure here.
-  "otto-brain": (logger, _runtimeSettings, options) =>
-    new OpenAICompatAgentClient({
-      logger,
-      providerId: OTTO_BRAIN_PROVIDER_ID,
-      label: OTTO_BRAIN_LABEL,
-      resolveProjectRoot: buildProjectRootResolver(options?.workspaceGitService),
-      resolveEndpoint: () => resolveBrainEndpoint(options?.brainEndpoint),
-      ottoToolGroups: options?.providerOverride?.ottoToolGroups,
-      mcpServers: options?.providerOverride?.mcpServers,
-      connectors: options?.connectors,
-      mcpToolPermissions: options?.providerOverride?.mcpToolPermissions,
-      // Local models benefit from a much smaller retained tail and a bounded
-      // handoff. External OpenAI-compatible providers retain their existing
-      // conservative defaults; explicit Brain overrides still win.
-      compaction: {
-        keepRecentTokens: 6_000,
-        summaryMaxTokens: 4_000,
-        ...options?.providerOverride?.compaction,
-      },
-      reasoningEffortMode: "toggle",
-      maxToolRounds: options?.providerOverride?.maxToolRounds,
-      actionBreaker: options?.providerOverride?.actionBreaker ?? null,
-      maxRoundTextChars: options?.providerOverride?.maxRoundTextChars,
-      managedProcesses: options?.managedProcesses,
-    }),
+  "otto-brain": (logger, _runtimeSettings, options) => createOttoBrainClient(logger, options),
 };
+
+/**
+ * The local AI host. An OpenAI-compatible client like any custom endpoint,
+ * except the URL and credential come from the brain settings rather than
+ * provider config, so there is nothing for the operator to configure there.
+ * Its own function rather than an inline factory: the override reads alone
+ * carry the whole map past the complexity ceiling.
+ */
+function createOttoBrainClient(
+  logger: Logger,
+  options: ProviderClientFactoryOptions | undefined,
+): AgentClient {
+  const override = options?.providerOverride;
+  return new OpenAICompatAgentClient({
+    logger,
+    providerId: OTTO_BRAIN_PROVIDER_ID,
+    label: OTTO_BRAIN_LABEL,
+    resolveProjectRoot: buildProjectRootResolver(options?.workspaceGitService),
+    resolveEndpoint: () => resolveBrainEndpoint(options?.brainEndpoint),
+    ottoToolGroups: override?.ottoToolGroups,
+    mcpServers: override?.mcpServers,
+    connectors: options?.connectors,
+    mcpToolPermissions: override?.mcpToolPermissions,
+    // Local models benefit from a much smaller retained tail and a bounded
+    // handoff. External OpenAI-compatible providers retain their existing
+    // conservative defaults; explicit Brain overrides still win.
+    compaction: {
+      keepRecentTokens: 6_000,
+      summaryMaxTokens: 4_000,
+      ...override?.compaction,
+    },
+    reasoningEffortMode: "toggle",
+    maxToolRounds: override?.maxToolRounds,
+    actionBreaker: override?.actionBreaker ?? null,
+    maxRoundTextChars: override?.maxRoundTextChars,
+    midSessionContextUpdates: override?.midSessionContextUpdates,
+    managedProcesses: options?.managedProcesses,
+  });
+}
 
 /**
  * Repo-root resolver for the payload-owning provider's tool loop, or null when
@@ -871,6 +883,7 @@ function resolveOpenAICompatProvider(
         maxToolRounds: override.maxToolRounds,
         actionBreaker: override.actionBreaker ?? null,
         maxRoundTextChars: override.maxRoundTextChars,
+        midSessionContextUpdates: override.midSessionContextUpdates,
         managedProcesses: options.managedProcesses,
       }),
   };

@@ -3818,6 +3818,10 @@ export const zhCN: TranslationResources = {
           "模型在回合结束前可以调用工具、查看结果并再次调用工具的次数。这里统计的是回合数，而不是单个回合内的工具调用次数。",
         maxToolRoundsValue: "{{rounds}} 轮",
         maxToolRoundsRequiresUpdate: "更新主机后即可配置最大工具调用回合数。",
+        midSessionUpdatesLabel: "会话中的上下文更新",
+        midSessionUpdatesHint:
+          "允许代理在首次处理某个子文件夹时加载该文件夹自己的 AGENTS.md。关闭后，对话中只保留你和模型放入的内容；在本地上下文窗口较小时尤其有用。",
+        midSessionUpdatesRequiresUpdate: "更新主机后即可配置会话中的上下文更新。",
         actionBreakerLabel: "动作熔断器",
         actionBreakerHint:
           "当某个工具动作反复以相同的方式失败时，停止重复该动作，改为让模型修正其做法。",

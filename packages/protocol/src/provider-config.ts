@@ -402,6 +402,17 @@ export const ProviderOverrideSchema = z.object({
       z.number().int().min(MAX_ROUND_TEXT_CHARS_MIN).max(MAX_ROUND_TEXT_CHARS_MAX),
     ])
     .optional(),
+  /**
+   * Whether the daemon-hosted tool loop (openai-compat / Otto Brain) may add
+   * context to a conversation after it has started. Today that is the
+   * subdirectory instruction file loaded when the agent first touches a subtree;
+   * anything else the loop wants to inject mid-conversation rides under the same
+   * switch. Omitted = true (the shipped behavior). Turn it off for a small local
+   * context window, where a few thousand tokens arriving unannounced mid-task
+   * costs more than the rules are worth. Providers whose conversation Otto does
+   * not own (every ACP/CLI provider) are unaffected either way.
+   */
+  midSessionContextUpdates: z.boolean().optional(),
   enabled: z.boolean().optional(),
   order: z.number().optional(),
 });

@@ -3960,6 +3960,11 @@ export const es: TranslationResources = {
         maxToolRoundsValue: "{{rounds}} rondas",
         maxToolRoundsRequiresUpdate:
           "Actualiza el host para configurar el máximo de rondas de llamadas a herramientas.",
+        midSessionUpdatesLabel: "Actualizaciones de contexto durante la sesión",
+        midSessionUpdatesHint:
+          "Permite que el agente cargue el AGENTS.md propio de una subcarpeta la primera vez que trabaja allí. Desactívalo para que la conversación contenga solo lo que tú y el modelo pusisteis en ella, algo que importa sobre todo con una ventana de contexto local pequeña.",
+        midSessionUpdatesRequiresUpdate:
+          "Actualiza el host para configurar las actualizaciones de contexto durante la sesión.",
         actionBreakerLabel: "Fusible de acciones",
         actionBreakerHint:
           "Cuando una acción de una herramienta sigue fallando de la misma forma, deja de repetirla y pide al modelo que corrija su enfoque en su lugar.",

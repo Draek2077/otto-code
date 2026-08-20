@@ -3904,6 +3904,11 @@ export const en = {
           "How many times the model may call tools, see the results, and call tools again before the turn ends. This counts rounds, not the number of tool calls within a single round.",
         maxToolRoundsValue: "{{rounds}} rounds",
         maxToolRoundsRequiresUpdate: "Update the host to configure max tool-call rounds.",
+        midSessionUpdatesLabel: "Mid-session context updates",
+        midSessionUpdatesHint:
+          "Let the agent load a subfolder's own AGENTS.md the first time it works there. Turn this off to keep the conversation to what you and the model put in it, which matters most on a small local context window.",
+        midSessionUpdatesRequiresUpdate:
+          "Update the host to configure mid-session context updates.",
         actionBreakerLabel: "Action circuit breaker",
         actionBreakerHint:
           "When a tool action keeps failing the same way, stop repeating it and ask the model to fix its approach instead.",

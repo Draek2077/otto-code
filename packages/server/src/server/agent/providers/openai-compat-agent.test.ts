@@ -16,6 +16,7 @@ import {
   OpenAICompatAgentClient,
   isUneventfulToolResult,
   normalizeOpenAICompatBaseUrl,
+  toWireMessages,
 } from "./openai-compat-agent.js";
 import { executeCompatTool, parseDdgHtmlResults } from "./openai-compat-tools.js";
 
@@ -3940,6 +3941,38 @@ describe("isUneventfulToolResult", () => {
   });
 });
 
+describe("toWireMessages", () => {
+  test("sends a leading system message unchanged", () => {
+    expect(
+      toWireMessages([
+        { role: "system", content: "session prompt" },
+        { role: "user", content: "Hello" },
+      ]),
+    ).toEqual([
+      { role: "system", content: "session prompt" },
+      { role: "user", content: "Hello" },
+    ]);
+  });
+
+  // Qwen and GLM templates raise "System message must be at the beginning" from
+  // Jinja for a later one, and llama.cpp returns that as a 500 on this and
+  // every following request - the session is dead, not degraded. Demoting the
+  // message keeps its content in the conversation and keeps the session alive.
+  test("demotes a system message that is not first to a user message", () => {
+    expect(
+      toWireMessages([
+        { role: "system", content: "session prompt" },
+        { role: "user", content: "Hello" },
+        { role: "system", content: "late rules" },
+      ]),
+    ).toEqual([
+      { role: "system", content: "session prompt" },
+      { role: "user", content: "Hello" },
+      { role: "user", content: "late rules" },
+    ]);
+  });
+});
+
 /**
  * Endpoint for the subtree-instruction tests: every streamed round emits one
  * `read_file` call for the next path in `paths`, and the round after the last
@@ -4217,6 +4250,74 @@ describe("OpenAICompatAgentSession subtree instructions", () => {
     const resumed = await client.resumeSession(handle!, { cwd });
     await resumed.run("Anything else?");
 
+    expect(countInstructionMessages(endpoint.requests.at(-1))).toBe(1);
+
+    await resumed.close();
+  });
+
+  test("injects nothing when the provider turns mid-session context updates off", async () => {
+    // The escape hatch for a small local context window: the subtree is still
+    // touched, and nothing is appended to the conversation because of it.
+    const endpoint = await startSubtreeToolEndpoint(["packages/app/notes.txt"]);
+    const client = new OpenAICompatAgentClient({
+      providerId: "lmstudio",
+      label: "LM Studio",
+      env: { OPENAI_BASE_URL: endpoint.baseUrl },
+      midSessionContextUpdates: false,
+    });
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: await makeSubtreeWorkspace(),
+      model: "test-model-a",
+      modeId: "bypassPermissions",
+    });
+
+    await session.run("Read the app notes");
+
+    expect(countInstructionMessages(endpoint.requests.at(-1))).toBe(0);
+    expectSystemMessageOnlyAtHead(endpoint.requests.at(-1));
+
+    await session.close();
+  });
+
+  test("a conversation persisted with system-role instructions resumes wire-valid", async () => {
+    // The build that first shipped subtree instructions injected them as system
+    // messages, so conversations carrying one are already on disk. Every
+    // request over such a conversation 500s against a Qwen or GLM template, so
+    // resume rewrites the message to user role: same rules, live session.
+    const endpoint = await startSubtreeToolEndpoint(["packages/app/notes.txt"]);
+    const client = createClient(endpoint.baseUrl);
+    const cwd = await makeSubtreeWorkspace();
+    const resumed = await client.resumeSession(
+      {
+        provider: "lmstudio",
+        sessionId: "legacy-session",
+        metadata: {
+          model: "test-model-a",
+          modeId: "bypassPermissions",
+          messages: [
+            { role: "system", content: "a stale copy of the session prompt" },
+            { role: "user", content: "Read the app notes" },
+            { role: "assistant", content: "Done." },
+            {
+              role: "system",
+              content:
+                '<instructions path="packages/app/AGENTS.md">Never use em-dashes in app code.</instructions>',
+              subtreeInstructionDir: path.join(cwd, "packages", "app"),
+            },
+          ],
+        },
+      },
+      { cwd },
+    );
+
+    await resumed.run("Read the app notes again");
+
+    // The rules survive the resume, exactly once, and the subtree is still
+    // marked injected - re-touching it does not stack a second copy.
+    expectSystemMessageOnlyAtHead(endpoint.requests[0]);
+    expect(countInstructionMessages(endpoint.requests[0])).toBe(1);
+    expectSystemMessageOnlyAtHead(endpoint.requests.at(-1));
     expect(countInstructionMessages(endpoint.requests.at(-1))).toBe(1);
 
     await resumed.close();

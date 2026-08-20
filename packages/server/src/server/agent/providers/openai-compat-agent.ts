@@ -589,21 +589,24 @@ function parseSlashCommandInput(text: string): { commandName: string; args: stri
 }
 
 /**
- * Which restored messages survive session construction.
+ * Which restored messages survive session construction, and in what shape.
  *
  * The session prompt is rebuilt from the live config, so a persisted copy of it
- * is dropped. Injected subdirectory instructions are user messages and are kept
- * by that same rule - they are rules the model was already following, and
- * dropping them on resume would silently change how the session behaves
- * halfway through a task.
+ * is dropped. Injected subdirectory instructions are kept - they are rules the
+ * model was already following, and dropping them on resume would silently
+ * change how the session behaves halfway through a task.
  *
  * A system-role instruction file can only come from a session persisted by the
- * build that injected them as system messages. Those conversations are the ones
- * that 500 against a strict chat template, so dropping them here is the repair:
- * the file re-injects the next time the agent touches that subtree.
+ * build that injected them as system messages. Those are the conversations that
+ * 500 against a strict chat template, so restore rewrites them to user role
+ * rather than dropping them: the rules stay in force, the poisoned message is
+ * gone, and the next persistence snapshot writes the healed conversation back
+ * to disk.
  */
-function isRetainedOnRestore(message: ChatMessage): boolean {
-  return message.role !== "system";
+function restoreMessage(message: ChatMessage): ChatMessage[] {
+  if (message.role !== "system") return [message];
+  if (!isInjectedSubtreeInstruction(message)) return [];
+  return [{ ...message, role: "user" }];
 }
 
 function toWireMessage(message: ChatMessage): Record<string, unknown> {
@@ -655,6 +658,25 @@ function toWireMessage(message: ChatMessage): Record<string, unknown> {
     return { role: message.role, content: message.content, tool_call_id: message.tool_call_id };
   }
   return message;
+}
+
+/**
+ * The whole conversation as wire messages, holding the invariant every request
+ * depends on: at most one system message, and it is first.
+ *
+ * Qwen and GLM chat templates raise "System message must be at the beginning"
+ * from Jinja for a system message at any later index, and llama.cpp surfaces
+ * that as a 500 - not on one round, but on every request over that
+ * conversation, so the chat is dead rather than degraded. Nothing appends one
+ * today (injected instruction files ride as user messages) and resume rewrites
+ * the ones older builds persisted, but this is the last point before the bytes
+ * leave and the failure it prevents is unrecoverable, so a stray later system
+ * message goes out demoted to a user message instead of killing the session.
+ */
+export function toWireMessages(messages: readonly ChatMessage[]): Array<Record<string, unknown>> {
+  return messages.map((message, index) =>
+    toWireMessage(index > 0 && message.role === "system" ? { ...message, role: "user" } : message),
+  );
 }
 
 /**
@@ -755,6 +777,14 @@ export interface OpenAICompatAgentClientOptions {
    * undefined/null = MAX_ROUND_TEXT_CHARS_DEFAULT; 0 disables the guard.
    */
   maxRoundTextChars?: number | null;
+  /**
+   * Whether the tool loop may add context to a conversation after it started -
+   * today the subdirectory instruction file loaded when the agent first touches
+   * a subtree. undefined = true (the shipped behavior); false suits a small
+   * local context window, where a few thousand tokens arriving unannounced
+   * mid-task cost more than the rules are worth.
+   */
+  midSessionContextUpdates?: boolean;
   managedProcesses?: ManagedProcessRegistry | null;
   /**
    * Repo root for a working directory, used by the tool loop to head an
@@ -1474,6 +1504,7 @@ export class OpenAICompatAgentClient implements AgentClient {
   private readonly maxToolRounds: number | null;
   private readonly actionBreaker: ProviderActionBreakerConfig | null;
   private readonly maxRoundTextChars: number | null;
+  private readonly midSessionContextUpdates: boolean;
   private readonly managedProcesses: ManagedProcessRegistry | null;
   private readonly endpointResolver: (() => ResolvedEndpoint) | null;
   private readonly reasoningEffortMode: "levels" | "toggle";
@@ -1492,6 +1523,7 @@ export class OpenAICompatAgentClient implements AgentClient {
     this.maxToolRounds = options.maxToolRounds ?? null;
     this.actionBreaker = options.actionBreaker ?? null;
     this.maxRoundTextChars = options.maxRoundTextChars ?? null;
+    this.midSessionContextUpdates = options.midSessionContextUpdates !== false;
     this.managedProcesses = options.managedProcesses ?? null;
     this.endpointResolver = options.resolveEndpoint ?? null;
     this.reasoningEffortMode = options.reasoningEffortMode ?? "levels";
@@ -1726,6 +1758,7 @@ export class OpenAICompatAgentClient implements AgentClient {
       maxToolRounds: this.maxToolRounds,
       actionBreaker: this.actionBreaker,
       maxRoundTextChars: this.maxRoundTextChars,
+      midSessionContextUpdates: this.midSessionContextUpdates,
       managedProcesses: this.managedProcesses,
       ...(this.projectRootResolver ? { resolveProjectRoot: this.projectRootResolver } : {}),
     });
@@ -1764,6 +1797,7 @@ export class OpenAICompatAgentClient implements AgentClient {
       maxToolRounds: this.maxToolRounds,
       actionBreaker: this.actionBreaker,
       maxRoundTextChars: this.maxRoundTextChars,
+      midSessionContextUpdates: this.midSessionContextUpdates,
       managedProcesses: this.managedProcesses,
       ...(this.projectRootResolver ? { resolveProjectRoot: this.projectRootResolver } : {}),
     });
@@ -1977,6 +2011,13 @@ export class OpenAICompatAgentSession implements AgentSession {
   private actionBreakerThreshold: number;
   /** Assistant-text budget for one model round; 0 disables the guard. */
   private maxRoundTextChars: number;
+  /**
+   * Whether the tool loop may add context to the conversation after it started.
+   * Off means no subdirectory instruction file is injected mid-session: the
+   * conversation holds only what the user and the model put there, plus the
+   * spawn-time system prompt. See `injectPendingSubtreeInstructions`.
+   */
+  private readonly midSessionContextUpdates: boolean;
   private activeTurn: ActiveTurn | null = null;
   /** Resolved context window for the active model; null until (or unless) discovered. */
   private contextWindowMaxTokens: number | null = null;
@@ -2044,6 +2085,8 @@ export class OpenAICompatAgentSession implements AgentSession {
     maxToolRounds?: number | null;
     actionBreaker?: ProviderActionBreakerConfig | null;
     maxRoundTextChars?: number | null;
+    /** See OpenAICompatAgentClientOptions.midSessionContextUpdates. */
+    midSessionContextUpdates?: boolean;
     managedProcesses?: ManagedProcessRegistry | null;
     /** See OpenAICompatAgentClientOptions.resolveEndpoint. */
     resolveEndpoint?: () => ResolvedEndpoint;
@@ -2123,13 +2166,15 @@ export class OpenAICompatAgentSession implements AgentSession {
     this.actionBreakerEnabled = options.actionBreaker?.enabled === true;
     this.actionBreakerThreshold = resolveActionBreakerThreshold(options.actionBreaker?.threshold);
     this.maxRoundTextChars = resolveMaxRoundTextChars(options.maxRoundTextChars);
+    this.midSessionContextUpdates = options.midSessionContextUpdates !== false;
 
     // The system message is always rebuilt so cwd/mode/config changes take
     // effect on resume; restored copies of it are dropped first. Injected
-    // subdirectory instructions are system messages too, and are kept: they are
-    // rules the model was already following, and dropping them on resume would
-    // silently change how the session behaves halfway through a task.
-    this.messages = options.messages.filter(isRetainedOnRestore);
+    // subdirectory instructions ride as user messages and survive that pass -
+    // they are rules the model was already following - and a conversation
+    // persisted by the build that injected them as system messages comes back
+    // rewritten to user role. See `restoreMessage`.
+    this.messages = options.messages.flatMap(restoreMessage);
     this.messages.unshift({ role: "system", content: this.buildSystemPrompt(options.config) });
     this.reindexInjectedSubtreeInstructions();
 
@@ -3594,6 +3639,11 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     call: AccumulatedToolCall,
     outcome: ToolCallOutcome,
   ): void {
+    // The provider's mid-session context switch, applied at the one point that
+    // feeds the injector: off means no candidates are collected, so nothing is
+    // resolved, read or appended, and a tool call costs one boolean instead of
+    // an arguments parse.
+    if (!this.midSessionContextUpdates) return;
     if (outcome.isError === true) return;
     if (this.injectedSubtreeDirs.size >= MAX_INJECTED_SUBTREE_INSTRUCTIONS) return;
     let args: unknown;
@@ -3628,6 +3678,10 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
    *
    * Never throws: a subtree whose instructions cannot be read is a subtree
    * without extra rules, not a failed turn.
+   *
+   * Nothing arrives here when the provider's mid-session context updates are
+   * off: the gate sits in `noteSubtreeInstructionCandidates`, so the pending set
+   * stays empty and this returns on its first line.
    */
   private async injectPendingSubtreeInstructions(turn: ActiveTurn): Promise<void> {
     if (this.pendingSubtreePathCandidates.size === 0) return;
@@ -4095,7 +4149,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       signal: turn.abort.signal,
       body: JSON.stringify({
         model,
-        messages: this.messages.map(toWireMessage),
+        messages: toWireMessages(this.messages),
         stream: true,
         stream_options: { include_usage: true },
         // Stable per-session key so servers that support prompt caching (OpenAI
