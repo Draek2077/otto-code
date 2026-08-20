@@ -468,6 +468,7 @@ function ModelBrowserRow({
   description,
   leadingSlot,
   trailingSlot,
+  trailingAction,
   selected = false,
   selectionIndicator = false,
   tone = "default",
@@ -479,6 +480,7 @@ function ModelBrowserRow({
   description?: string;
   leadingSlot: React.ReactNode;
   trailingSlot?: React.ReactNode;
+  trailingAction?: React.ReactNode;
   selected?: boolean;
   selectionIndicator?: boolean;
   tone?: ModelBrowserRowTone;
@@ -489,12 +491,13 @@ function ModelBrowserRow({
   const pressableStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.browserRow,
+      Boolean(trailingAction) && styles.browserRowWithAction,
       spacing === "model" && styles.browserModelRow,
       Boolean(hovered) &&
         (tone === "elevated" ? styles.browserRowHoveredElevated : styles.browserRowHovered),
       pressed && (tone === "default" ? styles.browserRowPressed : styles.browserRowPressedElevated),
     ],
-    [spacing, tone],
+    [spacing, tone, trailingAction],
   );
   const contentStyle = useMemo(
     () => [styles.browserRowText, description && styles.browserRowTextInline],
@@ -502,7 +505,7 @@ function ModelBrowserRow({
   );
   const hasTrailing = selected || trailingSlot;
 
-  return (
+  const row = (
     <ModelBrowserPressable onPress={onPress} style={pressableStyle} testID={testID}>
       <View style={styles.browserRowContent}>
         <View style={styles.browserRowLeading}>{leadingSlot}</View>
@@ -530,6 +533,15 @@ function ModelBrowserRow({
         ) : null}
       </View>
     </ModelBrowserPressable>
+  );
+
+  if (!trailingAction) return row;
+
+  return (
+    <View style={styles.browserRowActionRow}>
+      {row}
+      <View style={styles.browserRowAction}>{trailingAction}</View>
+    </View>
   );
 }
 
@@ -589,7 +601,7 @@ function ModelRow({
       tone={elevated ? "elevated" : "default"}
       onPress={onPress}
       leadingSlot={leadingSlot}
-      trailingSlot={trailingSlot}
+      trailingAction={trailingSlot}
     />
   );
 }
@@ -1078,6 +1090,18 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 36,
   },
   browserModelRow: isWeb ? {} : { marginBottom: theme.spacing[1] },
+  browserRowWithAction: {
+    flex: 1,
+  },
+  browserRowActionRow: {
+    flexDirection: "row",
+    alignItems: "stretch",
+  },
+  browserRowAction: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingRight: isWeb ? theme.spacing[3] : theme.spacing[6],
+  },
   browserRowHovered: {
     backgroundColor: theme.colors.surface1,
   },

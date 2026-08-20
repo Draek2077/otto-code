@@ -114,7 +114,7 @@ export function HostPickerOption({
       label={label}
       description={description ?? connectionLabel}
       leadingSlot={leadingSlot}
-      trailingSlot={trailingSlot}
+      trailingAction={trailingSlot}
       selected={selected}
       active={active}
       onPress={onPress}

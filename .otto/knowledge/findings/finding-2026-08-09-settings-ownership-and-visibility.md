@@ -3,11 +3,10 @@ id: "finding-2026-08-09-settings-ownership-and-visibility"
 kind: "finding"
 title: "Settings ownership and visibility catalog"
 status: "confirmed"
-tags: ["finding", "settings-catalog"]
+tags: ["finding","settings-catalog"]
 created_at: "2026-08-16T22:16:11.514Z"
-updated_at: "2026-08-16T22:16:11.514Z"
+updated_at: "2026-08-20T05:37:30.799Z"
 ---
-
 # Settings ownership and visibility catalog
 
 <!-- compiled_truth -->
@@ -174,3 +173,8 @@ The first review gate should be the ownership decision for Desktop settings and 
   kind: "migration"
   summary: "Migrated from the legacy findings report without discarding its evidence."
   source: "findings/settings-catalog/2026-08-09-settings-ownership-and-visibility.md"
+- time: "2026-08-20T05:37:30.799Z"
+  kind: "evidence"
+  summary: "Implemented a central Settings search catalog with scope, owning section, developer visibility, and aliases for App, Desktop, and Host settings. The Settings search surface merges this catalog as the effective source (catalog entries overwrite legacy duplicate ids), so Bitbucket, Difftastic, Git-fetch/SSH/private-key, Vim/Neovim/vimrc, provider, terminal, Brain, code-intelligence, connector, storage, and lifecycle vocabulary all resolve. Developer-only settings are now discoverable in User mode and explicitly state that Developer mode must be enabled to edit them, rather than disappearing. Added catalog unit tests that pin unique ids, required metadata, empty-query behavior, and key product aliases. Targeted lint, app typecheck, formatting, and the three-test catalog suite passed."
+  source: "Implementation verification, 2026-08-19"
+  affects: ["settings-search-navigates-to-setting-row","settings-opens-to-search-first-overview","tester-feedback-2026-08-19-first-run-discoverability-and-workflow-friction"]

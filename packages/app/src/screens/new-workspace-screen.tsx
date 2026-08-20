@@ -427,6 +427,35 @@ function ViewDocumentationButton({
   );
 }
 
+function CreateDocumentationButton({
+  onPress,
+  loading,
+  disabled,
+  label,
+  icon,
+}: {
+  onPress: () => void;
+  loading: boolean;
+  disabled: boolean;
+  label: string;
+  icon: ReactElement;
+}) {
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      leftIcon={icon}
+      onPress={onPress}
+      loading={loading}
+      disabled={disabled}
+      style={styles.viewDocumentationButton}
+      testID="new-workspace-create-documentation"
+    >
+      {label}
+    </Button>
+  );
+}
+
 function PickerOptionItem({
   testID,
   label,
@@ -2234,6 +2263,13 @@ export function NewWorkspaceScreen({
     },
     [ensureWorkspace, selectedServerId, selectedSourceDirectory, toast],
   );
+  const handleCreateDocumentation = useCallback(() => {
+    void handleSubmitNewWorkspace({
+      text: "Create a README.md that documents this project.",
+      attachments: [],
+      cwd: selectedSourceDirectory ?? "",
+    });
+  }, [handleSubmitNewWorkspace, selectedSourceDirectory]);
 
   const renderPickerOption = useCallback(
     (props: {
@@ -2406,6 +2442,15 @@ export function NewWorkspaceScreen({
             label={t("newWorkspace.viewDocumentation")}
             icon={viewDocumentationIcon}
           />
+          {readmeFileName === null ? (
+            <CreateDocumentationButton
+              onPress={handleCreateDocumentation}
+              loading={pendingAction === "chat"}
+              disabled={isPending}
+              label={t("newWorkspace.createDocumentation")}
+              icon={viewDocumentationIcon}
+            />
+          ) : null}
           <Composer
             externalKeyboardShift
             agentId={draftKey}

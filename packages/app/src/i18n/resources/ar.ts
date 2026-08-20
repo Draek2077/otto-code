@@ -1690,6 +1690,7 @@ export const ar: TranslationResources = {
     title: "مساحة عمل جديدة",
     create: "يخلق",
     viewDocumentation: "عرض التوثيق",
+    createDocumentation: "إنشاء الوثائق",
     isolation: {
       local: "محلي",
       worktree: "شجرة عمل جديدة",

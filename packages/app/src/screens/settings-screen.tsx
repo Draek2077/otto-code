@@ -164,6 +164,7 @@ import {
 } from "@/utils/host-routes";
 import { navigateToLastWorkspace } from "@/stores/navigation-active-workspace-store";
 import { rememberLastSettingsView } from "@/stores/last-settings-view";
+import { SETTINGS_SEARCH_ITEMS as SETTINGS_SEARCH_CATALOG } from "@/screens/settings-search-catalog";
 
 // Matches MIN_CHAT_WIDTH in left-sidebar.tsx so both sidebars clamp the shared
 // panel-store width identically.
@@ -275,6 +276,15 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     host: false,
   },
   {
+    id: "diff-presentation",
+    title: "Diff presentation",
+    description: "Choose line or structural review diffs",
+    keywords: "difftastic semantic syntax aware changes review line structured",
+    scope: "App",
+    section: "appearance",
+    host: false,
+  },
+  {
     id: "visualizer",
     title: "Visualizer",
     description: "Configure the agent visualizer",
@@ -307,7 +317,7 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     id: "providers",
     title: "Providers",
     description: "Configure agent providers, models, and connections",
-    keywords: "model api key server url agent",
+    keywords: "model api key server url agent inference llm",
     scope: "Host",
     section: "providers",
     host: true,
@@ -381,6 +391,16 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     developerOnly: true,
   },
   {
+    id: "git-fetch",
+    title: "Git fetch",
+    description: "Control automatic fetches for active workspaces",
+    keywords: "git ssh credentials private key remote origin background automatic interval",
+    scope: "Host",
+    section: "workspaces",
+    host: true,
+    developerOnly: true,
+  },
+  {
     id: "connections",
     title: "Connections",
     description: "Manage this device's connection to the host",
@@ -420,17 +440,20 @@ function SettingsSearchOverview({
   const [query, setQuery] = useState("");
   const clearQuery = useCallback(() => setQuery(""), []);
   const normalizedQuery = query.trim().toLowerCase();
-  const results = useMemo(
-    () =>
-      SETTINGS_SEARCH_ITEMS.filter((item) => {
-        if (!normalizedQuery) return false;
-        if (item.developerOnly && !isDeveloperMode) return false;
-        return `${item.title} ${item.description} ${item.keywords} ${item.scope}`
-          .toLowerCase()
-          .includes(normalizedQuery);
-      }),
-    [isDeveloperMode, normalizedQuery],
-  );
+  const results = useMemo(() => {
+    // The inline list predates the complete catalog and remains only while
+    // this large screen is incrementally decomposed. The catalog overwrites
+    // duplicate ids, making it the effective source of truth now.
+    const items = new Map(
+      [...SETTINGS_SEARCH_ITEMS, ...SETTINGS_SEARCH_CATALOG].map((item) => [item.id, item]),
+    );
+    return [...items.values()].filter((item) => {
+      if (!normalizedQuery) return false;
+      return `${item.title} ${item.description} ${item.keywords} ${item.scope}`
+        .toLowerCase()
+        .includes(normalizedQuery);
+    });
+  }, [normalizedQuery]);
   const groupedResults = useMemo(() => {
     const groups = new Map<string, SettingsSearchItem[]>();
     for (const item of results) {
@@ -469,6 +492,7 @@ function SettingsSearchOverview({
                 onSelectHostSection={onSelectHostSection}
                 activeHostServerId={activeHostServerId}
                 hasHosts={hasHosts}
+                isDeveloperMode={isDeveloperMode}
               />
             ))}
           </View>
@@ -505,13 +529,16 @@ function SettingsSearchResultRow({
   onSelectHostSection,
   activeHostServerId,
   hasHosts,
+  isDeveloperMode,
 }: {
   item: SettingsSearchItem;
   onSelectSection: (section: SettingsSectionSlug) => void;
   onSelectHostSection: (section: HostSectionSlug) => void;
   activeHostServerId: string | null;
   hasHosts: boolean;
+  isDeveloperMode: boolean;
 }) {
+  const developerSettingUnavailable = item.developerOnly && !isDeveloperMode;
   const handlePress = useCallback(() => {
     if (item.host) {
       if (hasHosts && activeHostServerId) {
@@ -525,13 +552,18 @@ function SettingsSearchResultRow({
   return (
     <Pressable
       onPress={handlePress}
-      disabled={item.host && (!hasHosts || !activeHostServerId)}
+      disabled={developerSettingUnavailable || (item.host && (!hasHosts || !activeHostServerId))}
       style={searchOverviewStyles.resultRow}
       testID={`settings-search-result-${item.id}`}
     >
       <View style={searchOverviewStyles.resultContent}>
         <Text style={searchOverviewStyles.resultTitle}>{item.title}</Text>
         <Text style={searchOverviewStyles.resultDescription}>{item.description}</Text>
+        {developerSettingUnavailable ? (
+          <Text style={searchOverviewStyles.resultDescription}>
+            Enable Developer mode to edit this setting
+          </Text>
+        ) : null}
       </View>
       <View style={searchOverviewStyles.badges}>
         <Text style={searchOverviewStyles.badge}>{item.scope}</Text>

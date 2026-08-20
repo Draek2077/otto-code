@@ -257,6 +257,11 @@ export interface ComboboxItemProps {
   kind?: "directory" | "file";
   leadingSlot?: ReactNode;
   trailingSlot?: ReactNode;
+  /**
+   * A separately interactive trailing control. Unlike `trailingSlot`, this is
+   * rendered beside the row button so web never nests buttons.
+   */
+  trailingAction?: ReactNode;
   selected?: boolean;
   active?: boolean;
   disabled?: boolean;
@@ -279,6 +284,7 @@ export function ComboboxItem({
   kind,
   leadingSlot,
   trailingSlot,
+  trailingAction,
   selected,
   active,
   disabled,
@@ -309,13 +315,14 @@ export function ComboboxItem({
   const itemPressableStyle = useCallback(
     ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.comboboxItem,
+      Boolean(trailingAction) && styles.comboboxItemWithAction,
       dense && styles.comboboxItemDense,
       hovered && (elevated ? styles.comboboxItemHoveredElevated : styles.comboboxItemHovered),
       pressed && (elevated ? styles.comboboxItemPressedElevated : styles.comboboxItemPressed),
       active && styles.comboboxItemActive,
       disabled && styles.comboboxItemDisabled,
     ],
-    [elevated, active, disabled, dense],
+    [elevated, active, disabled, dense, trailingAction],
   );
 
   const itemContentStyle = useMemo(
@@ -328,7 +335,7 @@ export function ComboboxItem({
     [labelColor],
   );
 
-  return (
+  const item = (
     <Pressable
       testID={testID}
       accessibilityRole="button"
@@ -359,6 +366,15 @@ export function ComboboxItem({
         </View>
       ) : null}
     </Pressable>
+  );
+
+  if (!trailingAction) return item;
+
+  return (
+    <View style={styles.comboboxItemActionRow}>
+      {item}
+      <View style={styles.comboboxItemAction}>{trailingAction}</View>
+    </View>
   );
 }
 
@@ -1792,6 +1808,30 @@ const styles = StyleSheet.create((theme) => ({
       xs: theme.spacing[2],
       md: theme.spacing[1],
     },
+  },
+  comboboxItemWithAction: {
+    flex: 1,
+    ...(IS_WEB
+      ? {}
+      : {
+          marginHorizontal: 0,
+          marginBottom: 0,
+        }),
+  },
+  comboboxItemActionRow: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    ...(IS_WEB
+      ? {}
+      : {
+          marginHorizontal: theme.spacing[1],
+          marginBottom: theme.spacing[1],
+        }),
+  },
+  comboboxItemAction: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingRight: theme.spacing[3],
   },
   comboboxItemHovered: {
     backgroundColor: theme.colors.surface1,

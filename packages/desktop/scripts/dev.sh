@@ -30,6 +30,10 @@ REMOTE_DEBUGGING_PORT="${OTTO_ELECTRON_REMOTE_DEBUGGING_PORT:-9223}"
 export OTTO_ELECTRON_FLAGS="${OTTO_ELECTRON_FLAGS:+$OTTO_ELECTRON_FLAGS }--remote-debugging-port=$REMOTE_DEBUGGING_PORT"
 export OTTO_CORS_ORIGINS="${OTTO_CORS_ORIGINS:-*}"
 
+# Metro resolves workspace packages through their published entrypoints, so build
+# the app dependencies before it starts. `dist/` is ignored and absent after a
+# fresh install.
+npm run build:app-deps
 npm run build:main
 
 echo "══════════════════════════════════════════════════════"

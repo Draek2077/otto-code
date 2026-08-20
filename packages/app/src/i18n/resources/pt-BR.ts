@@ -1730,6 +1730,7 @@ export const ptBR: TranslationResources = {
     title: "Novo workspace",
     create: "Criar",
     viewDocumentation: "Ver a documentação",
+    createDocumentation: "Criar documentação",
     isolation: {
       local: "Local",
       worktree: "Novo worktree",

@@ -1746,6 +1746,7 @@ export const fr: TranslationResources = {
     title: "Nouvel espace de travail",
     create: "Créer",
     viewDocumentation: "Voir la documentation",
+    createDocumentation: "Créer la documentation",
     isolation: {
       local: "Local",
       worktree: "Nouveau worktree",

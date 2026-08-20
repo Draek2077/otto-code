@@ -1105,9 +1105,11 @@ const selectBlackTabBackground = (settings: AppSettings) => settings.blackTabBac
 
 // A hidden retained tab freezes its stream store subscription by design. Keep
 // the slot itself subscribed to this pane-wide appearance setting so React
-// reconciles its content when the black chat background changes.
-function useBlackChatBackgroundRefresh(): void {
-  useAppSettingValue(selectBlackTabBackground);
+// reconstructs the pane when the black chat background changes. Native
+// ScopedTheme binds styles while a node mounts; merely wrapping an already
+// retained chat after settings hydration leaves those nodes on the app palette.
+function useBlackChatBackground(): boolean {
+  return useAppSettingValue(selectBlackTabBackground);
 }
 
 const MobileMountedTabSlot = memo(function MobileMountedTabSlot({
@@ -1118,7 +1120,7 @@ const MobileMountedTabSlot = memo(function MobileMountedTabSlot({
   paneId,
   buildPaneContentModel,
 }: MobileMountedTabSlotProps) {
-  useBlackChatBackgroundRefresh();
+  const blackChatBackground = useBlackChatBackground();
   const content = useMemo(
     () =>
       buildPaneContentModel({
@@ -1127,12 +1129,22 @@ const MobileMountedTabSlot = memo(function MobileMountedTabSlot({
       }),
     [buildPaneContentModel, paneId, tabDescriptor],
   );
+  const scopedContent = useMemo(
+    () => ({
+      ...content,
+      // Recreate this pane when the scoped native palette changes. The
+      // retained wrapper stays mounted, preserving the tab deck while
+      // ensuring every chat surface binds to the correct theme.
+      key: `${content.key}:black-chat-${blackChatBackground ? "on" : "off"}`,
+    }),
+    [blackChatBackground, content],
+  );
 
   return (
     <RenderProfile id={`MobileMountedTabSlot:${tabDescriptor.kind}:${tabDescriptor.tabId}`}>
       <RetainedPanel active={isVisible} style={styles.mobileMountedTabSlot}>
         <WorkspacePaneContent
-          content={content}
+          content={scopedContent}
           isWorkspaceFocused={isWorkspaceFocused}
           isPaneFocused={isPaneFocused}
           // Already encodes route focus + frontmost tab, i.e. on screen.

@@ -6,7 +6,7 @@
  * project's git remote"; a Jira board id is required. Provider sign-in lives in
  * host settings, not here.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet } from "react-native-unistyles";
 import { Text, TextInput, View } from "react-native";
 import { useTranslation } from "react-i18next";
@@ -18,6 +18,7 @@ import { SettingsGroup } from "@/screens/settings/settings-group";
 import { settingsStyles } from "@/styles/settings";
 import { useKanbanBoardFeature } from "@/kanban/kanban-hooks";
 import { useSessionStore } from "@/stores/session-store";
+import type { ProjectFormSaveState } from "./project-settings-save-state";
 
 export type KanbanAdapterChoice = "none" | "github" | "jira";
 
@@ -55,14 +56,20 @@ interface ProjectKanbanSectionProps {
   serverId: string;
   projectId: string;
   client: DaemonClient;
+  onSaveStateChange: (state: ProjectFormSaveState | null) => void;
 }
 
 /**
  * Picks the tracking board this project shows on the Kanban screen, per
- * (host, project). Commits on blur and on submit, skipping the mutation when
- * the trimmed value is unchanged (same pattern as the Atlassian card).
+ * (host, project). It participates in the page-level draft so a user can
+ * review Kanban changes alongside the rest of Project Settings before saving.
  */
-export function ProjectKanbanSection({ serverId, projectId, client }: ProjectKanbanSectionProps) {
+export function ProjectKanbanSection({
+  serverId,
+  projectId,
+  client,
+  onSaveStateChange,
+}: ProjectKanbanSectionProps) {
   const { t } = useTranslation();
   const supported = useKanbanBoardFeature(serverId);
   const storedTarget = useSessionStore(
@@ -72,6 +79,7 @@ export function ProjectKanbanSection({ serverId, projectId, client }: ProjectKan
     () => storedTarget?.adapter ?? "none",
   );
   const [boardDraft, setBoardDraft] = useState(() => storedTarget?.boardId ?? "");
+  const [savedTarget, setSavedTarget] = useState<ProjectKanbanTarget | null>(storedTarget);
 
   // Resync from the stored target when it changes elsewhere (a second window
   // saving, or the daemon's project.updated notification replaying the new
@@ -79,41 +87,52 @@ export function ProjectKanbanSection({ serverId, projectId, client }: ProjectKan
   useEffect(() => {
     setAdapter(storedTarget?.adapter ?? "none");
     setBoardDraft(storedTarget?.boardId ?? "");
+    setSavedTarget(storedTarget);
   }, [storedTarget]);
 
   const mutation = useMutation({
     mutationFn: async (target: ProjectKanbanTarget | null) => {
-      await client.setKanbanProjectTarget({ projectId, target });
+      return client.setKanbanProjectTarget({ projectId, target });
     },
+    onSuccess: ({ target }) => setSavedTarget(target),
   });
 
-  const commit = useCallback(
-    (nextAdapter: KanbanAdapterChoice, board: string) => {
-      const draft = resolveKanbanTargetDraft({ adapter: nextAdapter, boardId: board });
-      if (draft.kind === "blocked") return;
-      if (targetEquals(draft.target, storedTarget)) return;
+  const handleAdapterChange = useCallback((value: KanbanAdapterChoice) => {
+    setAdapter(value);
+  }, []);
+
+  const draft = resolveKanbanTargetDraft({ adapter, boardId: boardDraft });
+  const isDirty = draft.kind === "save" && !targetEquals(draft.target, savedTarget);
+  const save = useCallback(() => {
+    if (draft.kind === "save" && !targetEquals(draft.target, savedTarget)) {
       mutation.mutate(draft.target);
-    },
-    [mutation, storedTarget],
-  );
+    }
+  }, [draft, mutation, savedTarget]);
+  const saveRef = useRef(save);
+  useEffect(() => {
+    saveRef.current = save;
+  }, [save]);
+  const stableSave = useCallback(() => saveRef.current(), []);
 
-  const handleAdapterChange = useCallback(
-    (value: KanbanAdapterChoice) => {
-      setAdapter(value);
-      commit(value, boardDraft);
-    },
-    [boardDraft, commit],
-  );
+  useEffect(() => {
+    if (!supported) {
+      onSaveStateChange(null);
+      return;
+    }
+    onSaveStateChange({
+      isDirty,
+      isSaving: mutation.isPending,
+      canSave: isDirty && !mutation.isPending && draft.kind === "save",
+      save: stableSave,
+    });
+  }, [draft.kind, isDirty, mutation.isPending, onSaveStateChange, stableSave, supported]);
 
-  const handleCommitBoard = useCallback(() => {
-    commit(adapter, boardDraft);
-  }, [adapter, boardDraft, commit]);
+  useEffect(() => () => onSaveStateChange(null), [onSaveStateChange]);
 
   if (!supported) {
     return null;
   }
 
-  const draft = resolveKanbanTargetDraft({ adapter, boardId: boardDraft });
   const boardLabel =
     adapter === "jira"
       ? t("settings.project.kanban.jiraBoard")
@@ -167,8 +186,6 @@ export function ProjectKanbanSection({ serverId, projectId, client }: ProjectKan
             <TextInput
               value={boardDraft}
               onChangeText={setBoardDraft}
-              onBlur={handleCommitBoard}
-              onSubmitEditing={handleCommitBoard}
               placeholder={boardPlaceholder}
               placeholderTextColor={styles.placeholderColor.color}
               autoCapitalize="none"

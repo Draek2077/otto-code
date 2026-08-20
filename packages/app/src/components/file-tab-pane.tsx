@@ -2273,6 +2273,7 @@ export function FileTabPane({
 }) {
   const { t } = useTranslation();
   const toast = useToast();
+  const { closeCurrentTab } = usePaneContext();
   const persistenceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
 
   // Editing an out-of-project file is no longer gated behind a confirm dialog -
@@ -2301,6 +2302,7 @@ export function FileTabPane({
     customCommand: string;
   } | null>(null);
   const autoOpenedExternalEditorPathRef = useRef<string | null>(null);
+  const externalEditorExitedRef = useRef(false);
   const [externalEditorFailure, setExternalEditorFailure] = useState<string | null>(null);
   const [fileInfo, setFileInfo] = useState<FilePreviewFileInfo | null>(null);
   const controllerRef = useRef<EditorController | null>(null);
@@ -2359,15 +2361,24 @@ export function FileTabPane({
       return;
     }
     setExternalEditorFailure(null);
+    externalEditorExitedRef.current = false;
     setExternalEditorLaunch({
       mode: settings.fileEditorMode,
       customCommand: settings.fileEditorCustomCommand,
     });
   }, [externalEditorAvailable, settings.fileEditorCustomCommand, settings.fileEditorMode]);
-  const handleExternalEditorExit = useCallback((reason?: string) => {
-    setExternalEditorLaunch(null);
-    setExternalEditorFailure(reason ?? null);
-  }, []);
+  const handleExternalEditorExit = useCallback(() => {
+    // `:q` is a successful completion of the editor session, not a request to
+    // fall back to Otto's editor. The tab owns that session, so close it once
+    // the terminal exits. Terminal exit can arrive through both polling and
+    // the event stream; the ref prevents the second notification from closing
+    // whichever tab becomes current after the first one disappears.
+    if (externalEditorExitedRef.current) {
+      return;
+    }
+    externalEditorExitedRef.current = true;
+    closeCurrentTab();
+  }, [closeCurrentTab]);
   const handleExternalEditorFailure = useCallback((message: string) => {
     setExternalEditorLaunch(null);
     setExternalEditorFailure(message);

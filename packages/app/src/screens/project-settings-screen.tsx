@@ -67,6 +67,10 @@ import { buildProjectsSettingsRoute } from "@/utils/host-routes";
 import type { ProjectHostEntry, ProjectSummary } from "@/utils/projects";
 import { useIconSize } from "@/styles/theme";
 import { ProjectKanbanSection } from "./project-settings-kanban-section";
+import {
+  combineProjectFormSaveStates,
+  type ProjectFormSaveState,
+} from "./project-settings-save-state";
 
 const SCRIPT_SERVICE_TYPE = "service";
 
@@ -103,13 +107,6 @@ const WORKTREE_DOCS_URL = "https://otto-code.me/docs/worktrees";
 type ReadProjectConfigData = Awaited<ReturnType<DaemonClient["readProjectConfig"]>>;
 
 // What the header save button needs from the (separately mounted) config form.
-interface ProjectFormSaveState {
-  isDirty: boolean;
-  isSaving: boolean;
-  canSave: boolean;
-  save: () => void;
-}
-
 /**
  * Shared discard/keep-editing confirmation for leaving project settings with
  * unsaved changes. Used by this screen's own back affordance and by the
@@ -254,7 +251,13 @@ function ProjectSettingsBody({
 }: ProjectSettingsBodyProps) {
   const { t } = useTranslation();
   const navigation = useNavigation();
-  const [saveState, setSaveState] = useState<ProjectFormSaveState | null>(null);
+  const [configSaveState, setConfigSaveState] = useState<ProjectFormSaveState | null>(null);
+  const [linksSaveState, setLinksSaveState] = useState<ProjectFormSaveState | null>(null);
+  const [kanbanSaveState, setKanbanSaveState] = useState<ProjectFormSaveState | null>(null);
+  const saveState = useMemo(
+    () => combineProjectFormSaveStates([configSaveState, linksSaveState, kanbanSaveState]),
+    [configSaveState, linksSaveState, kanbanSaveState],
+  );
   const isFormDirty = saveState?.isDirty ?? false;
 
   useEffect(() => {
@@ -371,12 +374,14 @@ function ProjectSettingsBody({
         serverId={selectedHost.serverId}
         projectId={selectedHost.projectId}
         client={client}
+        onSaveStateChange={setLinksSaveState}
       />
 
       <ProjectKanbanSection
         serverId={selectedHost.serverId}
         projectId={selectedHost.projectId}
         client={client}
+        onSaveStateChange={setKanbanSaveState}
       />
 
       {renderContent({
@@ -390,7 +395,7 @@ function ProjectSettingsBody({
         onReload: handleReload,
         hasMultipleHosts,
         isHostGone,
-        onSaveStateChange: setSaveState,
+        onSaveStateChange: setConfigSaveState,
       })}
     </View>
   );
@@ -962,6 +967,7 @@ interface ProjectLinksSectionProps {
   serverId: string;
   projectId: string;
   client: DaemonClient;
+  onSaveStateChange: (state: ProjectFormSaveState | null) => void;
 }
 
 interface LinkableProject {
@@ -972,7 +978,12 @@ interface LinkableProject {
 // The gated-multi-root link manager: link this project to others on the same
 // host so their files can be opened/edited in place. Links are bidirectional -
 // linking here also links the other side.
-function ProjectLinksSection({ serverId, projectId, client }: ProjectLinksSectionProps) {
+function ProjectLinksSection({
+  serverId,
+  projectId,
+  client,
+  onSaveStateChange,
+}: ProjectLinksSectionProps) {
   const { t } = useTranslation();
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -996,15 +1007,43 @@ function ProjectLinksSection({ serverId, projectId, client }: ProjectLinksSectio
     );
   }, [workspacesMap, projectId]);
 
+  const storedLinkKeys = useMemo(
+    () =>
+      new Set(
+        others
+          .filter((other) => linkSet.has(canonicalLinkKey(projectId, other.projectId)))
+          .map((other) => canonicalLinkKey(projectId, other.projectId)),
+      ),
+    [linkSet, others, projectId],
+  );
+  const storedLinkFingerprint = useMemo(
+    () => JSON.stringify(Array.from(storedLinkKeys).sort()),
+    [storedLinkKeys],
+  );
+  const [baselineLinkKeys, setBaselineLinkKeys] = useState<ReadonlySet<string>>(storedLinkKeys);
+  const [draftLinkKeys, setDraftLinkKeys] = useState<ReadonlySet<string>>(storedLinkKeys);
+
+  // A link change pushed by another client replaces this page's draft. Our own
+  // successful save also advances the baseline below, so it does not wait on a
+  // replica refetch before the header returns to its disabled state.
+  useEffect(() => {
+    setBaselineLinkKeys(storedLinkKeys);
+    setDraftLinkKeys(storedLinkKeys);
+  }, [storedLinkFingerprint, storedLinkKeys]);
+
   const mutation = useMutation({
-    mutationFn: async (input: { otherProjectId: string; link: boolean }) => {
-      if (input.link) {
-        await client.linkProjects(projectId, input.otherProjectId);
-      } else {
-        await client.unlinkProjects(projectId, input.otherProjectId);
-      }
+    mutationFn: async (input: { otherProjectId: string; link: boolean }[]) => {
+      await Promise.all(
+        input.map((change) =>
+          change.link
+            ? client.linkProjects(projectId, change.otherProjectId)
+            : client.unlinkProjects(projectId, change.otherProjectId),
+        ),
+      );
+      return input;
     },
     onSuccess: () => {
+      setBaselineLinkKeys(draftLinkKeys);
       queryClient.invalidateQueries({ queryKey: projectLinksQueryKey(serverId) });
     },
     onError: (error) => {
@@ -1013,9 +1052,58 @@ function ProjectLinksSection({ serverId, projectId, client }: ProjectLinksSectio
     },
   });
 
+  const isDirty = useMemo(
+    () => !setsEqual(draftLinkKeys, baselineLinkKeys),
+    [baselineLinkKeys, draftLinkKeys],
+  );
+  const saveLinks = useCallback(() => {
+    const changes = others.flatMap((other) => {
+      const key = canonicalLinkKey(projectId, other.projectId);
+      const wasLinked = baselineLinkKeys.has(key);
+      const shouldLink = draftLinkKeys.has(key);
+      return wasLinked === shouldLink
+        ? []
+        : [{ otherProjectId: other.projectId, link: shouldLink }];
+    });
+    if (changes.length > 0) {
+      mutation.mutate(changes);
+    }
+  }, [baselineLinkKeys, draftLinkKeys, mutation, others, projectId]);
+  const saveLinksRef = useRef(saveLinks);
+  useEffect(() => {
+    saveLinksRef.current = saveLinks;
+  }, [saveLinks]);
+  const stableSaveLinks = useCallback(() => saveLinksRef.current(), []);
+
+  useEffect(() => {
+    if (!supported) {
+      onSaveStateChange(null);
+      return;
+    }
+    onSaveStateChange({
+      isDirty,
+      isSaving: mutation.isPending,
+      canSave: isDirty && !mutation.isPending,
+      save: stableSaveLinks,
+    });
+  }, [isDirty, mutation.isPending, onSaveStateChange, stableSaveLinks, supported]);
+
+  useEffect(() => () => onSaveStateChange(null), [onSaveStateChange]);
+
   const handleToggle = useCallback(
-    (otherProjectId: string, link: boolean) => mutation.mutate({ otherProjectId, link }),
-    [mutation],
+    (otherProjectId: string, link: boolean) => {
+      const key = canonicalLinkKey(projectId, otherProjectId);
+      setDraftLinkKeys((current) => {
+        const next = new Set(current);
+        if (link) {
+          next.add(key);
+        } else {
+          next.delete(key);
+        }
+        return next;
+      });
+    },
+    [projectId],
   );
 
   if (!supported) {
@@ -1039,7 +1127,7 @@ function ProjectLinksSection({ serverId, projectId, client }: ProjectLinksSectio
               key={other.projectId}
               project={other}
               isFirst={index === 0}
-              linked={linkSet.has(canonicalLinkKey(projectId, other.projectId))}
+              linked={draftLinkKeys.has(canonicalLinkKey(projectId, other.projectId))}
               disabled={mutation.isPending}
               onToggle={handleToggle}
             />
@@ -1048,6 +1136,10 @@ function ProjectLinksSection({ serverId, projectId, client }: ProjectLinksSectio
       </View>
     </SettingsGroup>
   );
+}
+
+function setsEqual(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+  return left.size === right.size && Array.from(left).every((value) => right.has(value));
 }
 
 function ProjectLinkRow({

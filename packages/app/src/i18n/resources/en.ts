@@ -1734,6 +1734,7 @@ export const en = {
     title: "New workspace",
     create: "Create",
     viewDocumentation: "View documentation",
+    createDocumentation: "Create documentation",
     isolation: {
       local: "Local",
       worktree: "New worktree",

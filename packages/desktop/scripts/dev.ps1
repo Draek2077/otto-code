@@ -5,6 +5,11 @@ $DesktopDir = (Resolve-Path "$ScriptDir\..").Path
 $RootDir = (Resolve-Path "$DesktopDir\..\..").Path
 $env:PATH = "$RootDir\node_modules\.bin;$env:PATH"
 
+# Metro resolves workspace packages through their published entrypoints, so build
+# the app dependencies before it starts. `dist/` is ignored and absent after a
+# fresh install.
+npm run build:app-deps
+
 # Build the Electron main process
 npm run build:main
 

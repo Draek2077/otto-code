@@ -402,7 +402,7 @@ function ModelRow({
       dense
       onPress={onPress}
       leadingSlot={leadingSlot}
-      trailingSlot={trailingSlot}
+      trailingAction={trailingSlot}
     />
   );
 }
