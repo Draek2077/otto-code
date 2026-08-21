@@ -88,6 +88,7 @@ import {
 } from "./labels";
 import { computeCanStartDictation, runAlternateSendAction, runDefaultSendAction } from "./state";
 import { ComposerToolbarWidthContext } from "./toolbar-width-context";
+import { computeToolbarScale } from "./toolbar-scale";
 import { applyDictationTranscript } from "./dictation-delivery";
 import { playDictationStartCue } from "@/voice/dictation-start-cue";
 
@@ -206,15 +207,6 @@ export interface MessageInputRef {
   getNativeElement?: () => HTMLElement | null;
 }
 
-// Floor for the uniform toolbar shrink. Below this, buttons/icons get too small
-// to hit; the row is allowed to overflow-clip instead of scaling further.
-const MIN_TOOLBAR_SCALE = 0.7;
-// One toolbar button's footprint (matches attachButton/voiceButton/sendButton/
-// etc. - see `compactUp(28)` below) - the minimum shrink is pushed this much
-// further so there's always at least one whole icon's worth of extra room at
-// the narrowest size, rather than clipping right at the `MIN_TOOLBAR_SCALE` edge.
-const TOOLBAR_BUTTON_WIDTH = 28;
-const TOOLBAR_BUTTON_WIDTH_COMPACT = TOOLBAR_BUTTON_WIDTH * 2;
 // Minimum separation between the left and right toolbar groups. `space-between`
 // keeps them at opposite ends while the row fits, but the uniform shrink below
 // switches to `flex-start` - and there the two groups butt together, leaving the
@@ -1172,20 +1164,6 @@ function computeFocusHintVisible(input: {
 // width still depends on device size and how much dynamic left-side content
 // (agent controls, features) renders, so overflow can already be present on
 // the first layout pass rather than only appearing from a window resize.
-function computeToolbarScale(input: {
-  toolbarRowWidth: number;
-  toolbarNeededWidth: number;
-  isCompact: boolean;
-}): number {
-  const { toolbarRowWidth, toolbarNeededWidth, isCompact } = input;
-  if (toolbarRowWidth <= 0 || toolbarNeededWidth <= toolbarRowWidth) {
-    return 1;
-  }
-  const toolbarButtonWidth = isCompact ? TOOLBAR_BUTTON_WIDTH_COMPACT : TOOLBAR_BUTTON_WIDTH;
-  const toolbarMinScale = Math.max(0, MIN_TOOLBAR_SCALE - toolbarButtonWidth / toolbarNeededWidth);
-  return Math.max(toolbarMinScale, toolbarRowWidth / toolbarNeededWidth);
-}
-
 function computeTextInputHeightStyle(inputHeight: number, maxInputHeight: number) {
   if (isWeb) {
     return {
@@ -1393,7 +1371,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     } = resolveMessageInputProps(props);
     const { t } = useTranslation();
     const isCompact = useIsCompactFormFactor();
-    const { height: windowHeight } = useWindowDimensions();
+    const { height: windowHeight, width: windowWidth } = useWindowDimensions();
     // The window is the fallback, not the truth: a composer in a short split
     // pane has far less room than the window suggests.
     const maxInputHeight = resolveMaxInputHeight({
@@ -2043,6 +2021,17 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const [toolbarRowWidth, setToolbarRowWidth] = useState(0);
     const [toolbarLeftWidth, setToolbarLeftWidth] = useState(0);
     const [toolbarRightWidth, setToolbarRightWidth] = useState(0);
+    // Android can now rotate, which changes both the row width and which
+    // controls are rendered in one native layout pass. The old measurements
+    // describe the previous orientation until every descendant has reported
+    // its new layout, so clear them and remount the measured content instead
+    // of briefly calculating a scale from mixed portrait/landscape geometry.
+    const toolbarMeasurementKey = `${windowWidth}:${windowHeight}`;
+    useLayoutEffect(() => {
+      setToolbarRowWidth(0);
+      setToolbarLeftWidth(0);
+      setToolbarRightWidth(0);
+    }, [toolbarMeasurementKey]);
     const handleToolbarRowLayout = useCallback((event: LayoutChangeEvent) => {
       setToolbarRowWidth(event.nativeEvent.layout.width);
     }, []);
@@ -2111,7 +2100,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             {/* The row's own width, for controls inside it that drop out rather
                 than shrink (see toolbar-width-context.ts). */}
             <ComposerToolbarWidthContext.Provider value={toolbarRowWidth}>
-              <View style={toolbarContentStyle}>
+              <View key={toolbarMeasurementKey} style={toolbarContentStyle}>
                 {/* Toolbar left: attachment button + usage ring + agent controls */}
                 <View style={styles.leftButtonGroup} onLayout={handleToolbarLeftLayout}>
                   {showAttachmentButton ? (
