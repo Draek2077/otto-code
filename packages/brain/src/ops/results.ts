@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
+import { resolveBrainPaths } from "../config/paths.js";
 import type { GpuInfo, Model, ModelFeatures } from "../types.js";
 import type { Calibration, Profile } from "../config/schema.js";
 import type { FitResult } from "../vram.js";
@@ -25,9 +25,15 @@ import type { FitResult } from "../vram.js";
  * only true statement of what ran.
  */
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(HERE, "..", "..");
-const RESULTS_DIR = path.join(ROOT, "results");
+/** Resolve the writable store for benchmark scores for a given host environment. */
+function resolveResultsDir(env: NodeJS.ProcessEnv = process.env): string {
+  return resolveBrainPaths(env).resultsDir;
+}
+
+// Benchmark history is host state, not package data. Keeping it beside the
+// Brain config also makes the service work from packaged/Electron installs,
+// where the package directory may be an archive or read-only.
+const RESULTS_DIR = resolveResultsDir();
 
 /** Aggregate of a numeric health series (nvidia-smi samples during a run). */
 export interface AggStat {
@@ -742,6 +748,7 @@ function taskColumns(records: RunRecord[]): TaskColumn[] {
 
 export {
   RESULTS_DIR,
+  resolveResultsDir,
   save,
   loadAll,
   latestPerConfig,

@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { fileURLToPath } from "node:url";
 
+import { resolveBrainPaths } from "../config/paths.js";
 import type { Model } from "../types.js";
 
 /**
@@ -17,9 +17,14 @@ import type { Model } from "../types.js";
  * With the transcript on disk, a scorer fix re-grades history in seconds.
  */
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(HERE, "..", "..");
-const ARCHIVE_DIR = path.join(ROOT, "results", "transcripts");
+/** Resolve the writable transcript store for a given host environment. */
+function resolveArchiveDir(env: NodeJS.ProcessEnv = process.env): string {
+  return path.join(resolveBrainPaths(env).resultsDir, "transcripts");
+}
+
+// Raw benchmark exchanges are host state too. They must follow the score store
+// into OTTO_HOME rather than attempting to write beside the installed package.
+const ARCHIVE_DIR = resolveArchiveDir();
 
 /** One archived request/response exchange. */
 export interface TranscriptEntry {
@@ -136,4 +141,4 @@ function size(): number {
   return bytes;
 }
 
-export { ARCHIVE_DIR, runId, runDir, put, load, list, size };
+export { ARCHIVE_DIR, resolveArchiveDir, runId, runDir, put, load, list, size };

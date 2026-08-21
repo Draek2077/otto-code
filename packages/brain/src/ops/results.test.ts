@@ -1,7 +1,17 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
+import os from "node:os";
+import path from "node:path";
 
-import { configKey, grouped, variance, stats, rankModels, type RunRecord } from "./results.js";
+import {
+  configKey,
+  grouped,
+  rankModels,
+  resolveResultsDir,
+  stats,
+  variance,
+  type RunRecord,
+} from "./results.js";
 import type { Profile } from "../config/schema.js";
 
 function run(
@@ -19,6 +29,11 @@ function run(
     tasks: Object.entries(taskScores).map(([id, score]) => ({ id, category: id, score })),
   } as unknown as RunRecord;
 }
+
+test("benchmark scores use the writable Brain host home", () => {
+  const home = path.join(os.homedir(), ".otto");
+  assert.equal(resolveResultsDir({ OTTO_HOME: home }), path.join(home, "otto-brain", "results"));
+});
 
 test("stats computes count, mean, sample std, min and max", () => {
   const s = stats([0.7, 0.8, 0.9])!;
