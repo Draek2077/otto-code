@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Modal, Pressable, Text, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image as ExpoImage } from "expo-image";
 import { X } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
@@ -21,7 +20,6 @@ interface AttachmentLightboxProps {
 export function AttachmentLightbox({ metadata, onClose }: AttachmentLightboxProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
-  const insets = useSafeAreaInsets();
   const url = useAttachmentPreviewUrl(metadata);
   const [errored, setErrored] = useState(false);
   const keyboardHandlerId = useId();
@@ -49,17 +47,6 @@ export function AttachmentLightbox({ metadata, onClose }: AttachmentLightboxProp
     handle: handleInterrupt,
   });
 
-  const closeButtonStyle = useMemo(
-    () => [
-      styles.closeButton,
-      {
-        top: insets.top + theme.spacing[3],
-        right: insets.right + theme.spacing[3],
-      },
-    ],
-    [insets.top, insets.right, theme.spacing],
-  );
-
   const handleImageError = useCallback(() => setErrored(true), []);
   const noopPress = useCallback(() => {}, []);
   const imageSource = useMemo(() => ({ uri: url ?? "" }), [url]);
@@ -85,27 +72,33 @@ export function AttachmentLightbox({ metadata, onClose }: AttachmentLightboxProp
             {hasError ? (
               <Text style={styles.errorText}>{t("message.attachments.imageLoadFailed")}</Text>
             ) : (
-              <Pressable onPress={noopPress} style={styles.imagePressable}>
-                <ExpoImage
-                  testID="attachment-lightbox-image"
-                  source={imageSource}
-                  contentFit="contain"
-                  onError={handleImageError}
-                  style={imageFillStyle}
-                />
-              </Pressable>
+              // The frame is the box the image actually occupies (bounded by
+              // imageArea's padding, not the screen) - the close button anchors
+              // to its corner so it sits on the image instead of the window
+              // corner, where it collided with the OS titlebar controls.
+              <View style={styles.imageFrame}>
+                <Pressable onPress={noopPress} style={styles.imagePressable}>
+                  <ExpoImage
+                    testID="attachment-lightbox-image"
+                    source={imageSource}
+                    contentFit="contain"
+                    onError={handleImageError}
+                    style={imageFillStyle}
+                  />
+                </Pressable>
+                <Pressable
+                  testID="attachment-lightbox-close"
+                  accessibilityRole="button"
+                  accessibilityLabel={t("message.attachments.closeImage")}
+                  hitSlop={8}
+                  onPress={onClose}
+                  style={styles.closeButton}
+                >
+                  <X size={16} color={theme.colors.foregroundMuted} />
+                </Pressable>
+              </View>
             )}
           </View>
-          <Pressable
-            testID="attachment-lightbox-close"
-            accessibilityRole="button"
-            accessibilityLabel={t("message.attachments.closeImage")}
-            hitSlop={8}
-            onPress={onClose}
-            style={closeButtonStyle}
-          >
-            <X size={16} color={theme.colors.foregroundMuted} />
-          </Pressable>
         </View>
       </View>
     </Modal>
@@ -147,12 +140,16 @@ const styles = StyleSheet.create((theme) => ({
     padding: theme.spacing[4],
     pointerEvents: "box-none",
   },
-  imagePressable: {
+  imageFrame: {
     flex: 1,
     width: "100%",
     alignSelf: "center",
     maxWidth: 960,
     maxHeight: 640,
+    position: "relative",
+  },
+  imagePressable: {
+    flex: 1,
   },
   errorText: {
     color: theme.colors.foregroundMuted,
@@ -160,6 +157,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   closeButton: {
     position: "absolute",
+    // Half outside the frame's corner, so the badge floats on the image edge
+    // rather than sitting flush inside it.
+    top: -16,
+    right: -16,
     width: 32,
     height: 32,
     borderRadius: 16,
