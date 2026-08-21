@@ -5,7 +5,7 @@ title: "Integrate Paseo v0.4.0 and converge on upstream structure"
 status: "confirmed"
 tags: ["upstream","paseo","integration","v0-4-0","merge"]
 created_at: "2026-08-21T13:40:49.704Z"
-updated_at: "2026-08-21T21:06:06.889Z"
+updated_at: "2026-08-21T21:27:26.197Z"
 ---
 # Integrate Paseo v0.4.0 and converge on upstream structure
 
@@ -58,3 +58,7 @@ Otto must integrate Paseo v0.4.0 from the v0.2.5 merge baseline on an isolated m
   kind: "evidence"
   summary: "Delivery completed on isolated branch `merge/upstream-2026-08-v040`. Merge commit `d6cafbd03f8eddb150521e4e1ed2a17145732a2b` integrates Paseo v0.4.0 (`b44bb63cf4ce089ab5750b9fc621ed52827b2820`); merge commit `efcc30b778ab2110b17425b95e5c8cc1e34753ad` then incorporates current Otto `main` (`46511f5608e3905f8dc43225fc5aed8a91282293`). Both upstream and main are verified ancestors and the merge worktree is clean. Verification passed full repository format, lint, and typecheck; server, website production, and desktop main builds; patch-package application from pristine package tarballs; and focused tests across the semantically merged app/server/runtime/sidebar/menu/stream/profile/file-explorer/platform surfaces. The full local test suite was intentionally not run under repository policy; targeted tests were used instead. `npm ci` reported 69 pre-existing audit findings (7 low, 32 moderate, 30 high), with no automatic remediation applied."
   source: "Local Git history and merge-worktree verification on 2026-08-21"
+- time: "2026-08-21T21:27:26.197Z"
+  kind: "evidence"
+  summary: "Final history shape supersedes the interim `efcc30b778ab2110b17425b95e5c8cc1e34753ad` reconciliation merge described immediately above. Paseo merge `d6cafbd03f8eddb150521e4e1ed2a17145732a2b` remains inserted at original Otto head `f90e8c851ec5a1b1edd8a2e6761001d22e6845fa` with Paseo v0.4.0 `b44bb63cf4ce089ab5750b9fc621ed52827b2820` as its second parent. All 25 commits formerly in `f90e8c851..46511f560` were then replayed in order; their 24 first-parent subjects match exactly and the original `merge: sync origin/main` remains a two-parent merge. Integration reconciliation head `ceb2e5c1033ca12f1919ef6bdfb66b6f0e97cf65` has the exact same Git tree (`47108c03de7b6d1f82732fb310f744280e72b36e`) as the previously verified semantic merge, and local `main` was moved to this replayed history. Recovery refs preserve the former histories at `backup/main-before-paseo-v040-20260821` and `backup/merge-v040-semantic-20260821`."
+  source: "Final local history audit on 2026-08-21"
