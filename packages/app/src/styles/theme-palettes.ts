@@ -1093,7 +1093,6 @@ export const pureBlackDarkColors = buildDarkSemanticColors({
   surface4: "#2d2d2d",
   surfaceDiffEmpty: "#0c0c0c",
   surfaceSidebar: "#000000",
-  surfaceSidebarHover: "#161616",
   foregroundMuted: "#a1a1aa",
   scrollbarHandle: "#71717a",
   border: "#1c1c1c",

@@ -1000,6 +1000,9 @@ const styles = StyleSheet.create((theme) => ({
   workspaceRowHovered: {
     backgroundColor: theme.colors.surfaceInteractiveHover,
   },
+  workspaceRowPressed: {
+    backgroundColor: theme.colors.surfaceInteractivePressed,
+  },
   sidebarRowSelected: {
     backgroundColor: theme.colors.surfaceInteractiveSelected,
   },

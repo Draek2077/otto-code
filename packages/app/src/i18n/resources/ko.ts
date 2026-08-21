@@ -1861,6 +1861,7 @@ export const ko: TranslationResources = {
     create: "생성",
     viewDocumentation: "View documentation",
     createDocumentation: "Create documentation",
+    startEmptyWorkspace: "Start empty workspace",
     isolation: {
       local: "로컬",
       worktree: "새 워크트리",
@@ -3516,6 +3517,8 @@ export const ko: TranslationResources = {
           terracotta: "Terracotta",
           horizon: "Horizon",
           powder: "Powder",
+          ivory: "Ivory",
+          obsidian: "Obsidian",
           light: "라이트",
           pureBlack: "순수 검정",
           auto: "시스템",
