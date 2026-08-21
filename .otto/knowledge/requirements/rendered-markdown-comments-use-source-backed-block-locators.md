@@ -5,13 +5,13 @@ title: "Rendered Markdown comments use source-backed block locators"
 status: "confirmed"
 tags: ["file-editor","preview","comments","attachments","markdown"]
 created_at: "2026-08-21T02:34:45.860Z"
-updated_at: "2026-08-21T17:19:33.343Z"
+updated_at: "2026-08-21T17:25:42.963Z"
 ---
 # Rendered Markdown comments use source-backed block locators
 
 <!-- compiled_truth -->
 
-File Editor Preview comments attach workspace-scoped context for Markdown renderer items with an exact markdown-it source map. For now, Markdown headings are the sole exposed entry point and every source-mapped heading keeps a compact comment glyph visible. The add-comment and saved-comment glyphs use the same explicit size and pixel-aligned visual centre. The rendered Markdown tree owns only that heading glyph and source-backed target; it never embeds the comment editor or popup content. Clicking the glyph asks the File Preview shell to open the shared Changes diff-comment editor in a trigger-anchored, context-menu-like popup outside the Markdown document, leaving the rendered document's layout untouched; an existing comment is prefilled and Save replaces it. When reopening a saved comment, a destructive red trash icon appears immediately before Cancel and deletes that same workspace attachment. An unannotated heading uses the add-comment glyph and an annotated heading uses the blue Chat glyph. Saving remains valid from a File tab, which necessarily is not the focused agent tab; the workspace Composer displays the resulting attachment pill when its chat is active. Removing that pill removes the same workspace attachment, so the preview glyph disappears immediately. The attachment retains the workspace-relative path, item-kind locator, inclusive source line range, source excerpt, and user note, and directs the agent to read the current workspace file. Paragraph, blockquote, and fenced-code locators are retained for future renderer entry points but are not currently actionable. Converted AsciiDoc, standalone Mermaid, isolated HTML, images, and HTML-split nodes remain unsupported until they can provide an honest source locator.
+File Editor Preview comments attach workspace-scoped context for Markdown renderer items with an exact markdown-it source map. For now, Markdown headings are the sole exposed entry point and every source-mapped heading keeps a compact comment glyph visible. The add-comment and saved-comment glyphs use the same explicit size and pixel-aligned visual centre. The rendered Markdown tree owns only that heading glyph and source-backed target; it never embeds the comment editor or popup content. A saved heading glyph shows a desktop hover tooltip with a whitespace-normalized, four-line preview of its comment; long notes are capped at 240 characters and end in an ellipsis. Clicking the glyph asks the File Preview shell to open the shared Changes diff-comment editor in a trigger-anchored, context-menu-like popup outside the Markdown document, leaving the rendered document's layout untouched; an existing comment is prefilled and Save replaces it. When reopening a saved comment, a destructive red trash icon appears immediately before Cancel and deletes that same workspace attachment. An unannotated heading uses the add-comment glyph and an annotated heading uses the blue Chat glyph. Saving remains valid from a File tab, which necessarily is not the focused agent tab; the workspace Composer displays the resulting attachment pill when its chat is active. Removing that pill removes the same workspace attachment, so the preview glyph disappears immediately. The attachment retains the workspace-relative path, item-kind locator, inclusive source line range, source excerpt, and user note, and directs the agent to read the current workspace file. Paragraph, blockquote, and fenced-code locators are retained for future renderer entry points but are not currently actionable. Converted AsciiDoc, standalone Mermaid, isolated HTML, images, and HTML-split nodes remain unsupported until they can provide an honest source locator.
 
 ## Timeline
 
@@ -69,3 +69,7 @@ File Editor Preview comments attach workspace-scoped context for Markdown render
   kind: "decision"
   summary: "User reported that the saved blue Chat glyph sat one pixel lower than the add-comment glyph; align both marker glyphs within their shared fixed button."
   source: "User feedback, 2026-08-21"
+- time: "2026-08-21T17:25:42.963Z"
+  kind: "decision"
+  summary: "User requested a compact tooltip preview of the saved Markdown Preview comment when hovering its blue marker."
+  source: "User direction, 2026-08-21"

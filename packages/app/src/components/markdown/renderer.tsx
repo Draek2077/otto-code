@@ -40,6 +40,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { MarkdownParagraphView, MarkdownTextSpan } from "@/components/markdown-text";
 import { getMarkdownListMarker, getMarkdownListSpacing } from "@/utils/markdown-list";
 import { markdownNodeContainsType } from "@/utils/markdown-ast";
@@ -106,6 +107,7 @@ function annotationAccessibilityLabel(
 function HeadingAnnotationAction({
   target,
   annotated,
+  comment,
   onOpenChange,
   annotationPopover,
   children,
@@ -113,6 +115,7 @@ function HeadingAnnotationAction({
 }: {
   target: Extract<MarkdownDocumentAnnotationTarget, { kind: "heading" }>;
   annotated: boolean;
+  comment?: string;
   onOpenChange?: (target: MarkdownDocumentAnnotationTarget, open: boolean) => void;
   annotationPopover?: ReactNode;
   children: ReactNode[];
@@ -120,53 +123,79 @@ function HeadingAnnotationAction({
 }) {
   const disabled = !onOpenChange;
   const open = annotationPopover != null;
+  const tooltipComment = annotationTooltipComment(comment);
+  const trigger = (
+    <DropdownMenuTrigger
+      accessibilityRole="button"
+      accessibilityLabel={
+        disabled
+          ? `Open or focus a chat to ${annotationAccessibilityLabel(target, annotated).toLowerCase()}`
+          : annotationAccessibilityLabel(target, annotated)
+      }
+      accessibilityState={
+        disabled ? DISABLED_ANNOTATION_ACCESSIBILITY_STATE : ENABLED_ANNOTATION_ACCESSIBILITY_STATE
+      }
+      disabled={disabled}
+      // eslint-disable-next-line react-perf/jsx-no-new-function-as-prop -- Pressable state is supplied by its render prop
+      style={({ pressed }) => [
+        annotationStyles.headingAction,
+        disabled && annotationStyles.headingActionDisabled,
+        pressed && annotationStyles.headingActionPressed,
+      ]}
+    >
+      {annotated ? (
+        <View style={annotationStyles.annotatedHeadingIcon}>
+          <ThemedAnnotatedHeadingIcon size={15} uniProps={annotatedHeadingIconMapping} />
+        </View>
+      ) : (
+        <ThemedHeadingCommentIcon size={15} uniProps={annotationActionIconMapping} />
+      )}
+    </DropdownMenuTrigger>
+  );
+  const menu = (
+    <DropdownMenu
+      open={open}
+      // eslint-disable-next-line react-perf/jsx-no-new-function-as-prop -- target is node-specific
+      onOpenChange={(nextOpen) => onOpenChange?.(target, nextOpen)}
+    >
+      {tooltipComment ? <TooltipTrigger asChild>{trigger}</TooltipTrigger> : trigger}
+      <DropdownMenuContent
+        align="end"
+        minWidth={320}
+        offset={6}
+        testID="file-preview-annotation-popover"
+      >
+        {annotationPopover}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
   return (
     <View style={[style, annotationStyles.heading]}>
       {children}
-      <DropdownMenu
-        open={open}
-        // eslint-disable-next-line react-perf/jsx-no-new-function-as-prop -- target is node-specific
-        onOpenChange={(nextOpen) => onOpenChange?.(target, nextOpen)}
-      >
-        <DropdownMenuTrigger
-          accessibilityRole="button"
-          accessibilityLabel={
-            disabled
-              ? `Open or focus a chat to ${annotationAccessibilityLabel(target, annotated).toLowerCase()}`
-              : annotationAccessibilityLabel(target, annotated)
-          }
-          accessibilityState={
-            disabled
-              ? DISABLED_ANNOTATION_ACCESSIBILITY_STATE
-              : ENABLED_ANNOTATION_ACCESSIBILITY_STATE
-          }
-          disabled={disabled}
-          // eslint-disable-next-line react-perf/jsx-no-new-function-as-prop -- Pressable state is supplied by its render prop
-          style={({ pressed }) => [
-            annotationStyles.headingAction,
-            disabled && annotationStyles.headingActionDisabled,
-            pressed && annotationStyles.headingActionPressed,
-          ]}
-        >
-          {annotated ? (
-            <View style={annotationStyles.annotatedHeadingIcon}>
-              <ThemedAnnotatedHeadingIcon size={15} uniProps={annotatedHeadingIconMapping} />
-            </View>
-          ) : (
-            <ThemedHeadingCommentIcon size={15} uniProps={annotationActionIconMapping} />
-          )}
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="end"
-          minWidth={320}
-          offset={6}
-          testID="file-preview-annotation-popover"
-        >
-          {annotationPopover}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {tooltipComment ? (
+        <Tooltip delayDuration={400}>
+          {menu}
+          <TooltipContent side="top" align="end" maxWidth={320}>
+            <Text numberOfLines={4} style={annotationStyles.tooltipText}>
+              {tooltipComment}
+            </Text>
+          </TooltipContent>
+        </Tooltip>
+      ) : (
+        menu
+      )}
     </View>
   );
+}
+
+function annotationTooltipComment(comment: string | undefined): string | null {
+  const normalized = comment?.replace(/\s+/g, " ").trim();
+  if (!normalized) return null;
+
+  const maximumLength = 240;
+  return normalized.length > maximumLength
+    ? `${normalized.slice(0, maximumLength - 3).trimEnd()}...`
+    : normalized;
 }
 
 interface MarkdownWithStableRendererProps {
@@ -215,6 +244,11 @@ const annotationStyles = StyleSheet.create((theme) => ({
   // `Chat` is globally nudged down to correct its normal optical baseline.
   // In this fixed icon button it shares a centre with MessageSquarePlus instead.
   annotatedHeadingIcon: { transform: [{ translateY: -1 }] },
+  tooltipText: {
+    color: theme.colors.popoverForeground,
+    fontSize: theme.fontSize.xs,
+    lineHeight: theme.fontSize.xs * 1.4,
+  },
 }));
 
 function markdownStyleMapping(theme: Theme): Partial<MarkdownWithStableRendererProps> {
@@ -245,6 +279,7 @@ export function createMarkdownDocumentAnnotationRules(input: {
   text: string;
   onAnnotationOpenChange?: (target: MarkdownDocumentAnnotationTarget, open: boolean) => void;
   annotatedHeadingSourceLines?: readonly number[];
+  annotatedHeadingComments?: ReadonlyMap<number, string>;
   /** Rendered in a popup anchored to the matching heading's annotation button. */
   renderHeadingAnnotationPopover?: (
     target: Extract<MarkdownDocumentAnnotationTarget, { kind: "heading" }>,
@@ -276,6 +311,7 @@ export function createMarkdownDocumentAnnotationRules(input: {
         <HeadingAnnotationAction
           target={target}
           annotated={annotatedHeadingSourceLines.has(target.lineStart)}
+          comment={input.annotatedHeadingComments?.get(target.lineStart)}
           onOpenChange={input.onAnnotationOpenChange}
           annotationPopover={input.renderHeadingAnnotationPopover?.(target)}
           style={styles[`_VIEW_SAFE_heading${level}`]}

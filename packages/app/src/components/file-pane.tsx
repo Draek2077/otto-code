@@ -729,11 +729,20 @@ function FilePreviewBody({
             annotatedHeadingSourceLines: annotatedHeadingSourceLines.map(
               (lineStart) => lineStart - (annotationLineOffset ?? 0),
             ),
+            annotatedHeadingComments: new Map(
+              Array.from(annotatedHeadingComments, ([lineStart, comment]) => [
+                lineStart - (annotationLineOffset ?? 0),
+                comment,
+              ]),
+            ),
             renderHeadingAnnotationPopover: (target) =>
               annotationTarget?.kind === "heading" &&
               annotationTarget.lineStart === target.lineStart ? (
                 <RenderedDocumentAnnotationCard
-                  initialComment={annotatedHeadingComments.get(target.lineStart) ?? ""}
+                  initialComment={
+                    annotatedHeadingComments.get(target.lineStart + (annotationLineOffset ?? 0)) ??
+                    ""
+                  }
                   onCancel={cancelAnnotation}
                   onDelete={deleteAnnotation}
                   onSubmit={submitAnnotation}
