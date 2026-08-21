@@ -1,7 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ComposerAttachment } from "@/attachments/types";
 import type { MessagePayload } from "@/composer/types";
-import { isEmptyWorkspaceSubmission, runCreateEmptyWorkspace } from "./new-workspace-empty";
+
+const navigateToPreparedWorkspaceTab = vi.fn();
+
+vi.mock("@/utils/workspace-navigation", () => ({
+  navigateToPreparedWorkspaceTab: (input: unknown) => navigateToPreparedWorkspaceTab(input),
+}));
+
+import {
+  isEmptyWorkspaceSubmission,
+  runCreateEmptyWorkspace,
+  runStartEmptyWorkspace,
+} from "./new-workspace-empty";
 
 function payload(
   input: { text?: string; attachments?: ComposerAttachment[] } = {},
@@ -58,5 +69,29 @@ describe("isEmptyWorkspaceSubmission", () => {
 
     expect(isEmptyWorkspaceSubmission(payload({ text: " \n\t " }))).toBe(true);
     expect(isEmptyWorkspaceSubmission(payload({ attachments: [attachment] }))).toBe(false);
+  });
+});
+
+describe("runStartEmptyWorkspace", () => {
+  it("creates an empty workspace and opens a fresh chat draft", async () => {
+    const ensureWorkspace = vi.fn().mockResolvedValue({ id: "workspace-123" });
+
+    await runStartEmptyWorkspace({
+      ensureWorkspace,
+      serverId: "server-abc",
+      sourceDirectory: "/sample/repo",
+    });
+
+    expect(ensureWorkspace).toHaveBeenCalledWith({
+      cwd: "/sample/repo",
+      prompt: "",
+      attachments: [],
+      withInitialAgent: false,
+    });
+    expect(navigateToPreparedWorkspaceTab).toHaveBeenCalledWith({
+      serverId: "server-abc",
+      workspaceId: "workspace-123",
+      target: { kind: "draft", draftId: "new" },
+    });
   });
 });

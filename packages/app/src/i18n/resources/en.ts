@@ -1865,6 +1865,7 @@ export const en = {
     create: "Create",
     viewDocumentation: "View documentation",
     createDocumentation: "Create documentation",
+    startEmptyWorkspace: "Start empty workspace",
     isolation: {
       local: "Local",
       worktree: "New worktree",

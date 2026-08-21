@@ -1870,6 +1870,7 @@ export const ja: TranslationResources = {
     create: "作成",
     viewDocumentation: "ドキュメントを見る",
     createDocumentation: "ドキュメントを作成",
+    startEmptyWorkspace: "空のワークスペースを開始",
     isolation: {
       local: "ローカル",
       worktree: "新しいワークツリー",

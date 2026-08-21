@@ -1819,6 +1819,7 @@ export const zhCN: TranslationResources = {
     create: "创建",
     viewDocumentation: "查看文档",
     createDocumentation: "创建文档",
+    startEmptyWorkspace: "开始空 workspace",
     isolation: {
       local: "本地",
       worktree: "新建 worktree",

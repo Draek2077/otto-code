@@ -1887,6 +1887,7 @@ export const es: TranslationResources = {
     create: "Crear",
     viewDocumentation: "Ver la documentación",
     createDocumentation: "Crear documentación",
+    startEmptyWorkspace: "Iniciar espacio de trabajo vacío",
     isolation: {
       local: "Local",
       worktree: "Nuevo worktree",

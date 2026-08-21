@@ -15,6 +15,8 @@ import {
   Folder,
   GitBranch,
   GitPullRequest,
+  MessageSquarePlus,
+  Robot,
   X,
 } from "@/components/icons/material-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -104,7 +106,11 @@ import type { AgentAttachment, ForgeSearchItem } from "@otto-code/protocol/messa
 import type { CreateOttoWorktreeInput } from "@otto-code/client/internal/daemon-client";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
-import { isEmptyWorkspaceSubmission, runCreateEmptyWorkspace } from "./new-workspace-empty";
+import {
+  isEmptyWorkspaceSubmission,
+  runCreateEmptyWorkspace,
+  runStartEmptyWorkspace,
+} from "./new-workspace-empty";
 import {
   isWorkspaceDirectoryOccupiedError,
   runOccupiedDirectorySteer,
@@ -2377,6 +2383,20 @@ export function NewWorkspaceScreen({
       cwd: selectedSourceDirectory ?? "",
     });
   }, [handleSubmitNewWorkspace, selectedSourceDirectory]);
+  const handleStartEmptyWorkspace = useCallback(() => {
+    setErrorMessage(null);
+    setPendingAction("empty");
+    void runStartEmptyWorkspace({
+      ensureWorkspace,
+      serverId: selectedServerId,
+      sourceDirectory: selectedSourceDirectory,
+    }).catch((error) => {
+      setPendingAction(null);
+      const message = toErrorMessage(error);
+      setErrorMessage(message);
+      toast.error(message);
+    });
+  }, [ensureWorkspace, selectedServerId, selectedSourceDirectory, toast]);
   const handleSubmitTerminalLaunch = useCallback(async () => {
     try {
       setErrorMessage(null);
@@ -2585,6 +2605,14 @@ export function NewWorkspaceScreen({
     () => <FileText size={theme.iconSize.sm} color={theme.colors.foreground} />,
     [theme.iconSize.sm, theme.colors.foreground],
   );
+  const createDocumentationIcon = useMemo(
+    () => <Robot size={theme.iconSize.sm} color={theme.colors.foreground} />,
+    [theme.iconSize.sm, theme.colors.foreground],
+  );
+  const startEmptyWorkspaceIcon = useMemo(
+    () => <MessageSquarePlus size={theme.iconSize.sm} color={theme.colors.foreground} />,
+    [theme.iconSize.sm, theme.colors.foreground],
+  );
 
   return (
     <FileDropZone style={styles.container}>
@@ -2624,22 +2652,35 @@ export function NewWorkspaceScreen({
             />
           ) : (
             <>
-              <ViewDocumentationButton
-                readmeFileName={readmeFileName}
-                onPress={handleViewDocumentation}
-                loading={pendingAction === "docs"}
-                disabled={isPending}
-                label={t("newWorkspace.viewDocumentation")}
-                icon={viewDocumentationIcon}
-              />
-              <CreateDocumentationButton
-                readmeFileName={readmeFileName}
-                onPress={handleCreateDocumentation}
-                loading={pendingAction === "chat"}
-                disabled={isPending}
-                label={t("newWorkspace.createDocumentation")}
-                icon={viewDocumentationIcon}
-              />
+              <View style={styles.documentationActions}>
+                <ViewDocumentationButton
+                  readmeFileName={readmeFileName}
+                  onPress={handleViewDocumentation}
+                  loading={pendingAction === "docs"}
+                  disabled={isPending}
+                  label={t("newWorkspace.viewDocumentation")}
+                  icon={viewDocumentationIcon}
+                />
+                <CreateDocumentationButton
+                  readmeFileName={readmeFileName}
+                  onPress={handleCreateDocumentation}
+                  loading={pendingAction === "chat"}
+                  disabled={isPending}
+                  label={t("newWorkspace.createDocumentation")}
+                  icon={createDocumentationIcon}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  leftIcon={startEmptyWorkspaceIcon}
+                  onPress={handleStartEmptyWorkspace}
+                  loading={pendingAction === "empty"}
+                  disabled={isPending}
+                  testID="new-workspace-start-empty"
+                >
+                  {t("newWorkspace.startEmptyWorkspace")}
+                </Button>
+              </View>
               <Composer
                 externalKeyboardShift
                 agentId={draftKey}
@@ -2722,6 +2763,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   viewDocumentationButton: {
     alignSelf: "flex-start",
+  },
+  documentationActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: theme.spacing[2],
     marginLeft: theme.spacing[4],
     marginBottom: theme.spacing[4],
   },

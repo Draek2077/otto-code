@@ -1878,6 +1878,7 @@ export const ptBR: TranslationResources = {
     create: "Criar",
     viewDocumentation: "Ver a documentação",
     createDocumentation: "Criar documentação",
+    startEmptyWorkspace: "Iniciar workspace vazio",
     isolation: {
       local: "Local",
       worktree: "Novo worktree",

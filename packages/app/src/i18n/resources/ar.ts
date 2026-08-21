@@ -1839,6 +1839,7 @@ export const ar: TranslationResources = {
     create: "يخلق",
     viewDocumentation: "عرض التوثيق",
     createDocumentation: "إنشاء الوثائق",
+    startEmptyWorkspace: "بدء مساحة عمل فارغة",
     isolation: {
       local: "محلي",
       worktree: "شجرة عمل جديدة",
