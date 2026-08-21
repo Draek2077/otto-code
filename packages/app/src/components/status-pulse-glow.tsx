@@ -17,9 +17,8 @@ const PULSE_DURATION_MS = 1500;
 /** The halo is drawn this much larger than the glyph it sits behind. */
 const GLOW_RATIO = 1.75;
 /**
- * Opacity floor and ceiling of the breath. The floor is also the whole glow when
- * animations are off, so the resting frame still reads as a glow rather than
- * disappearing: the effect is attention, and a static notice still wants it.
+ * Opacity floor and ceiling of the breath. A static notice uses the peak frame
+ * so the halo remains clearly visible when the animation is disabled.
  */
 const GLOW_RESTING_OPACITY = 0.68;
 const GLOW_PEAK_OPACITY = 1;
@@ -36,7 +35,7 @@ const GLOW_PEAK_SCALE = 1;
  * without the halo knowing about them.
  *
  * Motion is gated on Appearance -> Animations: with animations off the halo
- * still renders, held at the breath's resting frame. The status is the point,
+ * still renders, held at the breath's peak frame. The status is the point,
  * the movement is the emphasis, and only the emphasis is optional.
  */
 export function StatusPulseGlow({
@@ -57,7 +56,8 @@ export function StatusPulseGlow({
   useEffect(() => {
     if (!active) {
       cancelAnimation(progress);
-      progress.value = 0;
+      // Keep the non-animated variant at the most visible point of the pulse.
+      progress.value = 1;
       return;
     }
     progress.value = 0;
