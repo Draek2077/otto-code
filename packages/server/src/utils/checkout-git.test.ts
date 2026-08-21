@@ -1226,7 +1226,12 @@ const x = 1;
     startGitCommandMetrics();
     const diff = await getCheckoutDiff(repoDir, { mode: "uncommitted", includeStructured: true });
     const metrics = stopGitCommandMetrics();
-    const commands = metrics.commands.map((command) => command.args.join(" "));
+    // The pinned `--no-ext-diff`/`--no-textconv` flags ride on every patch read;
+    // drop them so these assertions stay about the diff each command asked for.
+    const isNotPinnedDiffFlag = (arg: string) => arg !== "--no-ext-diff" && arg !== "--no-textconv";
+    const commands = metrics.commands.map((command) =>
+      command.args.filter(isNotPinnedDiffFlag).join(" "),
+    );
 
     expect(
       diff.structured?.map((file) => ({

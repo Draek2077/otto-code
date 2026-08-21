@@ -21,7 +21,11 @@ import {
 } from "../services/github-service.js";
 import { isGitHostingFeatureDisabledError } from "../services/git-hosting/types.js";
 import { parseGitRevParsePath, resolveGitRevParsePath } from "./git-rev-parse-path.js";
-import { runGitCommand, type GitCommandResult } from "./run-git-command.js";
+import {
+  MACHINE_READABLE_DIFF_FLAGS,
+  runGitCommand,
+  type GitCommandResult,
+} from "./run-git-command.js";
 import { isOttoOwnedWorktreeCwd, resolveOttoWorktreesBaseRoot } from "./worktree.js";
 import {
   normalizeAndValidateBaseRefName,
@@ -646,7 +650,12 @@ function normalizeNumstatPath(pathField: string): string {
 }
 
 function buildGitDiffArgs(args: { ignoreWhitespace?: boolean; extra: string[] }): string[] {
-  return ["diff", ...(args.ignoreWhitespace ? ["-w"] : []), ...args.extra];
+  return [
+    "diff",
+    ...MACHINE_READABLE_DIFF_FLAGS,
+    ...(args.ignoreWhitespace ? ["-w"] : []),
+    ...args.extra,
+  ];
 }
 
 const TRACKED_DIFF_NUMSTAT_MAX_BYTES = 2 * 1024 * 1024; // 2MB
@@ -4365,7 +4374,15 @@ export async function getCommitFileDiff({
   path: string;
 }): Promise<ParsedDiffFile | null> {
   const { stdout } = await runGitCommand(
-    ["show", sha, "--format=", "--diff-merges=first-parent", "--", path],
+    [
+      "show",
+      sha,
+      "--format=",
+      "--diff-merges=first-parent",
+      ...MACHINE_READABLE_DIFF_FLAGS,
+      "--",
+      path,
+    ],
     {
       cwd,
       envOverlay: READ_ONLY_GIT_ENV,

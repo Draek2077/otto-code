@@ -58,10 +58,70 @@ interface ParseAndHighlightDiffOptions {
 /**
  * Parse a unified diff into structured data
  */
-// Git's default patch headers use paired a/path and b/path prefixes, while
-// diff.noprefix emits plain paths that may legitimately start with a/ or b/.
-function usesDiffPathPrefixes(oldPath: string, newPath: string): boolean {
-  return oldPath.startsWith("a/") && newPath.startsWith("b/");
+/**
+ * Which prefix a patch header carries is the author's configuration, not a constant:
+ * the default `a/` and `b/`, mnemonic `c/ i/ w/ o/` (`diff.mnemonicPrefix`), custom
+ * `diff.srcPrefix`/`dstPrefix`, or none (`diff.noprefix`). Otto pins its own git reads,
+ * but a patch from an agent, a forge, or a paste arrives however its author's git emits
+ * it, so the prefix is derived here instead of assumed. Everything below stays a pure
+ * function of the header, and a header that resists it falls through to "unknown"
+ * rather than to a guess.
+ */
+function stripLeadingSegment(value: string): string | null {
+  const separator = value.indexOf("/");
+  if (separator <= 0 || separator === value.length - 1) {
+    return null;
+  }
+  return value.slice(separator + 1);
+}
+
+/**
+ * The path both sides of a header agree on. Whatever prefix pair git applied is
+ * exactly what makes the two sides differ, so a shared remainder after dropping one
+ * leading segment is the real path. Equal sides mean no prefix at all.
+ */
+function resolveSharedHeaderPath(oldPath: string, newPath: string): string | null {
+  if (oldPath === newPath) {
+    return oldPath;
+  }
+  const oldRest = stripLeadingSegment(oldPath);
+  return oldRest !== null && oldRest === stripLeadingSegment(newPath) ? oldRest : null;
+}
+
+/**
+ * `diff --git <old> <new>` leaves spaces unquoted, so the split between the two
+ * sides is ambiguous. Every candidate split is tried and the first one whose sides
+ * agree on a path wins.
+ */
+function resolveDiffGitHeaderPath(firstLine: string): string | null {
+  for (
+    let separator = firstLine.indexOf(" ");
+    separator !== -1;
+    separator = firstLine.indexOf(" ", separator + 1)
+  ) {
+    const path = resolveSharedHeaderPath(
+      firstLine.slice(0, separator),
+      firstLine.slice(separator + 1),
+    );
+    if (path) {
+      return path;
+    }
+  }
+  return null;
+}
+
+/** Renames and copies carry the one prefix-free path pair git ever emits. */
+function extractRenameTargetPath(lines: string[]): string | null {
+  for (const prefix of ["rename to ", "copy to "]) {
+    const line = lines.find((candidate) => candidate.startsWith(prefix));
+    if (line) {
+      const path = line.slice(prefix.length).trimEnd();
+      if (path) {
+        return path;
+      }
+    }
+  }
+  return null;
 }
 
 function extractPathFromMetadata(lines: string[], prefix: "--- " | "+++ "): string | null {
@@ -75,24 +135,30 @@ function extractPathFromMetadata(lines: string[], prefix: "--- " | "+++ "): stri
 }
 
 function extractPathFromDiffHeader(lines: string[]): string {
-  const firstLine = lines[0] ?? "";
-  const prefixedPathMatch = firstLine.match(/^a\/(.+) b\/(.+)$/);
-  if (prefixedPathMatch) {
-    return prefixedPathMatch[2];
+  const renameTarget = extractRenameTargetPath(lines);
+  if (renameTarget) {
+    return renameTarget;
   }
 
-  const metadataPath =
-    extractPathFromMetadata(lines, "+++ ") ?? extractPathFromMetadata(lines, "--- ");
+  const headerPath = resolveDiffGitHeaderPath(lines[0] ?? "");
+  if (headerPath) {
+    return headerPath;
+  }
+
+  const oldMetadataPath = extractPathFromMetadata(lines, "--- ");
+  const newMetadataPath = extractPathFromMetadata(lines, "+++ ");
+  if (oldMetadataPath && newMetadataPath) {
+    const sharedMetadataPath = resolveSharedHeaderPath(oldMetadataPath, newMetadataPath);
+    if (sharedMetadataPath) {
+      return sharedMetadataPath;
+    }
+  }
+
+  const metadataPath = newMetadataPath ?? oldMetadataPath;
   if (metadataPath) {
     return metadataPath;
   }
 
-  const pathMatch = firstLine.match(/^(\S+)\s+(\S+)$/);
-  if (pathMatch) {
-    const [, oldPath, newPath] = pathMatch;
-    const path = newPath === "/dev/null" ? oldPath : newPath;
-    return usesDiffPathPrefixes(oldPath, newPath) ? path.slice(2) : path;
-  }
   return "unknown";
 }
 

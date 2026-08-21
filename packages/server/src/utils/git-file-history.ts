@@ -13,7 +13,7 @@
  * there isn't one and there shouldn't be.
  */
 
-import { runGitCommand } from "./run-git-command.js";
+import { MACHINE_READABLE_DIFF_FLAGS, runGitCommand } from "./run-git-command.js";
 import { isFullFileHighlightable } from "../server/utils/diff-highlighter.js";
 
 const READ_ONLY_GIT_ENV = {
@@ -403,6 +403,7 @@ export async function getFileCommitDiff(
     const result = await runGitCommand(
       [
         "diff",
+        ...MACHINE_READABLE_DIFF_FLAGS,
         ...whitespaceArgs,
         `${previous.sha}:./${previous.path}`,
         `${input.sha}:./${input.path}`,
@@ -436,7 +437,17 @@ export async function getFileCommitDiff(
   }
 
   const result = await runGitCommand(
-    ["show", "--format=", "--patch", "-M", ...whitespaceArgs, input.sha, "--", input.path],
+    [
+      "show",
+      "--format=",
+      "--patch",
+      "-M",
+      ...MACHINE_READABLE_DIFF_FLAGS,
+      ...whitespaceArgs,
+      input.sha,
+      "--",
+      input.path,
+    ],
     {
       cwd,
       envOverlay: READ_ONLY_GIT_ENV,

@@ -9,6 +9,45 @@ import type { ProcessEnvRecord } from "../server/otto-env.js";
 import { getActiveGitCommandObserver } from "../server/git-operation-log.js";
 import { spawnProcess } from "./spawn.js";
 
+/**
+ * Config pinned on every git invocation so output shape is ours to parse, not the
+ * user's to configure. Their own `git diff` keeps whatever they set; only these
+ * daemon reads are normalized.
+ *
+ * - `core.quotepath=false` emits raw UTF-8 paths instead of octal-escaping non-ASCII
+ *   bytes (e.g. `测试文件.txt` vs `"\346\265\213..."`).
+ * - The prefix keys keep patch headers at `a/path b/path`. `diff.mnemonicPrefix`
+ *   (`c/`, `w/`, `i/`, `o/`) and custom `diff.srcPrefix`/`dstPrefix` are common
+ *   personal settings that otherwise reshape every header we read.
+ * - `color.ui=false` defeats `color.ui=always`, which wraps patch lines in ANSI
+ *   escapes even when stdout is a pipe.
+ *
+ * `diff.external` cannot be pinned here: an empty value makes git exit with
+ * "external diff died", so patch-producing commands pass `--no-ext-diff` instead.
+ */
+const MACHINE_READABLE_GIT_CONFIG = [
+  "-c",
+  "core.quotepath=false",
+  "-c",
+  "diff.mnemonicPrefix=false",
+  "-c",
+  "diff.noprefix=false",
+  "-c",
+  "diff.srcPrefix=a/",
+  "-c",
+  "diff.dstPrefix=b/",
+  "-c",
+  "color.ui=false",
+];
+
+/**
+ * Flags for commands whose patch output the daemon parses. Config cannot cover these:
+ * a configured `diff.external` (difftastic, delta, meld) replaces the patch entirely,
+ * and a `diff=<driver>` textconv attribute rewrites its content so hunk line numbers
+ * no longer anchor to the real file.
+ */
+export const MACHINE_READABLE_DIFF_FLAGS = ["--no-ext-diff", "--no-textconv"];
+
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 20 * 1024 * 1024; // 20MB
 const DEFAULT_STDERR_LIMIT = 2048;
@@ -166,9 +205,7 @@ export function runGitCommand(
           logger.trace(traceContext, "Spawning git command");
         }
 
-        // `core.quotepath=false` makes git emit raw UTF-8 paths instead of
-        // octal-escaping non-ASCII bytes (e.g. `测试文件.txt` vs `"\346\265\213..."`).
-        const child = spawnProcess("git", ["-c", "core.quotepath=false", ...args], {
+        const child = spawnProcess("git", [...MACHINE_READABLE_GIT_CONFIG, ...args], {
           cwd: options.cwd,
           envOverlay,
           shell: false,

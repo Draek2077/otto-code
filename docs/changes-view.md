@@ -191,6 +191,33 @@ rule - downstream code reads a single boolean rather than branching on daemon ve
 come from `getBranchSuggestions`, whose `branchDetails` already carry `hasLocal` / `hasRemote`, which
 is what lets the picker render `main` and `origin/main` as separate rows without a new RPC.
 
+## The patch is machine output, so personal git config cannot reach it
+
+A user's `~/.gitconfig` is theirs, and every one of these settings used to empty the
+entire Changes view: `diff.mnemonicPrefix` (headers become `c/path w/path`), a custom
+`diff.srcPrefix`/`dstPrefix`, `color.ui = always` (ANSI escapes around every patch line),
+and `diff.external` (difftastic, delta, meld replace the patch wholesale). The failure is
+silent and total rather than noisy: the file rows and their `+N/-N` come from
+`--name-status` and `--numstat`, which none of that touches, while the patch stops
+parsing, so every file lists correctly and renders blank in both Line and Structural.
+
+Two layers keep that out:
+
+- **Invocation.** `runGitCommand` pins `MACHINE_READABLE_GIT_CONFIG` on every git call,
+  the way it already pinned `core.quotepath=false`. Patch-producing commands add
+  `MACHINE_READABLE_DIFF_FLAGS` (`--no-ext-diff --no-textconv`), which config cannot
+  express: `diff.external` set to an empty value makes git exit with "external diff died".
+  Their own terminal `git diff` is untouched, since only the daemon's reads are pinned.
+- **Parsing.** `parseDiff` derives the prefix from the header instead of assuming `a/`
+  and `b/`, because a patch from an agent, a forge, or a paste was produced under
+  someone else's config. Renames read the prefix-free `rename to` line. Both copies of
+  the parser (`packages/server/src/server/utils/diff-highlighter.ts` and
+  `packages/app/src/utils/diff-highlighter.ts`) carry the same rule.
+
+Regression coverage is `packages/server/src/utils/checkout-git.user-git-config.test.ts`,
+one case per setting. Add a case there rather than a defensive branch downstream when a
+new setting turns up.
+
 ## Switching branches with uncommitted changes
 
 Otto stages agent edits, so it does not expose a second Unstaged-files surface merely to make branch

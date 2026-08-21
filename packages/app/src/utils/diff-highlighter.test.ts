@@ -223,6 +223,67 @@ describe("parseDiff", () => {
     expect(files[0].hunks).toHaveLength(1);
   });
 
+  it("parses mnemonic-prefix git diff headers", () => {
+    const files = parseDiff(
+      SIMPLE_DIFF.replace("a/example.ts b/example.ts", "c/example.ts w/example.ts")
+        .replace("--- a/example.ts", "--- c/example.ts")
+        .replace("+++ b/example.ts", "+++ w/example.ts"),
+    );
+
+    expect(files).toHaveLength(1);
+    expect(files[0].path).toBe("example.ts");
+    expect(files[0].hunks).toHaveLength(1);
+  });
+
+  it("parses mnemonic-prefix paths with spaces", () => {
+    const files = parseDiff(
+      SIMPLE_DIFF.replaceAll("example.ts", "file with space.ts")
+        .replace(
+          "a/file with space.ts b/file with space.ts",
+          "i/file with space.ts w/file with space.ts",
+        )
+        .replace("--- a/file with space.ts", "--- i/file with space.ts")
+        .replace("+++ b/file with space.ts", "+++ w/file with space.ts"),
+    );
+
+    expect(files).toHaveLength(1);
+    expect(files[0].path).toBe("file with space.ts");
+    expect(files[0].hunks).toHaveLength(1);
+  });
+
+  it("parses custom src and dst prefix headers", () => {
+    const files = parseDiff(
+      SIMPLE_DIFF.replace("a/example.ts b/example.ts", "before/example.ts after/example.ts")
+        .replace("--- a/example.ts", "--- before/example.ts")
+        .replace("+++ b/example.ts", "+++ after/example.ts"),
+    );
+
+    expect(files).toHaveLength(1);
+    expect(files[0].path).toBe("example.ts");
+    expect(files[0].hunks).toHaveLength(1);
+  });
+
+  it("takes a renamed path from the prefix-free rename header", () => {
+    const files = parseDiff(
+      `diff --git c/src/old name.ts i/src/new name.ts
+similarity index 92%
+rename from src/old name.ts
+rename to src/new name.ts
+index 1234567..abcdefg 100644
+--- c/src/old name.ts
++++ i/src/new name.ts
+@@ -1,2 +1,2 @@
+ const foo = 1;
+-const bar = 2;
++const bar = 3;
+`,
+    );
+
+    expect(files).toHaveLength(1);
+    expect(files[0].path).toBe("src/new name.ts");
+    expect(files[0].hunks).toHaveLength(1);
+  });
+
   it("preserves no-prefix paths that start with a or b", () => {
     const files = parseDiff(
       `${SIMPLE_DIFF.replace(
