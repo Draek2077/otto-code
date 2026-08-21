@@ -1667,7 +1667,7 @@ function LeaderboardPanes({
       return (
         <View style={styles.compactStack}>
           {leaderboard}
-          <Text style={styles.sectionLabel}>Runs</Text>
+          <RunsHeader canRun={canRun} starting={starting} running={running} onRun={onRun} />
           {runs}
         </View>
       );
@@ -1677,6 +1677,7 @@ function LeaderboardPanes({
         <Button variant="ghost" size="sm" onPress={onBack} testID="brain-leaderboard-back">
           Back to the leaderboard
         </Button>
+        <RunsHeader canRun={canRun} starting={starting} running={running} onRun={onRun} />
         {runs}
         {detail}
       </View>
@@ -1691,13 +1692,7 @@ function LeaderboardPanes({
       testID="brain-benchmarks-splitter"
     >
       <View style={styles.listPane}>
-        <BenchmarkToolbar
-          runCount={runCount}
-          canRun={canRun}
-          starting={starting}
-          running={running}
-          onRun={onRun}
-        />
+        <BenchmarkToolbar runCount={runCount} />
         <BrainSplitter
           direction="vertical"
           ratio={benchmarkTablesSplitRatio}
@@ -1707,7 +1702,7 @@ function LeaderboardPanes({
         >
           {leaderboard}
           <View style={styles.runsPane}>
-            <Text style={styles.sectionLabel}>Runs</Text>
+            <RunsHeader canRun={canRun} starting={starting} running={running} onRun={onRun} />
             {runs}
           </View>
         </BrainSplitter>
@@ -1726,19 +1721,7 @@ function LeaderboardPanes({
   );
 }
 
-function BenchmarkToolbar({
-  runCount,
-  canRun,
-  starting,
-  running,
-  onRun,
-}: {
-  runCount: number;
-  canRun: boolean;
-  starting: boolean;
-  running: boolean;
-  onRun: () => void;
-}) {
+function BenchmarkToolbar({ runCount }: { runCount: number }) {
   return (
     <View style={styles.toolbar}>
       <Text style={styles.meta}>
@@ -1746,6 +1729,24 @@ function BenchmarkToolbar({
           ? `${runCount} ${runCount === 1 ? "run" : "runs"} recorded`
           : "No runs recorded"}
       </Text>
+    </View>
+  );
+}
+
+function RunsHeader({
+  canRun,
+  starting,
+  running,
+  onRun,
+}: {
+  canRun: boolean;
+  starting: boolean;
+  running: boolean;
+  onRun: () => void;
+}) {
+  return (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionLabel}>Runs</Text>
       {canRun ? (
         <Button
           variant="secondary"
@@ -2118,6 +2119,12 @@ const styles = StyleSheet.create((theme) => ({
     position: "relative",
   },
   compactStack: {
+    gap: theme.spacing[2],
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: theme.spacing[2],
   },
   sectionLabel: {
