@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { withUnistyles } from "react-native-unistyles";
 import { Error, Siren, SirenQuestion } from "@/components/icons/material-icons";
+import { StatusPulseGlow } from "@/components/status-pulse-glow";
 import type { Theme } from "@/styles/theme";
 
 /**
@@ -27,6 +28,7 @@ export function isAttentionStatusBucket(
 const amberColorMapping = (theme: Theme) => ({ color: theme.colors.palette.amber[500] });
 const redColorMapping = (theme: Theme) => ({ color: theme.colors.palette.red[500] });
 const greenColorMapping = (theme: Theme) => ({ color: theme.colors.palette.green[500] });
+const statusBucketThemeMapping = (theme: Theme) => ({ theme });
 
 const ThemedSirenQuestion = withUnistyles(SirenQuestion);
 const ThemedError = withUnistyles(Error);
@@ -39,12 +41,39 @@ export function StatusBucketIcon({
   bucket: AttentionStatusBucket;
   size: number;
 }): ReactElement {
-  switch (bucket) {
-    case "needs_input":
-      return <ThemedSirenQuestion size={size} uniProps={amberColorMapping} />;
-    case "failed":
-      return <ThemedError size={size} uniProps={redColorMapping} />;
-    case "attention":
-      return <ThemedSiren size={size} uniProps={greenColorMapping} />;
-  }
+  return (
+    <ThemedStatusBucketGlyph bucket={bucket} size={size} uniProps={statusBucketThemeMapping} />
+  );
 }
+
+// The halo is the glyph's own colour at that moment, and both resolve from the
+// same theme pass, so they can never drift apart.
+function StatusBucketGlyph({
+  bucket,
+  size,
+  theme,
+}: {
+  bucket: AttentionStatusBucket;
+  size: number;
+  theme: Theme;
+}): ReactElement {
+  let haloColor: string;
+  let glyph: ReactElement;
+  if (bucket === "needs_input") {
+    haloColor = theme.colors.palette.amber[500];
+    glyph = <ThemedSirenQuestion size={size} uniProps={amberColorMapping} />;
+  } else if (bucket === "failed") {
+    haloColor = theme.colors.palette.red[500];
+    glyph = <ThemedError size={size} uniProps={redColorMapping} />;
+  } else {
+    haloColor = theme.colors.palette.green[500];
+    glyph = <ThemedSiren size={size} uniProps={greenColorMapping} />;
+  }
+  return (
+    <StatusPulseGlow color={haloColor} size={size}>
+      {glyph}
+    </StatusPulseGlow>
+  );
+}
+
+const ThemedStatusBucketGlyph = withUnistyles(StatusBucketGlyph);
