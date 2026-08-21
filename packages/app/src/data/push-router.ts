@@ -164,6 +164,32 @@ const reconnectSubscriptionRepairsByServerId = new Map<string, Set<() => void>>(
  */
 export const TERMINAL_SUBSCRIPTION_LINGER_MS = 15_000;
 
+/**
+ * How long a checkout's diff subscription outlives its last observer.
+ *
+ * Same debounce as the terminals window above, for the same reason, on a path
+ * the user hits far more often. The explorer sidebar unmounts completely when
+ * it is toggled shut (`useSidebarSlide` returns null), which takes the Files
+ * tree's `useChangedFilePaths` with it - and that hook mounts the *full*
+ * checkout diff query, because deciding whether to offer a row's "View changes"
+ * needs the changed-path set and the daemon has no lighter RPC for it. So the
+ * last observer went away on close, and reopening re-subscribed, and the daemon
+ * answers every subscribe with the whole tokenized diff snapshot.
+ *
+ * Measured on a 1,720-directory fixture with 120 changed files: every single
+ * open pulled 3.64 MB over the socket and blocked the main thread for up to
+ * 595 ms, on the Files tab, with the Changes tab never opened. The same toggle
+ * against a clean tree cost 523 B - so the payload was the whole spike, both
+ * the "slow communication" and the dropped frames the report described.
+ *
+ * This delays the unsubscribe only: a toggle inside the window costs nothing,
+ * and a sidebar genuinely left shut stops pushing shortly after. It does not
+ * make the snapshot itself any cheaper - reopening after the window still pays
+ * full price, which is the separate payload-size problem tracked in the
+ * static-code audit's structural items.
+ */
+export const CHECKOUT_DIFF_SUBSCRIPTION_LINGER_MS = 15_000;
+
 export function checkoutDiffPushRoute(input: {
   enabled: boolean;
   serverId: string;
@@ -241,6 +267,9 @@ export function mountServerDataPushRouter(input: PushRouterInput): () => void {
   // workspace revisited inside the window is a timer cancel rather than an
   // unsubscribe/subscribe pair.
   const pendingTerminalUnsubscribes = new Map<string, ReturnType<typeof setTimeout>>();
+  // Same idea for the checkout diff, which the explorer sidebar's Files tree
+  // drops and re-adds on every open/close toggle.
+  const pendingCheckoutDiffUnsubscribes = new Map<string, ReturnType<typeof setTimeout>>();
 
   function cancelPendingTerminalUnsubscribe(key: string): void {
     const timer = pendingTerminalUnsubscribes.get(key);
@@ -256,6 +285,22 @@ export function mountServerDataPushRouter(input: PushRouterInput): () => void {
       clearTimeout(timer);
     }
     pendingTerminalUnsubscribes.clear();
+  }
+
+  function cancelPendingCheckoutDiffUnsubscribe(subscriptionId: string): void {
+    const timer = pendingCheckoutDiffUnsubscribes.get(subscriptionId);
+    if (timer === undefined) {
+      return;
+    }
+    clearTimeout(timer);
+    pendingCheckoutDiffUnsubscribes.delete(subscriptionId);
+  }
+
+  function clearPendingCheckoutDiffUnsubscribes(): void {
+    for (const timer of pendingCheckoutDiffUnsubscribes.values()) {
+      clearTimeout(timer);
+    }
+    pendingCheckoutDiffUnsubscribes.clear();
   }
 
   let disposed = false;
@@ -292,6 +337,23 @@ export function mountServerDataPushRouter(input: PushRouterInput): () => void {
       client: input.client,
       desired: desiredCheckoutDiffSubscriptions,
       serverId: input.serverId,
+      cancelPendingUnsubscribe: cancelPendingCheckoutDiffUnsubscribe,
+      scheduleUnsubscribe: (subscriptionId, route) => {
+        if (pendingCheckoutDiffUnsubscribes.has(subscriptionId)) {
+          return;
+        }
+        pendingCheckoutDiffUnsubscribes.set(
+          subscriptionId,
+          setTimeout(() => {
+            pendingCheckoutDiffUnsubscribes.delete(subscriptionId);
+            if (disposed || activeCheckoutDiffSubscriptions.get(subscriptionId) !== route) {
+              return;
+            }
+            activeCheckoutDiffSubscriptions.delete(subscriptionId);
+            unsubscribeCheckoutDiff(input.client, subscriptionId);
+          }, CHECKOUT_DIFF_SUBSCRIPTION_LINGER_MS),
+        );
+      },
     });
     reconcileTerminalSubscriptions({
       active: activeTerminalSubscriptions,
@@ -326,6 +388,7 @@ export function mountServerDataPushRouter(input: PushRouterInput): () => void {
     // dropped every subscription when it went away. Firing it after the
     // re-subscribe would tear down the fresh one.
     clearPendingTerminalUnsubscribes();
+    clearPendingCheckoutDiffUnsubscribes();
     activeCheckoutDiffSubscriptions.clear();
     activeTerminalSubscriptions.clear();
     reconcileSubscriptions(fallbackActive);
@@ -447,6 +510,7 @@ export function mountServerDataPushRouter(input: PushRouterInput): () => void {
     unsubscribeRunsCleared();
     unsubscribeGraphsChanged();
     unsubscribeTemplatesChanged();
+    clearPendingCheckoutDiffUnsubscribes();
     for (const subscriptionId of activeCheckoutDiffSubscriptions.keys()) {
       unsubscribeCheckoutDiff(input.client, subscriptionId);
     }
@@ -464,14 +528,27 @@ function reconcileCheckoutDiffSubscriptions(input: {
   client: ServerDataPushClient;
   desired: Map<string, CheckoutDiffRoute>;
   serverId: string;
+  cancelPendingUnsubscribe: (subscriptionId: string) => void;
+  scheduleUnsubscribe: (subscriptionId: string, route: CheckoutDiffRoute) => void;
 }): void {
   for (const [subscriptionId, current] of input.active) {
     const desired = input.desired.get(subscriptionId);
     if (desired && areCheckoutDiffRoutesEqual(current, desired)) {
+      // Wanted again - if it was on its way out, it isn't any more, and no
+      // subscribe is needed because it was never actually torn down. This is
+      // the sidebar-toggle case, and what keeps it from re-pulling the snapshot.
+      input.cancelPendingUnsubscribe(subscriptionId);
       continue;
     }
-    unsubscribeCheckoutDiff(input.client, subscriptionId);
-    input.active.delete(subscriptionId);
+    if (desired) {
+      // Same id, different comparison: the subscription is wrong rather than
+      // unwanted, so replace it now instead of lingering on stale parameters.
+      input.cancelPendingUnsubscribe(subscriptionId);
+      unsubscribeCheckoutDiff(input.client, subscriptionId);
+      input.active.delete(subscriptionId);
+      continue;
+    }
+    input.scheduleUnsubscribe(subscriptionId, current);
   }
 
   for (const [subscriptionId, desired] of input.desired) {

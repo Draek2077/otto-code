@@ -67,6 +67,16 @@ interface ChangedPathsInput {
  * Anything that changes those parameters (diff mode, base ref, hide-whitespace)
  * must stay in sync with GitDiffPane, or this quietly starts paying for a
  * second subscription.
+ *
+ * Note how expensive that subscription is, because the Files tree mounts this
+ * and the explorer sidebar unmounts entirely when it is toggled shut. Every
+ * subscribe is answered with the whole tokenized diff snapshot - measured at
+ * 3.64 MB and a 595 ms main-thread block on a 120-changed-file repository - so
+ * dropping and re-adding the observer is not a cheap thing to do on a toggle.
+ * What keeps that off the toggle path is CHECKOUT_DIFF_SUBSCRIPTION_LINGER_MS
+ * in `data/push-router.ts`: the teardown is delayed, so a close/open round trip
+ * cancels it instead of paying for it. Don't make this mount/unmount more
+ * often than the sidebar does without reading that constant first.
  */
 export function useChangedFilePaths({
   serverId,

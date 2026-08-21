@@ -12,6 +12,7 @@ import { brainStatusQueryKey } from "@/data/brain-status";
 import { daemonConfigQueryKey } from "@/data/daemon-config";
 import { providersSnapshotQueryKey } from "@/data/providers-snapshot";
 import {
+  CHECKOUT_DIFF_SUBSCRIPTION_LINGER_MS,
   checkoutDiffPushRoute,
   invalidateServerDataQueriesAfterReconnect,
   mountServerDataPushRouter,
@@ -328,8 +329,59 @@ describe("server data push router", () => {
 
     unsubscribeObserver();
 
+    // The teardown lingers, so a sidebar toggle can cancel it; it still fires
+    // once the window closes on a checkout genuinely left alone.
+    expect(fake.unsubscribeCheckoutDiffCalls).toEqual([]);
+    vi.advanceTimersByTime(CHECKOUT_DIFF_SUBSCRIPTION_LINGER_MS);
     expect(fake.unsubscribeCheckoutDiffCalls).toEqual([subscriptionId]);
 
+    unmount();
+  });
+
+  it("keeps the checkout diff subscription through an explorer sidebar toggle", () => {
+    const queryClient = new QueryClient();
+    const fake = createFakeClient();
+    const serverId = "server-1";
+    const cwd = "/repo";
+    const queryKey = checkoutDiffQueryKey(serverId, cwd, "base", "main", true);
+    const subscriptionId = `checkoutDiff:${JSON.stringify(queryKey)}`;
+    const observerOptions = {
+      queryKey,
+      queryFn: skipToken,
+      enabled: true,
+      gcTime: Infinity,
+      staleTime: Infinity,
+      meta: checkoutDiffPushRoute({
+        enabled: true,
+        serverId,
+        subscriptionId,
+        cwd,
+        compare: { mode: "base", baseRef: "main", ignoreWhitespace: true },
+      }),
+    } as const;
+
+    // Sidebar open: the Files tree's changed-path lookup mounts the diff query.
+    const opened = new QueryObserver(queryClient, observerOptions);
+    const unsubscribeOpened = opened.subscribe(() => undefined);
+    const unmount = mountServerDataPushRouter({ client: fake.client, queryClient, serverId });
+    expect(fake.subscribeCheckoutDiffCalls).toHaveLength(1);
+
+    // Close the sidebar (the pane unmounts entirely), then reopen it.
+    unsubscribeOpened();
+    vi.advanceTimersByTime(CHECKOUT_DIFF_SUBSCRIPTION_LINGER_MS / 2);
+    const reopened = new QueryObserver(queryClient, observerOptions);
+    const unsubscribeReopened = reopened.subscribe(() => undefined);
+
+    // No teardown and no re-subscribe, so the daemon never re-ships the
+    // tokenized snapshot the reopen used to cost.
+    expect(fake.unsubscribeCheckoutDiffCalls).toEqual([]);
+    expect(fake.subscribeCheckoutDiffCalls).toHaveLength(1);
+
+    vi.advanceTimersByTime(CHECKOUT_DIFF_SUBSCRIPTION_LINGER_MS * 2);
+    expect(fake.unsubscribeCheckoutDiffCalls).toEqual([]);
+    expect(fake.subscribeCheckoutDiffCalls).toHaveLength(1);
+
+    unsubscribeReopened();
     unmount();
   });
 
