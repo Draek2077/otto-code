@@ -3226,6 +3226,11 @@ export const zhCN: TranslationResources = {
           hint: "将三个或以上的连续操作折叠为一个可展开的分组；最近一次操作始终显示在其下方",
           accessibilityLabel: "将连续操作分组",
         },
+        wrapToolCallText: {
+          title: "换行显示工具调用文本",
+          hint: "在多行中显示完整的工具调用名称和摘要，而不是截断它们。",
+          accessibilityLabel: "换行显示工具调用文本",
+        },
         chatMetricsBar: {
           title: "显示对话指标",
           hint: "位于对话记录上方的一行窄条，显示此对话的总 token 数、费用和子智能体活动-包含它派生的一切。仅当提供方报告费用时才会显示费用",

@@ -3345,6 +3345,11 @@ export const es: TranslationResources = {
           hint: "Colapsa series de tres o más acciones consecutivas en un grupo expandible; la acción más reciente siempre queda visible debajo",
           accessibilityLabel: "Agrupar acciones consecutivas",
         },
+        wrapToolCallText: {
+          title: "Ajustar texto de llamadas a herramientas",
+          hint: "Muestra nombres y resúmenes completos de llamadas a herramientas en varias líneas en lugar de truncarlos.",
+          accessibilityLabel: "Ajustar texto de llamadas a herramientas",
+        },
         chatMetricsBar: {
           title: "Mostrar métricas del chat",
           hint: "Una fila estrecha encima de la transcripción con el total de tokens, el coste y la actividad de subagentes de este chat, incluido todo lo que generó. El coste solo aparece cuando el proveedor lo informa",

@@ -3358,6 +3358,11 @@ export const fr: TranslationResources = {
           hint: "Réduit les séries d'au moins trois actions consécutives en un groupe dépliable ; l'action la plus récente reste toujours visible en dessous",
           accessibilityLabel: "Regrouper les actions consécutives",
         },
+        wrapToolCallText: {
+          title: "Retour à la ligne du texte des appels d’outils",
+          hint: "Affiche les noms et résumés complets des appels d’outils sur plusieurs lignes au lieu de les tronquer.",
+          accessibilityLabel: "Retour à la ligne du texte des appels d’outils",
+        },
         chatMetricsBar: {
           title: "Afficher les métriques de la conversation",
           hint: "Une ligne fine au-dessus de la transcription indiquant le total de tokens, le coût et l'activité des sous-agents de cette conversation - y compris tout ce qu'elle a lancé. Le coût n'apparaît que si le fournisseur en rapporte un",

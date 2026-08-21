@@ -27,6 +27,12 @@ describe("collectAppSettingsUpdates", () => {
     });
   });
 
+  it("routes the independent wrapped tool-call text preference", () => {
+    expect(collectAppSettingsUpdates({ wrapToolCallText: true })).toEqual({
+      wrapToolCallText: true,
+    });
+  });
+
   it("routes shortcut overlay mode to app settings", () => {
     expect(collectAppSettingsUpdates({ shortcutOverlayMode: "on-screen" })).toEqual({
       shortcutOverlayMode: "on-screen",
@@ -35,8 +41,16 @@ describe("collectAppSettingsUpdates", () => {
 
   it("keeps routing the neighbouring appearance fields", () => {
     expect(
-      collectAppSettingsUpdates({ autoExpandReasoning: true, toolCallDetailLevel: "overview" }),
-    ).toEqual({ autoExpandReasoning: true, toolCallDetailLevel: "overview" });
+      collectAppSettingsUpdates({
+        autoExpandReasoning: true,
+        toolCallDetailLevel: "overview",
+        wrapToolCallText: true,
+      }),
+    ).toEqual({
+      autoExpandReasoning: true,
+      toolCallDetailLevel: "overview",
+      wrapToolCallText: true,
+    });
   });
 
   it("routes Structural diff presentation preferences to app settings", () => {

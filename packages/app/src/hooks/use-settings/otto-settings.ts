@@ -258,6 +258,10 @@ export interface OttoAppSettings {
   // bodies, diffs) instead of scrolling horizontally. Device-local presentation
   // only. Default on; off restores the horizontal-scroll behavior.
   wrapCodeLines: boolean;
+  // Show complete tool-call names and summaries on as many lines as needed,
+  // rather than clipping the compact activity row. This affects presentation
+  // only; `toolCallDetailLevel` independently controls summary versus detail.
+  wrapToolCallText: boolean;
   // Auto-archive completed sub-agents out of a chat's sub-agents track once they
   // settle, instead of leaving them in the collapsed "Completed" group for a
   // manual "Clear all completed". Purely visual decluttering - the cleared rows'
@@ -1053,6 +1057,9 @@ export function pickChatCodeSettings(stored: Partial<AppSettings>): Partial<AppS
   if (typeof stored.wrapCodeLines === "boolean") {
     result.wrapCodeLines = stored.wrapCodeLines;
   }
+  if (typeof stored.wrapToolCallText === "boolean") {
+    result.wrapToolCallText = stored.wrapToolCallText;
+  }
   if (typeof stored.autoClearCompletedSubagents === "boolean") {
     result.autoClearCompletedSubagents = stored.autoClearCompletedSubagents;
   }
@@ -1429,6 +1436,7 @@ export const DEFAULT_OTTO_SETTINGS: OttoAppSettings = {
   chatBubbleGradient: true,
   textEffectTheme: DEFAULT_TEXT_EFFECT_THEME,
   wrapCodeLines: true,
+  wrapToolCallText: false,
   autoClearCompletedSubagents: false,
   autoClearCompletedBackgroundTasks: false,
   autoClearFailedBackgroundTasks: false,

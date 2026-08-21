@@ -180,6 +180,13 @@ export const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     "appearance",
   ),
   app(
+    "wrap-tool-call-text",
+    "Wrap tool-call text",
+    "Show complete tool-call names and summaries without truncation",
+    "tool calls tools actions timeline wrap full text truncation ellipsis",
+    "appearance",
+  ),
+  app(
     "chat-layout",
     "Chat layout",
     "Adjust chat width, tabs, and message presentation",

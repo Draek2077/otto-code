@@ -107,6 +107,20 @@ describe("loadAppSettingsFromStorage", () => {
     expect(result.workspaceTitleSource).toBe("title");
   });
 
+  it("persists the independent wrapped tool-call text preference", async () => {
+    const defaults = await loadAppSettingsFromStorage(makeDeps());
+    expect(defaults.wrapToolCallText).toBe(false);
+
+    const configured = await loadAppSettingsFromStorage(
+      makeDeps({
+        storage: createInMemoryKeyValueStorage({
+          [APP_SETTINGS_KEY]: JSON.stringify({ wrapToolCallText: true }),
+        }),
+      }),
+    );
+    expect(configured.wrapToolCallText).toBe(true);
+  });
+
   it("shows workspace tools in the sidebar for new installs while preserving a saved header choice", async () => {
     const defaults = await loadAppSettingsFromStorage(makeDeps());
     expect(defaults.workspaceToolsPlacement).toBe("workspaceList");

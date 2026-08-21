@@ -82,6 +82,7 @@ import type { AgentAttachment } from "@otto-code/protocol/messages";
 import type { AgentUsage, ToolCallDetail } from "@otto-code/protocol/agent-types";
 import { readWidgetPayload } from "@otto-code/protocol/widgets/types";
 import { buildToolCallPresentation } from "@/tool-calls/presentation";
+import { resolveToolCallTextLayout } from "@/tool-calls/text-layout";
 import { WidgetCard } from "@/widgets/widget-card";
 import { isTightGlyphToolIcon, resolveToolCallIcon } from "@/utils/tool-call-icon";
 import { getMarkdownListMarker, getMarkdownListSpacing } from "@/utils/markdown-list";
@@ -106,6 +107,7 @@ import { ExpandCollapseControls } from "@/components/expand-collapse-controls";
 const selectChatBubbleGradient = (settings: AppSettings) => settings.chatBubbleGradient;
 const selectHideChatMessageDetails = (settings: AppSettings) => settings.hideChatMessageDetails;
 const selectAnimationsEnabled = (settings: AppSettings) => settings.animationsEnabled;
+const selectWrapToolCallText = (settings: AppSettings) => settings.wrapToolCallText;
 import { writeMarkdownToRichClipboard } from "@/utils/rich-clipboard";
 import { getDefaultMarkdownClipboardEnvironment } from "@/utils/rich-clipboard-default-environment";
 import {
@@ -1472,11 +1474,17 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
   },
+  headerRowWrapped: {
+    alignItems: "flex-start",
+  },
   labelRow: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     overflow: "hidden",
+  },
+  labelRowWrapped: {
+    alignItems: "flex-start",
   },
   iconBadge: {
     width: 22,
@@ -1487,6 +1495,12 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
     marginRight: theme.spacing[1],
     backgroundColor: "transparent",
   },
+  // The glyph is vertically centred in a fixed 22px slot while a multiline
+  // summary aligns its first text baseline at the row top. A tiny optical lift
+  // makes the icon read as belonging to that first line.
+  iconBadgeMultiLine: {
+    marginTop: -2,
+  },
   label: {
     color: theme.colors.foregroundMuted,
     // Matches assistant prose (theme.fontSize.sm) - chat is a working
@@ -1494,6 +1508,11 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
     flexShrink: 0,
+  },
+  labelWrapped: {
+    flexShrink: 1,
+    minWidth: 0,
+    ...(isWeb ? { overflowWrap: "anywhere" as const } : null),
   },
   labelActive: {
     color: theme.colors.foreground,
@@ -1509,6 +1528,13 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
     marginLeft: theme.spacing[2],
+  },
+  secondaryLabelWrapped: {
+    // Keep the short tool name in its left column. The summary owns the
+    // remaining width, so every continuation line starts under the summary,
+    // rather than becoming a new row below the name.
+    flex: 1,
+    ...(isWeb ? { overflowWrap: "anywhere" as const } : null),
   },
   secondaryLabelActive: {
     color: theme.colors.foreground,
@@ -1567,11 +1593,17 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
     alignItems: "center",
     overflow: "hidden",
   },
+  shimmerOverlayWrapped: {
+    alignItems: "flex-start",
+  },
   shimmerMaskRow: {
     flexDirection: "row",
     alignItems: "center",
     width: "100%",
     height: "100%",
+  },
+  shimmerMaskRowWrapped: {
+    alignItems: "flex-start",
   },
   nativeShimmerTrack: {
     position: "absolute",
@@ -1598,6 +1630,7 @@ interface NativeExpandableBadgeShimmerProps {
   durationSeconds: number;
   gradientId: string;
   effect: SweepTextEffectSpec;
+  textLayout: ReturnType<typeof resolveToolCallTextLayout>;
 }
 
 const NativeExpandableBadgeShimmer = memo(function NativeExpandableBadgeShimmer({
@@ -1609,6 +1642,7 @@ const NativeExpandableBadgeShimmer = memo(function NativeExpandableBadgeShimmer(
   durationSeconds,
   gradientId,
   effect,
+  textLayout,
 }: NativeExpandableBadgeShimmerProps) {
   const shimmerTranslateX = useSharedValue(0);
   const { bounce, easing } = effect;
@@ -1641,18 +1675,30 @@ const NativeExpandableBadgeShimmer = memo(function NativeExpandableBadgeShimmer(
   );
 
   const nativeShimmerMaskStyle = useMemo(
-    () => [expandableBadgeStylesheet.shimmerMaskRow, { width: rowWidth, height: rowHeight }],
-    [rowHeight, rowWidth],
+    () => [
+      expandableBadgeStylesheet.shimmerMaskRow,
+      textLayout.wrap && expandableBadgeStylesheet.shimmerMaskRowWrapped,
+      { width: rowWidth, height: rowHeight },
+    ],
+    [rowHeight, rowWidth, textLayout.wrap],
   );
 
   const nativeLabelMaskStyle = useMemo(
-    () => [expandableBadgeStylesheet.label, { color: "#000000", opacity: 1 }],
-    [],
+    () => [
+      expandableBadgeStylesheet.label,
+      textLayout.wrap && expandableBadgeStylesheet.labelWrapped,
+      { color: "#000000", opacity: 1 },
+    ],
+    [textLayout.wrap],
   );
 
   const nativeSecondaryMaskStyle = useMemo(
-    () => [expandableBadgeStylesheet.secondaryLabel, { color: "#000000", opacity: 1 }],
-    [],
+    () => [
+      expandableBadgeStylesheet.secondaryLabel,
+      textLayout.wrap && expandableBadgeStylesheet.secondaryLabelWrapped,
+      { color: "#000000", opacity: 1 },
+    ],
+    [textLayout.wrap],
   );
 
   const nativeShimmerPeakCombinedStyle = useMemo(
@@ -1667,11 +1713,11 @@ const NativeExpandableBadgeShimmer = memo(function NativeExpandableBadgeShimmer(
   const maskElement = useMemo(
     () => (
       <View pointerEvents="none" style={nativeShimmerMaskStyle}>
-        <Text style={nativeLabelMaskStyle} numberOfLines={1}>
+        <Text style={nativeLabelMaskStyle} numberOfLines={textLayout.numberOfLines}>
           {label}
         </Text>
         {secondaryLabel ? (
-          <Text style={nativeSecondaryMaskStyle} numberOfLines={1}>
+          <Text style={nativeSecondaryMaskStyle} numberOfLines={textLayout.numberOfLines}>
             {secondaryLabel}
           </Text>
         ) : (
@@ -1679,7 +1725,14 @@ const NativeExpandableBadgeShimmer = memo(function NativeExpandableBadgeShimmer(
         )}
       </View>
     ),
-    [nativeShimmerMaskStyle, nativeLabelMaskStyle, nativeSecondaryMaskStyle, label, secondaryLabel],
+    [
+      nativeShimmerMaskStyle,
+      nativeLabelMaskStyle,
+      nativeSecondaryMaskStyle,
+      label,
+      secondaryLabel,
+      textLayout.numberOfLines,
+    ],
   );
 
   return (
@@ -2931,6 +2984,8 @@ interface ExpandableBadgeSecondaryLabelProps {
   secondaryLabelStyle: StyleProp<TextStyle>;
   shouldMeasureTextSpan: boolean;
   onSecondaryLayout: (event: LayoutChangeEvent) => void;
+  numberOfLines: number | undefined;
+  onWrappedHeightChange?: (height: number) => void;
 }
 
 function ExpandableBadgeSecondaryLabel({
@@ -2938,15 +2993,26 @@ function ExpandableBadgeSecondaryLabel({
   secondaryLabelStyle,
   shouldMeasureTextSpan,
   onSecondaryLayout,
+  numberOfLines,
+  onWrappedHeightChange,
 }: ExpandableBadgeSecondaryLabelProps) {
+  const handleLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      if (shouldMeasureTextSpan) {
+        onSecondaryLayout(event);
+      }
+      onWrappedHeightChange?.(event.nativeEvent.layout.height);
+    },
+    [onSecondaryLayout, onWrappedHeightChange, shouldMeasureTextSpan],
+  );
   if (!secondaryLabel) {
     return null;
   }
   return (
     <Text
       style={secondaryLabelStyle}
-      numberOfLines={1}
-      onLayout={shouldMeasureTextSpan ? onSecondaryLayout : undefined}
+      numberOfLines={numberOfLines}
+      onLayout={shouldMeasureTextSpan || onWrappedHeightChange ? handleLayout : undefined}
     >
       {secondaryLabel}
     </Text>
@@ -2959,6 +3025,8 @@ interface ExpandableBadgeWebShimmerOverlayProps {
   shimmerLabelTextStyle: StyleProp<TextStyle>;
   shimmerSecondaryTextStyle: StyleProp<TextStyle>;
   showOpenFileButton: boolean;
+  numberOfLines: number | undefined;
+  wrap: boolean;
 }
 
 function ExpandableBadgeWebShimmerOverlay({
@@ -2967,14 +3035,22 @@ function ExpandableBadgeWebShimmerOverlay({
   shimmerLabelTextStyle,
   shimmerSecondaryTextStyle,
   showOpenFileButton,
+  numberOfLines,
+  wrap,
 }: ExpandableBadgeWebShimmerOverlayProps) {
   return (
-    <View style={expandableBadgeStylesheet.shimmerOverlay} pointerEvents="none">
-      <Text style={shimmerLabelTextStyle} numberOfLines={1}>
+    <View
+      style={[
+        expandableBadgeStylesheet.shimmerOverlay,
+        wrap && expandableBadgeStylesheet.shimmerOverlayWrapped,
+      ]}
+      pointerEvents="none"
+    >
+      <Text style={shimmerLabelTextStyle} numberOfLines={numberOfLines}>
         {label}
       </Text>
       {secondaryLabel ? (
-        <Text style={shimmerSecondaryTextStyle} numberOfLines={1}>
+        <Text style={shimmerSecondaryTextStyle} numberOfLines={numberOfLines}>
           {secondaryLabel}
         </Text>
       ) : null}
@@ -3018,6 +3094,8 @@ interface ExpandableBadgeLabelRowProps {
   onOpenFilePress: (event: GestureResponderEvent) => void;
   onOpenFileHoverIn: () => void;
   onOpenFileHoverOut: () => void;
+  textLayout: ReturnType<typeof resolveToolCallTextLayout>;
+  onWrappedSummaryMultiLineChange: (multiLine: boolean) => void;
 }
 
 function ExpandableBadgeLabelRow({
@@ -3048,25 +3126,60 @@ function ExpandableBadgeLabelRow({
   onOpenFilePress,
   onOpenFileHoverIn,
   onOpenFileHoverOut,
+  textLayout,
+  onWrappedSummaryMultiLineChange,
 }: ExpandableBadgeLabelRowProps) {
   const { t } = useTranslation();
+  const [labelHeight, setLabelHeight] = useState(0);
+  const [summaryHeight, setSummaryHeight] = useState(0);
+  const handleLabelLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      onLabelLayout(event);
+      if (textLayout.wrap) {
+        setLabelHeight((height) =>
+          Math.abs(height - event.nativeEvent.layout.height) > 0.5
+            ? event.nativeEvent.layout.height
+            : height,
+        );
+      }
+    },
+    [onLabelLayout, textLayout.wrap],
+  );
+  const handleSummaryHeightChange = useCallback(
+    (height: number) => {
+      if (!textLayout.wrap) return;
+      setSummaryHeight((previous) => (Math.abs(previous - height) > 0.5 ? height : previous));
+    },
+    [textLayout.wrap],
+  );
+  useEffect(() => {
+    onWrappedSummaryMultiLineChange(textLayout.wrap && summaryHeight > labelHeight + 0.5);
+  }, [labelHeight, onWrappedSummaryMultiLineChange, summaryHeight, textLayout.wrap]);
   return (
     <View
-      style={expandableBadgeStylesheet.labelRow}
+      style={[
+        expandableBadgeStylesheet.labelRow,
+        textLayout.wrap && expandableBadgeStylesheet.labelRowWrapped,
+      ]}
       onLayout={shouldMeasureNativeShimmer ? onLabelRowLayout : undefined}
     >
       <Text
-        style={labelStyle}
-        numberOfLines={1}
-        onLayout={shouldMeasureTextSpan ? onLabelLayout : undefined}
+        style={[labelStyle, textLayout.wrap && expandableBadgeStylesheet.labelWrapped]}
+        numberOfLines={textLayout.numberOfLines}
+        onLayout={shouldMeasureTextSpan || textLayout.wrap ? handleLabelLayout : undefined}
       >
         {label}
       </Text>
       <ExpandableBadgeSecondaryLabel
         secondaryLabel={secondaryLabel}
-        secondaryLabelStyle={secondaryLabelStyle}
+        secondaryLabelStyle={[
+          secondaryLabelStyle,
+          textLayout.wrap && expandableBadgeStylesheet.secondaryLabelWrapped,
+        ]}
         shouldMeasureTextSpan={shouldMeasureTextSpan}
         onSecondaryLayout={onSecondaryLayout}
+        numberOfLines={textLayout.numberOfLines}
+        onWrappedHeightChange={textLayout.wrap ? handleSummaryHeightChange : undefined}
       />
       {showOpenFileButton ? (
         <Pressable
@@ -3089,9 +3202,17 @@ function ExpandableBadgeLabelRow({
         <ExpandableBadgeWebShimmerOverlay
           label={label}
           secondaryLabel={secondaryLabel}
-          shimmerLabelTextStyle={shimmerLabelTextStyle}
-          shimmerSecondaryTextStyle={shimmerSecondaryTextStyle}
+          shimmerLabelTextStyle={[
+            shimmerLabelTextStyle,
+            textLayout.wrap && expandableBadgeStylesheet.labelWrapped,
+          ]}
+          shimmerSecondaryTextStyle={[
+            shimmerSecondaryTextStyle,
+            textLayout.wrap && expandableBadgeStylesheet.secondaryLabelWrapped,
+          ]}
           showOpenFileButton={showOpenFileButton}
+          numberOfLines={textLayout.numberOfLines}
+          wrap={textLayout.wrap}
         />
       ) : null}
       {/* Pure decoration over the untouched label: the rain never reads,
@@ -3115,6 +3236,7 @@ function ExpandableBadgeLabelRow({
           durationSeconds={shimmerDuration}
           gradientId={nativeGradientId}
           effect={sweepEffect}
+          textLayout={textLayout}
         />
       ) : null}
     </View>
@@ -3340,6 +3462,22 @@ function resolveTextEffectBranches(
   return { sweepEffect: effect, glyphEffect: null };
 }
 
+function getExpandableBadgeHeaderStyle(wrap: boolean): StyleProp<ViewStyle> {
+  return wrap
+    ? [expandableBadgeStylesheet.headerRow, expandableBadgeStylesheet.headerRowWrapped]
+    : expandableBadgeStylesheet.headerRow;
+}
+
+function shouldTopAlignToolCallHeader(wrap: boolean, summaryIsMultiLine: boolean): boolean {
+  return wrap && summaryIsMultiLine;
+}
+
+function getToolCallIconBadgeStyle(topAligned: boolean): StyleProp<ViewStyle> {
+  return topAligned
+    ? [expandableBadgeStylesheet.iconBadge, expandableBadgeStylesheet.iconBadgeMultiLine]
+    : expandableBadgeStylesheet.iconBadge;
+}
+
 export const ExpandableBadge = memo(function ExpandableBadge({
   label,
   style,
@@ -3362,10 +3500,13 @@ export const ExpandableBadge = memo(function ExpandableBadge({
   testID,
 }: ExpandableBadgeProps) {
   const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
+  const wrapToolCallText = useAppSettingValue(selectWrapToolCallText);
+  const textLayout = resolveToolCallTextLayout(wrapToolCallText);
   const isCompact = useIsCompactFormFactor();
   const [isHovered, setIsHovered] = useState(false);
   const [isOpenFileHovered, setIsOpenFileHovered] = useState(false);
   const [isPressed, setIsPressed] = useState(false);
+  const [isSummaryMultiLine, setIsSummaryMultiLine] = useState(false);
   const isInteractive = Boolean(onToggle);
   const hasDetailContent = Boolean(renderDetails);
   const detailContent = hasDetailContent && isExpanded ? renderDetails?.() : null;
@@ -3392,6 +3533,10 @@ export const ExpandableBadge = memo(function ExpandableBadge({
   );
   const handleOpenFileHoverIn = useCallback(() => setIsOpenFileHovered(true), []);
   const handleOpenFileHoverOut = useCallback(() => setIsOpenFileHovered(false), []);
+  const handleWrappedSummaryMultiLineChange = useCallback((multiLine: boolean) => {
+    setIsSummaryMultiLine((current) => (current === multiLine ? current : multiLine));
+  }, []);
+  const topAlignHeader = shouldTopAlignToolCallHeader(textLayout.wrap, isSummaryMultiLine);
 
   const nativeGradientIdRef = useRef(
     `shimmer-gradient-${Math.random().toString(36).substring(2, 9)}`,
@@ -3647,8 +3792,8 @@ export const ExpandableBadge = memo(function ExpandableBadge({
         accessibilityState={accessibilityState}
         style={pressableStyle}
       >
-        <View style={expandableBadgeStylesheet.headerRow}>
-          <View style={expandableBadgeStylesheet.iconBadge}>{iconSlotNode}</View>
+        <View style={getExpandableBadgeHeaderStyle(topAlignHeader)}>
+          <View style={getToolCallIconBadgeStyle(topAlignHeader)}>{iconSlotNode}</View>
           <ExpandableBadgeLabelRow
             label={label}
             labelStyle={labelStyle}
@@ -3677,6 +3822,8 @@ export const ExpandableBadge = memo(function ExpandableBadge({
             onOpenFilePress={handleOpenFilePress}
             onOpenFileHoverIn={handleOpenFileHoverIn}
             onOpenFileHoverOut={handleOpenFileHoverOut}
+            textLayout={textLayout}
+            onWrappedSummaryMultiLineChange={handleWrappedSummaryMultiLineChange}
           />
           {renderExpandCollapseControls(
             onExpandAll,

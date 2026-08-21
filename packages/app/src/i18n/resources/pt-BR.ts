@@ -3326,6 +3326,11 @@ export const ptBR: TranslationResources = {
           hint: "Recolhe sequências de três ou mais ações consecutivas em um grupo expansível; a ação mais recente permanece sempre visível abaixo",
           accessibilityLabel: "Agrupar ações consecutivas",
         },
+        wrapToolCallText: {
+          title: "Quebrar texto de chamadas de ferramentas",
+          hint: "Mostra nomes e resumos completos das chamadas de ferramentas em várias linhas, em vez de truncá-los.",
+          accessibilityLabel: "Quebrar texto de chamadas de ferramentas",
+        },
         chatMetricsBar: {
           title: "Mostrar métricas do chat",
           hint: "Uma linha fina acima da transcrição com o total de tokens, o custo e a atividade de subagentes deste chat - incluindo tudo que ele iniciou. O custo aparece só quando o provedor informa um",

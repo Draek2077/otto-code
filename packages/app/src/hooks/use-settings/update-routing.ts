@@ -29,6 +29,7 @@ const APP_SETTINGS_UPDATE_KEYS = [
   "autoExpandReasoning",
   "chatMetricsBar",
   "wrapCodeLines",
+  "wrapToolCallText",
   "interfaceMode",
   "suggestedTasksEnabled",
   "suggestedTasksDefaultMode",

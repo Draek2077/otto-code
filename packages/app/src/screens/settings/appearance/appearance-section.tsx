@@ -1013,6 +1013,13 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
+  const handleWrapToolCallTextChange = useCallback(
+    (wrapToolCallText: boolean) => {
+      void updateSettings({ wrapToolCallText });
+    },
+    [updateSettings],
+  );
+
   const handleHideChatMessageDetailsChange = useCallback(
     (hideChatMessageDetails: boolean) => {
       void updateSettings({ hideChatMessageDetails });
@@ -1352,6 +1359,15 @@ export function AppearanceSection() {
           <ToolCallDetailRow
             value={settings.toolCallDetailLevel}
             onChange={handleToolCallDetailLevelChange}
+          />
+          <LayoutToggleRow
+            title={t("settings.appearance.agents.wrapToolCallText.title")}
+            hint={t("settings.appearance.agents.wrapToolCallText.hint")}
+            accessibilityLabel={t("settings.appearance.agents.wrapToolCallText.accessibilityLabel")}
+            value={settings.wrapToolCallText}
+            withBorder
+            onValueChange={handleWrapToolCallTextChange}
+            testID="settings-wrap-tool-call-text-switch"
           />
           <LayoutToggleRow
             title={t("settings.appearance.agents.chatMetricsBar.title")}

@@ -3318,6 +3318,11 @@ export const en = {
           hint: "Collapse runs of three or more consecutive actions into one expandable group; the most recent action always stays visible below it",
           accessibilityLabel: "Group consecutive actions together",
         },
+        wrapToolCallText: {
+          title: "Wrap tool-call text",
+          hint: "Show complete tool-call names and summaries on multiple lines instead of truncating them.",
+          accessibilityLabel: "Wrap tool-call text",
+        },
         chatMetricsBar: {
           title: "Show chat metrics",
           hint: "A slim row above the transcript with this chat's total tokens, cost and sub-agent activity - including everything it spawned. Cost appears only where the provider reports one",
