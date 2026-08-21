@@ -120,6 +120,10 @@ import { isWeb } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
 import { recordRenderProfileReasons } from "@/utils/render-profiler";
 import { useRetainedPanelActive } from "@/components/retained-panel";
+import {
+  resolveBlackChatCanvasStyle,
+  useBlackChatScope,
+} from "@/components/black-chat-scope-context";
 import { revealDirectoryInFiles, revealFileInFiles } from "@/git/changes-reveal";
 
 function renderLiveAuxiliaryNode(input: {
@@ -343,6 +347,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     ref,
   ) {
     const { t } = useTranslation();
+    const isBlackChat = useBlackChatScope();
     const autoExpandReasoning = useSettings((settings) => settings.autoExpandReasoning);
     const toolCallDetailLevel = useSettings((settings) => settings.toolCallDetailLevel);
     const groupConsecutiveActions = useSettings((settings) => settings.groupConsecutiveActions);
@@ -1216,7 +1221,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         >
           <WidgetChatProvider serverId={resolvedServerId} agentId={agentId}>
             <AssistantSelectionCopySurface style={stylesheet.container}>
-              <View ref={streamContainerHostRef} style={stylesheet.container}>
+              <View
+                ref={streamContainerHostRef}
+                style={[stylesheet.container, resolveBlackChatCanvasStyle(isBlackChat)]}
+              >
                 <MessageOuterSpacingProvider disableOuterSpacing>
                   {streamRenderStrategy.render({
                     agentId,

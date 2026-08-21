@@ -17,6 +17,10 @@ import type {
 import type { DaemonClient } from "@otto-code/client";
 import type { ComposerAttachment } from "@/attachments/types";
 import { BlackChatScope } from "@/components/black-chat-scope";
+import {
+  resolveBlackChatCanvasStyle,
+  useBlackChatScope,
+} from "@/components/black-chat-scope-context";
 import { ChatSeamFade } from "@/components/chat-seam-fade";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
 import {
@@ -122,6 +126,7 @@ function CommunicationsRoomContent({
   compact: boolean;
   isPaneFocused: boolean;
 }): ReactElement {
+  const isBlackChat = useBlackChatScope();
   const roomScrollKey = `communications-room:${serverId}:${conversation.providerId}:${conversation.conversationId}`;
   const retainedScroll = useRetainedScrollOffset(roomScrollKey);
   const scrollModeRef = useRef<CommunicationsRoomScrollMode>(
@@ -427,7 +432,9 @@ function CommunicationsRoomContent({
   );
 
   return (
-    <View style={[styles.room, compact && styles.compactRoom]}>
+    <View
+      style={[styles.room, compact && styles.compactRoom, resolveBlackChatCanvasStyle(isBlackChat)]}
+    >
       {room?.capabilities.unavailableReason ? (
         <Text style={styles.availability}>{room.capabilities.unavailableReason}</Text>
       ) : null}
