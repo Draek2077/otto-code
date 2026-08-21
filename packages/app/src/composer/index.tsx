@@ -597,6 +597,41 @@ function QueuedMessageRow({
   const attachmentCount = item.attachmentCount ?? item.attachments.length;
   return (
     <View style={styles.queueItem}>
+      {onMove ? (
+        // Stacked half-height arrows read as one order control instead of two
+        // buttons competing with edit/send. The ends of the queue keep their
+        // arrow, disabled, so every row's controls stay on the same grid.
+        <View style={styles.queueMoveColumn}>
+          <Pressable
+            onPress={handleMoveUp}
+            disabled={!canMoveUp}
+            hitSlop={QUEUE_MOVE_UP_HIT_SLOP}
+            style={canMoveUp ? styles.queueMoveButton : QUEUE_MOVE_BUTTON_DISABLED_STYLE}
+            accessibilityLabel={moveUpLabel}
+            accessibilityRole="button"
+            accessibilityState={canMoveUp ? undefined : QUEUE_MOVE_DISABLED_STATE}
+          >
+            <ThemedChevronUp
+              size={iconSize.xs}
+              uniProps={canMoveUp ? iconForegroundMapping : iconForegroundMutedMapping}
+            />
+          </Pressable>
+          <Pressable
+            onPress={handleMoveDown}
+            disabled={!canMoveDown}
+            hitSlop={QUEUE_MOVE_DOWN_HIT_SLOP}
+            style={canMoveDown ? styles.queueMoveButton : QUEUE_MOVE_BUTTON_DISABLED_STYLE}
+            accessibilityLabel={moveDownLabel}
+            accessibilityRole="button"
+            accessibilityState={canMoveDown ? undefined : QUEUE_MOVE_DISABLED_STATE}
+          >
+            <ThemedChevronDown
+              size={iconSize.xs}
+              uniProps={canMoveDown ? iconForegroundMapping : iconForegroundMutedMapping}
+            />
+          </Pressable>
+        </View>
+      ) : null}
       {attachmentCount > 0 ? (
         // Leads the row, ahead of the text: the whole point is that the
         // attachments are visibly part of the queued message, not an
@@ -614,41 +649,6 @@ function QueuedMessageRow({
         {item.text}
       </Text>
       <View style={styles.queueActions}>
-        {onMove ? (
-          // Stacked half-height arrows read as one order control instead of two
-          // buttons competing with edit/send. The ends of the queue keep their
-          // arrow, disabled, so every row's controls stay on the same grid.
-          <View style={styles.queueMoveColumn}>
-            <Pressable
-              onPress={handleMoveUp}
-              disabled={!canMoveUp}
-              hitSlop={QUEUE_MOVE_UP_HIT_SLOP}
-              style={canMoveUp ? styles.queueMoveButton : QUEUE_MOVE_BUTTON_DISABLED_STYLE}
-              accessibilityLabel={moveUpLabel}
-              accessibilityRole="button"
-              accessibilityState={canMoveUp ? undefined : QUEUE_MOVE_DISABLED_STATE}
-            >
-              <ThemedChevronUp
-                size={iconSize.xs}
-                uniProps={canMoveUp ? iconForegroundMapping : iconForegroundMutedMapping}
-              />
-            </Pressable>
-            <Pressable
-              onPress={handleMoveDown}
-              disabled={!canMoveDown}
-              hitSlop={QUEUE_MOVE_DOWN_HIT_SLOP}
-              style={canMoveDown ? styles.queueMoveButton : QUEUE_MOVE_BUTTON_DISABLED_STYLE}
-              accessibilityLabel={moveDownLabel}
-              accessibilityRole="button"
-              accessibilityState={canMoveDown ? undefined : QUEUE_MOVE_DISABLED_STATE}
-            >
-              <ThemedChevronDown
-                size={iconSize.xs}
-                uniProps={canMoveDown ? iconForegroundMapping : iconForegroundMutedMapping}
-              />
-            </Pressable>
-          </View>
-        ) : null}
         {onSendAll ? (
           <Pressable
             onPress={onSendAll}
