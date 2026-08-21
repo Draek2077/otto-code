@@ -1,5 +1,54 @@
 # Changelog
 
+## 0.8.12 - 2026-08-20
+
+### Added
+
+- Attach a file, a selected range, or an @ mention to the chat as a removable context pill, from the File Editor, its right-click menu, and the composer
+- Comment on a rendered Markdown heading to hand that section, and its source location, to the agent
+- Render LaTeX math in chat replies and in the prompts you send
+- Search inside the file editor's rendered Preview, with the same match count and next/previous behavior as the code view
+- Keep Markdown files in Otto's editor while an external editor opens everything else
+- When a Kanban board's GitHub credential is missing scopes, Otto shows the exact command that fixes it, with Copy and Run in terminal actions
+- Status icons now pulse with a soft halo in their semantic color, including the Zoom presence, meeting recorder, and wake word icons in the title bar
+- Let Otto follow the agent's own next-prompt suggestion automatically, off by default, bounded at three in a row with a Stop control
+- Show complete tool-call names and summaries on wrapped lines instead of truncating them
+- Split panes on desktop with keyboard shortcuts
+- Copy filename, full path, or workspace-relative path from a file tab's context menu
+- Create a project README directly from the new workspace screen
+- Spell-check in the composer
+
+### Changed
+
+- The File Editor toolbar now sheds its least important buttons in a narrow pane, so the view mode bar stays reachable
+- Settings search now finds more settings
+- Developer-only settings now show a hint that Developer mode is required to edit them
+- Bundled ACP agents move to their latest published versions
+
+### Fixed
+
+- A provider outage now reports one actionable error instead of a raw failure repeated in the transcript
+- Chats now keep a scrolled-up reader's place when the tab is unloaded and reopened
+- Opening the explorer sidebar no longer re-downloads the whole diff on large repositories
+- Zoom keeps its title-bar icon when Chat goes offline, so there is a way back online without opening Settings
+- Deleting all review comments now sweeps the whole branch, including comments the current view does not show, and says so before deleting
+- Outdated pull-request comments are left out of "Add all to chat"
+- On mobile, the per-bubble speaker fades so it stops covering the text underneath
+- Context removed from the composer, including dismissed meeting notes, is now permanently discarded
+- Wrap long lines now wraps structural diff rows too
+- Background shell tasks stop auto-clearing while their track is open
+- The meeting notes popup keeps its title, recorder control, and search in place while the list scrolls
+- Settings row pickers no longer collapse to a single character, and their menus are wide enough to read every option
+- The file outline keeps each heading level marker on one line
+- Changes view no longer blanks when a personal git config reshapes patch headers
+- Files tab no longer errors over the whole tree when a folder was deleted after last expansion
+- Structural review comments now sit inline with their code rows
+- Run in terminal now navigates to the terminal it starts in
+- On mobile, chats now apply the black chat background setting correctly
+- Git fetch no longer queues in the background after the policy is disabled
+- New Project no longer flashes a self-duplicate error
+- The model picker no longer implicitly selects the Claude ultracode workflow
+
 ## 0.8.11 - 2026-08-19
 
 ### Added
