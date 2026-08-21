@@ -44,6 +44,11 @@ import { Shortcut } from "@/components/ui/shortcut";
 import { ToolbarIconButton } from "@/components/ui/toolbar-icon-button";
 import { ToolbarSeparator } from "@/components/ui/toolbar-separator";
 import { PANE_TOOLBAR_HEIGHT } from "@/components/ui/control-geometry";
+import {
+  TOOLBAR_ROW_GAP,
+  TOOLBAR_ROW_PADDING,
+  useFileToolbarCollapse,
+} from "@/components/file-toolbar-collapse";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useAppSettings, type AppSettings } from "@/hooks/use-settings";
 import { isWeb } from "@/constants/platform";
@@ -591,6 +596,28 @@ function PreviewOnlyView({
   // for the toggle to turn off.
   const wrapAvailable = fileInfo?.kind === "text" && !fileInfo.isRenderedDocument;
 
+  // A narrow pane sheds the least important buttons rather than pushing the
+  // mode bar off its right edge; see file-toolbar-collapse.
+  const collapse = useFileToolbarCollapse({
+    actions: {
+      refine: onRefine !== null,
+      exportHtml: onExportHtml !== null,
+      exportPdf: onExportPdf !== null,
+      findInFiles: onNavigateToFile !== null,
+      viewChanges: onViewChanges !== null,
+      outline: hasCodeIndex,
+      wordWrap: wrapAvailable,
+    },
+    chrome: {
+      history: handleOpenHistory,
+      addToChat: onAddToChat,
+      leadingSlot: toolbarLeadingSlot,
+      externalEditor: false,
+      find: findAvailable,
+      modeBar: modeBarProps,
+    },
+  });
+
   const findQuery = useMemo<PreviewFindQuery | null>(
     () =>
       find.open && find.search
@@ -664,53 +691,63 @@ function PreviewOnlyView({
       {/* Same shape as the editor toolbar: file actions, a separator, then the
           navigate-within-the-file tools - so the two views don't move the
           buttons around under the user when they switch mode. */}
-      <View style={styles.previewToolbar}>
-        <FileGitToolbarGroup
-          onOpenHistory={handleOpenHistory}
-          onNavigateToFile={onNavigateToFile}
-          onViewChanges={onViewChanges}
-          showLeadingSeparator={false}
-        />
-        <FileAiToolbarGroup
-          onAddToChat={onAddToChat}
-          onRefine={onRefine}
-          showLeadingSeparator={Boolean(handleOpenHistory || onViewChanges)}
-        />
-        <FileExportToolbarGroup
-          onExportHtml={onExportHtml}
-          onExportPdf={onExportPdf}
-          exportPdfPending={exportPdfPending}
-        />
-        <ToolbarLeadingSlot>{toolbarLeadingSlot}</ToolbarLeadingSlot>
-        <ToolbarSeparator />
-        {hasCodeIndex ? (
-          <ToolbarIconButton
-            label={t("codeOutline.open")}
-            testID="preview-outline-toggle"
-            Icon={ThemedList}
-            onPress={openOutline}
+      <View style={styles.previewToolbar} onLayout={collapse.onToolbarLayout}>
+        <View style={styles.toolbarGroup} onLayout={collapse.onLeadingGroupLayout}>
+          <FileGitToolbarGroup
+            onOpenHistory={handleOpenHistory}
+            onNavigateToFile={collapse.keep("findInFiles", onNavigateToFile)}
+            onViewChanges={collapse.keep("viewChanges", onViewChanges)}
+            showLeadingSeparator={false}
           />
-        ) : null}
-        {findAvailable ? (
-          <ToolbarIconButton
-            label={t("editor.find.open")}
-            testID="preview-find-toggle"
-            Icon={ThemedSearch}
-            onPress={find.open ? closeFind : openFind}
-            selected={find.open}
+          <FileAiToolbarGroup
+            onAddToChat={onAddToChat}
+            onRefine={collapse.keep("refine", onRefine)}
+            showLeadingSeparator={Boolean(handleOpenHistory || onViewChanges)}
           />
-        ) : null}
+          <FileExportToolbarGroup
+            onExportHtml={collapse.keep("exportHtml", onExportHtml)}
+            onExportPdf={collapse.keep("exportPdf", onExportPdf)}
+            exportPdfPending={exportPdfPending}
+          />
+          <ToolbarLeadingSlot>{toolbarLeadingSlot}</ToolbarLeadingSlot>
+          <ToolbarSeparator />
+          {collapse.keep(
+            "outline",
+            hasCodeIndex ? (
+              <ToolbarIconButton
+                label={t("codeOutline.open")}
+                testID="preview-outline-toggle"
+                Icon={ThemedList}
+                onPress={openOutline}
+              />
+            ) : null,
+          )}
+          {findAvailable ? (
+            <ToolbarIconButton
+              label={t("editor.find.open")}
+              testID="preview-find-toggle"
+              Icon={ThemedSearch}
+              onPress={find.open ? closeFind : openFind}
+              selected={find.open}
+            />
+          ) : null}
+        </View>
         <View style={styles.toolbarSpacer} />
-        {wrapAvailable ? (
-          <ToolbarIconButton
-            label={t("editor.wordWrap")}
-            testID="preview-wordwrap-toggle"
-            Icon={ThemedWrapText}
-            onPress={toggleWordWrap}
-            selected={wordWrap}
-          />
-        ) : null}
-        {modeBarProps ? <FileViewModeBar {...modeBarProps} /> : null}
+        <View style={styles.toolbarGroup} onLayout={collapse.onTrailingGroupLayout}>
+          {collapse.keep(
+            "wordWrap",
+            wrapAvailable ? (
+              <ToolbarIconButton
+                label={t("editor.wordWrap")}
+                testID="preview-wordwrap-toggle"
+                Icon={ThemedWrapText}
+                onPress={toggleWordWrap}
+                selected={wordWrap}
+              />
+            ) : null,
+          )}
+          {modeBarProps ? <FileViewModeBar {...modeBarProps} /> : null}
+        </View>
       </View>
       {findAvailable && find.open ? (
         <PreviewFindStrip find={find} matchCountLabel={matchCountLabel} handlers={findHandlers} />
@@ -1033,14 +1070,16 @@ function EditorContextMenu({
         ) : null}
         {canGoToDefinition || onFindReferences || onRenameSymbol ? <ContextMenuSeparator /> : null}
         {/* Sits above the clipboard actions because it is the same shape as
-            copy - take what is selected and put it somewhere - and disabled by
-            the same test. With no selection there is no range to reference, and
-            the whole-file version is one click away in the toolbar. */}
-        {onAddSelectionToChat ? (
+            copy - take what is selected and put it somewhere.
+            Absent rather than disabled when there is no selection, and its
+            separator goes with it: unlike cut and copy, which the platform menu
+            this one replaced always showed, nothing here owes the user a greyed
+            row. With no selection there is no range to reference, and the
+            whole-file version is one click away in the toolbar. */}
+        {onAddSelectionToChat && hasSelection ? (
           <>
             <ContextMenuItem
               testID="editor-context-add-selection-to-chat"
-              disabled={!hasSelection}
               onSelect={onAddSelectionToChat}
             >
               {t("editor.addToChat.selection")}
@@ -1813,6 +1852,29 @@ function EditorModeView({
     };
   }, [controllerRef, onOpenHistory]);
 
+  // A narrow pane sheds the least important buttons rather than pushing the
+  // mode bar off its right edge; see file-toolbar-collapse. Word wrap is always
+  // on offer here - the editor always has a code surface for it to act on.
+  const collapse = useFileToolbarCollapse({
+    actions: {
+      refine: onRefine !== null,
+      exportHtml: onExportHtml !== null,
+      exportPdf: onExportPdf !== null,
+      findInFiles: onNavigateToFile !== null,
+      viewChanges: onViewChanges !== null,
+      outline: hasCodeIndex,
+      wordWrap: true,
+    },
+    chrome: {
+      history: handleOpenHistory,
+      addToChat: onAddToChat,
+      leadingSlot: toolbarLeadingSlot,
+      externalEditor: externalEditorLabel,
+      find: true,
+      modeBar: modeBarProps,
+    },
+  });
+
   // The editor's right-click menu. The anchor doubles as the open flag; the
   // core has already moved the caret to the click by the time this fires, so
   // every action below reads the selection it should act on.
@@ -2025,73 +2087,87 @@ function EditorModeView({
 
   return (
     <View style={styles.container} testID="workspace-file-tab-pane">
-      <View style={styles.toolbar}>
-        <ToolbarIconButton
-          label={t("editor.save")}
-          testID="editor-save"
-          Icon={ThemedSave}
-          onPress={handleSavePress}
-          disabled={!buffer.dirty || buffer.saving || buffer.conflict !== null}
-          loading={buffer.saving}
-          shortcut={shortcutHints.save}
-          shortcutDiscoveryAction="editor.save"
-        />
-        <ToolbarIconButton
-          label={t("editor.revert")}
-          testID="editor-revert"
-          Icon={ThemedUndo2}
-          onPress={handleRevertPress}
-          disabled={!buffer.dirty || buffer.saving}
-        />
-        <FileGitToolbarGroup
-          onOpenHistory={handleOpenHistory}
-          onNavigateToFile={onNavigateToFile}
-          onViewChanges={onViewChanges}
-          showLeadingSeparator
-        />
-        <ExternalEditorToolbarButton
-          buffer={buffer}
-          label={externalEditorLabel}
-          onOpen={onOpenExternalEditor}
-        />
-        <FileAiToolbarGroup onAddToChat={onAddToChat} onRefine={onRefine} showLeadingSeparator />
-        <FileExportToolbarGroup
-          onExportHtml={onExportHtml}
-          onExportPdf={onExportPdf}
-          exportPdfPending={exportPdfPending}
-        />
-        <ToolbarLeadingSlot>{toolbarLeadingSlot}</ToolbarLeadingSlot>
-        {/* Save/revert/history act on the FILE; outline and find navigate WITHIN
-            it. The separator is the line between those two jobs, and both groups
-            stay left where the eye starts. */}
-        <ToolbarSeparator />
-        {hasCodeIndex ? (
+      <View style={styles.toolbar} onLayout={collapse.onToolbarLayout}>
+        <View style={styles.toolbarGroup} onLayout={collapse.onLeadingGroupLayout}>
           <ToolbarIconButton
-            label={t("codeOutline.open")}
-            testID="editor-outline-toggle"
-            Icon={ThemedList}
-            onPress={openOutline}
+            label={t("editor.save")}
+            testID="editor-save"
+            Icon={ThemedSave}
+            onPress={handleSavePress}
+            disabled={!buffer.dirty || buffer.saving || buffer.conflict !== null}
+            loading={buffer.saving}
+            shortcut={shortcutHints.save}
+            shortcutDiscoveryAction="editor.save"
           />
-        ) : null}
-        <ToolbarIconButton
-          label={t("editor.find.open")}
-          testID="editor-find-toggle"
-          Icon={ThemedSearch}
-          onPress={find.open ? closeFind : openFind}
-          selected={find.open}
-          shortcut={shortcutHints.find}
-          shortcutDiscoveryAction="editor.find"
-        />
+          <ToolbarIconButton
+            label={t("editor.revert")}
+            testID="editor-revert"
+            Icon={ThemedUndo2}
+            onPress={handleRevertPress}
+            disabled={!buffer.dirty || buffer.saving}
+          />
+          <FileGitToolbarGroup
+            onOpenHistory={handleOpenHistory}
+            onNavigateToFile={collapse.keep("findInFiles", onNavigateToFile)}
+            onViewChanges={collapse.keep("viewChanges", onViewChanges)}
+            showLeadingSeparator
+          />
+          <ExternalEditorToolbarButton
+            buffer={buffer}
+            label={externalEditorLabel}
+            onOpen={onOpenExternalEditor}
+          />
+          <FileAiToolbarGroup
+            onAddToChat={onAddToChat}
+            onRefine={collapse.keep("refine", onRefine)}
+            showLeadingSeparator
+          />
+          <FileExportToolbarGroup
+            onExportHtml={collapse.keep("exportHtml", onExportHtml)}
+            onExportPdf={collapse.keep("exportPdf", onExportPdf)}
+            exportPdfPending={exportPdfPending}
+          />
+          <ToolbarLeadingSlot>{toolbarLeadingSlot}</ToolbarLeadingSlot>
+          {/* Save/revert/history act on the FILE; outline and find navigate WITHIN
+              it. The separator is the line between those two jobs, and both groups
+              stay left where the eye starts. */}
+          <ToolbarSeparator />
+          {collapse.keep(
+            "outline",
+            hasCodeIndex ? (
+              <ToolbarIconButton
+                label={t("codeOutline.open")}
+                testID="editor-outline-toggle"
+                Icon={ThemedList}
+                onPress={openOutline}
+              />
+            ) : null,
+          )}
+          <ToolbarIconButton
+            label={t("editor.find.open")}
+            testID="editor-find-toggle"
+            Icon={ThemedSearch}
+            onPress={find.open ? closeFind : openFind}
+            selected={find.open}
+            shortcut={shortcutHints.find}
+            shortcutDiscoveryAction="editor.find"
+          />
+        </View>
         <View style={styles.toolbarSpacer} />
-        {/* Word wrap is a view setting, so it lives with the view-mode bar. */}
-        <ToolbarIconButton
-          label={t("editor.wordWrap")}
-          testID="editor-wordwrap-toggle"
-          Icon={ThemedWrapText}
-          onPress={toggleWordWrap}
-          selected={wordWrap}
-        />
-        {modeBarProps ? <FileViewModeBar {...modeBarProps} /> : null}
+        <View style={styles.toolbarGroup} onLayout={collapse.onTrailingGroupLayout}>
+          {/* Word wrap is a view setting, so it lives with the view-mode bar. */}
+          {collapse.keep(
+            "wordWrap",
+            <ToolbarIconButton
+              label={t("editor.wordWrap")}
+              testID="editor-wordwrap-toggle"
+              Icon={ThemedWrapText}
+              onPress={toggleWordWrap}
+              selected={wordWrap}
+            />,
+          )}
+          {modeBarProps ? <FileViewModeBar {...modeBarProps} /> : null}
+        </View>
       </View>
 
       {find.open ? (
@@ -2931,8 +3007,8 @@ const styles = StyleSheet.create((theme) => {
     toolbar: {
       flexDirection: "row",
       alignItems: "center",
-      gap: theme.spacing[2],
-      paddingHorizontal: theme.spacing[2],
+      gap: TOOLBAR_ROW_GAP,
+      paddingHorizontal: TOOLBAR_ROW_PADDING,
       paddingVertical: 2,
       // Pinned so every pane toolbar (this, the preview variant below, and the
       // visualizer bar) shares one height and lines up across a split.
@@ -2943,14 +3019,23 @@ const styles = StyleSheet.create((theme) => {
     previewToolbar: {
       flexDirection: "row",
       alignItems: "center",
-      gap: theme.spacing[2],
-      paddingHorizontal: theme.spacing[2],
+      gap: TOOLBAR_ROW_GAP,
+      paddingHorizontal: TOOLBAR_ROW_PADDING,
       paddingVertical: 2,
       // Keep the preview toolbar at full height even when the mode bar is
       // hidden (images, binaries, loading) so the chrome doesn't jump.
       minHeight: PANE_TOOLBAR_HEIGHT,
       borderBottomWidth: 1,
       borderBottomColor: theme.colors.border,
+    },
+    // The two halves of a pane toolbar, either side of the spacer. Measured
+    // rather than estimated (file-toolbar-collapse), so they must not shrink:
+    // a squeezed group would report a width the collapse maths cannot use.
+    toolbarGroup: {
+      flexDirection: "row",
+      alignItems: "center",
+      flexShrink: 0,
+      gap: TOOLBAR_ROW_GAP,
     },
     toolbarSpacer: {
       flex: 1,

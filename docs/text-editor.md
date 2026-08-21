@@ -266,6 +266,41 @@ Riding in the same bar, behind a divider, is one control that is deliberately **
 
 The view mode is remembered per file in `file-view-store.ts`, with a path-derived default (`defaultFileViewMode`): rendered formats (markdown, images, binaries) open in preview; plain text/code opens straight in the editor. The editor buffer survives mode switches (preview renders the live draft); the discard guard runs only on tab close. Persisted legacy `editor` tab targets coerce to `file` targets - see **`COMPAT(unifiedFileTab)`** in the workspace-tabs store (`packages/app/src/stores/workspace-tabs-store/state.ts`).
 
+### The toolbar in a narrow pane
+
+Both file toolbars (editor and preview) hold more buttons than a split pane, a phone, or a
+sidebar-squeezed workspace can fit. When the row runs out of room it **sheds buttons**, least
+important first, rather than overflowing: the overflow used to push the mode bar off the right edge,
+which is the one control that gets the user back to a wider view.
+
+`file-toolbar-collapse.ts` owns the order, and it is the whole contract:
+
+1. Refine with AI
+2. Export as HTML
+3. Export as PDF
+4. Find in Files
+5. View Changes
+6. Outline
+7. Word wrap
+
+Everything else stays: save, revert, file history, Add to chat, the external-editor button, Find, the
+host's leading slot, and the mode bar. Collapsed actions are **hidden, not moved into an overflow
+menu** - a "..." that only exists when the pane is narrow is a second place to look for a control
+that was somewhere else a moment ago, and each of these has another way in (the file explorer's
+context menu, the Changes tab, a shortcut). Widen the pane and the buttons come back in reverse
+order.
+
+Two things the implementation must keep:
+
+- **The decision is made against the bar's full width, never its current one.** The hook measures the
+  two groups either side of the spacer and adds the collapsed buttons' widths back arithmetically, so
+  collapsing a button cannot change the input that decided to collapse it. Deciding from the live
+  width oscillates: dropping a button can also drop a group separator, the row now fits, the button
+  comes back, and the row overflows again.
+- **The groups are measured, not estimated.** The mode bar and the host's leading slot are arbitrary
+  content; only the collapsible icon buttons are computed, from `useToolbarIconButtonWidth`, which
+  lives beside the padding the button actually renders with.
+
 ## The image viewer
 
 `packages/app/src/components/image-preview.tsx` owns the whole pane for an image file. There is no editor and no split for one - `editorAllowed` in `file-tab-pane.tsx` is false for any non-text `kind`, which withholds the mode bar entirely rather than showing a switch with two dead positions - so the viewer is free to spend the bottom-right corner on its own zoom controls.

@@ -8,12 +8,26 @@ import { Shortcut } from "@/components/ui/shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { KeyboardActionId } from "@/keyboard/actions";
 import type { ShortcutKey } from "@/utils/format-shortcut";
-import type { Theme } from "@/styles/theme";
+import { SPACING, type Theme } from "@/styles/theme";
 
 // Pane-toolbar glyphs follow the app-wide compact convention: doubled on mobile
 // (the file editor's mode bar and the visualizer toolbar both consume this).
 const TOOLBAR_ICON_SIZE = 16;
 const TOOLBAR_ICON_SIZE_COMPACT = TOOLBAR_ICON_SIZE * 2;
+// The inset around the glyph, as a constant rather than a theme read, because
+// `useToolbarIconButtonWidth` has to arrive at the same number the style does.
+const TOOLBAR_ICON_BUTTON_PADDING = SPACING[1];
+
+/**
+ * The width one of these buttons occupies in a row, for a toolbar that has to
+ * decide how many of them fit. Lives here so the arithmetic cannot drift from
+ * the padding the button actually renders with.
+ */
+export function useToolbarIconButtonWidth(): number {
+  const isCompact = useIsCompactFormFactor();
+  const glyphSize = isCompact ? TOOLBAR_ICON_SIZE_COMPACT : TOOLBAR_ICON_SIZE;
+  return glyphSize + TOOLBAR_ICON_BUTTON_PADDING * 2;
+}
 
 // Icon-only toolbar button with a tooltip carrying its label (the
 // file-view-mode-bar pattern; every icon-only button needs a Tooltip wrapper).
@@ -165,7 +179,7 @@ function resolveIconMapping({
 
 const styles = StyleSheet.create((theme: Theme) => ({
   iconButton: {
-    padding: theme.spacing[1],
+    padding: TOOLBAR_ICON_BUTTON_PADDING,
     borderRadius: 6,
   },
   iconButtonActive: {
