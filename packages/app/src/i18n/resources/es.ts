@@ -86,6 +86,11 @@ export const es: TranslationResources = {
     toolCallsHint: "Llamadas a herramientas hechas por los subagentes de este chat.",
   },
   composer: {
+    followSuggestion: {
+      active: "Siguiendo el mensaje sugerido por el agente. {{sent}} de {{max}} enviados.",
+      limit: "Se siguieron {{max}} mensajes sugeridos seguidos. Envía un mensaje para continuar.",
+      stop: "Dejar de seguir sugerencias",
+    },
     rateLimit: {
       approaching: "Te acercas a tu límite {{window}} de {{provider}}",
       reached: "Límite {{window}} de {{provider}} alcanzado",
@@ -167,6 +172,7 @@ export const es: TranslationResources = {
       fileContext: "Contexto de archivo",
       folderContext: "Contexto de carpeta",
       lineContext: "Contexto de línea",
+      selectionContext: "Contexto de selección",
       addIssueOrPr_mr: "Agregar problema o MR",
     },
     errors: {
@@ -2635,6 +2641,10 @@ export const es: TranslationResources = {
     revert: "Revertir",
     cancel: "Cancelar",
     wordWrap: "Ajuste de línea",
+    addToChat: {
+      file: "Añadir al chat",
+      selection: "Añadir selección al chat",
+    },
     outOfProject: {
       badge:
         "Editando fuera del proyecto ({{project}}): no forma parte del contexto del agente ni de los cambios de Git de este Workspace.",
@@ -3054,13 +3064,24 @@ export const es: TranslationResources = {
       save: "Comentario",
       saveAccessibility: "Guardar comentario de revisión",
     },
-    removeAll: {
-      action: "Quitar todos los comentarios",
-      confirmTitleSingle: "¿Quitar el comentario?",
-      confirmTitleMultiple: "¿Quitar {{count}} comentarios?",
-      confirmMessage:
-        "Se eliminarán todos los comentarios de revisión en borrador de este diff. Esto no se puede deshacer.",
-      confirmButton: "Quitar",
+    deleteAll: {
+      action: "Eliminar todos los comentarios de revisión",
+      commentCount: {
+        one: "1 comentario de revisión",
+        other: "{{count}} comentarios de revisión",
+      },
+      fileCount: {
+        one: "1 archivo",
+        other: "{{count}} archivos",
+      },
+      titleOne: "¿Eliminar 1 comentario de revisión?",
+      titleMany: "¿Eliminar {{count}} comentarios de revisión?",
+      scopeLineBranch:
+        "Esto elimina permanentemente {{comments}} en {{files}} de este espacio de trabajo en {{branch}}, incluidos los comentarios que la vista de Cambios actual no muestra.",
+      scopeLineDetached:
+        "Esto elimina permanentemente {{comments}} en {{files}} de este espacio de trabajo en la copia de trabajo actual, incluidos los comentarios que la vista de Cambios actual no muestra.",
+      undoLine: "Esta acción no se puede deshacer.",
+      confirm: "Eliminar",
     },
   },
   settings: {

@@ -122,6 +122,56 @@ export function deleteCommentFromState(
   };
 }
 
+export interface ReviewDraftScopeSummary {
+  commentCount: number;
+  fileCount: number;
+}
+
+/**
+ * Counts every draft comment stored under a key prefix, and the distinct files
+ * they sit on. The pair is what a bulk-clear confirmation has to state: how many
+ * comments, and across how many files. Callers pass a prefix that ends on a key
+ * separator so `branch=main:` cannot also match `branch=main-2:`.
+ */
+export function summarizeReviewDraftsForPrefix(
+  drafts: Record<string, ReviewDraftComment[]>,
+  keyPrefix: string,
+): ReviewDraftScopeSummary {
+  const filePaths = new Set<string>();
+  let commentCount = 0;
+  for (const [key, comments] of Object.entries(drafts)) {
+    if (!key.startsWith(keyPrefix)) {
+      continue;
+    }
+    for (const comment of comments) {
+      commentCount += 1;
+      filePaths.add(comment.filePath);
+    }
+  }
+  return { commentCount, fileCount: filePaths.size };
+}
+
+/**
+ * Drops every draft bucket under a key prefix. A single draft key pins one diff
+ * mode and one whitespace setting, so clearing only the visible key would strand
+ * comments in the buckets the reader is not currently looking at - which is the
+ * whole reason a bulk clear exists.
+ */
+export function clearReviewScopeInState(
+  state: ReviewDraftStoreState,
+  input: { keyPrefix: string },
+): ReviewDraftStoreState {
+  const matchedKeys = Object.keys(state.drafts).filter((key) => key.startsWith(input.keyPrefix));
+  if (matchedKeys.length === 0) {
+    return state;
+  }
+  const nextDrafts = { ...state.drafts };
+  for (const key of matchedKeys) {
+    delete nextDrafts[key];
+  }
+  return { ...state, drafts: nextDrafts };
+}
+
 export function clearReviewInState(
   state: ReviewDraftStoreState,
   input: { key: string },

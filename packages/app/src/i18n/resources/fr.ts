@@ -88,6 +88,11 @@ export const fr: TranslationResources = {
     toolCallsHint: "Appels d'outils effectués par les sous-agents de cette conversation.",
   },
   composer: {
+    followSuggestion: {
+      active: "Suivi de l'invite suggérée par l'agent. {{sent}} sur {{max}} envoyées.",
+      limit: "{{max}} invites suggérées suivies d'affilée. Envoyez un message pour continuer.",
+      stop: "Arrêter de suivre les suggestions",
+    },
     rateLimit: {
       approaching: "Vous approchez de votre limite {{window}} {{provider}}",
       reached: "Limite {{window}} {{provider}} atteinte",
@@ -169,6 +174,7 @@ export const fr: TranslationResources = {
       fileContext: "Contexte de fichier",
       folderContext: "Contexte de dossier",
       lineContext: "Contexte de ligne",
+      selectionContext: "Contexte de sélection",
       addIssueOrPr_mr: "Ajouter un problème ou MR",
     },
     errors: {
@@ -2646,6 +2652,10 @@ export const fr: TranslationResources = {
     revert: "Rétablir",
     cancel: "Annuler",
     wordWrap: "Retour à la ligne",
+    addToChat: {
+      file: "Ajouter au chat",
+      selection: "Ajouter la sélection au chat",
+    },
     outOfProject: {
       badge:
         "Modification hors du projet ({{project}}) - ne fait pas partie du contexte de l'agent ni des changements Git de ce Workspace.",
@@ -3068,13 +3078,24 @@ export const fr: TranslationResources = {
       save: "Commentaire",
       saveAccessibility: "Enregistrer le commentaire de l'avis",
     },
-    removeAll: {
-      action: "Supprimer tous les commentaires",
-      confirmTitleSingle: "Supprimer le commentaire ?",
-      confirmTitleMultiple: "Supprimer {{count}} commentaires ?",
-      confirmMessage:
-        "Tous les brouillons de commentaires de revue sur ce diff seront supprimés. Cette action est irréversible.",
-      confirmButton: "Supprimer",
+    deleteAll: {
+      action: "Supprimer tous les commentaires de revue",
+      commentCount: {
+        one: "1 commentaire de revue",
+        other: "{{count}} commentaires de revue",
+      },
+      fileCount: {
+        one: "1 fichier",
+        other: "{{count}} fichiers",
+      },
+      titleOne: "Supprimer 1 commentaire de revue ?",
+      titleMany: "Supprimer {{count}} commentaires de revue ?",
+      scopeLineBranch:
+        "Cette action supprime définitivement {{comments}} dans {{files}} de cet espace de travail sur {{branch}}, y compris les commentaires que la vue Modifications actuelle n'affiche pas.",
+      scopeLineDetached:
+        "Cette action supprime définitivement {{comments}} dans {{files}} de cet espace de travail sur la copie de travail actuelle, y compris les commentaires que la vue Modifications actuelle n'affiche pas.",
+      undoLine: "Cette action est irréversible.",
+      confirm: "Supprimer",
     },
   },
   settings: {

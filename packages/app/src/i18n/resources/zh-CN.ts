@@ -85,6 +85,11 @@ export const zhCN: TranslationResources = {
   },
 
   composer: {
+    followSuggestion: {
+      active: "正在采用助手建议的提示词。已发送 {{sent}} / {{max}} 条。",
+      limit: "已连续采用 {{max}} 条建议提示词。发送一条消息即可继续。",
+      stop: "停止采用建议",
+    },
     rateLimit: {
       approaching: "即将达到 {{provider}} 的{{window}}用量上限",
       reached: "已达到 {{provider}} 的{{window}}用量上限",
@@ -166,6 +171,7 @@ export const zhCN: TranslationResources = {
       fileContext: "文件上下文",
       folderContext: "文件夹上下文",
       lineContext: "行上下文",
+      selectionContext: "选区上下文",
       addIssueOrPr_mr: "添加 issue 或 MR",
     },
     errors: {
@@ -2539,6 +2545,10 @@ export const zhCN: TranslationResources = {
     revert: "还原",
     cancel: "取消",
     wordWrap: "自动换行",
+    addToChat: {
+      file: "添加到聊天",
+      selection: "将选区添加到聊天",
+    },
     outOfProject: {
       badge:
         "正在项目 ({{project}}) 之外编辑 - 不属于 Agent 的上下文，也不在此 Workspace 的 Git 变更中。",
@@ -2944,12 +2954,24 @@ export const zhCN: TranslationResources = {
       save: "评论",
       saveAccessibility: "保存 review 评论",
     },
-    removeAll: {
-      action: "移除全部评论",
-      confirmTitleSingle: "移除该评论？",
-      confirmTitleMultiple: "移除 {{count}} 条评论？",
-      confirmMessage: "此差异上的所有评审评论草稿都将被删除。此操作无法撤销。",
-      confirmButton: "移除",
+    deleteAll: {
+      action: "删除全部评审评论",
+      commentCount: {
+        one: "1 条评审评论",
+        other: "{{count}} 条评审评论",
+      },
+      fileCount: {
+        one: "1 个文件",
+        other: "{{count}} 个文件",
+      },
+      titleOne: "删除 1 条评审评论？",
+      titleMany: "删除 {{count}} 条评审评论？",
+      scopeLineBranch:
+        "这将永久删除此工作区在 {{branch}} 上 {{files}} 中的 {{comments}}，包括当前更改视图未显示的评论。",
+      scopeLineDetached:
+        "这将永久删除此工作区在当前检出中 {{files}} 中的 {{comments}}，包括当前更改视图未显示的评论。",
+      undoLine: "此操作无法撤销。",
+      confirm: "删除",
     },
   },
   settings: {

@@ -87,6 +87,11 @@ export const ptBR: TranslationResources = {
   },
 
   composer: {
+    followSuggestion: {
+      active: "Seguindo o prompt sugerido pelo agente. {{sent}} de {{max}} enviados.",
+      limit: "{{max}} prompts sugeridos seguidos em sequência. Envie uma mensagem para continuar.",
+      stop: "Parar de seguir sugestões",
+    },
     rateLimit: {
       approaching: "Você está perto do seu limite {{window}} do {{provider}}",
       reached: "Limite {{window}} do {{provider}} atingido",
@@ -168,6 +173,7 @@ export const ptBR: TranslationResources = {
       fileContext: "Contexto de arquivo",
       folderContext: "Contexto de pasta",
       lineContext: "Contexto de linha",
+      selectionContext: "Contexto da seleção",
       addIssueOrPr_mr: "Adicionar issue ou MR",
     },
     errors: {
@@ -2620,6 +2626,10 @@ export const ptBR: TranslationResources = {
     revert: "Reverter",
     cancel: "Cancelar",
     wordWrap: "Quebra de linha",
+    addToChat: {
+      file: "Adicionar ao chat",
+      selection: "Adicionar seleção ao chat",
+    },
     outOfProject: {
       badge:
         "Editando fora do projeto ({{project}}) - não faz parte do contexto do agente nem das alterações do Git deste Workspace.",
@@ -3038,13 +3048,24 @@ export const ptBR: TranslationResources = {
       save: "Comentar",
       saveAccessibility: "Salvar comentário de revisão",
     },
-    removeAll: {
-      action: "Remover todos os comentários",
-      confirmTitleSingle: "Remover o comentário?",
-      confirmTitleMultiple: "Remover {{count}} comentários?",
-      confirmMessage:
-        "Todos os rascunhos de comentários de revisão neste diff serão excluídos. Isso não pode ser desfeito.",
-      confirmButton: "Remover",
+    deleteAll: {
+      action: "Excluir todos os comentários de revisão",
+      commentCount: {
+        one: "1 comentário de revisão",
+        other: "{{count}} comentários de revisão",
+      },
+      fileCount: {
+        one: "1 arquivo",
+        other: "{{count}} arquivos",
+      },
+      titleOne: "Excluir 1 comentário de revisão?",
+      titleMany: "Excluir {{count}} comentários de revisão?",
+      scopeLineBranch:
+        "Isso exclui permanentemente {{comments}} em {{files}} deste espaço de trabalho em {{branch}}, incluindo comentários que a visão de Alterações atual não mostra.",
+      scopeLineDetached:
+        "Isso exclui permanentemente {{comments}} em {{files}} deste espaço de trabalho na cópia de trabalho atual, incluindo comentários que a visão de Alterações atual não mostra.",
+      undoLine: "Esta ação não pode ser desfeita.",
+      confirm: "Excluir",
     },
   },
   settings: {

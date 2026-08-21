@@ -87,6 +87,11 @@ export const ru: TranslationResources = {
   },
 
   composer: {
+    followSuggestion: {
+      active: "Следую подсказке агента. Отправлено {{sent}} из {{max}}.",
+      limit: "Подряд выполнено подсказок: {{max}}. Отправьте сообщение, чтобы продолжить.",
+      stop: "Перестать следовать подсказкам",
+    },
     rateLimit: {
       approaching: "Приближение к лимиту {{provider}} ({{window}})",
       reached: "Достигнут лимит {{provider}} ({{window}})",
@@ -168,6 +173,7 @@ export const ru: TranslationResources = {
       fileContext: "Контекст файла",
       folderContext: "Контекст папки",
       lineContext: "Контекст строки",
+      selectionContext: "Контекст выделения",
       addIssueOrPr_mr: "Добавить проблему или MR",
     },
     errors: {
@@ -2617,6 +2623,10 @@ export const ru: TranslationResources = {
     revert: "Откатить",
     cancel: "Отмена",
     wordWrap: "Перенос по словам",
+    addToChat: {
+      file: "Добавить в чат",
+      selection: "Добавить выделение в чат",
+    },
     outOfProject: {
       badge:
         "Редактирование вне проекта ({{project}}) - не входит ни в контекст агента, ни в изменения Git этого Workspace.",
@@ -3031,13 +3041,24 @@ export const ru: TranslationResources = {
       save: "Комментарий",
       saveAccessibility: "Сохранить комментарий к отзыву",
     },
-    removeAll: {
-      action: "Удалить все комментарии",
-      confirmTitleSingle: "Удалить комментарий?",
-      confirmTitleMultiple: "Удалить комментариев: {{count}}?",
-      confirmMessage:
-        "Все черновики комментариев ревью к этому diff будут удалены. Это действие необратимо.",
-      confirmButton: "Удалить",
+    deleteAll: {
+      action: "Удалить все комментарии ревью",
+      commentCount: {
+        one: "1 комментарий ревью",
+        other: "комментариев ревью: {{count}}",
+      },
+      fileCount: {
+        one: "1 файле",
+        other: "файлах: {{count}}",
+      },
+      titleOne: "Удалить 1 комментарий ревью?",
+      titleMany: "Удалить комментариев ревью: {{count}}?",
+      scopeLineBranch:
+        "Это безвозвратно удалит {{comments}} в {{files}} в этом рабочем пространстве на ветке {{branch}}, включая комментарии, которых нет в текущем представлении «Изменения».",
+      scopeLineDetached:
+        "Это безвозвратно удалит {{comments}} в {{files}} в этом рабочем пространстве в текущей рабочей копии, включая комментарии, которых нет в текущем представлении «Изменения».",
+      undoLine: "Это действие необратимо.",
+      confirm: "Удалить",
     },
   },
   settings: {

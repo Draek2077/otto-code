@@ -7,17 +7,20 @@ import type { ParsedDiffFile } from "@/git/use-diff-query";
 import {
   addCommentToState,
   clearReviewInState,
+  clearReviewScopeInState,
   deleteCommentFromState,
   type DiffModeOverride,
   expireStaleDiffModeOverridesInState,
   normalizePersistedState,
   resolveDiffMode,
   type ReviewDraftComment,
+  type ReviewDraftScopeSummary,
   type ReviewDraftMode,
   type ReviewDraftSide,
   type ReviewDraftStoreState,
   serializeReviewDraftState,
   setDiffModeOverrideInState,
+  summarizeReviewDraftsForPrefix,
   updateCommentInState,
 } from "@/review/state";
 import { generateMessageId } from "@/types/stream";
@@ -28,6 +31,7 @@ export type {
   DiffModeOverride,
   ReviewDraftComment,
   ReviewDraftMode,
+  ReviewDraftScopeSummary,
   ReviewDraftSide,
 } from "@/review/state";
 
@@ -48,6 +52,13 @@ export interface BuildReviewDraftScopeKeyInput {
   cwd: string;
   baseRef?: string | null;
   ignoreWhitespace: boolean;
+}
+
+export interface BuildReviewDraftBranchKeyPrefixInput {
+  serverId: string;
+  workspaceId?: string | null;
+  cwd: string;
+  branch?: string | null;
 }
 
 export interface BuildReviewDraftKeyInput extends BuildReviewDraftScopeKeyInput {
@@ -85,6 +96,7 @@ interface ReviewDraftStoreActions {
   }) => void;
   deleteComment: (input: { key: string; id: string }) => void;
   clearReview: (input: { key: string }) => void;
+  clearReviewScope: (input: { keyPrefix: string }) => void;
 }
 
 type ReviewDraftStore = ReviewDraftStoreState & ReviewDraftStoreActions;
@@ -109,17 +121,25 @@ function normalizeBranch(branch: string | null | undefined): string {
   return branch?.trim() ?? "";
 }
 
-function buildReviewDraftScopeParts(input: BuildReviewDraftScopeKeyInput): string[] {
+// The leading parts every draft and scope key shares: which host, and which
+// workspace (falling back to the checkout path for payloads without one).
+function buildReviewDraftIdentityParts(input: {
+  serverId: string;
+  workspaceId?: string | null;
+  cwd: string;
+}): string[] {
   const workspaceId = input.workspaceId?.trim();
   // workspaceId is opaque; do not parse this key back into a path.
   const workspacePart = workspaceId
     ? `workspace=${encodeKeyPart(workspaceId)}`
     : `cwd=${encodeKeyPart(normalizeCwd(input.cwd))}`;
 
+  return ["review", `server=${encodeKeyPart(input.serverId)}`, workspacePart];
+}
+
+function buildReviewDraftScopeParts(input: BuildReviewDraftScopeKeyInput): string[] {
   return [
-    "review",
-    `server=${encodeKeyPart(input.serverId)}`,
-    workspacePart,
+    ...buildReviewDraftIdentityParts(input),
     `base=${encodeKeyPart(normalizeBaseRef(input.baseRef))}`,
     `ignoreWhitespace=${input.ignoreWhitespace ? "true" : "false"}`,
   ];
@@ -143,6 +163,29 @@ export function buildReviewDraftKey(input: BuildReviewDraftKeyInput): string {
     `mode=${input.mode}`,
     basePart,
     whitespacePart,
+  ].join(":");
+}
+
+/**
+ * The prefix shared by every draft bucket for one workspace on one branch, across
+ * both diff modes and both whitespace settings.
+ *
+ * Draft keys pin `mode` and `ignoreWhitespace`, so the comments a reader can see
+ * are only ever one bucket of several. That is exactly how comments go missing:
+ * commit the work, or toggle whitespace, and the bucket holding them stops being
+ * the visible one. A bulk clear has to sweep the whole branch, so it needs this
+ * prefix rather than the visible key.
+ *
+ * The trailing separator is load-bearing: without it `branch=main` would also
+ * match `branch=main-2`, and clearing one branch would silently take another.
+ */
+export function buildReviewDraftBranchKeyPrefix(
+  input: BuildReviewDraftBranchKeyPrefixInput,
+): string {
+  return [
+    ...buildReviewDraftIdentityParts(input),
+    `branch=${encodeKeyPart(normalizeBranch(input.branch))}`,
+    "",
   ].join(":");
 }
 
@@ -206,6 +249,9 @@ export const useReviewDraftStore = create<ReviewDraftStore>()(
       },
       clearReview: (input) => {
         set((state) => clearReviewInState(state, input));
+      },
+      clearReviewScope: (input) => {
+        set((state) => clearReviewScopeInState(state, input));
       },
     }),
     {
@@ -342,6 +388,10 @@ export function useClearReviewDraft(): ReviewDraftStoreActions["clearReview"] {
   return useReviewDraftStore((state) => state.clearReview);
 }
 
+export function useClearReviewScope(): ReviewDraftStoreActions["clearReviewScope"] {
+  return useReviewDraftStore((state) => state.clearReviewScope);
+}
+
 export function addReviewDraftComment(input: {
   key: string;
   comment: ReviewDraftCommentInput;
@@ -370,6 +420,16 @@ export function useReviewDraftCommentsForAttachment(input: {
 
 export function useReviewCommentCount(key: string): number {
   return useReviewDraftStore((state) => state.drafts[key]?.length ?? 0);
+}
+
+/**
+ * How many comments live under a key prefix, and how many files they touch.
+ * Selects the stable `drafts` record and derives in a memo, so the returned
+ * object identity only changes when the drafts themselves do.
+ */
+export function useReviewDraftScopeSummary(keyPrefix: string): ReviewDraftScopeSummary {
+  const drafts = useReviewDraftStore((state) => state.drafts);
+  return useMemo(() => summarizeReviewDraftsForPrefix(drafts, keyPrefix), [drafts, keyPrefix]);
 }
 
 export function useResolvedDiffMode(input: {

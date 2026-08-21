@@ -231,6 +231,33 @@ the UI surfaces Git's error and never tries to drop or overwrite the user's work
 branch switch remains unchanged, including its separate prompt for a previously saved Otto stash
 belonging to the destination branch.
 
+## Review comments live in per-view buckets, so the bulk delete sweeps the branch
+
+Draft review comments anchor to line numbers in one specific diff, so `buildReviewDraftKey`
+scopes them by host, workspace, **branch, diff mode, base ref, and whitespace setting**. Two of
+those parts move under the reader: committing flips Uncommitted to Committed, and the whitespace
+toggle is one menu item away. Either one swaps the visible bucket, and comments written in the
+previous one stop being displayed. They are not lost, but nothing on screen says where they went,
+and per-comment delete cannot reach a comment that is not rendered.
+
+**Delete all review comments** in the Changes menu is the way out. It sweeps
+`buildReviewDraftBranchKeyPrefix` - every bucket for this workspace on this branch, across both
+diff modes and both whitespace settings - not the one key the reader can see. Two consequences
+follow, and both are deliberate:
+
+- The action is offered whenever the **branch** holds comments, even when the current view shows
+  none. Gating it on the visible bucket would hide the only control that reaches the stranded ones.
+- The confirmation states the comment count, the file count, and the branch, and says outright that
+  it includes comments the current view does not show. A confirmation that said "this diff" would
+  understate what the button takes, and consent to an irreversible action described wrongly is not
+  consent (same rule as the History clear-archive dialog).
+
+The prefix ends on a `:` separator. Without it, `branch=main` would also match `branch=main-2`, and
+clearing one branch would silently take another's comments with it.
+
+Removing the composer's review attachment pill is a different gesture and keeps the narrow scope:
+it clears the single draft key that snapshot was built from.
+
 ## Crossing between Files and Changes
 
 The two directions are symmetric, and both go through ephemeral request slots on the panel store

@@ -159,11 +159,13 @@ import {
   useWorkspaceAttachmentsStore,
 } from "@/attachments/workspace-attachments-store";
 import {
-  buildReviewDraftScopeKey,
+  buildReviewDraftBranchKeyPrefix,
   buildReviewDraftKey,
-  useClearReviewDraft,
+  buildReviewDraftScopeKey,
+  resolveDeleteAllReviewCommentsDialog,
+  useClearReviewScope,
   useReviewAttachmentSnapshot,
-  useReviewCommentCount,
+  useReviewDraftScopeSummary,
   useResolvedDiffMode,
   useSetDiffModeOverride,
   type ReviewDraftComment,
@@ -2506,26 +2508,44 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
   const reviewActions = useInlineReviewController({
     reviewDraftKey,
   });
-  const reviewCommentCount = useReviewCommentCount(reviewDraftKey);
-  const clearReviewDraft = useClearReviewDraft();
-  const handleRemoveAllComments = useCallback(() => {
+  // The bulk clear works on the branch, not on the visible draft key. A key pins
+  // one diff mode and one whitespace setting, so comments written before a commit
+  // or before a whitespace toggle sit in a bucket this view cannot show - which is
+  // precisely how a reader ends up with comments they can no longer find.
+  const reviewDraftBranchKeyPrefix = useMemo(
+    () =>
+      buildReviewDraftBranchKeyPrefix({
+        serverId,
+        workspaceId,
+        cwd,
+        branch: currentBranchName,
+      }),
+    [currentBranchName, cwd, serverId, workspaceId],
+  );
+  const reviewBranchSummary = useReviewDraftScopeSummary(reviewDraftBranchKeyPrefix);
+  const clearReviewScope = useClearReviewScope();
+  const handleDeleteAllComments = useCallback(() => {
     void (async () => {
-      const confirmed = await confirmDialog({
-        title:
-          reviewCommentCount === 1
-            ? t("review.removeAll.confirmTitleSingle")
-            : t("review.removeAll.confirmTitleMultiple", { count: reviewCommentCount }),
-        message: t("review.removeAll.confirmMessage"),
-        confirmLabel: t("review.removeAll.confirmButton"),
-        destructive: true,
-      });
+      const confirmed = await confirmDialog(
+        resolveDeleteAllReviewCommentsDialog({
+          commentCount: reviewBranchSummary.commentCount,
+          fileCount: reviewBranchSummary.fileCount,
+          branch: currentBranchName,
+        }),
+      );
       if (confirmed) {
-        // Clearing the draft bucket also empties the review attachment snapshot,
+        // Clearing the draft buckets also empties the review attachment snapshot,
         // so the composer's review pill disappears via the sync effect below.
-        clearReviewDraft({ key: reviewDraftKey });
+        clearReviewScope({ keyPrefix: reviewDraftBranchKeyPrefix });
       }
     })();
-  }, [clearReviewDraft, reviewCommentCount, reviewDraftKey, t]);
+  }, [
+    clearReviewScope,
+    currentBranchName,
+    reviewBranchSummary.commentCount,
+    reviewBranchSummary.fileCount,
+    reviewDraftBranchKeyPrefix,
+  ]);
   const reviewAttachment = useReviewAttachmentSnapshot({
     key: reviewDraftKey,
     diffFiles: files,
@@ -3093,16 +3113,21 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
       testID: "changes-toggle-wrap-lines",
     });
 
-    if (reviewCommentCount > 0) {
+    // Offered whenever the branch holds comments, even when none are visible in
+    // the current view. That is the only way a reader can reach the ones they
+    // have lost track of.
+    if (reviewBranchSummary.commentCount > 0) {
       list.push({
+        // Historical catalog id: it is persisted in the device-local toolbar
+        // pins, so renaming it to match the label would orphan an existing pin.
         id: "removeComments",
-        label: t("review.removeAll.action"),
+        label: t("review.deleteAll.action"),
         renderIcon: (size) => (
           <ThemedTrash2 size={size} uniProps={foregroundMutedIconColorMapping} />
         ),
-        onPress: handleRemoveAllComments,
+        onPress: handleDeleteAllComments,
         separatorBefore: true,
-        testID: "changes-remove-all-comments",
+        testID: "changes-delete-all-comments",
       });
     }
 
@@ -3134,7 +3159,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
     allFileDiffsExpanded,
     allDiffsExpanded,
     wrapLines,
-    reviewCommentCount,
+    reviewBranchSummary.commentCount,
     refreshSupported,
     isRefreshing,
     handleToggleLayout,
@@ -3142,7 +3167,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
     handleToggleExpandAll,
     handleToggleHideWhitespace,
     handleToggleWrapLines,
-    handleRemoveAllComments,
+    handleDeleteAllComments,
     handleRefresh,
     t,
   ]);

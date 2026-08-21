@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { ParsedDiffFile } from "@/git/use-diff-query";
+import { resolveDeleteAllReviewCommentsDialog } from "./delete-dialogs";
 import {
   buildReviewAttachmentSnapshot,
+  buildReviewDraftBranchKeyPrefix,
   buildReviewDraftKey,
   buildReviewDraftScopeKey,
   prunePreBranchDraftKeys,
@@ -9,6 +11,7 @@ import {
 import {
   addCommentToState,
   clearReviewInState,
+  clearReviewScopeInState,
   deleteCommentFromState,
   type DiffModeOverride,
   expireStaleDiffModeOverridesInState,
@@ -18,6 +21,7 @@ import {
   type ReviewDraftStoreState,
   serializeReviewDraftState,
   setDiffModeOverrideInState,
+  summarizeReviewDraftsForPrefix,
   updateCommentInState,
 } from "./state";
 
@@ -392,6 +396,176 @@ describe("review draft reducers", () => {
     ).toBe(state);
     expect(deleteCommentFromState(state, { key: "review:key", id: "missing" })).toBe(state);
     expect(clearReviewInState(state, { key: "other-key" })).toBe(state);
+  });
+});
+
+describe("branch-scoped bulk clear", () => {
+  const identity = {
+    serverId: "local",
+    workspaceId: "workspace-1",
+    cwd: "/repo",
+  } as const;
+
+  // The four buckets one branch can accumulate: a reader only ever sees one of
+  // them, which is how comments end up somewhere they can no longer be found.
+  function branchDraftKeys(branch: string | null): string[] {
+    return (["uncommitted", "base"] as const).flatMap((mode) =>
+      [false, true].map((ignoreWhitespace) =>
+        buildReviewDraftKey({ ...identity, mode, baseRef: "main", branch, ignoreWhitespace }),
+      ),
+    );
+  }
+
+  function stateWithBranchDrafts(): ReviewDraftStoreState {
+    let state = emptyState();
+    branchDraftKeys("feature/login").forEach((key, index) => {
+      state = addCommentToState(state, {
+        key,
+        comment: makeComment({ id: `feature-${index}`, filePath: `src/file-${index % 3}.ts` }),
+      });
+    });
+    // Neighbours that must survive: a sibling branch whose name starts with the
+    // cleared one, and a different workspace on the same host.
+    state = addCommentToState(state, {
+      key: buildReviewDraftKey({
+        ...identity,
+        mode: "base",
+        baseRef: "main",
+        branch: "feature/login-v2",
+        ignoreWhitespace: false,
+      }),
+      comment: makeComment({ id: "sibling", filePath: "src/other.ts" }),
+    });
+    state = addCommentToState(state, {
+      key: buildReviewDraftKey({
+        ...identity,
+        workspaceId: "workspace-2",
+        mode: "base",
+        baseRef: "main",
+        branch: "feature/login",
+        ignoreWhitespace: false,
+      }),
+      comment: makeComment({ id: "other-workspace", filePath: "src/elsewhere.ts" }),
+    });
+    return state;
+  }
+
+  it("covers every diff mode and whitespace bucket the branch can hold", () => {
+    const prefix = buildReviewDraftBranchKeyPrefix({ ...identity, branch: "feature/login" });
+
+    expect(prefix).toBe("review:server=local:workspace=workspace-1:branch=feature%2Flogin:");
+    for (const key of branchDraftKeys("feature/login")) {
+      expect(key.startsWith(prefix)).toBe(true);
+    }
+    // The trailing separator keeps a name-prefixed sibling branch out.
+    expect(
+      buildReviewDraftKey({
+        ...identity,
+        mode: "base",
+        baseRef: "main",
+        branch: "feature/login-v2",
+        ignoreWhitespace: false,
+      }).startsWith(prefix),
+    ).toBe(false);
+    expect(buildReviewDraftBranchKeyPrefix({ ...identity, branch: null })).toBe(
+      "review:server=local:workspace=workspace-1:branch=:",
+    );
+  });
+
+  it("summarizes comments and distinct files across the branch's buckets", () => {
+    const state = stateWithBranchDrafts();
+    const prefix = buildReviewDraftBranchKeyPrefix({ ...identity, branch: "feature/login" });
+
+    // Four buckets, one comment each, spread over three distinct files.
+    expect(summarizeReviewDraftsForPrefix(state.drafts, prefix)).toEqual({
+      commentCount: 4,
+      fileCount: 3,
+    });
+    expect(
+      summarizeReviewDraftsForPrefix(
+        state.drafts,
+        buildReviewDraftBranchKeyPrefix({ ...identity, branch: "no-comments-here" }),
+      ),
+    ).toEqual({ commentCount: 0, fileCount: 0 });
+  });
+
+  it("clears every bucket on the branch and leaves neighbouring scopes alone", () => {
+    const state = stateWithBranchDrafts();
+    const prefix = buildReviewDraftBranchKeyPrefix({ ...identity, branch: "feature/login" });
+
+    const cleared = clearReviewScopeInState(state, { keyPrefix: prefix });
+
+    expect(Object.keys(cleared.drafts).some((key) => key.startsWith(prefix))).toBe(false);
+    expect(summarizeReviewDraftsForPrefix(cleared.drafts, prefix)).toEqual({
+      commentCount: 0,
+      fileCount: 0,
+    });
+    expect(
+      summarizeReviewDraftsForPrefix(
+        cleared.drafts,
+        buildReviewDraftBranchKeyPrefix({ ...identity, branch: "feature/login-v2" }),
+      ),
+    ).toEqual({ commentCount: 1, fileCount: 1 });
+    expect(
+      summarizeReviewDraftsForPrefix(
+        cleared.drafts,
+        buildReviewDraftBranchKeyPrefix({
+          ...identity,
+          workspaceId: "workspace-2",
+          branch: "feature/login",
+        }),
+      ),
+    ).toEqual({ commentCount: 1, fileCount: 1 });
+  });
+
+  it("keeps state identity when the prefix matches nothing", () => {
+    const state = stateWithBranchDrafts();
+
+    expect(
+      clearReviewScopeInState(state, {
+        keyPrefix: buildReviewDraftBranchKeyPrefix({ ...identity, branch: "unused" }),
+      }),
+    ).toBe(state);
+  });
+});
+
+describe("delete all review comments confirmation", () => {
+  it("states the comment count, the file count, and the branch it sweeps", () => {
+    const dialog = resolveDeleteAllReviewCommentsDialog({
+      commentCount: 4,
+      fileCount: 3,
+      branch: "feature/login",
+    });
+
+    expect(dialog.title).toBe("Delete 4 review comments?");
+    expect(dialog.message).toContain("4 review comments");
+    expect(dialog.message).toContain("3 files");
+    expect(dialog.message).toContain("feature/login");
+    // The reader has to be told the sweep reaches past what they can see.
+    expect(dialog.message).toContain("the current Changes view does not show");
+    expect(dialog.message).toContain("This action cannot be undone.");
+    expect(dialog.confirmLabel).toBe("Delete");
+    expect(dialog.destructive).toBe(true);
+    // Repo hard rule: no em dashes in user-facing copy (docs/writing-style.md).
+    expect(dialog.message).not.toMatch(/[–—]/);
+  });
+
+  it("uses singular copy and drops the branch on a detached HEAD", () => {
+    const single = resolveDeleteAllReviewCommentsDialog({
+      commentCount: 1,
+      fileCount: 1,
+      branch: "main",
+    });
+    expect(single.title).toBe("Delete 1 review comment?");
+    expect(single.message).toContain("1 review comment on 1 file");
+
+    const detached = resolveDeleteAllReviewCommentsDialog({
+      commentCount: 2,
+      fileCount: 2,
+      branch: null,
+    });
+    expect(detached.message).toContain("on the current checkout");
+    expect(detached.message).not.toContain("undefined");
   });
 });
 

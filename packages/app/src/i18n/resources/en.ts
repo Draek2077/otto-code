@@ -87,6 +87,11 @@ export const en = {
     toolCallsHint: "Tool calls made by this chat's sub-agents.",
   },
   composer: {
+    followSuggestion: {
+      active: "Following the agent's suggested prompt. {{sent}} of {{max}} sent.",
+      limit: "Followed {{max}} suggested prompts in a row. Send a message to keep going.",
+      stop: "Stop following suggestions",
+    },
     rateLimit: {
       approaching: "Approaching your {{provider}} {{window}} limit",
       reached: "{{provider}} {{window}} limit reached",
@@ -168,6 +173,7 @@ export const en = {
       fileContext: "File context",
       folderContext: "Folder context",
       lineContext: "Line context",
+      selectionContext: "Selection context",
       addIssueOrPr_mr: "Add issue or MR",
     },
     errors: {
@@ -2661,6 +2667,10 @@ export const en = {
     revert: "Revert",
     cancel: "Cancel",
     wordWrap: "Word wrap",
+    addToChat: {
+      file: "Add to chat",
+      selection: "Add selection to chat",
+    },
     outOfProject: {
       badge:
         "Editing outside the project ({{project}}) - not part of the agent's context or this workspace's Git changes.",
@@ -3035,13 +3045,24 @@ export const en = {
       save: "Comment",
       saveAccessibility: "Save review comment",
     },
-    removeAll: {
-      action: "Remove all comments",
-      confirmTitleSingle: "Remove comment?",
-      confirmTitleMultiple: "Remove {{count}} comments?",
-      confirmMessage:
-        "All draft review comments on this diff will be deleted. This can't be undone.",
-      confirmButton: "Remove",
+    deleteAll: {
+      action: "Delete all review comments",
+      commentCount: {
+        one: "1 review comment",
+        other: "{{count}} review comments",
+      },
+      fileCount: {
+        one: "1 file",
+        other: "{{count}} files",
+      },
+      titleOne: "Delete 1 review comment?",
+      titleMany: "Delete {{count}} review comments?",
+      scopeLineBranch:
+        "This permanently deletes {{comments}} on {{files}} in this workspace on {{branch}}, including comments the current Changes view does not show.",
+      scopeLineDetached:
+        "This permanently deletes {{comments}} on {{files}} in this workspace on the current checkout, including comments the current Changes view does not show.",
+      undoLine: "This action cannot be undone.",
+      confirm: "Delete",
     },
   },
   settings: {

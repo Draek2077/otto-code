@@ -1,24 +1,34 @@
 export {
   buildReviewAttachmentSnapshot,
+  buildReviewDraftBranchKeyPrefix,
   buildReviewDraftKey,
   buildReviewDraftScopeKey,
   expireStaleDiffModeOverrides,
   getReviewDraftComments,
   resetReviewDraftStore,
   useClearReviewDraft,
+  useClearReviewScope,
   useReviewAttachmentSnapshot,
   useReviewCommentCount,
+  useReviewDraftScopeSummary,
   useResolvedDiffMode,
   useSetDiffModeOverride,
   addReviewDraftComment,
+  type BuildReviewDraftBranchKeyPrefixInput,
   type BuildReviewDraftKeyInput,
   type BuildReviewDraftScopeKeyInput,
   type DiffModeOverride,
   type ReviewDraftCommentInput,
   type ReviewDraftComment,
   type ReviewDraftMode,
+  type ReviewDraftScopeSummary,
   type ReviewDraftSide,
 } from "./store";
+
+export {
+  resolveDeleteAllReviewCommentsDialog,
+  type DeleteAllReviewCommentsDialogInput,
+} from "./delete-dialogs";
 
 export {
   getInlineReviewThreadHeight,

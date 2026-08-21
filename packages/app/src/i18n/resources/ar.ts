@@ -86,6 +86,11 @@ export const ar: TranslationResources = {
     toolCallsHint: "استدعاءات الأدوات التي أجراها الوكلاء الفرعيون لهذه المحادثة.",
   },
   composer: {
+    followSuggestion: {
+      active: "يجري اتباع الموجّه الذي اقترحه الوكيل. تم إرسال {{sent}} من {{max}}.",
+      limit: "تم اتباع {{max}} من الموجّهات المقترحة على التوالي. أرسل رسالة للمتابعة.",
+      stop: "إيقاف اتباع الاقتراحات",
+    },
     rateLimit: {
       approaching: "تقترب من حد {{provider}} {{window}}",
       reached: "تم بلوغ حد {{provider}} {{window}}",
@@ -167,6 +172,7 @@ export const ar: TranslationResources = {
       fileContext: "سياق ملف",
       folderContext: "سياق مجلد",
       lineContext: "سياق سطر",
+      selectionContext: "سياق التحديد",
       addIssueOrPr_mr: "أضف مشكلة أو MR",
     },
     errors: {
@@ -2567,6 +2573,10 @@ export const ar: TranslationResources = {
     revert: "تراجع",
     cancel: "إلغاء",
     wordWrap: "التفاف النص",
+    addToChat: {
+      file: "إضافة إلى الدردشة",
+      selection: "إضافة التحديد إلى الدردشة",
+    },
     outOfProject: {
       badge:
         "تحرير خارج المشروع ({{project}}) - ليس جزءًا من سياق الوكيل ولا من تغييرات Git في هذا الـ Workspace.",
@@ -2979,12 +2989,24 @@ export const ar: TranslationResources = {
       save: "تعليق",
       saveAccessibility: "حفظ تعليق المراجعة",
     },
-    removeAll: {
-      action: "إزالة كل التعليقات",
-      confirmTitleSingle: "إزالة التعليق؟",
-      confirmTitleMultiple: "إزالة {{count}} تعليق؟",
-      confirmMessage: "ستُحذف كل مسودات تعليقات المراجعة على هذا الفرق. لا يمكن التراجع عن ذلك.",
-      confirmButton: "إزالة",
+    deleteAll: {
+      action: "حذف كل تعليقات المراجعة",
+      commentCount: {
+        one: "تعليق مراجعة واحد",
+        other: "{{count}} تعليق مراجعة",
+      },
+      fileCount: {
+        one: "ملف واحد",
+        other: "{{count}} ملف",
+      },
+      titleOne: "حذف تعليق مراجعة واحد؟",
+      titleMany: "حذف {{count}} تعليق مراجعة؟",
+      scopeLineBranch:
+        "يؤدي هذا إلى حذف {{comments}} في {{files}} نهائيًا داخل مساحة العمل هذه على {{branch}}، بما في ذلك التعليقات التي لا يعرضها عرض التغييرات الحالي.",
+      scopeLineDetached:
+        "يؤدي هذا إلى حذف {{comments}} في {{files}} نهائيًا داخل مساحة العمل هذه على النسخة المسحوبة الحالية، بما في ذلك التعليقات التي لا يعرضها عرض التغييرات الحالي.",
+      undoLine: "لا يمكن التراجع عن هذا الإجراء.",
+      confirm: "حذف",
     },
   },
   settings: {

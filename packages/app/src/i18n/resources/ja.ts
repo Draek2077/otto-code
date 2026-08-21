@@ -87,6 +87,13 @@ export const ja: TranslationResources = {
   },
 
   composer: {
+    followSuggestion: {
+      active:
+        "エージェントの提案プロンプトに従っています。{{max}} 件中 {{sent}} 件を送信しました。",
+      limit:
+        "提案プロンプトを連続で {{max}} 件実行しました。続けるにはメッセージを送信してください。",
+      stop: "提案の自動実行を停止",
+    },
     rateLimit: {
       approaching: "{{provider}} の{{window}}上限に近づいています",
       reached: "{{provider}} の{{window}}上限に達しました",
@@ -169,6 +176,7 @@ export const ja: TranslationResources = {
       fileContext: "ファイルのコンテキスト",
       folderContext: "フォルダーのコンテキスト",
       lineContext: "行のコンテキスト",
+      selectionContext: "選択範囲のコンテキスト",
       addIssueOrPr_mr: "イシューまたはMRを追加",
     },
     errors: {
@@ -2607,6 +2615,10 @@ export const ja: TranslationResources = {
     revert: "元に戻す",
     cancel: "キャンセル",
     wordWrap: "折り返し",
+    addToChat: {
+      file: "チャットに追加",
+      selection: "選択範囲をチャットに追加",
+    },
     outOfProject: {
       badge:
         "プロジェクト ({{project}}) の外側を編集しています - エージェントのコンテキストにも、このワークスペースの Git 変更にも含まれません。",
@@ -3022,13 +3034,24 @@ export const ja: TranslationResources = {
       save: "コメント",
       saveAccessibility: "レビューコメントを保存",
     },
-    removeAll: {
-      action: "すべてのコメントを削除",
-      confirmTitleSingle: "コメントを削除しますか？",
-      confirmTitleMultiple: "{{count}} 件のコメントを削除しますか？",
-      confirmMessage:
-        "この差分にあるレビューコメントの下書きはすべて削除されます。この操作は取り消せません。",
-      confirmButton: "削除",
+    deleteAll: {
+      action: "レビューコメントをすべて削除",
+      commentCount: {
+        one: "レビューコメント 1 件",
+        other: "レビューコメント {{count}} 件",
+      },
+      fileCount: {
+        one: "1 個のファイル",
+        other: "{{count}} 個のファイル",
+      },
+      titleOne: "レビューコメント 1 件を削除しますか？",
+      titleMany: "レビューコメント {{count}} 件を削除しますか？",
+      scopeLineBranch:
+        "このワークスペースの {{branch}} にある {{files}} の {{comments}} を完全に削除します。現在の変更ビューに表示されていないコメントも含まれます。",
+      scopeLineDetached:
+        "このワークスペースの現在のチェックアウトにある {{files}} の {{comments}} を完全に削除します。現在の変更ビューに表示されていないコメントも含まれます。",
+      undoLine: "この操作は取り消せません。",
+      confirm: "削除",
     },
   },
   settings: {

@@ -14,7 +14,8 @@ export type ChangesToolbarItemId =
 
 // Fixed catalog order - both the ▾ menu and the pinned toolbar strip render in
 // this order regardless of the order items were pinned, so the layout is stable.
-// removeComments is only offered while the current diff has draft review comments.
+// removeComments (UI label "Delete all review comments") is only offered while the
+// branch holds draft review comments.
 export const CHANGES_TOOLBAR_ITEM_IDS = [
   "presentation",
   "split",
