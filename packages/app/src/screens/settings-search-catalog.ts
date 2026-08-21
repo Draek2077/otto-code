@@ -102,6 +102,14 @@ export const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     true,
   ),
   app(
+    "follow-prompt-suggestions",
+    "Follow prompt suggestions",
+    "Send a predicted next prompt automatically",
+    "composer suggestions autonomy automatic follow",
+    "general",
+    true,
+  ),
+  app(
     "rate-limit-warnings",
     "Rate limit warnings",
     "Show provider usage warnings",

@@ -145,6 +145,7 @@ import ProjectSettingsScreen, {
   confirmDiscardProjectSettingsChanges,
 } from "@/screens/project-settings-screen";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { FOLLOW_PROMPT_SUGGESTION_MAX_CONSECUTIVE } from "@/composer/follow-suggestion/decide";
 import { resolveMountedTabLimit } from "@/screens/workspace/mounted-tab-retention";
 import { isNative, isWeb } from "@/constants/platform";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
@@ -448,6 +449,7 @@ interface GeneralSectionProps {
   handleSuggestedTasksEnabledChange: (enabled: boolean) => void;
   handleSuggestedTasksDefaultModeChange: (mode: SuggestedTasksDefaultMode) => void;
   handlePromptSuggestionsEnabledChange: (enabled: boolean) => void;
+  handleFollowPromptSuggestionsChange: (enabled: boolean) => void;
   handleRateLimitWarningsEnabledChange: (enabled: boolean) => void;
   handleContextWarningsEnabledChange: (enabled: boolean) => void;
   handleAutoClearCompletedSubagentsChange: (enabled: boolean) => void;
@@ -545,6 +547,7 @@ function GeneralSection({
   handleSuggestedTasksEnabledChange,
   handleSuggestedTasksDefaultModeChange,
   handlePromptSuggestionsEnabledChange,
+  handleFollowPromptSuggestionsChange,
   handleRateLimitWarningsEnabledChange,
   handleContextWarningsEnabledChange,
   handleAutoClearCompletedSubagentsChange,
@@ -931,6 +934,29 @@ function GeneralSection({
               testID="settings-prompt-suggestions-switch"
             />
           </View>
+          {/* Only shown while suggestions are produced at all. A dependent
+              toggle that cannot do anything is worse than no toggle: it reads
+              as broken rather than as unavailable. */}
+          {settings.promptSuggestionsEnabled ? (
+            <View style={ROW_WITH_BORDER_STYLE}>
+              <View style={settingsStyles.rowContent}>
+                <Text style={settingsStyles.rowTitle}>Follow prompt suggestions</Text>
+                <Text style={settingsStyles.rowHint}>
+                  Send the agent&apos;s predicted next prompt as soon as it appears, instead of
+                  waiting for you to press Tab. A band above the message box says when Otto is
+                  following, and it stops after {FOLLOW_PROMPT_SUGGESTION_MAX_CONSECUTIVE} in a row
+                  until you send a message yourself. This is separate from Auto mode, which decides
+                  how an agent acts once a prompt has been sent.
+                </Text>
+              </View>
+              <Switch
+                value={settings.followPromptSuggestions}
+                onValueChange={handleFollowPromptSuggestionsChange}
+                accessibilityLabel="Follow prompt suggestions"
+                testID="settings-follow-prompt-suggestions-switch"
+              />
+            </View>
+          ) : null}
           <View style={ROW_WITH_BORDER_STYLE}>
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>Plan rate-limit warnings</Text>
@@ -2132,6 +2158,13 @@ export default function SettingsScreen({
     [updateSettings],
   );
 
+  const handleFollowPromptSuggestionsChange = useCallback(
+    (followPromptSuggestions: boolean) => {
+      void updateSettings({ followPromptSuggestions });
+    },
+    [updateSettings],
+  );
+
   const handleContextWarningsEnabledChange = useCallback(
     (contextWarningsEnabled: boolean) => {
       void updateSettings({ contextWarningsEnabled });
@@ -2523,6 +2556,7 @@ export default function SettingsScreen({
               handleSuggestedTasksEnabledChange={handleSuggestedTasksEnabledChange}
               handleSuggestedTasksDefaultModeChange={handleSuggestedTasksDefaultModeChange}
               handlePromptSuggestionsEnabledChange={handlePromptSuggestionsEnabledChange}
+              handleFollowPromptSuggestionsChange={handleFollowPromptSuggestionsChange}
               handleRateLimitWarningsEnabledChange={handleRateLimitWarningsEnabledChange}
               handleContextWarningsEnabledChange={handleContextWarningsEnabledChange}
               handleAutoClearCompletedSubagentsChange={handleAutoClearCompletedSubagentsChange}

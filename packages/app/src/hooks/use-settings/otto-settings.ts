@@ -49,6 +49,12 @@ export interface OttoAppSettings {
   lightTheme: LightThemeName;
   darkTheme: DarkThemeName;
   promptSuggestionsEnabled: boolean;
+  // Accept the ghost-text next-prompt suggestion the moment it arrives, instead
+  // of waiting for Tab. Deliberately its own preference and NOT a level of Auto
+  // mode: Auto mode governs how an agent acts inside a turn, this governs only
+  // who accepts an already-generated suggestion. Bounded per chat by
+  // FOLLOW_PROMPT_SUGGESTION_MAX_CONSECUTIVE. Device-local. Default OFF.
+  followPromptSuggestions: boolean;
   // Show provider-reported plan rate-limit warnings (e.g. Claude claude.ai
   // plan windows) as a strip above the composer. Device-local presentation
   // only - the daemon keeps emitting events either way. Default on.
@@ -1075,6 +1081,9 @@ export function pickChatCodeSettings(stored: Partial<AppSettings>): Partial<AppS
   if (typeof stored.promptSuggestionsEnabled === "boolean") {
     result.promptSuggestionsEnabled = stored.promptSuggestionsEnabled;
   }
+  if (typeof stored.followPromptSuggestions === "boolean") {
+    result.followPromptSuggestions = stored.followPromptSuggestions;
+  }
   if (typeof stored.rateLimitWarningsEnabled === "boolean") {
     result.rateLimitWarningsEnabled = stored.rateLimitWarningsEnabled;
   }
@@ -1385,6 +1394,7 @@ export const DEFAULT_OTTO_SETTINGS: OttoAppSettings = {
   lightTheme: "daylight",
   darkTheme: "dark",
   promptSuggestionsEnabled: true,
+  followPromptSuggestions: false,
   rateLimitWarningsEnabled: true,
   resourceMonitorEnabled: true,
   contextWarningsEnabled: true,

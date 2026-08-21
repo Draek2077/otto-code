@@ -91,6 +91,8 @@ import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 import { dispatchComposerKeyboardAction } from "@/composer/keyboard-actions";
 import { submitAgentInput } from "@/composer/submit";
+import { useFollowPromptSuggestion } from "@/composer/follow-suggestion/use-follow-prompt-suggestion";
+import { useFollowSuggestionChainStore } from "@/composer/follow-suggestion/chain-store";
 import { confirmInterruptWithLiveSubagents } from "@/components/interrupt-subagents-warning";
 import { ComposerKeyboardScopeProvider } from "@/composer/keyboard-scope";
 import { useAppSettings } from "@/hooks/use-settings";
@@ -1186,6 +1188,9 @@ export function Composer({
     state.sessions[serverId]?.sentPromptHistory.get(agentId),
   );
   const setAgentPromptSuggestion = useSessionStore((state) => state.setAgentPromptSuggestion);
+  // "Follow prompt suggestions" (composer/follow-suggestion/). Separate from
+  // Auto mode by construction: nothing here touches a permission mode.
+  const resetFollowSuggestionChain = useFollowSuggestionChainStore((state) => state.resetChain);
   const appendSentPrompt = useSessionStore((state) => state.appendSentPrompt);
 
   const isCompactFormFactor = useIsCompactFormFactor();
@@ -1470,6 +1475,10 @@ export function Composer({
       outgoingMessage: string,
       outgoingAttachments: ComposerAttachment[],
       forceSend?: boolean,
+      // "follow-suggestion" marks a prompt Otto accepted on the user's behalf.
+      // Only a "user" send re-arms the follow chain, which is what keeps a
+      // self-prompting chat from renewing its own budget.
+      origin: "user" | "follow-suggestion" = "user",
     ): Promise<boolean> => {
       // A forced send to a busy agent interrupts the active turn server-side,
       // which kills any in-flight observed subagents/workflows - confirm first
@@ -1520,6 +1529,11 @@ export function Composer({
       });
       // The prompt reached the chat (sent or queued): push it onto the recall
       // stack, exit history navigation, and drop any stale ghost suggestion.
+      // The user participating re-arms the follow chain, so an attachment-only
+      // send counts too - hence the reset sits outside the text-only block.
+      if ((result === "submitted" || result === "queued") && origin === "user") {
+        resetFollowSuggestionChain(serverId, agentId);
+      }
       if ((result === "submitted" || result === "queued") && outgoingMessage.trim()) {
         appendSentPrompt(serverId, agentId, outgoingMessage);
         historyNavRef.current = { index: null, stashed: "" };
@@ -1539,6 +1553,7 @@ export function Composer({
       hasExternalContent,
       isAgentRunning,
       queueMessage,
+      resetFollowSuggestionChain,
       serverId,
       setAgentPromptSuggestion,
       setSelectedAttachments,
@@ -1571,6 +1586,25 @@ export function Composer({
       sendMessageWithContent,
     ],
   );
+
+  // Opt-in autonomy: take the suggestion the agent already produced instead of
+  // waiting for Tab and Enter. Every guard, and the per-chat bound that stops an
+  // unattended chat from prompting itself forever, lives in
+  // composer/follow-suggestion/decide.ts.
+  useFollowPromptSuggestion({
+    serverId,
+    agentId,
+    suggestion: promptSuggestion,
+    arePromptSuggestionsEnabled: appSettings.promptSuggestionsEnabled,
+    draftText: userInput,
+    attachmentCount: selectedAttachments.length,
+    queuedCount: queuedMessages.length,
+    isAgentRunning,
+    canSubmit: isConnected || Boolean(onSubmitMessage),
+    onFollow: (prompt) => {
+      void sendMessageWithContent(prompt, [], false, "follow-suggestion");
+    },
+  });
 
   const handlePickImage = useCallback(async () => {
     const newImages = await pickAndPersistImages({

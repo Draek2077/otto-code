@@ -41,6 +41,15 @@ rides in a request.
    fan-out is ~180 extra calls). `notifyOnFinish` injects a child's entire last message into the
    parent and buys a full parent turn. Each needs an exposed off switch, not a hardcoded `true`.
 
+   `promptSuggestions` gained a second, sharper edge on the client. **Follow prompt suggestions**
+   (Settings -> General, device-local, default off) accepts that predicted next prompt the moment it
+   arrives instead of waiting for the user to press Tab, which multiplies whole turns rather than
+   adding a call to one. It is deliberately **not** part of Auto mode, and it is bounded: Otto
+   follows at most `FOLLOW_PROMPT_SUGGESTION_MAX_CONSECUTIVE` (3) suggestions in a row per chat, and
+   the count only resets when the user sends a message of their own. The guards and the bound live
+   in `packages/app/src/composer/follow-suggestion/decide.ts` as one pure function, and a band above
+   the message box says when a prompt was accepted by Otto rather than typed.
+
 5. **Accounting cannot see most of this, so users discover it on their bill.** Everything keys off
    `turn_completed`, so: openai-compat records only the **last** round of a multi-round turn;
    auto-compaction usage is counted nowhere; failed and cancelled turns are counted nowhere; Claude

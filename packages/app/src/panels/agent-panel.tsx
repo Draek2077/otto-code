@@ -117,6 +117,7 @@ import {
 import { BackgroundTasksTrack } from "@/background-tasks/track";
 import { RateLimitWarningTrack } from "@/composer/rate-limit-warning-track";
 import { ContextHealthTrack } from "@/composer/context-health-track";
+import { FollowSuggestionTrack } from "@/composer/follow-suggestion/track";
 import { COMPOSER_TRACK_LAYERS } from "@/composer/track-transition";
 import {
   SuggestedTasksOverlay,
@@ -1918,6 +1919,10 @@ function ActiveAgentComposer({
           position nearest the composer to the rate-limit strip. */}
       <ContextHealthTrack serverId={serverId} agentId={agentId} />
       <RateLimitWarningTrack serverId={serverId} agentId={agentId} />
+      {/* Says out loud that the last prompt was accepted by Otto rather than
+          typed, and carries the Stop for the chain. Only renders once a
+          suggestion has actually been followed. */}
+      <FollowSuggestionTrack serverId={serverId} agentId={agentId} />
       <SubagentsTrack
         rows={subagentRows}
         onOpenSubagent={handleOpenSubagent}

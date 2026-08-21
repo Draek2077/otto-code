@@ -14,7 +14,8 @@
 export const COMPOSER_TRACK_LAYERS = {
   contextHealth: 1,
   rateLimit: 2,
-  subagents: 3,
-  backgroundTasks: 4,
-  composer: 5,
+  followSuggestion: 3,
+  subagents: 4,
+  backgroundTasks: 5,
+  composer: 6,
 } as const;
