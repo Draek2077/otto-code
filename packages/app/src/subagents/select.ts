@@ -57,6 +57,7 @@ interface SelectSubagentsParams {
 
 const EMPTY_SUBAGENT_ROWS: SubagentRow[] = [];
 const EMPTY_PROVIDER_SUBAGENT_ROWS: ProviderSubagentRow[] = [];
+const EMPTY_SHADOWED_PROVIDER_SUBAGENT_IDS: string[] = [];
 
 function toSubagentRow(agent: Agent): SubagentRow {
   return {
@@ -166,16 +167,55 @@ export function selectSubagentsForParent(
   return rows;
 }
 
+/**
+ * Provider-native rows and Otto's older observed-agent projection can describe
+ * the same run. The observed projection uses the provider key as the suffix of
+ * its deterministic agent id, so retain those keys even when the observed row
+ * is archived or pending archive. Otherwise clearing one representation would
+ * reveal the duplicate representation underneath it.
+ */
+export function selectProviderSubagentIdsShadowedByObservedAgents(
+  state: SessionStoreSnapshot,
+  params: SelectSubagentsParams,
+): string[] {
+  const agents = state.sessions[params.serverId]?.agents;
+  if (!agents || agents.size === 0) {
+    return EMPTY_SHADOWED_PROVIDER_SUBAGENT_IDS;
+  }
+
+  const observedIdPrefix = `${params.parentAgentId}::sub::`;
+  const ids: string[] = [];
+  for (const agent of agents.values()) {
+    if (
+      agent.attend !== "observed" ||
+      !agent.id.startsWith(observedIdPrefix) ||
+      !isTrackDescendantOf(agent, params.parentAgentId, agents)
+    ) {
+      continue;
+    }
+    ids.push(agent.id.slice(observedIdPrefix.length));
+  }
+  return ids.length === 0 ? EMPTY_SHADOWED_PROVIDER_SUBAGENT_IDS : ids.sort();
+}
+
 export function selectProviderSubagentsForParent(
   state: ProviderSubagentStoreSnapshot,
   params: SelectSubagentsParams,
   supported: boolean,
+  shadowedIds: ReadonlySet<string> = new Set(),
 ): ProviderSubagentRow[] {
   if (!supported) return EMPTY_PROVIDER_SUBAGENT_ROWS;
   const rows: ProviderSubagentRow[] = [];
   const prefix = `${params.serverId}\0${params.parentAgentId}\0`;
   for (const [key, subagent] of state.descriptors) {
-    if (!key.startsWith(prefix) || state.hiddenFromTrack.has(key)) continue;
+    if (
+      !key.startsWith(prefix) ||
+      state.hiddenFromTrack.has(key) ||
+      shadowedIds.has(subagent.id) ||
+      (subagent.toolCallId !== null && shadowedIds.has(subagent.toolCallId))
+    ) {
+      continue;
+    }
     rows.push({
       kind: "provider",
       id: subagent.id,
@@ -203,9 +243,19 @@ export function useSubagentsForParent(params: SelectSubagentsParams): SubagentRo
   const supported = useSessionStore(
     (state) => state.sessions[params.serverId]?.serverInfo?.features?.providerSubagents === true,
   );
+  const shadowedProviderSubagentIds = useStoreWithEqualityFn(
+    useSessionStore,
+    (state) => selectProviderSubagentIdsShadowedByObservedAgents(state, params),
+    equal,
+  );
+  const shadowedProviderSubagentIdSet = useMemo(
+    () => new Set(shadowedProviderSubagentIds),
+    [shadowedProviderSubagentIds],
+  );
   const providerRows = useStoreWithEqualityFn(
     useProviderSubagentStore,
-    (state) => selectProviderSubagentsForParent(state, params, supported),
+    (state) =>
+      selectProviderSubagentsForParent(state, params, supported, shadowedProviderSubagentIdSet),
     equal,
   );
   const client = useSessionStore((state) => state.sessions[params.serverId]?.client ?? null);
