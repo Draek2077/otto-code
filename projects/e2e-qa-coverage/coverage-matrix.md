@@ -98,6 +98,7 @@ someone to run it by hand.
 | Chat file links open in side pane, never displace chat                             | ✅     | `chat-file-link-side-open.spec.ts`           | T1   | -   |
 | Chat markdown rendering (headings, lists, inline code, 12px spacing rhythm)        | ✅     | `chat-markdown-rendering.spec.ts`            | T1   | -   |
 | Detached reader position survives an agent turn completing                         | ✅     | `turn-completion-scroll.spec.ts`             | T1   | -   |
+| Detached reader position survives a chat tab being evicted and remounted           | 🟡     | `chat-tab-eviction-scroll.spec.ts`           | T1   | -   |
 | Streaming reveal (typewriter) + live turn token counters                           | ❌     | assert counters tick during mock stream      | T1   | P2  |
 | Rate-limit warning strip in composer (allowed/warning/rejected states)             | ✅     | `rate-limit-warning-strip.spec.ts`           | T1   | -   |
 | Friendly tool display names (canonical map + MCP humanizer)                        | ✅     | `tool-display-names.spec.ts`                 | T1   | -   |

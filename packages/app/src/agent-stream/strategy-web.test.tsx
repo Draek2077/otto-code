@@ -9,6 +9,7 @@ import { RetainedPanelActivity } from "@/components/retained-panel";
 import type { StreamItem } from "@/types/stream";
 import type { StreamRenderInput, StreamSegmentRenderers, StreamViewportHandle } from "./strategy";
 import { createWebStreamStrategy } from "./strategy-web";
+import { clearReaderPositions } from "./reader-position-memory";
 
 vi.hoisted(() => {
   Object.defineProperty(window, "matchMedia", {
@@ -60,6 +61,10 @@ describe("createWebStreamStrategy", () => {
   let originalOffsetHeight: PropertyDescriptor | undefined;
 
   beforeEach(() => {
+    // The reader-position memory is app-session state keyed by agent id, and
+    // every case here uses the same id, so one case's detached reader would be
+    // restored into the next one's fresh mount.
+    clearReaderPositions();
     Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
       value: true,
       configurable: true,

@@ -88,10 +88,11 @@ export function useScrollToMessage({
   }, [active, settleController]);
 
   const scrollToMessage = useCallback(
-    (itemId: string) => {
+    (itemId: string, options?: { landingInsetPx?: number }) => {
       if (!active) return;
       const container = scrollContainerRef.current;
       if (!container) return;
+      const landingInsetPx = options?.landingInsetPx ?? PROMPT_JUMP_TOP_INSET_PX;
       cancelPendingStickToBottom();
       setFollowOutput(false);
 
@@ -102,17 +103,19 @@ export function useScrollToMessage({
         const delta =
           mounted.getBoundingClientRect().top -
           container.getBoundingClientRect().top -
-          PROMPT_JUMP_TOP_INSET_PX;
+          landingInsetPx;
         container.scrollTop += delta;
-        settleController.start(itemId);
+        settleController.start(itemId, landingInsetPx);
         onNearBottomChange(false);
         return;
       }
 
       const index = historyVirtualized.findIndex((item) => item.id === itemId);
       if (index >= 0) {
+        // `scrollToIndex` lands the row at the viewport top; the settle pass
+        // below carries it the rest of the way to `landingInsetPx`.
         rowVirtualizer.scrollToIndex(index, { align: "start" });
-        settleController.start(itemId);
+        settleController.start(itemId, landingInsetPx);
         onNearBottomChange(false);
       }
     },

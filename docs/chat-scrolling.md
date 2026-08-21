@@ -22,6 +22,22 @@ are integers, especially with display scaling or browser zoom. The same band is
 used when deciding whether input detaches the reader and whether reaching the
 bottom reattaches them.
 
+## Ownership survives a remount
+
+A chat tab is kept mounted while it is not the frontmost tab in its pane, but
+only up to the pane's mounted-tab limit. Past that the tab is unmounted, and
+coming back to it builds a fresh transcript. That rebuild is not an open of the
+chat, so it does not get to take the bottom: a reader who was scrolled up when
+the tab was evicted is put back where they were.
+
+What is remembered is an anchor row and the offset that row had from the top of
+the viewport, never a `scrollTop`. A rebuilt transcript renders from estimates
+and re-measures over the following frames, so a pixel offset means something
+different on the way back in. The anchor is dropped as soon as the reader
+reaches the bottom, because that is them asking to follow output again, and it
+is dropped if the anchor row does not reappear, so a chat whose anchor was
+compacted away falls back to the bottom rather than stranding at the top.
+
 ## Web implementation
 
 The web strategy is vendored from Paseo's upstream implementation. Keep it
@@ -110,6 +126,7 @@ real device with a long streaming transcript and with a detached reader.
 - Desktop overlay scrollbar: `packages/app/src/components/use-web-scrollbar.tsx` and
   `packages/app/src/components/web-desktop-scrollbar.tsx`.
 - Older-history state machine: `packages/app/src/agent-stream/history-start-pagination.ts`.
+- Reader position across a remount: `packages/app/src/agent-stream/reader-position-memory.ts`.
 
 When changing scroll behavior, run the focused agent-stream tests, app typecheck,
 lint, and formatting checks. For browser behavior, verify the running Electron

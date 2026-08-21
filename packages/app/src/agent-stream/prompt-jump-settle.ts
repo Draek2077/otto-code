@@ -13,7 +13,13 @@ export interface PromptJumpSettleViewport {
 }
 
 export interface PromptJumpSettleController {
-  start(itemId: string): void;
+  /**
+   * `landingInsetPx` is where the row should end up, measured from the top of
+   * the viewport. It defaults to the prompt-jump inset; restoring a reader's
+   * remembered position passes the offset that row had when they left, which is
+   * usually negative because the row they were reading started above the fold.
+   */
+  start(itemId: string, landingInsetPx?: number): void;
   cancel(): void;
   isActive(): boolean;
 }
@@ -23,8 +29,12 @@ const REQUIRED_STABLE_FRAMES = 2;
 const FRAME_BUDGET = 24;
 export const PROMPT_JUMP_TOP_INSET_PX = 8;
 
-function distanceFromLandingPosition(targetTop: number, containerTop: number): number {
-  return targetTop - containerTop - PROMPT_JUMP_TOP_INSET_PX;
+function distanceFromLandingPosition(
+  targetTop: number,
+  containerTop: number,
+  landingInsetPx: number,
+): number {
+  return targetTop - containerTop - landingInsetPx;
 }
 
 export function createPromptJumpSettleController(input: {
@@ -33,6 +43,7 @@ export function createPromptJumpSettleController(input: {
   cancelFrame: (frameId: number) => void;
 }): PromptJumpSettleController {
   let activeItemId: string | null = null;
+  let activeLandingInsetPx = PROMPT_JUMP_TOP_INSET_PX;
   let frameId: number | null = null;
   let sampledFrames = 0;
   let stableFrames = 0;
@@ -42,6 +53,7 @@ export function createPromptJumpSettleController(input: {
     if (frameId !== null) input.cancelFrame(frameId);
     unsubscribeFromUserIntent?.();
     activeItemId = null;
+    activeLandingInsetPx = PROMPT_JUMP_TOP_INSET_PX;
     frameId = null;
     sampledFrames = 0;
     stableFrames = 0;
@@ -60,7 +72,11 @@ export function createPromptJumpSettleController(input: {
     sampledFrames += 1;
     const targetTop = input.viewport.findTargetTop(itemId);
     if (targetTop !== null) {
-      const delta = distanceFromLandingPosition(targetTop, input.viewport.getContainerTop());
+      const delta = distanceFromLandingPosition(
+        targetTop,
+        input.viewport.getContainerTop(),
+        activeLandingInsetPx,
+      );
       if (Math.abs(delta) <= POSITION_TOLERANCE_PX) {
         stableFrames += 1;
         if (stableFrames >= REQUIRED_STABLE_FRAMES) {
@@ -78,6 +94,7 @@ export function createPromptJumpSettleController(input: {
           remainingDelta = distanceFromLandingPosition(
             adjustedTargetTop,
             input.viewport.getContainerTop(),
+            activeLandingInsetPx,
           );
         }
         const maxScrollTop = Math.max(0, after.scrollHeight - after.clientHeight);
@@ -97,9 +114,10 @@ export function createPromptJumpSettleController(input: {
   }
 
   return {
-    start(itemId) {
+    start(itemId, landingInsetPx = PROMPT_JUMP_TOP_INSET_PX) {
       finish();
       activeItemId = itemId;
+      activeLandingInsetPx = landingInsetPx;
       unsubscribeFromUserIntent = input.viewport.subscribeToUserIntent(finish);
       scheduleNextFrame();
     },

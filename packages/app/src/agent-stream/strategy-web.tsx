@@ -15,6 +15,12 @@ import { useStableEvent } from "@/hooks/use-stable-event";
 import type { Theme } from "@/styles/theme";
 import { WEB_SCROLLBAR_SIZE_PX } from "@/styles/web-scrollbar";
 import { estimateStreamItemHeight } from "./web-virtualization";
+import {
+  forgetReaderPosition,
+  readReaderPosition,
+  rememberReaderPosition,
+  type ReaderPosition,
+} from "./reader-position-memory";
 import type { StreamRenderInput, StreamStrategy, StreamViewportHandle } from "./strategy";
 import { createStreamStrategy } from "./strategy";
 import {
@@ -54,6 +60,10 @@ const HISTORY_START_SETTLE_FRAMES = 2;
 const HISTORY_START_SLOT_HEIGHT_PX = 32;
 const CONTENT_PADDING_TOP_PX = 16;
 const UPWARD_INPUT_EVIDENCE_TIMEOUT_MS = 100;
+// How long a remount waits for the row a returning reader was anchored on. Long
+// enough to cover a transcript rebuild and its first measurement passes, short
+// enough that a chat whose anchor is gone does not sit stranded.
+const READER_POSITION_RESTORE_TIMEOUT_MS = 4000;
 const VIRTUALIZER_SCROLL_MARGIN_PX = HISTORY_START_SLOT_HEIGHT_PX + CONTENT_PADDING_TOP_PX;
 // A row has to clear this much of the viewport top before the next one takes over as the
 // reading position, so a row resting exactly on the edge does not flip back and forth.
@@ -243,7 +253,14 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   const handleContentRef = useCallback((node: HTMLElement | null) => {
     contentRef.current = node;
   }, []);
-  const [followOutput, setFollowOutputr] = useState(true);
+  // A remount of this chat is not an open of it. If the reader had taken the
+  // position before the tab was evicted from its pane's mounted set, that place
+  // is where this mount belongs, not the bottom. See reader-position-memory.ts.
+  const [initialReaderPosition] = useState<ReaderPosition | null>(() =>
+    readReaderPosition(props.agentId),
+  );
+  const pendingReaderPositionRestoreRef = useRef<ReaderPosition | null>(initialReaderPosition);
+  const [followOutput, setFollowOutputr] = useState(initialReaderPosition === null);
   const followOutputRef = useRef(followOutput);
   const setFollowOutput = (value: boolean) => {
     followOutputRef.current = value;
@@ -607,32 +624,63 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
 
   // Rows are laid out in DOM order, virtualized block first, so the first row whose bottom
   // clears the reading line is the one the reader is looking at.
-  const reportReadingPosition = useStableEvent(() => {
-    if (!isActiveRef.current) {
-      return;
-    }
-    if (!onReadingPositionChange) {
-      return;
-    }
+  const resolveReadingRow = useStableEvent((): ReaderPosition | null => {
     const scrollContainer = scrollContainerRef.current;
     const contentNode = contentRef.current;
     if (!scrollContainer || !contentNode) {
-      onReadingPositionChange(null);
-      return;
+      return null;
     }
-    const readingLine = scrollContainer.getBoundingClientRect().top + READING_POSITION_OFFSET_PX;
-    let readingRowId: string | null = null;
+    const containerTop = scrollContainer.getBoundingClientRect().top;
+    const readingLine = containerTop + READING_POSITION_OFFSET_PX;
+    let reading: ReaderPosition | null = null;
     for (const element of contentNode.querySelectorAll<HTMLElement>("[data-history-row-id]")) {
       const rowId = element.dataset.historyRowId;
       if (!rowId) {
         continue;
       }
-      readingRowId = rowId;
-      if (element.getBoundingClientRect().bottom > readingLine) {
+      const bounds = element.getBoundingClientRect();
+      reading = { rowId, viewportOffset: bounds.top - containerTop };
+      if (bounds.bottom > readingLine) {
         break;
       }
     }
-    onReadingPositionChange(readingRowId);
+    return reading;
+  });
+
+  // One walk of the row list serves both readers of it: the reading-position
+  // callback, and the anchor that puts this reader back after a remount. While
+  // the app follows output there is nothing to anchor - the bottom is the
+  // position - so the walk is skipped unless a consumer wants the row.
+  const applyReadingPosition = useStableEvent(() => {
+    if (!isActiveRef.current) {
+      return;
+    }
+    const isRestorePending = pendingReaderPositionRestoreRef.current !== null;
+    // A restore that has not landed yet owns the anchor; the position this
+    // mount happens to be at is not the reader's.
+    const shouldRememberAnchor = !isRestorePending && !followOutputRef.current;
+    if (!isRestorePending && followOutputRef.current) {
+      forgetReaderPosition(props.agentId);
+    }
+    if (!onReadingPositionChange && !shouldRememberAnchor) {
+      return;
+    }
+    const reading = resolveReadingRow();
+    onReadingPositionChange?.(reading?.rowId ?? null);
+    if (shouldRememberAnchor && reading) {
+      rememberReaderPosition(props.agentId, reading);
+    }
+  });
+
+  // An explicit request - jump to bottom, send a message, jump to a message -
+  // is the reader saying where they want to be, so a restore still waiting on
+  // its anchor row must not arrive later and overrule them.
+  const cancelPendingReaderPositionRestore = useStableEvent(() => {
+    if (pendingReaderPositionRestoreRef.current === null) {
+      return;
+    }
+    pendingReaderPositionRestoreRef.current = null;
+    forgetReaderPosition(props.agentId);
   });
 
   const updateScrollMetrics = useCallback(() => {
@@ -645,8 +693,8 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       return;
     }
     syncNearBottom(scrollContainer, onNearBottomChange);
-    reportReadingPosition();
-  }, [onNearBottomChange, reportReadingPosition]);
+    applyReadingPosition();
+  }, [applyReadingPosition, onNearBottomChange]);
 
   const { isJumpSettling, scrollToMessage } = useScrollToMessage({
     active: isActive,
@@ -730,8 +778,61 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     };
   }, [evaluateHistoryStart, props.agentId]);
 
+  // Put a returning reader back where they were, once the row they anchored on
+  // is in the transcript. History arrives over several commits after a remount,
+  // so this re-checks as the segments change and stands down as soon as it has
+  // handed the position to the jump path, which owns the settle from there.
+  useLayoutEffect(() => {
+    const target = pendingReaderPositionRestoreRef.current;
+    if (!target || !isActive) {
+      return;
+    }
+    const isRendered =
+      segments.historyMounted.some((row) => row.id === target.rowId) ||
+      segments.historyVirtualized.some((row) => row.id === target.rowId) ||
+      segments.liveHead.some((row) => row.id === target.rowId);
+    if (!isRendered) {
+      return;
+    }
+    pendingReaderPositionRestoreRef.current = null;
+    scrollToMessage(target.rowId, { landingInsetPx: target.viewportOffset });
+  }, [
+    isActive,
+    scrollToMessage,
+    segments.historyMounted,
+    segments.historyVirtualized,
+    segments.liveHead,
+  ]);
+
+  // The anchored row can be gone for good - compacted away, or behind history
+  // this mount will never page in. Waiting forever would leave the transcript
+  // parked at the top with no way out, so give up on the restore and take the
+  // bottom, which is what a mount without a remembered position does.
+  useEffect(() => {
+    if (!pendingReaderPositionRestoreRef.current) {
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      if (!pendingReaderPositionRestoreRef.current || !isActiveRef.current) {
+        return;
+      }
+      pendingReaderPositionRestoreRef.current = null;
+      forgetReaderPosition(props.agentId);
+      setFollowOutput(true);
+      forceStickToBottom();
+    }, READER_POSITION_RESTORE_TIMEOUT_MS);
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [forceStickToBottom, props.agentId]);
+
   useLayoutEffect(() => {
     if (!isActiveRef.current || !isActivationReady) {
+      return;
+    }
+    // A pending restore owns this mount's position; taking the bottom here
+    // would be the very write the reader's ownership forbids.
+    if (pendingReaderPositionRestoreRef.current) {
       return;
     }
     if (hasRouteBottomAnchorRequest && !followOutputRef.current) {
@@ -863,6 +964,11 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       }
     };
     const handleWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey) {
+        // Either direction: the reader is driving the viewport, so a restore
+        // still waiting on its anchor row has been overtaken.
+        cancelPendingReaderPositionRestore();
+      }
       if (
         !event.ctrlKey &&
         event.deltaY < 0 &&
@@ -892,10 +998,12 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       }
       if (event.button === 0) {
         if (isVerticalScrollbarGutterPress(event, scrollContainer)) {
+          cancelPendingReaderPositionRestore();
           mouseScrollGestureRef.current = { kind: "scrollbar", pointerId: event.pointerId };
         }
         return;
       }
+      cancelPendingReaderPositionRestore();
       mouseScrollGestureRef.current = {
         kind: "autoscroll",
         pointerId: event.pointerId,
@@ -945,6 +1053,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       if (!touch) {
         return;
       }
+      cancelPendingReaderPositionRestore();
       const previousTouchY = lastTouchClientYRef.current;
       if (
         previousTouchY !== null &&
@@ -988,6 +1097,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       clearUpwardInputEvidence();
     };
   }, [
+    cancelPendingReaderPositionRestore,
     clearMouseScrollGesture,
     clearUpwardInputEvidence,
     handleDomScroll,
@@ -999,6 +1109,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   useEffect(() => {
     const handle: StreamViewportHandle = {
       scrollToBottom: () => {
+        cancelPendingReaderPositionRestore();
         setFollowOutput(true);
         cancelPendingStickToBottom();
         forceStickToBottom();
@@ -1009,7 +1120,10 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
         }
         scheduleStickToBottom();
       },
-      scrollToMessage,
+      scrollToMessage: (itemId) => {
+        cancelPendingReaderPositionRestore();
+        scrollToMessage(itemId);
+      },
     };
     viewportRef.current = handle;
     return () => {
@@ -1020,6 +1134,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     };
   }, [
     cancelPendingStickToBottom,
+    cancelPendingReaderPositionRestore,
     forceStickToBottom,
     scheduleStickToBottom,
     scrollToMessage,
