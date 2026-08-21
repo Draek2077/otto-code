@@ -287,13 +287,16 @@ function CapabilityIcons({ model }: { model: BrainInventoryModel }) {
   );
 }
 
-/** The row marker is state, not decoration: dots only mean resident-and-ready. */
-function ModelStateMarker({ state }: { state: string }) {
+/**
+ * The row marker is state, not decoration: dots only mean resident-and-ready.
+ * It is also the row's only spinner - every in-flight operation on the model
+ * (load, unload, queue wait, calibrate, sweep, benchmark) reports through it,
+ * so the status line underneath stays plain text.
+ */
+function ModelStateMarker({ state, busy }: { state: string; busy: boolean }) {
+  if (busy) return <ThemedSpinner size={10} />;
   if (state === "loaded") return <View style={styles.loadedDot} />;
   if (state === "active") return <ThemedPlay uniProps={activeIconMapping} />;
-  if (state === "loading" || state === "unloading" || state === "queued") {
-    return <ThemedSpinner size={10} />;
-  }
   return null;
 }
 
@@ -381,9 +384,11 @@ function ModelDetailHeader({
   );
 }
 
-/** "Calibrating"/"Sweeping" for the job kinds this row can show live. */
+/** The present-tense label for the job kinds a model row can show live. */
 function tuningJobLabel(kind: BrainJob["kind"]): string {
-  return kind === "calibrate" ? "Calibrating" : "Sweeping";
+  if (kind === "calibrate") return "Calibrating";
+  if (kind === "bench") return "Benchmarking";
+  return "Sweeping";
 }
 
 interface VisibleColumns {
@@ -403,7 +408,7 @@ function ModelRow({
   model: BrainInventoryModel;
   selected: boolean;
   onSelect: (id: string) => void;
-  /** The most recent calibrate/sweep job for this model, if any. */
+  /** The most recent calibrate/sweep/benchmark job for this model, if any. */
   job: BrainJob | undefined;
   columns: VisibleColumns;
   /** Compact themes double capability icon size for touch readability. */
@@ -419,6 +424,13 @@ function ModelRow({
     [selected],
   );
   const jobRunning = job?.status === "running";
+  // One spinner per row, carried by the state marker: a transitioning
+  // lifecycle and a running job are both just "this row is working".
+  const busy =
+    jobRunning ||
+    model.state === "loading" ||
+    model.state === "unloading" ||
+    model.state === "queued";
 
   return (
     <Pressable
@@ -430,20 +442,17 @@ function ModelRow({
     >
       <View style={styles.cellName}>
         <View style={styles.nameRow}>
-          <ModelStateMarker state={model.state} />
+          <ModelStateMarker state={model.state} busy={busy} />
           <ThemedBrainModelFamilyIcon family={model.family} size={16} />
           <Text style={styles.nameText} numberOfLines={1}>
             {model.displayName}
           </Text>
         </View>
         {jobRunning ? (
-          <View style={styles.rowJobStatus}>
-            <ThemedSpinner size={10} />
-            <Text style={styles.rowJobStatusText} numberOfLines={1}>
-              {tuningJobLabel(job.kind)}
-              {job.message ? ` — ${job.message}` : "…"}
-            </Text>
-          </View>
+          <Text style={styles.rowJobStatusText} numberOfLines={1}>
+            {tuningJobLabel(job.kind)}
+            {job.message ? ` — ${job.message}` : "…"}
+          </Text>
         ) : null}
       </View>
       <ScoreText overall={model.score?.overall} />
@@ -671,7 +680,7 @@ function ModelActions({
   canWrite: boolean;
   /** The host owns calibration and sweep jobs for its local model store. */
   canRunJobs: boolean;
-  /** The most recent calibrate/sweep job for this model, if any. */
+  /** The most recent calibrate/sweep/benchmark job for this model, if any. */
   job: BrainJob | undefined;
   /** Whether any tuning job is running tab-wide - the brain runs one at a time. */
   tuningBusy: boolean;
@@ -992,7 +1001,7 @@ export function BrainModelsTab({
   const query = useBrainInventory(serverId, isConnected);
   const statusQuery = useBrainStatus(serverId, { enabled: isConnected });
 
-  // Calibrate/sweep run as brain jobs, same as a model download - polled here so
+  // Calibrate/sweep/benchmark run as brain jobs, same as a model download - polled here so
   // progress survives navigating away and back (the job itself keeps running on
   // the brain regardless of which component is mounted; this just re-syncs with
   // it) and shows up both in the table row and the detail pane that started it.
@@ -1004,7 +1013,10 @@ export function BrainModelsTab({
   const jobByModelName = useMemo(() => {
     const map = new Map<string, BrainJob>();
     for (const job of jobs) {
-      if ((job.kind !== "calibrate" && job.kind !== "sweep") || !job.target) {
+      if (
+        (job.kind !== "calibrate" && job.kind !== "sweep" && job.kind !== "bench") ||
+        !job.target
+      ) {
         continue;
       }
       const existing = map.get(job.target);
@@ -1295,14 +1307,10 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     flexShrink: 1,
   },
-  // A running calibrate/sweep job for this row, right under its name - the
-  // same live message the detail pane shows, so the table alone tells the
-  // whole story without opening the row.
-  rowJobStatus: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-  },
+  // A running calibrate/sweep/benchmark job for this row, right under its
+  // name - the same live message the detail pane shows, so the table alone
+  // tells the whole story without opening the row. It carries no spinner of
+  // its own; the row's state marker is the single indicator.
   rowJobStatusText: {
     fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
