@@ -104,8 +104,6 @@ someone to run it by hand.
 | Friendly tool display names (canonical map + MCP humanizer)                        | ✅     | `tool-display-names.spec.ts`                 | T1   | -   |
 | Steer queue (queued steering drains at idle)                                       | ❌     | charter not shipped; spec lands with feature | T1   | P2  |
 | Add a changed file to the chat composer                                            | 🟡     | `add-changed-file-to-chat.spec.ts`           | T1   | -   |
-| Add the open file, or a selected row:column range, from the File Editor            | 🟡     | `add-file-to-chat-from-editor.spec.ts`       | T1   | -   |
-| Picking an `@` mention attaches a pill instead of inserting a quoted path          | 🟡     | `add-file-to-chat-from-editor.spec.ts`       | T1   | -   |
 | Tool-call shimmer while a call is running                                          | 🟡     | `tool-call-shimmer.spec.ts`                  | T1   | -   |
 
 ## 5. Agent lifecycle & control

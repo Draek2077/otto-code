@@ -23,7 +23,6 @@ import {
 import {
   applyFileMentionReplacement,
   findActiveFileMention,
-  removeFileMention,
   type FileMentionRange,
 } from "@/utils/file-mention-autocomplete";
 
@@ -37,12 +36,6 @@ interface UseAgentAutocompleteInput {
   onAutocompleteApplied?: () => void;
   onClientSlashCommand?: (command: ClientSlashCommand) => void;
   canExecuteClientSlashCommand?: boolean;
-  /**
-   * Attach a picked `@` mention as a composer pill. Returns false when the
-   * composer has nowhere to put one (no attachment scope), in which case the
-   * mention falls back to the quoted-path text it used to insert.
-   */
-  onAttachWorkspaceEntry?: (entry: { path: string; kind: "file" | "directory" }) => boolean;
 }
 
 type AgentAutocompleteOption =
@@ -51,7 +44,6 @@ type AgentAutocompleteOption =
   | (AutocompleteOption & {
       type: "workspace_entry";
       entryPath: string;
-      entryKind: "file" | "directory";
       mention: FileMentionRange;
     });
 
@@ -201,7 +193,6 @@ function buildCommandAutocompleteOptions(input: BuildAutocompleteOptionsInput) {
       label: entry.path,
       kind: entry.kind,
       entryPath: entry.path,
-      entryKind: entry.kind,
       mention: activeFileMention,
     }));
   }
@@ -317,7 +308,6 @@ export function useAgentAutocomplete(input: UseAgentAutocompleteInput): AgentAut
     onAutocompleteApplied,
     onClientSlashCommand,
     canExecuteClientSlashCommand,
-    onAttachWorkspaceEntry,
   } = input;
 
   const activeSlashCommand = useMemo(
@@ -506,28 +496,16 @@ export function useAgentAutocomplete(input: UseAgentAutocompleteInput): AgentAut
         return;
       }
 
-      // A picked file leaves the text and becomes a pill: the `@query` is
-      // deleted rather than replaced, so the sentence the user is writing keeps
-      // reading as a sentence. Only when the composer has no attachment scope
-      // to hold a pill does the old quoted path go back into the text.
-      const attached = onAttachWorkspaceEntry?.({
-        path: selected.entryPath,
-        kind: selected.entryKind,
+      const nextInput = applyFileMentionReplacement({
+        text: userInput,
+        mention: selected.mention,
+        relativePath: selected.entryPath,
       });
-      setUserInput(
-        attached
-          ? removeFileMention({ text: userInput, mention: selected.mention })
-          : applyFileMentionReplacement({
-              text: userInput,
-              mention: selected.mention,
-              relativePath: selected.entryPath,
-            }),
-      );
+      setUserInput(nextInput);
       onAutocompleteApplied?.();
     },
     [
       canExecuteClientSlashCommand,
-      onAttachWorkspaceEntry,
       onAutocompleteApplied,
       onClientSlashCommand,
       setUserInput,

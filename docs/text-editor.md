@@ -533,34 +533,6 @@ of this transition. Launch failures, missing executables, host disconnects, and 
 visible as explicit state. Direct Neovim RPC embedding and Difftastic integration are separate
 future work.
 
-## Add to chat - handing the file, or a range, to the composer
-
-Two entry points, both producing the ordinary `file_context` attachment pill that the file explorer,
-project search and the Changes pane already produce (`packages/app/src/attachments/file-context.ts`):
-
-- **The toolbar button** (`file-add-to-chat`, in `FileAiToolbarGroup`, so both the editor and preview
-  toolbars carry it) attaches the whole file.
-- **The editor's right-click "Add selection to chat"** (`editor-context-add-selection-to-chat`)
-  attaches the selected range, read live from `getSelection` rather than from the cursor readout,
-  which is a render behind. `EditorSelection` reports `columnStart`/`columnEnd` alongside the lines
-  for exactly this, so the pill shows `file.ts:12:5-40:18` - the range the gutter was showing.
-
-Three things this deliberately does **not** do:
-
-- **It does not send the selected text.** The attachment is a reference: path plus range, one line of
-  prompt instead of the excerpt, and it cannot go stale if the agent edits the file before the turn
-  runs. See [token-economy.md](token-economy.md).
-- **It does not require a focused chat.** Both write to the _workspace_ attachment scope, which every
-  chat composer in the workspace reads. The focused pane is the file, so `focusedAgentId` is null by
-  construction here - gating on it (as the file explorer does, where a chat can be focused beside the
-  sidebar) would remove the action exactly when the user is reading the code they want to ask about.
-- **It does not offer itself outside the project.** Same restriction as history, Changes and Refine:
-  the attachment carries a workspace-relative path, so a linked or outside-project file would point
-  the agent at the wrong tree.
-
-Every producer builds its dedupe id through `buildFileContextAttachmentId`, so the toolbar, the file
-explorer and an `@` mention naming one file yield one pill and one X.
-
 ## AI Refactor - the safe core
 
 Refactoring is delegated to an agent, not a static analyzer - Otto's home-field advantage. The critical design decision, which must not be undone lightly: **AI Refactor deliberately does not spawn an agent directly.** A direct spawn would touch the central agent-creation path while potentially unattended, violating the "safe operations" constraint. Instead it routes through the proven composer/draft path where the user has final say.

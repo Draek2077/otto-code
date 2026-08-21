@@ -44,7 +44,7 @@ export function useAiRefactor(input: UseAiRefactorInput): UseAiRefactorResult {
     try {
       selection = controller
         ? await controller.getSelection()
-        : { text: "", lineStart: 1, lineEnd: 1, columnStart: 1, columnEnd: 1, isEmpty: true };
+        : { text: "", lineStart: 1, lineEnd: 1, isEmpty: true };
     } catch (error) {
       toast.error(getErrorMessage(error));
       return;

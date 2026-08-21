@@ -7,7 +7,6 @@ import {
   registerActiveExternalFileEditor,
   resolveExternalEditorCapability,
   resolveExternalFileEditorCommand,
-  shouldOpenInSelectedFileEditor,
 } from "./external-file-editor";
 
 describe("external file editor commands", () => {
@@ -83,35 +82,5 @@ describe("external file editor commands", () => {
     });
     expect(resolveExternalEditorCapability(payload("pass"), "vim")).toBeNull();
     expect(resolveExternalEditorCapability(payload("fail"), "vim")).toContain("not available");
-  });
-
-  it("keeps Markdown in Otto when configured", () => {
-    expect(
-      shouldOpenInSelectedFileEditor({
-        path: "README.md",
-        defaultViewIsEditor: false,
-        renderedDocument: true,
-        alwaysUseOttoEditorForMarkdown: true,
-      }),
-    ).toBe(false);
-  });
-
-  it("still opens other source and rendered documents in the selected editor", () => {
-    expect(
-      shouldOpenInSelectedFileEditor({
-        path: "src/main.ts",
-        defaultViewIsEditor: true,
-        renderedDocument: false,
-        alwaysUseOttoEditorForMarkdown: true,
-      }),
-    ).toBe(true);
-    expect(
-      shouldOpenInSelectedFileEditor({
-        path: "guide.MD",
-        defaultViewIsEditor: false,
-        renderedDocument: true,
-        alwaysUseOttoEditorForMarkdown: false,
-      }),
-    ).toBe(true);
   });
 });

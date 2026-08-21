@@ -426,8 +426,6 @@ export interface OttoAppSettings {
   fileEditorMode: FileEditorMode;
   /** Direct argv-style command used when fileEditorMode is custom. */
   fileEditorCustomCommand: string;
-  /** Keep Markdown files in Otto's built-in editor when an external editor is selected. */
-  alwaysUseOttoEditorForMarkdown: boolean;
 }
 
 export type SendBehavior = "interrupt" | "queue";
@@ -1258,9 +1256,6 @@ function pickVisualizerPipSettings(stored: Partial<AppSettings>): Partial<AppSet
   if (typeof stored.fileEditorCustomCommand === "string") {
     result.fileEditorCustomCommand = stored.fileEditorCustomCommand;
   }
-  if (typeof stored.alwaysUseOttoEditorForMarkdown === "boolean") {
-    result.alwaysUseOttoEditorForMarkdown = stored.alwaysUseOttoEditorForMarkdown;
-  }
   if (
     typeof stored.toolCallDetailLevel === "string" &&
     VALID_TOOL_CALL_DETAIL_LEVELS.has(stored.toolCallDetailLevel as ToolCallDetailLevel)
@@ -1488,5 +1483,4 @@ export const DEFAULT_OTTO_SETTINGS: OttoAppSettings = {
   vimMappings: DEFAULT_VIM_MAPPING_SETTINGS,
   fileEditorMode: "off",
   fileEditorCustomCommand: "",
-  alwaysUseOttoEditorForMarkdown: false,
 };

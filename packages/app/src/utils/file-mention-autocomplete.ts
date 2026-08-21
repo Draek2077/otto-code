@@ -43,16 +43,21 @@ export function findActiveFileMention(input: FindActiveFileMentionInput): FileMe
 /**
  * The quoted, escaped form of a workspace-relative path.
  *
+ * This is the agent-facing representation of a file mention, and it is
+ * deliberately the same text the user sees in the composer and the sent
+ * message bubble. Picking a file inserts `"src/components/chat.tsx"` verbatim;
+ * there is no separate display form. Keeping one form end-to-end preserves
+ * WYSIWYG: what the user typed is exactly what the agent receives, and copy,
+ * rewind, and history recall never reintroduce a form the user has not seen.
+ *
  * The quotes and escaping exist for the model, not the UI: they make the path
  * unambiguous when it contains spaces or other tokens the prose around it
  * could be confused with (`open "src/changed \"file\".ts" next` parses as one
  * path; without the quotes the agent cannot tell where the path ends).
  *
- * This used to be what picking a file inserted into the composer, so the user
- * saw the quoted form too. It is now a serialize-time detail: a picked file
- * becomes a removable `file_context` pill (see `removeFileMention`), and this
- * runs only on the fallback path, where the composer has no attachment scope
- * to put a pill in.
+ * If a richer composer ever represents mentions as structured tokens, this is
+ * the function to apply at serialize time - and only then - so the token's
+ * display form can stay clean.
  */
 export function formatQuotedFileMentionPath(relativePath: string): string {
   const safePath = relativePath.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -63,15 +68,4 @@ export function applyFileMentionReplacement(input: ApplyFileMentionReplacementIn
   const before = input.text.slice(0, input.mention.start);
   const after = input.text.slice(input.mention.end);
   return `${before}${formatQuotedFileMentionPath(input.relativePath)}${after}`;
-}
-
-/**
- * Drop the `@query` the user was typing, leaving the prose around it intact.
- *
- * What picking a file does now: the path leaves the text entirely and arrives
- * as a pill, so the sentence reads as a sentence ("look at this and tell me
- * why") with the file attached beside it rather than spliced into it.
- */
-export function removeFileMention(input: { text: string; mention: FileMentionRange }): string {
-  return `${input.text.slice(0, input.mention.start)}${input.text.slice(input.mention.end)}`;
 }

@@ -7,8 +7,6 @@ function selection(overrides: Partial<EditorSelection> = {}): EditorSelection {
     text: "needle",
     lineStart: 12,
     lineEnd: 12,
-    columnStart: 1,
-    columnEnd: 7,
     isEmpty: false,
     ...overrides,
   };

@@ -114,7 +114,6 @@ import {
 import { useDirectorySearchQuery } from "@/hooks/use-directory-search-query";
 import { droppedItemsToPickedFiles } from "@/composer/attachments/drop";
 import { getFileTypeLabel } from "@/attachments/file-types";
-import { createFileContextAttachment } from "@/attachments/file-context";
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
 import { AttachmentLabel, AttachmentPill, AttachmentThumbnail } from "@/components/attachment-pill";
 import { AttachmentLightbox } from "@/components/attachment-lightbox";
@@ -1300,25 +1299,6 @@ export function Composer({
     ],
   );
 
-  // Picking an `@` mention attaches a pill instead of splicing a quoted path
-  // into the prose - the same `file_context` attachment the file explorer, the
-  // Changes pane and the editor produce, so one file has one pill however the
-  // user reached for it, and one X removes it.
-  const mentionAttachmentScopeKey = attachmentWriteScopeKey ?? attachmentScopeKeys[0];
-  const attachWorkspaceEntryMention = useCallback(
-    (entry: { path: string; kind: "file" | "directory" }) => {
-      if (!mentionAttachmentScopeKey) {
-        return false;
-      }
-      useWorkspaceAttachmentsStore.getState().addWorkspaceAttachment({
-        scopeKey: mentionAttachmentScopeKey,
-        attachment: createFileContextAttachment({ path: entry.path, entryKind: entry.kind }),
-      });
-      return true;
-    },
-    [mentionAttachmentScopeKey],
-  );
-
   const autocomplete = useAgentAutocomplete({
     userInput,
     cursorIndex,
@@ -1328,7 +1308,6 @@ export function Composer({
     draftConfig: commandDraftConfig,
     canExecuteClientSlashCommand: buildOutgoingAttachments(attachments).length === 0,
     onClientSlashCommand: runClientSlashCommand,
-    onAttachWorkspaceEntry: attachWorkspaceEntryMention,
     onAutocompleteApplied: () => {
       messageInputRef.current?.focus();
     },
@@ -2225,13 +2204,13 @@ export function Composer({
   const addWorkspaceAttachment = useWorkspaceAttachmentsStore(
     (state) => state.addWorkspaceAttachment,
   );
-  const folderAttachmentScopeKey = mentionAttachmentScopeKey;
+  const folderAttachmentScopeKey = attachmentWriteScopeKey ?? attachmentScopeKeys[0];
   const handleSelectFolder = useCallback(
     (path: string) => {
       if (!folderAttachmentScopeKey) return;
       addWorkspaceAttachment({
         scopeKey: folderAttachmentScopeKey,
-        attachment: createFileContextAttachment({ path, entryKind: "directory" }),
+        attachment: { kind: "file_context", id: path, path, entryKind: "directory" },
       });
     },
     [addWorkspaceAttachment, folderAttachmentScopeKey],

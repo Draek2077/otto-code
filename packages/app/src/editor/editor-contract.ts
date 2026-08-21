@@ -184,14 +184,6 @@ export interface EditorSelection {
   lineStart: number;
   /** 1-based line of the selection end. */
   lineEnd: number;
-  /**
-   * 1-based column of the selection start, counted in UTF-16 code units - the
-   * same unit as `EditorCursorPosition.column`, so the range the user attaches
-   * matches the numbers the status bar was showing.
-   */
-  columnStart: number;
-  /** 1-based column of the selection end, same unit as `columnStart`. */
-  columnEnd: number;
   /** True when nothing is selected (just a cursor). */
   isEmpty: boolean;
 }

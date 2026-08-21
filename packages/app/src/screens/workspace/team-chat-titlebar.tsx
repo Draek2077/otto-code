@@ -1655,7 +1655,13 @@ export function WorkspaceTeamChatButton({
           />
         ) : (
           <>
-            <View style={styles.teamChatPopup}>
+            <View
+              style={
+                !isChatEnabled
+                  ? [styles.teamChatPopup, styles.teamChatPopupOffline]
+                  : styles.teamChatPopup
+              }
+            >
               <View style={styles.teamChatPopupHeader}>
                 <View style={styles.teamChatPopupHeaderCopy}>
                   <Text style={styles.teamChatPopupTitle}>{chatConnectionLabel}</Text>
@@ -1962,6 +1968,13 @@ const styles = StyleSheet.create((theme) => ({
   teamChatPopup: {
     gap: 0,
     paddingTop: theme.spacing[2],
+  },
+  // The offline popup shows only the header and the presence picker: nothing
+  // below it carries the shell bottom inset, so the content owns it there.
+  // The connected popup keeps the shell zero bottom padding - its home list
+  // rows end the surface.
+  teamChatPopupOffline: {
+    paddingBottom: theme.spacing[2],
   },
   teamChatRoomPopup: {
     backgroundColor: theme.colors.surface0,

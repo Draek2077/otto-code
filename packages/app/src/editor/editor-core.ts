@@ -185,9 +185,6 @@ export interface EditorCoreSelection {
   text: string;
   lineStart: number;
   lineEnd: number;
-  /** 1-based, UTF-16 code units - see `EditorSelection`, which this satisfies. */
-  columnStart: number;
-  columnEnd: number;
   isEmpty: boolean;
 }
 
@@ -1649,17 +1646,10 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
     getDoc: () => view.state.doc.toString(),
     getSelection: () => {
       const range = view.state.selection.main;
-      // Reported from `from`/`to`, not anchor/head: a selection dragged upward
-      // has head before anchor, and "add selection to chat" wants the range in
-      // document order, the way the user reads it.
-      const startLine = view.state.doc.lineAt(range.from);
-      const endLine = view.state.doc.lineAt(range.to);
       return {
         text: view.state.sliceDoc(range.from, range.to),
-        lineStart: startLine.number,
-        lineEnd: endLine.number,
-        columnStart: range.from - startLine.from + 1,
-        columnEnd: range.to - endLine.from + 1,
+        lineStart: view.state.doc.lineAt(range.from).number,
+        lineEnd: view.state.doc.lineAt(range.to).number,
         isEmpty: range.empty,
       };
     },

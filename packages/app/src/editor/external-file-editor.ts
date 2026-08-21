@@ -86,24 +86,6 @@ export function resolveExternalFileEditorCommand(input: {
   return { command: tokens[0], args: [...tokens.slice(1), ...pathArgs] };
 }
 
-/**
- * Markdown normally follows the selected File editor, including its rendered
- * document view. This preference provides a narrow exception for users who
- * want Otto's Markdown editing and preview tools while using a real editor for
- * all other source files.
- */
-export function shouldOpenInSelectedFileEditor(input: {
-  path: string;
-  defaultViewIsEditor: boolean;
-  renderedDocument: boolean;
-  alwaysUseOttoEditorForMarkdown: boolean;
-}): boolean {
-  if (input.alwaysUseOttoEditorForMarkdown && /\.md$/iu.test(input.path)) {
-    return false;
-  }
-  return input.defaultViewIsEditor || input.renderedDocument;
-}
-
 export function resolveExternalEditorCapability(
   payload: DiagnosticPayload,
   mode: Exclude<FileEditorMode, "off" | "custom">,

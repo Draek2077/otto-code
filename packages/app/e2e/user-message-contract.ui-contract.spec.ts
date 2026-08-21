@@ -73,10 +73,8 @@ test.describe("User message UI contract", () => {
       repoPrefix: "user-message-markdown-e2e-",
       title: "User message markdown e2e",
     });
-    // A quoted path plus a tagged fence: the two halves of "render my prompt
-    // like the agent's reply". Typed, not picked - picking a file now attaches a
-    // pill instead of inserting quoted text - but the rendering contract for a
-    // quoted path someone typed themselves is unchanged.
+    // A quoted file mention (what the composer's autocomplete inserts) plus a
+    // tagged fence: the two halves of "render my prompt like the agent's reply".
     const prompt = [
       'Guard "src/user-message-e2e.ts" before it ships.',
       "",

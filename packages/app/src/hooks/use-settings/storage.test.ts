@@ -99,18 +99,6 @@ describe("loadAppSettingsFromStorage", () => {
     });
   });
 
-  it("preserves the Markdown Otto editor preference", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ alwaysUseOttoEditorForMarkdown: true }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.alwaysUseOttoEditorForMarkdown).toBe(true);
-  });
-
   it("defaults workspace title source to title when storage is empty", async () => {
     const deps = makeDeps();
 
