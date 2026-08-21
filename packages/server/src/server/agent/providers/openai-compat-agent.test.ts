@@ -429,7 +429,7 @@ describe("OpenAICompatAgentClient", () => {
     const client = createClient("http://127.0.0.1:1");
 
     await expect(client.fetchCatalog({ scope: "global", force: true })).rejects.toThrow(
-      /Cannot reach LM Studio at http:\/\/127\.0\.0\.1:1\/v1/,
+      "Provider is unavailable. Check that it is running and that the settings are correct.",
     );
   });
 
@@ -1013,8 +1013,30 @@ describe("OpenAICompatAgentClient", () => {
     const events: AgentStreamEvent[] = [];
     session.subscribe((event) => events.push(event));
 
-    await expect(session.run("Say hello")).rejects.toThrow(/Cannot reach LM Studio|fetch failed/);
+    await expect(session.run("Say hello")).rejects.toThrow(
+      "Provider is unavailable. Check that it is running and that the settings are correct.",
+    );
     expect(events.some((event) => event.type === "turn_failed")).toBe(true);
+  });
+
+  test("reports the same outage message when Otto Brain is unreachable", async () => {
+    const endpoint = await startEndpoint();
+    const client = new OpenAICompatAgentClient({
+      providerId: "otto-brain",
+      label: "Otto Brain",
+      env: { OPENAI_BASE_URL: endpoint.baseUrl },
+    });
+    await new Promise<void>((resolve) => endpoint.server.close(() => resolve()));
+
+    const session = await client.createSession({
+      provider: "otto-brain",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    await expect(session.run("Say hello")).rejects.toThrow(
+      "Provider is unavailable. Check that it is running and that the settings are correct.",
+    );
   });
 });
 

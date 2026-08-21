@@ -846,10 +846,9 @@ function buildHeaders(endpoint: ResolvedEndpoint): Record<string, string> {
   return headers;
 }
 
-function unreachableError(label: string, endpoint: ResolvedEndpoint, cause: unknown): Error {
-  const detail = cause instanceof Error ? cause.message : String(cause);
+function unreachableError(_label: string, _endpoint: ResolvedEndpoint, _cause: unknown): Error {
   return new Error(
-    `Cannot reach ${label} at ${endpoint.baseUrl} (${detail}). Make sure the server is running and the URL is correct.`,
+    "Provider is unavailable. Check that it is running and that the settings are correct.",
   );
 }
 
@@ -4142,27 +4141,32 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       ...this.buildOttoToolPayload(),
       ...this.buildMcpToolPayload(),
     ];
-    const response = await fetch(`${endpoint.baseUrl}/chat/completions`, {
-      method: "POST",
-      ...endpointRequestInit(endpoint),
-      headers: buildHeaders(endpoint),
-      signal: turn.abort.signal,
-      body: JSON.stringify({
-        model,
-        messages: toWireMessages(this.messages),
-        stream: true,
-        stream_options: { include_usage: true },
-        // Stable per-session key so servers that support prompt caching (OpenAI
-        // and compatible gateways) can reuse the large shared prefix - the
-        // system prompt + ~10-15K-token tool catalog + history - across rounds
-        // instead of re-billing it every round. A standard Chat Completions
-        // field; servers that don't support it ignore it. Cache hits come back
-        // as prompt_tokens_details.cached_tokens (see parseStreamChunk).
-        prompt_cache_key: this.id,
-        ...buildReasoningRequestField(this.reasoningEffortMode, this.reasoningEffort),
-        ...(toolsPayload.length > 0 ? { tools: toolsPayload, tool_choice: "auto" } : {}),
-      }),
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${endpoint.baseUrl}/chat/completions`, {
+        method: "POST",
+        ...endpointRequestInit(endpoint),
+        headers: buildHeaders(endpoint),
+        signal: turn.abort.signal,
+        body: JSON.stringify({
+          model,
+          messages: toWireMessages(this.messages),
+          stream: true,
+          stream_options: { include_usage: true },
+          // Stable per-session key so servers that support prompt caching (OpenAI
+          // and compatible gateways) can reuse the large shared prefix - the
+          // system prompt + ~10-15K-token tool catalog + history - across rounds
+          // instead of re-billing it every round. A standard Chat Completions
+          // field; servers that don't support it ignore it. Cache hits come back
+          // as prompt_tokens_details.cached_tokens (see parseStreamChunk).
+          prompt_cache_key: this.id,
+          ...buildReasoningRequestField(this.reasoningEffortMode, this.reasoningEffort),
+          ...(toolsPayload.length > 0 ? { tools: toolsPayload, tool_choice: "auto" } : {}),
+        }),
+      });
+    } catch (error) {
+      throw unreachableError(this.label, endpoint, error);
+    }
     if (!response.ok) {
       const bodyText = await response.text().catch(() => "");
       throw new Error(

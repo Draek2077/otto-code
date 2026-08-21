@@ -6234,7 +6234,13 @@ export class AgentManager {
     const displayError = this.formatTurnFailedMessage(event);
     agent.lastError = isContextSizeError(event.error) ? displayError : event.error;
     this.recordTurnUsage(agent, event.usage, event.provider);
-    await this.appendSystemErrorTimelineMessage(agent, event.provider, displayError, options);
+    // A foreground caller receives this same failure through its RPC response,
+    // which the composer renders as its red send error. Persisting it as an
+    // assistant message creates a second, misleading chat bubble. Background
+    // failures have no caller to surface them, so retain their durable record.
+    if (!isForegroundEvent) {
+      await this.appendSystemErrorTimelineMessage(agent, event.provider, displayError, options);
+    }
     this.resolvePendingPermissionsForAgent(agent, event.provider, options, "Turn failed");
     if (!isForegroundEvent) {
       this.emitState(agent);

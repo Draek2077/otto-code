@@ -6790,7 +6790,7 @@ test("archiveAgent cascade surfaces partial child archive failures", async () =>
   );
 });
 
-test("turn_failed emits a system error assistant timeline message and keeps error lifecycle", async () => {
+test("foreground turn_failed keeps the error lifecycle without an assistant error message", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-turn-failed-"));
   const storagePath = join(workdir, "agents");
   const storage = new AgentStorage(storagePath, logger);
@@ -6856,17 +6856,15 @@ test("turn_failed emits a system error assistant timeline message and keeps erro
   expect(snapshot?.lifecycle).toBe("error");
   expect(snapshot?.lastError).toBe("invalid model id");
 
-  const systemErrors = manager
-    .getTimeline(agent.id)
-    .filter(
-      (item): item is Extract<AgentTimelineItem, { type: "assistant_message" }> =>
-        item.type === "assistant_message" && item.text.includes("[System Error]"),
-    );
-  expect(systemErrors).toHaveLength(1);
-  expect(systemErrors[0]?.text).toContain("invalid model id");
+  expect(manager.getTimeline(agent.id)).not.toContainEqual(
+    expect.objectContaining({
+      type: "assistant_message",
+      text: expect.stringContaining("[System Error]"),
+    }),
+  );
 });
 
-test("turn_failed surfaces provider code and diagnostic in system error message", async () => {
+test("foreground turn_failed surfaces provider code and diagnostic without an assistant error message", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-turn-failed-detail-"));
   const storagePath = join(workdir, "agents");
   const storage = new AgentStorage(storagePath, logger);
@@ -6932,15 +6930,12 @@ test("turn_failed surfaces provider code and diagnostic in system error message"
 
   expect(manager.getAgent(agent.id)?.lastError).toBe("Provider execution failed");
 
-  const systemError = manager
-    .getTimeline(agent.id)
-    .find(
-      (item): item is Extract<AgentTimelineItem, { type: "assistant_message" }> =>
-        item.type === "assistant_message" && item.text.includes("[System Error]"),
-    );
-  expect(systemError?.text).toContain("Provider execution failed");
-  expect(systemError?.text).toContain("code: 126");
-  expect(systemError?.text).toContain("No preset version installed for command claude");
+  expect(manager.getTimeline(agent.id)).not.toContainEqual(
+    expect.objectContaining({
+      type: "assistant_message",
+      text: expect.stringContaining("[System Error]"),
+    }),
+  );
 });
 
 test("turn_failed condenses context-size provider errors for display", () => {
