@@ -166,6 +166,7 @@ import {
   useAssistantBubbleHasText,
 } from "@/agent-stream/assistant-bubble-text";
 import { useIsMessagePlaybackActive } from "@/agent-stream/message-playback-activity";
+import { useIsAutoSpeechSpeaking } from "@/voice/auto-speech-queue";
 export type { InlinePathTarget } from "@/assistant-file-links";
 export type { AssistantForkTarget };
 
@@ -2335,6 +2336,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   const {
     showPlayback,
     visible: playbackVisible,
+    dimmed: playbackDimmed,
     handlePointerEnter,
     handlePointerLeave,
   } = playback;
@@ -2395,6 +2397,7 @@ export const AssistantMessage = memo(function AssistantMessage({
               agentId={agentId}
               groupId={bubbleGroupId}
               visible={playbackVisible}
+              dimmed={playbackDimmed}
             />
           ) : null}
         </View>
@@ -2421,6 +2424,7 @@ function useAssistantBubblePlaybackState(input: {
 }): {
   showPlayback: boolean;
   visible: boolean;
+  dimmed: boolean;
   handlePointerEnter: () => void;
   handlePointerLeave: () => void;
 } {
@@ -2463,6 +2467,11 @@ function useAssistantBubblePlaybackState(input: {
     showPlayback: canPlay && isLastSegment && isSettled,
     // Hover is web-only (docs/hover.md), so native and compact keep it visible.
     visible: hovered || isNative || isCompact,
+    // The permanently-visible case only. A hover-revealed button appears over
+    // text the reader has already moved past, but one that is always there sits
+    // on the tail of the last line of every bubble in the transcript - so it
+    // rides at half opacity there, and goes solid again while it is speaking.
+    dimmed: !hovered && (isNative || isCompact),
     handlePointerEnter,
     handlePointerLeave,
   };
@@ -2473,6 +2482,12 @@ interface AssistantBubblePlaybackProps {
   agentId?: string;
   groupId: string;
   visible: boolean;
+  /**
+   * The button is visible because the surface cannot hover, not because the
+   * reader pointed at it. It then reads at half opacity so the line of text
+   * underneath stays legible - see the styles below.
+   */
+  dimmed: boolean;
 }
 
 /**
@@ -2495,22 +2510,26 @@ function AssistantBubblePlayback({
   agentId,
   groupId,
   visible,
+  dimmed,
 }: AssistantBubblePlaybackProps) {
   const hasText = useAssistantBubbleHasText(groupId);
   // A speaking bubble keeps its button on screen regardless of hover - the
-  // Stop control must never be the thing you have to hunt for.
+  // Stop control must never be the thing you have to hunt for. The claim is
+  // taken from the first press, so this covers the loading state too.
   const isSpeaking = useIsMessagePlaybackActive(groupId);
+  // Auto-speech reads bubbles without any press at all; its Stop button has to
+  // stand out just as much.
+  const isAutoSpeaking = useIsAutoSpeechSpeaking(groupId);
   const getContent = useCallback(() => getAssistantBubbleText(groupId), [groupId]);
 
   if (!hasText) {
     return null;
   }
-  const shown = visible || isSpeaking;
+  const isActive = isSpeaking || isAutoSpeaking;
+  const shown = visible || isActive;
+  const slotStyle = pickAssistantBubblePlaybackSlotStyle({ shown, dimmed, isActive });
   return (
-    <View
-      style={shown ? assistantBubblePlaybackStyles.slotVisible : assistantBubblePlaybackStyles.slot}
-      pointerEvents={shown ? "auto" : "none"}
-    >
+    <View style={slotStyle} pointerEvents={shown ? "auto" : "none"}>
       <MessagePlaybackButton
         serverId={serverId}
         agentId={agentId}
@@ -2522,6 +2541,21 @@ function AssistantBubblePlayback({
   );
 }
 
+/** Hidden, half-visible (permanent, at rest) or solid - one of the three slots. */
+function pickAssistantBubblePlaybackSlotStyle(input: {
+  shown: boolean;
+  dimmed: boolean;
+  isActive: boolean;
+}) {
+  if (!input.shown) {
+    return assistantBubblePlaybackStyles.slot;
+  }
+  if (input.dimmed && !input.isActive) {
+    return assistantBubblePlaybackStyles.slotDimmed;
+  }
+  return assistantBubblePlaybackStyles.slotVisible;
+}
+
 const assistantBubblePlaybackStyles = StyleSheet.create((theme) => ({
   slot: {
     position: "absolute",
@@ -2531,7 +2565,7 @@ const assistantBubblePlaybackStyles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface2,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
-    opacity: 0,
+    opacity: theme.opacity[0],
   },
   slotVisible: {
     position: "absolute",
@@ -2541,7 +2575,22 @@ const assistantBubblePlaybackStyles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface2,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
-    opacity: 1,
+    opacity: theme.opacity[100],
+  },
+  // Where hover cannot reveal the button it is on screen for every bubble at
+  // once, sitting over the tail of each last line. Fading the whole slot -
+  // chrome, border and glyph together - keeps the text underneath readable
+  // while the target stays big enough to hit; a press restores full opacity by
+  // switching to slotVisible.
+  slotDimmed: {
+    position: "absolute",
+    right: theme.spacing[1],
+    bottom: theme.spacing[1],
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.surface2,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    opacity: theme.opacity[50],
   },
 }));
 
