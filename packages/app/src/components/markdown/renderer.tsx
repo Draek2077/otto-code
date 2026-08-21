@@ -70,6 +70,7 @@ import { recoverMisnestedMarkdownFence } from "./fence-recovery";
 import { defaultMarkdownParser } from "./parser";
 import {
   collectMarkdownDocumentAnnotationTargets,
+  resolveHeadingAnnotationTarget,
   type MarkdownDocumentAnnotationTarget,
 } from "./annotation-locators";
 
@@ -201,6 +202,14 @@ function compactMarkdownStyleMapping(theme: Theme): Partial<MarkdownWithStableRe
 
 export { defaultMarkdownParser };
 
+function markdownNodeText(node: ASTNode): string {
+  if (node.content) {
+    return node.content;
+  }
+
+  return node.children.map(markdownNodeText).join("");
+}
+
 /**
  * Adds press targets only to block kinds whose markdown-it source map is
  * known. Other rendered nodes deliberately remain unannotatable: a visual
@@ -225,8 +234,13 @@ export function createMarkdownDocumentAnnotationRules(input: {
   const rules = createSharedMarkdownRules();
   for (const level of [1, 2, 3, 4, 5, 6]) {
     rules[`heading${level}`] = (node, children, _parent, styles) => {
-      const target = targets.get(node.tokenIndex);
-      if (!target || target.kind !== "heading") {
+      const target = resolveHeadingAnnotationTarget({
+        targets,
+        tokenIndex: node.tokenIndex,
+        text: markdownNodeText(node),
+        level,
+      });
+      if (!target) {
         return (
           <View key={node.key} style={styles[`_VIEW_SAFE_heading${level}`]}>
             {children}

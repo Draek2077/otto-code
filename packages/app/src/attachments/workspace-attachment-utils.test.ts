@@ -121,4 +121,23 @@ describe("workspace attachment utilities", () => {
     }
     expect(serialized.text).toContain("This budget is the important constraint.");
   });
+
+  it("serializes source-backed non-heading document locators", () => {
+    const attachment: ComposerAttachment = {
+      kind: "rendered_document",
+      id: "docs/design.md:fence:20:23",
+      path: "docs/design.md",
+      locator: { kind: "fence", lineStart: 20, lineEnd: 23, language: "ts" },
+      excerpt: "```ts\nconst budget = 1;\n```",
+      comment: "Keep this API provider-neutral.",
+    };
+
+    const serialized = workspaceAttachmentToSubmitAttachment(attachment);
+    expect(serialized).toMatchObject({ type: "text" });
+    if (!serialized || serialized.type !== "text") {
+      throw new Error("Expected a text attachment.");
+    }
+    expect(serialized.text).toContain("Source locator: fenced code (ts), lines 20-23");
+    expect(serialized.text).toContain("Keep this API provider-neutral.");
+  });
 });

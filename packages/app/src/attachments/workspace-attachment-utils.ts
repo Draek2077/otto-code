@@ -49,6 +49,18 @@ export function userAttachmentsOnly(
   );
 }
 
+function formatRenderedDocumentLocator(
+  locator: Extract<WorkspaceComposerAttachment, { kind: "rendered_document" }>["locator"],
+): string {
+  if (locator.kind === "heading") {
+    return `heading level ${locator.level}, lines ${locator.lineStart}-${locator.lineEnd}`;
+  }
+  if (locator.kind === "fence") {
+    return `fenced code${locator.language ? ` (${locator.language})` : ""}, lines ${locator.lineStart}-${locator.lineEnd}`;
+  }
+  return `${locator.kind}, lines ${locator.lineStart}-${locator.lineEnd}`;
+}
+
 export function workspaceAttachmentToSubmitAttachment(
   attachment: ComposerAttachment,
 ): AgentAttachment | null {
@@ -139,15 +151,16 @@ export function workspaceAttachmentToSubmitAttachment(
     };
   }
   if (attachment.kind === "rendered_document") {
+    const locator = attachment.locator;
+    const sourceLocator = formatRenderedDocumentLocator(locator);
     return {
       type: "text",
       mimeType: "text/plain",
-      title: `Document annotation · ${attachment.path}:${attachment.locator.lineStart}`,
+      title: `Document annotation · ${attachment.path}:${locator.lineStart}`,
       text: [
         "Rendered workspace document item attached as context by the user.",
         `Path: ${attachment.path}`,
-        `Source locator: heading level ${attachment.locator.level}, lines ${attachment.locator.lineStart}-${attachment.locator.lineEnd}`,
-        `Heading: ${attachment.locator.text}`,
+        `Source locator: ${sourceLocator}`,
         "",
         "Rendered excerpt:",
         attachment.excerpt,

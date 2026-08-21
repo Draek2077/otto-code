@@ -23,6 +23,19 @@ export interface AttachmentPillContent {
   subtitle: string;
 }
 
+function getRenderedDocumentAnnotationTitle(
+  attachment: Extract<WorkspaceComposerAttachment, { kind: "rendered_document" }>,
+  fileName: string,
+): string {
+  if (attachment.locator.kind === "heading") {
+    return attachment.locator.text || fileName;
+  }
+  if (attachment.locator.kind === "fence") {
+    return attachment.locator.language ? `Code · ${attachment.locator.language}` : "Code block";
+  }
+  return attachment.locator.kind === "blockquote" ? "Quote" : "Paragraph";
+}
+
 function getReviewSubtitle(count: number, t: TFunction): string {
   return count === 1
     ? t("message.attachments.commentsOne")
@@ -171,7 +184,7 @@ export function getWorkspaceAttachmentPillContent(
     const fileName = attachment.path.split("/").findLast(Boolean) ?? attachment.path;
     return {
       icon: attachmentReviewIcon,
-      title: attachment.locator.text || fileName,
+      title: getRenderedDocumentAnnotationTitle(attachment, fileName),
       subtitle: `${fileName}:${attachment.locator.lineStart} · Document annotation`,
     };
   }

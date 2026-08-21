@@ -34,6 +34,15 @@ describe("splitHtmlishMarkdown", () => {
     '<sub>Reviews (8): Last reviewed commit: “revert: undo parser” | <a href="https://app.greptile.com">Re-trigger Greptile</a></sub>',
   ].join("\n");
 
+  it("does not split text-editor.md at literal HTML examples inside code spans", () => {
+    const source = readFileSync(
+      new URL("../../../../../docs/text-editor.md", import.meta.url),
+      "utf8",
+    );
+
+    expect(splitHtmlishMarkdown(source)).toEqual([{ kind: "markdown", text: source }]);
+  });
+
   it("classifies linked HTML images as generic inline images, not block markdown images", () => {
     const [image, text] = splitHtmlishMarkdown(inlineImageBody);
 

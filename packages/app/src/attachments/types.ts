@@ -172,19 +172,40 @@ export interface FileContextAttachment {
   selection?: FileContextSelection;
 }
 
+/**
+ * A renderer-specific locator for an item that can be traced back to source.
+ *
+ * These are intentionally blocks, not pixel positions: the preview is allowed
+ * to reflow while the source location remains durable and meaningful to an
+ * agent reading the current workspace file.
+ */
+export type RenderedDocumentLocator =
+  | {
+      kind: "heading";
+      level: number;
+      lineStart: number;
+      lineEnd: number;
+      text: string;
+    }
+  | {
+      kind: "paragraph" | "blockquote";
+      lineStart: number;
+      lineEnd: number;
+    }
+  | {
+      kind: "fence";
+      lineStart: number;
+      lineEnd: number;
+      language: string | null;
+    };
+
 /** A user annotation of a source-backed item in a rendered workspace document. */
 export interface RenderedDocumentContextAttachment {
   kind: "rendered_document";
   /** Stable within the current workspace attachment scope. */
   id: string;
   path: string;
-  locator: {
-    kind: "heading";
-    level: number;
-    lineStart: number;
-    lineEnd: number;
-    text: string;
-  };
+  locator: RenderedDocumentLocator;
   /** The rendered item's source excerpt, retained so the prompt remains useful after edits. */
   excerpt: string;
   /** The user's reason for attaching the rendered item. */
