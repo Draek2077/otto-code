@@ -5,6 +5,7 @@ import type {
   WorkspaceComposerAttachment,
 } from "@/attachments/types";
 import type { AgentAttachment } from "@otto-code/protocol/messages";
+import { formatFileContextSelection } from "@/attachments/file-context";
 
 export function isPullRequestContextAttachment(
   attachment: ComposerAttachment | undefined,
@@ -93,6 +94,23 @@ export function workspaceAttachmentToSubmitAttachment(
           "Workspace folder attached as context by the user.",
           `Path: ${attachment.path}`,
           "List this folder and read the relevant files inside it before responding.",
+        ].join("\n"),
+      };
+    }
+    // A reference, not an excerpt. Pasting the selected text would cost the
+    // whole range in tokens and would go stale the moment the agent edits the
+    // file, so the range points at what to read instead of duplicating it.
+    if (attachment.selection) {
+      const range = formatFileContextSelection(attachment.selection);
+      return {
+        type: "text",
+        mimeType: "text/plain",
+        title: `File · ${attachment.path}:${range}`,
+        text: [
+          "Workspace file selection attached as context by the user.",
+          `Path: ${attachment.path}`,
+          `Selection: line ${attachment.selection.startLine} column ${attachment.selection.startColumn} to line ${attachment.selection.endLine} column ${attachment.selection.endColumn}`,
+          "Read this file, focusing on the selected range above, before responding.",
         ].join("\n"),
       };
     }

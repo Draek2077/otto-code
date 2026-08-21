@@ -55,6 +55,48 @@ describe("workspace attachment utilities", () => {
     });
   });
 
+  // The selection rides as a REFERENCE - path plus range, no excerpt. Pasting
+  // the selected text would cost the range in tokens and go stale the moment the
+  // agent edits the file, so the prompt points at what to read instead.
+  it("sends an attached selection as a row:column range, not as the selected text", () => {
+    const attachment: ComposerAttachment = {
+      kind: "file_context",
+      id: "src/app.ts:12:5-40:18",
+      path: "src/app.ts",
+      selection: { startLine: 12, startColumn: 5, endLine: 40, endColumn: 18 },
+    };
+    expect(workspaceAttachmentToSubmitAttachment(attachment)).toEqual({
+      type: "text",
+      mimeType: "text/plain",
+      title: "File · src/app.ts:12:5-40:18",
+      text: [
+        "Workspace file selection attached as context by the user.",
+        "Path: src/app.ts",
+        "Selection: line 12 column 5 to line 40 column 18",
+        "Read this file, focusing on the selected range above, before responding.",
+      ].join("\n"),
+    });
+  });
+
+  it("still sends a whole attached file as a plain path reference", () => {
+    const attachment: ComposerAttachment = {
+      kind: "file_context",
+      id: "src/app.ts",
+      path: "src/app.ts",
+      entryKind: "file",
+    };
+    expect(workspaceAttachmentToSubmitAttachment(attachment)).toEqual({
+      type: "text",
+      mimeType: "text/plain",
+      title: "File · src/app.ts",
+      text: [
+        "Workspace file attached as context by the user.",
+        "Path: src/app.ts",
+        "Read this file for its current contents before responding.",
+      ].join("\n"),
+    });
+  });
+
   it("preserves a rendered document annotation's source locator, excerpt, and user note", () => {
     const attachment: ComposerAttachment = {
       kind: "rendered_document",

@@ -13,6 +13,7 @@ import { withUnistyles } from "react-native-unistyles";
 import type { AgentAttachment } from "@otto-code/protocol/messages";
 import type { WorkspaceComposerAttachment } from "@/attachments/types";
 import { getFileTypeLabel } from "@/attachments/file-types";
+import { formatFileContextSelection } from "@/attachments/file-context";
 import { isPullRequestContextAttachment } from "@/attachments/workspace-attachment-utils";
 import type { Theme } from "@/styles/theme";
 
@@ -141,6 +142,16 @@ export function getWorkspaceAttachmentPillContent(
   if (attachment.kind === "file_context") {
     const isDirectory = attachment.entryKind === "directory";
     const fileName = attachment.path.split("/").findLast(Boolean) ?? attachment.path;
+    // The range goes in the TITLE, not the subtitle: it is what distinguishes
+    // two pills for the same file, and the subtitle is the first thing the
+    // pill truncates.
+    if (attachment.selection) {
+      return {
+        icon: attachmentFileIcon,
+        title: `${fileName}:${formatFileContextSelection(attachment.selection)}`,
+        subtitle: t("composer.attachments.selectionContext"),
+      };
+    }
     if (attachment.lineStart != null) {
       return {
         icon: attachmentFileIcon,

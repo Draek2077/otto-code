@@ -3,6 +3,7 @@ import {
   applyFileMentionReplacement,
   findActiveFileMention,
   formatQuotedFileMentionPath,
+  removeFileMention,
 } from "./file-mention-autocomplete";
 
 describe("findActiveFileMention", () => {
@@ -99,5 +100,20 @@ describe("applyFileMentionReplacement", () => {
       relativePath: 'src/"quoted".ts',
     });
     expect(next).toBe('"src/\\"quoted\\".ts"');
+  });
+});
+
+describe("removeFileMention", () => {
+  it("drops the @query and leaves the prose around it joined", () => {
+    const text = "open @src/com next";
+    expect(removeFileMention({ text, mention: { start: 5, end: 13, query: "src/com" } })).toBe(
+      "open  next",
+    );
+  });
+
+  it("empties the input when the mention was all of it", () => {
+    expect(
+      removeFileMention({ text: "@src/com", mention: { start: 0, end: 8, query: "src/com" } }),
+    ).toBe("");
   });
 });

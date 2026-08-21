@@ -163,6 +163,8 @@ const receive = (message: EditorWebViewInbound): void => {
       text: "",
       lineStart: 1,
       lineEnd: 1,
+      columnStart: 1,
+      columnEnd: 1,
       isEmpty: true,
     };
     sendToNative({ type: "selection", requestId: message.requestId, selection });

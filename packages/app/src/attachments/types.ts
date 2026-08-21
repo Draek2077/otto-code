@@ -128,19 +128,48 @@ export type UserComposerAttachment =
     };
 
 /**
- * A workspace file, folder, or specific line the user attached (from the file
- * explorer or project search) as prompt context. Distinct from
- * {@link WorkspaceFileComposerAttachment}, which is the composer-side pill.
+ * A row:column span inside a file, as the editor reported it when the user
+ * attached a selection.
+ *
+ * Both ends are 1-based and columns count UTF-16 code units, matching
+ * `EditorSelection` and the editor status bar - the range on the pill is the
+ * range the user was just looking at in the gutter.
+ */
+export interface FileContextSelection {
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+}
+
+/**
+ * A workspace file, folder, specific line, or selected range the user attached
+ * (from the file explorer, project search, the editor, or an `@` mention) as
+ * prompt context. Distinct from {@link WorkspaceFileComposerAttachment}, which
+ * is the composer-side pill.
  */
 export interface FileContextAttachment {
   kind: "file_context";
-  /** Dedupe id within a scope: the path, or `${path}:${lineStart}` for a line. */
+  /**
+   * Dedupe id within a scope: the path, `${path}:${lineStart}` for a line, or
+   * `${path}:${startLine}:${startColumn}-${endLine}:${endColumn}` for a
+   * selection. Build it with `buildFileContextAttachmentId` rather than by
+   * hand - five entry points now write these, and two spellings of one target
+   * would leave the user with duplicate pills that each need removing.
+   */
   id: string;
   path: string;
   /** Whether the path is a file or a folder; absent means file. */
   entryKind?: "file" | "directory";
   /** 1-based line number, when this attachment targets a specific line rather than the whole file. */
   lineStart?: number;
+  /**
+   * The selected range, when the user attached a selection rather than the
+   * whole file. Carried as a reference, not an excerpt: the agent reads the
+   * file itself, so the range costs one line of prompt instead of the text -
+   * and stays correct if the file changes before the turn runs.
+   */
+  selection?: FileContextSelection;
 }
 
 /** A user annotation of a source-backed item in a rendered workspace document. */
