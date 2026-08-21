@@ -103,11 +103,13 @@ function StructuralDiffCell({
   tone,
   showGutter = true,
   showLeadingGutter = true,
+  showReviewThread = true,
 }: {
   line: DiffLine | null;
   tone?: StructuralTone;
   showGutter?: boolean;
   showLeadingGutter?: boolean;
+  showReviewThread?: boolean;
 }) {
   const review = React.useContext(DiffReviewActionsContext);
   const { wrap } = React.useContext(DiffReviewViewportContext);
@@ -130,6 +132,7 @@ function StructuralDiffCell({
       structuralTone={tone}
       showGutter={showGutter}
       showLeadingGutter={showLeadingGutter}
+      showReviewThread={showReviewThread}
     />
   );
 }
@@ -245,22 +248,35 @@ function StructuralDiffPair({
   }
   if (tone === "move" || tone === "formatting") {
     return (
-      <View style={styles.structuralSharedGutterRow}>
-        <DiffLineNumberGutter
-          line={after ?? before}
-          oldLineNumber={before?.oldLineNumber}
-          newLineNumber={after?.newLineNumber}
-          onStartComment={commentTarget}
-          onComment={review.reviewActions?.onStartComment}
-        />
-        <DiffLineMarker type="context" />
-        <View style={styles.structuralCell}>
-          <StructuralDiffCell line={before} tone={tone} showGutter={false} />
+      <>
+        <View style={styles.structuralSharedGutterRow}>
+          <DiffLineNumberGutter
+            line={after ?? before}
+            oldLineNumber={before?.oldLineNumber}
+            newLineNumber={after?.newLineNumber}
+            onStartComment={commentTarget}
+            onComment={review.reviewActions?.onStartComment}
+          />
+          <DiffLineMarker type="context" />
+          <View style={styles.structuralCell}>
+            <StructuralDiffCell
+              line={before}
+              tone={tone}
+              showGutter={false}
+              showReviewThread={false}
+            />
+          </View>
+          <View style={[styles.structuralCell, styles.structuralCellDivider]}>
+            <StructuralDiffCell
+              line={after}
+              tone={tone}
+              showGutter={false}
+              showReviewThread={false}
+            />
+          </View>
         </View>
-        <View style={[styles.structuralCell, styles.structuralCellDivider]}>
-          <StructuralDiffCell line={after} tone={tone} showGutter={false} />
-        </View>
-      </View>
+        <StructuralPairReviewThreads before={before} after={after} />
+      </>
     );
   }
   if (layout === "unified") {
@@ -272,14 +288,73 @@ function StructuralDiffPair({
     );
   }
   return (
-    <View style={styles.structuralRow}>
-      {hasLeadingGutter ? <DiffLeadingGutterCell line={after ?? before} /> : null}
-      <View style={styles.structuralCell}>
-        <StructuralDiffCell line={before} tone={tone} showLeadingGutter={!hasLeadingGutter} />
+    <>
+      <View style={styles.structuralRow}>
+        {hasLeadingGutter ? <DiffLeadingGutterCell line={after ?? before} /> : null}
+        <View style={styles.structuralCell}>
+          <StructuralDiffCell
+            line={before}
+            tone={tone}
+            showLeadingGutter={!hasLeadingGutter}
+            showReviewThread={false}
+          />
+        </View>
+        <View style={[styles.structuralCell, styles.structuralCellDivider]}>
+          <StructuralDiffCell
+            line={after}
+            tone={tone}
+            showLeadingGutter={!hasLeadingGutter}
+            showReviewThread={false}
+          />
+        </View>
       </View>
-      <View style={[styles.structuralCell, styles.structuralCellDivider]}>
-        <StructuralDiffCell line={after} tone={tone} showLeadingGutter={!hasLeadingGutter} />
-      </View>
+      <StructuralPairReviewThreads before={before} after={after} />
+    </>
+  );
+}
+
+function StructuralPairReviewThreads({
+  before,
+  after,
+}: {
+  before: DiffLine | null;
+  after: DiffLine | null;
+}) {
+  const review = React.useContext(DiffReviewActionsContext);
+  const beforeReviewTarget = before ? review.targets.get(before)?.old : undefined;
+  const afterReviewTarget = after ? review.targets.get(after)?.new : undefined;
+  // Each side can own a distinct review thread. Keep both immediately below
+  // the paired code row instead of nesting either thread in a code column.
+  return (
+    <>
+      <StructuralPairReviewThread reviewTarget={beforeReviewTarget} />
+      {afterReviewTarget?.key !== beforeReviewTarget?.key ? (
+        <StructuralPairReviewThread reviewTarget={afterReviewTarget} />
+      ) : null}
+    </>
+  );
+}
+
+function StructuralPairReviewThread({
+  reviewTarget,
+}: {
+  reviewTarget: ReviewableDiffTarget | null | undefined;
+}) {
+  const { reviewActions } = React.useContext(DiffReviewActionsContext);
+  const { width, pinToViewport } = React.useContext(DiffReviewViewportContext);
+  const state = getInlineReviewThreadState({ reviewTarget, reviewActions });
+  if (!reviewTarget || !reviewActions || !state || state.height === 0) return null;
+
+  return (
+    <View style={styles.structuralPairReviewThreadRow}>
+      <InlineReviewThread
+        reviewTarget={reviewTarget}
+        reviewActions={reviewActions}
+        height={state.height}
+        viewportWidth={width || undefined}
+        pinToViewport={pinToViewport}
+        testID={`review-thread-${reviewTarget.key}`}
+      />
     </View>
   );
 }
@@ -320,7 +395,7 @@ function StructuralInlineReplacement({
   return (
     <>
       <DiffLineFrame
-        style={styles.structuralOneSidedRow}
+        style={styles.structuralInlineCodeRow}
         reviewTarget={review.targets.get(after)?.new ?? review.targets.get(before)?.old}
       >
         <DiffLineNumberGutter
@@ -689,6 +764,7 @@ export function DiffLineRow({
   structuralTone,
   showGutter = true,
   showLeadingGutter = true,
+  showReviewThread = true,
 }: {
   line: DiffLine;
   reviewTarget?: ReviewableDiffTarget | null;
@@ -696,6 +772,7 @@ export function DiffLineRow({
   structuralTone?: StructuralTone;
   showGutter?: boolean;
   showLeadingGutter?: boolean;
+  showReviewThread?: boolean;
 }) {
   const review = React.useContext(DiffReviewActionsContext);
   const syntaxTokens = React.useContext(DiffSyntaxTokensContext);
@@ -760,7 +837,7 @@ export function DiffLineRow({
             />
           </Text>
         </DiffLineFrame>
-        <StructuralReviewThread reviewTarget={target} />
+        <DiffLineReviewThread reviewTarget={target} show={showReviewThread} />
       </>
     );
   }
@@ -794,9 +871,19 @@ export function DiffLineRow({
           <Text style={plainLineTextStyle}>{diffCode(line)}</Text>
         )}
       </DiffLineFrame>
-      <StructuralReviewThread reviewTarget={target} />
+      <DiffLineReviewThread reviewTarget={target} show={showReviewThread} />
     </>
   );
+}
+
+function DiffLineReviewThread({
+  reviewTarget,
+  show,
+}: {
+  reviewTarget: ReviewableDiffTarget | null | undefined;
+  show: boolean;
+}) {
+  return show ? <StructuralReviewThread reviewTarget={reviewTarget} /> : null;
 }
 
 function DiffLineFrame({
@@ -849,7 +936,7 @@ function StructuralReviewThread({
   );
   const threadHeight = getInlineReviewThreadHeight(state?.height ?? 0, measuredThreadHeight);
   const rowStyle = [
-    styles.structuralOneSidedRow,
+    styles.structuralReviewThreadRow,
     inlineUnistylesStyle({ minHeight: threadHeight }),
   ];
   if (!reviewTarget || !reviewActions || !state || state.height === 0) return null;
@@ -1099,8 +1186,20 @@ const styles = StyleSheet.create((theme) => {
       backgroundColor: theme.colors.surface2,
     },
     structuralOneSidedRow: {
+      flexDirection: "column",
+      minWidth: 0,
+    },
+    structuralInlineCodeRow: {
+      flexDirection: "row",
+      minWidth: "100%",
+    },
+    structuralReviewThreadRow: {
       flexDirection: "row",
       minWidth: 0,
+    },
+    structuralPairReviewThreadRow: {
+      alignSelf: "stretch",
+      minWidth: "100%",
     },
     structuralCell: {
       flex: 1,
