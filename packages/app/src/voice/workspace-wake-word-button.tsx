@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useSyncExternalStore, type ReactElement } from "react";
 import { Text } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { VoiceSelection, VoiceSelectionOff } from "@/components/icons/material-icons";
 import { headerIconSlotStyle } from "@/components/headers/header-toggle-button";
+import { StatusPulseGlow, notifyHaloColor } from "@/components/status-pulse-glow";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAppSettings } from "@/hooks/use-settings";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -23,6 +24,10 @@ import {
 
 const ThemedVoiceSelection = withUnistyles(VoiceSelection);
 const ThemedVoiceSelectionOff = withUnistyles(VoiceSelectionOff);
+// Theme as a value, not a style: the sanctioned `uniProps` route, see
+// docs/unistyles.md.
+const statusHaloThemeMapping = (theme: Theme) => ({ theme });
+
 function stateColor(state: WakeWordState) {
   return (theme: Theme) => {
     let color = theme.colors.foregroundMuted;
@@ -34,12 +39,35 @@ function stateColor(state: WakeWordState) {
 }
 
 function WakeWordIcon({ state, size }: { state: WakeWordState; size: number }) {
-  const icon = getWakeWordIconKind(state);
-  if (icon === "muted") {
-    return <ThemedVoiceSelectionOff size={size} uniProps={stateColor(state)} />;
-  }
-  return <ThemedVoiceSelection size={size} uniProps={stateColor(state)} />;
+  return <ThemedWakeWordGlyph state={state} size={size} uniProps={statusHaloThemeMapping} />;
 }
+
+// Glyph and halo resolve from one theme pass, as in status-bucket-icon.tsx.
+// stateColor already answers green for listening, amber for processing, and red
+// for error or recording, so handing its answer to notifyHaloColor glows those
+// three and leaves the muted idle state alone.
+function WakeWordGlyph({
+  state,
+  size,
+  theme,
+}: {
+  state: WakeWordState;
+  size: number;
+  theme: Theme;
+}): ReactElement {
+  const colorMapping = stateColor(state);
+  return (
+    <StatusPulseGlow color={notifyHaloColor(theme, colorMapping(theme).color)} size={size}>
+      {getWakeWordIconKind(state) === "muted" ? (
+        <ThemedVoiceSelectionOff size={size} uniProps={colorMapping} />
+      ) : (
+        <ThemedVoiceSelection size={size} uniProps={colorMapping} />
+      )}
+    </StatusPulseGlow>
+  );
+}
+
+const ThemedWakeWordGlyph = withUnistyles(WakeWordGlyph);
 
 /** Quick listening pause for Hey Otto. The Settings switch owns whether the
  * feature exists at all; this button only stops or resumes the detector while

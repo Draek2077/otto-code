@@ -12,6 +12,24 @@ import Animated, {
 import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 import { StyleSheet } from "react-native-unistyles";
 import { useAnimationsEnabled } from "@/hooks/use-animations-enabled";
+import type { Theme } from "@/styles/theme";
+
+/**
+ * Passes a glyph's own colour through to the halo, but only when that colour is
+ * one of the three notify tones. Icons that report many states resolve one
+ * colour per state, and most of those states are resting: muted grey for idle,
+ * blue for "working on it". A halo around those is noise, and a halo around
+ * grey does not even read as a halo.
+ *
+ * Take the colour the glyph is about to use and hand it straight here, rather
+ * than re-deriving the state. That is what keeps the halo in lockstep with the
+ * glyph when a state is added or recoloured later.
+ */
+export function notifyHaloColor(theme: Theme, glyphColor: string): string | null {
+  const { statusSuccess, statusWarning, statusDanger } = theme.colors;
+  if (glyphColor === statusSuccess || glyphColor === statusWarning) return glyphColor;
+  return glyphColor === statusDanger ? glyphColor : null;
+}
 
 const PULSE_DURATION_MS = 1500;
 /** The halo is drawn this much larger than the glyph it sits behind. */

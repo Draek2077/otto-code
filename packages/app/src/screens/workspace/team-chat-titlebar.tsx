@@ -22,6 +22,7 @@ import {
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { compactUp, useIconSize, type Theme } from "@/styles/theme";
 import { headerIconSlotStyle } from "@/components/headers/header-toggle-button";
+import { StatusPulseGlow, notifyHaloColor } from "@/components/status-pulse-glow";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -97,6 +98,12 @@ const ThemedStar = withUnistyles(Star);
 
 const ThemedStarFilled = withUnistyles(StarFilled);
 
+// The halo needs the theme as a value, not as a style, so it arrives through
+// `uniProps` (see docs/unistyles.md and status-bucket-icon.tsx).
+const statusHaloThemeMapping = (theme: Theme) => ({ theme });
+const ThemedZoomTeamChatTitleGlyph = withUnistyles(ZoomTeamChatTitleGlyph);
+const ThemedZoomRecorderGlyph = withUnistyles(ZoomRecorderGlyph);
+
 export function headerActionTriggerStyle({
   hovered,
   pressed,
@@ -154,6 +161,36 @@ function zoomRecorderColorMapping(
         return { color: theme.colors.foregroundMuted };
     }
   };
+}
+
+// Same one-theme-pass shape as the chat glyph above. The recorder's `info`
+// tone resolves to statusInfo, which notifyHaloColor declines: blue means
+// "working on it" and does not need to pull the eye.
+function ZoomRecorderGlyph({
+  state,
+  modelReady,
+  active,
+  iconSize,
+  theme,
+}: {
+  state: ReturnType<typeof useZoomRecorderStatus>["status"]["state"];
+  modelReady: boolean;
+  active: boolean;
+  iconSize: number;
+  theme: Theme;
+}): ReactElement {
+  const colorMapping = active
+    ? zoomRecorderColorMapping(state, modelReady, active)
+    : mutedColorMapping;
+  return (
+    <StatusPulseGlow color={notifyHaloColor(theme, colorMapping(theme).color)} size={iconSize}>
+      {active ? (
+        <ThemedHeadsetMic size={iconSize} uniProps={colorMapping} />
+      ) : (
+        <ThemedHeadsetOff size={iconSize} uniProps={colorMapping} />
+      )}
+    </StatusPulseGlow>
+  );
 }
 
 function meetingNotesTriggerStyle(
@@ -267,14 +304,7 @@ const favoriteColorMapping = (theme: Theme) => ({ color: theme.colors.statusWarn
 
 const unreadChatColorMapping = (theme: Theme) => ({ color: theme.colors.statusWarning });
 
-function ZoomTeamChatTitleIcon({
-  unreadCount,
-  connected,
-  presenceStatus,
-  pendingPresence,
-  enabled,
-  iconSize,
-}: {
+function ZoomTeamChatTitleIcon(props: {
   unreadCount: number;
   connected: boolean;
   presenceStatus: CommunicationPresenceStatus;
@@ -282,21 +312,49 @@ function ZoomTeamChatTitleIcon({
   enabled: boolean;
   iconSize: number;
 }): ReactElement {
+  return <ThemedZoomTeamChatTitleGlyph {...props} uniProps={statusHaloThemeMapping} />;
+}
+
+// Glyph and halo resolve from one theme pass, as in StatusBucketGlyph: the
+// halo is handed the exact colour the glyph is using, so available glows green,
+// busy and do-not-disturb glow red, an unread notification glows amber, and
+// every muted state (away, pending, offline, disconnected) glows not at all.
+function ZoomTeamChatTitleGlyph({
+  unreadCount,
+  connected,
+  presenceStatus,
+  pendingPresence,
+  enabled,
+  iconSize,
+  theme,
+}: {
+  unreadCount: number;
+  connected: boolean;
+  presenceStatus: CommunicationPresenceStatus;
+  pendingPresence: boolean;
+  enabled: boolean;
+  iconSize: number;
+  theme: Theme;
+}): ReactElement {
+  let colorMapping: (theme: Theme) => { color: string };
+  let glyph: ReactElement;
   if (enabled && pendingPresence) {
-    return (
-      <ThemedMoreHorizontal
-        size={iconSize}
-        uniProps={zoomTeamChatPresenceColorMapping("pending")}
-      />
-    );
+    colorMapping = zoomTeamChatPresenceColorMapping("pending");
+    glyph = <ThemedMoreHorizontal size={iconSize} uniProps={colorMapping} />;
+  } else if (enabled && unreadCount > 0) {
+    colorMapping = unreadChatColorMapping;
+    glyph = <ThemedMarkUnreadChatAlt size={iconSize} uniProps={colorMapping} />;
+  } else if (connected && enabled) {
+    colorMapping = zoomTeamChatPresenceColorMapping(presenceStatus);
+    glyph = <ThemedChat size={iconSize} uniProps={colorMapping} />;
+  } else {
+    colorMapping = mutedColorMapping;
+    glyph = <ThemedChatBubbleOff size={iconSize} uniProps={colorMapping} />;
   }
-  if (enabled && unreadCount > 0) {
-    return <ThemedMarkUnreadChatAlt size={iconSize} uniProps={unreadChatColorMapping} />;
-  }
-  return connected && enabled ? (
-    <ThemedChat size={iconSize} uniProps={zoomTeamChatPresenceColorMapping(presenceStatus)} />
-  ) : (
-    <ThemedChatBubbleOff size={iconSize} uniProps={mutedColorMapping} />
+  return (
+    <StatusPulseGlow color={notifyHaloColor(theme, colorMapping(theme).color)} size={iconSize}>
+      {glyph}
+    </StatusPulseGlow>
   );
 }
 
@@ -1857,14 +1915,13 @@ export function WorkspaceMeetingNotesButton({
             accessibilityRole="button"
             accessibilityLabel={`Open Meeting notes. ${stateLabel}.`}
           >
-            {recorderActive ? (
-              <ThemedHeadsetMic
-                size={iconSize.md}
-                uniProps={zoomRecorderColorMapping(status.state, status.modelReady, recorderActive)}
-              />
-            ) : (
-              <ThemedHeadsetOff size={iconSize.md} uniProps={mutedColorMapping} />
-            )}
+            <ThemedZoomRecorderGlyph
+              state={status.state}
+              modelReady={status.modelReady}
+              active={recorderActive}
+              iconSize={iconSize.md}
+              uniProps={statusHaloThemeMapping}
+            />
           </DropdownMenuTrigger>
         </TooltipTrigger>
         <TooltipContent side="bottom" align="center" offset={8}>
