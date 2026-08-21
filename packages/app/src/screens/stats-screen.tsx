@@ -26,7 +26,12 @@ import { formatTokenCount } from "@/components/context-window-meter.utils";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
+import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import { useHosts } from "@/runtime/host-runtime";
+import {
+  useActiveWorkspaceSelection,
+  useLastWorkspaceSelection,
+} from "@/stores/navigation-active-workspace-store";
 import {
   useActivityStats,
   useActivityStatsFeature,
@@ -41,6 +46,7 @@ import { ChatWidthBounds } from "@/components/chat-width-bounds";
 import { Button } from "@/components/ui/button";
 import { COMPACT_CONTROL_HEIGHT } from "@/components/ui/control-geometry";
 import { confirmDialog } from "@/utils/confirm-dialog";
+import { resolveMetricsHostServerId } from "./metrics-host-selection";
 import {
   AlarmClock,
   Bot,
@@ -263,8 +269,27 @@ export function StatsScreen(): ReactElement {
 
 function StatsScreenContent(): ReactElement {
   const hosts = useHosts();
+  const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
+  const activeWorkspaceSelection = useActiveWorkspaceSelection();
+  const lastWorkspaceSelection = useLastWorkspaceSelection();
+  const localServerId = useLocalDaemonServerId();
   const clientResourceBarAllPages = useAppSettingValue(selectClientResourceBarAllPages);
   const resourceMonitorEnabled = useAppSettingValue(selectResourceMonitorEnabled);
+  const activeServerId = useMemo(
+    () =>
+      resolveMetricsHostServerId({
+        hosts,
+        selectedServerId,
+        activeWorkspaceServerId: activeWorkspaceSelection?.serverId ?? null,
+        lastWorkspaceServerId: lastWorkspaceSelection?.serverId ?? null,
+        localServerId,
+      }),
+    [hosts, selectedServerId, activeWorkspaceSelection, lastWorkspaceSelection, localServerId],
+  );
+  const hostOptions = useMemo(
+    () => hosts.map((host) => ({ value: host.serverId, label: host.label })),
+    [hosts],
+  );
   // Log-tab range totals, reported up by each host's UsageLogList so they can be
   // pinned below the scroll region instead of scrolling away at the list's end.
   // Keyed by serverId; a host drops out when it leaves the Log tab (reports null).
@@ -308,24 +333,18 @@ function StatsScreenContent(): ReactElement {
   return (
     <View style={styles.container}>
       <MenuHeader title="Metrics" />
-      {hosts.length === 0 ? (
+      {activeServerId === null ? (
         <View style={styles.centered}>
           <Text style={styles.message}>No hosts connected</Text>
         </View>
       ) : (
         <View style={styles.body}>
-          {/* No screen-level scroll: each host section is a full-height panel
-              that pins its own toolbar and scrolls only its content. Stacked
-              hosts split the height between them, each keeping its own toolbar
-              in view. */}
-          {hosts.map((host, index) => (
-            <HostStatsSection
-              key={host.serverId}
-              serverId={host.serverId}
-              onLogTotals={handleLogTotals}
-              divided={index > 0}
-            />
-          ))}
+          <HostStatsSection
+            serverId={activeServerId}
+            hostOptions={hostOptions}
+            onSelectHost={setSelectedServerId}
+            onLogTotals={handleLogTotals}
+          />
           {pinned.length > 0 && (
             <View style={styles.pinnedTotals}>
               {/* Bounded like the rows it totals, so the bar lines up with the
@@ -383,13 +402,14 @@ function chunk<T>(items: readonly T[], size: number): T[][] {
 
 function HostStatsSection({
   serverId,
+  hostOptions,
+  onSelectHost,
   onLogTotals,
-  divided,
 }: {
   serverId: string;
+  hostOptions: SegmentedControlOption<string>[];
+  onSelectHost: (serverId: string) => void;
   onLogTotals: (serverId: string, totals: UsageTotals | null) => void;
-  /** Rule above the panel, separating it from the host section stacked on top. */
-  divided: boolean;
 }): ReactElement | null {
   const supported = useActivityStatsFeature(serverId);
   const costCategoriesSupported = useUsageCostCategoriesFeature(serverId);
@@ -421,7 +441,6 @@ function HostStatsSection({
     () => [styles.columns, isCompact && styles.columnsStacked],
     [isCompact],
   );
-  const sectionStyle = useMemo(() => [styles.section, divided && styles.sectionDivided], [divided]);
 
   // The themed auto-hiding overlay scrollbar replaces the web platform
   // scrollbar at every width - a narrow (compact) window gets the same modern
@@ -484,7 +503,7 @@ function HostStatsSection({
   );
 
   return (
-    <View style={sectionStyle}>
+    <View style={styles.section}>
       {/* Toolbar band: pinned above the scroll region and ruled off from it, so
           the tabs and range filter stay reachable no matter how far the tiles or
           the ledger scroll. Tabs + range filter are centered across the full
@@ -499,6 +518,16 @@ function HostStatsSection({
       <View style={styles.toolbar}>
         <View style={isCompact ? styles.controlsRowStacked : styles.controlsRow}>
           <View style={isCompact ? styles.controlsCenterStacked : styles.controlsCenter}>
+            {hostOptions.length > 1 && (
+              <SegmentedControl
+                size="sm"
+                wrap
+                options={hostOptions}
+                value={serverId}
+                onValueChange={onSelectHost}
+                testID="metrics-host"
+              />
+            )}
             {logSupported && (
               <SegmentedControl
                 size="sm"
@@ -744,16 +773,10 @@ const styles = StyleSheet.create((theme) => ({
     paddingBottom: theme.spacing[6],
     gap: theme.spacing[6],
   },
-  // A host panel: pinned toolbar + its own scroll region, claiming a flex share
-  // of the screen. No gap - the toolbar's bottom rule is the seam.
+  // The selected host panel: pinned toolbar + its own scroll region.
   section: {
     flex: 1,
     minHeight: 0,
-  },
-  // Second and later host panels are ruled off from the one above them.
-  sectionDivided: {
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
   },
   // The toolbar band above the scroll region. Padding matches scrollContent so
   // the controls sit on the same margins as the content they filter.
