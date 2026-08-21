@@ -21,7 +21,7 @@ import os from "node:os";
 
 import { CACHE_TYPE_BYTES, formatGiB, promptCacheSize } from "../vram.js";
 import type { Model } from "../types.js";
-import { getCalibration, hasStaleCalibration } from "./profiles.js";
+import { getCalibration, getCalibrationForBudget, hasStaleCalibration } from "./profiles.js";
 import type { Calibration, Profile, ProfilesStore } from "./schema.js";
 
 /** How a client should render a field. */
@@ -419,8 +419,10 @@ export function profileWarnings(
   // A count above 0 can only be priced from a measurement: without one the
   // theoretical KV cost runs to multiples of the real one, and naming a figure
   // derived from it would invite reserving several times the RAM actually
-  // needed. So the unmeasured count falls back to the calibration request.
-  const calibration = model && store ? getCalibration(store, model, profile) : null;
+  // needed. Once a model has been measured, keep its last value while edits are
+  // pending recalibration; the stale calibration state makes the reduced trust
+  // visible without making the number jump.
+  const calibration = model && store ? getCalibrationForBudget(store, model, profile) : null;
   const cache = model ? promptCacheSize(model, profile, calibration) : null;
   const hasCount = (profile.cachedChats ?? 0) > 0;
   if (hasCount && (!cache || cache.source !== "measured")) {
@@ -451,7 +453,7 @@ export function profileWarnings(
     warnings.push({
       field: "contextMultiplier",
       severity: "warn",
-      message: `YaRN ×${profile.contextMultiplier} extrapolates beyond the native context. Recalibrate before relying on this profile.`,
+      message: "YaRN extrapolates beyond the native context.",
       blocksStart: false,
     });
   }
@@ -463,7 +465,7 @@ export function profileWarnings(
     warnings.push({
       field: "cacheTypeK",
       severity: "info",
-      message: "Cache types changed since the last measurement. Recalibrate for a real budget.",
+      message: "Cache types changed since the last measurement.",
       blocksStart: false,
     });
   }
@@ -492,24 +494,22 @@ export function calibrationInfo(
   model: Model,
   profile: Profile,
 ): CalibrationInfo {
-  // A historical measurement is invalid as soon as any VRAM-affecting setting
-  // changes. Keep the data for comparison, but do not present or use it as the
-  // current model budget until a calibration commits the new profile.
-  if (profile.calibrationRequired) {
-    return {
-      state: "theoretical",
-      kvBytesPerToken: null,
-      measuredAt: null,
-      measuredOn: null,
-    };
-  }
-  const calibration: Calibration | null = getCalibration(store, model, profile);
+  const current = getCalibration(store, model, profile);
+  const calibration: Calibration | null = getCalibrationForBudget(store, model, profile);
   if (!calibration) {
     return {
       state: hasStaleCalibration(store, model, profile) ? "stale" : "theoretical",
       kvBytesPerToken: null,
       measuredAt: null,
       measuredOn: null,
+    };
+  }
+  if (profile.calibrationRequired || !current) {
+    return {
+      state: "stale",
+      kvBytesPerToken: calibration.kvBytesPerToken,
+      measuredAt: calibration.measuredAt ?? null,
+      measuredOn: calibration.measuredOn ?? null,
     };
   }
   return {

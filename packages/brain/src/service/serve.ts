@@ -15,7 +15,7 @@ import http from "node:http";
 import https from "node:https";
 
 import {
-  getCalibration,
+  getCalibrationForBudget,
   forModel,
   loadPersistedConfig,
   loadProfilesStore,
@@ -594,7 +594,7 @@ export async function startService({
     const fit = vram.fitToBudget({
       model,
       profile,
-      calibration: getCalibration(store, model, profile),
+      calibration: getCalibrationForBudget(store, model, profile),
       totalVramBytes: gpu.totalBytes,
     });
     if (!fit.adjusted && !fit.budget.fits) {
@@ -641,7 +641,7 @@ export async function startService({
       const fit = vram.fitToBudget({
         model: target,
         profile: fitProfile,
-        calibration: getCalibration(store, target, fitProfile),
+        calibration: getCalibrationForBudget(store, target, fitProfile),
         totalVramBytes: gpuInfo.totalBytes,
       });
       if (!fit.adjusted && !fit.budget.fits) throw new Error(fit.reason ?? "does not fit");
@@ -789,7 +789,7 @@ export async function startService({
     supervisor.recordLog(`operation benchmark: resident model ready`);
     const profile = supervisor.profile ?? forModel(store, targetModel, config.defaults);
     const gpuInfo = await queryGpu();
-    const calibration = getCalibration(store, targetModel, profile);
+    const calibration = getCalibrationForBudget(store, targetModel, profile);
     const fit = gpuInfo
       ? vram.fitToBudget({
           model: targetModel,

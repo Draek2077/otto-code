@@ -149,15 +149,15 @@ export function calibrationKey(profile: Profile): string {
 }
 
 /**
- * True when this model has a stored calibration, but for different cache types
- * than the profile currently uses - i.e. the measurement is stale and the budget
- * has fallen back to the theoretical estimate. Drives the "recalibrate" prompt.
+ * True when this model has stored calibrations but none for the profile's
+ * current calibration key. Historical entries do not make an exact current
+ * measurement stale when the matching key is also present.
  */
 export function hasStaleCalibration(store: ProfilesStore, model: Model, profile: Profile): boolean {
   const measured = store.calibrations?.[model.id];
   if (!measured) return false;
   const key = calibrationKey(profile);
-  return Object.keys(measured).some((k) => k !== key);
+  return !Object.hasOwn(measured, key) && Object.keys(measured).length > 0;
 }
 
 /**
@@ -204,6 +204,42 @@ export function getCalibration(
     measuredOn: family.measuredOn,
     inherited: true,
   };
+}
+
+/**
+ * Return the most recent direct calibration stored for a model, regardless of
+ * which profile key produced it. A stale measurement is still the stable value
+ * the UI and budget math should keep showing until a new calibration replaces
+ * it; callers use the calibration state to make its reduced trust visible.
+ */
+export function getLastCalibration(store: ProfilesStore, model: Model): Calibration | null {
+  const entries = Object.values(store.calibrations?.[model.id] ?? {});
+  if (entries.length === 0) return null;
+  return entries.reduce((latest, candidate) => {
+    const latestTime = latest.measuredAt ? Date.parse(latest.measuredAt) : Number.NEGATIVE_INFINITY;
+    const candidateTime = candidate.measuredAt
+      ? Date.parse(candidate.measuredAt)
+      : Number.NEGATIVE_INFINITY;
+    return candidateTime >= latestTime ? candidate : latest;
+  });
+}
+
+/**
+ * Resolve the calibration used by VRAM budgeting and launch arguments.
+ *
+ * An exact or inherited current-profile calibration remains preferred while the
+ * profile is current. Once an edit requires recalibration, retain the model's
+ * most recent direct measurement instead of jumping to the theoretical formula.
+ * The profile/calibration state still tells the caller that this value is stale.
+ */
+export function getCalibrationForBudget(
+  store: ProfilesStore,
+  model: Model,
+  profile: Profile,
+): Calibration | null {
+  const current = getCalibration(store, model, profile);
+  if (!profile.calibrationRequired && current) return current;
+  return getLastCalibration(store, model) ?? current;
 }
 
 export function putCalibration(

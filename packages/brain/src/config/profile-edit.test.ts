@@ -11,7 +11,12 @@ import {
   profileWarnings,
   sanitizeProfilePatch,
 } from "./profile-edit.js";
-import { defaultProfile, putCalibration } from "./profiles.js";
+import {
+  defaultProfile,
+  getCalibrationForBudget,
+  hasStaleCalibration,
+  putCalibration,
+} from "./profiles.js";
 import { ProfilesStoreSchema, type Profile, type ProfilesStore } from "./schema.js";
 import { GIB } from "../vram.js";
 import type { Model } from "../types.js";
@@ -439,6 +444,28 @@ describe("profileWarnings", () => {
     expect(warning?.blocksStart).toBe(false);
   });
 
+  it("keeps pricing cached chats from the last measurement while calibration is stale", () => {
+    const model = makeModel();
+    const profile = makeProfile(model, {
+      cacheTypeK: "f16",
+      cacheTypeV: "f16",
+      cachedChats: 4,
+      parallelSlots: 2,
+      contextSize: 32768,
+      calibrationRequired: true,
+    });
+    const store = emptyStore();
+    store.calibrations[model.id] = {
+      "q8_0:q8_0": {
+        kvBytesPerToken: 40000,
+        baseOverheadBytes: 0,
+      },
+    };
+
+    const warning = profileWarnings(profile, model, store).find((w) => w.field === "cachedChats");
+    expect(warning?.message).toContain("0.6G each becomes 2.4G");
+  });
+
   it("refuses to price cached chats for an unmeasured model", () => {
     const model = makeModel({ metadata: { arch: "qwen3", contextLength: 32768 } });
     const profile = makeProfile(model, { cachedChats: 4 });
@@ -570,7 +597,7 @@ describe("calibrationInfo", () => {
     expect(info.measuredOn).toBe("A Relative");
   });
 
-  it("does not use an old measurement after a profile edit", () => {
+  it("keeps the last measurement visible while a profile edit needs recalibration", () => {
     const model = makeModel();
     const profile = makeProfile(model, { calibrationRequired: true });
     const store = emptyStore();
@@ -581,7 +608,22 @@ describe("calibrationInfo", () => {
       },
     };
 
-    expect(calibrationInfo(store, model, profile).state).toBe("theoretical");
+    const info = calibrationInfo(store, model, profile);
+    expect(info.state).toBe("stale");
+    expect(info.kvBytesPerToken).toBe(1234);
+  });
+
+  it("does not call an exact calibration stale just because history has older keys", () => {
+    const model = makeModel();
+    const profile = makeProfile(model, { calibrationRequired: false });
+    const store = emptyStore();
+    store.calibrations[model.id] = {
+      "q8_0:q8_0": { kvBytesPerToken: 1234, baseOverheadBytes: 600 },
+      "f16:f16": { kvBytesPerToken: 2345, baseOverheadBytes: 700 },
+    };
+
+    expect(hasStaleCalibration(store, model, profile)).toBe(false);
+    expect(getCalibrationForBudget(store, model, profile)?.kvBytesPerToken).toBe(1234);
   });
 });
 
@@ -624,8 +666,8 @@ describe("sanitizeProfilePatch", () => {
   });
 
   // "Fit to VRAM" sizes the context from the measured figure and then writes it.
-  // Invalidating the measurement on that write dropped the budget back to the
-  // theoretical estimate, so the context it had just saved no longer fit.
+  // Context size is not a calibration input, so the measured budget remains
+  // the same after that write.
   it("keeps the calibration when only the context size changes", () => {
     const model = makeModel();
     const current = makeProfile(model, { calibrationRequired: false });

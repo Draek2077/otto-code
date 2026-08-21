@@ -12,7 +12,7 @@ import type { Command } from "commander";
 
 import {
   forModel,
-  getCalibration,
+  getCalibrationForBudget,
   loadBrainConfig,
   loadProfilesStore,
   resolveBrainPaths,
@@ -228,7 +228,7 @@ async function runBenchSuite(options: BenchOptions, _command: Command): Promise<
     // that ran is the profile that was configured, and the calibration is what
     // says whether the fit's own VRAM figures were measured or guessed. A score
     // read without them is a score nobody can diagnose.
-    const calibration = getCalibration(store, model, profile);
+    const calibration = getCalibrationForBudget(store, model, profile);
     let fit: vram.FitResult | null = null;
     const gpu = await queryGpu();
     if (gpu) {

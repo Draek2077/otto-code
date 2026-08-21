@@ -6,7 +6,7 @@
 import type { Command } from "commander";
 
 import {
-  getCalibration,
+  getCalibrationForBudget,
   forModel,
   loadBrainConfig,
   loadProfilesStore,
@@ -66,12 +66,12 @@ export async function runCalibrateCommand(
   const model = pickModel(catalog, options.model ?? store.lastModelId ?? undefined);
   const profile = forModel(store, model, config.defaults);
 
-  // A measurement from the previous run is the best prior on bytes/token for
-  // this exact profile shape. The sample cap uses it so the high sample never
-  // lands at a context that would spill the KV cache to CPU and bias the new
-  // slope low. Inherited family calibrations are excluded: they were measured
-  // on another file and are not a trustworthy budget input here.
-  const prior = getCalibration(store, model, profile);
+  // The last direct measurement is the best prior on bytes/token available for
+  // capping the next sample. It keeps the calibration path stable while a
+  // changed profile is awaiting a fresh measurement. Inherited family
+  // calibrations are excluded: they were measured on another file and are not
+  // a trustworthy budget input here.
+  const prior = getCalibrationForBudget(store, model, profile);
 
   // Announced so the Brain rail can show the host as busy: a calibrate loads the
   // model at several context sizes and will make anything else queue behind it.
@@ -103,7 +103,7 @@ export async function runCalibrateCommand(
     ? vram.maxContextThatFits({
         model,
         profile,
-        calibration: getCalibration(store, model, profile),
+        calibration: getCalibrationForBudget(store, model, profile),
         totalVramBytes: gpu.totalBytes,
       })
     : null;

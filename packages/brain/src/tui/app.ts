@@ -455,7 +455,7 @@ export class App {
       const fit = vram.fitToBudget({
         model: target,
         profile,
-        calibration: profiles.getCalibration(this.store, target, profile),
+        calibration: profiles.getCalibrationForBudget(this.store, target, profile),
         totalVramBytes: info.totalBytes,
       });
       if (!fit.adjusted && !fit.budget.fits) throw new Error(fit.reason ?? undefined);
@@ -650,7 +650,7 @@ export class App {
     const model = this.model;
     const profile = this.profile;
     if (!model || !profile) return null;
-    return profiles.getCalibration(this.store, model, profile);
+    return profiles.getCalibrationForBudget(this.store, model, profile);
   }
 
   get budget(): Budget | null {
@@ -1650,7 +1650,9 @@ export class App {
             // Only when it belongs to the model actually being benchmarked - the
             // model may have been resident since before this fit was computed.
             fit: this.lastFit?.modelId === model.id ? this.lastFit.fit : null,
-            calibration: profile ? profiles.getCalibration(this.store, model, profile) : null,
+            calibration: profile
+              ? profiles.getCalibrationForBudget(this.store, model, profile)
+              : null,
             suite: {
               // The TUI runs the full static suite; only concurrency varies, and
               // it tracks the profile's slot count the same way runSuite is called.
@@ -2141,8 +2143,14 @@ export class App {
       lines = content.slice(start, start + rows);
     }
 
+    const stale = Boolean(
+      this.profile?.calibrationRequired ||
+      (this.model &&
+        this.profile &&
+        profiles.hasStaleCalibration(this.store, this.model, this.profile)),
+    );
     return box({
-      title: `Configuration${this.calibration ? `  ${style.brightGreen}calibrated${style.reset}` : `  ${style.yellow}not calibrated${style.reset}`}`,
+      title: `Configuration${stale ? `  ${style.yellow}recalibrate${style.reset}` : this.calibration ? `  ${style.brightGreen}calibrated${style.reset}` : `  ${style.yellow}not calibrated${style.reset}`}`,
       lines,
       innerWidth,
       footer: `${style.grey}←→ change · enter edit${style.reset}`,
@@ -2175,18 +2183,22 @@ export class App {
 
     const kvLabel = `kv ${(b.kvBytesPerToken / 1024).toFixed(1)} KB/token`;
     const cal = this.calibration;
+    const stale = Boolean(
+      this.profile?.calibrationRequired ||
+      (this.model &&
+        this.profile &&
+        profiles.hasStaleCalibration(this.store, this.model, this.profile)),
+    );
     let sourceNote: string;
     if (b.source === "measured") {
       sourceNote = cal?.inherited
         ? `${style.yellow}${kvLabel} (measured on a relative - press c to calibrate this model)${style.reset}`
-        : `${style.grey}${kvLabel} (measured)${style.reset}`;
+        : stale
+          ? `${style.yellow}${kvLabel} (last measurement - press c to recalibrate)${style.reset}`
+          : `${style.grey}${kvLabel} (measured)${style.reset}`;
     } else {
-      const stale =
-        this.model && this.profile
-          ? profiles.hasStaleCalibration(this.store, this.model, this.profile)
-          : false;
       const hint = stale
-        ? "cache types changed - press c to recalibrate"
+        ? "recalibrate to refresh this value"
         : "press c to calibrate; usually unlocks more context";
       sourceNote = `${style.yellow}${kvLabel} (theoretical - ${hint})${style.reset}`;
     }

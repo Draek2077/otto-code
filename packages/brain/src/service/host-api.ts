@@ -32,7 +32,7 @@ import {
   hostingFamily,
   removeHostingProfileMaterialization,
 } from "../config/hosting-profiles.js";
-import { forModel, getCalibration, put } from "../config/profiles.js";
+import { forModel, getCalibrationForBudget, put } from "../config/profiles.js";
 import {
   HostingProfileSchema,
   type HostingProfile,
@@ -430,7 +430,7 @@ export function buildInventoryRow(params: {
     runtimeBuild: activeRuntimeBuild = null,
   } = params;
   const profile = forModel(store, model, defaults);
-  const calibration = profile.calibrationRequired ? null : getCalibration(store, model, profile);
+  const calibration = getCalibrationForBudget(store, model, profile);
 
   const budgetOptions = gpu
     ? { model, profile, calibration, totalVramBytes: gpu.totalBytes }
@@ -697,9 +697,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
           // Return the recomputed budget so an edit costs one round trip rather
           // than a write followed by a read the UI has to sequence.
           const gpu = await deps.queryGpuInfo();
-          const calibration = profile.calibrationRequired
-            ? null
-            : getCalibration(store, model, profile);
+          const calibration = getCalibrationForBudget(store, model, profile);
           const options = gpu
             ? { model, profile, calibration, totalVramBytes: gpu.totalBytes }
             : null;
@@ -804,7 +802,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
         const options = {
           model,
           profile,
-          calibration: profile.calibrationRequired ? null : getCalibration(store, model, profile),
+          calibration: getCalibrationForBudget(store, model, profile),
           totalVramBytes: gpu.totalBytes,
         };
         sendJson(res, {

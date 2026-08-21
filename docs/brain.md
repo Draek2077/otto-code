@@ -355,11 +355,11 @@ differential measurement of KV bytes per token, so fixed terms (weights wherever
 context, compute buffers) cancel out of the slope, and a context size or slot count the measurement
 was taken at does not change what the measurement says.
 
-A measurement from the previous shape remains stored for comparison, but it is not used as the
-current VRAM budget while calibration is required. Brain uses the theoretical budget until a new
-calibration succeeds. This is distinct from the warning that a measurement exists for other cache
-types: that warning identifies why a cache-type-specific measurement is stale, while the calibration
-verdict says the saved model profile itself has not been measured in its current shape.
+A measurement from the previous shape remains the displayed and calculated VRAM budget until a new
+calibration succeeds. Brain marks that value `stale` and keeps the calibration-needed verdict visible,
+so the estimate does not jump back and forth while settings are being edited. The value is known to
+be potentially wrong for the new shape, but remains stable until calibration replaces it. This is
+distinct from having no measurement at all, where Brain uses the theoretical budget.
 
 ## The VRAM budget
 
@@ -373,15 +373,15 @@ The KV figure comes from one of four places, and the UI says which:
 | ------------- | --------------------------------------------------------------------------------------------- |
 | `measured`    | Calibrated on this exact model and cache types                                                |
 | `inherited`   | Measured on a relative with the same attention geometry, rescaled to this model's layer count |
-| `stale`       | A measurement exists, but for different cache types                                           |
+| `stale`       | A measurement exists, but the saved profile has changed in a way that requires recalibration  |
 | `theoretical` | The formula, which is a worst-case bound                                                      |
 
 `inherited` is never presented as measured. The distinction matters because **the theoretical formula
 overestimates badly** (roughly 4x on architectures that only keep a full cache on a subset of
 layers), so calibrating usually _unlocks_ context rather than taking it away.
 
-When a model profile requires calibration, Brain reports the theoretical budget even when a historical
-measurement for the old model profile exists. `stale` remains the separate cache-type warning described above.
+When a model profile requires calibration, Brain keeps the most recent direct measurement in the budget
+and labels it stale. Only a profile with no measurement uses the theoretical budget.
 
 ## A benchmark records what it was measured with
 
