@@ -58,6 +58,7 @@ import {
   getActivityState,
   getCollapsedEntryIds,
   getVisibleEntries,
+  selectBulkAttachTargets,
 } from "./activity-state";
 import { formatPullRequestThreadPath } from "./activity-location";
 import {
@@ -373,22 +374,16 @@ export function PullRequestPane({
     ],
   );
 
+  // Which entries a bulk attach picks - resolved and outdated excluded - is
+  // decided in `selectBulkAttachTargets`, next to the collapse rules that use
+  // the same test. This only dispatches.
   const handleAddAllToChat = useCallback(() => {
-    for (const { entry } of visibleEntries) {
-      if (entry.kind === "single") {
-        handleAddActivityToChat(entry.activity);
-        continue;
-      }
-      if (entry.kind === "review") {
-        handleAddActivityToChat(entry.review);
-      }
-      const threads = entry.kind === "thread" ? [entry] : entry.threads;
-      for (const thread of threads) {
-        if (thread.isResolved === true) {
-          continue;
-        }
-        handleAddThreadToChat(thread);
-      }
+    const targets = selectBulkAttachTargets(visibleEntries);
+    for (const activity of targets.activities) {
+      handleAddActivityToChat(activity);
+    }
+    for (const thread of targets.threads) {
+      handleAddThreadToChat(thread);
     }
   }, [handleAddActivityToChat, handleAddThreadToChat, visibleEntries]);
 

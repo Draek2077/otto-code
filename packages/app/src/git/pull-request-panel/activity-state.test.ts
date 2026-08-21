@@ -5,6 +5,7 @@ import {
   getActivityState,
   getCollapsedEntryIds,
   getVisibleEntries,
+  selectBulkAttachTargets,
 } from "./activity-state";
 import type { PrTimelineEntry } from "./timeline";
 import type { PrPaneActivity } from "./data";
@@ -149,5 +150,57 @@ describe("pull request activity state", () => {
     const collapsedIds = getCollapsedEntryIds(expanded, { prNumber: 42, entries });
 
     expect(collapsedIds.has("thread:thread-resolved")).toBe(false);
+  });
+});
+
+describe("selectBulkAttachTargets", () => {
+  function visible(entries: PrTimelineEntry[]) {
+    return entries.map((entry) => ({ entry, collapsed: false }));
+  }
+
+  it("skips outdated comments and threads", () => {
+    const targets = selectBulkAttachTargets(
+      visible([
+        singleEntry("current"),
+        singleEntry("stale", false, true),
+        threadEntry("thread-current"),
+        threadEntry("thread-stale", false, true),
+      ]),
+    );
+
+    expect(targets.activities.map((item) => item.id)).toEqual(["current"]);
+    expect(targets.threads.map((thread) => thread.id)).toEqual(["thread:thread-current"]);
+  });
+
+  it("still skips resolved threads", () => {
+    const targets = selectBulkAttachTargets(
+      visible([threadEntry("open"), threadEntry("done", true)]),
+    );
+
+    expect(targets.threads.map((thread) => thread.id)).toEqual(["thread:open"]);
+  });
+
+  it("skips outdated threads nested under a review, keeping the review body", () => {
+    const review = reviewEntry("review-1", [
+      threadEntry("nested-current"),
+      threadEntry("nested-stale", false, true),
+      threadEntry("nested-done", true),
+    ]);
+
+    const targets = selectBulkAttachTargets(visible([review]));
+
+    expect(targets.activities.map((item) => item.id)).toEqual(["review-1"]);
+    expect(targets.threads.map((thread) => thread.id)).toEqual(["thread:nested-current"]);
+  });
+
+  // An outdated comment is excluded from the sweep, not hidden - its own card
+  // still offers "Add to chat", so this must never become a filter on the list.
+  it("leaves an all-outdated review with nothing but its verdict", () => {
+    const review = reviewEntry("review-2", [threadEntry("only-stale", false, true)]);
+
+    const targets = selectBulkAttachTargets(visible([review]));
+
+    expect(targets.activities.map((item) => item.id)).toEqual(["review-2"]);
+    expect(targets.threads).toEqual([]);
   });
 });
