@@ -50,20 +50,22 @@ const WATCHLIST = [
     label: "subagents",
     paths: [
       "packages/app/src/subagents/",
-      "packages/server/src/server/agent/providers/claude/task-transcript-watcher",
-      "packages/server/src/server/agent/providers/claude/workflow-transcript-watcher",
-      "packages/server/src/server/agent/subagent-usage",
-      "packages/server/src/server/agent/claude-subagent-usage",
+      "packages/server/src/server/agent/providers/claude/task-transcript-watcher.ts",
+      "packages/server/src/server/agent/providers/claude/workflow-transcript-watcher.ts",
+      "packages/server/src/server/agent/subagent-usage.ts",
     ],
   },
   {
     label: "git-hosting",
     paths: [
       "packages/server/src/services/git-hosting/",
-      "packages/server/src/services/github-service",
-      "packages/server/src/services/forge",
+      "packages/server/src/services/github-service.ts",
+      "packages/server/src/services/forge-cli-command.ts",
+      "packages/server/src/services/forge-registry.ts",
+      "packages/server/src/services/forge-resolver.ts",
+      "packages/server/src/services/forge-service.ts",
       "packages/app/src/git/",
-      "packages/protocol/src/git-hosting",
+      "packages/protocol/src/git-hosting.ts",
     ],
   },
   {
@@ -75,11 +77,41 @@ const WATCHLIST = [
     paths: ["packages/visualizer/", "packages/app/src/visualizer/", "vendor/agent-flow/"],
   },
   {
+    // All three original paths here were dead: `agent-personalities` without the
+    // `.ts` is not a git pathspec match for `agent-personalities.ts`, and the two
+    // app directories never existed. The entry matched nothing while upstream
+    // built `agent-profiles/` - the exact rival abstraction it exists to catch -
+    // across four commits in v0.4.0. The dead-path self-check below exists so a
+    // silently-matching-nothing entry can never happen again.
     label: "personalities/teams",
     paths: [
-      "packages/server/src/server/agent/agent-personalities",
-      "packages/app/src/personalities/",
-      "packages/app/src/teams/",
+      "packages/server/src/server/agent/agent-personalities.ts",
+      "packages/server/src/server/agent/agent-teams.ts",
+      "packages/server/src/server/agent/personality-memory/",
+      "packages/app/src/components/active-team-group-switcher.tsx",
+      // Upstream's rival: host-wide reusable agent profiles (#3208).
+      "packages/app/src/agent-profiles/",
+    ],
+  },
+  {
+    // Two complete Mermaid renderers now exist at different paths, so they never
+    // conflict and never announce themselves. Keep both sides on the watchlist
+    // until one is deleted.
+    label: "mermaid",
+    paths: [
+      "packages/app/src/components/markdown/mermaid/",
+      "packages/app/src/components/markdown/fence/mermaid/",
+    ],
+  },
+  {
+    // Otto retains chat rooms and agent loops that upstream deleted in #3053.
+    // The `otto-loop` skill is built on `otto loop run`.
+    label: "chat rooms / agent loops",
+    paths: [
+      "packages/server/src/server/chat/",
+      "packages/server/src/server/loop-service.ts",
+      "packages/cli/src/commands/chat/",
+      "packages/cli/src/commands/loop/",
     ],
   },
   {
@@ -88,9 +120,21 @@ const WATCHLIST = [
   },
   {
     label: "openai-compat provider",
-    paths: ["packages/server/src/server/agent/providers/openai-compat"],
+    paths: [
+      "packages/server/src/server/agent/providers/openai-compat-agent.ts",
+      "packages/server/src/server/agent/providers/openai-compat-tools.ts",
+      "packages/server/src/server/agent/providers/openai-compat-mcp.ts",
+    ],
   },
-  { label: "text editor", paths: ["packages/app/src/editor/", "packages/server/src/server/file/"] },
+  {
+    label: "text editor",
+    paths: [
+      "packages/app/src/editor/",
+      "packages/server/src/server/file-explorer/",
+      "packages/server/src/server/file-download/",
+      "packages/server/src/server/file-upload/",
+    ],
+  },
   {
     label: "context management",
     paths: [
@@ -324,6 +368,23 @@ for (const { label, paths } of WATCHLIST) {
   }
 }
 if (!anyHits) console.log("  clear - no upstream work in our differentiated subsystems");
+
+// A watchlist path that matches nothing is worse than no watchlist at all: it
+// reads as coverage and reports "clear". Every path must exist on one side or
+// the other (ours, or upstream's rival tree). Checked on every run.
+const deadPaths = [];
+for (const { label, paths } of WATCHLIST) {
+  for (const path of paths) {
+    const known =
+      gitLines("ls-tree", "-r", "--name-only", "HEAD", "--", path).length > 0 ||
+      gitLines("ls-tree", "-r", "--name-only", "upstream/main", "--", path).length > 0;
+    if (!known) deadPaths.push(`${label}: ${path}`);
+  }
+}
+if (deadPaths.length > 0) {
+  heading("Watchlist paths matching nothing - fix before trusting the section above");
+  for (const entry of deadPaths) console.log(`  \x1b[31m${entry}\x1b[0m`);
+}
 
 // Upstream deleting or renaming a file we've modified will not auto-resolve, and
 // the rebrand makes it worse: every `otto-*`-named file we renamed shows up here
