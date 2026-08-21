@@ -26,7 +26,7 @@ All Otto project state lives under `.otto/`:
     references/
 ```
 
-`KNOWLEDGE.md` is the repository-local operating contract. The generated index and pages are canonical Markdown, portable and reviewable in Git. Otto's daemon is the normal writer, resolving worktrees, validating input, and reindexing atomically.
+`.otto/KNOWLEDGE.md` is optional project-specific guidance, not the store's operating contract or initialization marker. Otto's default behavior is baked into the compact catalog instructions. When the optional file contains project-owned guidance, the catalog points to it and an agent reads it on demand before writing or managing Knowledge; its body is never fixed prompt weight. The generated index and record pages are canonical Markdown, portable and reviewable in Git. Those remain daemon-owned so worktree resolution, validation, provenance, and reindexing stay atomic.
 
 Each atomic page has frontmatter, rich Markdown compiled truth, and an uncapped append-only timeline. Pages use readable kebab-case slugs and `[[wiki links]]` to other atomic pages; root pages use their fixed slugs rather than pretending to be atomic wiki targets. Compiled truth can carry headings, lists, tables, code fences, diagrams, and links. A truth update requires a reason. Otto writes the truth and its timeline reason in one operation. Status transitions and evidence also enter the timeline. This makes a truth change without rationale impossible through Otto.
 
@@ -50,15 +50,19 @@ This separation prevents two dangerous ambiguities: confirming that a charter is
 
 ## Discovery and retrieval
 
-At every new or resumed chat session, Otto reads the repository store and injects a compact catalog containing the six root pages and active atomic pages. This catalog is fixed prompt weight and is reported as `projectKnowledgeTokens` in Context Management. It carries titles and links, not full page bodies. Agents read relevant rich pages on demand before broad repository searches, then verify implementation facts against current code.
+At every new, resumed, or refreshed chat session, Otto reads the repository store and injects a compact catalog containing the baked-in capture policy, the six root pages, and active atomic pages. The catalog carries titles and links, not full page bodies. It adds a short pointer to `.otto/KNOWLEDGE.md` only when that file contains project-specific guidance rather than a known generated compatibility entry. Optional guidance and rich page bodies stay pull-on-demand. Only the injected catalog weight is reported as `projectKnowledgeTokens` in Context Management. Agents read relevant rich pages on demand before broad repository searches, then verify implementation facts against current code.
 
-The same catalog carries the standing capture rule: when a chat establishes durable factual knowledge, a charter, a delivery update, or an evaluated reference that is not already recorded, the agent uses the matching Knowledge tool immediately. New pages remain inactive until explicit human confirmation. Delivery and reference metadata changes do not alter review status.
+The baked-in policy carries the standing capture rule: capture is deliberately deferred while work is in motion. Agents do not write Project Knowledge after each query, hypothesis, experiment, attempted fix, or intermediate implementation. Those are working state, and most should disappear when the solution converges.
+
+At the end of an effort, after the requested outcome has been verified and before the final handoff, the agent performs one reconciliation pass. It reviews relevant active and proposed pages, updates the best existing record when possible, and creates a page only for a stable, evidence-backed outcome that will matter beyond the current task. Qualifying outcomes include explicit decisions and requirements, verified constraints or architecture, measured findings, actual charter progress, and references whose project impact is known. If the effort produced no durable outcome, the correct reconciliation is no write. A direct request to create, ingest, review, or revise Project Knowledge is itself the effort and may write as part of that workflow.
+
+This timing rule lets development proceed through mistakes and abandoned approaches without fragmenting the durable record. A failed experiment is captured only when the failure itself is a verified, reusable finding. New pages remain inactive until explicit human confirmation. Delivery and reference metadata changes do not alter review status.
 
 This is the practical distinction between discovery and context injection: discovery itself is a small automatic injection, while the potentially large page content stays conditional. The workspace list RPC follows the same rule: it returns lightweight catalog records with a statement digest, and the reader fetches full Markdown and timeline only for the selected page. Draft and superseded pages do not enter the catalog or normal agent retrieval.
 
 ## Bootstrap and management
 
-`bootstrap_project_knowledge` creates `.otto/KNOWLEDGE.md`, all six writable root-page skeletons, and the generated index. It does not invent facts. Project onboarding inspects code, official documentation, tests, and Git history, then fills background, architecture, flow, mindmap, stack, and roadmap with evidence-backed Markdown before proposing atomic pages.
+`bootstrap_project_knowledge` creates all six writable root-page skeletons and the generated index. The index is the current initialization marker, so Project Knowledge continues to work when `.otto/KNOWLEDGE.md` is absent. During the compatibility window, a new store also receives a tiny entry file for older daemons that still use it as their marker; current Otto ignores that generated content and does not recreate the file if a project removes it later. Project-specific contents are always preserved. Bootstrap does not invent facts. Project onboarding inspects code, official documentation, tests, and Git history, then fills background, architecture, flow, mindmap, stack, and roadmap with evidence-backed Markdown before proposing atomic pages.
 
 **Manage knowledge** is a capability-gated workspace tab with Knowledge, Projects, and References modes. Knowledge shows the six project-map roots and factual pages, including findings. Projects creates and reviews charters, displays status and completion metrics, and updates delivery with a reason. References records source URLs and adoption or rejection. All modes render the canonical Markdown page and its complete timeline, support explicit review status, and require a reason to change current truth. The panel never writes raw Markdown directly.
 
@@ -66,7 +70,7 @@ The same tools and UI work in any repository. A project no longer needs an Otto-
 
 ## Agent tools
 
-- `bootstrap_project_knowledge` scaffolds the knowledge tree.
+- `bootstrap_project_knowledge` scaffolds the knowledge tree and generated index without requiring a project policy file.
 - `list_project_knowledge` lists active atomic pages and the six roots.
 - `read_project_knowledge` reads one active rich page and its complete timeline.
 - `query_project_knowledge` searches active compiled truth, evidence, tags, and timeline evidence.

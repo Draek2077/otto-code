@@ -18,8 +18,10 @@ Otto rather than by editing files directly.
   confirmed active pages. Include inactive pages only for an explicit knowledge review.
 - Read compiled truth, evidence, tags, and the complete timeline. Treat `superseded` pages as
   history, not current guidance.
-- Inspect `.otto/KNOWLEDGE.md` and the Markdown page in Git when the user needs to see the source or
-  review a diff.
+- `.otto/KNOWLEDGE.md` is optional, on-demand project guidance. If it exists with project-specific
+  content, read it before writing or managing Knowledge. Do not load it merely because a task reads
+  existing Knowledge. Unlike record pages and the generated index, the project may edit or remove
+  this file directly; baked-in behavior applies when it is absent.
 
 ## Write
 
@@ -43,9 +45,21 @@ Otto rather than by editing files directly.
   its current truth.
 - Use `set_project_knowledge_status` to confirm or supersede only after explicit user agreement.
   A proposal is not authorization to confirm it.
-- When the task establishes durable factual knowledge, a project charter or delivery update, or an
-  evaluated reference that is not already recorded, use the matching tool immediately rather than
-  waiting for the user to ask. Never turn a proactive proposal into confirmed truth without agreement.
+- During exploration, trial and error, and implementation, keep tentative conclusions in the task
+  context or `.tmp/`; do not turn each query, hypothesis, attempted fix, or abandoned approach into
+  Project Knowledge.
+- At the end of the effort, after the requested outcome is verified and before the final handoff,
+  perform one knowledge reconciliation pass. An effort ends when the requested work is complete or a
+  stable result is being handed off, not at the end of every assistant turn.
+- In that pass, review the relevant active pages and any related proposed pages. Update the best
+  existing page, charter delivery record, or reference instead of creating an overlapping page.
+- Record only stable, evidence-backed outcomes that will matter beyond the current task: an explicit
+  decision or requirement, a verified constraint or architecture claim, a measured finding, actual
+  charter progress, or a reference whose project impact is now known. If the effort produced no such
+  outcome, write nothing.
+- A direct request to create, ingest, review, or revise Project Knowledge may write during the task;
+  it is itself the effort being performed. Never turn a proactive proposal into confirmed truth
+  without agreement.
 - Use `delete_project_knowledge` only for accidental or junk pages after the user explicitly approves
   deleting that exact page. Supersede valid historical knowledge instead.
 - Run `lint_project_knowledge_links` after changing links. Fix current truth or roots, never old
@@ -57,6 +71,8 @@ Otto rather than by editing files directly.
 - Record facts that are difficult to reconstruct from code and likely to matter in six months.
 - Name concrete files, tests, documentation, commits, or user statements as evidence.
 - Separate observed facts from recommendations and label uncertainty.
+- Do not preserve failed experiments merely because they happened. Keep one only when the failure is
+  itself a verified, reusable finding that changes future work.
 - Keep review status, delivery status, and reference disposition distinct.
 - Do not record people or team relationships; that belongs to team or personality memory.
 - Never store secrets, credentials, temporary TODOs, routine implementation details, or copied source.

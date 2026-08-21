@@ -19,7 +19,8 @@ researches the project and records proposals that a human can review in Manage k
    inspect `.otto/KNOWLEDGE.md` and `.otto/knowledge/` through normal file-reading tools. Preserve
    existing pages and never duplicate a fact that already has a current page.
 3. Call `bootstrap_project_knowledge` for the current repository. This operation is idempotent and
-   creates the protocol file, root-page skeleton, and generated index. It does not discover facts.
+   creates the root-page skeleton and generated index. It preserves optional project-specific
+   `KNOWLEDGE.md` guidance and does not discover facts.
 4. Gather evidence before writing proposals. Inspect, as applicable:
    - the root README and package manifests;
    - entry points, major directories, configuration, CI, and deployment files;
@@ -61,8 +62,9 @@ the first milestone. Record only answers the user explicitly confirms, as propos
 - Never claim a fact from an unverified convention or an agent guess.
 - Separate observed facts from recommendations. Recommendations belong in the proposal wording and
   must be clearly labeled.
-- Do not hand-edit generated knowledge Markdown. Use Otto's project-knowledge tools so current truth
-  and provenance remain atomic.
+- Optional `KNOWLEDGE.md` guidance may be edited or removed directly. Do not hand-edit the generated
+  index, root pages, or atomic record pages; use Otto's project-knowledge tools so current truth and
+  provenance remain atomic.
 - Do not confirm or supersede pages without explicit user agreement.
 - Do not add routine coding details, temporary TODOs, secrets, credentials, or copied source code.
 - Do not create a second project ledger or references file. Import existing sources through daemon

@@ -45,9 +45,10 @@ describe("ProjectKnowledgeService", () => {
         "agent-providers-use-shared-lifecycle-contracts-with-acp-and-direct-integration",
       );
 
-      expect(await readFile(path.join(root, ".otto", "KNOWLEDGE.md"), "utf8")).toContain(
-        "Every chat receives the active-page catalog",
-      );
+      const knowledgeProtocol = await readFile(path.join(root, ".otto", "KNOWLEDGE.md"), "utf8");
+      expect(knowledgeProtocol).toContain("default agent behavior is built in");
+      expect(knowledgeProtocol).toContain("project-specific supplemental or overriding guidance");
+      expect(knowledgeProtocol).not.toContain("capture it immediately");
       const page = await readFile(
         path.join(root, ".otto", "knowledge", "decisions", `${record.id}.md`),
         "utf8",
@@ -64,7 +65,11 @@ describe("ProjectKnowledgeService", () => {
       const brief = await knowledge.briefForCwd(root);
       expect(brief.text).toContain("Project knowledge catalog");
       expect(brief.text).toContain("[[daemon-owns-memory]]");
-      expect(brief.text).toContain("capture it immediately");
+      expect(brief.text).toContain(
+        "Default Knowledge policy: write only after an effort is verified",
+      );
+      expect(brief.text).not.toContain("Project-specific Knowledge guidance exists");
+      expect(brief.text).not.toContain("capture it immediately");
       expect(brief.text).toContain("mindmap");
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -336,24 +341,51 @@ describe("ProjectKnowledgeService", () => {
     }
   });
 
-  it("upgrades an initialized five-root store on its first read", async () => {
+  it("upgrades an initialized five-root store without replacing customized instructions", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "otto-project-knowledge-"));
     try {
       await service(root).bootstrap(root);
       await rm(path.join(root, ".otto", "knowledge", "mindmap.md"));
-      await writeFile(
-        path.join(root, ".otto", "KNOWLEDGE.md"),
-        "# Otto project knowledge\n\nOld contract.\n",
-      );
+      const customInstructions =
+        "# Project memory policy\n\nOnly record decisions after the architecture review.\n";
+      await writeFile(path.join(root, ".otto", "KNOWLEDGE.md"), customInstructions);
 
-      await service(root).list(root);
+      const knowledge = service(root);
+      await knowledge.list(root);
 
       expect(await readFile(path.join(root, ".otto", "knowledge", "mindmap.md"), "utf8")).toContain(
         'slug: "mindmap"',
       );
-      expect(await readFile(path.join(root, ".otto", "KNOWLEDGE.md"), "utf8")).toContain(
-        "Every chat receives the active-page catalog",
+      expect(await readFile(path.join(root, ".otto", "KNOWLEDGE.md"), "utf8")).toBe(
+        customInstructions,
       );
+      const brief = (await knowledge.briefForCwd(root)).text;
+      expect(brief).toContain("Project-specific Knowledge guidance exists");
+      expect(brief).not.toContain("Only record decisions after the architecture review.");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps an initialized knowledge store working without KNOWLEDGE.md", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "otto-project-knowledge-"));
+    try {
+      const knowledge = service(root);
+      await knowledge.bootstrap(root);
+      await rm(path.join(root, ".otto", "KNOWLEDGE.md"));
+
+      await knowledge.record({
+        cwd: root,
+        kind: "requirement",
+        title: "Optional project policy",
+        statement: "The generated index, not an optional policy file, identifies the store.",
+        status: "confirmed",
+      });
+
+      await expect(
+        readFile(path.join(root, ".otto", "KNOWLEDGE.md"), "utf8"),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+      expect((await knowledge.briefForCwd(root)).text).toContain("[[optional-project-policy]]");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

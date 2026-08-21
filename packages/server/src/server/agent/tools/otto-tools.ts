@@ -3575,7 +3575,6 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         description:
           "Record a durable project fact in the repository's shared knowledge store. Default to a proposal. Set " +
           "confirmed only when the user explicitly made or confirmed the record. Findings capture unresolved observations and do not imply a decision or remediation plan. " +
-          "Use this proactively as soon as the chat establishes durable knowledge; do not wait for a separate request. " +
           "Do not record guesses, transient implementation details, secrets, or information that source code states plainly. " +
           "The catalog is injected automatically, while the rich page remains pull-on-demand. Use update_project_knowledge_truth for any later change to current truth, " +
           "because it atomically records the reason in the page timeline.",
@@ -3969,7 +3968,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       {
         title: "Bootstrap project knowledge",
         description:
-          "Create `.otto/KNOWLEDGE.md`, all six writable project-map roots, the Markdown knowledge tree, and generated index for this repository. " +
+          "Initialize the repository's Markdown knowledge tree and generated index without requiring `.otto/KNOWLEDGE.md`; preserve optional project guidance when present. " +
           "Then inspect code, official docs, and Git history before creating draft pages. Never invent facts.",
         inputSchema: {},
         outputSchema: { initialized: z.boolean() },

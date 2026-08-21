@@ -16,8 +16,9 @@ infer or record their contents.
 2. Check the host capability `server_info.features.projectKnowledge`. If it is absent or false,
    tell the user to update the host and stop. Do not create a fallback store.
 3. Call `bootstrap_project_knowledge` for the current repository. It is safe to run repeatedly and
-   creates `.otto/KNOWLEDGE.md`, `.otto/knowledge/index.md`, the root-page skeleton, and canonical
-   locations for factual pages, projects, and references as records are introduced.
+   creates `.otto/knowledge/index.md`, the root-page skeleton, and canonical locations for factual
+   pages, projects, and references as records are introduced. `.otto/KNOWLEDGE.md` is optional
+   project-specific guidance, not the initialization marker; bootstrap preserves it when present.
 4. Verify the result by listing or reading the generated files through normal repository tools and
    by querying project knowledge if the tool is available.
 5. Report exactly what was initialized and recommend `$otto-onboard-project` for evidence-backed
@@ -26,7 +27,8 @@ infer or record their contents.
 ## Rules
 
 - Do not populate pages during setup.
-- Do not hand-edit generated Markdown.
+- Optional `KNOWLEDGE.md` guidance may be edited or removed directly. Do not hand-edit the generated
+  index, root pages, or atomic record pages.
 - Do not install hooks, rewrite agent configuration, or add dependencies. Otto's daemon capability
   and skills already provide the integration boundary.
 - Preserve existing pages and legacy data. Bootstrap may migrate the old JSON source on first read;
