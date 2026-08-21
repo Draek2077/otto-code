@@ -5,7 +5,7 @@ title: "Integrate Paseo v0.4.0 and converge on upstream structure"
 status: "confirmed"
 tags: ["upstream","paseo","integration","v0-4-0","merge"]
 created_at: "2026-08-21T13:40:49.704Z"
-updated_at: "2026-08-21T13:40:49.704Z"
+updated_at: "2026-08-21T21:06:06.889Z"
 ---
 # Integrate Paseo v0.4.0 and converge on upstream structure
 
@@ -54,3 +54,7 @@ Otto must integrate Paseo v0.4.0 from the v0.2.5 merge baseline on an isolated m
 - time: "2026-08-21T13:40:49.704Z"
   kind: "evidence"
   summary: "Target and surface measured on 2026-08-21 with `node scripts/upstream-status.mjs --at v0.4.0` after commits 46ab043ac and 6576ab46a fixed the drift report. Upstream releases resolved through the namespaced `refs/upstream-tags/` refspec, because Otto's own release tags shadow Paseo's by name: v0.3.0 at 7392e1b76 (2026-08-08), v0.3.1 at bfec7ac3a (2026-08-09), v0.4.0 at b44bb63cf (2026-08-13), with upstream/main mid-flight at v0.5.0-beta.3+24. Chat and loop removal traced to upstream commit 94bda1f92 (PR #3053, 2026-08-10), 73 files and 6,801 deletions, titled as prerequisite cleanup before the storage backend migration; Paseo's v0.4.0 CLI confirmed to register neither command. Per-capability decisions rest on the code-level comparison recorded in [[finding-2026-08-21-paseo-v040-rival-features]]. Decisions taken by the user on 2026-08-21."
+- time: "2026-08-21T21:06:06.889Z"
+  kind: "evidence"
+  summary: "Delivery completed on isolated branch `merge/upstream-2026-08-v040`. Merge commit `d6cafbd03f8eddb150521e4e1ed2a17145732a2b` integrates Paseo v0.4.0 (`b44bb63cf4ce089ab5750b9fc621ed52827b2820`); merge commit `efcc30b778ab2110b17425b95e5c8cc1e34753ad` then incorporates current Otto `main` (`46511f5608e3905f8dc43225fc5aed8a91282293`). Both upstream and main are verified ancestors and the merge worktree is clean. Verification passed full repository format, lint, and typecheck; server, website production, and desktop main builds; patch-package application from pristine package tarballs; and focused tests across the semantically merged app/server/runtime/sidebar/menu/stream/profile/file-explorer/platform surfaces. The full local test suite was intentionally not run under repository policy; targeted tests were used instead. `npm ci` reported 69 pre-existing audit findings (7 low, 32 moderate, 30 high), with no automatic remediation applied."
+  source: "Local Git history and merge-worktree verification on 2026-08-21"
