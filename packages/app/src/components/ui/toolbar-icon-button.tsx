@@ -1,5 +1,11 @@
 import { useCallback, useMemo, type ComponentType } from "react";
-import { Text, View, type PressableStateCallbackType } from "react-native";
+import {
+  Text,
+  View,
+  type PressableStateCallbackType,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { ShortcutDiscoveryHint } from "@/components/shortcut-discovery-overlay";
@@ -9,6 +15,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { KeyboardActionId } from "@/keyboard/actions";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { SPACING, type Theme } from "@/styles/theme";
+import { useControlStatePreview } from "@/components/ui/control-state-preview";
 
 // Pane-toolbar glyphs follow the app-wide compact convention: doubled on mobile
 // (the file editor's mode bar and the visualizer toolbar both consume this).
@@ -67,6 +74,41 @@ const destructiveIconColorMapping = (theme: Theme) => ({ color: theme.colors.des
  */
 export type ToolbarIconButtonTone = "default" | "accent" | "destructive";
 
+/**
+ * Shared state chrome for icon-only toolbar controls, including compound
+ * triggers that cannot render through ToolbarIconButton itself.
+ */
+export function useToolbarIconButtonStyle({
+  disabled = false,
+  selected = false,
+  style,
+}: {
+  disabled?: boolean;
+  selected?: boolean;
+  style?: StyleProp<ViewStyle>;
+} = {}) {
+  const preview = useControlStatePreview();
+  return useCallback(
+    ({
+      hovered: eventHovered,
+      pressed: eventPressed,
+    }: PressableStateCallbackType & { hovered?: boolean }) => {
+      const hovered = preview?.hovered ?? Boolean(eventHovered);
+      const pressed = preview?.pressed ?? eventPressed;
+      return [
+        styles.iconButton,
+        style,
+        !disabled && selected && styles.iconButtonSelected,
+        !disabled && hovered && !pressed && styles.iconButtonHovered,
+        !disabled && pressed && styles.iconButtonPressed,
+        preview?.focused && styles.iconButtonFocused,
+        disabled && styles.iconButtonDisabled,
+      ];
+    },
+    [disabled, preview, selected, style],
+  );
+}
+
 export function ToolbarIconButton({
   label,
   Icon,
@@ -100,15 +142,7 @@ export function ToolbarIconButton({
   shortcutDiscoveryAction?: KeyboardActionId;
   testID?: string;
 }) {
-  const buttonStyle = useCallback(
-    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
-      styles.iconButton,
-      !disabled && (Boolean(hovered) || pressed) && styles.iconButtonActive,
-      selected && styles.iconButtonSelected,
-      disabled && styles.iconButtonDisabled,
-    ],
-    [disabled, selected],
-  );
+  const buttonStyle = useToolbarIconButtonStyle({ disabled, selected });
   const accessibilityState = useMemo(() => ({ disabled, selected }), [disabled, selected]);
   const iconMapping = resolveIconMapping({ disabled, selected, tone });
   const isCompact = useIsCompactFormFactor();
@@ -182,11 +216,19 @@ const styles = StyleSheet.create((theme: Theme) => ({
     padding: TOOLBAR_ICON_BUTTON_PADDING,
     borderRadius: 6,
   },
-  iconButtonActive: {
-    backgroundColor: theme.colors.surfaceHover,
-  },
   iconButtonSelected: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceInteractiveSelected,
+  },
+  iconButtonHovered: {
+    backgroundColor: theme.colors.surfaceInteractiveHover,
+  },
+  iconButtonPressed: {
+    backgroundColor: theme.colors.surfaceInteractivePressed,
+  },
+  iconButtonFocused: {
+    outlineWidth: 1,
+    outlineColor: theme.colors.accent,
+    outlineOffset: -1,
   },
   // Dimmed, non-interactive look for actions with nothing to act on. No hover
   // response; the reduced opacity reads the icon as unavailable without

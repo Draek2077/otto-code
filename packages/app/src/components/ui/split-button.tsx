@@ -21,6 +21,7 @@ import {
   type DropdownMenuTriggerProps,
   type DropdownMenuTriggerState,
 } from "@/components/ui/dropdown-menu";
+import { useControlStatePreview } from "@/components/ui/control-state-preview";
 
 type SplitButtonSegment = "primary" | "menu";
 
@@ -81,20 +82,28 @@ type PrimaryStyleProp =
 
 export function SplitButtonPrimary({
   style,
+  disabled,
   onFocus,
   onBlur,
   ...props
 }: Omit<PressableProps, "style"> & { style?: PrimaryStyleProp }) {
+  const preview = useControlStatePreview();
   const { hasMenu, focusedSegment, setFocusedSegment } =
     useSplitButtonContext("SplitButtonPrimary");
 
   const pressableStyle = useCallback(
-    (state: PressableStateCallbackType) => [
-      hasMenu ? styles.primary : styles.primaryStandalone,
-      typeof style === "function" ? style(state) : style,
-      focusedSegment === "primary" && styles.focused,
-    ],
-    [focusedSegment, hasMenu, style],
+    (state: PressableStateCallbackType & { hovered?: boolean }) => {
+      const hovered = preview?.hovered ?? Boolean(state.hovered);
+      const pressed = preview?.pressed ?? state.pressed;
+      return [
+        hasMenu ? styles.primary : styles.primaryStandalone,
+        typeof style === "function" ? style({ ...state, pressed }) : style,
+        !disabled && hovered && !pressed ? styles.segmentHovered : null,
+        !disabled && pressed ? styles.segmentPressed : null,
+        (preview?.focused || focusedSegment === "primary") && styles.focused,
+      ];
+    },
+    [disabled, focusedSegment, hasMenu, preview, style],
   );
   const handleFocus = useCallback<NonNullable<PressableProps["onFocus"]>>(
     (event) => {
@@ -111,7 +120,15 @@ export function SplitButtonPrimary({
     [onBlur, setFocusedSegment],
   );
 
-  return <Pressable {...props} onFocus={handleFocus} onBlur={handleBlur} style={pressableStyle} />;
+  return (
+    <Pressable
+      {...props}
+      disabled={disabled}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
+      style={pressableStyle}
+    />
+  );
 }
 
 type MenuStyleProp =
@@ -120,6 +137,7 @@ type MenuStyleProp =
 
 export function SplitButtonMenuTrigger({
   style,
+  disabled,
   onFocus,
   onBlur,
   ...props
@@ -130,10 +148,14 @@ export function SplitButtonMenuTrigger({
     (state: DropdownMenuTriggerState) => [
       styles.menu,
       typeof style === "function" ? style(state) : style,
+      !disabled && state.open ? styles.segmentSelected : null,
+      !disabled && state.hovered && !state.pressed ? styles.segmentHovered : null,
+      !disabled && state.pressed ? styles.segmentPressed : null,
+      !disabled && state.open ? styles.segmentOpen : null,
       focusedSegment === "primary" && styles.menuPrimaryFocused,
       focusedSegment === "menu" && styles.focused,
     ],
-    [focusedSegment, style],
+    [disabled, focusedSegment, style],
   );
   const handleFocus = useCallback<NonNullable<DropdownMenuTriggerProps["onFocus"]>>(
     (event) => {
@@ -153,6 +175,7 @@ export function SplitButtonMenuTrigger({
   return (
     <DropdownMenuTrigger
       {...props}
+      disabled={disabled}
       suppressFocusOutline
       onFocus={handleFocus}
       onBlur={handleBlur}
@@ -199,6 +222,19 @@ const styles = StyleSheet.create((theme) => ({
     borderBottomLeftRadius: 0,
     borderTopRightRadius: theme.borderRadius.md,
     borderBottomRightRadius: theme.borderRadius.md,
+  },
+  segmentHovered: {
+    backgroundColor: theme.colors.surfaceInteractiveHover,
+  },
+  segmentSelected: {
+    backgroundColor: theme.colors.surfaceInteractiveSelected,
+  },
+  segmentOpen: {
+    borderColor: theme.colors.accent,
+  },
+  segmentPressed: {
+    backgroundColor: theme.colors.surfaceInteractivePressed,
+    borderColor: theme.colors.accent,
   },
   focused: {
     borderColor: theme.colors.accent,

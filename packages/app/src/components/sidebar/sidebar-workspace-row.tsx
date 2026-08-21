@@ -520,7 +520,7 @@ const styles = StyleSheet.create((theme) => ({
     userSelect: "none",
   },
   workspaceRowHovered: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
   },
   workspaceRowPressed: {
     backgroundColor: theme.colors.surface2,
@@ -534,7 +534,7 @@ const styles = StyleSheet.create((theme) => ({
     ...theme.shadow.md,
   },
   sidebarRowSelected: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
+    backgroundColor: theme.colors.surfaceInteractiveSelected,
   },
   workspaceCreatingText: {
     color: theme.colors.foregroundMuted,

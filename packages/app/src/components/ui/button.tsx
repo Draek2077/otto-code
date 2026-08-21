@@ -23,6 +23,7 @@ import {
   createControlGeometry,
   type ButtonControlSize,
 } from "@/components/ui/control-geometry";
+import { useControlStatePreview } from "@/components/ui/control-state-preview";
 import { compactUp } from "@/styles/theme";
 import type { Theme } from "@/styles/theme";
 
@@ -87,6 +88,7 @@ const styles = StyleSheet.create((theme) => {
 
   return {
     base: {
+      position: "relative",
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
@@ -94,6 +96,7 @@ const styles = StyleSheet.create((theme) => {
       borderRadius: theme.borderRadius.lg,
       borderWidth: 1,
       borderColor: "transparent",
+      overflow: "hidden",
     },
     // Sizes come from the shared control geometry; the compactUp overrides
     // double touch targets on compact form factors (phones).
@@ -144,8 +147,30 @@ const styles = StyleSheet.create((theme) => {
     pressed: {
       opacity: 0.85,
     },
+    stateLayer: {
+      position: "absolute",
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+    },
+    stateLayerHovered: {
+      backgroundColor: theme.colors.surfaceInteractiveHover,
+    },
+    stateLayerPressed: {
+      backgroundColor: theme.colors.surfaceInteractivePressed,
+    },
+    outlineHovered: {
+      borderColor: theme.colors.borderInteractiveHover,
+    },
+    outlinePressed: {
+      borderColor: theme.colors.accent,
+    },
     disabled: {
       opacity: theme.opacity[50],
+    },
+    previewFocused: {
+      borderColor: theme.colors.accent,
     },
     text: {
       color: theme.colors.foreground,
@@ -206,7 +231,9 @@ export function Button({
     loading?: boolean;
   }
 >) {
-  const [hovered, setHovered] = useState(false);
+  const [eventHovered, setEventHovered] = useState(false);
+  const preview = useControlStatePreview();
+  const hovered = preview?.hovered ?? eventHovered;
   const isDisabled = disabled || loading;
 
   let variantStyle: ViewStyle;
@@ -233,20 +260,28 @@ export function Button({
     sizeStyle = styles.md;
   }
   const isGhostHovered = hovered && variant === "ghost";
+  const usesSurfaceStateLayer =
+    variant === "secondary" || variant === "outline" || variant === "ghost";
 
-  const handleHoverIn = useCallback(() => setHovered(true), []);
-  const handleHoverOut = useCallback(() => setHovered(false), []);
+  const handleHoverIn = useCallback(() => setEventHovered(true), []);
+  const handleHoverOut = useCallback(() => setEventHovered(false), []);
 
   const pressableStyle = useCallback(
-    ({ pressed }: PressableStateCallbackType): StyleProp<ViewStyle> => [
-      styles.base,
-      sizeStyle,
-      variantStyle,
-      pressed ? styles.pressed : null,
-      isDisabled ? styles.disabled : null,
-      style,
-    ],
-    [sizeStyle, variantStyle, isDisabled, style],
+    ({ pressed: eventPressed }: PressableStateCallbackType): StyleProp<ViewStyle> => {
+      const pressed = preview?.pressed ?? eventPressed;
+      return [
+        styles.base,
+        sizeStyle,
+        variantStyle,
+        hovered && variant === "outline" && !pressed ? styles.outlineHovered : null,
+        pressed && variant === "outline" ? styles.outlinePressed : null,
+        pressed && !usesSurfaceStateLayer ? styles.pressed : null,
+        preview?.focused ? styles.previewFocused : null,
+        isDisabled ? styles.disabled : null,
+        style,
+      ];
+    },
+    [hovered, sizeStyle, variant, variantStyle, usesSurfaceStateLayer, preview, isDisabled, style],
   );
 
   const resolvedTextStyle = useMemo(
@@ -290,14 +325,31 @@ export function Button({
       onHoverOut={handleHoverOut}
       style={pressableStyle}
     >
-      <ThemedButtonIcon
-        loading={loading}
-        leftIcon={leftIcon}
-        iconSize={iconSize ?? buttonIconSize[size]}
-        uniProps={resolveIconMapping()}
-      />
-      {children != null ? <Text style={resolvedTextStyle}>{children}</Text> : null}
-      {trailing}
+      {({ pressed: eventPressed }) => {
+        const pressed = preview?.pressed ?? eventPressed;
+        return (
+          <>
+            {usesSurfaceStateLayer ? (
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.stateLayer,
+                  hovered && !pressed ? styles.stateLayerHovered : null,
+                  pressed ? styles.stateLayerPressed : null,
+                ]}
+              />
+            ) : null}
+            <ThemedButtonIcon
+              loading={loading}
+              leftIcon={leftIcon}
+              iconSize={iconSize ?? buttonIconSize[size]}
+              uniProps={resolveIconMapping()}
+            />
+            {children != null ? <Text style={resolvedTextStyle}>{children}</Text> : null}
+            {trailing}
+          </>
+        );
+      }}
     </Pressable>
   );
 }

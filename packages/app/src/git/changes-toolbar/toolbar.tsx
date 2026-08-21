@@ -1,13 +1,5 @@
 import { Fragment, useCallback, useMemo, useState, type ReactElement } from "react";
-import {
-  Pressable,
-  Text,
-  View,
-  type GestureResponderEvent,
-  type PressableStateCallbackType,
-  type StyleProp,
-  type ViewStyle,
-} from "react-native";
+import { Pressable, Text, View, type GestureResponderEvent } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, Pin, PinFilled, PinOff } from "@/components/icons/material-icons";
@@ -19,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useToolbarIconButtonStyle } from "@/components/ui/toolbar-icon-button";
 import { isNative } from "@/constants/platform";
 import { compactUp, useIconSize, type Theme } from "@/styles/theme";
 import { isChangesToolbarItemPinned, type ChangesToolbarItemId } from "@/git/changes-toolbar/items";
@@ -51,15 +44,6 @@ export interface ChangesToolbarItem {
   testID?: string;
 }
 
-type PressableStyleFn = (
-  state: PressableStateCallbackType & { hovered?: boolean },
-) => StyleProp<ViewStyle>;
-
-const toolbarButtonStyle: PressableStyleFn = ({ hovered, pressed }) => [
-  styles.button,
-  (Boolean(hovered) || pressed) && styles.buttonHovered,
-];
-
 function ChangesToolbarButton({
   item,
   size,
@@ -67,6 +51,7 @@ function ChangesToolbarButton({
   item: ChangesToolbarItem;
   size: number;
 }): ReactElement {
+  const buttonStyle = useToolbarIconButtonStyle({ disabled: item.disabled, style: styles.button });
   return (
     <Tooltip delayDuration={300}>
       <TooltipTrigger
@@ -75,7 +60,7 @@ function ChangesToolbarButton({
         testID={item.testID ? `${item.testID}-pinned` : `changes-toolbar-${item.id}`}
         disabled={item.disabled}
         onPress={item.onPress}
-        style={toolbarButtonStyle}
+        style={buttonStyle}
       >
         {item.renderIcon(size)}
       </TooltipTrigger>
@@ -198,6 +183,10 @@ export function ChangesToolbar({
   optionsLabel,
 }: ChangesToolbarProps): ReactElement {
   const [menuOpen, setMenuOpen] = useState(false);
+  const optionsButtonStyle = useToolbarIconButtonStyle({
+    selected: menuOpen,
+    style: styles.button,
+  });
 
   // Keep the strip revealed while the menu is open - the pointer is inside the
   // portaled menu then, which reads as "left the row" to the hover tracker.
@@ -230,7 +219,7 @@ export function ChangesToolbar({
               accessibilityRole="button"
               accessibilityLabel={optionsLabel}
               testID="changes-options-menu"
-              style={toolbarButtonStyle}
+              style={optionsButtonStyle}
             >
               <ThemedChevronDown size={barIconSize} uniProps={mutedColorMapping} />
             </DropdownMenuTrigger>
@@ -292,9 +281,6 @@ const styles = StyleSheet.create((theme) => ({
     },
     borderRadius: theme.borderRadius.base,
     flexShrink: 0,
-  },
-  buttonHovered: {
-    backgroundColor: theme.colors.surface2,
   },
   tooltipText: {
     color: theme.colors.foreground,

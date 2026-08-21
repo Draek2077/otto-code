@@ -185,12 +185,12 @@ export function createControlGeometry(theme: Theme) {
     fieldTextMd,
     controlRest: {
       borderWidth: theme.borderWidth[1],
-      borderColor: "transparent",
+      borderColor: theme.colors.borderAccent,
       outlineWidth: 0,
       outlineColor: "transparent",
     },
     controlHover: {
-      borderColor: theme.colors.borderAccent,
+      borderColor: theme.colors.borderInteractiveHover,
     },
     controlActive: {
       borderColor: theme.colors.accent,

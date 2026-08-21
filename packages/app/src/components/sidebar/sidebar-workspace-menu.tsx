@@ -433,8 +433,17 @@ export function SidebarWorkspaceContextMenu({
   );
 }
 
-function triggerStyle({ hovered = false }: PressableStateCallbackType & { hovered?: boolean }) {
-  return [styles.trigger, hovered && styles.triggerHovered];
+function triggerStyle({
+  hovered = false,
+  pressed,
+  open = false,
+}: PressableStateCallbackType & { hovered?: boolean; open?: boolean }) {
+  return [
+    styles.trigger,
+    open && styles.triggerSelected,
+    hovered && !pressed && styles.triggerHovered,
+    pressed && styles.triggerPressed,
+  ];
 }
 
 const styles = StyleSheet.create((theme) => ({
@@ -446,7 +455,13 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     flexShrink: 0,
   },
+  triggerSelected: {
+    backgroundColor: theme.colors.surfaceInteractiveSelected,
+  },
   triggerHovered: {
-    backgroundColor: theme.colors.surfaceHover,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
+  },
+  triggerPressed: {
+    backgroundColor: theme.colors.surfaceInteractivePressed,
   },
 }));

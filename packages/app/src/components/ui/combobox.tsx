@@ -65,6 +65,7 @@ import {
 import { FloatingSurface } from "@/components/ui/floating";
 import { useDismissKeyboardOnOpen } from "@/components/ui/keyboard-dismiss";
 import { SearchClearButton } from "@/components/ui/search-clear-button";
+import { useControlStatePreview } from "@/components/ui/control-state-preview";
 import {
   getOverlayRoot,
   OverlayLayerProvider,
@@ -300,6 +301,7 @@ export function ComboboxItem({
   testID,
 }: ComboboxItemProps): ReactElement {
   const { theme } = useUnistyles();
+  const preview = useControlStatePreview();
 
   let leadingContent: ReactElement | null = null;
   if (leadingSlot) {
@@ -319,16 +321,25 @@ export function ComboboxItem({
   }
 
   const itemPressableStyle = useCallback(
-    ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
-      styles.comboboxItem,
-      Boolean(trailingAction) && styles.comboboxItemWithAction,
-      dense && styles.comboboxItemDense,
-      hovered && (elevated ? styles.comboboxItemHoveredElevated : styles.comboboxItemHovered),
-      pressed && (elevated ? styles.comboboxItemPressedElevated : styles.comboboxItemPressed),
-      active && styles.comboboxItemActive,
-      disabled && styles.comboboxItemDisabled,
-    ],
-    [elevated, active, disabled, dense, trailingAction],
+    ({
+      pressed: eventPressed,
+      hovered: eventHovered = false,
+    }: PressableStateCallbackType & {
+      hovered?: boolean;
+    }) => {
+      const hovered = preview?.hovered ?? eventHovered;
+      const pressed = preview?.pressed ?? eventPressed;
+      return [
+        styles.comboboxItem,
+        Boolean(trailingAction) && styles.comboboxItemWithAction,
+        dense && styles.comboboxItemDense,
+        hovered && (elevated ? styles.comboboxItemHoveredElevated : styles.comboboxItemHovered),
+        pressed && (elevated ? styles.comboboxItemPressedElevated : styles.comboboxItemPressed),
+        active && styles.comboboxItemActive,
+        disabled && styles.comboboxItemDisabled,
+      ];
+    },
+    [elevated, active, disabled, dense, preview, trailingAction],
   );
 
   const itemContentStyle = useMemo(
@@ -1885,19 +1896,19 @@ const styles = StyleSheet.create((theme) => ({
     paddingRight: theme.spacing[3],
   },
   comboboxItemHovered: {
-    backgroundColor: theme.colors.surface1,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
   },
   comboboxItemHoveredElevated: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
   },
   comboboxItemPressed: {
-    backgroundColor: theme.colors.surface1,
+    backgroundColor: theme.colors.surfaceInteractivePressed,
   },
   comboboxItemPressedElevated: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceInteractivePressed,
   },
   comboboxItemActive: {
-    backgroundColor: theme.colors.surface1,
+    backgroundColor: theme.colors.surfaceInteractiveSelected,
   },
   comboboxItemDisabled: {
     opacity: 0.55,

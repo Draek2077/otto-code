@@ -62,7 +62,8 @@ export function HeaderToggleButton({
     ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
       headerIconSlotStyle.slot,
       !disabled && active && headerIconSlotStyle.slotActive,
-      !disabled && (Boolean(hovered) || Boolean(pressed)) && headerIconSlotStyle.slotHovered,
+      !disabled && Boolean(hovered) && !pressed && headerIconSlotStyle.slotHovered,
+      !disabled && Boolean(pressed) && headerIconSlotStyle.slotPressed,
       style,
     ],
     [active, disabled, style],
@@ -136,17 +137,18 @@ export const headerIconSlotStyle = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
   },
-  // Selected is the resting shade - the same fill the explorer's selected tab
-  // uses, so a toggled-on title-bar button and a selected tab match. Hover is
-  // ONE step off it, and is applied AFTER selected in `combinedStyle`, so
-  // pointing at a toggled-on button lifts it rather than flattening it back.
-  // Both are derived per mode in `theme.ts`: no single literal steps the same
-  // direction on light and dark.
+  // Selected is the quiet persistent state shared with explorer tabs. Hover is
+  // stronger and is applied AFTER selected in `combinedStyle`, so pointing at
+  // a toggled-on button remains visible. The palette builders derive every
+  // rung from the active theme accent.
   slotHovered: {
-    backgroundColor: theme.colors.surfaceToggleHover,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
   },
   slotActive: {
-    backgroundColor: theme.colors.surfaceToggleSelected,
+    backgroundColor: theme.colors.surfaceInteractiveSelected,
+  },
+  slotPressed: {
+    backgroundColor: theme.colors.surfaceInteractivePressed,
   },
 }));
 

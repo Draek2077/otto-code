@@ -947,10 +947,10 @@ const styles = StyleSheet.create((theme) => ({
     userSelect: "none",
   },
   statusGroupRowHovered: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
   },
   statusGroupRowPressed: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceInteractivePressed,
   },
   statusGroupRowLeft: {
     flexDirection: "row",
@@ -998,12 +998,9 @@ const styles = StyleSheet.create((theme) => ({
     userSelect: "none",
   },
   workspaceRowHovered: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
-  },
-  workspaceRowPressed: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
   },
   sidebarRowSelected: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
+    backgroundColor: theme.colors.surfaceInteractiveSelected,
   },
 }));

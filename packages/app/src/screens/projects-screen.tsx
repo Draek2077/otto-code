@@ -206,10 +206,10 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[3],
   },
   rowHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
   },
   rowPressed: {
-    backgroundColor: theme.colors.surface3,
+    backgroundColor: theme.colors.surfaceInteractivePressed,
   },
   leading: {
     width: 16,

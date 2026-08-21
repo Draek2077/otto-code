@@ -21,6 +21,7 @@ import {
   useMenuState,
   type MenuCompactMode,
 } from "./menu-context";
+import { useControlStatePreview } from "@/components/ui/control-state-preview";
 
 /**
  * Owns one menu's state. Wrap a trigger and a `MenuSurface` in it.
@@ -88,7 +89,9 @@ export const MenuTrigger = forwardRef<View, MenuTriggerProps>(function MenuTrigg
   forwardedRef,
 ): ReactElement {
   const ctx = useMenuContext("MenuTrigger");
-  const [focused, setFocused] = useState(false);
+  const [eventFocused, setEventFocused] = useState(false);
+  const preview = useControlStatePreview();
+  const focused = preview?.focused ?? eventFocused;
 
   const handleTriggerRef = useCallback(
     (node: View | null) => {
@@ -105,36 +108,50 @@ export const MenuTrigger = forwardRef<View, MenuTriggerProps>(function MenuTrigg
   }, [disabled, ctx]);
 
   const pressableStyle = useCallback(
-    ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => {
+    ({
+      pressed: eventPressed,
+      hovered: eventHovered = false,
+    }: PressableStateCallbackType & { hovered?: boolean }) => {
+      const state: MenuTriggerState = {
+        pressed: preview?.pressed ?? eventPressed,
+        hovered: preview?.hovered ?? eventHovered,
+        open: preview?.open ?? ctx.open,
+        focused,
+      };
       if (typeof style === "function") {
-        return [
-          style({ pressed, hovered, open: ctx.open, focused }),
-          suppressFocusOutline ? SUPPRESSED_FOCUS_OUTLINE_STYLE : null,
-        ];
+        return [style(state), suppressFocusOutline ? SUPPRESSED_FOCUS_OUTLINE_STYLE : null];
       }
       return [style, suppressFocusOutline ? SUPPRESSED_FOCUS_OUTLINE_STYLE : null];
     },
-    [style, ctx.open, focused, suppressFocusOutline],
+    [style, ctx.open, focused, preview, suppressFocusOutline],
   );
 
   const renderChildren = useCallback(
-    ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => {
-      const state: MenuTriggerState = { pressed, hovered, open: ctx.open, focused };
+    ({
+      pressed: eventPressed,
+      hovered: eventHovered = false,
+    }: PressableStateCallbackType & { hovered?: boolean }) => {
+      const state: MenuTriggerState = {
+        pressed: preview?.pressed ?? eventPressed,
+        hovered: preview?.hovered ?? eventHovered,
+        open: preview?.open ?? ctx.open,
+        focused,
+      };
       return typeof children === "function" ? children(state) : children;
     },
-    [children, ctx.open, focused],
+    [children, ctx.open, focused, preview],
   );
 
   const handleFocus = useCallback<NonNullable<PressableProps["onFocus"]>>(
     (event) => {
-      setFocused(true);
+      setEventFocused(true);
       onFocus?.(event);
     },
     [onFocus],
   );
   const handleBlur = useCallback<NonNullable<PressableProps["onBlur"]>>(
     (event) => {
-      setFocused(false);
+      setEventFocused(false);
       onBlur?.(event);
     },
     [onBlur],

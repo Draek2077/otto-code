@@ -14,12 +14,18 @@ type SidebarTheme = Theme;
 function footerIconButtonStyle({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) {
   return [
     styles.footerIconButton,
-    (Boolean(hovered) || Boolean(pressed)) && styles.footerIconButtonHovered,
+    Boolean(hovered) && !pressed && styles.footerIconButtonHovered,
+    Boolean(pressed) && styles.footerIconButtonPressed,
   ];
 }
 
 function activeFooterIconButtonStyle(state: { hovered?: boolean; pressed?: boolean }) {
-  return [...footerIconButtonStyle(state), styles.footerIconButtonActive];
+  return [
+    styles.footerIconButton,
+    styles.footerIconButtonActive,
+    Boolean(state.hovered) && !state.pressed && styles.footerIconButtonHovered,
+    Boolean(state.pressed) && styles.footerIconButtonPressed,
+  ];
 }
 
 // Accent marks the surface you are already on - the same `accentBright` the
@@ -258,10 +264,13 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.lg,
   },
   footerIconButtonHovered: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
   },
   footerIconButtonActive: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
+    backgroundColor: theme.colors.surfaceInteractiveSelected,
+  },
+  footerIconButtonPressed: {
+    backgroundColor: theme.colors.surfaceInteractivePressed,
   },
   tooltipRow: {
     flexDirection: "row",

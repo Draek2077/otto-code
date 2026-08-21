@@ -98,7 +98,7 @@ const styles = StyleSheet.create((theme) => ({
     userSelect: "none",
   },
   rowHovered: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
   },
   rowPressed: {
     backgroundColor: theme.colors.surface2,

@@ -257,7 +257,8 @@ interface LightThemeConfig {
   surface4: string;
   surfaceDiffEmpty: string;
   surfaceSidebar: string;
-  surfaceSidebarHover: string;
+  surfaceSidebarPanel?: string;
+  surfaceControlTrack: string;
   foreground: string;
   foregroundMuted: string;
   scrollbarHandle: string;
@@ -298,15 +299,11 @@ function lightenHex(hex: string, amount: number): string {
   return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
 }
 
-// The code well: one step deeper than the surrounding chrome. There is no theme
-// token below `surface0` (it is the base of the elevation scale, and going
-// deeper means opposite directions in light vs dark), so the well is derived
-// from `surface0` itself: scaled toward black, which preserves hue so a tinted
-// palette stays on-tint. The amount is luminance-aware - near-black dark
-// surfaces barely move under a small fraction, while a white light surface
-// would over-darken, so dark themes deepen far more than light ones. The result
-// is "the same surface, deeper" in every theme: a subtle grey on the white
-// theme, a near-black on the dark ones. Builders only, same CSS-var rule as
+// Derive a deeper shade from an authored surface while preserving its hue. The
+// amount is luminance-aware: near-black dark surfaces need a larger proportional
+// move for the step to remain visible, while a near-white light surface needs a
+// gentler move. Used by the code well and the sidebar-only base surface so both
+// stay on each theme's authored spectrum. Builders only, same CSS-var rule as
 // `lightenHex`.
 function deepenHex(hex: string): string {
   const value = Number.parseInt(hex.slice(1, 7), 16);
@@ -334,6 +331,19 @@ function blendHex(first: string, second: string, amount: number): string {
     return Math.round(a + (b - a) * amount);
   };
   return `#${((mix(16) << 16) | (mix(8) << 8) | mix(0)).toString(16).padStart(6, "0")}`;
+}
+
+// Interaction state is a translucent wash of the theme accent, not another
+// elevation step. That distinction is load-bearing: the same state layer can
+// sit over a title bar, sidebar panel, tab, outlined control, or popup without
+// turning every light theme into the same neutral-grey UI. Persistent selected
+// state stays quieter than transient hover; press is the strongest moment.
+function accentWash(accentHex: string, alpha: number): string {
+  const value = Number.parseInt(accentHex.slice(1, 7), 16);
+  const r = (value >> 16) & 0xff;
+  const g = (value >> 8) & 0xff;
+  const b = value & 0xff;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 // ---------------------------------------------------------------------------
@@ -480,6 +490,12 @@ export function accentFillInk(accentHex: string): string {
 }
 
 export function buildLightSemanticColors(tint: LightThemeConfig) {
+  const sidebarPanel = tint.surfaceSidebarPanel ?? deepenHex(tint.surfaceSidebar);
+  const interactiveHover = accentWash(tint.accent, 0.1);
+  const interactiveSelected = accentWash(tint.accent, 0.06);
+  const interactivePressed = accentWash(tint.accent, 0.16);
+  const interactiveHoverBorder = accentWash(tint.accent, 0.45);
+
   return {
     // Surfaces (layers)
     surface0: tint.surface0, // App background
@@ -488,28 +504,35 @@ export function buildLightSemanticColors(tint: LightThemeConfig) {
     surface3: tint.surface3, // Highest elevation
     surface4: tint.surface4, // Extra emphasis
     surfaceDiffEmpty: tint.surfaceDiffEmpty, // Empty side of split diff rows
-    surfaceSidebar: tint.surfaceSidebar, // Sidebar background (darker than main)
-    surfaceSidebarHover: tint.surfaceSidebarHover,
+    // The existing rail shade remains shared by workspace tabs and chrome.
+    // Primary sidebar trees use the deeper companion so the app reads as three
+    // layers without recoloring tabs or the center workspace.
+    surfaceSidebar: tint.surfaceSidebar,
+    surfaceSidebarPanel: sidebarPanel,
+    // Canonical interaction ladder. The older surface-specific names remain as
+    // aliases while consumers converge, but they deliberately resolve to the
+    // same state colors so component families cannot drift again.
+    surfaceInteractiveHover: interactiveHover,
+    surfaceInteractiveSelected: interactiveSelected,
+    surfaceInteractivePressed: interactivePressed,
+    borderInteractiveHover: interactiveHoverBorder,
+    // Opaque composited equivalent for overlays that must occlude row content
+    // without applying the translucent hover wash a second time.
+    surfaceSidebarPanelInteractiveHoverOpaque: blendHex(sidebarPanel, tint.accent, 0.1),
+    surfaceSidebarSelected: interactiveSelected,
+    surfaceSidebarHover: interactiveHover,
     surfaceWorkspace: tint.surface1, // Workspace main background
     surfaceChrome: blendHex(tint.surface1, tint.surfaceSidebar, 0.5),
     // The recessed well behind a segmented control's thumbs. Derived per mode
     // rather than pinned to one surface step, because the two ramps are not
     // symmetric: light is compressed at the top (#ffffff / #fafafa / #f4f4f5 sit
     // within 4% of each other), so `surface2` - correct on dark - paints a track
-    // indistinguishable from the page. The sidebar's hover step is the shallowest
-    // light fill that still reads as a recess against white.
-    surfaceControlTrack: tint.surfaceSidebarHover,
-    // The header toggles' two-rung ladder. `surfaceToggleSelected` is the
-    // explorer sidebar's selected-tab fill, so a toggled-on title-bar button and
-    // a selected tab are the same shade; `surfaceToggleHover` is ONE step past
-    // it, in whichever direction the mode moves - down toward ink on light, up
-    // toward light on dark. Both rungs come from the tint's own ramp rather than
-    // computed alpha, so every theme's author picked them.
-    surfaceToggleSelected: blendHex(tint.surfaceSidebarHover, tint.surface3, 0.5),
-    surfaceToggleHover: tint.surface3,
-    // Hover/press chrome for icon buttons and compact triggers. Translucent
-    // so the same token reads identically on any surface, base or elevated.
-    surfaceHover: "rgba(0, 0, 0, 0.06)",
+    // indistinguishable from the page. Each light palette authors this recessed
+    // track independently from interaction states.
+    surfaceControlTrack: tint.surfaceControlTrack,
+    surfaceToggleSelected: interactiveSelected,
+    surfaceToggleHover: interactiveHover,
+    surfaceHover: interactiveHover,
     // Chat speech bubbles: surface fills at partial alpha so the chat
     // background tints through. Derived here, not in components - web CSSVars
     // mode emits var(--...) for theme color reads inside stylesheets, so string
@@ -635,13 +658,18 @@ export const daylightColors = buildLightSemanticColors({
   surface3: "#dcdce1", // was #e4e4e7 - deepened so elevated layers separate from the white base
   surface4: "#c3c3ca", // was #d4d4d8 - the bottom of the light ramp, pushed down for range
   surfaceDiffEmpty: "#f7f5f0",
-  surfaceSidebar: "#f4f1ed",
-  surfaceSidebarHover: "#eae6e1",
+  // Large surfaces stay neutral-light and carry only a quiet yellow-gold
+  // undertone. Chroma belongs to the sun accent, not the sidebar canvas.
+  surfaceSidebar: "#f2f1ec",
+  surfaceSidebarPanel: "#e9e7df",
+  surfaceControlTrack: "#eae6e1",
   foreground: "#26262b", // was #37373c - charcoal pushed back toward ink for range; still off pure black
   foregroundMuted: "#55555e", // was #62626b - stronger secondary text
   scrollbarHandle: "#2f2f36",
   border: "#d1d1d8", // was #dcdce0 - clearer panel separation
-  borderAccent: "#e3e3ea",
+  // Outlined controls and their internal separators match the structural
+  // divider lines instead of fading into Daylight's warm surfaces.
+  borderAccent: "#d1d1d8",
   accent: "#c69700", // golden sun (hue ~46°, yellow not orange), chroma pushed a step past #b98d00; shared with spinnerPrimary
   accentBright: "#d1a000", // brighter step (links, selected-tab icons)
   accentForeground: "#181300", // deep warm ink on gold fills - ~6.1:1 (white on gold washes out)
@@ -661,7 +689,7 @@ export const sherbetColors = buildLightSemanticColors({
   surface4: "#cba895", // deepened from #dbbfb0
   surfaceDiffEmpty: "#f6ebe2",
   surfaceSidebar: "#f7ebe2",
-  surfaceSidebarHover: "#f0e0d3",
+  surfaceControlTrack: "#f0e0d3",
   foreground: "#322740", // plum charcoal, pushed back down from #453a4d
   foregroundMuted: "#5e5162",
   scrollbarHandle: "#46394c",
@@ -685,7 +713,7 @@ export const meadowColors = buildLightSemanticColors({
   surface4: "#9fbcac", // deepened from #b7cdc0
   surfaceDiffEmpty: "#eef5f0",
   surfaceSidebar: "#eef6f1",
-  surfaceSidebarHover: "#e3eee7",
+  surfaceControlTrack: "#e3eee7",
   foreground: "#1f3227", // green charcoal, pushed back down from #334339
   foregroundMuted: "#4e6357",
   scrollbarHandle: "#2f3d36",
@@ -708,7 +736,7 @@ export const terracottaColors = buildLightSemanticColors({
   surface4: "#c8a488", // deepened from #d6b8a4
   surfaceDiffEmpty: "#f7ede4",
   surfaceSidebar: "#f8efe8",
-  surfaceSidebarHover: "#f1e2d5",
+  surfaceControlTrack: "#f1e2d5",
   foreground: "#34291f", // warm clay charcoal, pushed back down from #473b31
   foregroundMuted: "#66564b",
   scrollbarHandle: "#4b3c31",
@@ -731,7 +759,7 @@ export const horizonColors = buildLightSemanticColors({
   surface4: "#8fb2d9", // deepened from #a9c3e2
   surfaceDiffEmpty: "#eef3fa",
   surfaceSidebar: "#eef4fb",
-  surfaceSidebarHover: "#e1ebf7",
+  surfaceControlTrack: "#e1ebf7",
   foreground: "#212a3b", // blue charcoal, pushed back down from #343d4e
   foregroundMuted: "#4c5d78",
   scrollbarHandle: "#2f3d53",
@@ -756,7 +784,7 @@ export const powderColors = buildLightSemanticColors({
   surface4: "#99a4ba", // deepened from #b0b9ca
   surfaceDiffEmpty: "#eef1f5",
   surfaceSidebar: "#eef0f4",
-  surfaceSidebarHover: "#e3e7ee",
+  surfaceControlTrack: "#e3e7ee",
   foreground: "#272c38", // slate charcoal, pushed back down from #3a3f4a
   foregroundMuted: "#545d70",
   scrollbarHandle: "#353e4f",
@@ -781,7 +809,6 @@ interface DarkThemeConfig {
   surface4: string;
   surfaceDiffEmpty: string;
   surfaceSidebar: string;
-  surfaceSidebarHover: string;
   foregroundMuted: string;
   scrollbarHandle: string;
   border: string;
@@ -824,6 +851,12 @@ const darkTerminalAnsi = {
 } as const;
 
 export function buildDarkSemanticColors(tint: DarkThemeConfig) {
+  const sidebarPanel = deepenHex(tint.surfaceSidebar);
+  const interactiveHover = accentWash(tint.accent, 0.14);
+  const interactiveSelected = accentWash(tint.accent, 0.09);
+  const interactivePressed = accentWash(tint.accent, 0.2);
+  const interactiveHoverBorder = accentWash(tint.accent, 0.55);
+
   return {
     surface0: tint.surface0,
     surface1: tint.surface1,
@@ -832,22 +865,23 @@ export function buildDarkSemanticColors(tint: DarkThemeConfig) {
     surface4: tint.surface4,
     surfaceDiffEmpty: tint.surfaceDiffEmpty,
     surfaceSidebar: tint.surfaceSidebar,
-    surfaceSidebarHover: tint.surfaceSidebarHover,
+    surfaceSidebarPanel: sidebarPanel,
+    surfaceInteractiveHover: interactiveHover,
+    surfaceInteractiveSelected: interactiveSelected,
+    surfaceInteractivePressed: interactivePressed,
+    borderInteractiveHover: interactiveHoverBorder,
+    surfaceSidebarPanelInteractiveHoverOpaque: blendHex(sidebarPanel, tint.accent, 0.14),
+    surfaceSidebarSelected: interactiveSelected,
+    surfaceSidebarHover: interactiveHover,
     surfaceWorkspace: tint.surface1,
     surfaceChrome: blendHex(tint.surface1, tint.surfaceSidebar, 0.5),
     // Segmented-control well - see the light builder's note for why this is
     // derived per mode. Dark has room in its ramp, so the elevated step is the
     // recess: `surfaceSidebarHover` here would sit within a hair of the page.
     surfaceControlTrack: tint.surface2,
-    // Header toggle ladder - see the light builder's note. The selected rung is
-    // the same token in both modes; only the step off it flips, and on dark that
-    // is `surface2` rather than `surface3`, which is a lifted mid-grey and would
-    // read as a hard highlight rather than a nudge.
-    surfaceToggleSelected: blendHex(tint.surfaceSidebarHover, tint.surface2, 0.5),
-    surfaceToggleHover: tint.surface2,
-    // Hover/press chrome for icon buttons and compact triggers. Translucent
-    // so the same token reads identically on any surface, base or elevated.
-    surfaceHover: "rgba(255, 255, 255, 0.07)",
+    surfaceToggleSelected: interactiveSelected,
+    surfaceToggleHover: interactiveHover,
+    surfaceHover: interactiveHover,
     // Chat speech bubbles - see the light builder's note; must stay derived
     // inside the theme builders, never via string math in stylesheets. Dark
     // runs 50% where light runs 75%; the alphas are tuned per mode, not shared.
@@ -943,7 +977,6 @@ export const neutralDarkColors = buildDarkSemanticColors({
   surface4: "#6e6e7a", // lifted from #585862
   surfaceDiffEmpty: "#2e2e33",
   surfaceSidebar: "#191a1f",
-  surfaceSidebarHover: "#212228",
   foregroundMuted: "#b6b6bf",
   scrollbarHandle: "#8b8b95",
   border: "#33333a",
@@ -991,7 +1024,6 @@ export const evergreenDarkColors = buildDarkSemanticColors({
   surface4: "#737a77", // lifted from #5f6161
   surfaceDiffEmpty: "#2f3432",
   surfaceSidebar: "#1a1e1d",
-  surfaceSidebarHover: "#222624",
   foregroundMuted: "#b6bebb", // was #aab0ae
   scrollbarHandle: "#8d9491",
   border: "#343d3a", // was #2c3331 - clearer panel separation
@@ -1016,7 +1048,6 @@ export const graphiteDarkColors = buildDarkSemanticColors({
   surface4: "#6e6e78", // lifted from #585862
   surfaceDiffEmpty: "#2b2b30",
   surfaceSidebar: "#151518",
-  surfaceSidebarHover: "#1d1d21",
   foregroundMuted: "#bcbcc4", // was #b0b0b8
   scrollbarHandle: "#93939d",
   border: "#37373d", // was #2e2e33 - no longer identical to surface2
@@ -1039,7 +1070,6 @@ export const nightfallDarkColors = buildDarkSemanticColors({
   surface4: "#6a6e84", // lifted from #595b6b
   surfaceDiffEmpty: "#292d3a",
   surfaceSidebar: "#121522",
-  surfaceSidebarHover: "#1b1d2e",
   foregroundMuted: "#b3b7cc", // was #a6aabf
   scrollbarHandle: "#888ca4",
   border: "#333648", // was #2a2c3f
@@ -1061,7 +1091,6 @@ export const emberDarkColors = buildDarkSemanticColors({
   surface4: "#7b7572", // lifted from #676361
   surfaceDiffEmpty: "#353230",
   surfaceSidebar: "#1d1b1a",
-  surfaceSidebarHover: "#252322",
   foregroundMuted: "#c4bfb9", // was #b8b3ae
   scrollbarHandle: "#948e88",
   border: "#3e3a36", // was #35322e
@@ -1084,7 +1113,6 @@ export const slateDarkColors = buildDarkSemanticColors({
   surface4: "#737a90", // lifted from #61677c
   surfaceDiffEmpty: "#3b4150",
   surfaceSidebar: "#232831", // was #1e222a
-  surfaceSidebarHover: "#2b303a",
   foregroundMuted: "#d2d6e2",
   scrollbarHandle: "#aeb2c0",
   border: "#454c5c", // was #3d4352
@@ -1109,7 +1137,6 @@ export const neotokyoDarkColors = buildDarkSemanticColors({
   surface4: "#5a5a7d", // lifted from #4a4a67
   surfaceDiffEmpty: "#252534",
   surfaceSidebar: "#10101c",
-  surfaceSidebarHover: "#1a1a2a",
   foregroundMuted: "#b0b4d4",
   scrollbarHandle: "#8488b2",
   border: "#2b2b46",
@@ -1270,14 +1297,10 @@ function buildBlackVariantColors(tint: BlackVariantTint) {
     surface2: tint.surface2,
     surface3: tint.surface3,
     surface4: tint.surface4,
-    // Re-derived from this variant's lifted surface2, same as the dark builder:
-    // inherited unchanged, these would keep the dark variant's un-lifted fills
-    // and read as grey slabs on the black canvas. `surfaceToggleSelected` is not
-    // re-derived - it tracks `surfaceSidebarHover`, which this variant also
-    // leaves to the base theme, so the two stay in step.
+    // Re-derived from this variant's lifted surface2, same as the dark builder.
+    // Interaction states stay inherited because they are translucent accent
+    // washes and therefore adapt to the black canvas without another ramp.
     surfaceControlTrack: tint.surface2,
-    surfaceToggleSelected: blendHex(tint.surface1, tint.surface2, 0.5),
-    surfaceToggleHover: tint.surface2,
     // Re-derive the bubble fills from this variant's lifted surfaces so the
     // black scope doesn't inherit the dark variant's tint through the merge.
     // Same 50% alpha as dark - the black canvas is the extreme case the dark
@@ -1429,7 +1452,6 @@ export const BLACK_LIGHT_VARIANT_COLORS: Record<
     surface4: "#4e4e57",
     surfaceDiffEmpty: "#121215",
     surfaceSidebar: "#0a0a0b",
-    surfaceSidebarHover: "#131315",
     foregroundMuted: "#b8b8c1",
     scrollbarHandle: "#8a8a93",
     border: "#26262c",
@@ -1450,7 +1472,6 @@ export const BLACK_LIGHT_VARIANT_COLORS: Record<
     surface4: "#584a51",
     surfaceDiffEmpty: "#140f12",
     surfaceSidebar: "#0c090a",
-    surfaceSidebarHover: "#151013",
     foregroundMuted: "#c9b9c4",
     scrollbarHandle: "#998894",
     border: "#322630",
@@ -1470,7 +1491,6 @@ export const BLACK_LIGHT_VARIANT_COLORS: Record<
     surface4: "#4c5a52",
     surfaceDiffEmpty: "#0f1411",
     surfaceSidebar: "#090c0a",
-    surfaceSidebarHover: "#121713",
     foregroundMuted: "#b5c4ba",
     scrollbarHandle: "#87948c",
     border: "#25322a",
@@ -1490,7 +1510,6 @@ export const BLACK_LIGHT_VARIANT_COLORS: Record<
     surface4: "#584c43",
     surfaceDiffEmpty: "#130f0c",
     surfaceSidebar: "#0c0908",
-    surfaceSidebarHover: "#14100d",
     foregroundMuted: "#c9bcb0",
     scrollbarHandle: "#988b7f",
     border: "#33291f",
@@ -1510,7 +1529,6 @@ export const BLACK_LIGHT_VARIANT_COLORS: Record<
     surface4: "#475270",
     surfaceDiffEmpty: "#0c101a",
     surfaceSidebar: "#080a12",
-    surfaceSidebarHover: "#0f1320",
     foregroundMuted: "#b4bdd4",
     scrollbarHandle: "#8590aa",
     border: "#222c44",
@@ -1531,7 +1549,6 @@ export const BLACK_LIGHT_VARIANT_COLORS: Record<
     surface4: "#4f5668",
     surfaceDiffEmpty: "#0f1218",
     surfaceSidebar: "#090b10",
-    surfaceSidebarHover: "#11141b",
     foregroundMuted: "#bfc6d4",
     scrollbarHandle: "#8f96a8",
     border: "#293040",

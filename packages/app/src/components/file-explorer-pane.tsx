@@ -308,7 +308,9 @@ function TreeRowItem({
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.entryRow,
       { paddingLeft: treeRowPaddingLeft(depth) },
-      (Boolean(hovered) || pressed || isSelected) && styles.entryRowActive,
+      isSelected && styles.entryRowSelected,
+      Boolean(hovered) && !pressed && styles.entryRowHovered,
+      pressed && styles.entryRowPressed,
     ],
     [depth, isSelected],
   );
@@ -1783,7 +1785,7 @@ function getErrorRecoveryPath(state: AgentFileExplorerState | undefined): string
 const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.surfaceSidebar,
+    backgroundColor: theme.colors.surfaceSidebarPanel,
   },
   desktopSplit: {
     flex: 1,
@@ -1916,8 +1918,14 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: WORKSPACE_FILE_ROW_VERTICAL_PADDING,
     paddingRight: WORKSPACE_FILE_ROW_TRAILING_PADDING,
   },
-  entryRowActive: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
+  entryRowHovered: {
+    backgroundColor: theme.colors.surfaceInteractiveHover,
+  },
+  entryRowSelected: {
+    backgroundColor: theme.colors.surfaceInteractiveSelected,
+  },
+  entryRowPressed: {
+    backgroundColor: theme.colors.surfaceInteractivePressed,
   },
   entryInfo: {
     flex: 1,

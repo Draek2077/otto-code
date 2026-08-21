@@ -18,6 +18,7 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Check, CheckCircle } from "lucide-react-native";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { resolvePreviewFlag, useControlStatePreview } from "@/components/ui/control-state-preview";
 import type { Theme } from "@/styles/theme";
 import { MenuDepthProvider, useMenuContext } from "./menu-context";
 
@@ -212,6 +213,7 @@ export function MenuItem({
   tooltip,
 }: PropsWithChildren<MenuItemProps>): ReactElement {
   const { selectItem } = useMenuContext("MenuItem");
+  const preview = useControlStatePreview();
 
   const isPending = status === "pending" || loading;
   const isSuccess = status === "success";
@@ -238,15 +240,22 @@ export function MenuItem({
   );
 
   const itemPressableStyle = useCallback(
-    ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
-      styles.item,
-      active ? styles.itemActive : null,
-      isDisabled ? styles.itemDisabled : null,
-      muted && !isDisabled ? styles.itemMuted : null,
-      hovered && !pressed && !isDisabled ? styles.itemHovered : null,
-      pressed && !isDisabled ? styles.itemPressed : null,
-    ],
-    [active, isDisabled, muted],
+    ({
+      pressed: eventPressed,
+      hovered: eventHovered = false,
+    }: PressableStateCallbackType & { hovered?: boolean }) => {
+      const hovered = resolvePreviewFlag(preview?.hovered, eventHovered);
+      const pressed = resolvePreviewFlag(preview?.pressed, eventPressed);
+      return [
+        styles.item,
+        active ? styles.itemActive : null,
+        isDisabled ? styles.itemDisabled : null,
+        muted && !isDisabled ? styles.itemMuted : null,
+        hovered && !pressed && !isDisabled ? styles.itemHovered : null,
+        pressed && !isDisabled ? styles.itemPressed : null,
+      ];
+    },
+    [active, isDisabled, muted, preview],
   );
 
   const itemTextStyle = useMemo(
@@ -373,14 +382,14 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
   },
   itemHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
   },
   itemPressed: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceInteractivePressed,
   },
   // The row you are inside, not the value you chose. A chosen value is marked by its check.
   itemActive: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceInteractiveSelected,
   },
   itemDisabled: {
     opacity: 0.5,

@@ -359,8 +359,8 @@ function sidebarItemStyle({ hovered }: PressableStateCallbackType & { hovered?: 
 function selectedSidebarItemStyle({ hovered }: PressableStateCallbackType & { hovered?: boolean }) {
   return [
     sidebarStyles.item,
-    Boolean(hovered) && sidebarStyles.itemHovered,
     sidebarStyles.itemSelected,
+    Boolean(hovered) && sidebarStyles.itemHovered,
   ];
 }
 
@@ -3022,10 +3022,10 @@ const sidebarStyles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.lg,
   },
   itemHovered: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
   },
   itemSelected: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
+    backgroundColor: theme.colors.surfaceInteractiveSelected,
   },
   label: {
     fontSize: theme.fontSize.base,
@@ -3043,7 +3043,7 @@ const sidebarStyles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.lg,
   },
   pickerTriggerHovered: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
   },
   pickerTriggerLabel: {
     flex: 1,

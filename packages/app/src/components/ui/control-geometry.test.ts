@@ -18,6 +18,7 @@ const theme = {
   colors: {
     accent: "#20744A",
     borderAccent: "#2F3534",
+    borderInteractiveHover: "rgba(32, 116, 74, 0.45)",
   },
   fontSize: {
     xs: 12,
@@ -37,12 +38,12 @@ const theme = {
 } as unknown as Theme;
 
 describe("control geometry", () => {
-  it("keeps resting control borders transparent while preserving border geometry", () => {
+  it("uses the shared resting border while preserving border geometry", () => {
     const geometry = createControlGeometry(theme);
 
     expect(geometry.controlRest).toMatchObject({
       borderWidth: 1,
-      borderColor: "transparent",
+      borderColor: "#2F3534",
       outlineColor: "transparent",
       outlineWidth: 0,
     });
@@ -52,7 +53,7 @@ describe("control geometry", () => {
     const geometry = createControlGeometry(theme);
 
     expect(geometry.controlHover).toEqual({
-      borderColor: "#2F3534",
+      borderColor: "rgba(32, 116, 74, 0.45)",
     });
     expect(geometry.controlActive).toEqual({
       borderColor: "#20744A",

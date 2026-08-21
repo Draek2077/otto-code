@@ -5,6 +5,8 @@ import { Text, TextInput, View, type PressableStateCallbackType } from "react-na
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChevronDown, Monitor, Moon, Sun } from "@/components/icons/material-icons";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
+import { Button } from "@/components/ui/button";
+import { UiStateGallery } from "@/components/ui-state-gallery";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -44,7 +46,7 @@ import {
   type Theme,
   type ThemeVariantName,
 } from "@/styles/theme";
-import { isNative } from "@/constants/platform";
+import { isDev, isNative } from "@/constants/platform";
 import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import { settingsStyles } from "@/styles/settings";
 import { TEXT_EFFECT_THEME_IDS, type TextEffectThemeId } from "@/styles/text-effects";
@@ -119,7 +121,11 @@ function dropdownTriggerStyle({ pressed }: PressableStateCallbackType) {
 
 // Responsive rows whose trailing control is wide (segmented control, text
 // input, slider). They stack the control below the label on compact widths.
-const ROW_RESPONSIVE_WITH_BORDER = [settingsStyles.rowResponsive, settingsStyles.rowBorder];
+function responsiveRowStyle(withBorder: boolean) {
+  return withBorder
+    ? [settingsStyles.rowResponsive, settingsStyles.rowBorder]
+    : settingsStyles.rowResponsive;
+}
 
 // ---------------------------------------------------------------------------
 // Mode picker (Light / Dark / System)
@@ -280,7 +286,7 @@ function FontFamilyRow({
   }, [value]);
 
   return (
-    <View style={withBorder ? ROW_RESPONSIVE_WITH_BORDER : settingsStyles.rowResponsive}>
+    <View style={responsiveRowStyle(withBorder)}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{title}</Text>
         <Text style={settingsStyles.rowHint}>{hint}</Text>
@@ -324,7 +330,7 @@ function FontSizeRow({
   onCommit,
 }: FontSizeRowProps) {
   return (
-    <View style={withBorder ? ROW_RESPONSIVE_WITH_BORDER : settingsStyles.rowResponsive}>
+    <View style={responsiveRowStyle(withBorder)}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{title}</Text>
       </View>
@@ -365,7 +371,7 @@ interface FontContrastRowProps {
 function FontContrastRow({ draftPercent, onChangeDraft, onCommit }: FontContrastRowProps) {
   const isDefault = draftPercent === toContrastPercent(DEFAULT_FONT_CONTRAST);
   return (
-    <View style={ROW_RESPONSIVE_WITH_BORDER}>
+    <View style={responsiveRowStyle(true)}>
       <View style={settingsStyles.rowContent}>
         {/* i18n: English-only pending a translation pass (font contrast). */}
         <Text style={settingsStyles.rowTitle}>Contrast</Text>
@@ -431,7 +437,7 @@ function RulerColumnRow({ value, disabled, onCommit }: RulerColumnRowProps) {
   }, [draft, onCommit, value]);
 
   return (
-    <View style={ROW_RESPONSIVE_WITH_BORDER}>
+    <View style={responsiveRowStyle(true)}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>Ruler column</Text>
         <Text style={settingsStyles.rowHint}>
@@ -580,7 +586,7 @@ function ChatWidthRow({ value, onChange }: ChatWidthRowProps) {
     [t],
   );
   return (
-    <View style={ROW_RESPONSIVE_WITH_BORDER}>
+    <View style={responsiveRowStyle(true)}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>
           {t("settings.appearance.layout.chatWidth.title")}
@@ -619,7 +625,7 @@ function TabOrientationRow({ value, onChange }: TabOrientationRowProps) {
     [],
   );
   return (
-    <View style={ROW_RESPONSIVE_WITH_BORDER}>
+    <View style={responsiveRowStyle(true)}>
       <View style={settingsStyles.rowContent}>
         {/* i18n: English-only pending a translation pass (Vertical tabs). */}
         <Text style={settingsStyles.rowTitle}>Default tab orientation</Text>
@@ -654,7 +660,7 @@ function WorkspaceChangeIndicatorRow({ value, onChange }: WorkspaceChangeIndicat
     [],
   );
   return (
-    <View style={ROW_RESPONSIVE_WITH_BORDER}>
+    <View style={responsiveRowStyle(true)}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>Workspace change indicator</Text>
         <Text style={settingsStyles.rowHint}>
@@ -697,7 +703,7 @@ function MessageTimestampRow({ value, onChange }: MessageTimestampRowProps) {
     [t],
   );
   return (
-    <View style={ROW_RESPONSIVE_WITH_BORDER}>
+    <View style={responsiveRowStyle(true)}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>
           {t("settings.appearance.agents.messageTimestamp.title")}
@@ -919,6 +925,7 @@ export function AppearanceSection() {
   const showFontFamilyRows = !isNative;
   const showLayoutSection = !isNative;
   const isDeveloperMode = useIsDeveloperMode();
+  const showUiGallery = isDev && isDeveloperMode;
   const uiFontPlaceholder = resolveDefaultStackPlaceholder(t, DEFAULT_UI_FONT_STACK);
   const monoFontPlaceholder = resolveDefaultStackPlaceholder(t, DEFAULT_MONO_FONT_STACK);
 
@@ -930,6 +937,10 @@ export function AppearanceSection() {
   const [contrastDraft, setContrastDraft] = useState(() =>
     toContrastPercent(settings.fontContrast),
   );
+  const [uiGalleryVisible, setUiGalleryVisible] = useState(false);
+
+  const handleOpenUiGallery = useCallback(() => setUiGalleryVisible(true), []);
+  const handleCloseUiGallery = useCallback(() => setUiGalleryVisible(false), []);
 
   // Resync numeric drafts when the committed value changes elsewhere.
   useEffect(() => {
@@ -1249,8 +1260,29 @@ export function AppearanceSection() {
             value={scopedThemeValue}
             onChange={handleThemeVariantChange}
           />
+          {showUiGallery ? (
+            <View style={styles.rowWithBorder}>
+              <View style={settingsStyles.rowContent}>
+                <Text style={settingsStyles.rowTitle}>UI Gallery</Text>
+                <Text style={settingsStyles.rowHint}>
+                  Audit production controls in every enforced state and theme.
+                </Text>
+              </View>
+              <Button
+                variant="outline"
+                size="sm"
+                onPress={handleOpenUiGallery}
+                testID="settings-open-ui-state-gallery"
+              >
+                Open gallery
+              </Button>
+            </View>
+          ) : null}
         </View>
       </SettingsSection>
+      {showUiGallery ? (
+        <UiStateGallery visible={uiGalleryVisible} onClose={handleCloseUiGallery} />
+      ) : null}
       {/* i18n: English-only pending a translation pass (Animations). Kept as its
           own section (not the desktop-only Layout section) because it also gates
           native page-transition fades. */}

@@ -23,6 +23,7 @@ import {
   resolveControlInteractionStyles,
   type FieldControlSize,
 } from "@/components/ui/control-geometry";
+import { useControlStatePreview } from "@/components/ui/control-state-preview";
 
 interface FieldProps {
   label: string;
@@ -155,7 +156,9 @@ export const FormTextInput = forwardRef<TextInput, FormTextInputProps>(function 
   { size = "md", style, onFocus, onBlur, editable, ...props },
   ref,
 ) {
-  const [focused, setFocused] = useState(false);
+  const [eventFocused, setEventFocused] = useState(false);
+  const preview = useControlStatePreview();
+  const focused = preview?.focused ?? eventFocused;
   const isDisabled = editable === false;
   const chromeSizeStyle = size === "sm" ? formInputStyles.chromeSm : formInputStyles.chromeMd;
   const inputSizeStyle = size === "sm" ? formInputStyles.inputSm : formInputStyles.inputMd;
@@ -168,14 +171,14 @@ export const FormTextInput = forwardRef<TextInput, FormTextInputProps>(function 
   );
   const handleFocus = useCallback<NonNullable<AdaptiveTextInputProps["onFocus"]>>(
     (event) => {
-      setFocused(true);
+      setEventFocused(true);
       onFocus?.(event);
     },
     [onFocus],
   );
   const handleBlur = useCallback<NonNullable<AdaptiveTextInputProps["onBlur"]>>(
     (event) => {
-      setFocused(false);
+      setEventFocused(false);
       onBlur?.(event);
     },
     [onBlur],
@@ -185,7 +188,7 @@ export const FormTextInput = forwardRef<TextInput, FormTextInputProps>(function 
     [inputSizeStyle, splitStyle.inputStyle],
   ) as AdaptiveTextInputProps["style"];
   const chromeStyle = useCallback(
-    ({ hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
+    ({ hovered: eventHovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
       formInputStyles.chrome,
       chromeSizeStyle,
       resolveControlInteractionStyles(
@@ -196,14 +199,14 @@ export const FormTextInput = forwardRef<TextInput, FormTextInputProps>(function 
           controlDisabled: formInputStyles.controlDisabled,
         },
         {
-          hovered,
+          hovered: preview?.hovered ?? eventHovered,
           focused,
           disabled: isDisabled,
         },
       ),
       splitStyle.chromeStyle,
     ],
-    [chromeSizeStyle, focused, isDisabled, splitStyle.chromeStyle],
+    [chromeSizeStyle, focused, isDisabled, preview, splitStyle.chromeStyle],
   );
 
   return (

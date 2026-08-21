@@ -380,8 +380,15 @@ export function PrBadge({ hint, style }: { hint: PrHint; style?: StyleProp<ViewS
 
 function projectKebabStyle({
   hovered = false,
-}: PressableStateCallbackType & { hovered?: boolean }) {
-  return [styles.projectKebabButton, hovered && styles.projectKebabButtonHovered];
+  pressed,
+  open = false,
+}: PressableStateCallbackType & { hovered?: boolean; open?: boolean }) {
+  return [
+    styles.projectKebabButton,
+    open && styles.projectKebabButtonSelected,
+    hovered && !pressed && styles.projectKebabButtonHovered,
+    pressed && styles.projectKebabButtonPressed,
+  ];
 }
 
 function getProjectWorkspaceRowStyle({
@@ -744,9 +751,10 @@ function NewWorktreeButton({
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.projectIconActionButton,
       !visible && styles.projectIconActionButtonHidden,
-      (Boolean(hovered) || pressed) && !loading && styles.projectIconActionButtonHovered,
+      Boolean(hovered) && !pressed && !loading && styles.projectIconActionButtonHovered,
+      pressed && !loading && styles.projectIconActionButtonPressed,
     ],
-    [visible, loading],
+    [loading, visible],
   );
 
   const handlePress = useCallback(
@@ -2549,7 +2557,7 @@ const styles = StyleSheet.create((theme) => ({
     userSelect: "none",
   },
   newWorkspaceGhostRowHovered: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
   },
   newWorkspaceGhostRowPressed: {
     backgroundColor: theme.colors.surface2,
@@ -2611,10 +2619,10 @@ const styles = StyleSheet.create((theme) => ({
     userSelect: "none",
   },
   projectRowHovered: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
   },
   projectRowPressed: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceInteractivePressed,
   },
   projectRowDragging: {
     backgroundColor: theme.colors.surface2,
@@ -2670,7 +2678,10 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
   },
   projectIconActionButtonHovered: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
+  },
+  projectIconActionButtonPressed: {
+    backgroundColor: theme.colors.surfaceInteractivePressed,
   },
   projectIconActionButtonHidden: {
     opacity: 0,
@@ -2695,8 +2706,14 @@ const styles = StyleSheet.create((theme) => ({
   projectKebabButtonHidden: {
     opacity: 0,
   },
+  projectKebabButtonSelected: {
+    backgroundColor: theme.colors.surfaceInteractiveSelected,
+  },
   projectKebabButtonHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
+  },
+  projectKebabButtonPressed: {
+    backgroundColor: theme.colors.surfaceInteractivePressed,
   },
   projectTrailingControlSlot: {
     width: 24,
@@ -2754,10 +2771,10 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
   },
   workspaceRowHovered: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
   },
   workspaceRowPressed: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceInteractivePressed,
   },
   workspaceRowDragging: {
     backgroundColor: theme.colors.surface2,
@@ -2768,7 +2785,7 @@ const styles = StyleSheet.create((theme) => ({
     ...theme.shadow.md,
   },
   sidebarRowSelected: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
+    backgroundColor: theme.colors.surfaceInteractiveSelected,
   },
   workspaceRowContainer: {
     position: "relative",

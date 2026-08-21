@@ -8,6 +8,7 @@ import {
   type SegmentedControlSize,
 } from "@/components/ui/control-geometry";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { useControlStatePreview } from "@/components/ui/control-state-preview";
 import type { Theme } from "@/styles/theme";
 
 type SegmentedControlIconRenderer = (props: { color: string; size: number }) => ReactNode;
@@ -143,6 +144,8 @@ function SegmentItem<T extends string>({
   currentValue: T;
   onValueChange: (value: T) => void;
 }) {
+  const preview = useControlStatePreview();
+  const previewMatchesTarget = !preview?.targetId || preview.targetId === option.value;
   // Tone recolors, selection brightens. An unselected toned segment is a dimmed
   // amber - same relationship muted→foreground has on an untoned one - so
   // "which tab am I on" stays readable independently of "which tab has news".
@@ -161,24 +164,33 @@ function SegmentItem<T extends string>({
     }
   }, [option.disabled, option.value, currentValue, onValueChange]);
   const pressableStyle = useCallback(
-    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
-      styles.segment,
-      segmentSizeStyle,
-      // A toned segment runs the same three states as an untoned one - bare at
-      // rest, boxed on hover, boxed harder when selected - just in amber
-      // instead of surface greys. The two ladders never layer; at rest NEITHER
-      // paints a background, which is what makes hover legible at all.
-      isSelected &&
-        (option.tone === "warning" ? styles.segmentWarningSelected : styles.segmentSelected),
-      Boolean(hovered) &&
-        !isSelected &&
-        (option.tone === "warning" ? styles.segmentWarningHover : styles.segmentHover),
-      pressed &&
-        !isSelected &&
-        (option.tone === "warning" ? styles.segmentWarningHover : styles.segmentPressed),
-      option.disabled && styles.segmentDisabled,
-    ],
-    [isSelected, option.disabled, option.tone, segmentSizeStyle],
+    ({
+      hovered: eventHovered,
+      pressed: eventPressed,
+    }: PressableStateCallbackType & {
+      hovered?: boolean;
+    }) => {
+      const hovered = previewMatchesTarget ? (preview?.hovered ?? Boolean(eventHovered)) : false;
+      const pressed = previewMatchesTarget ? (preview?.pressed ?? eventPressed) : false;
+      return [
+        styles.segment,
+        segmentSizeStyle,
+        // A toned segment runs the same three states as an untoned one - bare at
+        // rest, boxed on hover, boxed harder when selected - just in amber
+        // instead of surface greys. The two ladders never layer; at rest NEITHER
+        // paints a background, which is what makes hover legible at all.
+        isSelected &&
+          (option.tone === "warning" ? styles.segmentWarningSelected : styles.segmentSelected),
+        hovered &&
+          !isSelected &&
+          (option.tone === "warning" ? styles.segmentWarningHover : styles.segmentHover),
+        pressed &&
+          !isSelected &&
+          (option.tone === "warning" ? styles.segmentWarningHover : styles.segmentPressed),
+        option.disabled && styles.segmentDisabled,
+      ];
+    },
+    [isSelected, option.disabled, option.tone, preview, previewMatchesTarget, segmentSizeStyle],
   );
   const accessibilityState = useMemo(
     () => ({ selected: isSelected, disabled: option.disabled }),
@@ -273,12 +285,11 @@ const styles = StyleSheet.create((theme) => {
       flexBasis: 0,
       minWidth: 0,
     },
-    // The thumb is `surface0` - the page background - lifted off the recessed
-    // track by fill contrast and a soft shadow, with no outline on either. That
-    // only works because `surfaceControlTrack` is a real step away from the page
-    // in both ramps; against the old `surface2` on light it was white on white.
+    // Selection, hover, and press use the same theme-accent state ladder as
+    // buttons, tabs, rows, and menu items. The shadow still makes the selected
+    // thumb persistent while the stronger hover wash remains easy to spot.
     segmentSelected: {
-      backgroundColor: theme.colors.surface0,
+      backgroundColor: theme.colors.surfaceInteractiveSelected,
       shadowColor: "#000",
       shadowOffset: { width: 0, height: 1 },
       shadowOpacity: 0.08,
@@ -286,10 +297,10 @@ const styles = StyleSheet.create((theme) => {
       elevation: 1,
     },
     segmentHover: {
-      backgroundColor: theme.colors.surface1,
+      backgroundColor: theme.colors.surfaceInteractiveHover,
     },
     segmentPressed: {
-      backgroundColor: theme.colors.surface1,
+      backgroundColor: theme.colors.surfaceInteractivePressed,
     },
     // The amber ladder. It mirrors the grey one STATE FOR STATE: no box at
     // rest, a box on hover, a stronger box when selected. The fills are theme

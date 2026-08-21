@@ -136,11 +136,11 @@ export function CompactExplorerSidebar({
     () => [
       {
         paddingTop: insets.top,
-        backgroundColor: theme.colors.surfaceSidebar,
+        backgroundColor: theme.colors.surfaceSidebarPanel,
       },
       mobileKeyboardInsetStyle,
     ],
-    [insets.top, theme.colors.surfaceSidebar, mobileKeyboardInsetStyle],
+    [insets.top, theme.colors.surfaceSidebarPanel, mobileKeyboardInsetStyle],
   );
 
   return (
@@ -370,7 +370,8 @@ function ExplorerTabButton({
     ({ hovered, pressed }: PressableStateCallbackType) => [
       styles.tab,
       active && styles.tabActive,
-      (hovered || pressed) && styles.tabHovered,
+      hovered && !pressed && styles.tabHovered,
+      pressed && styles.tabPressed,
     ],
     [active],
   );
@@ -775,7 +776,7 @@ const styles = StyleSheet.create((theme) => ({
   desktopSidebarBorder: {
     borderLeftWidth: 1,
     borderLeftColor: theme.colors.border,
-    backgroundColor: theme.colors.surfaceSidebar,
+    backgroundColor: theme.colors.surfaceSidebarPanel,
   },
   sidebarContent: {
     flex: 1,
@@ -824,10 +825,13 @@ const styles = StyleSheet.create((theme) => ({
     zIndex: 1,
   },
   tabActive: {
-    backgroundColor: theme.colors.surfaceToggleSelected,
+    backgroundColor: theme.colors.surfaceInteractiveSelected,
   },
   tabHovered: {
-    backgroundColor: theme.colors.surfaceToggleHover,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
+  },
+  tabPressed: {
+    backgroundColor: theme.colors.surfaceInteractivePressed,
   },
   tabText: {
     fontSize: {

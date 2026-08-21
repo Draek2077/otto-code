@@ -70,7 +70,15 @@ Sizes are a shared contract across control kinds, defined once in `control-geome
 
 A `<Pressable>` wrapping a `<Text>` is a sixth variant. It is wrong. `<Button>` accepts `style`, `textStyle`, `leftIcon`, `disabled`, `size`, and `variant`.
 
-Icon buttons and compact triggers (kebabs, header actions, pane-toolbar buttons, close/dismiss buttons, filter and picker chips) take their hover/press chrome from `surfaceHover` - a translucent overlay token that reads identically on any surface, base or elevated. Hand-picking `surface1`/`surface2`/`surface3` (or `surfaceSidebarHover`) as an icon-button hover background is drift; those tokens are for opaque fills and row hovers, not button chrome. Every icon button gets the chrome: an icon-only Pressable whose hover feedback is just an icon tint is missing it.
+Interactive chrome uses one theme-accent state ladder across component families: `surfaceInteractiveSelected` for persistent selected/open state, `surfaceInteractiveHover` for transient hover, and `surfaceInteractivePressed` for press. Selected is intentionally quieter than hover; press is strongest. These are translucent state washes, so title-bar toggles, explorer tabs, sidebar rows, dropdown and combobox items, split buttons, segmented controls, and transparent button variants preserve the resting surface underneath while expressing the active theme instead of collapsing to neutral gray.
+
+Resting control borders use `borderAccent`. Hover uses `borderInteractiveHover`, and focus/open uses the solid `accent`. Disabled state remains opacity-only. Shared fields consume this border ladder through `control-geometry.ts`; shared buttons and split buttons consume the surface ladder in their primitives. A component must not substitute `surface1`/`surface2`/`surface3` for an interaction state or create a component-specific hover/selected color. The legacy `surfaceHover`, `surfaceSidebarHover`, `surfaceToggleHover`, `surfaceSidebarSelected`, and `surfaceToggleSelected` names are compatibility aliases to the canonical ladder, not independent tuning points.
+
+Compound split-button frames remain on `borderAccent` during segment hover; only the hovered segment receives `surfaceInteractiveHover`. Recoloring one segment's border fractures the shared outline and makes split buttons disagree with equivalent single-trigger combo controls. Keyboard focus and an open menu may still promote the owning segment border to `accent`.
+
+An overlay that must physically cover row content uses a palette-derived opaque composite of the same state layer and its known base surface. It must not stack the translucent state wash on top of an already-hovered parent, which doubles the color and creates nested chrome.
+
+Every icon button gets state chrome. An icon-only Pressable whose hover feedback is only an icon tint is missing it.
 
 ---
 
@@ -86,7 +94,7 @@ A list that is itself the page content - sidebar items in `sidebar-workspace-lis
 
 Pane chrome - the workspace pane header, the file-explorer header, the diff pane header - uses a single bottom border to separate the header from the content (`packages/app/src/git/diff-pane.tsx:2328-2331`). One border, no shadow.
 
-`borderAccent` is reserved for the outline button. Inputs use `border`. Single-thing borders are wrong; a single bordered element is either a card with one row (use the card) or it does not need a border.
+`borderAccent` owns interactive control outlines, including outline buttons, split-button separators, and field chrome. Their hover and active border states follow the shared ladder above. Structural cards and dividers use `border`. Single-thing structural borders are wrong; a single bordered element is either a card with one row (use the card) or it does not need a border.
 
 ---
 
@@ -220,13 +228,13 @@ The row anatomy is a content column with an optional trailing slot. Inside a car
 
 Rows that drill into a detail lead with a chevron in the trailing slot (`ChevronRight`, `iconSize.sm`, `foregroundMuted`). The whole row is the `<Pressable>`. Pair-device row (`packages/app/src/screens/settings/host-page.tsx:644-668`), provider row (`packages/app/src/screens/settings/providers-section.tsx:92-132`), project row in the projects list. Chevron means navigation.
 
-Kebab menus (`<DropdownMenu>` with `<MoreVertical size={14} />` trigger) are for actions on the row, not navigation. Trigger style: `padding: 2`, `borderRadius: 4`, hover background `surfaceHover`. Menu position: `align="end"`. Items use `<DropdownMenuItem leading={<Icon size={14} color={foregroundMuted} />} ...>`. Visibility is `isHovered || isTouchPlatform` - hover-revealed on web, always visible on native (`packages/app/src/components/sidebar-workspace-list.tsx:684-770`).
+Kebab menus (`<DropdownMenu>` with `<MoreVertical size={14} />` trigger) are for actions on the row, not navigation. Trigger style: `padding: 2`, `borderRadius: 4`, with the shared interaction-state ladder. Menu position: `align="end"`. Items use `<DropdownMenuItem leading={<Icon size={14} color={foregroundMuted} />} ...>`. Visibility is `isHovered || isTouchPlatform` - hover-revealed on web, always visible on native (`packages/app/src/components/sidebar-workspace-list.tsx:684-770`).
 
 A row may carry both a chevron and a kebab when both navigation and row-level actions apply. Chevron sits at the end; kebab sits before it.
 
 Switches and segmented controls also sit in the trailing slot. A row that both navigates and toggles is a `<Pressable>` with a `<Switch>` in the trailing slot - the switch calls `event.stopPropagation()` so the row press does not fire (`packages/app/src/screens/settings/providers-section.tsx:92-132`). Sidebar items that hold a status dot, a count, and a kebab follow the same rule (`packages/app/src/components/sidebar-workspace-list.tsx`).
 
-Selected state on rows in a desktop list+detail uses `surfaceSidebarHover` as the background (`packages/app/src/screens/projects-screen.tsx`). Selected state on rows in the sidebar list uses `surface2` (`packages/app/src/components/agent-list.tsx:563-571`).
+Rows use `surfaceInteractiveSelected`, `surfaceInteractiveHover`, and `surfaceInteractivePressed` in that order of persistence and strength. When a selected row is hovered, hover wins so pointer feedback remains more obvious than the resting selection. Nested action overlays match the row state and do not paint a second capsule behind a kebab or other trailing control.
 
 ---
 

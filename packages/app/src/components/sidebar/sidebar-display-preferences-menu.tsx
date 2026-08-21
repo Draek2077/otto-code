@@ -208,7 +208,7 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
   },
   triggerHovered: {
-    backgroundColor: theme.colors.surfaceHover,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
   },
   menuHeader: {
     paddingHorizontal: theme.spacing[3],

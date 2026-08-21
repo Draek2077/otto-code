@@ -899,17 +899,20 @@ function DesktopWindowControlsSync({ enabled }: { enabled: boolean }) {
   // immediately).
   const explorerSidebarVisible = usePanelStore((state) => state.explorerSidebarVisible);
   // In focus mode the desktop tab row is the top strip under the window controls;
-  // its gutter is surfaceSidebar too, so the caption strip must follow it there
-  // just as it follows the explorer sidebar.
+  // its gutter retains surfaceSidebar, while the explorer uses the deeper
+  // sidebar-only surface. The caption strip follows whichever one is painted.
   const focusModeTabStripVisible = usePanelStore((state) => state.focusModeTabStripVisible);
   // Everywhere else the strip beneath the caption buttons is a ScreenHeader, and
   // that paints `surfaceChrome` (the blend between the workspace surface and the
   // sidebar rail), not `surface0` - so the caption strip must use the same token
   // or it lands a shade off the header it sits in, in every theme.
-  const backgroundColor =
-    explorerSidebarVisible || focusModeTabStripVisible
-      ? theme.colors.surfaceSidebar
-      : theme.colors.surfaceChrome;
+  let backgroundColor = theme.colors.surfaceChrome;
+  if (focusModeTabStripVisible) {
+    backgroundColor = theme.colors.surfaceSidebar;
+  }
+  if (explorerSidebarVisible) {
+    backgroundColor = theme.colors.surfaceSidebarPanel;
+  }
   const foreground = theme.colors.foreground;
 
   useEffect(() => {

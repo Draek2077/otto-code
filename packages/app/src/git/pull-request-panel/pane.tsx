@@ -1352,7 +1352,7 @@ const styles = StyleSheet.create((theme) => ({
   root: {
     flex: 1,
     minHeight: 0,
-    backgroundColor: theme.colors.surfaceSidebar,
+    backgroundColor: theme.colors.surfaceSidebarPanel,
   },
   scroll: {
     flex: 1,
@@ -1507,7 +1507,7 @@ const styles = StyleSheet.create((theme) => ({
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.lg,
-    backgroundColor: theme.colors.surfaceSidebar,
+    backgroundColor: theme.colors.surfaceSidebarPanel,
     overflow: "hidden",
   },
   entryHeaderPressable: {

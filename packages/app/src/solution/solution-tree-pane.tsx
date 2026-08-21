@@ -267,7 +267,9 @@ function SolutionRowItem({
       // Same computation the Files lens does. `SPACING` is a static import, which docs/unistyles.md
       // sanctions precisely so a fixed number does not need a runtime subscription.
       { paddingLeft: SPACING[2] + row.depth * TREE_INDENT_PER_LEVEL },
-      (isHovered || pressed || isSelected) && styles.rowActive,
+      isSelected && styles.rowSelected,
+      isHovered && !pressed && styles.rowHovered,
+      pressed && styles.rowPressed,
     ],
     [isHovered, isSelected, row.depth],
   );
@@ -401,8 +403,14 @@ const styles = StyleSheet.create((theme) => ({
     paddingRight: theme.spacing[2],
     borderRadius: theme.borderRadius.md,
   },
-  rowActive: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
+  rowHovered: {
+    backgroundColor: theme.colors.surfaceInteractiveHover,
+  },
+  rowSelected: {
+    backgroundColor: theme.colors.surfaceInteractiveSelected,
+  },
+  rowPressed: {
+    backgroundColor: theme.colors.surfaceInteractivePressed,
   },
   rowInfo: {
     flex: 1,
