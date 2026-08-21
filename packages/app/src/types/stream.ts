@@ -208,6 +208,38 @@ function matchesUserMessage(
   return policy === "handoff" && matchesLegacyCanonicalUserMessage(incoming, existing);
 }
 
+function findUserMessageIndex(
+  items: StreamItem[],
+  incoming: UserMessageItem,
+  policy: UserMessageMatchPolicy,
+): { index: number; matchedByHandoffFallback: boolean } {
+  const exactIndex = items.findIndex(
+    (item) => item.kind === "user_message" && matchesUserMessage(item, incoming, policy),
+  );
+  if (exactIndex >= 0 || policy !== "handoff") {
+    return { index: exactIndex, matchedByHandoffFallback: false };
+  }
+
+  const candidates = items.flatMap((item, index) =>
+    item.kind === "user_message" && !item.optimistic ? [index] : [],
+  );
+  const fallbackIndex =
+    candidates.find((index) => {
+      const item = items[index];
+      return item?.kind === "user_message" && item.clientMessageId === incoming.id;
+    }) ??
+    candidates.find((index) => items[index]?.id === incoming.id) ??
+    (incoming.text.length > 0
+      ? candidates.findLast((index) => {
+          const item = items[index];
+          return item?.kind === "user_message" && item.text === incoming.text;
+        })
+      : undefined) ??
+    candidates.at(-1) ??
+    -1;
+  return { index: fallbackIndex, matchedByHandoffFallback: fallbackIndex >= 0 };
+}
+
 interface UserMessageProductionResult {
   items: StreamItem[];
   index: number;
@@ -222,9 +254,7 @@ function produceUserMessage(
   presentationPolicy: UserMessagePresentationPolicy,
   matchPolicy: UserMessageMatchPolicy = "canonical-incoming",
 ): UserMessageProductionResult {
-  const index = items.findIndex(
-    (item) => item.kind === "user_message" && matchesUserMessage(item, incoming, matchPolicy),
-  );
+  const { index, matchedByHandoffFallback } = findUserMessageIndex(items, incoming, matchPolicy);
   if (index < 0) {
     if (insertAt === null) return { items, index: -1, message: incoming, matched: false };
     return {
@@ -241,6 +271,7 @@ function produceUserMessage(
   const presentation = presentationPolicy === "incoming" ? incoming : existing;
   const merged = createUserMessage({
     ...presentation,
+    id: matchedByHandoffFallback ? existing.id : presentation.id,
     clientMessageId: incoming.clientMessageId ?? existing.clientMessageId,
     messageId: incoming.messageId ?? existing.messageId,
     turnId: incoming.turnId ?? existing.turnId,

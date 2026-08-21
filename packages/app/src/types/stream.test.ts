@@ -1631,6 +1631,52 @@ describe("turn lifecycle events", () => {
     );
   });
 
+  it("hands an initial image prompt to its matching row after Codex bootstrap entries", () => {
+    const timestamp = new Date("2025-01-01T15:03:20Z");
+    const image = {
+      id: "image-bootstrap",
+      mimeType: "image/png",
+      storageType: "web-indexeddb" as const,
+      storageKey: "image-bootstrap",
+      createdAt: timestamp.getTime(),
+    };
+    const optimistic = buildOptimisticUserMessage({
+      id: "client-image-prompt",
+      text: "Please inspect these images",
+      timestamp,
+      images: [image],
+    });
+
+    const result = handoffCreatedAgentUserMessageToStream({
+      tail: [
+        {
+          kind: "user_message",
+          id: "codex-bootstrap",
+          text: "<environment_context>…</environment_context>",
+          timestamp: new Date("2025-01-01T15:03:19Z"),
+        },
+        {
+          kind: "user_message",
+          id: "codex-prompt",
+          text: "Please inspect these images",
+          timestamp: new Date("2025-01-01T15:03:21Z"),
+        },
+      ],
+      head: [],
+      message: optimistic,
+    });
+
+    const [bootstrap, prompt] = result.tail;
+    expect(bootstrap).toMatchObject({ id: "codex-bootstrap" });
+    expect(bootstrap).not.toHaveProperty("images");
+    expect(prompt).toMatchObject({
+      id: "codex-prompt",
+      text: optimistic.text,
+      timestamp: optimistic.timestamp,
+      images: [image],
+    });
+  });
+
   it("flushes an interrupted head when its submitted prompt becomes canonical", () => {
     const submitted: StreamItem = {
       kind: "user_message",
