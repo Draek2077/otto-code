@@ -24,13 +24,41 @@ the rules on it.
 | `~/.paseo` data dir, `paseo.json` config      | `~/.otto`, `otto.json`                                           |
 | Default daemon port `6767`                    | `6868`                                                           |
 
+## Upstream tags never live in `refs/tags/` - set this up once per clone
+
+Otto cuts its own `vX.Y.Z` releases, so our tag names collide with Paseo's:
+there is an Otto `v0.4.0` **and** a Paseo `v0.4.0`, and they are different
+commits. `git fetch upstream --tags` silently refuses every colliding name and
+leaves `v0.4.0` pointing at ours. `git merge v0.4.0` would then merge an Otto
+release into itself, and `scripts/upstream-status.mjs` reported "upstream has not
+tagged a release since our baseline" while three upstream releases sat there.
+
+Map upstream tags into their own namespace instead. One-time, per clone:
+
+```bash
+git config --add remote.upstream.fetch '+refs/tags/*:refs/upstream-tags/*'
+git fetch upstream
+```
+
+`upstream-status.mjs` refuses to run without this and prints the same two
+commands. Afterwards, upstream releases are addressable and unambiguous:
+
+```bash
+git for-each-ref --format='%(refname:strip=2)' refs/upstream-tags/   # list them
+git rev-parse refs/upstream-tags/v0.4.0^{}                           # peel to a commit
+```
+
+**Always merge by SHA, never by tag name.** The report prints the exact
+`git merge <sha>` line for the target.
+
 ## Merge procedure
 
 ```bash
 git fetch upstream
-node scripts/upstream-status.mjs          # what changed, and does it hit anything we own?
+node scripts/upstream-status.mjs                 # which releases are available?
+node scripts/upstream-status.mjs --at v0.4.0     # size the merge you actually plan to do
 git checkout -b merge/upstream-$(date +%Y-%m) main
-git merge v0.2.0                          # merge at a release tag, not at main - see Cadence
+git merge b44bb63cf                              # the target's SHA - see Cadence, and above
 ```
 
 ### 0. Read the drift report first
@@ -41,6 +69,12 @@ merge at, and - the part that matters - whether upstream landed work inside a
 subsystem Otto has independently rebuilt. Do not start a merge without reading
 the **watchlist** section; the ledger below records what previous merges decided
 about each of those subsystems so the same argument isn't had twice.
+
+Pass `--at <tag>` once you know your target. The default measures against
+`upstream/main`, which always overstates the work because main carries unreleased
+commits: at the v0.2.5 baseline, main showed 442 commits and 838 overlapping
+files while the actual v0.4.0 target was 280 and 696. Size and triage the merge
+from the `--at` numbers, not the default ones.
 
 ### 1. Resolve conflicts
 
