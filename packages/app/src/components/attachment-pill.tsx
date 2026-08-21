@@ -10,7 +10,7 @@ import type { Theme } from "@/styles/theme";
 
 // Every attachment pill body - image thumbnail or labelled - renders at this
 // height so mixed attachment trays line up.
-const ATTACHMENT_CONTENT_HEIGHT = 48;
+const ATTACHMENT_CONTENT_HEIGHT = 40;
 
 interface AttachmentPillProps {
   onOpen: () => void;
@@ -160,7 +160,9 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[1],
+    paddingLeft: theme.spacing[1],
+    paddingRight: theme.spacing[1] + 2,
     backgroundColor: theme.colors.surface1,
   },
   labelIcon: {
