@@ -3530,9 +3530,10 @@ const LUCIDE_CHEVRON_NUDGE_LEFT: ViewStyle = { marginLeft: -4 };
 const TRIANGLE_ALERT_ICON_OPACITY: ViewStyle = { opacity: 0.8 };
 
 // The Otto face crops its viewBox to the ink, so it needs neither the lucide
-// nudge nor the 12px square: it carries the same optical weight at 18px wide,
-// and the 22px icon badge centres it.
-const OTTO_FACE_ICON_WIDTH = 18;
+// nudge nor the regular square wrapper. Keep its width equal to the standard
+// action-glyph size, though: the face is wider than it is tall and the old 18px
+// treatment made Otto actions visibly larger than their neighboring icons.
+const OTTO_FACE_ICON_WIDTH = 12;
 
 function renderExpandableBadgeIcon({
   errorLevel,
