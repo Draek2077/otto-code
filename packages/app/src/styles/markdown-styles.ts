@@ -230,6 +230,10 @@ export function createMarkdownStyles(theme: Theme) {
       borderWidth: 1,
       borderColor: themeColorRef(theme, "border"),
       borderRadius: theme.borderRadius.md,
+      // The outer shell owns the rounded edge. Clip rectangular header/cell
+      // backgrounds to it so the corner geometry stays coherent in every
+      // theme.
+      overflow: "hidden" as const,
       marginVertical: theme.spacing[3],
     },
 
@@ -242,7 +246,6 @@ export function createMarkdownStyles(theme: Theme) {
     th: {
       ...webSelectableTextStyle,
       padding: theme.spacing[2],
-      borderBottomWidth: 1,
       borderRightWidth: 1,
       borderColor: themeColorRef(theme, "border"),
       backgroundColor: themeColorRef(theme, "surface2"),
@@ -266,6 +269,17 @@ export function createMarkdownStyles(theme: Theme) {
       color: themeColorRef(theme, "foreground"),
       fontSize: theme.fontSize.sm,
       flex: 1,
+    },
+
+    // The table shell owns its outside border. These positional variants are
+    // applied by the renderer so the final row/cell cannot draw a second line
+    // against the shell's bottom/right edges.
+    tableLastRow: {
+      borderBottomWidth: 0,
+    },
+
+    tableLastCell: {
+      borderRightWidth: 0,
     },
 
     // =========================================================================

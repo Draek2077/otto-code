@@ -68,6 +68,7 @@ import {
 import { groupMarkdownParts, type MarkdownPartGroup } from "./part-groups";
 import { recoverMisnestedMarkdownFence } from "./fence-recovery";
 import { defaultMarkdownParser } from "./parser";
+import { isLastMarkdownTableChild } from "./table-layout";
 import {
   collectMarkdownDocumentAnnotationTargets,
   resolveHeadingAnnotationTarget,
@@ -945,8 +946,47 @@ function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+export function createMarkdownTableRules(): RenderRules {
+  return {
+    tr: (node: ASTNode, children: ReactNode[], parentNodes: ASTNode[], styles: MarkdownStyles) => (
+      <View
+        key={node.key}
+        style={[
+          styles._VIEW_SAFE_tr,
+          isLastMarkdownTableChild(node, parentNodes, "tbody") && styles._VIEW_SAFE_tableLastRow,
+        ]}
+      >
+        {children}
+      </View>
+    ),
+    th: (node: ASTNode, children: ReactNode[], parentNodes: ASTNode[], styles: MarkdownStyles) => (
+      <View
+        key={node.key}
+        style={[
+          styles._VIEW_SAFE_th,
+          isLastMarkdownTableChild(node, parentNodes, "tr") && styles._VIEW_SAFE_tableLastCell,
+        ]}
+      >
+        {children}
+      </View>
+    ),
+    td: (node: ASTNode, children: ReactNode[], parentNodes: ASTNode[], styles: MarkdownStyles) => (
+      <View
+        key={node.key}
+        style={[
+          styles._VIEW_SAFE_td,
+          isLastMarkdownTableChild(node, parentNodes, "tr") && styles._VIEW_SAFE_tableLastCell,
+        ]}
+      >
+        {children}
+      </View>
+    ),
+  };
+}
+
 export function createSharedMarkdownRules(): RenderRules {
   return {
+    ...createMarkdownTableRules(),
     /**
      * A blockquote, or a GitHub alert when the parser tagged it as one.
      *

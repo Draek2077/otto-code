@@ -69,6 +69,7 @@ import { textEffectActivityForToolName } from "@/agent-stream/action-grouping";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { BubbleCornerSheen } from "@/components/bubble-corner-sheen";
 import {
+  createMarkdownTableRules,
   createSharedMarkdownRules,
   MarkdownRenderer,
   withMarkdownLinkColor,
@@ -1945,6 +1946,10 @@ export const AssistantMessage = memo(function AssistantMessage({
 
   const markdownRules = useMemo<RenderRules>(() => {
     return {
+      // Assistant messages own several richer node rules below instead of
+      // inheriting the complete shared rule set. Keep the shared table edge
+      // rules explicit so the outer shell never doubles its final row/cell.
+      ...createMarkdownTableRules(),
       text: (
         node: ASTNode,
         _children: ReactNode[],
