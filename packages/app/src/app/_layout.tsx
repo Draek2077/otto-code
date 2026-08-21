@@ -808,16 +808,21 @@ function DesktopWindowControlsSync({ enabled }: { enabled: boolean }) {
   // workspace load pause the route is already active and the flag is set, but the
   // sidebar hasn't rendered, so predicting would flip the chrome to the sidebar
   // color too early. This flag is true only once the sidebar is on screen, and
-  // false everywhere else (so other pages switch to surface0 immediately).
+  // false everywhere else (so other pages switch to the header surface
+  // immediately).
   const explorerSidebarVisible = usePanelStore((state) => state.explorerSidebarVisible);
   // In focus mode the desktop tab row is the top strip under the window controls;
   // its gutter is surfaceSidebar too, so the caption strip must follow it there
   // just as it follows the explorer sidebar.
   const focusModeTabStripVisible = usePanelStore((state) => state.focusModeTabStripVisible);
+  // Everywhere else the strip beneath the caption buttons is a ScreenHeader, and
+  // that paints `surfaceChrome` (the blend between the workspace surface and the
+  // sidebar rail), not `surface0` - so the caption strip must use the same token
+  // or it lands a shade off the header it sits in, in every theme.
   const backgroundColor =
     explorerSidebarVisible || focusModeTabStripVisible
       ? theme.colors.surfaceSidebar
-      : theme.colors.surface0;
+      : theme.colors.surfaceChrome;
   const foreground = theme.colors.foreground;
 
   useEffect(() => {
